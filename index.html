@@ -1360,9 +1360,46 @@
     /* ═══════════════════════════ ROOT APP ═══════════════════════════ */
 
     function App() {
-      const [production, setProduction] = useStoredState("bigals_production", { title: "", prodCo: "" });
-      const [crew, setCrew] = useStoredState("bigals_crew", []);
-      const [days, setDays] = useStoredState("bigals_days", [], migrateDay);
+     // Single production object — crew and days now live inside it
+const [production, setProduction] = useStoredState("bigals_production", {
+  title: "", prodCo: "", crew: [], days: [],
+});
+
+// One-time migration: absorb old separate localStorage keys into production
+useEffect(() => {
+  try {
+    const oldCrew = localStorage.getItem("bigals_crew");
+    const oldDays = localStorage.getItem("bigals_days");
+    if (oldCrew || oldDays) {
+      const migratedCrew = oldCrew ? JSON.parse(oldCrew) : [];
+      const migratedDays = oldDays ? JSON.parse(oldDays).map(migrateDay) : [];
+      setProduction((prev) => ({
+        ...prev,
+        crew: prev.crew?.length ? prev.crew : migratedCrew,
+        days: prev.days?.length ? prev.days : migratedDays,
+      }));
+      localStorage.removeItem("bigals_crew");
+      localStorage.removeItem("bigals_days");
+    }
+  } catch {}
+}, []); // runs once on mount only
+
+// Convenience aliases — child components keep receiving crew/days as before
+const crew = production.crew ?? [];
+const days = production.days ?? [];
+
+// Derived setters — wrap setProduction so child components work unchanged
+const setCrew = (updater) =>
+  setProduction((prev) => ({
+    ...prev,
+    crew: typeof updater === "function" ? updater(prev.crew ?? []) : updater,
+  }));
+
+const setDays = (updater) =>
+  setProduction((prev) => {
+    const next = typeof updater === "function" ? updater(prev.days ?? []) : updater;
+    return { ...prev, days: next.map(migrateDay) };
+  });
       const [tab, setTab] = useState("crew");
       const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
@@ -1378,13 +1415,10 @@
       }, [crew, days, production]);
 
       const clearAll = () => {
-        setProduction({ title: "", prodCo: "" });
-        setCrew([]); setDays([]);
-        try {
-          localStorage.setItem("bigals_production", JSON.stringify({ title: "", prodCo: "" }));
-          localStorage.setItem("bigals_crew", JSON.stringify([]));
-          localStorage.setItem("bigals_days", JSON.stringify([]));
-        } catch {}
+setProduction({ title: "", prodCo: "", crew: [], days: [] });
+try {
+  localStorage.setItem("bigals_production", JSON.stringify({ title: "", prodCo: "", crew: [], days: [] }));
+} catch {}
         setResetMode(false);
       };
 
