@@ -1547,7 +1547,7 @@ const setDays = (updater) =>
       const openProduction = (id) => setOpenId(id);
       const closeProduction = () => setOpenId(null);
       const createProduction = () => {
-        const p = { id: uid(), title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY };
+        const p = { id: uid(), title: "Untitled Production", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY };
         setProductions((prev) => [...prev, p]);
         setOpenId(p.id);
       };
