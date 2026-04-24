@@ -751,6 +751,15 @@
 
     function ProductionForm({ production, setProduction }) {
       const set = (k) => (e) => setProduction({ ...production, [k]: e.target.value });
+      const setDefault = (k) => (e) => setProduction({
+        ...production,
+        defaultDay: { ...(production.defaultDay ?? {}), [k]: e.target.value },
+      });
+      const setDefaultNum = (k) => (e) => setProduction({
+        ...production,
+        defaultDay: { ...(production.defaultDay ?? {}), [k]: Number(e.target.value) },
+      });
+      const d = production.defaultDay ?? {};
       return (
         <div className="space-y-4">
           <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Info</h2>
@@ -759,6 +768,24 @@
             <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
           </div>
           <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Saved automatically.</div>
+
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 pt-2">Default Day</div>
+          <div className="bg-neutral-900 border-l-4 border-neutral-600 p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="Day Type">
+              <Select value={d.dayType || "Shoot"} onChange={setDefault("dayType")}>
+                {DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </Field>
+            <Field label="Call Time"><TimeInput value={d.callTime || ""} onChange={setDefault("callTime")} /></Field>
+            <Field label="Wrap Time"><TimeInput value={d.wrapTime || ""} onChange={setDefault("wrapTime")} /></Field>
+            <Field label="Lunch Start"><TimeInput value={d.lunchStartTime || ""} onChange={setDefault("lunchStartTime")} /></Field>
+            <Field label="Lunch Duration">
+              <Select value={Number(d.lunchDurationMins ?? 60)} onChange={setDefaultNum("lunchDurationMins")}>
+                {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+              </Select>
+            </Field>
+          </div>
+          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Applied to all new days. Existing days are unaffected.</div>
         </div>
       );
     }
