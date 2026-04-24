@@ -761,11 +761,20 @@
 
     function ProductionForm({ production, setProduction }) {
       const set = (k) => (e) => setProduction({ ...production, [k]: e.target.value });
+      const isUntitled = production.title === "Untitled Production" || !production.title;
       return (
         <div className="space-y-4">
-          <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Info</h2>
+          <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Setup</h2>
+          <div className="text-sm text-neutral-400">Set up the production details, then add crew and days.</div>
+
+          {isUntitled && (
+            <div className="bg-sky-950/40 border border-sky-800 px-4 py-3 text-sm text-sky-300 flex items-center gap-2">
+              <IInfo size={14}/> Give this production a name to get started.
+            </div>
+          )}
+
           <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" /></Field>
+            <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
             <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
           </div>
           <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Saved automatically.</div>
