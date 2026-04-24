@@ -327,10 +327,12 @@
       const travelBackRaw = Math.max(0, (Number(day.travelBackMins) || 0) - 60) / 60;
       const travelHrs = travelOutRaw + travelBackRaw;
       if (travelHrs > 0) {
-        if (workedHrs + travelHrs >= 11) {
-          lines.push({ label: "Travel Time", detail: "1hr each way deducted", rate: bhr, qty: travelHrs, amount: travelHrs * bhr });
+        const travelGap = Math.max(0, basicHrs - workedHrs);
+        const chargeableTravel = Math.max(0, travelHrs - travelGap);
+        if (chargeableTravel > 0) {
+          lines.push({ label: "Travel Time", detail: "1hr each way deducted", rate: bhr, qty: chargeableTravel, amount: chargeableTravel * bhr });
         } else {
-          notes.push(`Travel not paid (work ${workedHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h < 11h)`);
+          notes.push(`Travel not paid (work ${workedHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ ${basicHrs}h threshold)`);
         }
       }
       const miles = Number(day.miles) || 0;
@@ -438,7 +440,8 @@
       if (/mileage/i.test(label)) return `Mileage: ${qty} mi`;
       const isHoursLine = typeof qty === 'number' && /\bot\b|triple|travel time|early|travel day/i.test(label) && qty !== 1;
       const hoursHint = isHoursLine ? ` (${qty % 1 === 0 ? qty : qty.toFixed(2)} HR${qty !== 1 ? 'S' : ''})` : '';
-      return `${timePart}${label}${hoursHint}`;
+      const amountHint = !isHoursLine && line.amount != null ? ` — ${fmtGBP(line.amount)}` : '';
+      return `${timePart}${label}${hoursHint}${amountHint}`;
     }
 
     function generateCrewText(crewMember, entries, production) {
@@ -944,7 +947,7 @@
           {allCrewMode && (
             <div className="bg-sky-950/30 border border-sky-800 p-2">
               <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold">All Crew Mode</div>
-              <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage left blank — edit per person after.</div>
+              <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage apply to all.</div>
             </div>
           )}
           <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}` : ""}>
@@ -1048,18 +1051,16 @@
                 </>
               )}
 
-              {!allCrewMode && (
-                <>
-                  <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Travel & Mileage</div>
-                  </div>
-                  <Field label="Travel Out (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
-                  <Field label="Travel Back (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
-                </>
-              )}
+              <>
+                <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Travel & Mileage</div>
+                </div>
+                <Field label="Travel Out (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
+                <Field label="Travel Back (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
+              </>
             </>
           )}
-          {!allCrewMode && <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE"><Input type="number" min="0" step="0.1" value={v.miles || 0} onChange={(e) => set({ miles: Number(e.target.value) })} /></Field>}
+          <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE"><Input type="number" min="0" step="0.1" value={v.miles || 0} onChange={(e) => set({ miles: Number(e.target.value) })} /></Field>
         </div>
       );
     }
@@ -1138,7 +1139,7 @@
       const save = () => {
         if (!form.date || !form.callTime || !form.wrapTime) return;
         if (editing === "new-all") {
-          const newDays = crew.map((c) => ({ ...form, id: uid(), crewId: c.id, travelOutMins: 0, travelBackMins: 0, miles: 0 }));
+          const newDays = crew.map((c) => ({ ...form, id: uid(), crewId: c.id }));
           setDays((prev) => [...prev, ...newDays]);
         } else {
           if (!form.crewId) return;
