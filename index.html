@@ -179,7 +179,8 @@
     /* ═══════════════════════════ CALC ENGINE ═══════════════════════════ */
 
     function resolveDay(production, day, crew) {
-      return day;
+      const defaultDay = production.defaultDay ?? {};
+      return { ...defaultDay, ...day };
     }
 
     function calculateDay(day, crew) {
@@ -1367,6 +1368,13 @@
      // Single production object — crew and days now live inside it
 const [production, setProduction] = useStoredState("bigals_production", {
   title: "", prodCo: "", crew: [], days: [],
+  defaultDay: {
+    dayType: "Shoot",
+    callTime: "08:00",
+    wrapTime: "19:00",
+    lunchStartTime: "13:00",
+    lunchDurationMins: 60,
+  },
 });
 
 // One-time migration: absorb old separate localStorage keys into production
