@@ -180,7 +180,8 @@
 
     function resolveDay(production, day, crew) {
       const defaultDay = production.defaultDay ?? {};
-      return { ...defaultDay, ...day };
+      const dayOverride = day.defaultDayOverride ?? {};
+      return { ...defaultDay, ...dayOverride, ...day };
     }
 
     function calculateDay(day, crew) {
