@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>Big Al's Timesheet Generator</title>
+  <title>Derrick's TimeMachine</title>
 
   <!-- PWA / iOS Home Screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Big Al's">
+  <meta name="apple-mobile-web-app-title" content="TimeMachine">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#000000">
@@ -78,7 +78,7 @@
   </script>
 </head>
 <body>
-  <div id="root"><div class="app-loading">Loading Big Al's Timesheet Generator…</div></div>
+  <div id="root"><div class="app-loading">Loading Derrick's TimeMachine…</div></div>
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
@@ -96,6 +96,13 @@
     const ROLE_ORDER = ["Gaffer", "Best Boy", "Desk Op", "Spark", "Trainee"];
     const DAY_TYPES = ["Shoot", "Recce", "Pre-light", "De-rig", "Travel Day"];
     const DEFAULT_HOURS = { "Shoot": 11, "Recce": 9, "Pre-light": 9, "De-rig": 9, "Travel Day": 5 };
+    const DEFAULT_PRODUCTION_DAY = {
+      dayType: "Shoot",
+      callTime: "08:00",
+      wrapTime: "19:00",
+      lunchStartTime: "13:30",
+      lunchDurationMins: 60,
+    };
     const LUNCH_DURATIONS = [
       { v: 60, label: "1 hour" },
       { v: 30, label: "30 mins (curtailed)" },
@@ -181,7 +188,7 @@
     function resolveDay(production, day, crew) {
       const defaultDay = production.defaultDay ?? {};
       const dayOverride = day.defaultDayOverride ?? {};
-      return { ...defaultDay, ...dayOverride, ...day };
+      return { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...dayOverride, ...day };
     }
 
     function calculateDay(day, crew) {
@@ -751,15 +758,6 @@
 
     function ProductionForm({ production, setProduction }) {
       const set = (k) => (e) => setProduction({ ...production, [k]: e.target.value });
-      const setDefault = (k) => (e) => setProduction({
-        ...production,
-        defaultDay: { ...(production.defaultDay ?? {}), [k]: e.target.value },
-      });
-      const setDefaultNum = (k) => (e) => setProduction({
-        ...production,
-        defaultDay: { ...(production.defaultDay ?? {}), [k]: Number(e.target.value) },
-      });
-      const d = production.defaultDay ?? {};
       return (
         <div className="space-y-4">
           <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Info</h2>
@@ -768,24 +766,6 @@
             <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
           </div>
           <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Saved automatically.</div>
-
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 pt-2">Default Day</div>
-          <div className="bg-neutral-900 border-l-4 border-neutral-600 p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Field label="Day Type">
-              <Select value={d.dayType || "Shoot"} onChange={setDefault("dayType")}>
-                {DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </Select>
-            </Field>
-            <Field label="Call Time"><TimeInput value={d.callTime || ""} onChange={setDefault("callTime")} /></Field>
-            <Field label="Wrap Time"><TimeInput value={d.wrapTime || ""} onChange={setDefault("wrapTime")} /></Field>
-            <Field label="Lunch Start"><TimeInput value={d.lunchStartTime || ""} onChange={setDefault("lunchStartTime")} /></Field>
-            <Field label="Lunch Duration">
-              <Select value={Number(d.lunchDurationMins ?? 60)} onChange={setDefaultNum("lunchDurationMins")}>
-                {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-              </Select>
-            </Field>
-          </div>
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Applied to all new days. Existing days are unaffected.</div>
         </div>
       );
     }
@@ -1140,14 +1120,14 @@
 
       const startNew = () => {
         if (crew.length === 0) return;
-        const d = production.defaultDay ?? {};
+        const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
         const callH = parseHHMM(d.callTime) ?? 8;
         setForm({ ...d, ...makeBlankDay(crew[0].id), secondBreakStartTime: toHHMM(callH + 11) });
         setEditing("new");
       };
       const startNewAll = () => {
         if (crew.length === 0) return;
-        const d = production.defaultDay ?? {};
+        const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
         const callH = parseHHMM(d.callTime) ?? 8;
         setForm({ ...d, ...makeBlankDay(""), secondBreakStartTime: toHHMM(callH + 11) });
         setEditing("new-all");
@@ -1404,13 +1384,7 @@
      // Single production object — crew and days now live inside it
 const [production, setProduction] = useStoredState("bigals_production", {
   title: "", prodCo: "", crew: [], days: [],
-  defaultDay: {
-    dayType: "Shoot",
-    callTime: "08:00",
-    wrapTime: "19:00",
-    lunchStartTime: "13:00",
-    lunchDurationMins: 60,
-  },
+  defaultDay: DEFAULT_PRODUCTION_DAY,
 });
 
 // One-time migration: absorb old separate localStorage keys into production
@@ -1430,6 +1404,11 @@ useEffect(() => {
       localStorage.removeItem("bigals_days");
     }
   } catch {}
+}, []); // runs once on mount only
+
+// One-time migration: add defaultDay to existing saved productions that predate the field
+useEffect(() => {
+  setProduction((prev) => prev.defaultDay ? prev : { ...prev, defaultDay: DEFAULT_PRODUCTION_DAY });
 }, []); // runs once on mount only
 
 // Convenience aliases — child components keep receiving crew/days as before
@@ -1463,10 +1442,10 @@ const setDays = (updater) =>
       }, [crew, days, production]);
 
       const clearAll = () => {
-setProduction({ title: "", prodCo: "", crew: [], days: [] });
-try {
-  localStorage.setItem("bigals_production", JSON.stringify({ title: "", prodCo: "", crew: [], days: [] }));
-} catch {}
+        setProduction({ title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY });
+        try {
+          localStorage.setItem("bigals_production", JSON.stringify({ title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY }));
+        } catch {}
         setResetMode(false);
       };
 
@@ -1479,8 +1458,8 @@ try {
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
               <div>
-                <div className="font-bold uppercase tracking-tight leading-none text-sm">Big Al's Lighting Emporium</div>
-                <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Timesheet Generator</div>
+                <div className="font-bold uppercase tracking-tight leading-none text-sm">Derrick's TimeMachine</div>
+                <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Crew Timesheets</div>
               </div>
               <div className="flex items-center gap-3">
                 {saveToast && <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-emerald-400"><ISave/>Saved</div>}
