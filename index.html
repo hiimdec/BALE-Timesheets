@@ -1379,38 +1379,9 @@
       );
     }
 
-    /* ═══════════════════════════ ROOT APP ═══════════════════════════ */
+    /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
-    function App() {
-     // Single production object — crew and days now live inside it
-const [production, setProduction] = useStoredState("bigals_production", {
-  title: "", prodCo: "", crew: [], days: [],
-  defaultDay: DEFAULT_PRODUCTION_DAY,
-});
-
-// One-time migration: absorb old separate localStorage keys into production
-useEffect(() => {
-  try {
-    const oldCrew = localStorage.getItem("bigals_crew");
-    const oldDays = localStorage.getItem("bigals_days");
-    if (oldCrew || oldDays) {
-      const migratedCrew = oldCrew ? JSON.parse(oldCrew) : [];
-      const migratedDays = oldDays ? JSON.parse(oldDays).map(migrateDay) : [];
-      setProduction((prev) => ({
-        ...prev,
-        crew: prev.crew?.length ? prev.crew : migratedCrew,
-        days: prev.days?.length ? prev.days : migratedDays,
-      }));
-      localStorage.removeItem("bigals_crew");
-      localStorage.removeItem("bigals_days");
-    }
-  } catch {}
-}, []); // runs once on mount only
-
-// One-time migration: add defaultDay to existing saved productions that predate the field
-useEffect(() => {
-  setProduction((prev) => prev.defaultDay ? prev : { ...prev, defaultDay: DEFAULT_PRODUCTION_DAY });
-}, []); // runs once on mount only
+    function ProductionApp({ production, setProduction, onBack }) {
 
 // Convenience aliases — child components keep receiving crew/days as before
 const crew = production.crew ?? [];
@@ -1443,10 +1414,7 @@ const setDays = (updater) =>
       }, [crew, days, production]);
 
       const clearAll = () => {
-        setProduction({ title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY });
-        try {
-          localStorage.setItem("bigals_production", JSON.stringify({ title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY }));
-        } catch {}
+        setProduction((prev) => ({ id: prev.id, title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY }));
         setResetMode(false);
       };
 
@@ -1473,6 +1441,7 @@ const setDays = (updater) =>
                 ) : (
                   <Btn size="sm" variant="ghost" onClick={() => setResetMode(true)}><IReset/>Reset</Btn>
                 )}
+                <Btn size="sm" variant="ghost" onClick={onBack}>← All Productions</Btn>
               </div>
             </div>
           </div>
@@ -1507,8 +1476,97 @@ const setDays = (updater) =>
       );
     }
 
+    /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
+
+    function ProductionsScreen({ productions, onOpen, onCreate }) {
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-6xl mx-auto px-4 py-3">
+              <div className="font-bold uppercase tracking-tight leading-none text-sm">Derrick's TimeMachine</div>
+              <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Productions</div>
+            </div>
+          </div>
+
+          <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Your Productions</h2>
+              <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
+            </div>
+
+            {productions.length === 0 && (
+              <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center text-sm text-neutral-500">
+                No productions yet. Create one to get started.
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {productions.map((p) => (
+                <div key={p.id} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-600 transition-colors p-4 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
+                    {p.prodCo && <div className="text-sm text-neutral-400 truncate">{p.prodCo}</div>}
+                    <div className="text-[11px] text-neutral-500 mt-1 font-mono">
+                      {(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days
+                    </div>
+                  </div>
+                  <Btn variant="primary" onClick={() => onOpen(p.id)}>Open →</Btn>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════ ROOT ═══════════════════════════ */
+
+    function Root() {
+      const [productions, setProductions] = useStoredState("bigals_productions", []);
+      const [openId, setOpenId] = useState(null);
+
+      // One-time migration: absorb all old localStorage keys into the productions array
+      useEffect(() => {
+        try {
+          if (productions.length > 0) return;
+          const oldProd = localStorage.getItem("bigals_production");
+          const oldCrew = localStorage.getItem("bigals_crew");
+          const oldDays = localStorage.getItem("bigals_days");
+          if (oldProd || oldCrew || oldDays) {
+            let p = oldProd ? JSON.parse(oldProd) : { title: "", prodCo: "", crew: [], days: [] };
+            if (!p.crew?.length && oldCrew) p.crew = JSON.parse(oldCrew);
+            if (!p.days?.length && oldDays) p.days = JSON.parse(oldDays).map(migrateDay);
+            if (!p.defaultDay) p.defaultDay = DEFAULT_PRODUCTION_DAY;
+            setProductions([{ id: uid(), ...p }]);
+            localStorage.removeItem("bigals_production");
+            localStorage.removeItem("bigals_crew");
+            localStorage.removeItem("bigals_days");
+          }
+        } catch {}
+      }, []); // runs once on mount only
+
+      const openProduction = (id) => setOpenId(id);
+      const closeProduction = () => setOpenId(null);
+      const createProduction = () => {
+        const p = { id: uid(), title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY };
+        setProductions((prev) => [...prev, p]);
+        setOpenId(p.id);
+      };
+      const setProduction = (updater) =>
+        setProductions((prev) => prev.map((p) =>
+          p.id === openId ? (typeof updater === "function" ? updater(p) : updater) : p
+        ));
+
+      const currentProduction = productions.find((p) => p.id === openId);
+
+      if (!openId || !currentProduction) {
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} />;
+      }
+      return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
+    }
+
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    root.render(<Root />);
   </script>
 </body>
 </html>
