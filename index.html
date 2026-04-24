@@ -440,7 +440,7 @@
       if (/mileage/i.test(label)) return `Mileage: ${qty} mi`;
       const isHoursLine = typeof qty === 'number' && /\bot\b|triple|travel time|early|travel day/i.test(label) && qty !== 1;
       const hoursHint = isHoursLine ? ` (${qty % 1 === 0 ? qty : qty.toFixed(2)} HR${qty !== 1 ? 'S' : ''})` : '';
-      const amountHint = !isHoursLine && line.amount != null ? ` — ${fmtGBP(line.amount)}` : '';
+      const amountHint = (!isHoursLine || /travel time/i.test(label)) && line.amount != null ? ` — ${fmtGBP(line.amount)}` : '';
       return `${timePart}${label}${hoursHint}${amountHint}`;
     }
 
