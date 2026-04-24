@@ -178,6 +178,12 @@
 
     /* ═══════════════════════════ CALC ENGINE ═══════════════════════════ */
 
+    function resolveDay(production, day, crew) {
+      const defaultDay = production.defaultDay ?? {};
+      const dayOverride = day.defaultDayOverride ?? {};
+      return { ...defaultDay, ...dayOverride, ...day };
+    }
+
     function calculateDay(day, crew) {
       const bdr = Number(crew.bdr) || 0;
       const bhr = bdr / 10;
@@ -437,7 +443,7 @@
       const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
       let grandTotal = 0;
       sorted.forEach((d) => {
-        const calc = calculateDay(d, crewMember);
+        const calc = calculateDay(resolveDay(production, d, crewMember), crewMember);
         grandTotal += calc.total;
         lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' — CWD' : ''}`);
         calc.lines.forEach((l) => lines.push(formatLineText(l)));
@@ -448,8 +454,8 @@
       return lines.join('\n');
     }
 
-    function generateDayText(day, crewMember) {
-      const calc = calculateDay(day, crewMember);
+    function generateDayText(day, crewMember, production) {
+      const calc = calculateDay(resolveDay(production, day, crewMember), crewMember);
       const lines = [];
       lines.push(`${crewMember.name} — ${crewMember.role}`);
       lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' — CWD' : ''}`);
@@ -506,7 +512,7 @@
       let grandTotal = 0;
 
       sorted.forEach((d, idx) => {
-        const calc = calculateDay(d, crewMember);
+        const calc = calculateDay(resolveDay(production, d, crewMember), crewMember);
         grandTotal += calc.total;
 
         // Estimate needed space
@@ -573,7 +579,7 @@
       const ordered = crew.map((c) => map.get(c.id)).filter(Boolean);
 
       const grandTotal = ordered.reduce((s, { crew: c, entries }) =>
-        s + entries.reduce((t, e) => t + calculateDay(e, c).total, 0), 0);
+        s + entries.reduce((t, e) => t + calculateDay(resolveDay(production, e, c), c).total, 0), 0);
 
       let dateRange = '';
       if (days.length > 0) {
@@ -608,9 +614,9 @@
       doc.setFont('times', 'normal'); doc.setFontSize(10);
       ordered.forEach(({ crew: c, entries }) => {
         ensureSpace(doc, y, 16);
-        const totalHrs = entries.reduce((s, e) => s + calculateDay(e, c).meta.workedHrs, 0);
-        const otHrs = entries.reduce((s, e) => s + calculateDay(e, c).meta.otHrs, 0);
-        const totalFee = entries.reduce((s, e) => s + calculateDay(e, c).total, 0);
+        const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
+        const otHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.otHrs, 0);
+        const totalFee = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).total, 0);
         doc.setTextColor(0);
         doc.text(c.name, COL.name, y.y);
         doc.setTextColor(100); doc.setFontSize(9);
@@ -745,6 +751,15 @@
 
     function ProductionForm({ production, setProduction }) {
       const set = (k) => (e) => setProduction({ ...production, [k]: e.target.value });
+      const setDefault = (k) => (e) => setProduction({
+        ...production,
+        defaultDay: { ...(production.defaultDay ?? {}), [k]: e.target.value },
+      });
+      const setDefaultNum = (k) => (e) => setProduction({
+        ...production,
+        defaultDay: { ...(production.defaultDay ?? {}), [k]: Number(e.target.value) },
+      });
+      const d = production.defaultDay ?? {};
       return (
         <div className="space-y-4">
           <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Info</h2>
@@ -753,6 +768,24 @@
             <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
           </div>
           <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Saved automatically.</div>
+
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 pt-2">Default Day</div>
+          <div className="bg-neutral-900 border-l-4 border-neutral-600 p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="Day Type">
+              <Select value={d.dayType || "Shoot"} onChange={setDefault("dayType")}>
+                {DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </Field>
+            <Field label="Call Time"><TimeInput value={d.callTime || ""} onChange={setDefault("callTime")} /></Field>
+            <Field label="Wrap Time"><TimeInput value={d.wrapTime || ""} onChange={setDefault("wrapTime")} /></Field>
+            <Field label="Lunch Start"><TimeInput value={d.lunchStartTime || ""} onChange={setDefault("lunchStartTime")} /></Field>
+            <Field label="Lunch Duration">
+              <Select value={Number(d.lunchDurationMins ?? 60)} onChange={setDefaultNum("lunchDurationMins")}>
+                {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+              </Select>
+            </Field>
+          </div>
+          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Applied to all new days. Existing days are unaffected.</div>
         </div>
       );
     }
@@ -1053,9 +1086,9 @@
 
     /* ═══════════════════════════ LIVE CALC ═══════════════════════════ */
 
-    function LiveCalc({ day, crew }) {
+    function LiveCalc({ day, crew, production }) {
       if (!crew) return null;
-      const calc = calculateDay(day, crew);
+      const calc = calculateDay(resolveDay(production, day, crew), crew);
       return (
         <div className="bg-black border border-sky-400 p-3 space-y-2">
           <div className="flex items-center justify-between">
@@ -1091,14 +1124,10 @@
     /* ═══════════════════════════ DAYS MANAGER ═══════════════════════════ */
 
     function makeBlankDay(crewId = "") {
-      const callTime = "08:00";
-      const callH = parseHHMM(callTime);
       return {
-        id: uid(), crewId, date: todayISO(), dayType: "Shoot",
-        callTime, wrapTime: toHHMM(callH + DEFAULT_HOURS["Shoot"]),
+        id: uid(), crewId, date: todayISO(),
         wrapNextDay: false,
-        lunchStartTime: toHHMM(callH + 5), lunchDurationMins: 60, noMealProvided: false,
-        secondBreakStartTime: toHHMM(callH + 11), secondBreakDurationMins: 30,
+        noMealProvided: false, secondBreakDurationMins: 30,
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
       };
@@ -1109,8 +1138,20 @@
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
 
-      const startNew = () => { if (crew.length === 0) return; setForm(makeBlankDay(crew[0].id)); setEditing("new"); };
-      const startNewAll = () => { if (crew.length === 0) return; setForm(makeBlankDay("")); setEditing("new-all"); };
+      const startNew = () => {
+        if (crew.length === 0) return;
+        const d = production.defaultDay ?? {};
+        const callH = parseHHMM(d.callTime) ?? 8;
+        setForm({ ...d, ...makeBlankDay(crew[0].id), secondBreakStartTime: toHHMM(callH + 11) });
+        setEditing("new");
+      };
+      const startNewAll = () => {
+        if (crew.length === 0) return;
+        const d = production.defaultDay ?? {};
+        const callH = parseHHMM(d.callTime) ?? 8;
+        setForm({ ...d, ...makeBlankDay(""), secondBreakStartTime: toHHMM(callH + 11) });
+        setEditing("new-all");
+      };
       const startEdit = (d) => { setForm(migrateDay(d)); setEditing(d.id); };
       const cancel = () => { setEditing(null); };
 
@@ -1133,7 +1174,7 @@
       const duplicate = (d) => setDays((prev) => [...prev, { ...d, id: uid() }]);
 
       const handleDayText = async (d, c) => {
-        const text = generateDayText(d, c);
+        const text = generateDayText(d, c, production);
         const r = await shareTextOrCopy(text, `${c.name} ${fmtDateShort(d.date)}`);
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
       };
@@ -1170,7 +1211,7 @@
                 {editing === "new" ? "New Day Entry" : editing === "new-all" ? "New Day — All Crew" : "Edit Day Entry"}
               </div>
               <DayEntryForm value={form} onChange={setForm} crew={crew} allCrewMode={editing === "new-all"} />
-              {editing !== "new-all" && <LiveCalc day={form} crew={crew.find((c) => c.id === form.crewId)} />}
+              {editing !== "new-all" && <LiveCalc day={form} crew={crew.find((c) => c.id === form.crewId)} production={production} />}
               {editing === "new-all" && <div className="bg-black border border-sky-400 p-3 text-xs text-neutral-300"><span className="text-sky-400 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member</div>}
               <div className="flex gap-2 pt-2">
                 <Btn onClick={save} variant="success"><ICheck/>Save</Btn>
@@ -1188,7 +1229,7 @@
 
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
-              const dayTotal = entries.reduce((s, e) => { const c = crew.find((cc) => cc.id === e.crewId); return c ? s + calculateDay(e, c).total : s; }, 0);
+              const dayTotal = entries.reduce((s, e) => { const c = crew.find((cc) => cc.id === e.crewId); return c ? s + calculateDay(resolveDay(production, e, c), c).total : s; }, 0);
               return (
                 <div key={date}>
                   <div className="flex items-baseline justify-between mb-2 border-b border-neutral-800 pb-1">
@@ -1204,7 +1245,7 @@
                           <Btn size="sm" variant="ghost" onClick={() => remove(d.id)}><ITrash/></Btn>
                         </div>
                       );
-                      const calc = calculateDay(d, c);
+                      const calc = calculateDay(resolveDay(production, d, c), c);
                       return (
                         <div key={d.id} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors">
                           <div className="flex items-center justify-between p-3 gap-3 flex-wrap">
@@ -1264,7 +1305,7 @@
         return crew.map((c) => m.get(c.id)).filter(Boolean);
       }, [crew, days]);
 
-      const grandTotal = byCrew.reduce((s, { crew: c, entries }) => s + entries.reduce((t, e) => t + calculateDay(e, c).total, 0), 0);
+      const grandTotal = byCrew.reduce((s, { crew: c, entries }) => s + entries.reduce((t, e) => t + calculateDay(resolveDay(production, e, c), c).total, 0), 0);
 
       const handleAllPdf = async () => {
         setBusy('all-pdf');
@@ -1324,8 +1365,8 @@
           <div className="space-y-2">
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Per Crew Member</div>
             {byCrew.map(({ crew: c, entries }) => {
-              const total = entries.reduce((s, e) => s + calculateDay(e, c).total, 0);
-              const totalHrs = entries.reduce((s, e) => s + calculateDay(e, c).meta.workedHrs, 0);
+              const total = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).total, 0);
+              const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
               return (
                 <div key={c.id} className="bg-neutral-900 border border-neutral-800 p-3">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1363,6 +1404,13 @@
      // Single production object — crew and days now live inside it
 const [production, setProduction] = useStoredState("bigals_production", {
   title: "", prodCo: "", crew: [], days: [],
+  defaultDay: {
+    dayType: "Shoot",
+    callTime: "08:00",
+    wrapTime: "19:00",
+    lunchStartTime: "13:00",
+    lunchDurationMins: 60,
+  },
 });
 
 // One-time migration: absorb old separate localStorage keys into production
@@ -1422,7 +1470,7 @@ try {
         setResetMode(false);
       };
 
-      const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calculateDay(d, c).total : s; }, 0);
+      const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calculateDay(resolveDay(production, d, c), c).total : s; }, 0);
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
