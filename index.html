@@ -1427,8 +1427,8 @@ const setDays = (updater) =>
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
               <div>
-                <div className="font-bold uppercase tracking-tight leading-none text-sm">Derrick's TimeMachine</div>
-                <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Crew Timesheets</div>
+                <button onClick={onBack} className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-400 transition-colors font-bold mb-1 flex items-center gap-1">← Derrick's TimeMachine</button>
+                <div className="font-bold uppercase tracking-tight leading-none text-sm">{production.title || <span className="text-neutral-500">Untitled Production</span>}</div>
               </div>
               <div className="flex items-center gap-3">
                 {saveToast && <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-emerald-400"><ISave/>Saved</div>}
@@ -1441,7 +1441,6 @@ const setDays = (updater) =>
                 ) : (
                   <Btn size="sm" variant="ghost" onClick={() => setResetMode(true)}><IReset/>Reset</Btn>
                 )}
-                <Btn size="sm" variant="ghost" onClick={onBack}>← All Productions</Btn>
               </div>
             </div>
           </div>
@@ -1482,17 +1481,17 @@ const setDays = (updater) =>
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-            <div className="max-w-6xl mx-auto px-4 py-3">
-              <div className="font-bold uppercase tracking-tight leading-none text-sm">Derrick's TimeMachine</div>
-              <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Productions</div>
+            <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-bold uppercase tracking-tight leading-none text-sm">Derrick's TimeMachine</div>
+                <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Productions</div>
+              </div>
+              <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
             </div>
           </div>
 
           <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Your Productions</h2>
-              <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
-            </div>
+            <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Your Productions</h2>
 
             {productions.length === 0 && (
               <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center text-sm text-neutral-500">
