@@ -1096,14 +1096,10 @@
     /* ═══════════════════════════ DAYS MANAGER ═══════════════════════════ */
 
     function makeBlankDay(crewId = "") {
-      const callTime = "08:00";
-      const callH = parseHHMM(callTime);
       return {
-        id: uid(), crewId, date: todayISO(), dayType: "Shoot",
-        callTime, wrapTime: toHHMM(callH + DEFAULT_HOURS["Shoot"]),
+        id: uid(), crewId, date: todayISO(),
         wrapNextDay: false,
-        lunchStartTime: toHHMM(callH + 5), lunchDurationMins: 60, noMealProvided: false,
-        secondBreakStartTime: toHHMM(callH + 11), secondBreakDurationMins: 30,
+        noMealProvided: false, secondBreakDurationMins: 30,
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
       };
@@ -1114,8 +1110,20 @@
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
 
-      const startNew = () => { if (crew.length === 0) return; setForm(makeBlankDay(crew[0].id)); setEditing("new"); };
-      const startNewAll = () => { if (crew.length === 0) return; setForm(makeBlankDay("")); setEditing("new-all"); };
+      const startNew = () => {
+        if (crew.length === 0) return;
+        const d = production.defaultDay ?? {};
+        const callH = parseHHMM(d.callTime) ?? 8;
+        setForm({ ...d, ...makeBlankDay(crew[0].id), secondBreakStartTime: toHHMM(callH + 11) });
+        setEditing("new");
+      };
+      const startNewAll = () => {
+        if (crew.length === 0) return;
+        const d = production.defaultDay ?? {};
+        const callH = parseHHMM(d.callTime) ?? 8;
+        setForm({ ...d, ...makeBlankDay(""), secondBreakStartTime: toHHMM(callH + 11) });
+        setEditing("new-all");
+      };
       const startEdit = (d) => { setForm(migrateDay(d)); setEditing(d.id); };
       const cancel = () => { setEditing(null); };
 
