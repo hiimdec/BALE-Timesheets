@@ -1838,14 +1838,14 @@ const setDays = (updater) =>
     const next = typeof updater === "function" ? updater(prev.days ?? []) : updater;
     return { ...prev, days: next.map(migrateDay) };
   });
-      const [tab, setTab] = useState("crew");
+      const [tab, setTab] = useState("setup");
       const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
       const [openCrewForm, setOpenCrewForm] = useState(false);
 
       const handleGridAddDate = (date) => setProduction(p => ({ ...p, gridDates: [...(p.gridDates || []), date] }));
-      const handleGridAddCrew = () => { setOpenCrewForm(true); setTab("crew"); };
+      const handleGridAddCrew = () => { setOpenCrewForm(true); setTab("setup"); };
 
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
@@ -1891,10 +1891,9 @@ const setDays = (updater) =>
           <div className="border-b border-neutral-800 bg-neutral-900 sticky z-30" style={{ top: 'calc(65px + env(safe-area-inset-top))' }}>
             <div className="max-w-6xl mx-auto px-4 flex overflow-x-auto">
               {[
-                { k: "production", label: "Production", I: IBriefcase },
-                { k: "crew",       label: "Crew",       I: IUsers },
-                { k: "days",       label: "Timesheets", I: ICal },
-                { k: "export",     label: "Export",     I: IShare },
+                { k: "setup",  label: "Setup",      I: IBriefcase },
+                { k: "days",   label: "Timesheets", I: ICal },
+                { k: "export", label: "Export",     I: IShare },
               ].map(({ k, label, I }) => (
                 <button key={k} onClick={() => setTab(k)}
                   className={`px-4 py-3 text-[11px] uppercase tracking-[0.15em] font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${tab === k ? "border-sky-400 text-sky-400" : "border-transparent text-neutral-500 hover:text-neutral-200"}`}>
@@ -1905,10 +1904,14 @@ const setDays = (updater) =>
           </div>
 
           <div className="max-w-6xl mx-auto px-4 py-6">
-            {tab === "production" && <ProductionForm production={production} setProduction={setProduction} />}
-            {tab === "crew"       && <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} />}
-            {tab === "days"       && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddCrew={handleGridAddCrew} />}
-            {tab === "export"     && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
+            {tab === "setup" && (
+              <div className="space-y-8">
+                <ProductionForm production={production} setProduction={setProduction} />
+                <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} />
+              </div>
+            )}
+            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddCrew={handleGridAddCrew} />}
+            {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
           </div>
 
           <div className="text-center text-[10px] text-neutral-600 py-6 uppercase tracking-widest">
