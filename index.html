@@ -1518,6 +1518,14 @@
 
     /* ═══════════════════════════ DAYS MANAGER ═══════════════════════════ */
 
+    function dayTypeDefaults(dayType) {
+      return {
+        callTime: "08:00",
+        wrapTime: toHHMM(8 + (DEFAULT_HOURS[dayType] || 11)),
+        ...(dayType === "Travel Day" ? { lunchDurationMins: 0 } : {}),
+      };
+    }
+
     function makeBlankDay(crewId = "") {
       return {
         id: uid(), crewId, date: todayISO(),
@@ -1551,7 +1559,7 @@
       const startEdit = (d) => { setForm(migrateDay(d)); setEditing(d.id); };
       const cancel = () => { setEditing(null); };
       const handleEditDayFromGrid = (id) => { const d = days.find(day => day.id === id); if (d) startEdit(d); };
-      const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => { setDays(prev => [...prev, { ...makeBlankDay(crewId), date, dayType }]); };
+      const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => { setDays(prev => [...prev, { ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType) }]); };
       const handleRemoveDayFromGrid = (id) => { setDays(prev => prev.filter(d => d.id !== id)); };
       const handleBulkEditDate = (date, overrides) => {
         const { dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins } = overrides;
@@ -1561,7 +1569,7 @@
       };
       const handleAssignAllOnDate = (date, dayType = "Shoot") => {
         const toAdd = crew.filter(m => !days.find(d => d.date === date && d.crewId === m.id));
-        if (toAdd.length > 0) setDays(prev => [...prev, ...toAdd.map(m => ({ ...makeBlankDay(m.id), date, dayType }))]);
+        if (toAdd.length > 0) setDays(prev => [...prev, ...toAdd.map(m => ({ ...makeBlankDay(m.id), date, dayType, ...dayTypeDefaults(dayType) }))]);
       };
       const handleRemoveAllOnDate = (date) => {
         const count = days.filter(d => d.date === date).length;
