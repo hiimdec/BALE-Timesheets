@@ -654,6 +654,16 @@
       doc.text(fmtGBP(grandTotal), COL.total, y.y, { align: 'right' });
     }
 
+    function getAllDates(production, days) {
+      const s = new Set([...(production.gridDates || []), ...days.map(d => d.date)]);
+      if (production.startDate && production.endDate && production.startDate <= production.endDate) {
+        const cur = new Date(production.startDate + "T12:00:00");
+        const end = new Date(production.endDate + "T12:00:00");
+        while (cur <= end) { s.add(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
+      }
+      return [...s].sort();
+    }
+
     function addGridSummaryToDoc(doc, production, crew, days) {
       const crewColW = 90;
       const dateColW = 58;
@@ -662,7 +672,7 @@
       const headerH = 28;
       const rowH = 26;
 
-      const allDates = [...new Set(days.map(d => d.date))].sort();
+      const allDates = getAllDates(production, days);
       if (allDates.length === 0) return;
 
       const index = {};
@@ -1339,15 +1349,8 @@
         setEditingDate(date);
       };
 
-      const allDates = useMemo(() => {
-        const s = new Set([...(production.gridDates || []), ...days.map(d => d.date)]);
-        if (production.startDate && production.endDate && production.startDate <= production.endDate) {
-          const cur = new Date(production.startDate + "T12:00:00");
-          const end = new Date(production.endDate + "T12:00:00");
-          while (cur <= end) { s.add(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
-        }
-        return [...s].sort();
-      }, [days, production.gridDates, production.startDate, production.endDate]);
+      const allDates = useMemo(() => getAllDates(production, days),
+        [days, production.gridDates, production.startDate, production.endDate]);
 
       const handleAddDate = () => {
         const latest = allDates[allDates.length - 1];
