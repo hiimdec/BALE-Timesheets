@@ -1700,7 +1700,7 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onCreate }) {
+    function ProductionsScreen({ productions, onOpen, onCreate, onDelete }) {
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -1732,7 +1732,10 @@ const setDays = (updater) =>
                       {(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days
                     </div>
                   </div>
-                  <Btn variant="primary" onClick={() => onOpen(p.id)}>Open →</Btn>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Btn variant="ghost" size="sm" onClick={() => onDelete(p.id)} title="Delete production"><ITrash/></Btn>
+                    <Btn variant="primary" onClick={() => onOpen(p.id)}>Open →</Btn>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1769,6 +1772,11 @@ const setDays = (updater) =>
 
       const openProduction = (id) => setOpenId(id);
       const closeProduction = () => setOpenId(null);
+      const deleteProduction = (id) => {
+        if (!window.confirm("Delete this production? This cannot be undone.")) return;
+        setProductions((prev) => prev.filter((p) => p.id !== id));
+        if (openId === id) setOpenId(null);
+      };
       const createProduction = () => {
         const p = { id: uid(), title: "Untitled Production", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY };
         setProductions((prev) => [...prev, p]);
@@ -1782,7 +1790,7 @@ const setDays = (updater) =>
       const currentProduction = productions.find((p) => p.id === openId);
 
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
     }
