@@ -653,6 +653,108 @@
       doc.text(fmtGBP(grandTotal), COL.total, y.y, { align: 'right' });
     }
 
+    function addGridSummaryToDoc(doc, production, crew, days) {
+      const crewColW = 90;
+      const dateColW = 58;
+      const contentW = PDF.pageW - 2 * PDF.margin;
+      const datesPerPage = Math.max(1, Math.floor((contentW - crewColW) / dateColW));
+      const headerH = 28;
+      const rowH = 26;
+
+      const allDates = [...new Set(days.map(d => d.date))].sort();
+      if (allDates.length === 0) return;
+
+      const index = {};
+      days.forEach(d => {
+        if (!index[d.date]) index[d.date] = {};
+        index[d.date][d.crewId] = d;
+      });
+
+      const chunks = [];
+      for (let i = 0; i < allDates.length; i += datesPerPage) chunks.push(allDates.slice(i, i + datesPerPage));
+
+      chunks.forEach((dateCols, chunkIdx) => {
+        doc.addPage();
+        const y = { y: PDF.margin + 12 };
+
+        // Page label + title
+        doc.setFont('times', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
+        doc.text('GRID OVERVIEW', PDF.margin, y.y);
+        if (chunks.length > 1) doc.text(`${chunkIdx + 1} / ${chunks.length}`, PDF.pageW - PDF.margin, y.y, { align: 'right' });
+        y.y += 12;
+        doc.setFont('times', 'bold'); doc.setFontSize(13); doc.setTextColor(0);
+        doc.text(production.title || 'Untitled Production', PDF.margin, y.y);
+        y.y += 10;
+        drawRule(doc, y.y, 0.8);
+        y.y += 10;
+
+        // Date column headers
+        doc.setFont('times', 'bold'); doc.setFontSize(7.5); doc.setTextColor(80);
+        doc.text('CREW', PDF.margin, y.y + 10);
+        dateCols.forEach((date, i) => {
+          const x = PDF.margin + crewColW + i * dateColW;
+          const dow = dayOfWeek(date);
+          const isSat = dow === 6, isSun = dow === 0;
+          const day3 = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase();
+          const dayNum = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          doc.setFont('courier', 'bold'); doc.setFontSize(6.5);
+          doc.setTextColor(isSun ? 180 : isSat ? 140 : 100);
+          doc.text(day3, x + dateColW / 2, y.y + 6, { align: 'center' });
+          doc.setFontSize(7); doc.setTextColor(isSun ? 100 : isSat ? 70 : 0);
+          doc.text(dayNum, x + dateColW / 2, y.y + 14, { align: 'center' });
+        });
+        y.y += headerH;
+        drawRule(doc, y.y, 0.5);
+        y.y += 6;
+
+        // Crew rows
+        crew.forEach((member, rowIdx) => {
+          const rowY = y.y;
+          const nameStr = member.name.length > 14 ? member.name.slice(0, 13) + '...' : member.name;
+          doc.setFont('times', 'normal'); doc.setFontSize(8); doc.setTextColor(0);
+          doc.text(nameStr, PDF.margin, rowY + 10);
+          doc.setFontSize(6.5); doc.setTextColor(120);
+          doc.text(member.role, PDF.margin, rowY + 18);
+
+          dateCols.forEach((date, i) => {
+            const x = PDF.margin + crewColW + i * dateColW;
+            const cellDay = index[date]?.[member.id];
+            if (!cellDay) {
+              doc.setFont('courier', 'normal'); doc.setFontSize(8); doc.setTextColor(210);
+              doc.text('-', x + dateColW / 2, rowY + 13, { align: 'center' });
+              return;
+            }
+            const resolved = resolveDay(production, cellDay, member);
+            const { meta, lines } = calculateDay(resolved, member);
+            const hrs = gridDisplayHours(resolved);
+            const hrsLabel = Number.isInteger(hrs) ? `${hrs}h` : `${hrs.toFixed(1)}h`;
+            const ct = resolved.callTime || '-';
+            const wt = resolved.wrapTime || '-';
+            const penalties = [];
+            if (meta.otHrs > 0) penalties.push('OT');
+            if (meta.continuousDay) penalties.push('CWD');
+            if (lines.some(l => l.label === 'Late 1st Break')) penalties.push('L1');
+            if (lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label))) penalties.push('MSB');
+            doc.setFont('courier', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+            doc.text(`${ct}-${wt}`, x + dateColW / 2, rowY + 8, { align: 'center' });
+            doc.setFont('courier', 'bold'); doc.setFontSize(8); doc.setTextColor(0);
+            doc.text(hrsLabel, x + dateColW / 2, rowY + 16, { align: 'center' });
+            if (penalties.length > 0) {
+              doc.setFont('courier', 'normal'); doc.setFontSize(5.5); doc.setTextColor(150);
+              doc.text(penalties.join(' '), x + dateColW / 2, rowY + 23, { align: 'center' });
+            }
+          });
+
+          y.y += rowH;
+          if (rowIdx < crew.length - 1) {
+            doc.setDrawColor(220); doc.setLineWidth(0.2);
+            doc.line(PDF.margin, y.y - 2, PDF.pageW - PDF.margin, y.y - 2);
+            doc.setDrawColor(0);
+          }
+        });
+      });
+    }
+
     async function exportCrewPdf(crewMember, entries, production) {
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       addCrewSheetToDoc(doc, crewMember, entries, production, true);
@@ -663,6 +765,7 @@
     async function exportAllPdf(production, crew, days) {
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       addSummarySheetToDoc(doc, production, crew, days);
+      addGridSummaryToDoc(doc, production, crew, days);
       const byCrewMap = new Map();
       days.forEach((d) => {
         const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
