@@ -836,6 +836,7 @@
     const IUp = (p) => <Icon {...p}><polyline points="18 15 12 9 6 15"/></Icon>;
     const IDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9"/></Icon>;
     const ISort = (p) => <Icon {...p}><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></Icon>;
+    const ICopy = (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
@@ -1332,7 +1333,7 @@
       );
     }
 
-    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew, onAssignAll, onRemoveAllOnDate, onRemoveDay, onBulkEditDate }) {
+    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew, onAssignAll, onRemoveAllOnDate, onDuplicateDate, onRemoveDay, onBulkEditDate }) {
       const [assignMode, setAssignMode] = useState(false);
       const [assignDayType, setAssignDayType] = useState("Shoot");
       const [pendingRemove, setPendingRemove] = useState(null);
@@ -1461,6 +1462,9 @@
                         style={{ minWidth: 80 }}>
                         <div className={`text-[9px] uppercase tracking-wider ${textColor}`}>{day3}</div>
                         <div className="text-[11px] text-neutral-200 whitespace-nowrap">{dayNum}</div>
+                        {!assignMode && days.some(d => d.date === date) && (
+                          <button onClick={e => { e.stopPropagation(); onDuplicateDate(date); }} className="mt-0.5 text-neutral-600 hover:text-sky-400 transition-colors" title="Duplicate this date"><ICopy size={10}/></button>
+                        )}
                       </th>
                     );
                   })}
@@ -1592,6 +1596,27 @@
         setDays(prev => prev.filter(d => d.date !== date));
       };
 
+      const handleDuplicateDate = (sourceDate) => {
+        const source = days.filter(d => d.date === sourceDate);
+        if (source.length === 0) return;
+        const next = new Date(sourceDate + "T12:00:00");
+        next.setDate(next.getDate() + 1);
+        const defaultTarget = next.toISOString().slice(0, 10);
+        const input = window.prompt(`Copy ${source.length} entr${source.length === 1 ? 'y' : 'ies'} from ${fmtDateShort(sourceDate)} to:`, defaultTarget);
+        if (!input) return;
+        const targetDate = input.trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) { showToast("Invalid date — use YYYY-MM-DD"); return; }
+        if (targetDate === sourceDate) { showToast("Target date is the same as source"); return; }
+        const existing = days.filter(d => d.date === targetDate);
+        const copies = source.map(d => ({ ...d, id: uid(), date: targetDate }));
+        if (existing.length > 0) {
+          if (!window.confirm(`${fmtDateShort(targetDate)} already has ${existing.length} entr${existing.length === 1 ? 'y' : 'ies'}. Replace them?`)) return;
+          setDays(prev => [...prev.filter(d => d.date !== targetDate), ...copies]);
+        } else {
+          setDays(prev => [...prev, ...copies]);
+        }
+      };
+
       const save = () => {
         if (!form.date || !form.callTime || !form.wrapTime) return;
         if (editing === "new-all") {
@@ -1671,7 +1696,7 @@
           )}
 
           {gridView ? (
-            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onRemoveAllOnDate={handleRemoveAllOnDate} onRemoveDay={handleRemoveDayFromGrid} onBulkEditDate={handleBulkEditDate} />
+            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onRemoveAllOnDate={handleRemoveAllOnDate} onDuplicateDate={handleDuplicateDate} onRemoveDay={handleRemoveDayFromGrid} onBulkEditDate={handleBulkEditDate} />
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
