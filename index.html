@@ -784,13 +784,21 @@
 
     /* ═══════════════════════════ CREW MANAGER ═══════════════════════════ */
 
-    function CrewManager({ crew, setCrew }) {
+    function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed }) {
       const [editing, setEditing] = useState(null);
       const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
       const dragIdx = useRef(null);
       const [overIdx, setOverIdx] = useState(null);
+
+      useEffect(() => {
+        if (autoStart) {
+          setForm({ ...blank, id: uid() });
+          setEditing("new");
+          onAutoStartConsumed?.();
+        }
+      }, []);
 
       const startNew = () => { setForm({ ...blank, id: uid() }); setEditing("new"); };
       const startEdit = (c) => { setForm({ ...c }); setEditing(c.id); };
@@ -1166,10 +1174,21 @@
       );
     }
 
-    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay }) {
+    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew }) {
       const [assignMode, setAssignMode] = useState(false);
 
-      const allDates = useMemo(() => [...new Set(days.map(d => d.date))].sort(), [days]);
+      const allDates = useMemo(() =>
+        [...new Set([...(production.gridDates || []), ...days.map(d => d.date)])].sort(),
+        [days, production.gridDates]
+      );
+
+      const handleAddDate = () => {
+        const latest = allDates[allDates.length - 1];
+        const base = latest ? new Date(latest + "T12:00:00") : new Date();
+        base.setDate(base.getDate() + 1);
+        const nextISO = base.toISOString().slice(0, 10);
+        if (!allDates.includes(nextISO)) onAddDate(nextISO);
+      };
 
       const index = useMemo(() => {
         const idx = {};
@@ -1194,71 +1213,84 @@
             {assignMode && <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap an empty cell to assign a crew member to that day</div>}
           </div>
 
-          {allDates.length === 0 ? (
-            <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center">
-              <div className="flex justify-center mb-2 text-neutral-700"><ICal size={32}/></div>
-              <div className="text-neutral-500 text-sm">No day entries yet. Add a day in List view first.</div>
-            </div>
-          ) : (
-            <div className="overflow-x-auto border border-neutral-800">
-              <table className="border-collapse text-xs" style={{ minWidth: "max-content" }}>
-                <thead>
-                  <tr className="border-b border-neutral-700">
-                    <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wider text-neutral-500 font-bold whitespace-nowrap border-r border-neutral-700 bg-neutral-950"
-                      style={{ position: "sticky", left: 0, zIndex: 20, minWidth: 120 }}>Crew</th>
-                    {allDates.map((date, i) => {
-                      const dow = dayOfWeek(date);
-                      const isSat = dow === 6;
-                      const isSun = dow === 0;
-                      const isWeekEnd = isSat && !!allDates[i + 1];
-                      const headerBg  = isSun ? "bg-red-950/60"   : isSat ? "bg-amber-950/60" : "bg-neutral-950";
-                      const textColor = isSun ? "text-red-300"    : isSat ? "text-amber-300"  : "text-neutral-400";
-                      const borderClass = isWeekEnd ? "border-r border-neutral-500" : "border-r border-neutral-800";
-                      const day3   = new Date(date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" });
-                      const dayNum = new Date(date + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-                      return (
-                        <th key={date} className={`px-2 py-1.5 font-bold text-center ${headerBg} ${borderClass}`} style={{ minWidth: 80 }}>
-                          <div className={`text-[9px] uppercase tracking-wider ${textColor}`}>{day3}</div>
-                          <div className="text-[11px] text-neutral-200 whitespace-nowrap">{dayNum}</div>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {crew.map(member => (
-                    <tr key={member.id} className="border-b border-neutral-800 last:border-0">
-                      <td className="px-3 py-2 whitespace-nowrap border-r border-neutral-700 bg-neutral-950"
-                        style={{ position: "sticky", left: 0, zIndex: 10 }}>
-                        <div className="text-[11px] font-semibold text-neutral-200">{member.name}</div>
-                        <div className="text-[9px] text-neutral-500 uppercase tracking-wider">{member.role}</div>
+          <div className="overflow-x-auto border border-neutral-800">
+            <table className="border-collapse text-xs" style={{ minWidth: "max-content" }}>
+              <thead>
+                <tr className="border-b border-neutral-700">
+                  <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wider text-neutral-500 font-bold whitespace-nowrap border-r border-neutral-700 bg-neutral-950"
+                    style={{ position: "sticky", left: 0, zIndex: 20, minWidth: 120 }}>Crew</th>
+                  {allDates.map((date, i) => {
+                    const dow = dayOfWeek(date);
+                    const isSat = dow === 6;
+                    const isSun = dow === 0;
+                    const isWeekEnd = isSat && !!allDates[i + 1];
+                    const headerBg  = isSun ? "bg-red-950/60"   : isSat ? "bg-amber-950/60" : "bg-neutral-950";
+                    const textColor = isSun ? "text-red-300"    : isSat ? "text-amber-300"  : "text-neutral-400";
+                    const borderClass = isWeekEnd ? "border-r border-neutral-500" : "border-r border-neutral-800";
+                    const day3   = new Date(date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" });
+                    const dayNum = new Date(date + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+                    return (
+                      <th key={date} className={`px-2 py-1.5 font-bold text-center ${headerBg} ${borderClass}`} style={{ minWidth: 80 }}>
+                        <div className={`text-[9px] uppercase tracking-wider ${textColor}`}>{day3}</div>
+                        <div className="text-[11px] text-neutral-200 whitespace-nowrap">{dayNum}</div>
+                      </th>
+                    );
+                  })}
+                  <th className="px-2 py-1.5 bg-neutral-950 border-l border-neutral-700" style={{ minWidth: 48 }}>
+                    <button onClick={handleAddDate} className="text-neutral-500 hover:text-sky-400 transition-colors text-base leading-none font-bold" title="Add next day">+</button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {crew.length === 0 ? (
+                  <tr><td colSpan={allDates.length + 2} className="px-3 py-6 text-center text-sm text-neutral-500">Add crew members first.</td></tr>
+                ) : (
+                  <>
+                    {crew.map(member => (
+                      <tr key={member.id} className="border-b border-neutral-800 last:border-0">
+                        <td className="px-3 py-2 whitespace-nowrap border-r border-neutral-700 bg-neutral-950"
+                          style={{ position: "sticky", left: 0, zIndex: 10 }}>
+                          <div className="text-[11px] font-semibold text-neutral-200">{member.name}</div>
+                          <div className="text-[9px] text-neutral-500 uppercase tracking-wider">{member.role}</div>
+                        </td>
+                        {allDates.length === 0 ? (
+                          <td className="px-3 py-4 text-center text-neutral-600 text-sm">—</td>
+                        ) : allDates.map((date, i) => {
+                          const dow = dayOfWeek(date);
+                          const isSat = dow === 6;
+                          const isSun = dow === 0;
+                          const isWeekEnd = isSat && !!allDates[i + 1];
+                          return (
+                            <GridCell
+                              key={date}
+                              day={index[date]?.[member.id]}
+                              date={date}
+                              production={production}
+                              member={member}
+                              assignMode={assignMode}
+                              onEditDay={onEditDay}
+                              onAddDay={onAddDay}
+                              isWeekEnd={isWeekEnd}
+                              isWeekend={isSat || isSun}
+                            />
+                          );
+                        })}
+                        <td className="border-l border-neutral-700 bg-neutral-950" />
+                      </tr>
+                    ))}
+                    <tr className="border-t border-neutral-700">
+                      <td className="px-3 py-2 bg-neutral-950 border-r border-neutral-700" style={{ position: "sticky", left: 0, zIndex: 10 }}>
+                        <button onClick={onAddCrew} className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-sky-400 transition-colors flex items-center gap-1">
+                          <span className="text-base leading-none">+</span> Crew
+                        </button>
                       </td>
-                      {allDates.map((date, i) => {
-                        const dow = dayOfWeek(date);
-                        const isSat = dow === 6;
-                        const isSun = dow === 0;
-                        const isWeekEnd = isSat && !!allDates[i + 1];
-                        return (
-                          <GridCell
-                            key={date}
-                            day={index[date]?.[member.id]}
-                            date={date}
-                            production={production}
-                            member={member}
-                            assignMode={assignMode}
-                            onEditDay={onEditDay}
-                            onAddDay={onAddDay}
-                            isWeekEnd={isWeekEnd}
-                            isWeekend={isSat || isSun}
-                          />
-                        );
-                      })}
+                      <td colSpan={allDates.length + 1} className="bg-neutral-950" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       );
     }
@@ -1275,7 +1307,7 @@
       };
     }
 
-    function DaysManager({ days, setDays, crew, production, showToast }) {
+    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddCrew }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -1379,7 +1411,7 @@
           )}
 
           {gridView ? (
-            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} />
+            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} />
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
@@ -1577,6 +1609,10 @@ const setDays = (updater) =>
       const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
+      const [openCrewForm, setOpenCrewForm] = useState(false);
+
+      const handleGridAddDate = (date) => setProduction(p => ({ ...p, gridDates: [...(p.gridDates || []), date] }));
+      const handleGridAddCrew = () => { setOpenCrewForm(true); setTab("crew"); };
 
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
@@ -1588,7 +1624,7 @@ const setDays = (updater) =>
       }, [crew, days, production]);
 
       const clearAll = () => {
-        setProduction((prev) => ({ id: prev.id, title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY }));
+        setProduction((prev) => ({ id: prev.id, title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY, gridDates: [] }));
         setResetMode(false);
       };
 
@@ -1637,8 +1673,8 @@ const setDays = (updater) =>
 
           <div className="max-w-6xl mx-auto px-4 py-6">
             {tab === "production" && <ProductionForm production={production} setProduction={setProduction} />}
-            {tab === "crew"       && <CrewManager crew={crew} setCrew={setCrew} />}
-            {tab === "days"       && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} />}
+            {tab === "crew"       && <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} />}
+            {tab === "days"       && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddCrew={handleGridAddCrew} />}
             {tab === "export"     && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
           </div>
 
