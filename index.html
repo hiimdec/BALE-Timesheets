@@ -841,7 +841,7 @@
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
     const Btn = ({ children, variant = "primary", size = "md", className = "", ...p }) => {
-      const base = "inline-flex items-center gap-2 font-semibold uppercase tracking-wider transition-all rounded-none border active:scale-95 disabled:opacity-40 disabled:pointer-events-none";
+      const base = "inline-flex items-center gap-2 font-semibold uppercase tracking-wide transition-all rounded-md border active:scale-95 disabled:opacity-40 disabled:pointer-events-none";
       const variants = {
         primary: "bg-sky-400 border-sky-500 text-black hover:bg-sky-300",
         ghost:   "bg-transparent border-neutral-700 text-neutral-200 hover:bg-neutral-800 hover:border-neutral-600",
@@ -855,15 +855,15 @@
 
     const Field = ({ label, children, hint, disabled }) => (
       <label className={`block ${disabled ? "opacity-40" : ""}`}>
-        <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold mb-1">{label}</div>
+        <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-1">{label}</div>
         {children}
         {hint && <div className="text-[10px] text-neutral-500 mt-1 leading-tight">{hint}</div>}
       </label>
     );
 
-    const Input = (p) => <input {...p} className={`w-full bg-neutral-900 border border-neutral-700 focus:border-sky-400 text-neutral-100 px-3 py-2 font-mono outline-none ${p.className || ""}`} />;
+    const Input = (p) => <input {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-3 py-2 font-mono outline-none rounded-md ${p.className || ""}`} />;
     const TimeInput = (p) => <Input type="time" step="300" {...p} />;
-    const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-900 border border-neutral-700 focus:border-sky-400 text-neutral-100 px-3 py-2 outline-none ${p.className || ""}`}>{children}</select>;
+    const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-3 py-2 outline-none rounded-md ${p.className || ""}`}>{children}</select>;
 
     const StatusMsg = ({ kind = "info", children }) => {
       const colors = { ok: "text-emerald-400", info: "text-neutral-400", warn: "text-amber-400", bad: "text-red-400" };
@@ -877,7 +877,7 @@
     };
 
     const Toast = ({ show, children }) => (
-      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-black px-4 py-2 text-xs uppercase tracking-widest font-bold border border-emerald-600 transition-all ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-black px-5 py-2 text-xs uppercase tracking-wide font-bold border border-emerald-600 rounded-full shadow-lg transition-all ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         {children}
       </div>
     );
@@ -889,7 +889,7 @@
       const isUntitled = production.title === "Untitled Production" || !production.title;
       return (
         <div className="space-y-4">
-          <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Setup</h2>
+          <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Setup</h2>
           <div className="text-sm text-neutral-400">Set up the production details, then add crew and days.</div>
 
           {isUntitled && (
@@ -898,7 +898,7 @@
             </div>
           )}
 
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
+          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
               <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
@@ -972,7 +972,7 @@
       return (
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IUsers size={16}/>Crew Roster</h2>
+            <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IUsers size={16}/>Crew Roster</h2>
             <div className="flex gap-2">
               {crew.length > 1 && <Btn variant="ghost" onClick={sortByRole}><ISort/>Sort by Role</Btn>}
               {!editing && <Btn variant="primary" onClick={startNew}><IPlus/>Add Crew</Btn>}
@@ -980,7 +980,7 @@
           </div>
 
           {editing && (
-            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
+            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
               <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{editing === "new" ? "New Crew Member" : "Edit Crew Member"}</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Declan Duffy" /></Field>
@@ -1323,10 +1323,10 @@
           <div className="text-[11px] font-bold text-neutral-100 leading-tight">{hrsLabel}</div>
           {anyPenalty && (
             <div className="flex flex-wrap gap-0.5 mt-0.5">
-              {hasOT    && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px">OT</span>}
-              {hasCWD   && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px">CWD</span>}
-              {hasLate1 && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px">L1</span>}
-              {hasMSB   && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px">MSB</span>}
+              {hasOT    && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">OT</span>}
+              {hasCWD   && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">CWD</span>}
+              {hasLate1 && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">L1</span>}
+              {hasMSB   && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">MSB</span>}
             </div>
           )}
         </td>
@@ -1405,7 +1405,7 @@
           </div>
 
           {editingDate && !assignMode && (
-            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
+            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
               <div className="flex items-center justify-between">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
                   Edit {weekday(editingDate)} {new Date(editingDate + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — updates all crew on this date
@@ -1656,7 +1656,7 @@
       return (
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><ICal size={16}/>Timesheet Entries</h2>
+            <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><ICal size={16}/>Timesheet Entries</h2>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex border border-neutral-700 overflow-hidden">
                 <button onClick={() => setGridView(false)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold transition-colors ${!gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>List</button>
@@ -1674,7 +1674,7 @@
           {crew.length === 0 && <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500">Add crew members first.</div>}
 
           {editing && (
-            <div ref={editPanelRef} className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
+            <div ref={editPanelRef} className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
               <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
                 {editing === "new" ? "New Day Entry" : editing === "new-all" ? "New Day — All Crew" : "Edit Day Entry"}
               </div>
@@ -1824,10 +1824,10 @@
 
       return (
         <div className="space-y-6">
-          <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IShare size={16}/>Export</h2>
+          <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IShare size={16}/>Export</h2>
 
           {/* Combined export */}
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
+          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
             <div className="flex items-baseline justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Everyone</div>
@@ -2007,7 +2007,7 @@ const setDays = (updater) =>
           </div>
 
           <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-            <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Your Productions</h2>
+            <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Your Productions</h2>
 
             {productions.length === 0 && (
               <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center text-sm text-neutral-500">
@@ -2017,7 +2017,7 @@ const setDays = (updater) =>
 
             <div className="space-y-2">
               {productions.map((p) => (
-                <div key={p.id} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-600 transition-colors p-4 flex items-center justify-between gap-4 flex-wrap">
+                <div key={p.id} className="bg-neutral-900 border border-neutral-800 hover:border-sky-400/40 transition-colors p-4 flex items-center justify-between gap-4 flex-wrap rounded-lg">
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
                     {p.prodCo && <div className="text-sm text-neutral-400 truncate">{p.prodCo}</div>}
