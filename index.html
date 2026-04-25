@@ -877,11 +877,17 @@
             </div>
           )}
 
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
-            <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
+          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
+              <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="Start Date"><Input type="date" value={production.startDate || ""} onChange={set("startDate")} /></Field>
+              <Field label="End Date"><Input type="date" value={production.endDate || ""} onChange={set("endDate")} /></Field>
+            </div>
           </div>
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Saved automatically.</div>
+          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Start/End date fills the Timesheet Grid. Saved automatically.</div>
         </div>
       );
     }
@@ -1333,10 +1339,15 @@
         setEditingDate(date);
       };
 
-      const allDates = useMemo(() =>
-        [...new Set([...(production.gridDates || []), ...days.map(d => d.date)])].sort(),
-        [days, production.gridDates]
-      );
+      const allDates = useMemo(() => {
+        const s = new Set([...(production.gridDates || []), ...days.map(d => d.date)]);
+        if (production.startDate && production.endDate && production.startDate <= production.endDate) {
+          const cur = new Date(production.startDate + "T12:00:00");
+          const end = new Date(production.endDate + "T12:00:00");
+          while (cur <= end) { s.add(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
+        }
+        return [...s].sort();
+      }, [days, production.gridDates, production.startDate, production.endDate]);
 
       const handleAddDate = () => {
         const latest = allDates[allDates.length - 1];
