@@ -2015,6 +2015,36 @@ const setDays = (updater) =>
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
     function ProductionsScreen({ productions, onOpen, onCreate, onDelete }) {
+      // Derive a sort key (YYYY-MM-DD or null) for each production — display only, no mutation
+      const sortKey = (p) => {
+        if (p.startDate) return p.startDate;
+        const dates = (p.days ?? []).map(d => d.date).filter(Boolean).sort();
+        return dates.length > 0 ? dates[0] : null;
+      };
+      const monthLabel = (key) => {
+        if (!key) return "No Date";
+        const d = new Date(key + "T12:00:00");
+        return d.toLocaleString("default", { month: "long", year: "numeric" });
+      };
+
+      // Sort descending (most recent first), nulls last
+      const sorted = [...productions].sort((a, b) => {
+        const ka = sortKey(a), kb = sortKey(b);
+        if (ka === kb) return 0;
+        if (!ka) return 1;
+        if (!kb) return -1;
+        return ka < kb ? 1 : -1;
+      });
+
+      // Group into [{ label, items }] preserving sorted order
+      const groups = [];
+      for (const p of sorted) {
+        const label = monthLabel(sortKey(p));
+        const last = groups[groups.length - 1];
+        if (last && last.label === label) last.items.push(p);
+        else groups.push({ label, items: [p] });
+      }
+
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -2036,23 +2066,26 @@ const setDays = (updater) =>
               </div>
             )}
 
-            <div className="space-y-2">
-              {productions.map((p) => (
-                <div key={p.id} className="bg-neutral-900 border border-neutral-800 hover:border-sky-400/40 transition-colors p-4 flex items-center justify-between gap-4 flex-wrap rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
-                    {p.prodCo && <div className="text-sm text-neutral-400 truncate">{p.prodCo}</div>}
-                    <div className="text-[11px] text-neutral-500 mt-1 font-mono">
-                      {(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days
+            {groups.map(({ label, items }) => (
+              <div key={label} className="space-y-2">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-semibold pt-2">{label}</div>
+                {items.map((p) => (
+                  <div key={p.id} className="bg-neutral-900 border border-neutral-800 hover:border-sky-400/40 transition-colors p-4 flex items-center justify-between gap-4 flex-wrap rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
+                      {p.prodCo && <div className="text-sm text-neutral-400 truncate">{p.prodCo}</div>}
+                      <div className="text-[11px] text-neutral-500 mt-1 font-mono">
+                        {(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Btn variant="ghost" size="sm" onClick={() => onDelete(p.id)} title="Delete production"><ITrash/></Btn>
+                      <Btn variant="primary" onClick={() => onOpen(p.id)}>Open →</Btn>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Btn variant="ghost" size="sm" onClick={() => onDelete(p.id)} title="Delete production"><ITrash/></Btn>
-                    <Btn variant="primary" onClick={() => onOpen(p.id)}>Open →</Btn>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       );
