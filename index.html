@@ -398,15 +398,16 @@
 
     /* ═══════════════════════════ SHARE / DOWNLOAD HELPERS ═══════════════════════════ */
 
-    async function sharePdfOrDownload(pdfDoc, filename) {
+    async function sharePdfOrDownload(pdfDoc, filename, { download = false } = {}) {
       const blob = pdfDoc.output('blob');
-      const file = new File([blob], filename, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: filename }); return; } catch (e) {
-          if (e.name === 'AbortError') return;
+      if (!download) {
+        const file = new File([blob], filename, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: filename }); return; } catch (e) {
+            if (e.name === 'AbortError') return;
+          }
         }
       }
-      // Fallback: download
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -653,6 +654,16 @@
       doc.text(fmtGBP(grandTotal), COL.total, y.y, { align: 'right' });
     }
 
+    function getAllDates(production, days) {
+      const s = new Set([...(production.gridDates || []), ...days.map(d => d.date)]);
+      if (production.startDate && production.endDate && production.startDate <= production.endDate) {
+        const cur = new Date(production.startDate + "T12:00:00");
+        const end = new Date(production.endDate + "T12:00:00");
+        while (cur <= end) { s.add(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
+      }
+      return [...s].sort();
+    }
+
     function addGridSummaryToDoc(doc, production, crew, days) {
       const crewColW = 90;
       const dateColW = 58;
@@ -661,7 +672,7 @@
       const headerH = 28;
       const rowH = 26;
 
-      const allDates = [...new Set(days.map(d => d.date))].sort();
+      const allDates = getAllDates(production, days);
       if (allDates.length === 0) return;
 
       const index = {};
@@ -755,14 +766,14 @@
       });
     }
 
-    async function exportCrewPdf(crewMember, entries, production) {
+    async function exportCrewPdf(crewMember, entries, production, { download = false } = {}) {
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       addCrewSheetToDoc(doc, crewMember, entries, production, true);
       const filename = `${slug(crewMember.name)}_timesheet.pdf`;
-      await sharePdfOrDownload(doc, filename);
+      await sharePdfOrDownload(doc, filename, { download });
     }
 
-    async function exportAllPdf(production, crew, days) {
+    async function exportAllPdf(production, crew, days, { download = false } = {}) {
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       addSummarySheetToDoc(doc, production, crew, days);
       addGridSummaryToDoc(doc, production, crew, days);
@@ -775,7 +786,7 @@
       const ordered = crew.map((c) => byCrewMap.get(c.id)).filter(Boolean);
       ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false));
       const name = slug(production.title) || 'all_timesheets';
-      await sharePdfOrDownload(doc, `${name}.pdf`);
+      await sharePdfOrDownload(doc, `${name}.pdf`, { download });
     }
 
     async function exportDayPdf(day, crewMember, production) {
@@ -876,11 +887,17 @@
             </div>
           )}
 
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
-            <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
+          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
+              <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="Start Date"><Input type="date" value={production.startDate || ""} onChange={set("startDate")} /></Field>
+              <Field label="End Date"><Input type="date" value={production.endDate || ""} onChange={set("endDate")} /></Field>
+            </div>
           </div>
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Saved automatically.</div>
+          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Start/End date fills the Timesheet Grid. Saved automatically.</div>
         </div>
       );
     }
@@ -1305,7 +1322,7 @@
       );
     }
 
-    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew, onAssignAll, onRemoveDay, onBulkEditDate }) {
+    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew, onAssignAll, onRemoveAllOnDate, onRemoveDay, onBulkEditDate }) {
       const [assignMode, setAssignMode] = useState(false);
       const [pendingRemove, setPendingRemove] = useState(null);
       const [editingDate, setEditingDate] = useState(null);
@@ -1332,10 +1349,8 @@
         setEditingDate(date);
       };
 
-      const allDates = useMemo(() =>
-        [...new Set([...(production.gridDates || []), ...days.map(d => d.date)])].sort(),
-        [days, production.gridDates]
-      );
+      const allDates = useMemo(() => getAllDates(production, days),
+        [days, production.gridDates, production.startDate, production.endDate]);
 
       const handleAddDate = () => {
         const latest = allDates[allDates.length - 1];
@@ -1365,7 +1380,7 @@
               <button onClick={() => setAssignMode(false)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold transition-colors ${!assignMode ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>View</button>
               <button onClick={() => setAssignMode(true)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border-l border-neutral-700 transition-colors ${assignMode ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>Assign</button>
             </div>
-            {assignMode && <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Empty = add · Filled = mark then tap again to remove · Header = assign all</div>}
+            {assignMode && <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Empty = add · Filled = mark then tap to remove · Header = assign all · Double-tap header = remove all</div>}
             {!assignMode && <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap a date header to edit all crew on that day</div>}
           </div>
 
@@ -1422,6 +1437,7 @@
                         onClick={assignMode
                           ? () => { setPendingRemove(null); onAssignAll(date); }
                           : () => editingDate === date ? setEditingDate(null) : openDateEdit(date)}
+                        onDoubleClick={assignMode ? (e) => { e.preventDefault(); onRemoveAllOnDate(date); } : undefined}
                         className={`px-2 py-1.5 font-bold text-center cursor-pointer ${headerBg} ${borderClass} ${assignMode ? "hover:bg-sky-950/40" : "hover:bg-neutral-800/60"}${editingDate === date && !assignMode ? " ring-2 ring-inset ring-sky-400" : ""}`}
                         style={{ minWidth: 80 }}>
                         <div className={`text-[9px] uppercase tracking-wider ${textColor}`}>{day3}</div>
@@ -1538,6 +1554,12 @@
         const toAdd = crew.filter(m => !days.find(d => d.date === date && d.crewId === m.id));
         if (toAdd.length > 0) setDays(prev => [...prev, ...toAdd.map(m => ({ ...makeBlankDay(m.id), date }))]);
       };
+      const handleRemoveAllOnDate = (date) => {
+        const count = days.filter(d => d.date === date).length;
+        if (count === 0) return;
+        if (!window.confirm(`Remove all ${count} entr${count === 1 ? 'y' : 'ies'} on ${fmtDate(date)}? This cannot be undone.`)) return;
+        setDays(prev => prev.filter(d => d.date !== date));
+      };
 
       const save = () => {
         if (!form.date || !form.callTime || !form.wrapTime) return;
@@ -1618,7 +1640,7 @@
           )}
 
           {gridView ? (
-            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onRemoveDay={handleRemoveDayFromGrid} onBulkEditDate={handleBulkEditDate} />
+            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onRemoveAllOnDate={handleRemoveAllOnDate} onRemoveDay={handleRemoveDayFromGrid} onBulkEditDate={handleBulkEditDate} />
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
@@ -1707,9 +1729,21 @@
         setBusy(null);
       };
 
+      const handleAllPdfDownload = async () => {
+        setBusy('all-pdf-dl');
+        try { await exportAllPdf(production, crew, days, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
+        setBusy(null);
+      };
+
       const handleCrewPdf = async (c, entries) => {
         setBusy(`pdf-${c.id}`);
         try { await exportCrewPdf(c, entries, production); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
+        setBusy(null);
+      };
+
+      const handleCrewPdfDownload = async (c, entries) => {
+        setBusy(`pdf-dl-${c.id}`);
+        try { await exportCrewPdf(c, entries, production, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
         setBusy(null);
       };
 
@@ -1747,7 +1781,10 @@
             </div>
             <div className="flex gap-2 flex-wrap">
               <Btn variant="primary" onClick={handleAllPdf} disabled={busy !== null}>
-                <IDownload/>{busy === 'all-pdf' ? 'Building…' : 'Export All as PDF'}
+                <IDownload/>{busy === 'all-pdf' ? 'Building…' : 'Share PDF'}
+              </Btn>
+              <Btn variant="subtle" onClick={handleAllPdfDownload} disabled={busy !== null}>
+                <IDownload/>{busy === 'all-pdf-dl' ? 'Building…' : 'Download PDF'}
               </Btn>
             </div>
             <div className="text-[11px] text-neutral-500 leading-relaxed">
@@ -1771,12 +1808,15 @@
                       </div>
                       <div className="text-[11px] text-neutral-400 font-mono mt-1">{entries.length} day{entries.length !== 1 ? 's' : ''} · {totalHrs.toFixed(1)}h · <span className="text-sky-400 font-bold">{fmtGBP(total)}</span></div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <Btn size="md" variant="subtle" onClick={() => handleCrewText(c, entries)} disabled={busy !== null}>
                         <IMessage/>{busy === `txt-${c.id}` ? '…' : 'Text'}
                       </Btn>
                       <Btn size="md" variant="subtle" onClick={() => handleCrewPdf(c, entries)} disabled={busy !== null}>
-                        <IDownload/>{busy === `pdf-${c.id}` ? '…' : 'PDF'}
+                        <IDownload/>{busy === `pdf-${c.id}` ? '…' : 'Share PDF'}
+                      </Btn>
+                      <Btn size="md" variant="ghost" onClick={() => handleCrewPdfDownload(c, entries)} disabled={busy !== null}>
+                        <IDownload/>{busy === `pdf-dl-${c.id}` ? '…' : 'Download PDF'}
                       </Btn>
                     </div>
                   </div>
@@ -1812,14 +1852,14 @@ const setDays = (updater) =>
     const next = typeof updater === "function" ? updater(prev.days ?? []) : updater;
     return { ...prev, days: next.map(migrateDay) };
   });
-      const [tab, setTab] = useState("crew");
+      const [tab, setTab] = useState("setup");
       const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
       const [openCrewForm, setOpenCrewForm] = useState(false);
 
       const handleGridAddDate = (date) => setProduction(p => ({ ...p, gridDates: [...(p.gridDates || []), date] }));
-      const handleGridAddCrew = () => { setOpenCrewForm(true); setTab("crew"); };
+      const handleGridAddCrew = () => { setOpenCrewForm(true); setTab("setup"); };
 
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
@@ -1865,10 +1905,9 @@ const setDays = (updater) =>
           <div className="border-b border-neutral-800 bg-neutral-900 sticky z-30" style={{ top: 'calc(65px + env(safe-area-inset-top))' }}>
             <div className="max-w-6xl mx-auto px-4 flex overflow-x-auto">
               {[
-                { k: "production", label: "Production", I: IBriefcase },
-                { k: "crew",       label: "Crew",       I: IUsers },
-                { k: "days",       label: "Timesheets", I: ICal },
-                { k: "export",     label: "Export",     I: IShare },
+                { k: "setup",  label: "Setup",      I: IBriefcase },
+                { k: "days",   label: "Timesheets", I: ICal },
+                { k: "export", label: "Export",     I: IShare },
               ].map(({ k, label, I }) => (
                 <button key={k} onClick={() => setTab(k)}
                   className={`px-4 py-3 text-[11px] uppercase tracking-[0.15em] font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${tab === k ? "border-sky-400 text-sky-400" : "border-transparent text-neutral-500 hover:text-neutral-200"}`}>
@@ -1879,10 +1918,14 @@ const setDays = (updater) =>
           </div>
 
           <div className="max-w-6xl mx-auto px-4 py-6">
-            {tab === "production" && <ProductionForm production={production} setProduction={setProduction} />}
-            {tab === "crew"       && <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} />}
-            {tab === "days"       && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddCrew={handleGridAddCrew} />}
-            {tab === "export"     && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
+            {tab === "setup" && (
+              <div className="space-y-8">
+                <ProductionForm production={production} setProduction={setProduction} />
+                <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} />
+              </div>
+            )}
+            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddCrew={handleGridAddCrew} />}
+            {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
           </div>
 
           <div className="text-center text-[10px] text-neutral-600 py-6 uppercase tracking-widest">
