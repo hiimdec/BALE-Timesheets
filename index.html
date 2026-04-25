@@ -104,9 +104,19 @@
       lunchDurationMins: 60,
     };
     const LUNCH_DURATIONS = [
-      { v: 60, label: "1 hour" },
-      { v: 30, label: "30 mins (curtailed)" },
-      { v: 0,  label: "Missed / 0 (→ CWD)" },
+      { v: 60, label: "60 mins" },
+      { v: 55, label: "55 mins" },
+      { v: 50, label: "50 mins" },
+      { v: 45, label: "45 mins" },
+      { v: 40, label: "40 mins" },
+      { v: 35, label: "35 mins" },
+      { v: 30, label: "30 mins" },
+      { v: 25, label: "25 mins" },
+      { v: 20, label: "20 mins" },
+      { v: 15, label: "15 mins" },
+      { v: 10, label: "10 mins" },
+      { v: 5,  label: "5 mins" },
+      { v: 0,  label: "0 mins / missed" },
     ];
     const SECOND_BREAK_DURATIONS = [
       { v: 30, label: "30 mins" },
@@ -1541,6 +1551,10 @@
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
       const [gridView, setGridView] = useState(false);
+      const editPanelRef = useRef(null);
+      useEffect(() => {
+        if (editing && editPanelRef.current) editPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, [editing]);
 
       const startNew = () => {
         if (crew.length === 0) return;
@@ -1635,7 +1649,7 @@
           {crew.length === 0 && <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500">Add crew members first.</div>}
 
           {editing && (
-            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
+            <div ref={editPanelRef} className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3">
               <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
                 {editing === "new" ? "New Day Entry" : editing === "new-all" ? "New Day — All Crew" : "Edit Day Entry"}
               </div>
