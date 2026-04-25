@@ -1121,6 +1121,12 @@
 
     /* ═══════════════════════════ TIMESHEET GRID ═══════════════════════════ */
 
+    function gridDisplayHours(resolvedDay) {
+      const bs = deriveBreakState(resolvedDay);
+      if (!bs) return 0;
+      return bs.workedHrs - (bs.lunchMissed ? 0 : bs.lunchDuration / 60);
+    }
+
     function GridCell({ day, date, production, member, assignMode, onEditDay, onAddDay, isWeekEnd, isWeekend }) {
       const borderR = isWeekEnd ? "border-r border-neutral-500" : "border-r border-neutral-800";
       const bgBase  = isWeekend ? "bg-neutral-900/30" : "";
@@ -1153,7 +1159,7 @@
 
       const ct = resolved.callTime || "—";
       const wt = resolved.wrapTime || "—";
-      const hrs = meta.workedHrs;
+      const hrs = gridDisplayHours(resolved);
       const hrsLabel = Number.isInteger(hrs) ? `${hrs}h` : `${hrs.toFixed(1)}h`;
 
       return (
@@ -1174,7 +1180,7 @@
       );
     }
 
-    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew }) {
+    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew, onAssignAll }) {
       const [assignMode, setAssignMode] = useState(false);
 
       const allDates = useMemo(() =>
@@ -1210,7 +1216,7 @@
               <button onClick={() => setAssignMode(false)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold transition-colors ${!assignMode ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>View</button>
               <button onClick={() => setAssignMode(true)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border-l border-neutral-700 transition-colors ${assignMode ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>Assign</button>
             </div>
-            {assignMode && <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap an empty cell to assign a crew member to that day</div>}
+            {assignMode && <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap a cell to assign · Tap a date header to assign all</div>}
           </div>
 
           <div className="overflow-x-auto border border-neutral-800">
@@ -1230,7 +1236,10 @@
                     const day3   = new Date(date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" });
                     const dayNum = new Date(date + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
                     return (
-                      <th key={date} className={`px-2 py-1.5 font-bold text-center ${headerBg} ${borderClass}`} style={{ minWidth: 80 }}>
+                      <th key={date}
+                        onClick={assignMode ? () => onAssignAll(date) : undefined}
+                        className={`px-2 py-1.5 font-bold text-center ${headerBg} ${borderClass}${assignMode ? " cursor-pointer hover:bg-sky-950/40" : ""}`}
+                        style={{ minWidth: 80 }}>
                         <div className={`text-[9px] uppercase tracking-wider ${textColor}`}>{day3}</div>
                         <div className="text-[11px] text-neutral-200 whitespace-nowrap">{dayNum}</div>
                       </th>
@@ -1331,6 +1340,10 @@
       const cancel = () => { setEditing(null); };
       const handleEditDayFromGrid = (id) => { const d = days.find(day => day.id === id); if (d) startEdit(d); };
       const handleAddDayFromGrid = (crewId, date) => { setDays(prev => [...prev, { ...makeBlankDay(crewId), date }]); };
+      const handleAssignAllOnDate = (date) => {
+        const toAdd = crew.filter(m => !days.find(d => d.date === date && d.crewId === m.id));
+        if (toAdd.length > 0) setDays(prev => [...prev, ...toAdd.map(m => ({ ...makeBlankDay(m.id), date }))]);
+      };
 
       const save = () => {
         if (!form.date || !form.callTime || !form.wrapTime) return;
@@ -1377,9 +1390,9 @@
                 <button onClick={() => setGridView(false)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold transition-colors ${!gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>List</button>
                 <button onClick={() => setGridView(true)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border-l border-neutral-700 transition-colors ${gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>Grid</button>
               </div>
-              {!gridView && !editing && crew.length > 0 && (
+              {!editing && crew.length > 0 && (
                 <>
-                  <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>
+                  {!gridView && <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>}
                   <Btn variant="primary" onClick={startNew}><IPlus/>Add Day</Btn>
                 </>
               )}
@@ -1411,7 +1424,7 @@
           )}
 
           {gridView ? (
-            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} />
+            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} />
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
