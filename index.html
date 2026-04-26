@@ -507,10 +507,13 @@
     function addRunningHeader(doc, sectionLabel, production) {
       const pageNum = doc.internal.getCurrentPageInfo().pageNumber;
       const title = production.title || '';
-      doc.setFont('courier', 'normal'); doc.setFontSize(7); doc.setTextColor(150);
-      if (title) doc.text(title, PDF.margin, PDF.margin - 8);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(130);
+      if (title) {
+        const t = title.length > 52 ? title.slice(0, 51) + '…' : title;
+        doc.text(t, PDF.margin, PDF.margin - 8);
+      }
       doc.text(`${sectionLabel}  ·  p.${pageNum}`, PDF.pageW - PDF.margin, PDF.margin - 8, { align: 'right' });
-      doc.setDrawColor(200); doc.setLineWidth(0.4);
+      doc.setDrawColor(180); doc.setLineWidth(0.4);
       doc.line(PDF.margin, PDF.margin - 4, PDF.pageW - PDF.margin, PDF.margin - 4);
       doc.setDrawColor(0); doc.setTextColor(0);
     }
@@ -530,20 +533,23 @@
       const y = { y: PDF.margin + 12 };
 
       // Name + production title on same baseline
-      doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(0);
       doc.text(crewMember.name, PDF.margin, y.y);
       if (production.title) {
-        doc.setFont('times', 'bold'); doc.setFontSize(9); doc.setTextColor(0);
-        doc.text(production.title, PDF.pageW - PDF.margin, y.y, { align: 'right' });
+        const t = production.title.length > 40 ? production.title.slice(0, 39) + '…' : production.title;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(40);
+        doc.text(t, PDF.pageW - PDF.margin, y.y, { align: 'right' });
       }
       y.y += 14;
 
       // Role/rates + prodCo on same baseline
-      doc.setFont('courier', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
-      doc.text(`${crewMember.role} · BDR ${fmtGBP(crewMember.bdr)} · BHR ${fmtGBP(crewMember.bdr/10)} · OT ${crewMember.otCoef}x`, PDF.margin, y.y);
+      const rateStr = `${crewMember.role}  ·  BDR ${fmtGBP(crewMember.bdr)}  ·  BHR ${fmtGBP(crewMember.bdr/10)}  ·  OT ${crewMember.otCoef}×`;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90);
+      doc.text(rateStr.length > 68 ? rateStr.slice(0, 67) + '…' : rateStr, PDF.margin, y.y);
       if (production.prodCo) {
-        doc.setFont('times', 'normal'); doc.setFontSize(8); doc.setTextColor(100);
-        doc.text(production.prodCo, PDF.pageW - PDF.margin, y.y, { align: 'right' });
+        const pc = production.prodCo.length > 35 ? production.prodCo.slice(0, 34) + '…' : production.prodCo;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+        doc.text(pc, PDF.pageW - PDF.margin, y.y, { align: 'right' });
       }
       y.y += 10;
       drawRule(doc, y.y, 0.8); y.y += 18;
@@ -556,57 +562,56 @@
         const calc = calculateDay(resolveDay(production, d, crewMember), crewMember);
         grandTotal += calc.total;
 
-        ensureSpace(doc, y, 24 + calc.lines.length * 14 + 24, onNewPage);
+        ensureSpace(doc, y, 26 + calc.lines.length * 14 + 26, onNewPage);
 
         // Day section header — date as anchor, type/label right-aligned
         const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : ''].filter(Boolean).join('  ·  ');
-        doc.setFont('times', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0);
         doc.text(fmtDate(d.date), PDF.margin, y.y);
-        doc.setFont('times', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100);
         doc.text(rightLabel, PDF.pageW - PDF.margin, y.y, { align: 'right' });
         y.y += 5;
-        drawRule(doc, y.y, 0.3); y.y += 12;
+        drawRule(doc, y.y, 0.3); y.y += 13;
 
         // Line items
         calc.lines.forEach((l) => {
           ensureSpace(doc, y, 14, onNewPage);
-          doc.setFont('times', 'normal'); doc.setFontSize(10); doc.setTextColor(0);
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(0);
           doc.text(l.label, COL.label, y.y);
           if (l.detail) {
-            doc.setFontSize(8); doc.setFont('courier', 'normal'); doc.setTextColor(120);
-            doc.text(l.detail.slice(0, 35), COL.detail, y.y);
-            doc.setFontSize(10);
+            doc.setFontSize(8); doc.setTextColor(120);
+            doc.text(l.detail.slice(0, 40), COL.detail, y.y);
           }
-          doc.setFont('courier', 'normal'); doc.setTextColor(0);
-          if (l.rate != null) doc.text(fmtGBP(l.rate), COL.rate, y.y, { align: 'right' });
+          doc.setTextColor(0);
+          if (l.rate != null) { doc.setFontSize(9); doc.text(fmtGBP(l.rate), COL.rate, y.y, { align: 'right' }); }
           const qtyStr = typeof l.qty === 'number' ? (Number.isInteger(l.qty) ? String(l.qty) : l.qty.toFixed(2)) : String(l.qty);
-          doc.text(qtyStr, COL.qty, y.y, { align: 'right' });
-          doc.setFont('courier', 'bold');
+          doc.setFontSize(9); doc.text(qtyStr, COL.qty, y.y, { align: 'right' });
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
           doc.text(fmtGBP(l.amount), COL.amount, y.y, { align: 'right' });
           y.y += 14;
         });
 
         // Day total — filled band
-        ensureSpace(doc, y, 22, onNewPage);
+        ensureSpace(doc, y, 24, onNewPage);
         y.y += 2;
-        drawFilledBand(doc, y.y, 16);
-        doc.setFont('times', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
-        doc.text('Day total', COL.label, y.y + 11);
-        doc.setFont('courier', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
-        doc.text(fmtGBP(calc.total), COL.amount, y.y + 11, { align: 'right' });
-        y.y += 22;
+        drawFilledBand(doc, y.y, 18);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
+        doc.text('Day total', COL.label + 4, y.y + 13);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
+        doc.text(fmtGBP(calc.total), COL.amount, y.y + 13, { align: 'right' });
+        y.y += 24;
       });
 
       // Grand total — filled band with rules
-      ensureSpace(doc, y, 44, onNewPage);
+      ensureSpace(doc, y, 46, onNewPage);
       y.y += 4;
       drawRule(doc, y.y, 1.2); y.y += 2;
-      drawFilledBand(doc, y.y, 22);
-      doc.setFont('times', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-      doc.text('Total', PDF.margin, y.y + 15);
-      doc.setFont('courier', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-      doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 15, { align: 'right' });
-      y.y += 22;
+      drawFilledBand(doc, y.y, 24);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+      doc.text('Total', PDF.margin + 4, y.y + 17);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+      doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
+      y.y += 24;
       drawRule(doc, y.y, 0.4);
     }
 
@@ -633,57 +638,58 @@
       }
 
       // Title block
-      doc.setFontSize(18); doc.setFont('times', 'bold'); doc.setTextColor(0);
-      doc.text(production.title || 'Untitled Production', PDF.margin, y.y); y.y += 14;
-      doc.setFontSize(10); doc.setFont('times', 'normal'); doc.setTextColor(100);
+      const titleStr = (production.title || 'Untitled Production');
+      doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
+      doc.text(titleStr.length > 55 ? titleStr.slice(0, 54) + '…' : titleStr, PDF.margin, y.y); y.y += 14;
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100);
       const sub = [production.prodCo, dateRange].filter(Boolean).join(' · ');
       if (sub) { doc.text(sub, PDF.margin, y.y); y.y += 14; }
       y.y += 8;
 
       // Column header with filled band
       const COL = { name: PDF.margin, role: 220, days: 330, hours: 390, ot: 450, total: PDF.pageW - PDF.margin };
-      drawFilledBand(doc, y.y, 20);
-      doc.setFont('times', 'bold'); doc.setFontSize(9); doc.setTextColor(0);
-      doc.text('NAME',   COL.name,  y.y + 13);
-      doc.text('ROLE',   COL.role,  y.y + 13);
-      doc.text('DAYS',   COL.days,  y.y + 13, { align: 'right' });
-      doc.text('HOURS',  COL.hours, y.y + 13, { align: 'right' });
-      doc.text('OT HRS', COL.ot,    y.y + 13, { align: 'right' });
-      doc.text('TOTAL',  COL.total, y.y + 13, { align: 'right' });
-      y.y += 24;
+      drawFilledBand(doc, y.y, 22);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(0);
+      doc.text('NAME',   COL.name + 4,  y.y + 15);
+      doc.text('ROLE',   COL.role,       y.y + 15);
+      doc.text('DAYS',   COL.days,       y.y + 15, { align: 'right' });
+      doc.text('HOURS',  COL.hours,      y.y + 15, { align: 'right' });
+      doc.text('OT HRS', COL.ot,         y.y + 15, { align: 'right' });
+      doc.text('TOTAL',  COL.total,      y.y + 15, { align: 'right' });
+      y.y += 26;
 
-      doc.setFont('times', 'normal'); doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       ordered.forEach(({ crew: c, entries }) => {
-        ensureSpace(doc, y, 18);
+        ensureSpace(doc, y, 20);
         const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
         const otHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.otHrs, 0);
         const totalFee = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).total, 0);
-        doc.setTextColor(0); doc.setFontSize(10);
-        doc.text(c.name, COL.name, y.y);
+        doc.setTextColor(0); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+        doc.text(c.name, COL.name + 4, y.y);
         doc.setTextColor(100); doc.setFontSize(9);
         doc.text(c.role, COL.role, y.y);
-        doc.setTextColor(0); doc.setFont('courier', 'normal'); doc.setFontSize(10);
-        doc.text(String(entries.length), COL.days, y.y, { align: 'right' });
-        doc.text(totalHrs.toFixed(1), COL.hours, y.y, { align: 'right' });
+        doc.setTextColor(0); doc.setFontSize(10);
+        doc.text(String(entries.length), COL.days,  y.y, { align: 'right' });
+        doc.text(totalHrs.toFixed(1),    COL.hours, y.y, { align: 'right' });
         doc.text(otHrs > 0 ? otHrs.toFixed(1) : '—', COL.ot, y.y, { align: 'right' });
-        doc.setFont('courier', 'bold');
+        doc.setFont('helvetica', 'bold');
         doc.text(fmtGBP(totalFee), COL.total, y.y, { align: 'right' });
         y.y += 8;
         doc.setDrawColor(210); doc.setLineWidth(0.2);
         doc.line(PDF.margin, y.y, PDF.pageW - PDF.margin, y.y);
-        y.y += 10;
-        doc.setFont('times', 'normal'); doc.setFontSize(10);
+        y.y += 12;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       });
 
       // Grand total — filled band with rules
       y.y += 4;
       drawRule(doc, y.y, 1.2); y.y += 2;
-      drawFilledBand(doc, y.y, 22);
-      doc.setFont('times', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-      doc.text('Grand Total', COL.name, y.y + 15);
-      doc.setFont('courier', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-      doc.text(fmtGBP(grandTotal), COL.total, y.y + 15, { align: 'right' });
-      y.y += 22;
+      drawFilledBand(doc, y.y, 24);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+      doc.text('Grand Total', COL.name + 4, y.y + 17);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+      doc.text(fmtGBP(grandTotal), COL.total, y.y + 17, { align: 'right' });
+      y.y += 24;
       drawRule(doc, y.y, 0.4);
     }
 
@@ -723,14 +729,15 @@
         const y = { y: PDF.margin + 12 };
 
         // Production title
-        doc.setFont('times', 'bold'); doc.setFontSize(13); doc.setTextColor(0);
-        doc.text(production.title || 'Untitled Production', PDF.margin, y.y);
+        const gridTitle = (production.title || 'Untitled Production');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0);
+        doc.text(gridTitle.length > 55 ? gridTitle.slice(0, 54) + '…' : gridTitle, PDF.margin, y.y);
         y.y += 10;
         drawRule(doc, y.y, 0.8); y.y += 10;
 
         // Date column headers
-        doc.setFont('times', 'bold'); doc.setFontSize(7.5); doc.setTextColor(80);
-        doc.text('CREW', PDF.margin, y.y + 12);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(80);
+        doc.text('CREW', PDF.margin, y.y + 14);
         dateCols.forEach((date, i) => {
           const x = PDF.margin + crewColW + i * dateColW;
           const dow = dayOfWeek(date);
@@ -738,11 +745,11 @@
           if (isSat || isSun) { doc.setFillColor(245, 245, 245); doc.rect(x, y.y, dateColW, headerH, 'F'); }
           const day3 = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase();
           const dayNum = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-          doc.setFont('courier', 'bold'); doc.setFontSize(6.5);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
           doc.setTextColor(isSun ? 160 : isSat ? 120 : 90);
-          doc.text(day3, x + dateColW / 2, y.y + 8, { align: 'center' });
-          doc.setFontSize(7.5); doc.setTextColor(isSun ? 80 : isSat ? 60 : 0);
-          doc.text(dayNum, x + dateColW / 2, y.y + 18, { align: 'center' });
+          doc.text(day3, x + dateColW / 2, y.y + 10, { align: 'center' });
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(isSun ? 80 : isSat ? 60 : 0);
+          doc.text(dayNum, x + dateColW / 2, y.y + 21, { align: 'center' });
         });
         y.y += headerH;
         drawRule(doc, y.y, 0.5); y.y += 6;
@@ -751,10 +758,10 @@
         crew.forEach((member, rowIdx) => {
           const rowY = y.y;
           const nameStr = member.name.length > 18 ? member.name.slice(0, 17) + '…' : member.name;
-          doc.setFont('times', 'normal'); doc.setFontSize(8); doc.setTextColor(0);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(0);
           doc.text(nameStr, PDF.margin, rowY + 10);
-          doc.setFontSize(6.5); doc.setTextColor(120);
-          doc.text(member.role, PDF.margin, rowY + 18);
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+          doc.text(member.role, PDF.margin, rowY + 19);
 
           dateCols.forEach((date, i) => {
             const x = PDF.margin + crewColW + i * dateColW;
@@ -762,8 +769,8 @@
             if (dow === 0 || dow === 6) { doc.setFillColor(248, 248, 248); doc.rect(x, rowY, dateColW, rowH, 'F'); }
             const cellDay = index[date]?.[member.id];
             if (!cellDay) {
-              doc.setFont('courier', 'normal'); doc.setFontSize(6); doc.setTextColor(160);
-              doc.text('Rest', x + dateColW / 2, rowY + 13, { align: 'center' });
+              doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(160);
+              doc.text('Rest', x + dateColW / 2, rowY + 14, { align: 'center' });
               return;
             }
             const resolved = resolveDay(production, cellDay, member);
@@ -777,13 +784,13 @@
             if (meta.continuousDay) penalties.push('CWD');
             if (lines.some(l => l.label === 'Late 1st Break')) penalties.push('L1');
             if (lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label))) penalties.push('MSB');
-            doc.setFont('courier', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
             doc.text(`${ct}–${wt}`, x + dateColW / 2, rowY + 8, { align: 'center' });
-            doc.setFont('courier', 'bold'); doc.setFontSize(8); doc.setTextColor(0);
-            doc.text(hrsLabel, x + dateColW / 2, rowY + 16, { align: 'center' });
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(0);
+            doc.text(hrsLabel, x + dateColW / 2, rowY + 17, { align: 'center' });
             if (penalties.length > 0) {
-              doc.setFont('courier', 'bold'); doc.setFontSize(6); doc.setTextColor(60);
-              doc.text(penalties.join(' '), x + dateColW / 2, rowY + 23, { align: 'center' });
+              doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(60);
+              doc.text(penalties.join(' '), x + dateColW / 2, rowY + 24, { align: 'center' });
             }
           });
 
@@ -1575,7 +1582,7 @@
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
-      const [gridView, setGridView] = useState(false);
+      const [gridView, setGridView] = useState(true);
       const editPanelRef = useRef(null);
       useEffect(() => {
         if (editing && editPanelRef.current) editPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1685,7 +1692,7 @@
               </div>
               {!editing && crew.length > 0 && (
                 <>
-                  {!gridView && <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>}
+                  <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>
                   <Btn variant="primary" onClick={startNew}><IPlus/>Add Day</Btn>
                 </>
               )}
