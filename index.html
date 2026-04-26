@@ -562,7 +562,7 @@
         const calc = calculateDay(resolveDay(production, d, crewMember), crewMember);
         grandTotal += calc.total;
 
-        ensureSpace(doc, y, 26 + calc.lines.length * 14 + 26, onNewPage);
+        ensureSpace(doc, y, 26 + calc.lines.length * 14 + 34, onNewPage);
 
         // Day section header — date as anchor, type/label right-aligned
         const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : ''].filter(Boolean).join('  ·  ');
@@ -592,14 +592,14 @@
         });
 
         // Day total — filled band
-        ensureSpace(doc, y, 24, onNewPage);
+        ensureSpace(doc, y, 34, onNewPage);
         y.y += 2;
         drawFilledBand(doc, y.y, 18);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
         doc.text('Day total', COL.label + 4, y.y + 13);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
         doc.text(fmtGBP(calc.total), COL.amount, y.y + 13, { align: 'right' });
-        y.y += 24;
+        y.y += 34;
       });
 
       // Grand total — filled band with rules
@@ -865,6 +865,7 @@
     const IDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9"/></Icon>;
     const ISort = (p) => <Icon {...p}><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></Icon>;
     const ICopy = (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Icon>;
+    const IUpload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
@@ -1578,6 +1579,70 @@
       };
     }
 
+    function WrapNowBtn({ days, setDays, showToast }) {
+      const HOLD_MS = 3000;
+      const [progress, setProgress] = useState(0);
+      const intervalRef = useRef(null);
+      const startRef = useRef(null);
+      const firedRef = useRef(false);
+
+      const fire = () => {
+        firedRef.current = true;
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayEntries = days.filter(d => d.date === todayStr);
+        if (todayEntries.length === 0) {
+          showToast("No work days found for today");
+          setTimeout(() => { setProgress(0); firedRef.current = false; }, 400);
+          return;
+        }
+        const now = new Date();
+        const totalMins = now.getHours() * 60 + now.getMinutes();
+        const rounded = Math.round(totalMins / 5) * 5;
+        const h = Math.floor(rounded / 60) % 24;
+        const m = rounded % 60;
+        const wrapStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr } : d));
+        showToast(`Wrapped ${todayEntries.length} entr${todayEntries.length === 1 ? 'y' : 'ies'} at ${wrapStr}`);
+        setTimeout(() => { setProgress(0); firedRef.current = false; }, 600);
+      };
+
+      const startHold = (e) => {
+        e.preventDefault();
+        if (firedRef.current) return;
+        startRef.current = Date.now();
+        intervalRef.current = setInterval(() => {
+          if (firedRef.current) { clearInterval(intervalRef.current); return; }
+          const p = Math.min((Date.now() - startRef.current) / HOLD_MS, 1);
+          setProgress(p);
+          if (p >= 1) { clearInterval(intervalRef.current); fire(); }
+        }, 50);
+      };
+
+      const endHold = () => {
+        clearInterval(intervalRef.current);
+        if (!firedRef.current) {
+          if (progress > 0.05) showToast("Hold to set today's wrap time");
+          setProgress(0);
+        }
+      };
+
+      const pct = Math.round(progress * 100);
+      return (
+        <button
+          onPointerDown={startHold}
+          onPointerUp={endHold}
+          onPointerLeave={endHold}
+          onPointerCancel={endHold}
+          className="relative overflow-hidden inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-md"
+          style={{ touchAction: 'none', userSelect: 'none', minWidth: 96 }}
+          title="Hold 3 seconds to set today's wrap time"
+        >
+          <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none" style={{ width: `${pct}%` }} />
+          <span className="relative z-10">{progress > 0 ? `${pct}%` : 'WrapNow'}</span>
+        </button>
+      );
+    }
+
     function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddCrew }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
@@ -1690,6 +1755,7 @@
                 <button onClick={() => setGridView(false)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold transition-colors ${!gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>List</button>
                 <button onClick={() => setGridView(true)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border-l border-neutral-700 transition-colors ${gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>Grid</button>
               </div>
+              {crew.length > 0 && <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />}
               {!editing && crew.length > 0 && (
                 <>
                   <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>
@@ -2013,7 +2079,7 @@ const setDays = (updater) =>
           </div>
 
           <div className="text-center text-[10px] text-neutral-600 py-6 uppercase tracking-widest">
-            Rates per APA Sept 2025 · Built for iPad
+            Rates per APA Sept 2025
           </div>
         </div>
       );
@@ -2021,7 +2087,30 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onCreate, onDelete }) {
+    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onExport, onImport }) {
+      const importRef = useRef(null);
+
+      const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const raw = JSON.parse(ev.target.result);
+            const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.productions) ? raw.productions : null);
+            if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
+              window.alert('Invalid backup file — not a valid productions export.');
+              return;
+            }
+            onImport(arr);
+          } catch {
+            window.alert('Could not read file — is it a valid JSON backup?');
+          }
+        };
+        reader.readAsText(file);
+      };
+
       // Derive a sort key (YYYY-MM-DD or null) for each production — display only, no mutation
       const sortKey = (p) => {
         if (p.startDate) return p.startDate;
@@ -2060,7 +2149,12 @@ const setDays = (updater) =>
                 <div className="font-bold uppercase tracking-tight leading-none text-sm">Derrick's TimeMachine</div>
                 <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Productions</div>
               </div>
-              <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <Btn variant="ghost" size="sm" onClick={onExport}><IDownload/>Export Backup</Btn>
+                <Btn variant="ghost" size="sm" onClick={() => importRef.current?.click()}><IUpload/>Import Backup</Btn>
+                <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
+                <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
+              </div>
             </div>
           </div>
 
@@ -2141,10 +2235,30 @@ const setDays = (updater) =>
           p.id === openId ? (typeof updater === "function" ? updater(p) : updater) : p
         ));
 
+      const handleExport = () => {
+        const date = new Date().toISOString().slice(0, 10);
+        const payload = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), productions }, null, 2);
+        const blob = new Blob([payload], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `derricks-timemachine-backup-${date}.json`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+
+      const handleImport = (parsed) => {
+        const n = parsed.length;
+        const msg = productions.length > 0
+          ? `Import ${n} production${n === 1 ? '' : 's'}? This will replace your ${productions.length} existing production${productions.length === 1 ? '' : 's'}. This cannot be undone.`
+          : `Import ${n} production${n === 1 ? '' : 's'}?`;
+        if (!window.confirm(msg)) return;
+        setProductions(parsed);
+      };
+
       const currentProduction = productions.find((p) => p.id === openId);
 
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onExport={handleExport} onImport={handleImport} />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
     }
