@@ -466,9 +466,19 @@
       return { ...calc, lines, total: calc.total + extra.reduce((s, l) => s + l.amount, 0) };
     }
 
+    function resolveCrewForDay(resolvedDay, crewMember) {
+      if (!resolvedDay?.stepUpEnabled) return crewMember;
+      return {
+        ...crewMember,
+        bdr: Number(resolvedDay.stepUpBDR) || crewMember.bdr,
+        otCoef: Number(resolvedDay.stepUpOTCoef) || crewMember.otCoef,
+      };
+    }
+
     function calcForDisplay(production, day, crewMember) {
       const resolved = resolveDay(production, day, crewMember);
-      return augmentCalc(calculateDay(resolved, crewMember), resolved, crewMember);
+      const effectiveCrew = resolveCrewForDay(resolved, crewMember);
+      return augmentCalc(calculateDay(resolved, effectiveCrew), resolved, crewMember);
     }
 
     function generateCrewText(crewMember, entries, production) {
@@ -482,7 +492,8 @@
       sorted.forEach((d) => {
         const calc = calcForDisplay(production, d, crewMember);
         grandTotal += calc.total;
-        lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' — CWD' : ''}`);
+        const stepUpNote = d.stepUpEnabled && d.stepUpRole ? ` — Stepped up: ${d.stepUpRole}` : '';
+        lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
         calc.lines.forEach((l) => lines.push(formatLineText(l)));
         lines.push(`Day total: ${fmtGBP(calc.total)}`);
         lines.push('');
@@ -502,7 +513,8 @@
       const calc = calcForDisplay(production, day, crewMember);
       const lines = [];
       lines.push(`${crewMember.name} — ${crewMember.role}`);
-      lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' — CWD' : ''}`);
+      const stepUpNote = day.stepUpEnabled && day.stepUpRole ? ` — Stepped up: ${day.stepUpRole}` : '';
+      lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
       lines.push('');
       calc.lines.forEach((l) => lines.push(formatLineText(l)));
       lines.push('');
@@ -596,7 +608,8 @@
         ensureSpace(doc, y, 26 + calc.lines.length * 14 + 34, onNewPage);
 
         // Day section header — date as anchor, type/label right-aligned
-        const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : ''].filter(Boolean).join('  ·  ');
+        const stepUpLabel = d.stepUpEnabled && d.stepUpRole ? `Step-up: ${d.stepUpRole}` : '';
+        const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : '', stepUpLabel].filter(Boolean).join('  ·  ');
         doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0);
         doc.text(fmtDate(d.date), PDF.margin, y.y);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100);
@@ -1353,6 +1366,40 @@
               <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
             </Field>
           )}
+
+          <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-amber-400 font-bold mb-2">Step-Up</div>
+          </div>
+          <Field label="Step-Up for this day">
+            <Select value={v.stepUpEnabled ? "yes" : "no"} onChange={(e) => set({ stepUpEnabled: e.target.value === "yes" })}>
+              <option value="no">No step-up</option>
+              <option value="yes">Stepped-up rate applies</option>
+            </Select>
+          </Field>
+          {v.stepUpEnabled && (
+            <>
+              <Field label="Step-Up Role">
+                <Select value={v.stepUpRole || ""} onChange={(e) => {
+                  const role = e.target.value;
+                  const d = ROLE_DEFAULTS[role] || {};
+                  set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef });
+                }}>
+                  <option value="">— Select Role —</option>
+                  {ROLE_ORDER.map(r => <option key={r} value={r}>{r}</option>)}
+                </Select>
+              </Field>
+              <Field label="Step-Up BDR (£)" hint="Override for this day only">
+                <Input type="number" min="0" step="0.01" value={v.stepUpBDR ?? 0} onChange={(e) => set({ stepUpBDR: Number(e.target.value) })} />
+              </Field>
+              <Field label="Step-Up OT Coef">
+                <Select value={String(v.stepUpOTCoef ?? 1)} onChange={(e) => set({ stepUpOTCoef: Number(e.target.value) })}>
+                  <option value="1">1×</option>
+                  <option value="1.25">1.25×</option>
+                  <option value="1.5">1.5×</option>
+                </Select>
+              </Field>
+            </>
+          )}
         </div>
       );
     }
@@ -1365,7 +1412,7 @@
       return (
         <div className="bg-black border border-sky-400 p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Live Calc — {calc.meta.dayLabel}{calc.meta.continuousDay ? " · CWD" : ""}</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Live Calc — {calc.meta.dayLabel}{calc.meta.continuousDay ? " · CWD" : ""}{day.stepUpEnabled && day.stepUpRole ? ` · Step-up: ${day.stepUpRole}` : ""}</div>
             <div className="text-xs font-mono text-neutral-400">{calc.meta.workedHrs.toFixed(2)}h</div>
           </div>
           {calc.lines.length === 0 ? <div className="text-sm text-neutral-500">Fill in times to see calc.</div> : (
@@ -1692,6 +1739,7 @@
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
         perDiemEnabled: false, perDiemAmount: 0,
+        stepUpEnabled: false, stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
       };
     }
 
