@@ -1575,7 +1575,7 @@
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
-      const [gridView, setGridView] = useState(false);
+      const [gridView, setGridView] = useState(true);
       const editPanelRef = useRef(null);
       useEffect(() => {
         if (editing && editPanelRef.current) editPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
