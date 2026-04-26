@@ -865,6 +865,7 @@
     const IDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9"/></Icon>;
     const ISort = (p) => <Icon {...p}><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></Icon>;
     const ICopy = (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Icon>;
+    const IUpload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
@@ -2021,7 +2022,30 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onCreate, onDelete }) {
+    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onExport, onImport }) {
+      const importRef = useRef(null);
+
+      const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const raw = JSON.parse(ev.target.result);
+            const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.productions) ? raw.productions : null);
+            if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
+              window.alert('Invalid backup file — not a valid productions export.');
+              return;
+            }
+            onImport(arr);
+          } catch {
+            window.alert('Could not read file — is it a valid JSON backup?');
+          }
+        };
+        reader.readAsText(file);
+      };
+
       // Derive a sort key (YYYY-MM-DD or null) for each production — display only, no mutation
       const sortKey = (p) => {
         if (p.startDate) return p.startDate;
@@ -2060,7 +2084,12 @@ const setDays = (updater) =>
                 <div className="font-bold uppercase tracking-tight leading-none text-sm">Derrick's TimeMachine</div>
                 <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Productions</div>
               </div>
-              <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <Btn variant="ghost" size="sm" onClick={onExport}><IDownload/>Export Backup</Btn>
+                <Btn variant="ghost" size="sm" onClick={() => importRef.current?.click()}><IUpload/>Import Backup</Btn>
+                <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
+                <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
+              </div>
             </div>
           </div>
 
@@ -2141,10 +2170,30 @@ const setDays = (updater) =>
           p.id === openId ? (typeof updater === "function" ? updater(p) : updater) : p
         ));
 
+      const handleExport = () => {
+        const date = new Date().toISOString().slice(0, 10);
+        const payload = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), productions }, null, 2);
+        const blob = new Blob([payload], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `derricks-timemachine-backup-${date}.json`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+
+      const handleImport = (parsed) => {
+        const n = parsed.length;
+        const msg = productions.length > 0
+          ? `Import ${n} production${n === 1 ? '' : 's'}? This will replace your ${productions.length} existing production${productions.length === 1 ? '' : 's'}. This cannot be undone.`
+          : `Import ${n} production${n === 1 ? '' : 's'}?`;
+        if (!window.confirm(msg)) return;
+        setProductions(parsed);
+      };
+
       const currentProduction = productions.find((p) => p.id === openId);
 
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onExport={handleExport} onImport={handleImport} />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
     }
