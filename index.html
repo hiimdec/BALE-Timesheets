@@ -475,6 +475,13 @@
       return lines.join('\n');
     }
 
+    function crewVAT(crewMember, subtotal) {
+      if (!crewMember?.vatRegistered) return { vatAmount: 0, totalIncVAT: subtotal };
+      const rate = Number(crewMember.vatRate) || 20;
+      const vatAmount = subtotal * rate / 100;
+      return { vatAmount, totalIncVAT: subtotal + vatAmount };
+    }
+
     function generateDayText(day, crewMember, production) {
       const calc = calculateDay(resolveDay(production, day, crewMember), crewMember);
       const lines = [];
@@ -483,7 +490,15 @@
       lines.push('');
       calc.lines.forEach((l) => lines.push(formatLineText(l)));
       lines.push('');
-      lines.push(`TOTAL: ${fmtGBP(calc.total)}`);
+      const { vatAmount, totalIncVAT } = crewVAT(crewMember, calc.total);
+      if (crewMember.vatRegistered) {
+        const rate = Number(crewMember.vatRate) || 20;
+        lines.push(`SUBTOTAL: ${fmtGBP(calc.total)}`);
+        lines.push(`VAT (${rate}%): ${fmtGBP(vatAmount)}`);
+        lines.push(`TOTAL INC. VAT: ${fmtGBP(totalIncVAT)}`);
+      } else {
+        lines.push(`TOTAL: ${fmtGBP(calc.total)}`);
+      }
       return lines.join('\n');
     }
 
@@ -602,16 +617,39 @@
         y.y += 34;
       });
 
-      // Grand total — filled band with rules
-      ensureSpace(doc, y, 46, onNewPage);
+      // Grand total — with optional VAT breakdown
+      const { vatAmount, totalIncVAT } = crewVAT(crewMember, grandTotal);
+      const vatNeeded = crewMember.vatRegistered ? 60 : 46;
+      ensureSpace(doc, y, vatNeeded, onNewPage);
       y.y += 4;
       drawRule(doc, y.y, 1.2); y.y += 2;
-      drawFilledBand(doc, y.y, 24);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-      doc.text('Total', PDF.margin + 4, y.y + 17);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-      doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
-      y.y += 24;
+      if (crewMember.vatRegistered) {
+        const vatRate = Number(crewMember.vatRate) || 20;
+        drawFilledBand(doc, y.y, 20);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
+        doc.text('Subtotal', PDF.margin + 4, y.y + 14);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 14, { align: 'right' });
+        y.y += 24;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
+        doc.text(`VAT (${vatRate}%)`, PDF.margin + 4, y.y);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+        doc.text(fmtGBP(vatAmount), PDF.pageW - PDF.margin, y.y, { align: 'right' });
+        y.y += 14;
+        drawFilledBand(doc, y.y, 24);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text('Total inc. VAT', PDF.margin + 4, y.y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+        doc.text(fmtGBP(totalIncVAT), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
+        y.y += 24;
+      } else {
+        drawFilledBand(doc, y.y, 24);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text('Total', PDF.margin + 4, y.y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
+        y.y += 24;
+      }
       drawRule(doc, y.y, 0.4);
     }
 
@@ -681,15 +719,39 @@
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       });
 
-      // Grand total — filled band with rules
+      // Grand total — with optional VAT breakdown if any crew is VAT-registered
+      const anyVAT = ordered.some(({ crew: c }) => c.vatRegistered);
+      const totalVAT = ordered.reduce((s, { crew: c, entries }) => {
+        const sub = entries.reduce((t, e) => t + calculateDay(resolveDay(production, e, c), c).total, 0);
+        return s + crewVAT(c, sub).vatAmount;
+      }, 0);
       y.y += 4;
       drawRule(doc, y.y, 1.2); y.y += 2;
-      drawFilledBand(doc, y.y, 24);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-      doc.text('Grand Total', COL.name + 4, y.y + 17);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-      doc.text(fmtGBP(grandTotal), COL.total, y.y + 17, { align: 'right' });
-      y.y += 24;
+      if (anyVAT) {
+        drawFilledBand(doc, y.y, 20);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
+        doc.text('Grand Total (ex VAT)', COL.name + 4, y.y + 14);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal), COL.total, y.y + 14, { align: 'right' });
+        y.y += 24;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
+        doc.text('VAT', COL.name + 4, y.y);
+        doc.text(fmtGBP(totalVAT), COL.total, y.y, { align: 'right' });
+        y.y += 14;
+        drawFilledBand(doc, y.y, 24);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text('Grand Total (inc VAT)', COL.name + 4, y.y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal + totalVAT), COL.total, y.y + 17, { align: 'right' });
+        y.y += 24;
+      } else {
+        drawFilledBand(doc, y.y, 24);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text('Grand Total', COL.name + 4, y.y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal), COL.total, y.y + 17, { align: 'right' });
+        y.y += 24;
+      }
       drawRule(doc, y.y, 0.4);
     }
 
@@ -946,7 +1008,7 @@
 
     function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed }) {
       const [editing, setEditing] = useState(null);
-      const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef };
+      const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef, vatRegistered: false, vatRate: 20 };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
       const dragIdx = useRef(null);
@@ -1022,6 +1084,17 @@
                     <option value={1}>Grade III — 1.0×</option>
                   </Select>
                 </Field>
+                <Field label="VAT Registered">
+                  <Select value={form.vatRegistered ? "yes" : "no"} onChange={(e) => setForm({ ...form, vatRegistered: e.target.value === "yes" })}>
+                    <option value="no">No — not VAT registered</option>
+                    <option value="yes">Yes — VAT registered</option>
+                  </Select>
+                </Field>
+                {form.vatRegistered && (
+                  <Field label="VAT Rate (%)" hint="Usually 20%">
+                    <Input type="number" min="0" max="100" step="1" value={form.vatRate ?? 20} onChange={(e) => setForm({ ...form, vatRate: Number(e.target.value) })} />
+                  </Field>
+                )}
               </div>
               <div className="flex gap-2 pt-2">
                 <Btn onClick={save} variant="success"><ICheck/>Save</Btn>
@@ -1056,7 +1129,7 @@
                   <div className="text-neutral-600 hidden sm:block"><IGrip/></div>
                   <div className="min-w-0">
                     <div className="font-semibold text-neutral-100 truncate">{c.name}</div>
-                    <div className="text-[11px] text-neutral-400 font-mono truncate">{c.role} · BDR {fmtGBP(c.bdr)} · BHR {fmtGBP(c.bdr / 10)} · OT {c.otCoef}×</div>
+                    <div className="text-[11px] text-neutral-400 font-mono truncate">{c.role} · BDR {fmtGBP(c.bdr)} · BHR {fmtGBP(c.bdr / 10)} · OT {c.otCoef}×{c.vatRegistered ? ` · VAT ${c.vatRate ?? 20}%` : ''}</div>
                   </div>
                 </div>
                 <div className="flex gap-1 flex-shrink-0">
