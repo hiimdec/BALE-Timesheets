@@ -455,6 +455,32 @@
       return `${timePart}${label}${hoursHint}${amountHint}`;
     }
 
+    function augmentCalc(calc, resolvedDay, crewMember) {
+      const extra = [];
+      if (crewMember?.kitMoneyEnabled && Number(crewMember.kitMoneyAmount) > 0)
+        extra.push({ label: "Kit Money", detail: "", rate: null, qty: 1, amount: Number(crewMember.kitMoneyAmount) });
+      if (resolvedDay?.perDiemEnabled && Number(resolvedDay.perDiemAmount) > 0)
+        extra.push({ label: "Per Diem", detail: "", rate: null, qty: 1, amount: Number(resolvedDay.perDiemAmount) });
+      if (!extra.length) return calc;
+      const lines = [...calc.lines, ...extra];
+      return { ...calc, lines, total: calc.total + extra.reduce((s, l) => s + l.amount, 0) };
+    }
+
+    function resolveCrewForDay(resolvedDay, crewMember) {
+      if (!resolvedDay?.stepUpEnabled) return crewMember;
+      return {
+        ...crewMember,
+        bdr: Number(resolvedDay.stepUpBDR) || crewMember.bdr,
+        otCoef: Number(resolvedDay.stepUpOTCoef) || crewMember.otCoef,
+      };
+    }
+
+    function calcForDisplay(production, day, crewMember) {
+      const resolved = resolveDay(production, day, crewMember);
+      const effectiveCrew = resolveCrewForDay(resolved, crewMember);
+      return augmentCalc(calculateDay(resolved, effectiveCrew), resolved, crewMember);
+    }
+
     function generateCrewText(crewMember, entries, production) {
       const lines = [];
       lines.push(`${crewMember.name.toUpperCase()} — ${crewMember.role}`);
@@ -464,9 +490,10 @@
       const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
       let grandTotal = 0;
       sorted.forEach((d) => {
-        const calc = calculateDay(resolveDay(production, d, crewMember), crewMember);
+        const calc = calcForDisplay(production, d, crewMember);
         grandTotal += calc.total;
-        lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' — CWD' : ''}`);
+        const stepUpNote = d.stepUpEnabled && d.stepUpRole ? ` — Stepped up: ${d.stepUpRole}` : '';
+        lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
         calc.lines.forEach((l) => lines.push(formatLineText(l)));
         lines.push(`Day total: ${fmtGBP(calc.total)}`);
         lines.push('');
@@ -475,15 +502,31 @@
       return lines.join('\n');
     }
 
+    function crewVAT(crewMember, subtotal) {
+      if (!crewMember?.vatRegistered) return { vatAmount: 0, totalIncVAT: subtotal };
+      const rate = Number(crewMember.vatRate) || 20;
+      const vatAmount = subtotal * rate / 100;
+      return { vatAmount, totalIncVAT: subtotal + vatAmount };
+    }
+
     function generateDayText(day, crewMember, production) {
-      const calc = calculateDay(resolveDay(production, day, crewMember), crewMember);
+      const calc = calcForDisplay(production, day, crewMember);
       const lines = [];
       lines.push(`${crewMember.name} — ${crewMember.role}`);
-      lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' — CWD' : ''}`);
+      const stepUpNote = day.stepUpEnabled && day.stepUpRole ? ` — Stepped up: ${day.stepUpRole}` : '';
+      lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
       lines.push('');
       calc.lines.forEach((l) => lines.push(formatLineText(l)));
       lines.push('');
-      lines.push(`TOTAL: ${fmtGBP(calc.total)}`);
+      const { vatAmount, totalIncVAT } = crewVAT(crewMember, calc.total);
+      if (crewMember.vatRegistered) {
+        const rate = Number(crewMember.vatRate) || 20;
+        lines.push(`SUBTOTAL: ${fmtGBP(calc.total)}`);
+        lines.push(`VAT (${rate}%): ${fmtGBP(vatAmount)}`);
+        lines.push(`TOTAL INC. VAT: ${fmtGBP(totalIncVAT)}`);
+      } else {
+        lines.push(`TOTAL: ${fmtGBP(calc.total)}`);
+      }
       return lines.join('\n');
     }
 
@@ -559,13 +602,14 @@
       let grandTotal = 0;
 
       sorted.forEach((d) => {
-        const calc = calculateDay(resolveDay(production, d, crewMember), crewMember);
+        const calc = calcForDisplay(production, d, crewMember);
         grandTotal += calc.total;
 
         ensureSpace(doc, y, 26 + calc.lines.length * 14 + 34, onNewPage);
 
         // Day section header — date as anchor, type/label right-aligned
-        const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : ''].filter(Boolean).join('  ·  ');
+        const stepUpLabel = d.stepUpEnabled && d.stepUpRole ? `Step-up: ${d.stepUpRole}` : '';
+        const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : '', stepUpLabel].filter(Boolean).join('  ·  ');
         doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0);
         doc.text(fmtDate(d.date), PDF.margin, y.y);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100);
@@ -602,16 +646,39 @@
         y.y += 34;
       });
 
-      // Grand total — filled band with rules
-      ensureSpace(doc, y, 46, onNewPage);
+      // Grand total — with optional VAT breakdown
+      const { vatAmount, totalIncVAT } = crewVAT(crewMember, grandTotal);
+      const vatNeeded = crewMember.vatRegistered ? 60 : 46;
+      ensureSpace(doc, y, vatNeeded, onNewPage);
       y.y += 4;
       drawRule(doc, y.y, 1.2); y.y += 2;
-      drawFilledBand(doc, y.y, 24);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-      doc.text('Total', PDF.margin + 4, y.y + 17);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-      doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
-      y.y += 24;
+      if (crewMember.vatRegistered) {
+        const vatRate = Number(crewMember.vatRate) || 20;
+        drawFilledBand(doc, y.y, 20);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
+        doc.text('Subtotal', PDF.margin + 4, y.y + 14);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 14, { align: 'right' });
+        y.y += 24;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
+        doc.text(`VAT (${vatRate}%)`, PDF.margin + 4, y.y);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+        doc.text(fmtGBP(vatAmount), PDF.pageW - PDF.margin, y.y, { align: 'right' });
+        y.y += 14;
+        drawFilledBand(doc, y.y, 24);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text('Total inc. VAT', PDF.margin + 4, y.y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+        doc.text(fmtGBP(totalIncVAT), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
+        y.y += 24;
+      } else {
+        drawFilledBand(doc, y.y, 24);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text('Total', PDF.margin + 4, y.y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
+        y.y += 24;
+      }
       drawRule(doc, y.y, 0.4);
     }
 
@@ -628,7 +695,7 @@
       const ordered = crew.map((c) => map.get(c.id)).filter(Boolean);
 
       const grandTotal = ordered.reduce((s, { crew: c, entries }) =>
-        s + entries.reduce((t, e) => t + calculateDay(resolveDay(production, e, c), c).total, 0), 0);
+        s + entries.reduce((t, e) => t + calcForDisplay(production, e, c).total, 0), 0);
 
       let dateRange = '';
       if (days.length > 0) {
@@ -663,7 +730,7 @@
         ensureSpace(doc, y, 20);
         const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
         const otHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.otHrs, 0);
-        const totalFee = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).total, 0);
+        const totalFee = entries.reduce((s, e) => s + calcForDisplay(production, e, c).total, 0);
         doc.setTextColor(0); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
         doc.text(c.name, COL.name + 4, y.y);
         doc.setTextColor(100); doc.setFontSize(9);
@@ -681,15 +748,39 @@
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       });
 
-      // Grand total — filled band with rules
+      // Grand total — with optional VAT breakdown if any crew is VAT-registered
+      const anyVAT = ordered.some(({ crew: c }) => c.vatRegistered);
+      const totalVAT = ordered.reduce((s, { crew: c, entries }) => {
+        const sub = entries.reduce((t, e) => t + calcForDisplay(production, e, c).total, 0);
+        return s + crewVAT(c, sub).vatAmount;
+      }, 0);
       y.y += 4;
       drawRule(doc, y.y, 1.2); y.y += 2;
-      drawFilledBand(doc, y.y, 24);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-      doc.text('Grand Total', COL.name + 4, y.y + 17);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-      doc.text(fmtGBP(grandTotal), COL.total, y.y + 17, { align: 'right' });
-      y.y += 24;
+      if (anyVAT) {
+        drawFilledBand(doc, y.y, 20);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
+        doc.text('Grand Total (ex VAT)', COL.name + 4, y.y + 14);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal), COL.total, y.y + 14, { align: 'right' });
+        y.y += 24;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
+        doc.text('VAT', COL.name + 4, y.y);
+        doc.text(fmtGBP(totalVAT), COL.total, y.y, { align: 'right' });
+        y.y += 14;
+        drawFilledBand(doc, y.y, 24);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text('Grand Total (inc VAT)', COL.name + 4, y.y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal + totalVAT), COL.total, y.y + 17, { align: 'right' });
+        y.y += 24;
+      } else {
+        drawFilledBand(doc, y.y, 24);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text('Grand Total', COL.name + 4, y.y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
+        doc.text(fmtGBP(grandTotal), COL.total, y.y + 17, { align: 'right' });
+        y.y += 24;
+      }
       drawRule(doc, y.y, 0.4);
     }
 
@@ -946,7 +1037,7 @@
 
     function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed }) {
       const [editing, setEditing] = useState(null);
-      const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef };
+      const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0 };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
       const dragIdx = useRef(null);
@@ -1022,6 +1113,28 @@
                     <option value={1}>Grade III — 1.0×</option>
                   </Select>
                 </Field>
+                <Field label="VAT Registered">
+                  <Select value={form.vatRegistered ? "yes" : "no"} onChange={(e) => setForm({ ...form, vatRegistered: e.target.value === "yes" })}>
+                    <option value="no">No — not VAT registered</option>
+                    <option value="yes">Yes — VAT registered</option>
+                  </Select>
+                </Field>
+                {form.vatRegistered && (
+                  <Field label="VAT Rate (%)" hint="Usually 20%">
+                    <Input type="number" min="0" max="100" step="1" value={form.vatRate ?? 20} onChange={(e) => setForm({ ...form, vatRate: Number(e.target.value) })} />
+                  </Field>
+                )}
+                <Field label="Kit Money">
+                  <Select value={form.kitMoneyEnabled ? "yes" : "no"} onChange={(e) => setForm({ ...form, kitMoneyEnabled: e.target.value === "yes" })}>
+                    <option value="no">No kit money</option>
+                    <option value="yes">Yes — kit money applies</option>
+                  </Select>
+                </Field>
+                {form.kitMoneyEnabled && (
+                  <Field label="Kit Money Amount (£)" hint="Added to each working day">
+                    <Input type="number" min="0" step="0.01" value={form.kitMoneyAmount ?? 0} onChange={(e) => setForm({ ...form, kitMoneyAmount: Number(e.target.value) })} />
+                  </Field>
+                )}
               </div>
               <div className="flex gap-2 pt-2">
                 <Btn onClick={save} variant="success"><ICheck/>Save</Btn>
@@ -1056,7 +1169,7 @@
                   <div className="text-neutral-600 hidden sm:block"><IGrip/></div>
                   <div className="min-w-0">
                     <div className="font-semibold text-neutral-100 truncate">{c.name}</div>
-                    <div className="text-[11px] text-neutral-400 font-mono truncate">{c.role} · BDR {fmtGBP(c.bdr)} · BHR {fmtGBP(c.bdr / 10)} · OT {c.otCoef}×</div>
+                    <div className="text-[11px] text-neutral-400 font-mono truncate">{c.role} · BDR {fmtGBP(c.bdr)} · BHR {fmtGBP(c.bdr / 10)} · OT {c.otCoef}×{c.vatRegistered ? ` · VAT ${c.vatRate ?? 20}%` : ''}{c.kitMoneyEnabled ? ` · Kit ${fmtGBP(c.kitMoneyAmount ?? 0)}/day` : ''}</div>
                   </div>
                 </div>
                 <div className="flex gap-1 flex-shrink-0">
@@ -1238,6 +1351,55 @@
             </>
           )}
           <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE"><Input type="number" min="0" step="0.1" value={v.miles || 0} onChange={(e) => set({ miles: Number(e.target.value) })} /></Field>
+
+          <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Extras</div>
+          </div>
+          <Field label="Per Diem">
+            <Select value={v.perDiemEnabled ? "yes" : "no"} onChange={(e) => set({ perDiemEnabled: e.target.value === "yes" })}>
+              <option value="no">No per diem</option>
+              <option value="yes">Yes — per diem applies</option>
+            </Select>
+          </Field>
+          {v.perDiemEnabled && (
+            <Field label="Per Diem Amount (£)" hint="Added to day total">
+              <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
+            </Field>
+          )}
+
+          <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-amber-400 font-bold mb-2">Step-Up</div>
+          </div>
+          <Field label="Step-Up for this day">
+            <Select value={v.stepUpEnabled ? "yes" : "no"} onChange={(e) => set({ stepUpEnabled: e.target.value === "yes" })}>
+              <option value="no">No step-up</option>
+              <option value="yes">Stepped-up rate applies</option>
+            </Select>
+          </Field>
+          {v.stepUpEnabled && (
+            <>
+              <Field label="Step-Up Role">
+                <Select value={v.stepUpRole || ""} onChange={(e) => {
+                  const role = e.target.value;
+                  const d = ROLE_DEFAULTS[role] || {};
+                  set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef });
+                }}>
+                  <option value="">— Select Role —</option>
+                  {ROLE_ORDER.map(r => <option key={r} value={r}>{r}</option>)}
+                </Select>
+              </Field>
+              <Field label="Step-Up BDR (£)" hint="Override for this day only">
+                <Input type="number" min="0" step="0.01" value={v.stepUpBDR ?? 0} onChange={(e) => set({ stepUpBDR: Number(e.target.value) })} />
+              </Field>
+              <Field label="Step-Up OT Coef">
+                <Select value={String(v.stepUpOTCoef ?? 1)} onChange={(e) => set({ stepUpOTCoef: Number(e.target.value) })}>
+                  <option value="1">1×</option>
+                  <option value="1.25">1.25×</option>
+                  <option value="1.5">1.5×</option>
+                </Select>
+              </Field>
+            </>
+          )}
         </div>
       );
     }
@@ -1246,11 +1408,11 @@
 
     function LiveCalc({ day, crew, production }) {
       if (!crew) return null;
-      const calc = calculateDay(resolveDay(production, day, crew), crew);
+      const calc = calcForDisplay(production, day, crew);
       return (
         <div className="bg-black border border-sky-400 p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Live Calc — {calc.meta.dayLabel}{calc.meta.continuousDay ? " · CWD" : ""}</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Live Calc — {calc.meta.dayLabel}{calc.meta.continuousDay ? " · CWD" : ""}{day.stepUpEnabled && day.stepUpRole ? ` · Step-up: ${day.stepUpRole}` : ""}</div>
             <div className="text-xs font-mono text-neutral-400">{calc.meta.workedHrs.toFixed(2)}h</div>
           </div>
           {calc.lines.length === 0 ? <div className="text-sm text-neutral-500">Fill in times to see calc.</div> : (
@@ -1576,6 +1738,8 @@
         noMealProvided: false, secondBreakDurationMins: 30,
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
+        perDiemEnabled: false, perDiemAmount: 0,
+        stepUpEnabled: false, stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
       };
     }
 
@@ -1633,11 +1797,11 @@
           onPointerUp={endHold}
           onPointerLeave={endHold}
           onPointerCancel={endHold}
-          className="relative overflow-hidden inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-md"
-          style={{ touchAction: 'none', userSelect: 'none', minWidth: 96 }}
+          className="relative overflow-hidden inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-md"
+          style={{ touchAction: 'none', userSelect: 'none', minWidth: 96, height: 30 }}
           title="Hold 3 seconds to set today's wrap time"
         >
-          <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none" style={{ width: `${pct}%` }} />
+          <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none z-0" style={{ width: `${pct}%` }} />
           <span className="relative z-10">{progress > 0 ? `${pct}%` : 'WrapNow'}</span>
         </button>
       );
@@ -1794,7 +1958,7 @@
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
-              const dayTotal = entries.reduce((s, e) => { const c = crew.find((cc) => cc.id === e.crewId); return c ? s + calculateDay(resolveDay(production, e, c), c).total : s; }, 0);
+              const dayTotal = entries.reduce((s, e) => { const c = crew.find((cc) => cc.id === e.crewId); return c ? s + calcForDisplay(production, e, c).total : s; }, 0);
               return (
                 <div key={date}>
                   <div className="flex items-baseline justify-between mb-2 border-b border-neutral-800 pb-1">
@@ -1810,7 +1974,7 @@
                           <Btn size="sm" variant="ghost" onClick={() => remove(d.id)}><ITrash/></Btn>
                         </div>
                       );
-                      const calc = calculateDay(resolveDay(production, d, c), c);
+                      const calc = calcForDisplay(production, d, c);
                       return (
                         <div key={d.id} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors">
                           <div className="flex items-center justify-between p-3 gap-3 flex-wrap">
@@ -1871,7 +2035,7 @@
         return crew.map((c) => m.get(c.id)).filter(Boolean);
       }, [crew, days]);
 
-      const grandTotal = byCrew.reduce((s, { crew: c, entries }) => s + entries.reduce((t, e) => t + calculateDay(resolveDay(production, e, c), c).total, 0), 0);
+      const grandTotal = byCrew.reduce((s, { crew: c, entries }) => s + entries.reduce((t, e) => t + calcForDisplay(production, e, c).total, 0), 0);
 
       const handleAllPdf = async () => {
         setBusy('all-pdf');
@@ -1946,7 +2110,7 @@
           <div className="space-y-2">
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Per Crew Member</div>
             {byCrew.map(({ crew: c, entries }) => {
-              const total = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).total, 0);
+              const total = entries.reduce((s, e) => s + calcForDisplay(production, e, c).total, 0);
               const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
               return (
                 <div key={c.id} className="bg-neutral-900 border border-neutral-800 p-3">
@@ -2025,7 +2189,7 @@ const setDays = (updater) =>
         setResetMode(false);
       };
 
-      const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calculateDay(resolveDay(production, d, c), c).total : s; }, 0);
+      const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c).total : s; }, 0);
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
@@ -2087,8 +2251,15 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onExport, onImport }) {
+    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onExport, onImport, onUpdateDays }) {
       const importRef = useRef(null);
+      const [toastMsg, setToastMsg] = useState(null);
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const showWrapNow = (p) => {
+        if (p.startDate && p.endDate && p.startDate <= todayStr && todayStr <= p.endDate) return true;
+        return (p.days ?? []).some(d => d.date === todayStr);
+      };
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -2180,6 +2351,13 @@ const setDays = (updater) =>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {showWrapNow(p) && (
+                        <WrapNowBtn
+                          days={p.days ?? []}
+                          setDays={(updater) => onUpdateDays(p.id, updater)}
+                          showToast={showToast}
+                        />
+                      )}
                       <Btn variant="ghost" size="sm" onClick={() => onDelete(p.id)} title="Delete production"><ITrash/></Btn>
                       <Btn variant="primary" onClick={() => onOpen(p.id)}>Open →</Btn>
                     </div>
@@ -2188,6 +2366,7 @@ const setDays = (updater) =>
               </div>
             ))}
           </div>
+          <Toast show={!!toastMsg}>{toastMsg}</Toast>
         </div>
       );
     }
@@ -2255,10 +2434,18 @@ const setDays = (updater) =>
         setProductions(parsed);
       };
 
+      const handleUpdateDays = (id, updater) => {
+        setProductions(prev => prev.map(p =>
+          p.id === id
+            ? { ...p, days: typeof updater === 'function' ? updater(p.days ?? []) : updater }
+            : p
+        ));
+      };
+
       const currentProduction = productions.find((p) => p.id === openId);
 
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onExport={handleExport} onImport={handleImport} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onExport={handleExport} onImport={handleImport} onUpdateDays={handleUpdateDays} />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
     }
