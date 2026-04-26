@@ -1579,6 +1579,70 @@
       };
     }
 
+    function WrapNowBtn({ days, setDays, showToast }) {
+      const HOLD_MS = 3000;
+      const [progress, setProgress] = useState(0);
+      const intervalRef = useRef(null);
+      const startRef = useRef(null);
+      const firedRef = useRef(false);
+
+      const fire = () => {
+        firedRef.current = true;
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayEntries = days.filter(d => d.date === todayStr);
+        if (todayEntries.length === 0) {
+          showToast("No work days found for today");
+          setTimeout(() => { setProgress(0); firedRef.current = false; }, 400);
+          return;
+        }
+        const now = new Date();
+        const totalMins = now.getHours() * 60 + now.getMinutes();
+        const rounded = Math.round(totalMins / 5) * 5;
+        const h = Math.floor(rounded / 60) % 24;
+        const m = rounded % 60;
+        const wrapStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr } : d));
+        showToast(`Wrapped ${todayEntries.length} entr${todayEntries.length === 1 ? 'y' : 'ies'} at ${wrapStr}`);
+        setTimeout(() => { setProgress(0); firedRef.current = false; }, 600);
+      };
+
+      const startHold = (e) => {
+        e.preventDefault();
+        if (firedRef.current) return;
+        startRef.current = Date.now();
+        intervalRef.current = setInterval(() => {
+          if (firedRef.current) { clearInterval(intervalRef.current); return; }
+          const p = Math.min((Date.now() - startRef.current) / HOLD_MS, 1);
+          setProgress(p);
+          if (p >= 1) { clearInterval(intervalRef.current); fire(); }
+        }, 50);
+      };
+
+      const endHold = () => {
+        clearInterval(intervalRef.current);
+        if (!firedRef.current) {
+          if (progress > 0.05) showToast("Hold to set today's wrap time");
+          setProgress(0);
+        }
+      };
+
+      const pct = Math.round(progress * 100);
+      return (
+        <button
+          onPointerDown={startHold}
+          onPointerUp={endHold}
+          onPointerLeave={endHold}
+          onPointerCancel={endHold}
+          className="relative overflow-hidden inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-md"
+          style={{ touchAction: 'none', userSelect: 'none', minWidth: 96 }}
+          title="Hold 3 seconds to set today's wrap time"
+        >
+          <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none" style={{ width: `${pct}%` }} />
+          <span className="relative z-10">{progress > 0 ? `${pct}%` : 'WrapNow'}</span>
+        </button>
+      );
+    }
+
     function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddCrew }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
@@ -1691,6 +1755,7 @@
                 <button onClick={() => setGridView(false)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold transition-colors ${!gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>List</button>
                 <button onClick={() => setGridView(true)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border-l border-neutral-700 transition-colors ${gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>Grid</button>
               </div>
+              {crew.length > 0 && <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />}
               {!editing && crew.length > 0 && (
                 <>
                   <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>
