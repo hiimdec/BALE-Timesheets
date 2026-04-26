@@ -1633,11 +1633,11 @@
           onPointerUp={endHold}
           onPointerLeave={endHold}
           onPointerCancel={endHold}
-          className="relative overflow-hidden inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-md"
-          style={{ touchAction: 'none', userSelect: 'none', minWidth: 96 }}
+          className="relative overflow-hidden inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-md"
+          style={{ touchAction: 'none', userSelect: 'none', minWidth: 96, height: 30 }}
           title="Hold 3 seconds to set today's wrap time"
         >
-          <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none" style={{ width: `${pct}%` }} />
+          <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none z-0" style={{ width: `${pct}%` }} />
           <span className="relative z-10">{progress > 0 ? `${pct}%` : 'WrapNow'}</span>
         </button>
       );
