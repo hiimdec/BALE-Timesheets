@@ -2087,8 +2087,15 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onExport, onImport }) {
+    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onExport, onImport, onUpdateDays }) {
       const importRef = useRef(null);
+      const [toastMsg, setToastMsg] = useState(null);
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const showWrapNow = (p) => {
+        if (p.startDate && p.endDate && p.startDate <= todayStr && todayStr <= p.endDate) return true;
+        return (p.days ?? []).some(d => d.date === todayStr);
+      };
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -2180,6 +2187,13 @@ const setDays = (updater) =>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {showWrapNow(p) && (
+                        <WrapNowBtn
+                          days={p.days ?? []}
+                          setDays={(updater) => onUpdateDays(p.id, updater)}
+                          showToast={showToast}
+                        />
+                      )}
                       <Btn variant="ghost" size="sm" onClick={() => onDelete(p.id)} title="Delete production"><ITrash/></Btn>
                       <Btn variant="primary" onClick={() => onOpen(p.id)}>Open →</Btn>
                     </div>
@@ -2188,6 +2202,7 @@ const setDays = (updater) =>
               </div>
             ))}
           </div>
+          <Toast show={!!toastMsg}>{toastMsg}</Toast>
         </div>
       );
     }
@@ -2255,10 +2270,18 @@ const setDays = (updater) =>
         setProductions(parsed);
       };
 
+      const handleUpdateDays = (id, updater) => {
+        setProductions(prev => prev.map(p =>
+          p.id === id
+            ? { ...p, days: typeof updater === 'function' ? updater(p.days ?? []) : updater }
+            : p
+        ));
+      };
+
       const currentProduction = productions.find((p) => p.id === openId);
 
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onExport={handleExport} onImport={handleImport} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onExport={handleExport} onImport={handleImport} onUpdateDays={handleUpdateDays} />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
     }
