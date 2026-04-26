@@ -562,7 +562,7 @@
         const calc = calculateDay(resolveDay(production, d, crewMember), crewMember);
         grandTotal += calc.total;
 
-        ensureSpace(doc, y, 26 + calc.lines.length * 14 + 26, onNewPage);
+        ensureSpace(doc, y, 26 + calc.lines.length * 14 + 34, onNewPage);
 
         // Day section header — date as anchor, type/label right-aligned
         const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : ''].filter(Boolean).join('  ·  ');
@@ -592,14 +592,14 @@
         });
 
         // Day total — filled band
-        ensureSpace(doc, y, 24, onNewPage);
+        ensureSpace(doc, y, 34, onNewPage);
         y.y += 2;
         drawFilledBand(doc, y.y, 18);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
         doc.text('Day total', COL.label + 4, y.y + 13);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
         doc.text(fmtGBP(calc.total), COL.amount, y.y + 13, { align: 'right' });
-        y.y += 24;
+        y.y += 34;
       });
 
       // Grand total — filled band with rules
