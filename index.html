@@ -1345,6 +1345,8 @@
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
+      const [openPill, setOpenPill] = useState(null);
+      const togglePill = (name) => setOpenPill(prev => prev === name ? null : name);
 
       const onDayTypeChange = (dayType) => {
         const callH = parseHHMM(v.callTime);
@@ -1370,6 +1372,21 @@
       const dayLabel = v.date ? weekday(v.date) : "";
       const isWeekend = dow === 0 || dow === 6;
       const isTravelDay = v.dayType === "Travel Day";
+
+      const show2ndBreakPill = !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
+      const sbPillIsRed = bs?.sbState === "missed" || bs?.sbState === "late";
+
+      const pillBase = "text-[10px] uppercase tracking-[0.12em] font-semibold px-3 py-1 rounded-full border transition-colors";
+      const pillSkyClose  = `${pillBase} border-neutral-600 text-neutral-500 hover:border-neutral-500 hover:text-neutral-400`;
+      const pillSkyOpen   = `${pillBase} border-sky-500 text-sky-300 bg-sky-900/25`;
+      const pillAmberClose = `${pillBase} border-amber-600 text-amber-400 hover:border-amber-500`;
+      const pillRedClose  = `${pillBase} border-red-600 text-red-400 hover:border-red-500`;
+      const pillAmberOpen = `${pillBase} border-amber-500 text-amber-300 bg-amber-900/25`;
+      const pillRedOpen   = `${pillBase} border-red-500 text-red-300 bg-red-900/25`;
+
+      const sb2Class = openPill === "2ndbreak"
+        ? (sbPillIsRed ? pillRedOpen : pillAmberOpen)
+        : (sbPillIsRed ? pillRedClose : pillAmberClose);
 
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1461,92 +1478,110 @@
                   )}
                 </>
               )}
-
-              {bs && !bs.continuousDay && (
-                <>
-                  <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">2nd Break</div>
-                    {!bs.secondBreakRequired && bs.sbDeadline && <StatusMsg kind="info">Not required — day ends before deadline ({toHHMM(bs.sbDeadline)}, 5.5h after lunch end).</StatusMsg>}
-                  </div>
-
-                  {bs.secondBreakRequired && (
-                    <>
-                      <Field label="2nd Break Start" hint={`Deadline: ${toHHMM(bs.sbDeadline)} (5.5h after lunch end)`}>
-                        <TimeInput value={v.secondBreakStartTime || ""} onChange={(e) => set({ secondBreakStartTime: e.target.value })} disabled={Number(v.secondBreakDurationMins) === 0} />
-                      </Field>
-                      <Field label="2nd Break Duration">
-                        <Select value={Number(v.secondBreakDurationMins ?? 30)} onChange={(e) => set({ secondBreakDurationMins: Number(e.target.value) })}>
-                          {SECOND_BREAK_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                        </Select>
-                      </Field>
-                      <div className="md:col-span-2">
-                        {bs.sbState === "missed" && <StatusMsg kind="bad">Missed — 30m × BHR penalty applied.</StatusMsg>}
-                        {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed — treated as missed. 30m × BHR penalty.</StatusMsg>}
-                        {bs.sbState === "curtailed" && <StatusMsg kind="warn">Curtailed by {30 - bs.sbDuration}m. {30 - bs.sbDuration}m × BHR penalty.</StatusMsg>}
-                        {bs.sbState === "given" && <StatusMsg kind="ok">Given on time.</StatusMsg>}
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-
-              <>
-                <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Travel & Mileage</div>
-                </div>
-                <Field label="Travel Out (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
-                <Field label="Travel Back (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
-              </>
             </>
           )}
-          <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE"><Input type="number" min="0" step="0.1" value={v.miles || 0} onChange={(e) => set({ miles: Number(e.target.value) })} /></Field>
 
-          <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Extras</div>
+          {/* ── Section pills ── */}
+          <div className="md:col-span-2 flex flex-wrap gap-2 pt-3 mt-1 border-t border-neutral-800">
+            <button type="button" onClick={() => togglePill("travel")} className={openPill === "travel" ? pillSkyOpen : pillSkyClose}>
+              Travel &amp; Mileage
+            </button>
+            <button type="button" onClick={() => togglePill("perdiem")} className={openPill === "perdiem" ? pillSkyOpen : pillSkyClose}>
+              Per Diem
+            </button>
+            <button type="button" onClick={() => togglePill("stepup")} className={openPill === "stepup" ? pillSkyOpen : pillSkyClose}>
+              Step-Up
+            </button>
+            {show2ndBreakPill && (
+              <button type="button" onClick={() => togglePill("2ndbreak")} className={sb2Class}>
+                2nd Break
+              </button>
+            )}
           </div>
-          <Field label="Per Diem">
-            <Select value={v.perDiemEnabled ? "yes" : "no"} onChange={(e) => set({ perDiemEnabled: e.target.value === "yes" })}>
-              <option value="no">No per diem</option>
-              <option value="yes">Yes — per diem applies</option>
-            </Select>
-          </Field>
-          {v.perDiemEnabled && (
-            <Field label="Per Diem Amount (£)" hint="Added to day total">
-              <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
-            </Field>
+
+          {/* ── Travel & Mileage panel ── */}
+          {openPill === "travel" && (
+            <>
+              {!isTravelDay && (
+                <>
+                  <Field label="Travel Out (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
+                  <Field label="Travel Back (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
+                </>
+              )}
+              <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE"><Input type="number" min="0" step="0.1" value={v.miles || 0} onChange={(e) => set({ miles: Number(e.target.value) })} /></Field>
+            </>
           )}
 
-          <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-amber-400 font-bold mb-2">Step-Up</div>
-          </div>
-          <Field label="Step-Up for this day">
-            <Select value={v.stepUpEnabled ? "yes" : "no"} onChange={(e) => set({ stepUpEnabled: e.target.value === "yes" })}>
-              <option value="no">No step-up</option>
-              <option value="yes">Stepped-up rate applies</option>
-            </Select>
-          </Field>
-          {v.stepUpEnabled && (
+          {/* ── Per Diem panel ── */}
+          {openPill === "perdiem" && (
             <>
-              <Field label="Step-Up Role">
-                <Select value={v.stepUpRole || ""} onChange={(e) => {
-                  const role = e.target.value;
-                  const d = ROLE_DEFAULTS[role] || {};
-                  set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef });
-                }}>
-                  <option value="">— Select Role —</option>
-                  {ROLE_ORDER.map(r => <option key={r} value={r}>{r}</option>)}
+              <Field label="Per Diem">
+                <Select value={v.perDiemEnabled ? "yes" : "no"} onChange={(e) => set({ perDiemEnabled: e.target.value === "yes" })}>
+                  <option value="no">No per diem</option>
+                  <option value="yes">Yes — per diem applies</option>
                 </Select>
               </Field>
-              <Field label="Step-Up BDR (£)" hint="Override for this day only">
-                <Input type="number" min="0" step="0.01" value={v.stepUpBDR ?? 0} onChange={(e) => set({ stepUpBDR: Number(e.target.value) })} />
-              </Field>
-              <Field label="Step-Up OT Coef">
-                <Select value={String(v.stepUpOTCoef ?? 1)} onChange={(e) => set({ stepUpOTCoef: Number(e.target.value) })}>
-                  <option value="1">1×</option>
-                  <option value="1.25">1.25×</option>
-                  <option value="1.5">1.5×</option>
+              {v.perDiemEnabled && (
+                <Field label="Per Diem Amount (£)" hint="Added to day total">
+                  <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
+                </Field>
+              )}
+            </>
+          )}
+
+          {/* ── Step-Up panel ── */}
+          {openPill === "stepup" && (
+            <>
+              <Field label="Step-Up for this day">
+                <Select value={v.stepUpEnabled ? "yes" : "no"} onChange={(e) => set({ stepUpEnabled: e.target.value === "yes" })}>
+                  <option value="no">No step-up</option>
+                  <option value="yes">Stepped-up rate applies</option>
                 </Select>
               </Field>
+              {v.stepUpEnabled && (
+                <>
+                  <Field label="Step-Up Role">
+                    <Select value={v.stepUpRole || ""} onChange={(e) => {
+                      const role = e.target.value;
+                      const d = ROLE_DEFAULTS[role] || {};
+                      set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef });
+                    }}>
+                      <option value="">— Select Role —</option>
+                      {ROLE_ORDER.map(r => <option key={r} value={r}>{r}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Step-Up BDR (£)" hint="Override for this day only">
+                    <Input type="number" min="0" step="0.01" value={v.stepUpBDR ?? 0} onChange={(e) => set({ stepUpBDR: Number(e.target.value) })} />
+                  </Field>
+                  <Field label="Step-Up OT Coef">
+                    <Select value={String(v.stepUpOTCoef ?? 1)} onChange={(e) => set({ stepUpOTCoef: Number(e.target.value) })}>
+                      <option value="1">1×</option>
+                      <option value="1.25">1.25×</option>
+                      <option value="1.5">1.5×</option>
+                    </Select>
+                  </Field>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── 2nd Break panel ── */}
+          {show2ndBreakPill && openPill === "2ndbreak" && (
+            <>
+              <Field label="2nd Break Start" hint={`Deadline: ${toHHMM(bs.sbDeadline)} (5.5h after lunch end)`}>
+                <TimeInput value={v.secondBreakStartTime || ""} onChange={(e) => set({ secondBreakStartTime: e.target.value })} disabled={Number(v.secondBreakDurationMins) === 0} />
+              </Field>
+              <Field label="2nd Break Duration">
+                <Select value={Number(v.secondBreakDurationMins ?? 30)} onChange={(e) => set({ secondBreakDurationMins: Number(e.target.value) })}>
+                  {SECOND_BREAK_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                </Select>
+              </Field>
+              <div className="md:col-span-2">
+                {bs.sbState === "missed" && <StatusMsg kind="bad">Missed — 30m × BHR penalty applied.</StatusMsg>}
+                {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed — treated as missed. 30m × BHR penalty.</StatusMsg>}
+                {bs.sbState === "curtailed" && <StatusMsg kind="warn">Curtailed by {30 - bs.sbDuration}m. {30 - bs.sbDuration}m × BHR penalty.</StatusMsg>}
+                {bs.sbState === "given" && <StatusMsg kind="ok">Given on time.</StatusMsg>}
+              </div>
             </>
           )}
         </div>
