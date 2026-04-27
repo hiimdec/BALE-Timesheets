@@ -208,7 +208,7 @@
       return { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...dayOverride, ...day };
     }
 
-    function calculateDay(day, crew) {
+    function calculateDay(day, crew, weekendOpts = {}) {
       const bdr = Number(crew.bdr) || 0;
       const bhr = bdr / 10;
       const otCoef = Number(crew.otCoef) || 1;
@@ -229,6 +229,13 @@
       const isEarly = !isNightShoot && callH >= 5 && callH < 7;
       const isLate  = !isNightShoot && callH >= 11 && callH < 17;
       const callWrapLabel = `${day.callTime} – ${day.wrapTime}${wrapNextDay ? " (+1)" : ""}`;
+
+      const satMode = weekendOpts.satRateMode ?? "apa";
+      const sunMode = weekendOpts.sunRateMode ?? "apa";
+      const satMult = satMode === "custom" ? (Number(weekendOpts.satRateCustom) || 1.5) : 1.5;
+      const sunMult = sunMode === "custom" ? (Number(weekendOpts.sunRateCustom) || 2.0) : 2.0;
+      const treatAsSat = isSaturday && satMode !== "weekday";
+      const treatAsSun = isSunday && sunMode !== "weekday";
 
       if (day.dayType === "Travel Day") {
         const paidHrs = Math.max(workedHrs, 5);
@@ -258,32 +265,32 @@
           rate: bhr * 2, qty: paidHrs, amount: paidHrs * bhr * 2,
         });
         if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
-      } else if (isSaturday) {
+      } else if (treatAsSat) {
         if (day.dayType === "Shoot") {
-          lines.push({ label: "Saturday Day (1.5× BDR)", detail: callWrapLabel, rate: bdr * 1.5, qty: 1, amount: bdr * 1.5 });
+          lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel, rate: bdr * satMult, qty: 1, amount: bdr * satMult });
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
-          if (otHrs > 0) lines.push({ label: "Saturday OT (1.5× BHR)", detail: "After basic", rate: bhr * 1.5, qty: otHrs, amount: otHrs * bhr * 1.5 });
+          if (otHrs > 0) lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: bhr * satMult, qty: otHrs, amount: otHrs * bhr * satMult });
         } else {
           const baseHrs = Math.max(Math.min(workedHrs, basicHrs), 8);
           const satMinApplied = baseHrs > workedHrs;
-          lines.push({ label: `Saturday ${day.dayType} (1.5× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * 1.5, qty: baseHrs, amount: baseHrs * bhr * 1.5 });
+          lines.push({ label: `Saturday ${day.dayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * satMult, qty: baseHrs, amount: baseHrs * bhr * satMult });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
-          if (otHrs > 0) lines.push({ label: "Saturday OT (1.5× BHR)", detail: "After basic", rate: bhr * 1.5, qty: otHrs, amount: otHrs * bhr * 1.5 });
+          if (otHrs > 0) lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: bhr * satMult, qty: otHrs, amount: otHrs * bhr * satMult });
         }
-      } else if (isSunday) {
+      } else if (treatAsSun) {
         if (day.dayType === "Shoot") {
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
           lines.push({
-            label: "Sunday Shoot (2× BHR, flat)",
+            label: `Sunday Shoot (${sunMult}× BHR, flat)`,
             detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
-            rate: bhr * 2, qty: paidHrs, amount: paidHrs * bhr * 2,
+            rate: bhr * sunMult, qty: paidHrs, amount: paidHrs * bhr * sunMult,
           });
           if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
         } else {
           const sunPaidHrs = Math.max(workedHrs, 8);
           const sunMinApplied = sunPaidHrs > workedHrs;
-          lines.push({ label: `Sunday ${day.dayType} (2× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * 2, qty: sunPaidHrs, amount: sunPaidHrs * bhr * 2 });
+          lines.push({ label: `Sunday ${day.dayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * sunMult, qty: sunPaidHrs, amount: sunPaidHrs * bhr * sunMult });
         }
       } else {
         if (day.dayType === "Shoot") {
@@ -366,7 +373,7 @@
           workedHrs, otHrs: otHrsForMeta, bhr, otRate,
           notes, secondBreakRequired, continuousDay,
           dayLabel: isNightShoot ? (isNightPre5 ? "Night Shoot (pre-5am)" : "Night Shoot (post-5pm)")
-                  : isSaturday ? "Saturday" : isSunday ? "Sunday"
+                  : treatAsSat ? "Saturday" : treatAsSun ? "Sunday"
                   : isEarly ? "Early Call" : isLate ? "Late Call" : "Standard",
         },
         lines, total,
@@ -532,7 +539,7 @@
     function calcForDisplay(production, day, crewMember, prevDay = null) {
       const resolved = resolveDay(production, day, crewMember);
       const effectiveCrew = resolveCrewForDay(resolved, crewMember);
-      let calc = augmentCalc(calculateDay(resolved, effectiveCrew), resolved, crewMember);
+      let calc = augmentCalc(calculateDay(resolved, effectiveCrew, production), resolved, crewMember);
       if (prevDay) {
         const prevResolved = resolveDay(production, prevDay, crewMember);
         const toc = calcTOC(prevResolved, resolved, effectiveCrew);
@@ -806,8 +813,8 @@
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       ordered.forEach(({ crew: c, entries }) => {
         ensureSpace(doc, y, 20);
-        const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
-        const otHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.otHrs, 0);
+        const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.workedHrs, 0);
+        const otHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.otHrs, 0);
         const sortedEnt = [...entries].sort((a, b) => a.date.localeCompare(b.date));
         const totalFee = sortedEnt.reduce((s, e, i) => s + calcForDisplay(production, e, c, sortedEnt[i - 1] || null).total, 0);
         doc.setTextColor(0); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
@@ -975,7 +982,7 @@
               return;
             }
             const resolved = resolveDay(production, cellDay, member);
-            const { meta, lines } = calculateDay(resolved, member);
+            const { meta, lines } = calculateDay(resolved, member, production);
             const hrs = gridDisplayHours(resolved);
             const hrsLabel = Number.isInteger(hrs) ? `${hrs}h` : `${hrs.toFixed(1)}h`;
             const ct = resolved.callTime || '-';
@@ -1135,6 +1142,37 @@
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Start Date"><Input type="date" value={production.startDate || ""} onChange={set("startDate")} /></Field>
               <Field label="End Date"><Input type="date" value={production.endDate || ""} onChange={set("endDate")} /></Field>
+            </div>
+          </div>
+          <div className="bg-neutral-900 border-l-4 border-neutral-700 p-4 space-y-3 rounded-r-md">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Weekend Rate Override</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="Saturday Rate">
+                <Select value={production.satRateMode || "apa"} onChange={set("satRateMode")}>
+                  <option value="apa">APA standard — 1.5×</option>
+                  <option value="custom">Custom multiplier</option>
+                  <option value="weekday">Weekday rate — no uplift</option>
+                </Select>
+              </Field>
+              {(production.satRateMode || "apa") === "custom" && (
+                <Field label="Saturday Multiplier" hint="e.g. 1.25 or 2">
+                  <Input type="number" min="0" step="0.01" value={production.satRateCustom ?? 1.5}
+                    onChange={(e) => setProduction({ ...production, satRateCustom: Number(e.target.value) })} />
+                </Field>
+              )}
+              <Field label="Sunday Rate">
+                <Select value={production.sunRateMode || "apa"} onChange={set("sunRateMode")}>
+                  <option value="apa">APA standard — 2×</option>
+                  <option value="custom">Custom multiplier</option>
+                  <option value="weekday">Weekday rate — no uplift</option>
+                </Select>
+              </Field>
+              {(production.sunRateMode || "apa") === "custom" && (
+                <Field label="Sunday Multiplier" hint="e.g. 1.5 or 2.5">
+                  <Input type="number" min="0" step="0.01" value={production.sunRateCustom ?? 2}
+                    onChange={(e) => setProduction({ ...production, sunRateCustom: Number(e.target.value) })} />
+                </Field>
+              )}
             </div>
           </div>
           <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Start/End date fills the Timesheet Grid. Saved automatically.</div>
@@ -1573,7 +1611,7 @@
       }
 
       const resolved = resolveDay(production, day, member);
-      const { meta, lines } = calculateDay(resolved, member);
+      const { meta, lines } = calculateDay(resolved, member, production);
 
       const hasOT    = meta.otHrs > 0;
       const hasCWD   = meta.continuousDay;
@@ -2232,7 +2270,7 @@
             {byCrew.map(({ crew: c, entries }) => {
               const sortedBC = [...entries].sort((a, b) => a.date.localeCompare(b.date));
               const total = sortedBC.reduce((s, e, i) => s + calcForDisplay(production, e, c, sortedBC[i - 1] || null).total, 0);
-              const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
+              const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.workedHrs, 0);
               return (
                 <div key={c.id} className="bg-neutral-900 border border-neutral-800 p-3">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
