@@ -476,6 +476,19 @@
     }
 
     const TOC_EXEMPT_ROLES = ["PM", "PA", "Runner"];
+    const roundRate = (n) => Math.ceil(n);
+    const PREMIUM_RATE_RE = /\bot\b|early call|night shoot|saturday|sunday|triple|time off the clock/i;
+    function applyRateRounding(calc) {
+      const lines = calc.lines.map(l => {
+        if (l.rate == null || !PREMIUM_RATE_RE.test(l.label)) return l;
+        const rate = roundRate(l.rate);
+        const amount = typeof l.qty === 'number' ? rate * l.qty : l.amount;
+        return { ...l, rate, amount };
+      });
+      const total = lines.reduce((s, l) => s + l.amount, 0);
+      return { ...calc, lines, total };
+    }
+
 
     function restHoursBetween(prevDay, currDay) {
       const prevCallH = parseHHMM(prevDay.callTime);
@@ -524,7 +537,7 @@
           calc = { ...calc, lines: [...calc.lines, tocLine], total: calc.total + toc.amount };
         }
       }
-      return calc;
+      return applyRateRounding(calc);
     }
 
     function generateCrewText(crewMember, entries, production) {
