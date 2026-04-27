@@ -475,10 +475,57 @@
       };
     }
 
-    function calcForDisplay(production, day, crewMember) {
+    const TOC_EXEMPT_ROLES = ["PM", "PA", "Runner"];
+
+    function restHoursBetween(prevDay, currDay) {
+      const prevCallH = parseHHMM(prevDay.callTime);
+      const prevWrapH = parseHHMM(prevDay.wrapTime);
+      const currCallH = parseHHMM(currDay.callTime);
+      if (prevCallH === null || prevWrapH === null || currCallH === null) return null;
+      const wrapNextDay = prevDay.wrapNextDay || prevWrapH <= prevCallH;
+      const prevWrapAbs = wrapNextDay ? prevWrapH + 24 : prevWrapH;
+      const daysDiff = Math.round(
+        (new Date(currDay.date + "T12:00:00") - new Date(prevDay.date + "T12:00:00"))
+        / (24 * 60 * 60 * 1000)
+      );
+      return daysDiff * 24 + currCallH - prevWrapAbs;
+    }
+
+    function findPrevDay(allDays, currDay) {
+      return allDays
+        .filter(d => d.crewId === currDay.crewId && d.date < currDay.date)
+        .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+    }
+
+    function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew) {
+      if (TOC_EXEMPT_ROLES.some(r => r.toLowerCase() === (effectiveCrew.role || "").trim().toLowerCase())) return null;
+      const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
+      if (rest === null || rest >= 11) return null;
+      const otRate = (Number(effectiveCrew.bdr) || 0) / 10 * (Number(effectiveCrew.otCoef) || 1);
+      return { restHours: rest, isBreach: rest < 10, amount: otRate };
+    }
+
+    function calcForDisplay(production, day, crewMember, prevDay = null) {
       const resolved = resolveDay(production, day, crewMember);
       const effectiveCrew = resolveCrewForDay(resolved, crewMember);
-      return augmentCalc(calculateDay(resolved, effectiveCrew), resolved, crewMember);
+      let calc = augmentCalc(calculateDay(resolved, effectiveCrew), resolved, crewMember);
+      if (prevDay) {
+        const prevResolved = resolveDay(production, prevDay, crewMember);
+        const toc = calcTOC(prevResolved, resolved, effectiveCrew);
+        if (toc) {
+          const isBreach = toc.isBreach;
+          const tocLine = {
+            label: isBreach ? "Time Off The Clock (BREACH)" : "Time Off The Clock",
+            detail: isBreach
+              ? `BREACH: ${toc.restHours.toFixed(1)}h rest (min 10h)`
+              : `${toc.restHours.toFixed(1)}h rest (min 11h)`,
+            rate: null, qty: 1, amount: toc.amount,
+            isTOC: true, isBreach,
+          };
+          calc = { ...calc, lines: [...calc.lines, tocLine], total: calc.total + toc.amount };
+        }
+      }
+      return calc;
     }
 
     function generateCrewText(crewMember, entries, production) {
@@ -489,14 +536,16 @@
       lines.push('');
       const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
       let grandTotal = 0;
+      let prevEntry = null;
       sorted.forEach((d) => {
-        const calc = calcForDisplay(production, d, crewMember);
+        const calc = calcForDisplay(production, d, crewMember, prevEntry);
         grandTotal += calc.total;
         const stepUpNote = d.stepUpEnabled && d.stepUpRole ? ` — Stepped up: ${d.stepUpRole}` : '';
         lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
         calc.lines.forEach((l) => lines.push(formatLineText(l)));
         lines.push(`Day total: ${fmtGBP(calc.total)}`);
         lines.push('');
+        prevEntry = d;
       });
       lines.push(`TOTAL: ${fmtGBP(grandTotal)}`);
       return lines.join('\n');
@@ -509,8 +558,9 @@
       return { vatAmount, totalIncVAT: subtotal + vatAmount };
     }
 
-    function generateDayText(day, crewMember, production) {
-      const calc = calcForDisplay(production, day, crewMember);
+    function generateDayText(day, crewMember, production, allDays = null) {
+      const prevDay = allDays ? findPrevDay(allDays, day) : null;
+      const calc = calcForDisplay(production, day, crewMember, prevDay);
       const lines = [];
       lines.push(`${crewMember.name} — ${crewMember.role}`);
       const stepUpNote = day.stepUpEnabled && day.stepUpRole ? ` — Stepped up: ${day.stepUpRole}` : '';
@@ -600,9 +650,10 @@
       const COL = { label: PDF.margin, detail: PDF.margin + 170, rate: 395, qty: 455, amount: PDF.pageW - PDF.margin };
       const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
       let grandTotal = 0;
+      let prevPdfEntry = null;
 
       sorted.forEach((d) => {
-        const calc = calcForDisplay(production, d, crewMember);
+        const calc = calcForDisplay(production, d, crewMember, prevPdfEntry);
         grandTotal += calc.total;
 
         ensureSpace(doc, y, 26 + calc.lines.length * 14 + 34, onNewPage);
@@ -620,10 +671,12 @@
         // Line items
         calc.lines.forEach((l) => {
           ensureSpace(doc, y, 14, onNewPage);
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(0);
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+          doc.setTextColor(l.isTOC ? (l.isBreach ? 180 : 150) : 0, l.isTOC ? (l.isBreach ? 50 : 100) : 0, 0);
           doc.text(l.label, COL.label, y.y);
           if (l.detail) {
-            doc.setFontSize(8); doc.setTextColor(120);
+            doc.setFontSize(8);
+            doc.setTextColor(l.isBreach ? 180 : 120, l.isBreach ? 50 : 120, l.isBreach ? 50 : 120);
             doc.text(l.detail.slice(0, 40), COL.detail, y.y);
           }
           doc.setTextColor(0);
@@ -644,6 +697,7 @@
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
         doc.text(fmtGBP(calc.total), COL.amount, y.y + 13, { align: 'right' });
         y.y += 34;
+        prevPdfEntry = d;
       });
 
       // Grand total — with optional VAT breakdown
@@ -694,8 +748,10 @@
       });
       const ordered = crew.map((c) => map.get(c.id)).filter(Boolean);
 
-      const grandTotal = ordered.reduce((s, { crew: c, entries }) =>
-        s + entries.reduce((t, e) => t + calcForDisplay(production, e, c).total, 0), 0);
+      const grandTotal = ordered.reduce((s, { crew: c, entries }) => {
+        const sortedE = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+        return s + sortedE.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedE[i - 1] || null).total, 0);
+      }, 0);
 
       let dateRange = '';
       if (days.length > 0) {
@@ -723,14 +779,15 @@
       doc.text('HOURS',  COL.hours,      y.y + 15, { align: 'right' });
       doc.text('OT HRS', COL.ot,         y.y + 15, { align: 'right' });
       doc.text('TOTAL',  COL.total,      y.y + 15, { align: 'right' });
-      y.y += 26;
+      y.y += 34;
 
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       ordered.forEach(({ crew: c, entries }) => {
         ensureSpace(doc, y, 20);
         const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
         const otHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.otHrs, 0);
-        const totalFee = entries.reduce((s, e) => s + calcForDisplay(production, e, c).total, 0);
+        const sortedEnt = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+        const totalFee = sortedEnt.reduce((s, e, i) => s + calcForDisplay(production, e, c, sortedEnt[i - 1] || null).total, 0);
         doc.setTextColor(0); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
         doc.text(c.name, COL.name + 4, y.y);
         doc.setTextColor(100); doc.setFontSize(9);
@@ -751,7 +808,8 @@
       // Grand total — with optional VAT breakdown if any crew is VAT-registered
       const anyVAT = ordered.some(({ crew: c }) => c.vatRegistered);
       const totalVAT = ordered.reduce((s, { crew: c, entries }) => {
-        const sub = entries.reduce((t, e) => t + calcForDisplay(production, e, c).total, 0);
+        const sortedV = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+        const sub = sortedV.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedV[i - 1] || null).total, 0);
         return s + crewVAT(c, sub).vatAmount;
       }, 0);
       y.y += 4;
@@ -1406,9 +1464,9 @@
 
     /* ═══════════════════════════ LIVE CALC ═══════════════════════════ */
 
-    function LiveCalc({ day, crew, production }) {
+    function LiveCalc({ day, crew, production, prevDay = null }) {
       if (!crew) return null;
-      const calc = calcForDisplay(production, day, crew);
+      const calc = calcForDisplay(production, day, crew, prevDay);
       return (
         <div className="bg-black border border-sky-400 p-3 space-y-2">
           <div className="flex items-center justify-between">
@@ -1421,8 +1479,8 @@
                 <tbody>
                   {calc.lines.map((l, i) => (
                     <tr key={i} className="border-b border-neutral-800 last:border-0">
-                      <td className="py-1 text-neutral-300">{l.label}</td>
-                      <td className="py-1 text-neutral-500 text-[10px]">{l.detail}</td>
+                      <td className={`py-1 ${l.isTOC ? (l.isBreach ? 'text-red-400' : 'text-amber-400') : 'text-neutral-300'}`}>{l.label}</td>
+                      <td className={`py-1 text-[10px] ${l.isTOC ? (l.isBreach ? 'text-red-600' : 'text-amber-600') : 'text-neutral-500'}`}>{l.detail}</td>
                       <td className="py-1 text-right text-neutral-400 text-[11px]">{l.rate != null ? fmtGBP(l.rate) : ""}</td>
                       <td className="py-1 text-right text-neutral-400 w-10 text-[11px]">{typeof l.qty === "number" ? (Number.isInteger(l.qty) ? l.qty : l.qty.toFixed(2)) : l.qty}</td>
                       <td className="py-1 text-right text-neutral-100 font-bold w-20">{fmtGBP(l.amount)}</td>
@@ -1449,7 +1507,7 @@
       return bs.workedHrs - (bs.lunchMissed ? 0 : bs.lunchDuration / 60);
     }
 
-    function GridCell({ day, date, production, member, assignMode, onEditDay, onAddDay, onRemoveDay, onMarkRemove, pendingRemove, isWeekEnd, isWeekend }) {
+    function GridCell({ day, date, production, member, assignMode, onEditDay, onAddDay, onRemoveDay, onMarkRemove, pendingRemove, isWeekEnd, isWeekend, hasTOC = false, isTOCBreach = false }) {
       const borderR = isWeekEnd ? "border-r border-neutral-500" : "border-r border-neutral-800";
       const bgBase  = isWeekend ? "bg-neutral-900/30" : "";
 
@@ -1477,7 +1535,7 @@
       const hasCWD   = meta.continuousDay;
       const hasLate1 = lines.some(l => l.label === "Late 1st Break");
       const hasMSB   = lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label));
-      const anyPenalty = hasOT || hasCWD || hasLate1 || hasMSB;
+      const anyPenalty = hasOT || hasCWD || hasLate1 || hasMSB || hasTOC;
 
       const ct = resolved.callTime || "—";
       const wt = resolved.wrapTime || "—";
@@ -1518,6 +1576,7 @@
               {hasCWD   && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">CWD</span>}
               {hasLate1 && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">L1</span>}
               {hasMSB   && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">MSB</span>}
+              {hasTOC   && <span className={`text-[8px] px-1 font-bold uppercase leading-tight py-px rounded-sm ${isTOCBreach ? 'bg-red-900 text-red-200' : 'bg-amber-900 text-amber-200'}`}>{isTOCBreach ? 'TOC!' : 'TOC'}</span>}
             </div>
           )}
         </td>
@@ -1554,6 +1613,21 @@
 
       const allDates = useMemo(() => getAllDates(production, days),
         [days, production.gridDates, production.startDate, production.endDate]);
+
+      const tocMap = useMemo(() => {
+        const map = {};
+        for (const member of crew) {
+          const memberDays = days.filter(d => d.crewId === member.id)
+            .sort((a, b) => a.date.localeCompare(b.date));
+          for (let i = 1; i < memberDays.length; i++) {
+            const prevR = resolveDay(production, memberDays[i - 1], member);
+            const currR = resolveDay(production, memberDays[i], member);
+            const toc = calcTOC(prevR, currR, member);
+            if (toc) map[memberDays[i].id] = { hasTOC: true, isTOCBreach: toc.isBreach };
+          }
+        }
+        return map;
+      }, [days, crew, production]);
 
       const handleAddDate = () => {
         const latest = allDates[allDates.length - 1];
@@ -1698,6 +1772,8 @@
                               pendingRemove={pendingRemove}
                               isWeekEnd={isWeekEnd}
                               isWeekend={isSat || isSun}
+                              hasTOC={!!(index[date]?.[member.id] && tocMap[index[date][member.id].id]?.hasTOC)}
+                              isTOCBreach={!!(index[date]?.[member.id] && tocMap[index[date][member.id].id]?.isTOCBreach)}
                             />
                           );
                         })}
@@ -1893,7 +1969,7 @@
       const duplicate = (d) => setDays((prev) => [...prev, { ...d, id: uid() }]);
 
       const handleDayText = async (d, c) => {
-        const text = generateDayText(d, c, production);
+        const text = generateDayText(d, c, production, days);
         const r = await shareTextOrCopy(text, `${c.name} ${fmtDateShort(d.date)}`);
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
       };
@@ -1937,7 +2013,7 @@
                 {editing === "new" ? "New Day Entry" : editing === "new-all" ? "New Day — All Crew" : "Edit Day Entry"}
               </div>
               <DayEntryForm value={form} onChange={setForm} crew={crew} allCrewMode={editing === "new-all"} />
-              {editing !== "new-all" && <LiveCalc day={form} crew={crew.find((c) => c.id === form.crewId)} production={production} />}
+              {editing !== "new-all" && <LiveCalc day={form} crew={crew.find((c) => c.id === form.crewId)} production={production} prevDay={findPrevDay(days, form)} />}
               {editing === "new-all" && <div className="bg-black border border-sky-400 p-3 text-xs text-neutral-300"><span className="text-sky-400 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member</div>}
               <div className="flex gap-2 pt-2">
                 <Btn onClick={save} variant="success"><ICheck/>Save</Btn>
@@ -1958,7 +2034,7 @@
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
-              const dayTotal = entries.reduce((s, e) => { const c = crew.find((cc) => cc.id === e.crewId); return c ? s + calcForDisplay(production, e, c).total : s; }, 0);
+              const dayTotal = entries.reduce((s, e) => { const c = crew.find((cc) => cc.id === e.crewId); return c ? s + calcForDisplay(production, e, c, findPrevDay(days, e)).total : s; }, 0);
               return (
                 <div key={date}>
                   <div className="flex items-baseline justify-between mb-2 border-b border-neutral-800 pb-1">
@@ -1974,7 +2050,7 @@
                           <Btn size="sm" variant="ghost" onClick={() => remove(d.id)}><ITrash/></Btn>
                         </div>
                       );
-                      const calc = calcForDisplay(production, d, c);
+                      const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
                       return (
                         <div key={d.id} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors">
                           <div className="flex items-center justify-between p-3 gap-3 flex-wrap">
@@ -2035,7 +2111,10 @@
         return crew.map((c) => m.get(c.id)).filter(Boolean);
       }, [crew, days]);
 
-      const grandTotal = byCrew.reduce((s, { crew: c, entries }) => s + entries.reduce((t, e) => t + calcForDisplay(production, e, c).total, 0), 0);
+      const grandTotal = byCrew.reduce((s, { crew: c, entries }) => {
+        const sortedG = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+        return s + sortedG.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedG[i - 1] || null).total, 0);
+      }, 0);
 
       const handleAllPdf = async () => {
         setBusy('all-pdf');
@@ -2110,7 +2189,8 @@
           <div className="space-y-2">
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Per Crew Member</div>
             {byCrew.map(({ crew: c, entries }) => {
-              const total = entries.reduce((s, e) => s + calcForDisplay(production, e, c).total, 0);
+              const sortedBC = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+              const total = sortedBC.reduce((s, e, i) => s + calcForDisplay(production, e, c, sortedBC[i - 1] || null).total, 0);
               const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c).meta.workedHrs, 0);
               return (
                 <div key={c.id} className="bg-neutral-900 border border-neutral-800 p-3">
@@ -2189,7 +2269,7 @@ const setDays = (updater) =>
         setResetMode(false);
       };
 
-      const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c).total : s; }, 0);
+      const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c, findPrevDay(days, d)).total : s; }, 0);
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
