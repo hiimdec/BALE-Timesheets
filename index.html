@@ -1794,6 +1794,176 @@ ${GRID_CSS}
 </html>`;
     }
 
+    function generateGridHTML(production, allDays, allCrew) {
+      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      const today = new Date();
+      const docDate = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+      const prodCode = (production?.title || 'PROD').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'PROD';
+      const docId = `REF · ${prodCode} / GRID · ${docDate}`;
+
+      const dateSet = new Set([
+        ...((production?.gridDates) || []),
+        ...((allDays || []).map(d => d?.date).filter(Boolean)),
+      ]);
+      const allDates = [...dateSet].sort();
+
+      const fmtDate = (iso) => {
+        const d = new Date(iso + 'T12:00:00');
+        return {
+          dow: d.toLocaleDateString('en-GB', { weekday: 'short' }),
+          date: String(d.getDate()),
+          month: d.toLocaleDateString('en-GB', { month: 'short' }),
+          dayNum: d.getDay(),
+          long: `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`,
+        };
+      };
+
+      const fmtHrs = (h) => {
+        if (!Number.isFinite(h) || h <= 0) return '0h';
+        return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
+      };
+
+      const renderCell = (crewMember, date) => {
+        const day = (allDays || []).find(d => d.crewId === crewMember.id && d.date === date);
+        const dInfo = fmtDate(date);
+        const isSat = dInfo.dayNum === 6;
+        const isSun = dInfo.dayNum === 0;
+        const tdCls = isSat ? ' class="sat"' : isSun ? ' class="sun"' : '';
+
+        if (!day) {
+          return `<td${tdCls}><div class="cell rest"><span class="rest-dot"></span>Rest</div></td>`;
+        }
+
+        const resolved = resolveDay(production, day, crewMember);
+        const { meta, lines } = calculateDay(resolved, crewMember, production);
+
+        const hasOT  = (meta.otHrs || 0) > 0;
+        const hasCWD = !!meta.continuousDay;
+        const hasMSB = lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label || ''));
+        const hasTOC = lines.some(l => l.isTOC);
+        const isTOCBreach = lines.some(l => l.isTOC && l.isBreach);
+
+        const cellClasses = ['cell'];
+        if (hasOT) cellClasses.push('has-ot');
+        if (isTOCBreach) cellClasses.push('has-breach');
+
+        const chips = [];
+        if (hasOT)  chips.push('<span class="chip ot">OT</span>');
+        if (hasMSB) chips.push('<span class="chip msb">MSB</span>');
+        if (hasTOC) chips.push('<span class="chip toc">TOC</span>');
+        if (hasCWD) chips.push('<span class="chip cwd">CWD</span>');
+
+        const ct = resolved.callTime || '—';
+        const wt = resolved.wrapTime || '—';
+        const hrs = gridDisplayHours(resolved);
+
+        return `<td${tdCls}><div class="${cellClasses.join(' ')}"><div class="times">${esc(ct)}–${esc(wt)}</div><div class="hours">${esc(fmtHrs(hrs))}</div>${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div></td>`;
+      };
+
+      const PER_PAGE = 7;
+      const pageDateChunks = [];
+      if (allDates.length === 0) {
+        pageDateChunks.push([]);
+      } else {
+        for (let i = 0; i < allDates.length; i += PER_PAGE) {
+          pageDateChunks.push(allDates.slice(i, i + PER_PAGE));
+        }
+      }
+      const pageCount = pageDateChunks.length;
+      const crewCount = (allCrew || []).length;
+
+      const renderPage = (chunkDates, idx) => {
+        const colsHTML = `<col class="crew-col" />` + chunkDates.map(() => `<col class="day-col" />`).join('');
+
+        const headerCells = chunkDates.map(date => {
+          const di = fmtDate(date);
+          const cls = di.dayNum === 6 ? ' class="sat"' : di.dayNum === 0 ? ' class="sun"' : '';
+          return `<th${cls}><span class="dow">${esc(di.dow)}</span><span class="date">${esc(di.date)}</span><span class="month">${esc(di.month)}</span></th>`;
+        }).join('');
+
+        const bodyRows = (allCrew || []).map(c => {
+          const cells = chunkDates.map(date => renderCell(c, date)).join('');
+          return `<tr><td class="crew-cell"><span class="name">${esc(c.name || '')}</span><span class="role">${esc(c.role || '')}</span></td>${cells}</tr>`;
+        }).join('');
+
+        const periodLabel = chunkDates.length
+          ? `${fmtDate(chunkDates[0]).long} → ${fmtDate(chunkDates[chunkDates.length - 1]).long} ${new Date(chunkDates[0] + 'T12:00:00').getFullYear()}`
+          : '—';
+        const subLabel = pageCount > 1
+          ? `Grid Overview <span class="muted">— Page ${idx + 1} of ${pageCount} · ${esc(periodLabel)}</span>`
+          : `Grid Overview <span class="muted">— ${esc(periodLabel)}</span>`;
+        const footerCenter = pageCount > 1
+          ? (idx + 1 < pageCount ? `Page ${idx + 1} of ${pageCount} — continues` : 'END OF GRID OVERVIEW')
+          : 'END OF GRID OVERVIEW';
+
+        return `<div class="page">
+  <header class="doc-header">
+    <div>
+      <h1 class="doc-title">${esc(production?.title || '')}</h1>
+      <p class="doc-sub">${subLabel}</p>
+    </div>
+    <div class="right">
+      <div class="markmark">${esc(production?.title || '')}</div>
+      <div class="doc-id">${esc(docId)}</div>
+      <div class="label-tag">Crew · <b>${crewCount}</b> &nbsp;·&nbsp; Days · <b>${chunkDates.length}</b></div>
+    </div>
+  </header>
+
+  <table class="grid">
+    <colgroup>${colsHTML}</colgroup>
+    <thead>
+      <tr>
+        <th class="crew-h">Crew</th>
+        ${headerCells}
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+    </tbody>
+  </table>
+
+  <div class="legend">
+    <span class="item"><span class="chip ot">OT</span>Overtime</span>
+    <span class="item"><span class="chip msb">MSB</span>Missed/Late Break</span>
+    <span class="item"><span class="chip toc">TOC</span>Time Off Clock — breach</span>
+    <span class="item"><span class="chip cwd">CWD</span>Continuous Working Day</span>
+    <span class="sep"></span>
+    <span class="item"><span class="swatch sat"></span>Saturday</span>
+    <span class="item"><span class="swatch sun"></span>Sunday</span>
+  </div>
+
+  <div class="doc-footer">
+    <div>${esc(prodCode)} / GRID · Page ${idx + 1} of ${pageCount}</div>
+    <div class="center">${footerCenter}</div>
+    <div class="right">Generated ${esc(docDate)}</div>
+  </div>
+</div>`;
+      };
+
+      const pagesHTML = pageDateChunks.map((chunk, i) => renderPage(chunk, i)).join('\n\n');
+
+      return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Grid Overview · ${esc(production?.title || '')}</title>
+<style>
+${GRID_CSS}
+.page {
+  display: block;
+  page-break-inside: avoid;
+}
+</style>
+</head>
+<body>
+
+${pagesHTML}
+
+</body>
+</html>`;
+    }
+
     const PDF = {
       margin: 48, pageW: 595, pageH: 842,
       get contentW() { return this.pageW - 2 * this.margin; },
