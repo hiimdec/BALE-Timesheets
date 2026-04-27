@@ -220,6 +220,11 @@
         return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
       }
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
+      const truckCallH = crew.isDriver && day.truckCallTime ? parseHHMM(day.truckCallTime) : null;
+      const preUnitHrs = (truckCallH !== null && truckCallH < callH) ? callH - truckCallH : 0;
+      if (preUnitHrs > 0) {
+        lines.push({ label: "Truck call (pre-unit)", detail: `${day.truckCallTime} – ${day.callTime}`, rate: bhr, qty: preUnitHrs, amount: preUnitHrs * bhr });
+      }
       const dow = dayOfWeek(day.date);
       const isSunday = dow === 0;
       const isSaturday = dow === 6;
@@ -354,7 +359,7 @@
       const travelBackRaw = Math.max(0, (Number(day.travelBackMins) || 0) - 60) / 60;
       const travelHrs = travelOutRaw + travelBackRaw;
       if (travelHrs > 0) {
-        const travelGap = Math.max(0, basicHrs - workedHrs);
+        const travelGap = Math.max(0, basicHrs - (workedHrs + preUnitHrs));
         const chargeableTravel = Math.max(0, travelHrs - travelGap);
         if (chargeableTravel > 0) {
           lines.push({ label: "Travel Time", detail: "1hr each way deducted", rate: bhr, qty: chargeableTravel, amount: chargeableTravel * bhr });
@@ -1184,7 +1189,7 @@
 
     function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed }) {
       const [editing, setEditing] = useState(null);
-      const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0 };
+      const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
       const dragIdx = useRef(null);
@@ -1282,6 +1287,12 @@
                     <Input type="number" min="0" step="0.01" value={form.kitMoneyAmount ?? 0} onChange={(e) => setForm({ ...form, kitMoneyAmount: Number(e.target.value) })} />
                   </Field>
                 )}
+                <Field label="Driver (truck call)" hint="Shows truck call time field on day entries">
+                  <Select value={form.isDriver ? "yes" : "no"} onChange={(e) => setForm({ ...form, isDriver: e.target.value === "yes" })}>
+                    <option value="no">No</option>
+                    <option value="yes">Yes — truck call applies</option>
+                  </Select>
+                </Field>
               </div>
               <div className="flex gap-2 pt-2">
                 <Btn onClick={save} variant="success"><ICheck/>Save</Btn>
@@ -1316,7 +1327,7 @@
                   <div className="text-neutral-600 hidden sm:block"><IGrip/></div>
                   <div className="min-w-0">
                     <div className="font-semibold text-neutral-100 truncate">{c.name}</div>
-                    <div className="text-[11px] text-neutral-400 font-mono truncate">{c.role} · BDR {fmtGBP(c.bdr)} · BHR {fmtGBP(c.bdr / 10)} · OT {c.otCoef}×{c.vatRegistered ? ` · VAT ${c.vatRate ?? 20}%` : ''}{c.kitMoneyEnabled ? ` · Kit ${fmtGBP(c.kitMoneyAmount ?? 0)}/day` : ''}</div>
+                    <div className="text-[11px] text-neutral-400 font-mono truncate">{c.role} · BDR {fmtGBP(c.bdr)} · BHR {fmtGBP(c.bdr / 10)} · OT {c.otCoef}×{c.vatRegistered ? ` · VAT ${c.vatRate ?? 20}%` : ''}{c.kitMoneyEnabled ? ` · Kit ${fmtGBP(c.kitMoneyAmount ?? 0)}/day` : ''}{c.isDriver ? ' · Driver' : ''}</div>
                   </div>
                 </div>
                 <div className="flex gap-1 flex-shrink-0">
@@ -1372,6 +1383,8 @@
       const dayLabel = v.date ? weekday(v.date) : "";
       const isWeekend = dow === 0 || dow === 6;
       const isTravelDay = v.dayType === "Travel Day";
+      const activeCrew = fixedCrewId ? crew.find(c => c.id === fixedCrewId) : crew.find(c => c.id === v.crewId);
+      const isDriverDay = activeCrew?.isDriver === true && !isTravelDay;
 
       const show2ndBreakPill = !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
       const sbPillIsRed = bs?.sbState === "missed" || bs?.sbState === "late";
@@ -1414,6 +1427,11 @@
           </Field>
           {!fixedCrewId && !fixedDate && <div className="hidden md:block" />}
 
+          {isDriverDay && (
+            <Field label="Truck Call Time" hint="Pre-unit start — billed at BHR · break deadlines &amp; OT still from call time">
+              <TimeInput value={v.truckCallTime || ""} onChange={(e) => set({ truckCallTime: e.target.value })} />
+            </Field>
+          )}
           <Field label="Call Time" hint={callH !== null && callH < 5 ? "→ Night shoot (pre-5am)" : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)" : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call" : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)" : ""}>
             <TimeInput value={v.callTime} onChange={(e) => onCallChange(e.target.value)} />
           </Field>
@@ -1994,6 +2012,7 @@
       return {
         id: uid(), crewId, date: todayISO(),
         wrapNextDay: false,
+        truckCallTime: "",
         noMealProvided: false, secondBreakDurationMins: 30,
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
