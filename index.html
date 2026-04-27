@@ -2287,11 +2287,15 @@ const setDays = (updater) =>
     const next = typeof updater === "function" ? updater(prev.days ?? []) : updater;
     return { ...prev, days: next.map(migrateDay) };
   });
-      const [tab, setTab] = useState("setup");
+      const [tab, setTab] = useState(production.isNew ? "setup" : "days");
       const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
       const [openCrewForm, setOpenCrewForm] = useState(false);
+
+      useEffect(() => {
+        if (production.isNew) setProduction(p => ({ ...p, isNew: false }));
+      }, []);
 
       const handleGridAddDate = (date) => setProduction(p => ({ ...p, gridDates: [...(p.gridDates || []), date] }));
       const handleGridAddWeek = (monday) => setProduction(p => ({ ...p, weekStarts: [...(p.weekStarts || []), monday] }));
@@ -2527,7 +2531,7 @@ const setDays = (updater) =>
         if (openId === id) setOpenId(null);
       };
       const createProduction = () => {
-        const p = { id: uid(), title: "Untitled Production", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY };
+        const p = { id: uid(), title: "Untitled Production", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY, isNew: true };
         setProductions((prev) => [...prev, p]);
         setOpenId(p.id);
       };
