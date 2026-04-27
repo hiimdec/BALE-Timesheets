@@ -1610,7 +1610,7 @@
 
     function DayEditModal({ editing, form, setForm, crew, production, days, onSave, onCancel, onRemove, fixedCrewId = null, fixedDate = null }) {
       const isNewAll = editing === "new-all";
-      const isNew    = editing === "new" && !fixedCrewId;
+      const isNew    = editing === "new";
       const isKnown  = !isNew && !isNewAll;
 
       const activeCrew = !isNewAll ? crew.find(c => c.id === (fixedCrewId || form.crewId)) : null;
@@ -2165,9 +2165,12 @@
       };
       const handleEditDayFromGrid = (id) => { const d = days.find(day => day.id === id); if (d) startEdit(d); };
       const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => {
-        const newDay = { ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType) };
-        setDays(prev => [...prev, newDay]);
-        startEdit(newDay);
+        const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
+        const callH = parseHHMM(d.callTime) ?? 8;
+        setForm({ ...d, ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11) });
+        setEditing("new");
+        setFixedCrewId(crewId);
+        setFixedDate(date);
       };
       const handleBulkEditDate = (date, overrides) => {
         const { dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins } = overrides;
