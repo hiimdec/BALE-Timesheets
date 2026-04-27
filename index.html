@@ -19,7 +19,6 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
@@ -83,7 +82,6 @@
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
-    const { jsPDF } = window.jspdf || {};
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
@@ -661,6 +659,8 @@
     font-size: 10.5pt;
     line-height: 1.45;
     position: relative;
+    display: block;
+    page-break-inside: avoid;
   }
   .page + .page { margin-top: 24px; }
 
@@ -1064,6 +1064,339 @@
   }
 `;
 
+    const GRID_CSS = `
+  :root {
+    --paper: #FAF8F4;
+    --paper-band: #F2EEE6;
+    --paper-band-soft: #F6F3EC;
+    --ink: #15171A;
+    --ink-2: #2B2E33;
+    --muted: #6B7079;
+    --muted-2: #9A9EA6;
+    --rule: #1A1C20;
+    --rule-soft: #D9D4C7;
+    --rule-hair: #E8E3D6;
+
+    --accent: #0E7C8F;
+    --accent-soft: #DFEDF0;
+    --amber: #B7791F;
+    --amber-soft: #FAEFD7;
+    --amber-tint: #FBF4E3;
+    --red: #B42318;
+    --red-soft: #FCE4E1;
+    --red-tint: #F9ECE9;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: #E8E4DA;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    padding: 48px 24px;
+  }
+
+  /* A4 LANDSCAPE */
+  .page {
+    width: 297mm;
+    min-height: 210mm;
+    margin: 0 auto;
+    background: var(--paper);
+    padding: 18mm 18mm 14mm;
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06);
+    color: var(--ink);
+    font-size: 10.5pt;
+    line-height: 1.45;
+    position: relative;
+  }
+  .page + .page { margin-top: 24px; }
+
+  /* HEADER */
+  .doc-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1.25pt solid var(--rule);
+  }
+  .doc-title {
+    font-size: 26pt;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    margin: 0;
+    color: var(--ink);
+  }
+  .doc-sub {
+    margin: 6px 0 0;
+    font-size: 11pt;
+    color: var(--ink-2);
+  }
+  .doc-sub .muted { color: var(--muted); }
+
+  .right { text-align: right; }
+  .markmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 8.5pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .markmark::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .doc-id {
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8pt;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .label-tag {
+    margin-top: 8px;
+    display: inline-block;
+    font-size: 8.5pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .label-tag b { color: var(--ink-2); font-weight: 500; letter-spacing: 0.08em; }
+
+  /* GRID TABLE */
+  .grid {
+    width: 100%;
+    margin-top: 14px;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  .grid col.crew-col { width: 150px; }
+  .grid col.day-col  { width: auto; }
+
+  /* ─ header row ─ */
+  .grid thead th {
+    background: transparent;
+    text-align: center;
+    padding: 10px 6px 12px;
+    font-weight: 500;
+    vertical-align: bottom;
+    border-bottom: 0.75pt solid var(--ink);
+  }
+  .grid thead th.crew-h {
+    text-align: left;
+    padding-left: 12px;
+    font-size: 8.5pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .grid thead .dow {
+    display: block;
+    font-size: 8.5pt;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 3px;
+    font-weight: 500;
+  }
+  .grid thead .date {
+    display: block;
+    font-size: 13pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    line-height: 1;
+  }
+  .grid thead .month {
+    display: block;
+    font-size: 8pt;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+
+  /* weekend column header tints */
+  .grid thead th.sat .dow,
+  .grid thead th.sat .month { color: var(--amber); }
+  .grid thead th.sun .dow,
+  .grid thead th.sun .month { color: var(--red); }
+  .grid thead th.sat { background: var(--amber-tint); }
+  .grid thead th.sun { background: var(--red-tint); }
+
+  /* ─ crew rows ─ */
+  .grid tbody td {
+    padding: 0;
+    vertical-align: middle;
+    border-bottom: 0.4pt solid var(--rule-hair);
+    height: 76px;
+  }
+  .grid tbody td.crew-cell {
+    padding: 12px 12px 12px 12px;
+    background: var(--paper-band-soft);
+    border-right: 0.4pt solid var(--rule-hair);
+    border-bottom: 0.4pt solid var(--rule-hair);
+    vertical-align: middle;
+  }
+  .grid tbody td.crew-cell .name {
+    display: block;
+    font-size: 13pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    line-height: 1.1;
+  }
+  .grid tbody td.crew-cell .role {
+    display: block;
+    margin-top: 3px;
+    font-size: 8.5pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* weekend column body tints */
+  .grid tbody td.sat { background: var(--amber-tint); }
+  .grid tbody td.sun { background: var(--red-tint); }
+
+  /* day cell content */
+  .cell {
+    padding: 10px 8px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+  }
+  .cell .times {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8.5pt;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .cell .hours {
+    font-size: 14pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    line-height: 1;
+  }
+  .cell .chips {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+
+  .chip {
+    display: inline-block;
+    font-size: 7pt;
+    line-height: 1;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 5px 2.5px;
+    border-radius: 3px;
+    font-weight: 700;
+    border: 0.5pt solid transparent;
+  }
+  .chip.ot   { background: var(--amber-soft); color: var(--amber); border-color: #E8C988; }
+  .chip.msb  { background: var(--red-soft);   color: var(--red);   border-color: #E8B5AE; }
+  .chip.toc  { background: var(--red);        color: var(--paper); border-color: var(--red); }
+  .chip.cwd  { background: var(--amber-soft); color: var(--amber); border-color: #E8C988; }
+
+  .cell.rest {
+    color: var(--muted-2);
+    font-size: 9.5pt;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .cell.rest .rest-dot {
+    display: inline-block;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--muted-2);
+    margin-right: 6px;
+    transform: translateY(-2px);
+  }
+
+  /* highlight: special day variants for hours */
+  .cell.has-ot .hours { color: var(--ink); }
+  .cell.has-breach .hours { color: var(--red); }
+
+  /* ─── LEGEND ─── */
+  .legend {
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 0.4pt solid var(--rule-hair);
+    display: flex;
+    gap: 22px;
+    align-items: center;
+    font-size: 8.5pt;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    flex-wrap: wrap;
+  }
+  .legend .item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend .item .chip {
+    transform: translateY(-0.5px);
+  }
+  .legend .swatch {
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    border: 0.5pt solid var(--rule-hair);
+    display: inline-block;
+  }
+  .legend .swatch.sat { background: var(--amber-tint); border-color: #E8C988; }
+  .legend .swatch.sun { background: var(--red-tint);   border-color: #E8B5AE; }
+  .legend .sep {
+    width: 1px; height: 12px; background: var(--rule-hair);
+    display: inline-block;
+  }
+
+  /* FOOTER */
+  .doc-footer {
+    margin-top: 16px;
+    padding-top: 10px;
+    border-top: 0.4pt solid var(--rule-hair);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 16px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 7.5pt;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .doc-footer .center { text-align: center; }
+  .doc-footer .right { text-align: right; }
+
+  @media print {
+    body { background: white; padding: 0; }
+    .page { box-shadow: none; margin: 0; }
+    @page { size: A4 landscape; margin: 0; }
+  }
+`;
+
     function generateCrewHTML(crew, days, production) {
       const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       const bdr = Number(crew?.bdr) || 0;
@@ -1286,6 +1619,7 @@ ${daySectionsHTML}
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: 'avoid-all' },
       };
 
       try {
@@ -1296,279 +1630,336 @@ ${daySectionsHTML}
       }
     }
 
-    const PDF = {
-      margin: 48, pageW: 595, pageH: 842,
-      get contentW() { return this.pageW - 2 * this.margin; },
-    };
+    function generateSummaryHTML(production, allCrew, allDays) {
+      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-    function drawRule(doc, y, thick = 0.5) {
-      doc.setLineWidth(thick); doc.setDrawColor(0);
-      doc.line(PDF.margin, y, PDF.pageW - PDF.margin, y);
-    }
+      const today = new Date();
+      const docDate = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+      const prodCode = (production?.title || 'PROD').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'PROD';
+      const docId = `REF · ${prodCode} / SUM · ${docDate}`;
 
-    function drawFilledBand(doc, y, h) {
-      doc.setFillColor(242, 242, 242);
-      doc.rect(PDF.margin, y, PDF.contentW, h, 'F');
-    }
-
-    function addRunningHeader(doc, sectionLabel, production) {
-      const pageNum = doc.internal.getCurrentPageInfo().pageNumber;
-      const title = production.title || '';
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(130);
-      if (title) {
-        const t = title.length > 52 ? title.slice(0, 51) + '…' : title;
-        doc.text(t, PDF.margin, PDF.margin - 8);
-      }
-      doc.text(`${sectionLabel}  ·  p.${pageNum}`, PDF.pageW - PDF.margin, PDF.margin - 8, { align: 'right' });
-      doc.setDrawColor(180); doc.setLineWidth(0.4);
-      doc.line(PDF.margin, PDF.margin - 4, PDF.pageW - PDF.margin, PDF.margin - 4);
-      doc.setDrawColor(0); doc.setTextColor(0);
-    }
-
-    function ensureSpace(doc, yRef, needed, onNewPage) {
-      if (yRef.y + needed > PDF.pageH - PDF.margin) {
-        doc.addPage(); yRef.y = PDF.margin + 12;
-        if (onNewPage) onNewPage(doc);
-      }
-    }
-
-    function addCrewSheetToDoc(doc, crewMember, entries, production, isFirstPage = false, weekOpts = null) {
-      if (!isFirstPage) doc.addPage();
-      const sectionLabel = crewMember.name + ' — Timesheet';
-      addRunningHeader(doc, sectionLabel, production);
-      const onNewPage = (d) => addRunningHeader(d, sectionLabel, production);
-      const y = { y: PDF.margin + 12 };
-
-      // Name + production title on same baseline
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(0);
-      doc.text(crewMember.name, PDF.margin, y.y);
-      if (production.title) {
-        const t = production.title.length > 40 ? production.title.slice(0, 39) + '…' : production.title;
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(40);
-        doc.text(t, PDF.pageW - PDF.margin, y.y, { align: 'right' });
-      }
-      y.y += 14;
-
-      // Role/rates + prodCo on same baseline
-      const rateStr = `${crewMember.role}  ·  BDR ${fmtGBP(crewMember.bdr)}  ·  BHR ${fmtGBP(crewMember.bdr/10)}  ·  OT ${crewMember.otCoef}×`;
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90);
-      doc.text(rateStr.length > 68 ? rateStr.slice(0, 67) + '…' : rateStr, PDF.margin, y.y);
-      if (production.prodCo) {
-        const pc = production.prodCo.length > 35 ? production.prodCo.slice(0, 34) + '…' : production.prodCo;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
-        doc.text(pc, PDF.pageW - PDF.margin, y.y, { align: 'right' });
-      }
-      y.y += 10;
-      drawRule(doc, y.y, 0.8); y.y += 18;
-      if (weekOpts) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(80, 80, 200);
-        doc.text(`Week ${weekOpts.weekNum} of ${weekOpts.totalWeeks}  ·  ${weekOpts.label}`, PDF.margin, y.y);
-        y.y += 16;
-      }
-
-      const COL = { label: PDF.margin, detail: PDF.margin + 170, rate: 395, qty: 455, amount: PDF.pageW - PDF.margin };
-      const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-      let grandTotal = 0;
-      let prevPdfEntry = null;
-
-      sorted.forEach((d) => {
-        const calc = calcForDisplay(production, d, crewMember, prevPdfEntry);
-        grandTotal += calc.total;
-
-        ensureSpace(doc, y, 26 + calc.lines.length * 14 + 34, onNewPage);
-
-        // Day section header — date as anchor, type/label right-aligned
-        const stepUpLabel = d.stepUpEnabled && d.stepUpRole ? `Step-up: ${d.stepUpRole}` : '';
-        const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : '', stepUpLabel].filter(Boolean).join('  ·  ');
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0);
-        doc.text(fmtDate(d.date), PDF.margin, y.y);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100);
-        doc.text(rightLabel, PDF.pageW - PDF.margin, y.y, { align: 'right' });
-        y.y += 5;
-        drawRule(doc, y.y, 0.3); y.y += 13;
-
-        // Line items
-        calc.lines.forEach((l) => {
-          ensureSpace(doc, y, 14, onNewPage);
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-          doc.setTextColor(l.isTOC ? (l.isBreach ? 180 : 150) : 0, l.isTOC ? (l.isBreach ? 50 : 100) : 0, 0);
-          doc.text(l.label, COL.label, y.y);
-          if (l.detail) {
-            doc.setFontSize(8);
-            doc.setTextColor(l.isBreach ? 180 : 120, l.isBreach ? 50 : 120, l.isBreach ? 50 : 120);
-            doc.text(l.detail.slice(0, 40), COL.detail, y.y);
-          }
-          doc.setTextColor(0);
-          if (l.rate != null) { doc.setFontSize(9); doc.text(fmtGBP(l.rate), COL.rate, y.y, { align: 'right' }); }
-          const qtyStr = typeof l.qty === 'number' ? (Number.isInteger(l.qty) ? String(l.qty) : l.qty.toFixed(2)) : String(l.qty);
-          doc.setFontSize(9); doc.text(qtyStr, COL.qty, y.y, { align: 'right' });
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-          doc.text(fmtGBP(l.amount), COL.amount, y.y, { align: 'right' });
-          y.y += 14;
+      const crewStats = (allCrew || []).map(c => {
+        const entries = (allDays || [])
+          .filter(d => d.crewId === c.id)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        let totalHrs = 0, totalOTHrs = 0, totalAmt = 0;
+        entries.forEach((e, i) => {
+          const resolved = resolveDay(production, e, c);
+          const calc = calculateDay(resolved, c, production);
+          totalHrs += Number(calc.meta.workedHrs) || 0;
+          totalOTHrs += Number(calc.meta.otHrs) || 0;
+          totalAmt += Number(calcForDisplay(production, e, c, entries[i - 1] || null).total) || 0;
         });
+        return { crew: c, days: entries.length, totalHrs, totalOTHrs, totalAmt };
+      }).filter(s => s.days > 0);
 
-        // Day total — filled band
-        ensureSpace(doc, y, 34, onNewPage);
-        y.y += 2;
-        drawFilledBand(doc, y.y, 18);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
-        doc.text('Day total', COL.label + 4, y.y + 13);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
-        doc.text(fmtGBP(calc.total), COL.amount, y.y + 13, { align: 'right' });
-        y.y += 34;
-        prevPdfEntry = d;
-      });
+      const grandDays  = crewStats.reduce((s, r) => s + r.days, 0);
+      const grandHrs   = crewStats.reduce((s, r) => s + r.totalHrs, 0);
+      const grandOTHrs = crewStats.reduce((s, r) => s + r.totalOTHrs, 0);
+      const grandAmt   = crewStats.reduce((s, r) => s + r.totalAmt, 0);
+      const crewCount  = crewStats.length;
 
-      // Grand total — with optional VAT breakdown
-      const { vatAmount, totalIncVAT } = crewVAT(crewMember, grandTotal);
-      const vatNeeded = crewMember.vatRegistered ? 60 : 46;
-      ensureSpace(doc, y, vatNeeded, onNewPage);
-      y.y += 4;
-      drawRule(doc, y.y, 1.2); y.y += 2;
-      if (crewMember.vatRegistered) {
-        const vatRate = Number(crewMember.vatRate) || 20;
-        drawFilledBand(doc, y.y, 20);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
-        doc.text('Subtotal', PDF.margin + 4, y.y + 14);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 14, { align: 'right' });
-        y.y += 24;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
-        doc.text(`VAT (${vatRate}%)`, PDF.margin + 4, y.y);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-        doc.text(fmtGBP(vatAmount), PDF.pageW - PDF.margin, y.y, { align: 'right' });
-        y.y += 14;
-        drawFilledBand(doc, y.y, 24);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text('Total inc. VAT', PDF.margin + 4, y.y + 17);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-        doc.text(fmtGBP(totalIncVAT), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
-        y.y += 24;
-      } else {
-        drawFilledBand(doc, y.y, 24);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text(weekOpts ? 'Weekly Total' : 'Total', PDF.margin + 4, y.y + 17);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
-        y.y += 24;
-      }
-      drawRule(doc, y.y, 0.4);
+      const rowsHTML = crewStats.map(s => `
+      <tr class="s-row">
+        <td class="s-name">${esc(s.crew.name)}</td>
+        <td class="s-role">${esc(s.crew.role || '')}</td>
+        <td class="s-num">${s.days}</td>
+        <td class="s-num">${s.totalHrs.toFixed(1)}</td>
+        <td class="s-num">${s.totalOTHrs.toFixed(1)}</td>
+        <td class="s-amt">${fmtGBP(s.totalAmt)}</td>
+      </tr>`).join('');
+
+      return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Summary · ${esc(production?.title || '')}</title>
+<style>
+${GRID_CSS}
+/* Portrait A4 override */
+.page {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 22mm 20mm 18mm;
+  display: block;
+  page-break-inside: avoid;
+}
+/* Summary table */
+.summary {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-size: 10.5pt;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.summary thead th {
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 8.5pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 0.75pt solid var(--ink);
+  font-weight: 500;
+}
+.summary thead th.s-num,
+.summary thead th.s-amt { text-align: right; }
+.summary .s-row td {
+  padding: 10px 10px;
+  border-bottom: 0.4pt solid var(--rule-hair);
+  vertical-align: baseline;
+  color: var(--ink-2);
+}
+.summary .s-name {
+  font-size: 12pt;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.summary .s-role {
+  font-size: 8.5pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.summary .s-num { text-align: right; font-size: 10pt; }
+.summary .s-amt { text-align: right; font-weight: 600; font-size: 11pt; color: var(--ink); }
+.summary tfoot td {
+  padding: 12px 10px 8px;
+  border-top: 0.75pt solid var(--ink);
+  font-size: 8.5pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+.summary tfoot .s-num { text-align: right; font-size: 10pt; letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--ink-2); }
+.summary tfoot .s-amt { text-align: right; font-size: 14pt; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; text-transform: none; }
+@media print {
+  @page { size: A4 portrait; margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="doc-header">
+    <div>
+      <h1 class="doc-title">${esc(production?.title || '')}</h1>
+      <p class="doc-sub">Crew Summary <span class="muted">— ${crewCount} crew member${crewCount === 1 ? '' : 's'}</span></p>
+    </div>
+    <div class="right">
+      <div class="markmark">${esc(production?.title || '')}</div>
+      <div class="doc-id">${esc(docId)}</div>
+      <div class="label-tag">Crew · <b>${crewCount}</b></div>
+    </div>
+  </header>
+
+  <table class="summary">
+    <thead>
+      <tr>
+        <th class="s-name">Name</th>
+        <th class="s-role">Role</th>
+        <th class="s-num">Days</th>
+        <th class="s-num">Hours</th>
+        <th class="s-num">OT Hrs</th>
+        <th class="s-amt">Total</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHTML}</tbody>
+    <tfoot>
+      <tr>
+        <td class="s-name" colspan="2">Grand Total</td>
+        <td class="s-num">${grandDays}</td>
+        <td class="s-num">${grandHrs.toFixed(1)}</td>
+        <td class="s-num">${grandOTHrs.toFixed(1)}</td>
+        <td class="s-amt">${fmtGBP(grandAmt)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="doc-footer">
+    <div>${esc(prodCode)} / SUM</div>
+    <div class="center">END OF SUMMARY</div>
+    <div class="right">Generated ${esc(docDate)}</div>
+  </div>
+
+</div>
+
+</body>
+</html>`;
     }
 
-    function addSummarySheetToDoc(doc, production, crew, days, weekOpts = null) {
-      addRunningHeader(doc, weekOpts ? `Week ${weekOpts.weekNum} — Summary` : 'Crew Summary', production);
-      const y = { y: PDF.margin + 12 };
-      const byCrew = [];
-      const map = new Map();
-      days.forEach((d) => {
-        const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
-        if (!map.has(c.id)) { const entry = { crew: c, entries: [] }; map.set(c.id, entry); byCrew.push(entry); }
-        map.get(c.id).entries.push(d);
-      });
-      const ordered = crew.map((c) => map.get(c.id)).filter(Boolean);
+    function generateGridHTML(production, allDays, allCrew) {
+      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-      const grandTotal = ordered.reduce((s, { crew: c, entries }) => {
-        const sortedE = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-        return s + sortedE.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedE[i - 1] || null).total, 0);
-      }, 0);
+      const today = new Date();
+      const docDate = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+      const prodCode = (production?.title || 'PROD').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'PROD';
+      const docId = `REF · ${prodCode} / GRID · ${docDate}`;
 
-      let dateRange = '';
-      if (days.length > 0) {
-        const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
-        const first = sorted[0].date, last = sorted[sorted.length - 1].date;
-        dateRange = first === last ? fmtDateShort(first) : `${fmtDateShort(first)} – ${fmtDateShort(last)}`;
-      }
+      const dateSet = new Set([
+        ...((production?.gridDates) || []),
+        ...((allDays || []).map(d => d?.date).filter(Boolean)),
+      ]);
+      const allDates = [...dateSet].sort();
 
-      // Title block
-      const titleStr = (production.title || 'Untitled Production');
-      doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
-      doc.text(titleStr.length > 55 ? titleStr.slice(0, 54) + '…' : titleStr, PDF.margin, y.y); y.y += 14;
-      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100);
-      const sub = [production.prodCo, dateRange].filter(Boolean).join(' · ');
-      if (sub) { doc.text(sub, PDF.margin, y.y); y.y += 14; }
-      if (weekOpts) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(80, 80, 200);
-        doc.text(`Week ${weekOpts.weekNum} of ${weekOpts.totalWeeks}  ·  ${weekOpts.label}`, PDF.margin, y.y);
-        y.y += 14;
-      }
-      y.y += 8;
+      const fmtDate = (iso) => {
+        const d = new Date(iso + 'T12:00:00');
+        return {
+          dow: d.toLocaleDateString('en-GB', { weekday: 'short' }),
+          date: String(d.getDate()),
+          month: d.toLocaleDateString('en-GB', { month: 'short' }),
+          dayNum: d.getDay(),
+          long: `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`,
+        };
+      };
 
-      // Column header with filled band
-      const COL = { name: PDF.margin, role: 220, days: 330, hours: 390, ot: 450, total: PDF.pageW - PDF.margin };
-      drawFilledBand(doc, y.y, 22);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(0);
-      doc.text('NAME',   COL.name + 4,  y.y + 15);
-      doc.text('ROLE',   COL.role,       y.y + 15);
-      doc.text('DAYS',   COL.days,       y.y + 15, { align: 'right' });
-      doc.text('HOURS',  COL.hours,      y.y + 15, { align: 'right' });
-      doc.text('OT HRS', COL.ot,         y.y + 15, { align: 'right' });
-      doc.text('TOTAL',  COL.total,      y.y + 15, { align: 'right' });
-      y.y += 34;
+      const fmtHrs = (h) => {
+        if (!Number.isFinite(h) || h <= 0) return '0h';
+        return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
+      };
 
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-      ordered.forEach(({ crew: c, entries }) => {
-        ensureSpace(doc, y, 20);
-        const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.workedHrs, 0);
-        const otHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.otHrs, 0);
-        const sortedEnt = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-        const totalFee = sortedEnt.reduce((s, e, i) => s + calcForDisplay(production, e, c, sortedEnt[i - 1] || null).total, 0);
-        doc.setTextColor(0); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-        doc.text(c.name, COL.name + 4, y.y);
-        doc.setTextColor(100); doc.setFontSize(9);
-        doc.text(c.role, COL.role, y.y);
-        doc.setTextColor(0); doc.setFontSize(10);
-        doc.text(String(entries.length), COL.days,  y.y, { align: 'right' });
-        doc.text(totalHrs.toFixed(1),    COL.hours, y.y, { align: 'right' });
-        doc.text(otHrs > 0 ? otHrs.toFixed(1) : '—', COL.ot, y.y, { align: 'right' });
-        doc.setFont('helvetica', 'bold');
-        doc.text(fmtGBP(totalFee), COL.total, y.y, { align: 'right' });
-        y.y += 8;
-        doc.setDrawColor(210); doc.setLineWidth(0.2);
-        doc.line(PDF.margin, y.y, PDF.pageW - PDF.margin, y.y);
-        y.y += 12;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-      });
+      const renderCell = (crewMember, date) => {
+        const day = (allDays || []).find(d => d.crewId === crewMember.id && d.date === date);
+        const dInfo = fmtDate(date);
+        const isSat = dInfo.dayNum === 6;
+        const isSun = dInfo.dayNum === 0;
+        const tdCls = isSat ? ' class="sat"' : isSun ? ' class="sun"' : '';
 
-      // Grand total — with optional VAT breakdown if any crew is VAT-registered
-      const anyVAT = ordered.some(({ crew: c }) => c.vatRegistered);
-      const totalVAT = ordered.reduce((s, { crew: c, entries }) => {
-        const sortedV = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-        const sub = sortedV.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedV[i - 1] || null).total, 0);
-        return s + crewVAT(c, sub).vatAmount;
-      }, 0);
-      y.y += 4;
-      drawRule(doc, y.y, 1.2); y.y += 2;
-      if (anyVAT) {
-        drawFilledBand(doc, y.y, 20);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
-        doc.text(weekOpts ? 'Weekly Total (ex VAT)' : 'Grand Total (ex VAT)', COL.name + 4, y.y + 14);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal), COL.total, y.y + 14, { align: 'right' });
-        y.y += 24;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
-        doc.text('VAT', COL.name + 4, y.y);
-        doc.text(fmtGBP(totalVAT), COL.total, y.y, { align: 'right' });
-        y.y += 14;
-        drawFilledBand(doc, y.y, 24);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text(weekOpts ? 'Weekly Total (inc VAT)' : 'Grand Total (inc VAT)', COL.name + 4, y.y + 17);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal + totalVAT), COL.total, y.y + 17, { align: 'right' });
-        y.y += 24;
+        if (!day) {
+          return `<td${tdCls}><div class="cell rest"><span class="rest-dot"></span>Rest</div></td>`;
+        }
+
+        const resolved = resolveDay(production, day, crewMember);
+        const { meta, lines } = calculateDay(resolved, crewMember, production);
+
+        const hasOT  = (meta.otHrs || 0) > 0;
+        const hasCWD = !!meta.continuousDay;
+        const hasMSB = lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label || ''));
+        const hasTOC = lines.some(l => l.isTOC);
+        const isTOCBreach = lines.some(l => l.isTOC && l.isBreach);
+
+        const cellClasses = ['cell'];
+        if (hasOT) cellClasses.push('has-ot');
+        if (isTOCBreach) cellClasses.push('has-breach');
+
+        const chips = [];
+        if (hasOT)  chips.push('<span class="chip ot">OT</span>');
+        if (hasMSB) chips.push('<span class="chip msb">MSB</span>');
+        if (hasTOC) chips.push('<span class="chip toc">TOC</span>');
+        if (hasCWD) chips.push('<span class="chip cwd">CWD</span>');
+
+        const ct = resolved.callTime || '—';
+        const wt = resolved.wrapTime || '—';
+        const hrs = gridDisplayHours(resolved);
+
+        return `<td${tdCls}><div class="${cellClasses.join(' ')}"><div class="times">${esc(ct)}–${esc(wt)}</div><div class="hours">${esc(fmtHrs(hrs))}</div>${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div></td>`;
+      };
+
+      const PER_PAGE = 7;
+      const pageDateChunks = [];
+      if (allDates.length === 0) {
+        pageDateChunks.push([]);
       } else {
-        drawFilledBand(doc, y.y, 24);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text(weekOpts ? 'Weekly Total' : 'Grand Total', COL.name + 4, y.y + 17);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal), COL.total, y.y + 17, { align: 'right' });
-        y.y += 24;
+        for (let i = 0; i < allDates.length; i += PER_PAGE) {
+          pageDateChunks.push(allDates.slice(i, i + PER_PAGE));
+        }
       }
-      drawRule(doc, y.y, 0.4);
-    }
+      const pageCount = pageDateChunks.length;
+      const crewCount = (allCrew || []).length;
 
-    function getAllDates(production, days) {
-      const s = new Set([...(production.gridDates || []), ...days.map(d => d.date)]);
-      return [...s].sort();
+      const renderPage = (chunkDates, idx) => {
+        const colsHTML = `<col class="crew-col" />` + chunkDates.map(() => `<col class="day-col" />`).join('');
+
+        const headerCells = chunkDates.map(date => {
+          const di = fmtDate(date);
+          const cls = di.dayNum === 6 ? ' class="sat"' : di.dayNum === 0 ? ' class="sun"' : '';
+          return `<th${cls}><span class="dow">${esc(di.dow)}</span><span class="date">${esc(di.date)}</span><span class="month">${esc(di.month)}</span></th>`;
+        }).join('');
+
+        const bodyRows = (allCrew || []).map(c => {
+          const cells = chunkDates.map(date => renderCell(c, date)).join('');
+          return `<tr><td class="crew-cell"><span class="name">${esc(c.name || '')}</span><span class="role">${esc(c.role || '')}</span></td>${cells}</tr>`;
+        }).join('');
+
+        const periodLabel = chunkDates.length
+          ? `${fmtDate(chunkDates[0]).long} → ${fmtDate(chunkDates[chunkDates.length - 1]).long} ${new Date(chunkDates[0] + 'T12:00:00').getFullYear()}`
+          : '—';
+        const subLabel = pageCount > 1
+          ? `Grid Overview <span class="muted">— Page ${idx + 1} of ${pageCount} · ${esc(periodLabel)}</span>`
+          : `Grid Overview <span class="muted">— ${esc(periodLabel)}</span>`;
+        const footerCenter = pageCount > 1
+          ? (idx + 1 < pageCount ? `Page ${idx + 1} of ${pageCount} — continues` : 'END OF GRID OVERVIEW')
+          : 'END OF GRID OVERVIEW';
+
+        return `<div class="page">
+  <header class="doc-header">
+    <div>
+      <h1 class="doc-title">${esc(production?.title || '')}</h1>
+      <p class="doc-sub">${subLabel}</p>
+    </div>
+    <div class="right">
+      <div class="markmark">${esc(production?.title || '')}</div>
+      <div class="doc-id">${esc(docId)}</div>
+      <div class="label-tag">Crew · <b>${crewCount}</b> &nbsp;·&nbsp; Days · <b>${chunkDates.length}</b></div>
+    </div>
+  </header>
+
+  <table class="grid">
+    <colgroup>${colsHTML}</colgroup>
+    <thead>
+      <tr>
+        <th class="crew-h">Crew</th>
+        ${headerCells}
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+    </tbody>
+  </table>
+
+  <div class="legend">
+    <span class="item"><span class="chip ot">OT</span>Overtime</span>
+    <span class="item"><span class="chip msb">MSB</span>Missed/Late Break</span>
+    <span class="item"><span class="chip toc">TOC</span>Time Off Clock — breach</span>
+    <span class="item"><span class="chip cwd">CWD</span>Continuous Working Day</span>
+    <span class="sep"></span>
+    <span class="item"><span class="swatch sat"></span>Saturday</span>
+    <span class="item"><span class="swatch sun"></span>Sunday</span>
+  </div>
+
+  <div class="doc-footer">
+    <div>${esc(prodCode)} / GRID · Page ${idx + 1} of ${pageCount}</div>
+    <div class="center">${footerCenter}</div>
+    <div class="right">Generated ${esc(docDate)}</div>
+  </div>
+</div>`;
+      };
+
+      const pagesHTML = pageDateChunks.map((chunk, i) => renderPage(chunk, i)).join('\n\n');
+
+      return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Grid Overview · ${esc(production?.title || '')}</title>
+<style>
+${GRID_CSS}
+.page {
+  display: block;
+  page-break-inside: avoid;
+}
+</style>
+</head>
+<body>
+
+${pagesHTML}
+
+</body>
+</html>`;
     }
 
     function getMonday(dateStr) {
@@ -1593,150 +1984,152 @@ ${daySectionsHTML}
       });
     }
 
-    function addGridSummaryToDoc(doc, production, crew, days) {
-      const crewColW = 90;
-      const dateColW = 58;
-      const datesPerPage = Math.max(1, Math.floor((PDF.contentW - crewColW) / dateColW));
-      const headerH = 32;
-      const rowH = 26;
+    async function exportAllPdf(production, crew, days) {
+      try {
+        const summaryHTML = generateSummaryHTML(production, crew, days);
+        const gridHTML = generateGridHTML(production, days, crew);
 
-      const allDates = getAllDates(production, days);
-      if (allDates.length === 0) return;
-
-      const index = {};
-      days.forEach(d => {
-        if (!index[d.date]) index[d.date] = {};
-        index[d.date][d.crewId] = d;
-      });
-
-      const chunks = [];
-      for (let i = 0; i < allDates.length; i += datesPerPage) chunks.push(allDates.slice(i, i + datesPerPage));
-
-      chunks.forEach((dateCols, chunkIdx) => {
-        doc.addPage();
-        const sectionLabel = chunks.length > 1 ? `Grid Overview · ${chunkIdx + 1}/${chunks.length}` : 'Grid Overview';
-        addRunningHeader(doc, sectionLabel, production);
-        const y = { y: PDF.margin + 12 };
-
-        // Production title
-        const gridTitle = (production.title || 'Untitled Production');
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0);
-        doc.text(gridTitle.length > 55 ? gridTitle.slice(0, 54) + '…' : gridTitle, PDF.margin, y.y);
-        y.y += 10;
-        drawRule(doc, y.y, 0.8); y.y += 10;
-
-        // Date column headers
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(80);
-        doc.text('CREW', PDF.margin, y.y + 14);
-        dateCols.forEach((date, i) => {
-          const x = PDF.margin + crewColW + i * dateColW;
-          const dow = dayOfWeek(date);
-          const isSat = dow === 6, isSun = dow === 0;
-          if (isSat || isSun) { doc.setFillColor(245, 245, 245); doc.rect(x, y.y, dateColW, headerH, 'F'); }
-          const day3 = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase();
-          const dayNum = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
-          doc.setTextColor(isSun ? 160 : isSat ? 120 : 90);
-          doc.text(day3, x + dateColW / 2, y.y + 10, { align: 'center' });
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(isSun ? 80 : isSat ? 60 : 0);
-          doc.text(dayNum, x + dateColW / 2, y.y + 21, { align: 'center' });
+        const byCrewMap = new Map();
+        days.forEach((d) => {
+          const c = crew.find((cc) => cc.id === d.crewId);
+          if (!c) return;
+          if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, []);
+          byCrewMap.get(c.id).push(d);
         });
-        y.y += headerH;
-        drawRule(doc, y.y, 0.5); y.y += 6;
+        const crewHTMLs = crew
+          .filter(c => byCrewMap.has(c.id))
+          .map(c => generateCrewHTML(c, byCrewMap.get(c.id), production));
 
-        // Crew rows
-        crew.forEach((member, rowIdx) => {
-          const rowY = y.y;
-          const nameStr = member.name.length > 18 ? member.name.slice(0, 17) + '…' : member.name;
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(0);
-          doc.text(nameStr, PDF.margin, rowY + 10);
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
-          doc.text(member.role, PDF.margin, rowY + 19);
+        const parser = new DOMParser();
+        const extractPages = (html) => {
+          const doc = parser.parseFromString(html, 'text/html');
+          return Array.from(doc.querySelectorAll('.page')).map(el => el.outerHTML).join('\n');
+        };
 
-          dateCols.forEach((date, i) => {
-            const x = PDF.margin + crewColW + i * dateColW;
-            const dow = dayOfWeek(date);
-            if (dow === 0 || dow === 6) { doc.setFillColor(248, 248, 248); doc.rect(x, rowY, dateColW, rowH, 'F'); }
-            const cellDay = index[date]?.[member.id];
-            if (!cellDay) {
-              doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(160);
-              doc.text('Rest', x + dateColW / 2, rowY + 14, { align: 'center' });
-              return;
-            }
-            const resolved = resolveDay(production, cellDay, member);
-            const { meta, lines } = calculateDay(resolved, member, production);
-            const hrs = gridDisplayHours(resolved);
-            const hrsLabel = Number.isInteger(hrs) ? `${hrs}h` : `${hrs.toFixed(1)}h`;
-            const ct = resolved.callTime || '-';
-            const wt = resolved.wrapTime || '-';
-            const penalties = [];
-            if (meta.otHrs > 0) penalties.push('OT');
-            if (meta.continuousDay) penalties.push('CWD');
-            if (lines.some(l => l.label === 'Late 1st Break')) penalties.push('L1');
-            if (lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label))) penalties.push('MSB');
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
-            doc.text(`${ct}–${wt}`, x + dateColW / 2, rowY + 8, { align: 'center' });
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(0);
-            doc.text(hrsLabel, x + dateColW / 2, rowY + 17, { align: 'center' });
-            if (penalties.length > 0) {
-              doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(60);
-              doc.text(penalties.join(' '), x + dateColW / 2, rowY + 24, { align: 'center' });
-            }
-          });
+        const allPagesHTML = [summaryHTML, gridHTML, ...crewHTMLs]
+          .map(extractPages)
+          .filter(Boolean)
+          .join('\n');
 
-          y.y += rowH;
-          if (rowIdx < crew.length - 1) {
-            doc.setDrawColor(210); doc.setLineWidth(0.2);
-            doc.line(PDF.margin, y.y - 2, PDF.pageW - PDF.margin, y.y - 2);
-            doc.setDrawColor(0);
-          }
+        const combined = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${(production?.title || 'Timesheets')} — Timesheets</title>
+<style>${TIMESHEET_CSS}
+${GRID_CSS}</style>
+</head>
+<body>
+${allPagesHTML}
+</body>
+</html>`;
+
+        const filename = `${production?.title || 'Production'} — Timesheets.pdf`;
+
+        const parsed = parser.parseFromString(combined, 'text/html');
+        const styleEl = document.createElement('style');
+        styleEl.setAttribute('data-all-pdf', '1');
+        styleEl.textContent = parsed.querySelector('style')?.textContent || '';
+        document.head.appendChild(styleEl);
+
+        const container = document.createElement('div');
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;';
+        Array.from(parsed.querySelectorAll('.page')).forEach(p => container.appendChild(p));
+        document.body.appendChild(container);
+
+        const opt = {
+          margin: 0,
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 3, useCORS: true, letterRendering: true, imageTimeout: 0 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        };
+
+        try {
+          await html2pdf().set(opt).from(container).save();
+        } finally {
+          document.head.removeChild(styleEl);
+          document.body.removeChild(container);
+        }
+      } catch (e) {
+        window.alert(`Export failed: ${e?.message || 'Unknown error'}`);
+        throw e;
+      }
+    }
+
+    async function exportWeekPdf(production, weekDays, allCrew) {
+      try {
+        const summaryHTML = generateSummaryHTML(production, allCrew, weekDays);
+        const gridHTML = generateGridHTML(production, weekDays, allCrew);
+
+        const byCrewMap = new Map();
+        weekDays.forEach((d) => {
+          const c = allCrew.find((cc) => cc.id === d.crewId);
+          if (!c) return;
+          if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, []);
+          byCrewMap.get(c.id).push(d);
         });
-      });
-    }
+        const crewHTMLs = allCrew
+          .filter(c => byCrewMap.has(c.id))
+          .map(c => generateCrewHTML(c, byCrewMap.get(c.id), production));
 
-    async function exportCrewPdf(crewMember, entries, production, { download = false } = {}) {
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      addCrewSheetToDoc(doc, crewMember, entries, production, true);
-      const filename = `${slug(crewMember.name)}_timesheet.pdf`;
-      await sharePdfOrDownload(doc, filename, { download });
-    }
+        const parser = new DOMParser();
+        const extractPages = (html) => {
+          const doc = parser.parseFromString(html, 'text/html');
+          return Array.from(doc.querySelectorAll('.page')).map(el => el.outerHTML).join('\n');
+        };
 
-    async function exportAllPdf(production, crew, days, { download = false } = {}) {
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      addSummarySheetToDoc(doc, production, crew, days);
-      addGridSummaryToDoc(doc, production, crew, days);
-      const byCrewMap = new Map();
-      days.forEach((d) => {
-        const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
-        if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, { crew: c, entries: [] });
-        byCrewMap.get(c.id).entries.push(d);
-      });
-      const ordered = crew.map((c) => byCrewMap.get(c.id)).filter(Boolean);
-      ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false));
-      const name = slug(production.title) || 'all_timesheets';
-      await sharePdfOrDownload(doc, `${name}.pdf`, { download });
-    }
+        const allPagesHTML = [summaryHTML, gridHTML, ...crewHTMLs]
+          .map(extractPages)
+          .filter(Boolean)
+          .join('\n');
 
-    async function exportWeekPdf(production, crew, weekDays, weekOpts, { download = false } = {}) {
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      addSummarySheetToDoc(doc, production, crew, weekDays, weekOpts);
-      const byCrewMap = new Map();
-      weekDays.forEach((d) => {
-        const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
-        if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, { crew: c, entries: [] });
-        byCrewMap.get(c.id).entries.push(d);
-      });
-      const ordered = crew.map((c) => byCrewMap.get(c.id)).filter(Boolean);
-      ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false, weekOpts));
-      const name = slug(production.title) || 'timesheets';
-      await sharePdfOrDownload(doc, `${name}_week${weekOpts.weekNum}.pdf`, { download });
-    }
+        const combined = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${(production?.title || 'Timesheets')} — Week</title>
+<style>${TIMESHEET_CSS}
+${GRID_CSS}</style>
+</head>
+<body>
+${allPagesHTML}
+</body>
+</html>`;
 
-    async function exportDayPdf(day, crewMember, production) {
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      addCrewSheetToDoc(doc, crewMember, [day], production, true);
-      const filename = `${slug(crewMember.name)}_${day.date}.pdf`;
-      await sharePdfOrDownload(doc, filename);
+        const sortedDays = [...weekDays].sort((a, b) => a.date.localeCompare(b.date));
+        const firstDate = sortedDays[0]?.date || '';
+        const filename = `${production?.title || 'Production'} — Week of ${firstDate}.pdf`;
+
+        const parsed = parser.parseFromString(combined, 'text/html');
+        const styleEl = document.createElement('style');
+        styleEl.setAttribute('data-week-pdf', '1');
+        styleEl.textContent = parsed.querySelector('style')?.textContent || '';
+        document.head.appendChild(styleEl);
+
+        const container = document.createElement('div');
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;';
+        Array.from(parsed.querySelectorAll('.page')).forEach(p => container.appendChild(p));
+        document.body.appendChild(container);
+
+        const opt = {
+          margin: 0,
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 3, useCORS: true, letterRendering: true, imageTimeout: 0 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        };
+
+        try {
+          await html2pdf().set(opt).from(container).save();
+        } finally {
+          document.head.removeChild(styleEl);
+          document.body.removeChild(container);
+        }
+      } catch (e) {
+        window.alert(`Export failed: ${e?.message || 'Unknown error'}`);
+        throw e;
+      }
     }
 
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
@@ -2941,8 +3334,6 @@ ${daySectionsHTML}
         const r = await shareTextOrCopy(text, `${c.name} ${fmtDateShort(d.date)}`);
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
       };
-      const handleDayPdf = async (d, c) => { await exportDayPdf(d, c, production); };
-
       const grouped = useMemo(() => {
         const by = {};
         days.forEach((d) => { (by[d.date] = by[d.date] || []).push(d); });
@@ -3043,7 +3434,6 @@ ${daySectionsHTML}
                               <div className="font-mono font-bold text-neutral-100 text-sm">{fmtGBP(calc.total)}</div>
                               <div className="flex gap-1">
                                 <Btn size="sm" variant="ghost" onClick={() => handleDayText(d, c)} title="Send as text"><IMessage/></Btn>
-                                <Btn size="sm" variant="ghost" onClick={() => handleDayPdf(d, c)} title="Export PDF"><IDownload/></Btn>
                                 <Btn size="sm" variant="ghost" onClick={() => startEdit(d)}><IPencil/></Btn>
                                 <Btn size="sm" variant="ghost" onClick={() => duplicate(d)} title="Duplicate"><IPlus/></Btn>
                                 {confirmRemove === d.id ? (
@@ -3085,25 +3475,6 @@ ${daySectionsHTML}
         return crew.map((c) => m.get(c.id)).filter(Boolean);
       }, [crew, days]);
 
-      const detectedWeeks = useMemo(() => {
-        if (days.length === 0) return [];
-        const weekMap = new Map();
-        days.forEach((d) => {
-          const mon = getMonday(d.date);
-          if (!weekMap.has(mon)) weekMap.set(mon, []);
-          weekMap.get(mon).push(d);
-        });
-        const sorted = [...weekMap.keys()].sort();
-        const total = sorted.length;
-        return sorted.map((mon, i) => {
-          const d = new Date(mon + "T12:00:00");
-          const sun = new Date(d); sun.setDate(d.getDate() + 6);
-          const monLabel = `${d.getDate()} ${d.toLocaleString('en-GB', { month: 'short' })}`;
-          const sunLabel = `${sun.getDate()} ${sun.toLocaleString('en-GB', { month: 'short' })}`;
-          return { weekNum: i + 1, totalWeeks: total, monday: mon, sunday: sun.toISOString().slice(0, 10), label: `${monLabel}–${sunLabel}`, days: weekMap.get(mon) };
-        });
-      }, [days]);
-
       const grandTotal = byCrew.reduce((s, { crew: c, entries }) => {
         const sortedG = [...entries].sort((a, b) => a.date.localeCompare(b.date));
         return s + sortedG.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedG[i - 1] || null).total, 0);
@@ -3121,6 +3492,36 @@ ${daySectionsHTML}
         setBusy(null);
       };
 
+      const detectedWeeks = useMemo(() => {
+        if (days.length === 0) return [];
+        const weekMap = new Map();
+        days.forEach((d) => {
+          const mon = getMonday(d.date);
+          if (!weekMap.has(mon)) weekMap.set(mon, []);
+          weekMap.get(mon).push(d);
+        });
+        const sortedKeys = [...weekMap.keys()].sort();
+        return sortedKeys.map((mon, i) => {
+          const m = new Date(mon + "T12:00:00");
+          const sun = new Date(m); sun.setDate(m.getDate() + 6);
+          const sameMonth = m.getMonth() === sun.getMonth();
+          const startStr = sameMonth ? `${m.getDate()}` : `${m.getDate()} ${m.toLocaleString('en-GB', { month: 'short' })}`;
+          const endStr = `${sun.getDate()} ${sun.toLocaleString('en-GB', { month: 'short' })}`;
+          return {
+            weekNum: i + 1,
+            monday: mon,
+            label: `${startStr}–${endStr}`,
+            days: weekMap.get(mon),
+          };
+        });
+      }, [days]);
+
+      const handleWeekPdf = async (wk) => {
+        setBusy(`week-${wk.weekNum}`);
+        try { await exportWeekPdf(production, wk.days, crew); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
+        setBusy(null);
+      };
+
       const handleCrewPdf = async (c, entries) => {
         setBusy(`pdf-${c.id}`);
         try { await exportCrewPDF(c, entries, production); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
@@ -3130,18 +3531,6 @@ ${daySectionsHTML}
       const handleCrewPdfDownload = async (c, entries) => {
         setBusy(`pdf-dl-${c.id}`);
         try { await exportCrewPDF(c, entries, production); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
-      };
-
-      const handleWeekPdf = async (wk) => {
-        setBusy(`week-${wk.weekNum}`);
-        try { await exportWeekPdf(production, crew, wk.days, wk); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
-      };
-
-      const handleWeekPdfDownload = async (wk) => {
-        setBusy(`week-dl-${wk.weekNum}`);
-        try { await exportWeekPdf(production, crew, wk.days, wk, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
         setBusy(null);
       };
 
@@ -3190,28 +3579,17 @@ ${daySectionsHTML}
             </div>
           </div>
 
-          {/* Weekly export — only shown when days span more than one calendar week */}
-          {detectedWeeks.length > 1 && (
+          {/* Per week */}
+          {detectedWeeks.length > 0 && (
             <div className="space-y-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Export by week</div>
-              {detectedWeeks.map((wk) => (
-                <div key={wk.monday} className="bg-neutral-900 border border-neutral-800 p-3 rounded-[10px]">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <div className="text-sm font-semibold text-neutral-100">Week {wk.weekNum}</div>
-                      <div className="text-[11px] text-neutral-400 font-mono mt-0.5">{wk.label} · {wk.days.length} day{wk.days.length !== 1 ? 's' : ''}</div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Btn size="md" variant="subtle" onClick={() => handleWeekPdf(wk)} disabled={busy !== null}>
-                        <IDownload/>{busy === `week-${wk.weekNum}` ? '…' : 'Share PDF'}
-                      </Btn>
-                      <Btn size="md" variant="ghost" onClick={() => handleWeekPdfDownload(wk)} disabled={busy !== null}>
-                        <IDownload/>{busy === `week-dl-${wk.weekNum}` ? '…' : 'Download PDF'}
-                      </Btn>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Export by Week</div>
+              <div className="flex flex-col gap-2">
+                {detectedWeeks.map((wk) => (
+                  <Btn key={wk.monday} variant="subtle" onClick={() => handleWeekPdf(wk)} disabled={busy !== null}>
+                    <IDownload/>{busy === `week-${wk.weekNum}` ? 'Building…' : `Week ${wk.weekNum} — ${wk.label}`}
+                  </Btn>
+                ))}
+              </div>
             </div>
           )}
 
