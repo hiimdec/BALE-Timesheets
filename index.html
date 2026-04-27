@@ -661,6 +661,8 @@
     font-size: 10.5pt;
     line-height: 1.45;
     position: relative;
+    display: block;
+    page-break-inside: avoid;
   }
   .page + .page { margin-top: 24px; }
 
@@ -1286,6 +1288,7 @@ ${daySectionsHTML}
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: 'avoid-all' },
       };
 
       try {
@@ -1702,19 +1705,24 @@ ${daySectionsHTML}
     }
 
     async function exportAllPdf(production, crew, days, { download = false } = {}) {
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      addSummarySheetToDoc(doc, production, crew, days);
-      addGridSummaryToDoc(doc, production, crew, days);
-      const byCrewMap = new Map();
-      days.forEach((d) => {
-        const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
-        if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, { crew: c, entries: [] });
-        byCrewMap.get(c.id).entries.push(d);
-      });
-      const ordered = crew.map((c) => byCrewMap.get(c.id)).filter(Boolean);
-      ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false));
-      const name = slug(production.title) || 'all_timesheets';
-      await sharePdfOrDownload(doc, `${name}.pdf`, { download });
+      try {
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        addSummarySheetToDoc(doc, production, crew, days);
+        addGridSummaryToDoc(doc, production, crew, days);
+        const byCrewMap = new Map();
+        days.forEach((d) => {
+          const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
+          if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, { crew: c, entries: [] });
+          byCrewMap.get(c.id).entries.push(d);
+        });
+        const ordered = crew.map((c) => byCrewMap.get(c.id)).filter(Boolean);
+        ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false));
+        const name = slug(production.title) || 'all_timesheets';
+        await sharePdfOrDownload(doc, `${name}.pdf`, { download });
+      } catch (e) {
+        console.error('[exportAllPdf] FAILED:', e && e.message, '\nStack:', e && e.stack);
+        throw e;
+      }
     }
 
     async function exportWeekPdf(production, crew, weekDays, weekOpts, { download = false } = {}) {
