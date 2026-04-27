@@ -1341,7 +1341,7 @@
 
     /* ═══════════════════════════ DAY ENTRY FORM ═══════════════════════════ */
 
-    function DayEntryForm({ value, onChange, crew, allCrewMode }) {
+    function DayEntryForm({ value, onChange, crew, allCrewMode, hideCrewAndDate = false }) {
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
@@ -1373,7 +1373,7 @@
 
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {!allCrewMode && (
+          {!hideCrewAndDate && !allCrewMode && (
             <Field label="Crew Member">
               <Select value={v.crewId} onChange={(e) => set({ crewId: e.target.value })}>
                 <option value="">— Select —</option>
@@ -1381,19 +1381,21 @@
               </Select>
             </Field>
           )}
-          {allCrewMode && (
+          {!hideCrewAndDate && allCrewMode && (
             <div className="bg-sky-950/30 border border-sky-800 p-2">
               <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold">All Crew Mode</div>
               <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage apply to all.</div>
             </div>
           )}
-          <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}` : ""}>
-            <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
-          </Field>
+          {!hideCrewAndDate && (
+            <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}` : ""}>
+              <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
+            </Field>
+          )}
           <Field label="Day Type">
             <Select value={v.dayType} onChange={(e) => onDayTypeChange(e.target.value)}>{DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
           </Field>
-          <div className="hidden md:block" />
+          {!hideCrewAndDate && <div className="hidden md:block" />}
 
           <Field label="Call Time" hint={callH !== null && callH < 5 ? "→ Night shoot (pre-5am)" : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)" : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call" : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)" : ""}>
             <TimeInput value={v.callTime} onChange={(e) => onCallChange(e.target.value)} />
@@ -1551,39 +1553,110 @@
       );
     }
 
-    /* ═══════════════════════════ LIVE CALC ═══════════════════════════ */
+    /* ═══════════════════════════ DAY EDIT MODAL ═══════════════════════════ */
 
-    function LiveCalc({ day, crew, production, prevDay = null }) {
-      if (!crew) return null;
-      const calc = calcForDisplay(production, day, crew, prevDay);
+    function DayEditModal({ editing, form, setForm, crew, production, days, onSave, onCancel, onRemove }) {
+      const isNewAll = editing === "new-all";
+      const isNew    = editing === "new";
+      const isKnown  = !isNew && !isNewAll;
+
+      const activeCrew = !isNewAll ? crew.find(c => c.id === form.crewId) : null;
+      const activeCalc = activeCrew
+        ? calcForDisplay(production, form, activeCrew, findPrevDay(days, form))
+        : null;
+      const penaltyLines = activeCalc ? activeCalc.lines.filter(l => l.rate === null || l.isTOC) : [];
+
+      const dateStr = form.date
+        ? new Date(form.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+        : "";
+
+      useEffect(() => {
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, []);
+
+      const modalTitle = isNew ? "New Day Entry" : isNewAll ? "New Day — All Crew" : "Edit Day Entry";
+
       return (
-        <div className="bg-black border border-sky-400 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Live Calc — {calc.meta.dayLabel}{calc.meta.continuousDay ? " · CWD" : ""}{day.stepUpEnabled && day.stepUpRole ? ` · Step-up: ${day.stepUpRole}` : ""}</div>
-            <div className="text-xs font-mono text-neutral-400">{calc.meta.workedHrs.toFixed(2)}h</div>
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.78)" }}
+          onClick={onCancel}
+        >
+          <div
+            className="bg-neutral-900 w-full sm:rounded-lg shadow-2xl border border-neutral-700 flex flex-col"
+            style={{ maxWidth: 640, maxHeight: "calc(100dvh - 1rem)", height: "auto" }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* ── Fixed header ── */}
+            <div className="flex-shrink-0 px-5 pt-4 pb-3 border-b border-neutral-700">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1.5">{modalTitle}</div>
+                  {isKnown && activeCrew && (
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-neutral-100 truncate">{activeCrew.name}</span>
+                      <span className="text-[10px] uppercase tracking-wider bg-neutral-800 text-neutral-400 px-1.5 py-px rounded-sm flex-shrink-0">{activeCrew.role}</span>
+                      <span className="text-[10px] text-neutral-500 font-mono flex-shrink-0">BDR {fmtGBP(Number(activeCrew.bdr) || 0)}</span>
+                      {dateStr && <span className="text-[11px] text-neutral-200 font-semibold flex-shrink-0">{dateStr}</span>}
+                    </div>
+                  )}
+                  {(isNew || isNewAll) && (
+                    <div className="text-xs text-neutral-500">
+                      {isNewAll ? `${crew.length} crew member${crew.length !== 1 ? "s" : ""} — select date below` : "Select crew member and date below"}
+                    </div>
+                  )}
+                </div>
+                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5"><IX size={16}/></button>
+              </div>
+            </div>
+
+            {/* ── Scrollable body ── */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+              <DayEntryForm
+                value={form}
+                onChange={setForm}
+                crew={crew}
+                allCrewMode={isNewAll}
+                hideCrewAndDate={isKnown}
+              />
+              {isNewAll && (
+                <div className="mt-3 bg-black border border-sky-400 p-3 text-xs text-neutral-300">
+                  <span className="text-sky-400 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member
+                </div>
+              )}
+            </div>
+
+            {/* ── Fixed footer ── */}
+            <div className="flex-shrink-0 border-t border-neutral-700 px-5 py-3 space-y-2.5">
+              {activeCalc && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] text-neutral-600 uppercase tracking-wider mr-0.5">Calc</span>
+                  <span className="text-[10px] bg-neutral-800 text-neutral-300 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
+                    BDR {fmtGBP(Number(activeCrew.bdr) || 0)}
+                  </span>
+                  {activeCalc.meta.otHrs > 0 && (
+                    <span className="text-[10px] bg-amber-900 text-amber-200 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
+                      OT {Number.isInteger(activeCalc.meta.otHrs) ? activeCalc.meta.otHrs : activeCalc.meta.otHrs.toFixed(1)}h
+                    </span>
+                  )}
+                  {penaltyLines.length > 0 && (
+                    <span className="text-[10px] bg-red-900 text-red-200 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
+                      {penaltyLines.length} {penaltyLines.length === 1 ? "penalty" : "penalties"}
+                    </span>
+                  )}
+                  <span className="ml-auto text-sm font-bold text-white font-mono">{fmtGBP(activeCalc.total)}</span>
+                </div>
+              )}
+              <div className="flex gap-2 flex-wrap">
+                <Btn onClick={onSave} variant="success"><ICheck/>Save</Btn>
+                <Btn onClick={onCancel} variant="ghost"><IX/>Cancel</Btn>
+                {isKnown && (
+                  <Btn onClick={() => onRemove(editing)} variant="danger"><ITrash/>Remove day</Btn>
+                )}
+              </div>
+            </div>
           </div>
-          {calc.lines.length === 0 ? <div className="text-sm text-neutral-500">Fill in times to see calc.</div> : (
-            <>
-              <table className="w-full text-xs font-mono">
-                <tbody>
-                  {calc.lines.map((l, i) => (
-                    <tr key={i} className="border-b border-neutral-800 last:border-0">
-                      <td className={`py-1 ${l.isTOC ? (l.isBreach ? 'text-red-400' : 'text-amber-400') : 'text-neutral-300'}`}>{l.label}</td>
-                      <td className={`py-1 text-[10px] ${l.isTOC ? (l.isBreach ? 'text-red-600' : 'text-amber-600') : 'text-neutral-500'}`}>{l.detail}</td>
-                      <td className="py-1 text-right text-neutral-400 text-[11px]">{l.rate != null ? fmtGBP(l.rate) : ""}</td>
-                      <td className="py-1 text-right text-neutral-400 w-10 text-[11px]">{typeof l.qty === "number" ? (Number.isInteger(l.qty) ? l.qty : l.qty.toFixed(2)) : l.qty}</td>
-                      <td className="py-1 text-right text-neutral-100 font-bold w-20">{fmtGBP(l.amount)}</td>
-                    </tr>
-                  ))}
-                  <tr className="border-t border-sky-400">
-                    <td colSpan={4} className="py-1 text-sky-400 font-bold uppercase text-[11px] tracking-wider">Day Total</td>
-                    <td className="py-1 text-right text-sky-400 font-bold">{fmtGBP(calc.total)}</td>
-                  </tr>
-                </tbody>
-              </table>
-              {calc.meta.notes.length > 0 && <div className="text-[10px] text-neutral-500 italic">{calc.meta.notes.map((n, i) => <div key={i}>· {n}</div>)}</div>}
-            </>
-          )}
         </div>
       );
     }
@@ -1961,10 +2034,6 @@
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
       const [gridView, setGridView] = useState(true);
-      const editPanelRef = useRef(null);
-      useEffect(() => {
-        if (editing && editPanelRef.current) editPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, [editing]);
 
       const startNew = () => {
         if (crew.length === 0) return;
@@ -2084,21 +2153,17 @@
           {crew.length === 0 && <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500">Add crew members first.</div>}
 
           {editing && (
-            <div ref={editPanelRef} className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
-                {editing === "new" ? "New Day Entry" : editing === "new-all" ? "New Day — All Crew" : "Edit Day Entry"}
-              </div>
-              <DayEntryForm value={form} onChange={setForm} crew={crew} allCrewMode={editing === "new-all"} />
-              {editing !== "new-all" && <LiveCalc day={form} crew={crew.find((c) => c.id === form.crewId)} production={production} prevDay={findPrevDay(days, form)} />}
-              {editing === "new-all" && <div className="bg-black border border-sky-400 p-3 text-xs text-neutral-300"><span className="text-sky-400 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member</div>}
-              <div className="flex gap-2 pt-2 flex-wrap">
-                <Btn onClick={save} variant="success"><ICheck/>Save</Btn>
-                <Btn onClick={cancel} variant="ghost"><IX/>Cancel</Btn>
-                {editing !== "new" && editing !== "new-all" && (
-                  <Btn onClick={() => { remove(editing); cancel(); }} variant="danger"><ITrash/>Remove day</Btn>
-                )}
-              </div>
-            </div>
+            <DayEditModal
+              editing={editing}
+              form={form}
+              setForm={setForm}
+              crew={crew}
+              production={production}
+              days={days}
+              onSave={save}
+              onCancel={cancel}
+              onRemove={(id) => { remove(id); cancel(); }}
+            />
           )}
 
           {!gridView && days.length === 0 && !editing && crew.length > 0 && (
