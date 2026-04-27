@@ -264,8 +264,9 @@
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
           if (otHrs > 0) lines.push({ label: "Saturday OT (1.5× BHR)", detail: "After basic", rate: bhr * 1.5, qty: otHrs, amount: otHrs * bhr * 1.5 });
         } else {
-          const baseHrs = Math.min(workedHrs, basicHrs);
-          lines.push({ label: `Saturday ${day.dayType} (1.5× BHR)`, detail: callWrapLabel, rate: bhr * 1.5, qty: baseHrs, amount: baseHrs * bhr * 1.5 });
+          const baseHrs = Math.max(Math.min(workedHrs, basicHrs), 8);
+          const satMinApplied = baseHrs > workedHrs;
+          lines.push({ label: `Saturday ${day.dayType} (1.5× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * 1.5, qty: baseHrs, amount: baseHrs * bhr * 1.5 });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
           if (otHrs > 0) lines.push({ label: "Saturday OT (1.5× BHR)", detail: "After basic", rate: bhr * 1.5, qty: otHrs, amount: otHrs * bhr * 1.5 });
         }
@@ -280,7 +281,9 @@
           });
           if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
         } else {
-          lines.push({ label: `Sunday ${day.dayType} (2× BHR, flat)`, detail: callWrapLabel, rate: bhr * 2, qty: workedHrs, amount: workedHrs * bhr * 2 });
+          const sunPaidHrs = Math.max(workedHrs, 8);
+          const sunMinApplied = sunPaidHrs > workedHrs;
+          lines.push({ label: `Sunday ${day.dayType} (2× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * 2, qty: sunPaidHrs, amount: sunPaidHrs * bhr * 2 });
         }
       } else {
         if (day.dayType === "Shoot") {
