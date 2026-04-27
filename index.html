@@ -1082,7 +1082,7 @@
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
     const Btn = ({ children, variant = "primary", size = "md", className = "", ...p }) => {
-      const base = "inline-flex items-center gap-2 font-semibold uppercase tracking-wide transition-all rounded-md border active:scale-95 disabled:opacity-40 disabled:pointer-events-none";
+      const base = "inline-flex items-center gap-2 font-semibold uppercase tracking-wide transition-all border active:scale-95 disabled:opacity-40 disabled:pointer-events-none";
       const variants = {
         primary: "bg-sky-400 border-sky-500 text-black hover:bg-sky-300",
         ghost:   "bg-transparent border-neutral-700 text-neutral-200 hover:bg-neutral-800 hover:border-neutral-600",
@@ -1090,7 +1090,7 @@
         success: "bg-green-500 border-green-600 text-black hover:bg-green-400",
         subtle:  "bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700",
       };
-      const sizes = { sm: "px-2 py-1.5 text-[10px]", md: "px-3 py-2.5 text-xs", lg: "px-5 py-3 text-sm" };
+      const sizes = { sm: "px-2 py-1.5 text-[10px] rounded-[20px]", md: "px-3 py-2.5 text-xs rounded-lg", lg: "px-5 py-3 text-sm rounded-lg" };
       return <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...p}>{children}</button>;
     };
 
@@ -1102,15 +1102,16 @@
       </label>
     );
 
-    const Input = (p) => <input {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-3 py-2 font-mono outline-none rounded-md ${p.className || ""}`} />;
+    const Input = (p) => <input {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${p.className || ""}`} />;
     const TimeInput = (p) => <Input type="time" step="300" {...p} />;
-    const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-3 py-2 outline-none rounded-md ${p.className || ""}`}>{children}</select>;
+    const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
     const StatusMsg = ({ kind = "info", children }) => {
       const colors = { ok: "text-green-400", info: "text-neutral-400", warn: "text-amber-400", bad: "text-red-400" };
+      const bgs    = { ok: "bg-green-900/20", info: "bg-neutral-800/40", warn: "bg-amber-900/20", bad: "bg-red-900/20" };
       const icons = { ok: <ICheck/>, info: <IInfo/>, warn: <IAlert/>, bad: <IWarn/> };
       return (
-        <div className={`text-[11px] ${colors[kind]} flex items-start gap-1.5 leading-tight mt-1`}>
+        <div className={`text-[11px] ${colors[kind]} ${bgs[kind]} flex items-start gap-1.5 leading-tight mt-1 px-2.5 py-1.5 rounded-[6px]`}>
           <span className="mt-0.5">{icons[kind]}</span>
           <span>{children}</span>
         </div>
@@ -1134,12 +1135,12 @@
           <div className="text-sm text-neutral-400">Set up the production details, then add crew and days.</div>
 
           {isUntitled && (
-            <div className="bg-sky-950/40 border border-sky-800 px-4 py-3 text-sm text-sky-300 flex items-center gap-2">
+            <div className="bg-sky-950/40 border border-sky-800 px-4 py-3 text-sm text-sky-300 flex items-center gap-2 rounded-[10px]">
               <IInfo size={14}/> Give this production a name to get started.
             </div>
           )}
 
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
+          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
               <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
@@ -1149,7 +1150,7 @@
               <Field label="End Date"><Input type="date" value={production.endDate || ""} onChange={set("endDate")} /></Field>
             </div>
           </div>
-          <div className="bg-neutral-900 border-l-4 border-neutral-700 p-4 space-y-3 rounded-r-md">
+          <div className="bg-neutral-900 border-l-4 border-neutral-700 p-4 space-y-3 rounded-r-[10px]">
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Weekend Rate Override</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Saturday Rate">
@@ -1252,7 +1253,7 @@
           </div>
 
           {editing && (
-            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
+            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
               <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{editing === "new" ? "New Crew Member" : "Edit Crew Member"}</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Declan Duffy" /></Field>
@@ -1302,7 +1303,7 @@
           )}
 
           {crew.length === 0 && !editing && (
-            <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center">
+            <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-[10px]">
               <div className="flex justify-center mb-2 text-neutral-700"><IUsers size={32}/></div>
               <div className="text-neutral-500 text-sm">No crew yet. Hit <span className="text-sky-400 font-bold">ADD CREW</span> to start.</div>
             </div>
@@ -1317,7 +1318,7 @@
                 onDragOver={onDragOver(i)}
                 onDragLeave={onDragLeave}
                 onDrop={onDrop(i)}
-                className={`bg-neutral-900 border transition-all flex items-center justify-between p-3 gap-2 ${overIdx === i ? "border-sky-400 border-t-4" : "border-neutral-800 hover:border-neutral-700"}`}
+                className={`bg-neutral-900 border transition-all flex items-center justify-between p-3 gap-2 rounded-[10px] ${overIdx === i ? "border-sky-400 border-t-4" : "border-neutral-800 hover:border-neutral-700"}`}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <div className="flex flex-col gap-0.5">
@@ -1412,7 +1413,7 @@
             </Field>
           )}
           {!fixedCrewId && allCrewMode && (
-            <div className="bg-sky-950/30 border border-sky-800 p-2">
+            <div className="bg-sky-950/30 border border-sky-800 p-2 rounded-[10px]">
               <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold">All Crew Mode</div>
               <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage apply to all.</div>
             </div>
@@ -1652,7 +1653,7 @@
           onClick={onCancel}
         >
           <div
-            className="bg-neutral-900 w-full sm:rounded-lg shadow-2xl border border-neutral-700 flex flex-col"
+            className="bg-neutral-900 w-full rounded-[10px] shadow-2xl border border-neutral-700 flex flex-col"
             style={{ maxWidth: 640, maxHeight: "calc(100dvh - 1rem)", height: "auto" }}
             onClick={e => e.stopPropagation()}
           >
@@ -1690,12 +1691,12 @@
                 fixedDate={fixedDate}
               />
               {isNewAll && (
-                <div className="mt-3 bg-black border border-sky-400 p-3 text-xs text-neutral-300">
+                <div className="mt-3 bg-black border border-sky-400 p-3 text-xs text-neutral-300 rounded-[10px]">
                   <span className="text-sky-400 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member
                 </div>
               )}
               {activeCalc && activeCalc.lines.length > 0 && (
-                <div className="mt-4 border-t border-neutral-800 pt-3">
+                <div className="mt-4 border border-neutral-800 rounded-[8px] p-3">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Cost Breakdown</div>
                   <table className="w-full border-collapse text-[11px]">
                     <tbody>
@@ -1875,7 +1876,7 @@
       }, [days]);
 
       if (crew.length === 0) {
-        return <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500">Add crew members first.</div>;
+        return <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">Add crew members first.</div>;
       }
 
       return (
@@ -1889,7 +1890,7 @@
           </div>
 
           {editingDate && (
-            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
+            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
               <div className="flex items-center justify-between">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
                   Edit {weekday(editingDate)} {new Date(editingDate + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — updates all crew on this date
@@ -2116,7 +2117,7 @@
           onPointerUp={endHold}
           onPointerLeave={endHold}
           onPointerCancel={endHold}
-          className="relative overflow-hidden inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-md"
+          className="relative overflow-hidden inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-lg"
           style={{ touchAction: 'none', userSelect: 'none', minWidth: 96, height: 30 }}
           title="Hold 3 seconds to set today's wrap time"
         >
@@ -2265,7 +2266,7 @@
             </div>
           </div>
 
-          {crew.length === 0 && <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500">Add crew members first.</div>}
+          {crew.length === 0 && <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">Add crew members first.</div>}
 
           {editing && (
             <DayEditModal
@@ -2284,7 +2285,7 @@
           )}
 
           {!gridView && days.length === 0 && !editing && crew.length > 0 && (
-            <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center">
+            <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-[10px]">
               <div className="flex justify-center mb-2 text-neutral-700"><ICal size={32}/></div>
               <div className="text-neutral-500 text-sm">No day entries yet.</div>
             </div>
@@ -2306,7 +2307,7 @@
                     {entries.map((d) => {
                       const c = crew.find((cc) => cc.id === d.crewId);
                       if (!c) return (
-                        <div key={d.id} className="bg-red-950 border border-red-900 p-3 text-sm text-red-200 flex items-center justify-between">
+                        <div key={d.id} className="bg-red-950 border border-red-900 p-3 text-sm text-red-200 flex items-center justify-between rounded-[10px]">
                           <span>Unassigned crew (deleted)</span>
                           <Btn size="sm" variant="ghost" onClick={() => remove(d.id)}><ITrash/></Btn>
                         </div>
@@ -2318,7 +2319,7 @@
                         : (calc.meta.otHrs > 0 || calc.meta.continuousDay || calc.lines.some(l => l.isTOC)) ? '#f59e0b'
                         : '#22c55e';
                       return (
-                        <div key={d.id} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors border-l-4" style={{ borderLeftColor: stripeColor }}>
+                        <div key={d.id} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors border-l-4 rounded-[10px] overflow-hidden" style={{ borderLeftColor: stripeColor }}>
                           <div className="flex items-center justify-between p-3 gap-3 flex-wrap">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -2418,7 +2419,7 @@
 
       if (byCrew.length === 0) {
         return (
-          <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center">
+          <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-[10px]">
             <div className="flex justify-center mb-2 text-neutral-700"><IFile size={32}/></div>
             <div className="text-neutral-500 text-sm">Nothing to export yet. Add crew and day entries first.</div>
           </div>
@@ -2430,7 +2431,7 @@
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IShare size={16}/>Export</h2>
 
           {/* Combined export */}
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
+          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
             <div className="flex items-baseline justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Everyone</div>
@@ -2459,7 +2460,7 @@
               const total = sortedBC.reduce((s, e, i) => s + calcForDisplay(production, e, c, sortedBC[i - 1] || null).total, 0);
               const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.workedHrs, 0);
               return (
-                <div key={c.id} className="bg-neutral-900 border border-neutral-800 p-3">
+                <div key={c.id} className="bg-neutral-900 border border-neutral-800 p-3 rounded-[10px]">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -2485,7 +2486,7 @@
             })}
           </div>
 
-          <div className="bg-neutral-900 border border-neutral-800 p-3 text-[11px] text-neutral-400 leading-relaxed">
+          <div className="bg-neutral-900 border border-neutral-800 p-3 text-[11px] text-neutral-400 leading-relaxed rounded-[10px]">
             <IInfo/> <span className="align-middle">On iPad: the Share Sheet opens — pick Messages, Mail, or AirDrop. If you hit Save to Files, the PDF goes to Files → On My iPad.</span>
           </div>
         </div>
@@ -2684,7 +2685,7 @@ const setDays = (updater) =>
             <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Your Productions</h2>
 
             {productions.length === 0 && (
-              <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center text-sm text-neutral-500">
+              <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center text-sm text-neutral-500 rounded-[10px]">
                 No productions yet. Create one to get started.
               </div>
             )}
@@ -2693,7 +2694,7 @@ const setDays = (updater) =>
               <div key={label} className="space-y-2">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-semibold pt-2">{label}</div>
                 {items.map((p) => (
-                  <div key={p.id} className="bg-neutral-900 border border-neutral-800 hover:border-sky-400/40 transition-colors p-4 flex items-center justify-between gap-4 flex-wrap rounded-lg">
+                  <div key={p.id} className="bg-neutral-900 border border-neutral-800 hover:border-sky-400/40 transition-colors p-4 flex items-center justify-between gap-4 flex-wrap rounded-[10px]">
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
                       {p.prodCo && <div className="text-sm text-neutral-400 truncate">{p.prodCo}</div>}
