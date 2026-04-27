@@ -1984,11 +1984,44 @@ ${pagesHTML}
       });
     }
 
-    async function exportAllPdf(production, crew, days) {
-      try {
-        const summaryHTML = generateSummaryHTML(production, crew, days);
-        const gridHTML = generateGridHTML(production, days, crew);
+    function openGridForPrint(production, allDays, allCrew) {
+      const html = generateGridHTML(production, allDays, allCrew);
+      const w = window.open('', '_blank');
+      if (!w) {
+        window.alert('Pop-up blocked — please allow pop-ups for this site to print the grid.');
+        return null;
+      }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      setTimeout(() => {
+        try { w.focus(); w.print(); } catch (e) { console.error('[openGridForPrint] print failed', e); }
+      }, 600);
+      return w;
+    }
 
+    function openSummaryForPrint(production, allCrew, allDays) {
+      const html = generateSummaryHTML(production, allCrew, allDays);
+      const w = window.open('', '_blank');
+      if (!w) {
+        window.alert('Pop-up blocked — please allow pop-ups for this site to print the summary.');
+        return null;
+      }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      setTimeout(() => {
+        try { w.focus(); w.print(); } catch (e) { console.error('[openSummaryForPrint] print failed', e); }
+      }, 600);
+      return w;
+    }
+
+    async function exportAllPdf(production, crew, days) {
+      // Open the grid tab synchronously so the popup is allowed by the browser
+      openGridForPrint(production, days, crew);
+
+      try {
+        // Bundle only the per-crew sheets via html2pdf (portrait pages — no landscape grid)
         const byCrewMap = new Map();
         days.forEach((d) => {
           const c = crew.find((cc) => cc.id === d.crewId);
@@ -2006,16 +2039,13 @@ ${pagesHTML}
           return Array.from(doc.querySelectorAll('.page')).map(el => el.outerHTML).join('\n');
         };
 
-        const allPagesHTML = [summaryHTML, gridHTML, ...crewHTMLs]
-          .map(extractPages)
-          .filter(Boolean)
-          .join('\n');
+        const allPagesHTML = crewHTMLs.map(extractPages).filter(Boolean).join('\n');
 
         const combined = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>${(production?.title || 'Timesheets')} — Timesheets</title>
+<title>${(production?.title || 'Timesheets')} — Crew Sheets</title>
 <style>${TIMESHEET_CSS}
 ${GRID_CSS}</style>
 </head>
@@ -2024,7 +2054,7 @@ ${allPagesHTML}
 </body>
 </html>`;
 
-        const filename = `${production?.title || 'Production'} — Timesheets.pdf`;
+        const filename = `${production?.title || 'Production'} — Crew Sheets.pdf`;
 
         const parsed = parser.parseFromString(combined, 'text/html');
         const styleEl = document.createElement('style');
@@ -2051,6 +2081,11 @@ ${allPagesHTML}
           document.head.removeChild(styleEl);
           document.body.removeChild(container);
         }
+
+        window.alert(
+          'Crew sheets PDF downloaded.\n\n' +
+          'The grid overview opened in a new tab — use your browser\'s "Save as PDF" / "Print to PDF" option to save it, then combine the two PDFs if needed.'
+        );
       } catch (e) {
         window.alert(`Export failed: ${e?.message || 'Unknown error'}`);
         throw e;
