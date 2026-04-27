@@ -502,7 +502,8 @@
       const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
       if (rest === null || rest >= 11) return null;
       const otRate = (Number(effectiveCrew.bdr) || 0) / 10 * (Number(effectiveCrew.otCoef) || 1);
-      return { restHours: rest, isBreach: rest < 10, amount: otRate };
+      const tocHours = 11 - rest;
+      return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
     }
 
     function calcForDisplay(production, day, crewMember, prevDay = null) {
@@ -516,10 +517,8 @@
           const isBreach = toc.isBreach;
           const tocLine = {
             label: isBreach ? "Time Off The Clock (BREACH)" : "Time Off The Clock",
-            detail: isBreach
-              ? `BREACH: ${toc.restHours.toFixed(1)}h rest (min 10h)`
-              : `${toc.restHours.toFixed(1)}h rest (min 11h)`,
-            rate: null, qty: 1, amount: toc.amount,
+            detail: `${isBreach ? 'BREACH: ' : ''}${toc.restHours.toFixed(1)}h rest · ${toc.tocHours.toFixed(1)}h TOC`,
+            rate: toc.otRate, qty: toc.tocHours, amount: toc.amount,
             isTOC: true, isBreach,
           };
           calc = { ...calc, lines: [...calc.lines, tocLine], total: calc.total + toc.amount };
