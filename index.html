@@ -19,6 +19,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
@@ -82,7 +83,7 @@
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
-    const { jsPDF } = window.jspdf;
+    const { jsPDF } = window.jspdf || {};
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
