@@ -2369,23 +2369,74 @@ ${pagesHTML}
       await sharePdfOrDownload(doc, filename, { download });
     }
 
-    async function exportAllPdf(production, crew, days, { download = false } = {}) {
+    async function exportAllPdf(production, crew, days) {
       try {
-        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-        addSummarySheetToDoc(doc, production, crew, days);
-        addGridSummaryToDoc(doc, production, crew, days);
+        const summaryHTML = generateSummaryHTML(production, crew, days);
+        const gridHTML = generateGridHTML(production, days, crew);
+
         const byCrewMap = new Map();
         days.forEach((d) => {
-          const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
-          if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, { crew: c, entries: [] });
-          byCrewMap.get(c.id).entries.push(d);
+          const c = crew.find((cc) => cc.id === d.crewId);
+          if (!c) return;
+          if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, []);
+          byCrewMap.get(c.id).push(d);
         });
-        const ordered = crew.map((c) => byCrewMap.get(c.id)).filter(Boolean);
-        ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false));
-        const name = slug(production.title) || 'all_timesheets';
-        await sharePdfOrDownload(doc, `${name}.pdf`, { download });
+        const crewHTMLs = crew
+          .filter(c => byCrewMap.has(c.id))
+          .map(c => generateCrewHTML(c, byCrewMap.get(c.id), production));
+
+        const parser = new DOMParser();
+        const extractPages = (html) => {
+          const doc = parser.parseFromString(html, 'text/html');
+          return Array.from(doc.querySelectorAll('.page')).map(el => el.outerHTML).join('\n');
+        };
+
+        const allPagesHTML = [summaryHTML, gridHTML, ...crewHTMLs]
+          .map(extractPages)
+          .filter(Boolean)
+          .join('\n');
+
+        const combined = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${(production?.title || 'Timesheets')} — Timesheets</title>
+<style>${TIMESHEET_CSS}</style>
+</head>
+<body>
+${allPagesHTML}
+</body>
+</html>`;
+
+        const filename = `${production?.title || 'Production'} — Timesheets.pdf`;
+
+        const parsed = parser.parseFromString(combined, 'text/html');
+        const styleEl = document.createElement('style');
+        styleEl.setAttribute('data-all-pdf', '1');
+        styleEl.textContent = parsed.querySelector('style')?.textContent || '';
+        document.head.appendChild(styleEl);
+
+        const container = document.createElement('div');
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;';
+        Array.from(parsed.querySelectorAll('.page')).forEach(p => container.appendChild(p));
+        document.body.appendChild(container);
+
+        const opt = {
+          margin: 0,
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 3, useCORS: true, letterRendering: true, imageTimeout: 0 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        };
+
+        try {
+          await html2pdf().set(opt).from(container).save();
+        } finally {
+          document.head.removeChild(styleEl);
+          document.body.removeChild(container);
+        }
       } catch (e) {
-        console.error('[exportAllPdf] FAILED:', e && e.message, '\nStack:', e && e.stack);
+        window.alert(`Export failed: ${e?.message || 'Unknown error'}`);
         throw e;
       }
     }
