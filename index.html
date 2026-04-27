@@ -652,7 +652,7 @@
       }
     }
 
-    function addCrewSheetToDoc(doc, crewMember, entries, production, isFirstPage = false) {
+    function addCrewSheetToDoc(doc, crewMember, entries, production, isFirstPage = false, weekOpts = null) {
       if (!isFirstPage) doc.addPage();
       const sectionLabel = crewMember.name + ' — Timesheet';
       addRunningHeader(doc, sectionLabel, production);
@@ -680,6 +680,11 @@
       }
       y.y += 10;
       drawRule(doc, y.y, 0.8); y.y += 18;
+      if (weekOpts) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(80, 80, 200);
+        doc.text(`Week ${weekOpts.weekNum} of ${weekOpts.totalWeeks}  ·  ${weekOpts.label}`, PDF.margin, y.y);
+        y.y += 16;
+      }
 
       const COL = { label: PDF.margin, detail: PDF.margin + 170, rate: 395, qty: 455, amount: PDF.pageW - PDF.margin };
       const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
@@ -762,7 +767,7 @@
       } else {
         drawFilledBand(doc, y.y, 24);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text('Total', PDF.margin + 4, y.y + 17);
+        doc.text(weekOpts ? 'Weekly Total' : 'Total', PDF.margin + 4, y.y + 17);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
         doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
         y.y += 24;
@@ -770,8 +775,8 @@
       drawRule(doc, y.y, 0.4);
     }
 
-    function addSummarySheetToDoc(doc, production, crew, days) {
-      addRunningHeader(doc, 'Crew Summary', production);
+    function addSummarySheetToDoc(doc, production, crew, days, weekOpts = null) {
+      addRunningHeader(doc, weekOpts ? `Week ${weekOpts.weekNum} — Summary` : 'Crew Summary', production);
       const y = { y: PDF.margin + 12 };
       const byCrew = [];
       const map = new Map();
@@ -801,6 +806,11 @@
       doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100);
       const sub = [production.prodCo, dateRange].filter(Boolean).join(' · ');
       if (sub) { doc.text(sub, PDF.margin, y.y); y.y += 14; }
+      if (weekOpts) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(80, 80, 200);
+        doc.text(`Week ${weekOpts.weekNum} of ${weekOpts.totalWeeks}  ·  ${weekOpts.label}`, PDF.margin, y.y);
+        y.y += 14;
+      }
       y.y += 8;
 
       // Column header with filled band
@@ -851,7 +861,7 @@
       if (anyVAT) {
         drawFilledBand(doc, y.y, 20);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
-        doc.text('Grand Total (ex VAT)', COL.name + 4, y.y + 14);
+        doc.text(weekOpts ? 'Weekly Total (ex VAT)' : 'Grand Total (ex VAT)', COL.name + 4, y.y + 14);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
         doc.text(fmtGBP(grandTotal), COL.total, y.y + 14, { align: 'right' });
         y.y += 24;
@@ -861,14 +871,14 @@
         y.y += 14;
         drawFilledBand(doc, y.y, 24);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text('Grand Total (inc VAT)', COL.name + 4, y.y + 17);
+        doc.text(weekOpts ? 'Weekly Total (inc VAT)' : 'Grand Total (inc VAT)', COL.name + 4, y.y + 17);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
         doc.text(fmtGBP(grandTotal + totalVAT), COL.total, y.y + 17, { align: 'right' });
         y.y += 24;
       } else {
         drawFilledBand(doc, y.y, 24);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text('Grand Total', COL.name + 4, y.y + 17);
+        doc.text(weekOpts ? 'Weekly Total' : 'Grand Total', COL.name + 4, y.y + 17);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
         doc.text(fmtGBP(grandTotal), COL.total, y.y + 17, { align: 'right' });
         y.y += 24;
@@ -1038,6 +1048,21 @@
       ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false));
       const name = slug(production.title) || 'all_timesheets';
       await sharePdfOrDownload(doc, `${name}.pdf`, { download });
+    }
+
+    async function exportWeekPdf(production, crew, weekDays, weekOpts, { download = false } = {}) {
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      addSummarySheetToDoc(doc, production, crew, weekDays, weekOpts);
+      const byCrewMap = new Map();
+      weekDays.forEach((d) => {
+        const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
+        if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, { crew: c, entries: [] });
+        byCrewMap.get(c.id).entries.push(d);
+      });
+      const ordered = crew.map((c) => byCrewMap.get(c.id)).filter(Boolean);
+      ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false, weekOpts));
+      const name = slug(production.title) || 'timesheets';
+      await sharePdfOrDownload(doc, `${name}_week${weekOpts.weekNum}.pdf`, { download });
     }
 
     async function exportDayPdf(day, crewMember, production) {
@@ -2378,6 +2403,25 @@
         return crew.map((c) => m.get(c.id)).filter(Boolean);
       }, [crew, days]);
 
+      const detectedWeeks = useMemo(() => {
+        if (days.length === 0) return [];
+        const weekMap = new Map();
+        days.forEach((d) => {
+          const mon = getMonday(d.date);
+          if (!weekMap.has(mon)) weekMap.set(mon, []);
+          weekMap.get(mon).push(d);
+        });
+        const sorted = [...weekMap.keys()].sort();
+        const total = sorted.length;
+        return sorted.map((mon, i) => {
+          const d = new Date(mon + "T12:00:00");
+          const sun = new Date(d); sun.setDate(d.getDate() + 6);
+          const monLabel = `${d.getDate()} ${d.toLocaleString('en-GB', { month: 'short' })}`;
+          const sunLabel = `${sun.getDate()} ${sun.toLocaleString('en-GB', { month: 'short' })}`;
+          return { weekNum: i + 1, totalWeeks: total, monday: mon, sunday: sun.toISOString().slice(0, 10), label: `${monLabel}–${sunLabel}`, days: weekMap.get(mon) };
+        });
+      }, [days]);
+
       const grandTotal = byCrew.reduce((s, { crew: c, entries }) => {
         const sortedG = [...entries].sort((a, b) => a.date.localeCompare(b.date));
         return s + sortedG.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedG[i - 1] || null).total, 0);
@@ -2404,6 +2448,18 @@
       const handleCrewPdfDownload = async (c, entries) => {
         setBusy(`pdf-dl-${c.id}`);
         try { await exportCrewPdf(c, entries, production, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
+        setBusy(null);
+      };
+
+      const handleWeekPdf = async (wk) => {
+        setBusy(`week-${wk.weekNum}`);
+        try { await exportWeekPdf(production, crew, wk.days, wk); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
+        setBusy(null);
+      };
+
+      const handleWeekPdfDownload = async (wk) => {
+        setBusy(`week-dl-${wk.weekNum}`);
+        try { await exportWeekPdf(production, crew, wk.days, wk, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
         setBusy(null);
       };
 
@@ -2451,6 +2507,31 @@
               One PDF with a crew summary on page 1, then each crew member's full timesheet on their own page{byCrew.some(({ entries }) => entries.length > 1) ? '(s)' : ''}.
             </div>
           </div>
+
+          {/* Weekly export — only shown when days span more than one calendar week */}
+          {detectedWeeks.length > 1 && (
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Export by week</div>
+              {detectedWeeks.map((wk) => (
+                <div key={wk.monday} className="bg-neutral-900 border border-neutral-800 p-3 rounded-[10px]">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="text-sm font-semibold text-neutral-100">Week {wk.weekNum}</div>
+                      <div className="text-[11px] text-neutral-400 font-mono mt-0.5">{wk.label} · {wk.days.length} day{wk.days.length !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Btn size="md" variant="subtle" onClick={() => handleWeekPdf(wk)} disabled={busy !== null}>
+                        <IDownload/>{busy === `week-${wk.weekNum}` ? '…' : 'Share PDF'}
+                      </Btn>
+                      <Btn size="md" variant="ghost" onClick={() => handleWeekPdfDownload(wk)} disabled={busy !== null}>
+                        <IDownload/>{busy === `week-dl-${wk.weekNum}` ? '…' : 'Download PDF'}
+                      </Btn>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Per crew */}
           <div className="space-y-2">
