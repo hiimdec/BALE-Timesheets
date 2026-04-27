@@ -19,7 +19,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
     html, body {
@@ -430,8 +430,7 @@
 
     /* ═══════════════════════════ SHARE / DOWNLOAD HELPERS ═══════════════════════════ */
 
-    async function sharePdfOrDownload(pdfDoc, filename, { download = false } = {}) {
-      const blob = pdfDoc.output('blob');
+    async function shareOrDownloadBlob(blob, filename, { download = false } = {}) {
       if (!download) {
         const file = new File([blob], filename, { type: 'application/pdf' });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -615,6 +614,686 @@
     }
 
     /* ═══════════════════════════ PDF BUILDERS ═══════════════════════════ */
+
+    const TIMESHEET_CSS = `
+  :root {
+    --paper: #FAF8F4;
+    --paper-band: #F2EEE6;
+    --paper-band-soft: #F6F3EC;
+    --ink: #15171A;
+    --ink-2: #2B2E33;
+    --muted: #6B7079;
+    --muted-2: #9A9EA6;
+    --rule: #1A1C20;
+    --rule-soft: #D9D4C7;
+    --rule-hair: #E8E3D6;
+
+    --accent: #0E7C8F;
+    --accent-soft: #DFEDF0;
+    --amber: #B7791F;
+    --amber-soft: #FAEFD7;
+    --red: #B42318;
+    --red-soft: #FCE4E1;
+    --green: #2F7A3E;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: #E8E4DA;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    padding: 48px 24px;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    background: var(--paper);
+    padding: 22mm 20mm 18mm;
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06);
+    color: var(--ink);
+    font-size: 10.5pt;
+    line-height: 1.45;
+    position: relative;
+  }
+  .page + .page { margin-top: 24px; }
+
+  /* HEADER */
+  .doc-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: start;
+    gap: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1.25pt solid var(--rule);
+  }
+  .crew-name {
+    font-size: 32pt;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    margin: 0;
+    color: var(--ink);
+  }
+  .production {
+    margin: 6px 0 0;
+    font-size: 12pt;
+    font-weight: 400;
+    color: var(--ink-2);
+    letter-spacing: -0.005em;
+  }
+  .production .sub {
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .meta-row {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    font-size: 8.5pt;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .meta-row .item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .meta-row .item + .item::before {
+    content: "";
+    display: inline-block;
+    width: 1px;
+    height: 9px;
+    background: var(--rule-soft);
+    margin: 0 12px;
+    transform: translateY(1px);
+  }
+  .meta-row .label { color: var(--muted-2); }
+  .meta-row .val { color: var(--ink-2); font-weight: 500; letter-spacing: 0.04em; }
+
+  .doc-header .right {
+    text-align: right;
+    padding-top: 4px;
+  }
+  .right .markmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 8.5pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .right .markmark::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .right .prod-co {
+    margin-top: 8px;
+    font-size: 10pt;
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+  .right .doc-id {
+    margin-top: 2px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8pt;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  /* PERIOD BAR */
+  .period {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
+    gap: 16px;
+    margin-top: 14px;
+    padding-bottom: 14px;
+    border-bottom: 0.5pt solid var(--rule-hair);
+  }
+  .period .lab {
+    font-size: 8pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+  }
+  .period .val {
+    font-size: 11pt;
+    color: var(--ink-2);
+    margin-top: 4px;
+    letter-spacing: -0.005em;
+  }
+  .period .center {
+    text-align: center;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9pt;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    padding-bottom: 2px;
+  }
+  .period .right { text-align: right; }
+
+  /* DAY BLOCKS */
+  .day {
+    margin-top: 10px;
+    break-inside: avoid;
+  }
+  .day-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    background: var(--paper-band-soft);
+    border-left: 2pt solid var(--ink);
+    padding: 8px 12px 8px 14px;
+    margin: 0 -2px;
+  }
+  .day-header.weekend { background: #FBF4E3; border-left-color: var(--amber); }
+  .day-header.sunday  { background: #F9ECE9; border-left-color: var(--red); }
+  .day-header.breach-day { border-left-color: var(--red); }
+  .day-date {
+    font-size: 12.5pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .day-date .dow {
+    font-weight: 400;
+    color: var(--muted);
+    margin-right: 8px;
+  }
+  .day-tags {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 8.5pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: rgba(0,0,0,0.04);
+    color: var(--ink-2);
+    font-weight: 500;
+    border: 0.5pt solid var(--rule-hair);
+  }
+  .tag.shoot { background: var(--paper); border-color: var(--rule-hair); }
+  .tag.prelight { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
+  .tag.call {
+    background: transparent;
+    border: 0.5pt solid var(--rule-soft);
+    color: var(--muted);
+  }
+  .tag.call.late { color: var(--ink-2); border-color: var(--ink-2); }
+  .tag.call.night { background: var(--ink); color: #F2EEE6; border-color: var(--ink); }
+  .tag.call.early { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .tag.call.weekend { background: var(--amber); color: var(--paper); border-color: var(--amber); }
+  .tag.call.sunday  { background: var(--red);   color: var(--paper); border-color: var(--red); }
+  .tag.cwd { background: var(--amber-soft); border-color: #E8C988; color: var(--amber); }
+
+  /* LINE ITEMS */
+  .lines {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-top: 2px;
+  }
+  .lines col.c-marker { width: 14px; }
+  .lines col.c-desc { width: auto; }
+  .lines col.c-time { width: 110px; }
+  .lines col.c-rate { width: 70px; }
+  .lines col.c-qty  { width: 44px; }
+  .lines col.c-amt  { width: 96px; }
+
+  .lines td {
+    padding: 6px 6px 6px 0;
+    vertical-align: baseline;
+    border-bottom: 0.4pt solid var(--rule-hair);
+    font-size: 10pt;
+    color: var(--ink-2);
+  }
+  .lines td.marker { padding: 0; padding-left: 14px; position: relative; }
+  .lines td.desc { padding-left: 6px; }
+  .lines td.time, .lines td.rate, .lines td.qty, .lines td.amt {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  .lines td.time { color: var(--muted); font-size: 9.5pt; }
+  .lines td.rate { color: var(--muted); text-align: right; font-size: 9.5pt; }
+  .lines td.qty  { color: var(--muted); text-align: right; font-size: 9.5pt; }
+  .lines td.amt  { text-align: right; font-weight: 500; }
+
+  .lines tr:last-child td { border-bottom: none; }
+
+  /* row variants */
+  .lines tr.bdr td.marker::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 9px;
+    width: 2px; height: 12px;
+    background: var(--ink);
+    opacity: 0.25;
+    border-radius: 1px;
+  }
+  .lines tr.kit td { color: var(--muted); font-size: 9.25pt; }
+  .lines tr.kit td.desc { font-style: normal; }
+  .lines tr.kit td.amt { font-weight: 400; color: var(--muted); }
+  .lines tr.kit td.marker::before {
+    content: "";
+    position: absolute;
+    left: 3px; top: 12px;
+    width: 4px; height: 4px;
+    background: var(--muted-2);
+    border-radius: 50%;
+  }
+
+  .lines tr.ot td { color: var(--ink-2); }
+  .lines tr.ot td.marker::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 9px;
+    width: 3px; height: 12px;
+    background: var(--amber);
+    border-radius: 1px;
+  }
+  .lines tr.ot td.desc .pill,
+  .lines tr.penalty td.desc .pill,
+  .lines tr.breach td.desc .pill {
+    display: inline-block;
+    font-size: 7.5pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 8px;
+    font-weight: 600;
+    transform: translateY(-1px);
+  }
+  .lines tr.ot td.desc .pill { background: var(--amber-soft); color: var(--amber); }
+  .lines tr.ot td.amt { color: var(--amber); font-weight: 600; }
+
+  .lines tr.penalty td.marker::before,
+  .lines tr.breach td.marker::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 9px;
+    width: 3px; height: 12px;
+    background: var(--red);
+    border-radius: 1px;
+  }
+  .lines tr.penalty td.desc .pill,
+  .lines tr.breach td.desc .pill {
+    background: var(--red-soft);
+    color: var(--red);
+  }
+  .lines tr.penalty td.amt,
+  .lines tr.breach td.amt {
+    color: var(--red);
+    font-weight: 600;
+  }
+  .lines tr.breach td.desc .breach-detail {
+    color: var(--red);
+    font-size: 8.5pt;
+    letter-spacing: 0.04em;
+    margin-left: 0;
+    display: inline-block;
+  }
+
+  /* day total */
+  .day-total {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: baseline;
+    gap: 16px;
+    margin-top: 6px;
+    padding-top: 8px;
+    padding-right: 0;
+    border-top: 0.75pt solid var(--ink);
+  }
+  .day-total .lbl {
+    font-size: 8.5pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: right;
+    grid-column: 1;
+  }
+  .day-total .currency {
+    text-align: right;
+    font-size: 9pt;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    padding-right: 2px;
+    align-self: baseline;
+  }
+  .day-total .amt {
+    text-align: right;
+    font-size: 14pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    min-width: 96px;
+  }
+
+  /* GRAND TOTAL */
+  .grand-total {
+    margin-top: 28px;
+    padding: 18px 18px 18px 20px;
+    background: var(--accent-soft);
+    border-top: 1.5pt solid var(--accent);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 16px;
+  }
+  .grand-total .lbl {
+    font-size: 9pt;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .grand-total .lbl-sub {
+    margin-top: 6px;
+    font-size: 10pt;
+    color: var(--ink-2);
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 400;
+  }
+  .grand-total .amt {
+    font-size: 28pt;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .grand-total .amt .ccy {
+    font-weight: 400;
+    color: var(--muted);
+    font-size: 18pt;
+    margin-right: 2px;
+  }
+
+  /* FOOTER */
+  .doc-footer {
+    margin-top: 22px;
+    padding-top: 10px;
+    border-top: 0.4pt solid var(--rule-hair);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 16px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 7.5pt;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .doc-footer .center { text-align: center; }
+  .doc-footer .right { text-align: right; }
+
+  /* page-only annotation */
+  .pn {
+    position: absolute;
+    top: 22mm;
+    right: 20mm;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 7.5pt;
+    color: var(--muted-2);
+    letter-spacing: 0.06em;
+  }
+
+  @media print {
+    body { background: white; padding: 0; }
+    .page { box-shadow: none; margin: 0; }
+  }
+`;
+
+    function generateCrewHTML(crew, days, production) {
+      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const bdr = Number(crew?.bdr) || 0;
+      const bhr = bdr / 10;
+      const otCoef = Number(crew?.otCoef) || 1.25;
+      const today = new Date();
+      const docDate = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+      const prodCode = (production?.title || 'PROD').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'PROD';
+      const crewCode = (crew?.name || 'CREW').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'CREW';
+      const docId = `REF · ${prodCode} / ${crewCode} · ${docDate}`;
+
+      const fmtPeriod = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso + 'T12:00:00');
+        const wd = d.toLocaleDateString('en-GB', { weekday: 'short' });
+        const mo = d.toLocaleDateString('en-GB', { month: 'long' });
+        return `${wd} ${d.getDate()} ${mo} ${d.getFullYear()}`;
+      };
+      const sortedDays = [...(days || [])].filter(d => d?.date).sort((a, b) => a.date.localeCompare(b.date));
+      const firstIso = sortedDays.length ? sortedDays[0].date : null;
+      const lastIso  = sortedDays.length ? sortedDays[sortedDays.length - 1].date : null;
+      const totalHrs = sortedDays.reduce((s, d) => {
+        const resolved = resolveDay(production, d, crew);
+        const h = gridDisplayHours(resolved);
+        return s + (Number.isFinite(h) ? h : 0);
+      }, 0);
+      const dayCount = sortedDays.length;
+      const periodStats = `${dayCount} day${dayCount === 1 ? '' : 's'} · ${totalHrs.toFixed(1)} hrs`;
+
+      const calcResults = sortedDays.map((day, i) => {
+        const prevDay = i > 0 ? sortedDays[i - 1] : null;
+        return calcForDisplay(production, day, crew, prevDay);
+      });
+
+      const daySectionsHTML = sortedDays.map((day, i) => generateDaySection(day, calcResults[i])).join('\n');
+
+      const grandTotal = calcResults.reduce((s, r) => s + (Number(r?.total) || 0), 0);
+      const totalOTHrs = calcResults.reduce((s, r) => {
+        return s + (r?.lines || []).filter(l => /OT|Overtime/i.test(l.label || '')).reduce((qs, l) => qs + (Number(l.qty) || 0), 0);
+      }, 0);
+
+      const fmtShort = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso + 'T12:00:00');
+        return `${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })} ${d.getFullYear()}`;
+      };
+      const periodRange = `${fmtShort(firstIso)} – ${fmtShort(lastIso)}`;
+      const lblSub = `${dayCount} day${dayCount === 1 ? '' : 's'} worked · ${totalHrs.toFixed(1)} hrs · ${totalOTHrs.toFixed(1)} OT hrs · period ${periodRange}`;
+
+      const grandTotalStr = fmtGBP(grandTotal);
+      const grandTotalHTML = grandTotalStr.startsWith('£') ? `<span class="ccy">£</span>${grandTotalStr.slice(1)}` : esc(grandTotalStr);
+
+      const footerRef = `${prodCode} / ${crewCode}`;
+
+      return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${esc(crew?.name || 'Crew')} — Timesheet · ${esc(production?.title || '')}</title>
+<style>${TIMESHEET_CSS}</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="doc-header">
+    <div>
+      <h1 class="crew-name">${esc(crew?.name || '')}</h1>
+      <p class="production">${esc(production?.title || '')} <span class="sub">— Crew Timesheet</span></p>
+      <div class="meta-row">
+        <span class="item"><span class="label">Role</span><span class="val">${esc(crew?.role || '')}</span></span>
+        <span class="item"><span class="label">Day Rate</span><span class="val">${esc(fmtGBP(bdr))}</span></span>
+        <span class="item"><span class="label">Hourly</span><span class="val">${esc(fmtGBP(bhr))}</span></span>
+        <span class="item"><span class="label">OT</span><span class="val">${esc(String(otCoef))}×</span></span>
+      </div>
+    </div>
+    <div class="right">
+      <div class="markmark">${esc(production?.title || '')}</div>
+      <div class="prod-co">${esc(production?.prodCo || '')}</div>
+      <div class="doc-id">${esc(docId)}</div>
+    </div>
+  </header>
+
+  <div class="period">
+    <div>
+      <div class="lab">Period Start</div>
+      <div class="val">${esc(fmtPeriod(firstIso))}</div>
+    </div>
+    <div class="center">${esc(periodStats)}</div>
+    <div class="right">
+      <div class="lab">Period End</div>
+      <div class="val">${esc(fmtPeriod(lastIso))}</div>
+    </div>
+  </div>
+
+${daySectionsHTML}
+
+  <div class="grand-total">
+    <div>
+      <div class="lbl">Total Due</div>
+      <div class="lbl-sub">${esc(lblSub)}</div>
+    </div>
+    <div class="amt">${grandTotalHTML}</div>
+  </div>
+
+  <div class="doc-footer">
+    <div>${esc(footerRef)}</div>
+    <div class="center">END OF TIMESHEET</div>
+    <div class="right">Generated ${esc(docDate)}</div>
+  </div>
+
+</div>
+
+</body>
+</html>`;
+    }
+
+    function generateDaySection(day, calcResult) {
+      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      if (!day?.date) return '';
+
+      const d = new Date(day.date + 'T12:00:00');
+      const dow = d.toLocaleDateString('en-GB', { weekday: 'short' });
+      const mo = d.toLocaleDateString('en-GB', { month: 'long' });
+      const dateStr = `${d.getDate()} ${mo} ${d.getFullYear()}`;
+      const dowNum = d.getDay();
+      const isSat = dowNum === 6;
+      const isSun = dowNum === 0;
+
+      const lines = calcResult?.lines || [];
+      const meta = calcResult?.meta || {};
+      const hasBreach = lines.some(l => l && l.isBreach);
+
+      const headerCls = ['day-header'];
+      if (isSat) headerCls.push('weekend');
+      if (isSun) headerCls.push('sunday');
+      if (hasBreach) headerCls.push('breach-day');
+
+      const dayType = day.dayType || '';
+      let dayTypeClass = 'tag';
+      if (dayType === 'Shoot') dayTypeClass = 'tag shoot';
+      else if (dayType === 'Pre-light') dayTypeClass = 'tag prelight';
+
+      const dayLabel = meta.dayLabel || 'Standard';
+      let callClass = 'tag call';
+      let callText = dayLabel;
+      if (isSun || /^sunday/i.test(dayLabel))      { callClass = 'tag call sunday';  callText = 'Sunday'; }
+      else if (isSat || /^saturday/i.test(dayLabel)) { callClass = 'tag call weekend'; callText = 'Saturday'; }
+      else if (/night shoot/i.test(dayLabel))      { callClass = 'tag call night';   callText = 'Night Shoot'; }
+      else if (/^early/i.test(dayLabel))           { callClass = 'tag call early';   callText = 'Early Call'; }
+      else if (/^late/i.test(dayLabel))            { callClass = 'tag call late';    callText = 'Late Call'; }
+      else if (/^standard/i.test(dayLabel))        { callClass = 'tag call';         callText = 'Standard'; }
+
+      const showCwd = !!meta.continuousDay;
+
+      const rowsHTML = lines.map(l => {
+        const label = l.label || '';
+        let rowClass = 'bdr';
+        if (/OT|Overtime/i.test(label)) rowClass = 'ot';
+        else if (l.isBreach || /Penalty|Breach|Missed/i.test(label)) rowClass = 'penalty';
+        else if (/Kit|Per Diem|Mileage/i.test(label)) rowClass = 'kit';
+
+        const pillHTML = rowClass === 'ot' ? '<span class="pill">OT</span>' : '';
+        const timeStr = l.timeRange || '';
+        const rateStr = l.rate != null ? fmtGBP(l.rate) : '';
+        const qtyStr = l.qty != null ? String(l.qty) : '';
+        const amtStr = fmtGBP(l.amount);
+
+        return `<tr class="${rowClass}">
+        <td class="marker"></td>
+        <td class="desc">${pillHTML}${esc(label)}</td>
+        <td class="time">${esc(timeStr)}</td>
+        <td class="rate">${esc(rateStr)}</td>
+        <td class="qty">${esc(qtyStr)}</td>
+        <td class="amt">${esc(amtStr)}</td>
+      </tr>`;
+      }).join('');
+
+      return `<section class="day">
+    <div class="${headerCls.join(' ')}">
+      <div class="day-date"><span class="dow">${esc(dow)}</span>${esc(dateStr)}</div>
+      <div class="day-tags">
+        ${dayType ? `<span class="${dayTypeClass}">${esc(dayType)}</span>` : ''}
+        <span class="${callClass}">${esc(callText)}</span>
+        ${showCwd ? '<span class="tag cwd">CWD</span>' : ''}
+      </div>
+    </div>
+    <table class="lines">
+      <colgroup><col class="c-marker"><col class="c-desc"><col class="c-time"><col class="c-rate"><col class="c-qty"><col class="c-amt"></colgroup>
+      <tbody>${rowsHTML}</tbody>
+    </table>
+    <div class="day-total">
+      <div class="lbl">Day Total</div>
+      <div></div>
+      <div class="amt">${fmtGBP(calcResult?.total)}</div>
+    </div>
+  </section>`;
+    }
+
+    async function exportCrewPDF(crew, days, production) {
+      const html = generateCrewHTML(crew, days, production);
+      const filename = `${crew?.name || 'Crew'} — ${production?.title || 'Timesheet'}.pdf`;
+
+      const parsed = new DOMParser().parseFromString(html, 'text/html');
+      const styleEl = document.createElement('style');
+      styleEl.setAttribute('data-crew-pdf', '1');
+      styleEl.textContent = parsed.querySelector('style')?.textContent || '';
+      document.head.appendChild(styleEl);
+
+      const page = parsed.querySelector('.page');
+      const container = document.createElement('div');
+      container.style.cssText = 'position:fixed;left:-9999px;top:0;';
+      container.appendChild(page);
+      document.body.appendChild(container);
+
+      const opt = {
+        margin: 0,
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
+
+      try {
+        await html2pdf().set(opt).from(page).save();
+      } finally {
+        document.head.removeChild(styleEl);
+        document.body.removeChild(container);
+      }
+    }
 
     const PDF = {
       margin: 48, pageW: 595, pageH: 842,
@@ -2443,13 +3122,13 @@
 
       const handleCrewPdf = async (c, entries) => {
         setBusy(`pdf-${c.id}`);
-        try { await exportCrewPdf(c, entries, production); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
+        try { await exportCrewPDF(c, entries, production); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
         setBusy(null);
       };
 
       const handleCrewPdfDownload = async (c, entries) => {
         setBusy(`pdf-dl-${c.id}`);
-        try { await exportCrewPdf(c, entries, production, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
+        try { await exportCrewPDF(c, entries, production); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
         setBusy(null);
       };
 
