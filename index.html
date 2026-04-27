@@ -1154,6 +1154,8 @@
     function ProductionForm({ production, setProduction }) {
       const set = (k) => (e) => setProduction({ ...production, [k]: e.target.value });
       const isUntitled = production.title === "Untitled Production" || !production.title;
+      const hasNonDefaultWeekend = (production.satRateMode && production.satRateMode !== "apa") || (production.sunRateMode && production.sunRateMode !== "apa");
+      const [weekendOpen, setWeekendOpen] = React.useState(hasNonDefaultWeekend);
       return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Setup</h2>
@@ -1175,36 +1177,51 @@
               <Field label="End Date"><Input type="date" value={production.endDate || ""} onChange={set("endDate")} /></Field>
             </div>
           </div>
-          <div className="bg-neutral-900 border-l-4 border-neutral-700 p-4 space-y-3 rounded-r-[10px]">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Weekend Rate Override</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Saturday Rate">
-                <Select value={production.satRateMode || "apa"} onChange={set("satRateMode")}>
-                  <option value="apa">APA standard — 1.5×</option>
-                  <option value="custom">Custom multiplier</option>
-                  <option value="weekday">Weekday rate — no uplift</option>
-                </Select>
-              </Field>
-              {(production.satRateMode || "apa") === "custom" && (
-                <Field label="Saturday Multiplier" hint="e.g. 1.25 or 2">
-                  <Input type="number" min="0" step="0.01" value={production.satRateCustom ?? 1.5}
-                    onChange={(e) => setProduction({ ...production, satRateCustom: Number(e.target.value) })} />
-                </Field>
-              )}
-              <Field label="Sunday Rate">
-                <Select value={production.sunRateMode || "apa"} onChange={set("sunRateMode")}>
-                  <option value="apa">APA standard — 2×</option>
-                  <option value="custom">Custom multiplier</option>
-                  <option value="weekday">Weekday rate — no uplift</option>
-                </Select>
-              </Field>
-              {(production.sunRateMode || "apa") === "custom" && (
-                <Field label="Sunday Multiplier" hint="e.g. 1.5 or 2.5">
-                  <Input type="number" min="0" step="0.01" value={production.sunRateCustom ?? 2}
-                    onChange={(e) => setProduction({ ...production, sunRateCustom: Number(e.target.value) })} />
-                </Field>
-              )}
-            </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => setWeekendOpen((o) => !o)}
+              className="flex items-center gap-1.5 text-[11px] text-neutral-400 hover:text-neutral-200 transition-colors py-0.5"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: weekendOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+              {weekendOpen ? 'Hide weekend rate overrides' : 'Override weekend rates'}
+              {hasNonDefaultWeekend && !weekendOpen && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-400 text-[10px] font-semibold">custom</span>}
+            </button>
+            {weekendOpen && (
+              <div className="mt-2 bg-neutral-900 border-l-4 border-neutral-700 p-4 space-y-3 rounded-r-[10px]">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Weekend Rate Override</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Field label="Saturday Rate">
+                    <Select value={production.satRateMode || "apa"} onChange={set("satRateMode")}>
+                      <option value="apa">APA standard — 1.5×</option>
+                      <option value="custom">Custom multiplier</option>
+                      <option value="weekday">Weekday rate — no uplift</option>
+                    </Select>
+                  </Field>
+                  {(production.satRateMode || "apa") === "custom" && (
+                    <Field label="Saturday Multiplier" hint="e.g. 1.25 or 2">
+                      <Input type="number" min="0" step="0.01" value={production.satRateCustom ?? 1.5}
+                        onChange={(e) => setProduction({ ...production, satRateCustom: Number(e.target.value) })} />
+                    </Field>
+                  )}
+                  <Field label="Sunday Rate">
+                    <Select value={production.sunRateMode || "apa"} onChange={set("sunRateMode")}>
+                      <option value="apa">APA standard — 2×</option>
+                      <option value="custom">Custom multiplier</option>
+                      <option value="weekday">Weekday rate — no uplift</option>
+                    </Select>
+                  </Field>
+                  {(production.sunRateMode || "apa") === "custom" && (
+                    <Field label="Sunday Multiplier" hint="e.g. 1.5 or 2.5">
+                      <Input type="number" min="0" step="0.01" value={production.sunRateCustom ?? 2}
+                        onChange={(e) => setProduction({ ...production, sunRateCustom: Number(e.target.value) })} />
+                    </Field>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Start/End date fills the Timesheet Grid. Saved automatically.</div>
         </div>
