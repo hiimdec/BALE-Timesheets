@@ -888,11 +888,6 @@
 
     function getAllDates(production, days) {
       const s = new Set([...(production.gridDates || []), ...days.map(d => d.date)]);
-      if (production.startDate && production.endDate && production.startDate <= production.endDate) {
-        const cur = new Date(production.startDate + "T12:00:00");
-        const end = new Date(production.endDate + "T12:00:00");
-        while (cur <= end) { s.add(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
-      }
       return [...s].sort();
     }
 
@@ -905,14 +900,6 @@
 
     function deriveWeeks(production, days) {
       const mondays = new Set(production.weekStarts || []);
-      if (production.startDate && production.endDate && production.startDate <= production.endDate) {
-        let cur = new Date(getMonday(production.startDate) + "T12:00:00");
-        const end = new Date(production.endDate + "T12:00:00");
-        while (cur <= end) {
-          mondays.add(cur.toISOString().slice(0, 10));
-          cur.setDate(cur.getDate() + 7);
-        }
-      }
       const allDayDates = [...days.map(d => d.date), ...(production.gridDates || [])];
       for (const date of allDayDates) mondays.add(getMonday(date));
       if (mondays.size === 0) return [];
@@ -1172,10 +1159,7 @@
               <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
               <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Start Date"><Input type="date" value={production.startDate || ""} onChange={set("startDate")} /></Field>
-              <Field label="End Date"><Input type="date" value={production.endDate || ""} onChange={set("endDate")} /></Field>
-            </div>
+            <Field label="Start Date"><Input type="date" value={production.startDate || ""} onChange={set("startDate")} /></Field>
           </div>
           <div>
             <button
@@ -1879,7 +1863,7 @@
       };
 
       const weeks = useMemo(() => deriveWeeks(production, days),
-        [days, production.gridDates, production.weekStarts, production.startDate, production.endDate]);
+        [days, production.gridDates, production.weekStarts, production.startDate]);
 
       const tocMap = useMemo(() => {
         const map = {};
@@ -2707,7 +2691,6 @@ const setDays = (updater) =>
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const todayStr = new Date().toISOString().slice(0, 10);
       const showWrapNow = (p) => {
-        if (p.startDate && p.endDate && p.startDate <= todayStr && todayStr <= p.endDate) return true;
         return (p.days ?? []).some(d => d.date === todayStr);
       };
 
