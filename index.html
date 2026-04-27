@@ -1519,23 +1519,16 @@
       return bs.workedHrs - (bs.lunchMissed ? 0 : bs.lunchDuration / 60);
     }
 
-    function GridCell({ day, date, production, member, assignMode, onEditDay, onAddDay, onRemoveDay, onMarkRemove, pendingRemove, isWeekEnd, isWeekend, hasTOC = false, isTOCBreach = false }) {
+    function GridCell({ day, date, production, member, onEditDay, onAddDay, isWeekEnd, isWeekend, hasTOC = false, isTOCBreach = false }) {
       const borderR = isWeekEnd ? "border-r border-neutral-500" : "border-r border-neutral-800";
       const bgBase  = isWeekend ? "bg-neutral-900/30" : "";
 
       if (!day) {
-        if (assignMode) {
-          return (
-            <td onClick={() => onAddDay(member.id, date)}
-              className={`px-2 py-2 text-center cursor-pointer hover:bg-sky-950/50 transition-colors ${borderR}`}
-              style={{ minWidth: 80 }}>
-              <span className="text-neutral-600 text-base leading-none">+</span>
-            </td>
-          );
-        }
         return (
-          <td className={`px-2 py-2 text-center ${borderR} ${bgBase}`} style={{ minWidth: 80 }}>
-            <span className="text-[9px] text-neutral-600 uppercase tracking-wider">Rest</span>
+          <td onClick={() => onAddDay(member.id, date)}
+            className={`px-2 py-2 text-center cursor-pointer hover:bg-sky-950/40 transition-colors ${borderR} ${bgBase}`}
+            style={{ minWidth: 80 }}>
+            <span className="text-[9px] text-neutral-700 uppercase tracking-wider leading-none">+</span>
           </td>
         );
       }
@@ -1553,28 +1546,6 @@
       const wt = resolved.wrapTime || "—";
       const hrs = gridDisplayHours(resolved);
       const hrsLabel = Number.isInteger(hrs) ? `${hrs}h` : `${hrs.toFixed(1)}h`;
-
-      if (assignMode) {
-        const isMarked = pendingRemove === day.id;
-        return (
-          <td
-            onClick={() => isMarked ? onRemoveDay(day.id) : onMarkRemove(day.id)}
-            className={`px-2 py-1.5 cursor-pointer transition-colors ${borderR} ${isMarked ? "bg-red-950 hover:bg-red-900" : "hover:bg-neutral-800 " + bgBase}`}
-            style={{ minWidth: 80 }}>
-            {isMarked ? (
-              <div className="text-center py-0.5">
-                <div className="text-[9px] text-red-300 font-bold uppercase leading-tight">Remove?</div>
-                <div className="text-red-400 font-bold leading-tight">×</div>
-              </div>
-            ) : (
-              <>
-                <div className="text-[9px] text-neutral-500 font-mono whitespace-nowrap leading-tight">{ct}–{wt}</div>
-                <div className="text-[11px] font-bold text-neutral-400 leading-tight">{hrsLabel}</div>
-              </>
-            )}
-          </td>
-        );
-      }
 
       return (
         <td onClick={() => onEditDay(day.id)}
@@ -1595,17 +1566,10 @@
       );
     }
 
-    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew, onAssignAll, onRemoveAllOnDate, onDuplicateDate, onRemoveDay, onBulkEditDate }) {
-      const [assignMode, setAssignMode] = useState(false);
-      const [assignDayType, setAssignDayType] = useState("Shoot");
-      const [pendingRemove, setPendingRemove] = useState(null);
+    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddDate, onAddCrew, onAssignAll, onDuplicateDate, onBulkEditDate }) {
+      const [addDayType, setAddDayType] = useState("Shoot");
       const [editingDate, setEditingDate] = useState(null);
       const [dateEdit, setDateEdit] = useState({});
-
-      useEffect(() => {
-        setPendingRemove(null);
-        if (assignMode) setEditingDate(null);
-      }, [assignMode]);
 
       const openDateEdit = (date) => {
         const firstEntry = days.find(d => d.date === date);
@@ -1665,23 +1629,14 @@
       return (
         <div className="space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex border border-neutral-700 overflow-hidden">
-              <button onClick={() => setAssignMode(false)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold transition-colors ${!assignMode ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>View</button>
-              <button onClick={() => setAssignMode(true)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border-l border-neutral-700 transition-colors ${assignMode ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>Assign</button>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-neutral-500 uppercase tracking-wider whitespace-nowrap">Add as:</span>
+              <Select value={addDayType} onChange={e => setAddDayType(e.target.value)}>{DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select>
             </div>
-            {assignMode && (
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-neutral-500 uppercase tracking-wider whitespace-nowrap">Assign as:</span>
-                  <Select value={assignDayType} onChange={e => setAssignDayType(e.target.value)} className="w-auto text-[10px] py-1 px-2">{DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select>
-                </div>
-                <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Empty = add · Filled = mark then tap to remove · Header = assign all · Double-tap header = remove all</div>
-              </div>
-            )}
-            {!assignMode && <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap a date header to edit all crew on that day</div>}
+            <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap empty cell to add · Tap date to bulk edit</div>
           </div>
 
-          {editingDate && !assignMode && (
+          {editingDate && (
             <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-md">
               <div className="flex items-center justify-between">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
@@ -1731,17 +1686,17 @@
                     const dayNum = new Date(date + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
                     return (
                       <th key={date}
-                        onClick={assignMode
-                          ? () => { setPendingRemove(null); onAssignAll(date, assignDayType); }
-                          : () => editingDate === date ? setEditingDate(null) : openDateEdit(date)}
-                        onDoubleClick={assignMode ? (e) => { e.preventDefault(); onRemoveAllOnDate(date); } : undefined}
-                        className={`px-2 py-1.5 font-bold text-center cursor-pointer ${headerBg} ${borderClass} ${assignMode ? "hover:bg-sky-950/40" : "hover:bg-neutral-800/60"}${editingDate === date && !assignMode ? " ring-2 ring-inset ring-sky-400" : ""}`}
+                        onClick={() => editingDate === date ? setEditingDate(null) : openDateEdit(date)}
+                        className={`px-2 py-1.5 font-bold text-center cursor-pointer ${headerBg} ${borderClass} hover:bg-neutral-800/60${editingDate === date ? " ring-2 ring-inset ring-sky-400" : ""}`}
                         style={{ minWidth: 80 }}>
                         <div className={`text-[9px] uppercase tracking-wider ${textColor}`}>{day3}</div>
                         <div className="text-[11px] text-neutral-200 whitespace-nowrap">{dayNum}</div>
-                        {!assignMode && days.some(d => d.date === date) && (
-                          <button onClick={e => { e.stopPropagation(); onDuplicateDate(date); }} className="mt-0.5 text-neutral-600 hover:text-sky-400 transition-colors" title="Duplicate this date"><ICopy size={10}/></button>
-                        )}
+                        <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                          <button onClick={e => { e.stopPropagation(); onAssignAll(date, addDayType); }} className="text-[8px] text-neutral-600 hover:text-sky-400 transition-colors font-bold uppercase tracking-wider" title="Add all crew for this date">+all</button>
+                          {days.some(d => d.date === date) && (
+                            <button onClick={e => { e.stopPropagation(); onDuplicateDate(date); }} className="text-neutral-600 hover:text-sky-400 transition-colors" title="Duplicate this date"><ICopy size={10}/></button>
+                          )}
+                        </div>
                       </th>
                     );
                   })}
@@ -1776,12 +1731,8 @@
                               date={date}
                               production={production}
                               member={member}
-                              assignMode={assignMode}
                               onEditDay={onEditDay}
-                              onAddDay={(crewId, d) => { setPendingRemove(null); onAddDay(crewId, d, assignDayType); }}
-                              onRemoveDay={onRemoveDay}
-                              onMarkRemove={id => setPendingRemove(id)}
-                              pendingRemove={pendingRemove}
+                              onAddDay={(crewId, d) => onAddDay(crewId, d, addDayType)}
                               isWeekEnd={isWeekEnd}
                               isWeekend={isSat || isSun}
                               hasTOC={!!(index[date]?.[member.id] && tocMap[index[date][member.id].id]?.hasTOC)}
@@ -1922,8 +1873,11 @@
       const startEdit = (d) => { setForm(migrateDay(d)); setEditing(d.id); };
       const cancel = () => { setEditing(null); };
       const handleEditDayFromGrid = (id) => { const d = days.find(day => day.id === id); if (d) startEdit(d); };
-      const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => { setDays(prev => [...prev, { ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType) }]); };
-      const handleRemoveDayFromGrid = (id) => { setDays(prev => prev.filter(d => d.id !== id)); };
+      const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => {
+        const newDay = { ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType) };
+        setDays(prev => [...prev, newDay]);
+        startEdit(newDay);
+      };
       const handleBulkEditDate = (date, overrides) => {
         const { dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins } = overrides;
         setDays(prev => prev.map(d =>
@@ -2027,9 +1981,12 @@
               <DayEntryForm value={form} onChange={setForm} crew={crew} allCrewMode={editing === "new-all"} />
               {editing !== "new-all" && <LiveCalc day={form} crew={crew.find((c) => c.id === form.crewId)} production={production} prevDay={findPrevDay(days, form)} />}
               {editing === "new-all" && <div className="bg-black border border-sky-400 p-3 text-xs text-neutral-300"><span className="text-sky-400 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member</div>}
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 flex-wrap">
                 <Btn onClick={save} variant="success"><ICheck/>Save</Btn>
                 <Btn onClick={cancel} variant="ghost"><IX/>Cancel</Btn>
+                {editing !== "new" && editing !== "new-all" && (
+                  <Btn onClick={() => { remove(editing); cancel(); }} variant="danger"><ITrash/>Remove day</Btn>
+                )}
               </div>
             </div>
           )}
@@ -2042,7 +1999,7 @@
           )}
 
           {gridView ? (
-            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onRemoveAllOnDate={handleRemoveAllOnDate} onDuplicateDate={handleDuplicateDate} onRemoveDay={handleRemoveDayFromGrid} onBulkEditDate={handleBulkEditDate} />
+            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddDate={onAddDate} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onDuplicateDate={handleDuplicateDate} onBulkEditDate={handleBulkEditDate} />
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
