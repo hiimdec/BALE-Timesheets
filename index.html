@@ -1214,7 +1214,7 @@
 
     /* ═══════════════════════════ CREW MANAGER ═══════════════════════════ */
 
-    function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed }) {
+    function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed, onPushUndo }) {
       const [editing, setEditing] = useState(null);
       const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false };
       const [form, setForm] = useState(blank);
@@ -1241,7 +1241,7 @@
         });
         cancel();
       };
-      const remove = (id) => { setCrew((prev) => prev.filter((c) => c.id !== id)); setConfirmRemove(null); };
+      const remove = (id) => { onPushUndo('Crew member removed'); setCrew((prev) => prev.filter((c) => c.id !== id)); setConfirmRemove(null); };
       const onRoleChange = (role) => { const d = ROLE_DEFAULTS[role]; setForm((f) => ({ ...f, role, bdr: d.bdr, otCoef: autoOtCoef(d.bdr) })); };
       const sortByRole = () => {
         setCrew((prev) => [...prev].sort((a, b) => {
@@ -2153,7 +2153,7 @@
       );
     }
 
-    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew }) {
+    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -2244,6 +2244,7 @@
           setDays((prev) => [...prev, ...newDays]);
         } else {
           if (!form.crewId) return;
+          if (editing !== "new") onPushUndo('Day entry saved');
           setDays((prev) => {
             const exists = prev.find((d) => d.id === form.id);
             return exists ? prev.map((d) => (d.id === form.id ? form : d)) : [...prev, form];
@@ -2252,7 +2253,7 @@
         cancel();
       };
 
-      const remove = (id) => { setDays((prev) => prev.filter((d) => d.id !== id)); setConfirmRemove(null); };
+      const remove = (id) => { onPushUndo('Day entry deleted'); setDays((prev) => prev.filter((d) => d.id !== id)); setConfirmRemove(null); };
       const duplicate = (d) => setDays((prev) => [...prev, { ...d, id: uid() }]);
 
       const handleDayText = async (d, c) => {
@@ -2600,6 +2601,26 @@ const setDays = (updater) =>
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
       const [openCrewForm, setOpenCrewForm] = useState(false);
+      const undoRef = useRef(null);
+      const undoTimerRef = useRef(null);
+      const [undoVisible, setUndoVisible] = useState(false);
+      const [undoLabel, setUndoLabel] = useState('');
+
+      const pushUndo = (label) => {
+        undoRef.current = { crew: production.crew ?? [], days: production.days ?? [] };
+        setUndoLabel(label);
+        setUndoVisible(true);
+        if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = setTimeout(() => setUndoVisible(false), 5000);
+      };
+      const handleUndo = () => {
+        if (!undoRef.current) return;
+        const { crew: c, days: d } = undoRef.current;
+        setProduction(prev => ({ ...prev, crew: c, days: d }));
+        undoRef.current = null;
+        setUndoVisible(false);
+        if (undoTimerRef.current) { clearTimeout(undoTimerRef.current); undoTimerRef.current = null; }
+      };
 
       useEffect(() => {
         if (production.isNew) setProduction(p => ({ ...p, isNew: false }));
@@ -2628,6 +2649,12 @@ const setDays = (updater) =>
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
+          {undoVisible && (
+            <div className="fixed bottom-[4.5rem] left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-neutral-800 border border-neutral-600 shadow-lg px-4 py-2.5 rounded-full whitespace-nowrap">
+              <span className="text-[11px] text-neutral-300 uppercase tracking-wide font-bold">{undoLabel}</span>
+              <button onClick={handleUndo} className="text-[11px] text-sky-400 hover:text-sky-300 uppercase tracking-wide font-bold transition-colors">Undo</button>
+            </div>
+          )}
 
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
@@ -2669,10 +2696,10 @@ const setDays = (updater) =>
             {tab === "setup" && (
               <div className="space-y-8">
                 <ProductionForm production={production} setProduction={setProduction} />
-                <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} />
+                <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} onPushUndo={pushUndo} />
               </div>
             )}
-            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} />}
+            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} />}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
           </div>
 
