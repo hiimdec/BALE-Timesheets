@@ -1135,6 +1135,61 @@
 `;
     }
 
+    function generateDaySection(day, calcResult) {
+      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      if (!day?.date) return '';
+
+      const d = new Date(day.date + 'T12:00:00');
+      const dow = d.toLocaleDateString('en-GB', { weekday: 'short' });
+      const mo = d.toLocaleDateString('en-GB', { month: 'long' });
+      const dateStr = `${d.getDate()} ${mo} ${d.getFullYear()}`;
+      const dowNum = d.getDay();
+      const isSat = dowNum === 6;
+      const isSun = dowNum === 0;
+
+      const lines = calcResult?.lines || [];
+      const meta = calcResult?.meta || {};
+      const hasBreach = lines.some(l => l && l.isBreach);
+
+      const headerCls = ['day-header'];
+      if (isSat) headerCls.push('weekend');
+      if (isSun) headerCls.push('sunday');
+      if (hasBreach) headerCls.push('breach-day');
+
+      const dayType = day.dayType || '';
+      let dayTypeClass = 'tag';
+      if (dayType === 'Shoot') dayTypeClass = 'tag shoot';
+      else if (dayType === 'Pre-light') dayTypeClass = 'tag prelight';
+
+      const dayLabel = meta.dayLabel || 'Standard';
+      let callClass = 'tag call';
+      let callText = dayLabel;
+      if (isSun || /^sunday/i.test(dayLabel))      { callClass = 'tag call sunday';  callText = 'Sunday'; }
+      else if (isSat || /^saturday/i.test(dayLabel)) { callClass = 'tag call weekend'; callText = 'Saturday'; }
+      else if (/night shoot/i.test(dayLabel))      { callClass = 'tag call night';   callText = 'Night Shoot'; }
+      else if (/^early/i.test(dayLabel))           { callClass = 'tag call early';   callText = 'Early Call'; }
+      else if (/^late/i.test(dayLabel))            { callClass = 'tag call late';    callText = 'Late Call'; }
+      else if (/^standard/i.test(dayLabel))        { callClass = 'tag call';         callText = 'Standard'; }
+
+      const showCwd = !!meta.continuousDay;
+
+      return `<section class="day">
+    <div class="${headerCls.join(' ')}">
+      <div class="day-date"><span class="dow">${esc(dow)}</span>${esc(dateStr)}</div>
+      <div class="day-tags">
+        ${dayType ? `<span class="${dayTypeClass}">${esc(dayType)}</span>` : ''}
+        <span class="${callClass}">${esc(callText)}</span>
+        ${showCwd ? '<span class="tag cwd">CWD</span>' : ''}
+      </div>
+    </div>
+    <table class="lines">
+      <colgroup><col class="c-marker"><col class="c-desc"><col class="c-time"><col class="c-rate"><col class="c-qty"><col class="c-amt"></colgroup>
+      <tbody></tbody>
+    </table>
+  </section>`;
+    }
+
     const PDF = {
       margin: 48, pageW: 595, pageH: 842,
       get contentW() { return this.pageW - 2 * this.margin; },
