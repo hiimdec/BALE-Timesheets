@@ -19,7 +19,6 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
@@ -83,7 +82,6 @@
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
-    const { jsPDF } = window.jspdf || {};
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
@@ -1964,276 +1962,6 @@ ${pagesHTML}
 </html>`;
     }
 
-    const PDF = {
-      margin: 48, pageW: 595, pageH: 842,
-      get contentW() { return this.pageW - 2 * this.margin; },
-    };
-
-    function drawRule(doc, y, thick = 0.5) {
-      doc.setLineWidth(thick); doc.setDrawColor(0);
-      doc.line(PDF.margin, y, PDF.pageW - PDF.margin, y);
-    }
-
-    function drawFilledBand(doc, y, h) {
-      doc.setFillColor(242, 242, 242);
-      doc.rect(PDF.margin, y, PDF.contentW, h, 'F');
-    }
-
-    function addRunningHeader(doc, sectionLabel, production) {
-      const pageNum = doc.internal.getCurrentPageInfo().pageNumber;
-      const title = production.title || '';
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(130);
-      if (title) {
-        const t = title.length > 52 ? title.slice(0, 51) + '…' : title;
-        doc.text(t, PDF.margin, PDF.margin - 8);
-      }
-      doc.text(`${sectionLabel}  ·  p.${pageNum}`, PDF.pageW - PDF.margin, PDF.margin - 8, { align: 'right' });
-      doc.setDrawColor(180); doc.setLineWidth(0.4);
-      doc.line(PDF.margin, PDF.margin - 4, PDF.pageW - PDF.margin, PDF.margin - 4);
-      doc.setDrawColor(0); doc.setTextColor(0);
-    }
-
-    function ensureSpace(doc, yRef, needed, onNewPage) {
-      if (yRef.y + needed > PDF.pageH - PDF.margin) {
-        doc.addPage(); yRef.y = PDF.margin + 12;
-        if (onNewPage) onNewPage(doc);
-      }
-    }
-
-    function addCrewSheetToDoc(doc, crewMember, entries, production, isFirstPage = false, weekOpts = null) {
-      if (!isFirstPage) doc.addPage();
-      const sectionLabel = crewMember.name + ' — Timesheet';
-      addRunningHeader(doc, sectionLabel, production);
-      const onNewPage = (d) => addRunningHeader(d, sectionLabel, production);
-      const y = { y: PDF.margin + 12 };
-
-      // Name + production title on same baseline
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(0);
-      doc.text(crewMember.name, PDF.margin, y.y);
-      if (production.title) {
-        const t = production.title.length > 40 ? production.title.slice(0, 39) + '…' : production.title;
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(40);
-        doc.text(t, PDF.pageW - PDF.margin, y.y, { align: 'right' });
-      }
-      y.y += 14;
-
-      // Role/rates + prodCo on same baseline
-      const rateStr = `${crewMember.role}  ·  BDR ${fmtGBP(crewMember.bdr)}  ·  BHR ${fmtGBP(crewMember.bdr/10)}  ·  OT ${crewMember.otCoef}×`;
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90);
-      doc.text(rateStr.length > 68 ? rateStr.slice(0, 67) + '…' : rateStr, PDF.margin, y.y);
-      if (production.prodCo) {
-        const pc = production.prodCo.length > 35 ? production.prodCo.slice(0, 34) + '…' : production.prodCo;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
-        doc.text(pc, PDF.pageW - PDF.margin, y.y, { align: 'right' });
-      }
-      y.y += 10;
-      drawRule(doc, y.y, 0.8); y.y += 18;
-      if (weekOpts) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(80, 80, 200);
-        doc.text(`Week ${weekOpts.weekNum} of ${weekOpts.totalWeeks}  ·  ${weekOpts.label}`, PDF.margin, y.y);
-        y.y += 16;
-      }
-
-      const COL = { label: PDF.margin, detail: PDF.margin + 170, rate: 395, qty: 455, amount: PDF.pageW - PDF.margin };
-      const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-      let grandTotal = 0;
-      let prevPdfEntry = null;
-
-      sorted.forEach((d) => {
-        const calc = calcForDisplay(production, d, crewMember, prevPdfEntry);
-        grandTotal += calc.total;
-
-        ensureSpace(doc, y, 26 + calc.lines.length * 14 + 34, onNewPage);
-
-        // Day section header — date as anchor, type/label right-aligned
-        const stepUpLabel = d.stepUpEnabled && d.stepUpRole ? `Step-up: ${d.stepUpRole}` : '';
-        const rightLabel = [d.dayType, calc.meta.dayLabel, calc.meta.continuousDay ? 'CWD' : '', stepUpLabel].filter(Boolean).join('  ·  ');
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0);
-        doc.text(fmtDate(d.date), PDF.margin, y.y);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100);
-        doc.text(rightLabel, PDF.pageW - PDF.margin, y.y, { align: 'right' });
-        y.y += 5;
-        drawRule(doc, y.y, 0.3); y.y += 13;
-
-        // Line items
-        calc.lines.forEach((l) => {
-          ensureSpace(doc, y, 14, onNewPage);
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-          doc.setTextColor(l.isTOC ? (l.isBreach ? 180 : 150) : 0, l.isTOC ? (l.isBreach ? 50 : 100) : 0, 0);
-          doc.text(l.label, COL.label, y.y);
-          if (l.detail) {
-            doc.setFontSize(8);
-            doc.setTextColor(l.isBreach ? 180 : 120, l.isBreach ? 50 : 120, l.isBreach ? 50 : 120);
-            doc.text(l.detail.slice(0, 40), COL.detail, y.y);
-          }
-          doc.setTextColor(0);
-          if (l.rate != null) { doc.setFontSize(9); doc.text(fmtGBP(l.rate), COL.rate, y.y, { align: 'right' }); }
-          const qtyStr = typeof l.qty === 'number' ? (Number.isInteger(l.qty) ? String(l.qty) : l.qty.toFixed(2)) : String(l.qty);
-          doc.setFontSize(9); doc.text(qtyStr, COL.qty, y.y, { align: 'right' });
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-          doc.text(fmtGBP(l.amount), COL.amount, y.y, { align: 'right' });
-          y.y += 14;
-        });
-
-        // Day total — filled band
-        ensureSpace(doc, y, 34, onNewPage);
-        y.y += 2;
-        drawFilledBand(doc, y.y, 18);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
-        doc.text('Day total', COL.label + 4, y.y + 13);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
-        doc.text(fmtGBP(calc.total), COL.amount, y.y + 13, { align: 'right' });
-        y.y += 34;
-        prevPdfEntry = d;
-      });
-
-      // Grand total — with optional VAT breakdown
-      const { vatAmount, totalIncVAT } = crewVAT(crewMember, grandTotal);
-      const vatNeeded = crewMember.vatRegistered ? 60 : 46;
-      ensureSpace(doc, y, vatNeeded, onNewPage);
-      y.y += 4;
-      drawRule(doc, y.y, 1.2); y.y += 2;
-      if (crewMember.vatRegistered) {
-        const vatRate = Number(crewMember.vatRate) || 20;
-        drawFilledBand(doc, y.y, 20);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
-        doc.text('Subtotal', PDF.margin + 4, y.y + 14);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 14, { align: 'right' });
-        y.y += 24;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
-        doc.text(`VAT (${vatRate}%)`, PDF.margin + 4, y.y);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-        doc.text(fmtGBP(vatAmount), PDF.pageW - PDF.margin, y.y, { align: 'right' });
-        y.y += 14;
-        drawFilledBand(doc, y.y, 24);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text('Total inc. VAT', PDF.margin + 4, y.y + 17);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-        doc.text(fmtGBP(totalIncVAT), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
-        y.y += 24;
-      } else {
-        drawFilledBand(doc, y.y, 24);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text(weekOpts ? 'Weekly Total' : 'Total', PDF.margin + 4, y.y + 17);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal), PDF.pageW - PDF.margin, y.y + 17, { align: 'right' });
-        y.y += 24;
-      }
-      drawRule(doc, y.y, 0.4);
-    }
-
-    function addSummarySheetToDoc(doc, production, crew, days, weekOpts = null) {
-      addRunningHeader(doc, weekOpts ? `Week ${weekOpts.weekNum} — Summary` : 'Crew Summary', production);
-      const y = { y: PDF.margin + 12 };
-      const byCrew = [];
-      const map = new Map();
-      days.forEach((d) => {
-        const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
-        if (!map.has(c.id)) { const entry = { crew: c, entries: [] }; map.set(c.id, entry); byCrew.push(entry); }
-        map.get(c.id).entries.push(d);
-      });
-      const ordered = crew.map((c) => map.get(c.id)).filter(Boolean);
-
-      const grandTotal = ordered.reduce((s, { crew: c, entries }) => {
-        const sortedE = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-        return s + sortedE.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedE[i - 1] || null).total, 0);
-      }, 0);
-
-      let dateRange = '';
-      if (days.length > 0) {
-        const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
-        const first = sorted[0].date, last = sorted[sorted.length - 1].date;
-        dateRange = first === last ? fmtDateShort(first) : `${fmtDateShort(first)} – ${fmtDateShort(last)}`;
-      }
-
-      // Title block
-      const titleStr = (production.title || 'Untitled Production');
-      doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
-      doc.text(titleStr.length > 55 ? titleStr.slice(0, 54) + '…' : titleStr, PDF.margin, y.y); y.y += 14;
-      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100);
-      const sub = [production.prodCo, dateRange].filter(Boolean).join(' · ');
-      if (sub) { doc.text(sub, PDF.margin, y.y); y.y += 14; }
-      if (weekOpts) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(80, 80, 200);
-        doc.text(`Week ${weekOpts.weekNum} of ${weekOpts.totalWeeks}  ·  ${weekOpts.label}`, PDF.margin, y.y);
-        y.y += 14;
-      }
-      y.y += 8;
-
-      // Column header with filled band
-      const COL = { name: PDF.margin, role: 220, days: 330, hours: 390, ot: 450, total: PDF.pageW - PDF.margin };
-      drawFilledBand(doc, y.y, 22);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(0);
-      doc.text('NAME',   COL.name + 4,  y.y + 15);
-      doc.text('ROLE',   COL.role,       y.y + 15);
-      doc.text('DAYS',   COL.days,       y.y + 15, { align: 'right' });
-      doc.text('HOURS',  COL.hours,      y.y + 15, { align: 'right' });
-      doc.text('OT HRS', COL.ot,         y.y + 15, { align: 'right' });
-      doc.text('TOTAL',  COL.total,      y.y + 15, { align: 'right' });
-      y.y += 34;
-
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-      ordered.forEach(({ crew: c, entries }) => {
-        ensureSpace(doc, y, 20);
-        const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.workedHrs, 0);
-        const otHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.otHrs, 0);
-        const sortedEnt = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-        const totalFee = sortedEnt.reduce((s, e, i) => s + calcForDisplay(production, e, c, sortedEnt[i - 1] || null).total, 0);
-        doc.setTextColor(0); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-        doc.text(c.name, COL.name + 4, y.y);
-        doc.setTextColor(100); doc.setFontSize(9);
-        doc.text(c.role, COL.role, y.y);
-        doc.setTextColor(0); doc.setFontSize(10);
-        doc.text(String(entries.length), COL.days,  y.y, { align: 'right' });
-        doc.text(totalHrs.toFixed(1),    COL.hours, y.y, { align: 'right' });
-        doc.text(otHrs > 0 ? otHrs.toFixed(1) : '—', COL.ot, y.y, { align: 'right' });
-        doc.setFont('helvetica', 'bold');
-        doc.text(fmtGBP(totalFee), COL.total, y.y, { align: 'right' });
-        y.y += 8;
-        doc.setDrawColor(210); doc.setLineWidth(0.2);
-        doc.line(PDF.margin, y.y, PDF.pageW - PDF.margin, y.y);
-        y.y += 12;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-      });
-
-      // Grand total — with optional VAT breakdown if any crew is VAT-registered
-      const anyVAT = ordered.some(({ crew: c }) => c.vatRegistered);
-      const totalVAT = ordered.reduce((s, { crew: c, entries }) => {
-        const sortedV = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-        const sub = sortedV.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedV[i - 1] || null).total, 0);
-        return s + crewVAT(c, sub).vatAmount;
-      }, 0);
-      y.y += 4;
-      drawRule(doc, y.y, 1.2); y.y += 2;
-      if (anyVAT) {
-        drawFilledBand(doc, y.y, 20);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80);
-        doc.text(weekOpts ? 'Weekly Total (ex VAT)' : 'Grand Total (ex VAT)', COL.name + 4, y.y + 14);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal), COL.total, y.y + 14, { align: 'right' });
-        y.y += 24;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
-        doc.text('VAT', COL.name + 4, y.y);
-        doc.text(fmtGBP(totalVAT), COL.total, y.y, { align: 'right' });
-        y.y += 14;
-        drawFilledBand(doc, y.y, 24);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text(weekOpts ? 'Weekly Total (inc VAT)' : 'Grand Total (inc VAT)', COL.name + 4, y.y + 17);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal + totalVAT), COL.total, y.y + 17, { align: 'right' });
-        y.y += 24;
-      } else {
-        drawFilledBand(doc, y.y, 24);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
-        doc.text(weekOpts ? 'Weekly Total' : 'Grand Total', COL.name + 4, y.y + 17);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0);
-        doc.text(fmtGBP(grandTotal), COL.total, y.y + 17, { align: 'right' });
-        y.y += 24;
-      }
-      drawRule(doc, y.y, 0.4);
-    }
-
     function getMonday(dateStr) {
       const d = new Date(dateStr + "T12:00:00");
       const dow = d.getDay();
@@ -2327,28 +2055,6 @@ ${allPagesHTML}
         window.alert(`Export failed: ${e?.message || 'Unknown error'}`);
         throw e;
       }
-    }
-
-    async function exportWeekPdf(production, crew, weekDays, weekOpts, { download = false } = {}) {
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      addSummarySheetToDoc(doc, production, crew, weekDays, weekOpts);
-      const byCrewMap = new Map();
-      weekDays.forEach((d) => {
-        const c = crew.find((cc) => cc.id === d.crewId); if (!c) return;
-        if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, { crew: c, entries: [] });
-        byCrewMap.get(c.id).entries.push(d);
-      });
-      const ordered = crew.map((c) => byCrewMap.get(c.id)).filter(Boolean);
-      ordered.forEach(({ crew: c, entries }) => addCrewSheetToDoc(doc, c, entries, production, false, weekOpts));
-      const name = slug(production.title) || 'timesheets';
-      await sharePdfOrDownload(doc, `${name}_week${weekOpts.weekNum}.pdf`, { download });
-    }
-
-    async function exportDayPdf(day, crewMember, production) {
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      addCrewSheetToDoc(doc, crewMember, [day], production, true);
-      const filename = `${slug(crewMember.name)}_${day.date}.pdf`;
-      await sharePdfOrDownload(doc, filename);
     }
 
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
@@ -3553,8 +3259,6 @@ ${allPagesHTML}
         const r = await shareTextOrCopy(text, `${c.name} ${fmtDateShort(d.date)}`);
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
       };
-      const handleDayPdf = async (d, c) => { await exportDayPdf(d, c, production); };
-
       const grouped = useMemo(() => {
         const by = {};
         days.forEach((d) => { (by[d.date] = by[d.date] || []).push(d); });
@@ -3655,7 +3359,6 @@ ${allPagesHTML}
                               <div className="font-mono font-bold text-neutral-100 text-sm">{fmtGBP(calc.total)}</div>
                               <div className="flex gap-1">
                                 <Btn size="sm" variant="ghost" onClick={() => handleDayText(d, c)} title="Send as text"><IMessage/></Btn>
-                                <Btn size="sm" variant="ghost" onClick={() => handleDayPdf(d, c)} title="Export PDF"><IDownload/></Btn>
                                 <Btn size="sm" variant="ghost" onClick={() => startEdit(d)}><IPencil/></Btn>
                                 <Btn size="sm" variant="ghost" onClick={() => duplicate(d)} title="Duplicate"><IPlus/></Btn>
                                 {confirmRemove === d.id ? (
@@ -3697,25 +3400,6 @@ ${allPagesHTML}
         return crew.map((c) => m.get(c.id)).filter(Boolean);
       }, [crew, days]);
 
-      const detectedWeeks = useMemo(() => {
-        if (days.length === 0) return [];
-        const weekMap = new Map();
-        days.forEach((d) => {
-          const mon = getMonday(d.date);
-          if (!weekMap.has(mon)) weekMap.set(mon, []);
-          weekMap.get(mon).push(d);
-        });
-        const sorted = [...weekMap.keys()].sort();
-        const total = sorted.length;
-        return sorted.map((mon, i) => {
-          const d = new Date(mon + "T12:00:00");
-          const sun = new Date(d); sun.setDate(d.getDate() + 6);
-          const monLabel = `${d.getDate()} ${d.toLocaleString('en-GB', { month: 'short' })}`;
-          const sunLabel = `${sun.getDate()} ${sun.toLocaleString('en-GB', { month: 'short' })}`;
-          return { weekNum: i + 1, totalWeeks: total, monday: mon, sunday: sun.toISOString().slice(0, 10), label: `${monLabel}–${sunLabel}`, days: weekMap.get(mon) };
-        });
-      }, [days]);
-
       const grandTotal = byCrew.reduce((s, { crew: c, entries }) => {
         const sortedG = [...entries].sort((a, b) => a.date.localeCompare(b.date));
         return s + sortedG.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedG[i - 1] || null).total, 0);
@@ -3742,18 +3426,6 @@ ${allPagesHTML}
       const handleCrewPdfDownload = async (c, entries) => {
         setBusy(`pdf-dl-${c.id}`);
         try { await exportCrewPDF(c, entries, production); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
-      };
-
-      const handleWeekPdf = async (wk) => {
-        setBusy(`week-${wk.weekNum}`);
-        try { await exportWeekPdf(production, crew, wk.days, wk); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
-      };
-
-      const handleWeekPdfDownload = async (wk) => {
-        setBusy(`week-dl-${wk.weekNum}`);
-        try { await exportWeekPdf(production, crew, wk.days, wk, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
         setBusy(null);
       };
 
@@ -3801,31 +3473,6 @@ ${allPagesHTML}
               One PDF with a crew summary on page 1, then each crew member's full timesheet on their own page{byCrew.some(({ entries }) => entries.length > 1) ? '(s)' : ''}.
             </div>
           </div>
-
-          {/* Weekly export — only shown when days span more than one calendar week */}
-          {detectedWeeks.length > 1 && (
-            <div className="space-y-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Export by week</div>
-              {detectedWeeks.map((wk) => (
-                <div key={wk.monday} className="bg-neutral-900 border border-neutral-800 p-3 rounded-[10px]">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <div className="text-sm font-semibold text-neutral-100">Week {wk.weekNum}</div>
-                      <div className="text-[11px] text-neutral-400 font-mono mt-0.5">{wk.label} · {wk.days.length} day{wk.days.length !== 1 ? 's' : ''}</div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Btn size="md" variant="subtle" onClick={() => handleWeekPdf(wk)} disabled={busy !== null}>
-                        <IDownload/>{busy === `week-${wk.weekNum}` ? '…' : 'Share PDF'}
-                      </Btn>
-                      <Btn size="md" variant="ghost" onClick={() => handleWeekPdfDownload(wk)} disabled={busy !== null}>
-                        <IDownload/>{busy === `week-dl-${wk.weekNum}` ? '…' : 'Download PDF'}
-                      </Btn>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Per crew */}
           <div className="space-y-2">
