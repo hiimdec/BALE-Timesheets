@@ -1074,6 +1074,24 @@
       const crewCode = (crew?.name || 'CREW').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'CREW';
       const docId = `REF · ${prodCode} / ${crewCode} · ${docDate}`;
 
+      const fmtPeriod = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso + 'T12:00:00');
+        const wd = d.toLocaleDateString('en-GB', { weekday: 'short' });
+        const mo = d.toLocaleDateString('en-GB', { month: 'long' });
+        return `${wd} ${d.getDate()} ${mo} ${d.getFullYear()}`;
+      };
+      const sortedDays = [...(days || [])].filter(d => d?.date).sort((a, b) => a.date.localeCompare(b.date));
+      const firstIso = sortedDays.length ? sortedDays[0].date : null;
+      const lastIso  = sortedDays.length ? sortedDays[sortedDays.length - 1].date : null;
+      const totalHrs = sortedDays.reduce((s, d) => {
+        const resolved = resolveDay(production, d, crew);
+        const h = gridDisplayHours(resolved);
+        return s + (Number.isFinite(h) ? h : 0);
+      }, 0);
+      const dayCount = sortedDays.length;
+      const periodStats = `${dayCount} day${dayCount === 1 ? '' : 's'} · ${totalHrs.toFixed(1)} hrs`;
+
       return `<!doctype html>
 <html lang="en">
 <head>
@@ -1102,6 +1120,18 @@
       <div class="doc-id">${esc(docId)}</div>
     </div>
   </header>
+
+  <div class="period">
+    <div>
+      <div class="lab">Period Start</div>
+      <div class="val">${esc(fmtPeriod(firstIso))}</div>
+    </div>
+    <div class="center">${esc(periodStats)}</div>
+    <div class="right">
+      <div class="lab">Period End</div>
+      <div class="val">${esc(fmtPeriod(lastIso))}</div>
+    </div>
+  </div>
 `;
     }
 
