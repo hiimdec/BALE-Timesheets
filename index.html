@@ -3492,6 +3492,22 @@ ${allPagesHTML}
         setBusy(null);
       };
 
+      // TEMP DEBUG: open generateGridHTML output in a new tab as a blob URL
+      const handleDebugGridHTML = () => {
+        try {
+          const html = generateGridHTML(production, days, crew);
+          console.log('[debug grid] HTML length:', html.length);
+          console.log('[debug grid] HTML preview:', html.slice(0, 2000));
+          const blob = new Blob([html], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (e) {
+          console.error('[debug grid] FAILED:', e);
+          window.alert(`Debug failed: ${e?.message || 'Unknown error'}`);
+        }
+      };
+
       const detectedWeeks = useMemo(() => {
         if (days.length === 0) return [];
         const weekMap = new Map();
@@ -3572,6 +3588,9 @@ ${allPagesHTML}
               </Btn>
               <Btn variant="subtle" onClick={handleAllPdfDownload} disabled={busy !== null}>
                 <IDownload/>{busy === 'all-pdf-dl' ? 'Building…' : 'Download PDF'}
+              </Btn>
+              <Btn variant="ghost" onClick={handleDebugGridHTML}>
+                Debug: Grid HTML
               </Btn>
             </div>
             <div className="text-[11px] text-neutral-500 leading-relaxed">
