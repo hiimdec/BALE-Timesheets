@@ -1341,7 +1341,7 @@
 
     /* ═══════════════════════════ DAY ENTRY FORM ═══════════════════════════ */
 
-    function DayEntryForm({ value, onChange, crew, allCrewMode, hideCrewAndDate = false }) {
+    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null }) {
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
@@ -1390,7 +1390,7 @@
 
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {!hideCrewAndDate && !allCrewMode && (
+          {!fixedCrewId && !allCrewMode && (
             <Field label="Crew Member">
               <Select value={v.crewId} onChange={(e) => set({ crewId: e.target.value })}>
                 <option value="">— Select —</option>
@@ -1398,13 +1398,13 @@
               </Select>
             </Field>
           )}
-          {!hideCrewAndDate && allCrewMode && (
+          {!fixedCrewId && allCrewMode && (
             <div className="bg-sky-950/30 border border-sky-800 p-2">
               <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold">All Crew Mode</div>
               <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage apply to all.</div>
             </div>
           )}
-          {!hideCrewAndDate && (
+          {!fixedDate && (
             <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}` : ""}>
               <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
             </Field>
@@ -1412,7 +1412,7 @@
           <Field label="Day Type">
             <Select value={v.dayType} onChange={(e) => onDayTypeChange(e.target.value)}>{DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
           </Field>
-          {!hideCrewAndDate && <div className="hidden md:block" />}
+          {!fixedCrewId && !fixedDate && <div className="hidden md:block" />}
 
           <Field label="Call Time" hint={callH !== null && callH < 5 ? "→ Night shoot (pre-5am)" : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)" : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call" : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)" : ""}>
             <TimeInput value={v.callTime} onChange={(e) => onCallChange(e.target.value)} />
@@ -1590,19 +1590,20 @@
 
     /* ═══════════════════════════ DAY EDIT MODAL ═══════════════════════════ */
 
-    function DayEditModal({ editing, form, setForm, crew, production, days, onSave, onCancel, onRemove }) {
+    function DayEditModal({ editing, form, setForm, crew, production, days, onSave, onCancel, onRemove, fixedCrewId = null, fixedDate = null }) {
       const isNewAll = editing === "new-all";
-      const isNew    = editing === "new";
+      const isNew    = editing === "new" && !fixedCrewId;
       const isKnown  = !isNew && !isNewAll;
 
-      const activeCrew = !isNewAll ? crew.find(c => c.id === form.crewId) : null;
+      const activeCrew = !isNewAll ? crew.find(c => c.id === (fixedCrewId || form.crewId)) : null;
       const activeCalc = activeCrew
         ? calcForDisplay(production, form, activeCrew, findPrevDay(days, form))
         : null;
       const penaltyLines = activeCalc ? activeCalc.lines.filter(l => l.rate === null || l.isTOC) : [];
 
-      const dateStr = form.date
-        ? new Date(form.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+      const resolvedDate = fixedDate || form.date;
+      const dateStr = resolvedDate
+        ? new Date(resolvedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
         : "";
 
       useEffect(() => {
@@ -1628,7 +1629,7 @@
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1.5">{modalTitle}</div>
-                  {isKnown && activeCrew && (
+                  {fixedCrewId && activeCrew && (
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-neutral-100 truncate">{activeCrew.name}</span>
                       <span className="text-[10px] uppercase tracking-wider bg-neutral-800 text-neutral-400 px-1.5 py-px rounded-sm flex-shrink-0">{activeCrew.role}</span>
@@ -1636,7 +1637,7 @@
                       {dateStr && <span className="text-[11px] text-neutral-200 font-semibold flex-shrink-0">{dateStr}</span>}
                     </div>
                   )}
-                  {(isNew || isNewAll) && (
+                  {!fixedCrewId && (isNew || isNewAll) && (
                     <div className="text-xs text-neutral-500">
                       {isNewAll ? `${crew.length} crew member${crew.length !== 1 ? "s" : ""} — select date below` : "Select crew member and date below"}
                     </div>
@@ -1653,7 +1654,8 @@
                 onChange={setForm}
                 crew={crew}
                 allCrewMode={isNewAll}
-                hideCrewAndDate={isKnown}
+                fixedCrewId={fixedCrewId}
+                fixedDate={fixedDate}
               />
               {isNewAll && (
                 <div className="mt-3 bg-black border border-sky-400 p-3 text-xs text-neutral-300">
@@ -2069,6 +2071,8 @@
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
       const [gridView, setGridView] = useState(true);
+      const [fixedCrewId, setFixedCrewId] = useState(null);
+      const [fixedDate, setFixedDate] = useState(null);
 
       const startNew = () => {
         if (crew.length === 0) return;
@@ -2076,6 +2080,8 @@
         const callH = parseHHMM(d.callTime) ?? 8;
         setForm({ ...d, ...makeBlankDay(crew[0].id), secondBreakStartTime: toHHMM(callH + 11) });
         setEditing("new");
+        setFixedCrewId(null);
+        setFixedDate(null);
       };
       const startNewAll = () => {
         if (crew.length === 0) return;
@@ -2083,9 +2089,20 @@
         const callH = parseHHMM(d.callTime) ?? 8;
         setForm({ ...d, ...makeBlankDay(""), secondBreakStartTime: toHHMM(callH + 11) });
         setEditing("new-all");
+        setFixedCrewId(null);
+        setFixedDate(null);
       };
-      const startEdit = (d) => { setForm(migrateDay(d)); setEditing(d.id); };
-      const cancel = () => { setEditing(null); };
+      const startEdit = (d) => {
+        setForm(migrateDay(d));
+        setEditing(d.id);
+        setFixedCrewId(d.crewId);
+        setFixedDate(d.date);
+      };
+      const cancel = () => {
+        setEditing(null);
+        setFixedCrewId(null);
+        setFixedDate(null);
+      };
       const handleEditDayFromGrid = (id) => { const d = days.find(day => day.id === id); if (d) startEdit(d); };
       const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => {
         const newDay = { ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType) };
@@ -2198,6 +2215,8 @@
               onSave={save}
               onCancel={cancel}
               onRemove={(id) => { remove(id); cancel(); }}
+              fixedCrewId={fixedCrewId}
+              fixedDate={fixedDate}
             />
           )}
 
