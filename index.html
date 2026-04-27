@@ -1092,6 +1092,31 @@
       const dayCount = sortedDays.length;
       const periodStats = `${dayCount} day${dayCount === 1 ? '' : 's'} · ${totalHrs.toFixed(1)} hrs`;
 
+      const calcResults = sortedDays.map((day, i) => {
+        const prevDay = i > 0 ? sortedDays[i - 1] : null;
+        return calcForDisplay(production, day, crew, prevDay);
+      });
+
+      const daySectionsHTML = sortedDays.map((day, i) => generateDaySection(day, calcResults[i])).join('\n');
+
+      const grandTotal = calcResults.reduce((s, r) => s + (Number(r?.total) || 0), 0);
+      const totalOTHrs = calcResults.reduce((s, r) => {
+        return s + (r?.lines || []).filter(l => /OT|Overtime/i.test(l.label || '')).reduce((qs, l) => qs + (Number(l.qty) || 0), 0);
+      }, 0);
+
+      const fmtShort = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso + 'T12:00:00');
+        return `${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })} ${d.getFullYear()}`;
+      };
+      const periodRange = `${fmtShort(firstIso)} – ${fmtShort(lastIso)}`;
+      const lblSub = `${dayCount} day${dayCount === 1 ? '' : 's'} worked · ${totalHrs.toFixed(1)} hrs · ${totalOTHrs.toFixed(1)} OT hrs · period ${periodRange}`;
+
+      const grandTotalStr = fmtGBP(grandTotal);
+      const grandTotalHTML = grandTotalStr.startsWith('£') ? `<span class="ccy">£</span>${grandTotalStr.slice(1)}` : esc(grandTotalStr);
+
+      const footerRef = `${prodCode} / ${crewCode}`;
+
       return `<!doctype html>
 <html lang="en">
 <head>
@@ -1132,7 +1157,27 @@
       <div class="val">${esc(fmtPeriod(lastIso))}</div>
     </div>
   </div>
-`;
+
+${daySectionsHTML}
+
+  <div class="grand-total">
+    <div>
+      <div class="lbl">Total Due</div>
+      <div class="lbl-sub">${esc(lblSub)}</div>
+    </div>
+    <div class="amt">${grandTotalHTML}</div>
+  </div>
+
+  <div class="doc-footer">
+    <div>${esc(footerRef)}</div>
+    <div class="center">END OF TIMESHEET</div>
+    <div class="right">Generated ${esc(docDate)}</div>
+  </div>
+
+</div>
+
+</body>
+</html>`;
     }
 
     function generateDaySection(day, calcResult) {
