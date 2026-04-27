@@ -1263,6 +1263,38 @@ ${daySectionsHTML}
   </section>`;
     }
 
+    async function exportCrewPDF(crew, days, production) {
+      const html = generateCrewHTML(crew, days, production);
+      const filename = `${crew?.name || 'Crew'} — ${production?.title || 'Timesheet'}.pdf`;
+
+      const parsed = new DOMParser().parseFromString(html, 'text/html');
+      const styleEl = document.createElement('style');
+      styleEl.setAttribute('data-crew-pdf', '1');
+      styleEl.textContent = parsed.querySelector('style')?.textContent || '';
+      document.head.appendChild(styleEl);
+
+      const page = parsed.querySelector('.page');
+      const container = document.createElement('div');
+      container.style.cssText = 'position:fixed;left:-9999px;top:0;';
+      container.appendChild(page);
+      document.body.appendChild(container);
+
+      const opt = {
+        margin: 0,
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
+
+      try {
+        await html2pdf().set(opt).from(page).save();
+      } finally {
+        document.head.removeChild(styleEl);
+        document.body.removeChild(container);
+      }
+    }
+
     const PDF = {
       margin: 48, pageW: 595, pageH: 842,
       get contentW() { return this.pageW - 2 * this.margin; },
@@ -3090,13 +3122,13 @@ ${daySectionsHTML}
 
       const handleCrewPdf = async (c, entries) => {
         setBusy(`pdf-${c.id}`);
-        try { await exportCrewPdf(c, entries, production); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
+        try { await exportCrewPDF(c, entries, production); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
         setBusy(null);
       };
 
       const handleCrewPdfDownload = async (c, entries) => {
         setBusy(`pdf-dl-${c.id}`);
-        try { await exportCrewPdf(c, entries, production, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
+        try { await exportCrewPDF(c, entries, production); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
         setBusy(null);
       };
 
