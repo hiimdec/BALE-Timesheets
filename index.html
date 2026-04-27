@@ -1822,28 +1822,44 @@ ${GRID_CSS}
         return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
       };
 
-      const renderCell = (crewMember, date) => {
+      // Inline style constants (hardcoded colours so html2canvas doesn't need var() resolution)
+      const C = {
+        ink:        '#15171A',
+        ink2:       '#2B2E33',
+        muted:      '#6B7079',
+        ruleHair:   '#E8E3D6',
+        paperBand:  '#F6F3EC',
+        amber:      '#B7791F',
+        amberTint:  '#FBF4E3',
+        red:        '#B42318',
+        redTint:    '#F9ECE9',
+      };
+
+      const CREW_W = '200px';
+
+      const renderDayCell = (crewMember, date) => {
         const day = (allDays || []).find(d => d.crewId === crewMember.id && d.date === date);
         const dInfo = fmtDate(date);
         const isSat = dInfo.dayNum === 6;
         const isSun = dInfo.dayNum === 0;
-        const tdCls = isSat ? ' class="sat"' : isSun ? ' class="sun"' : '';
+        const bg = isSat ? C.amberTint : isSun ? C.redTint : 'transparent';
+        const wrapStyle = `flex:1;min-height:76px;display:flex;align-items:center;justify-content:center;border-right:0.4pt solid ${C.ruleHair};background:${bg};`;
 
         if (!day) {
-          return `<td${tdCls}><div class="cell rest"><span class="rest-dot"></span>Rest</div></td>`;
+          return `<div style="${wrapStyle}"><div class="cell rest" style="padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:4px;"><span class="rest-dot"></span>Rest</div></div>`;
         }
 
         const resolved = resolveDay(production, day, crewMember);
         const { meta, lines } = calculateDay(resolved, crewMember, production);
 
-        const hasOT  = (meta.otHrs || 0) > 0;
-        const hasCWD = !!meta.continuousDay;
-        const hasMSB = lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label || ''));
-        const hasTOC = lines.some(l => l.isTOC);
+        const hasOT      = (meta.otHrs || 0) > 0;
+        const hasCWD     = !!meta.continuousDay;
+        const hasMSB     = lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label || ''));
+        const hasTOC     = lines.some(l => l.isTOC);
         const isTOCBreach = lines.some(l => l.isTOC && l.isBreach);
 
         const cellClasses = ['cell'];
-        if (hasOT) cellClasses.push('has-ot');
+        if (hasOT)       cellClasses.push('has-ot');
         if (isTOCBreach) cellClasses.push('has-breach');
 
         const chips = [];
@@ -1852,11 +1868,12 @@ ${GRID_CSS}
         if (hasTOC) chips.push('<span class="chip toc">TOC</span>');
         if (hasCWD) chips.push('<span class="chip cwd">CWD</span>');
 
-        const ct = resolved.callTime || '—';
-        const wt = resolved.wrapTime || '—';
+        const ct  = resolved.callTime  || '—';
+        const wt  = resolved.wrapTime  || '—';
         const hrs = gridDisplayHours(resolved);
+        const hrsColor = isTOCBreach ? C.red : C.ink;
 
-        return `<td${tdCls}><div class="${cellClasses.join(' ')}"><div class="times">${esc(ct)}–${esc(wt)}</div><div class="hours">${esc(fmtHrs(hrs))}</div>${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div></td>`;
+        return `<div style="${wrapStyle}"><div class="${cellClasses.join(' ')}" style="padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:4px;"><div class="times" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8.5pt;color:${C.muted};letter-spacing:0.02em;">${esc(ct)}–${esc(wt)}</div><div class="hours" style="font-size:14pt;font-weight:600;letter-spacing:-0.01em;color:${hrsColor};line-height:1;">${esc(fmtHrs(hrs))}</div>${chips.length ? `<div class="chips" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-top:2px;">${chips.join('')}</div>` : ''}</div></div>`;
       };
 
       const PER_PAGE = 5;
@@ -1872,18 +1889,25 @@ ${GRID_CSS}
       const crewCount = (allCrew || []).length;
 
       const renderPage = (chunkDates, idx) => {
-        const colsHTML = `<col class="crew-col" />` + chunkDates.map(() => `<col class="day-col" />`).join('');
-
-        const headerCells = chunkDates.map(date => {
+        // Header row
+        const headerDayCells = chunkDates.map(date => {
           const di = fmtDate(date);
-          const cls = di.dayNum === 6 ? ' class="sat"' : di.dayNum === 0 ? ' class="sun"' : '';
-          return `<th${cls}><span class="dow">${esc(di.dow)}</span><span class="date">${esc(di.date)}</span><span class="month">${esc(di.month)}</span></th>`;
+          const isSat = di.dayNum === 6;
+          const isSun = di.dayNum === 0;
+          const bg        = isSat ? C.amberTint : isSun ? C.redTint   : 'transparent';
+          const accentClr = isSat ? C.amber     : isSun ? C.red       : C.muted;
+          return `<div style="flex:1;text-align:center;padding:10px 6px 12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;background:${bg};"><span style="display:block;font-size:8.5pt;letter-spacing:0.18em;text-transform:uppercase;color:${accentClr};margin-bottom:3px;font-weight:500;">${esc(di.dow)}</span><span style="display:block;font-size:13pt;font-weight:600;letter-spacing:-0.01em;color:${C.ink};line-height:1;">${esc(di.date)}</span><span style="display:block;font-size:8pt;color:${accentClr};letter-spacing:0.08em;text-transform:uppercase;margin-top:3px;">${esc(di.month)}</span></div>`;
         }).join('');
 
+        const headerRow = `<div style="display:flex;align-items:stretch;border-bottom:0.75pt solid ${C.ink};"><div style="width:${CREW_W};flex-shrink:0;padding:10px 12px 12px;display:flex;align-items:flex-end;font-size:8.5pt;letter-spacing:0.16em;text-transform:uppercase;color:${C.muted};">Crew</div>${headerDayCells}</div>`;
+
+        // Body rows
         const bodyRows = (allCrew || []).map(c => {
-          const cells = chunkDates.map(date => renderCell(c, date)).join('');
-          return `<tr><td class="crew-cell"><span class="name">${esc(c.name || '')}</span><span class="role">${esc(c.role || '')}</span></td>${cells}</tr>`;
-        }).join('');
+          const dayCells = chunkDates.map(date => renderDayCell(c, date)).join('');
+          return `<div style="display:flex;align-items:stretch;border-bottom:0.4pt solid ${C.ruleHair};"><div style="width:${CREW_W};flex-shrink:0;padding:12px;background:${C.paperBand};border-right:0.4pt solid ${C.ruleHair};display:flex;flex-direction:column;justify-content:center;"><span style="display:block;font-size:13pt;font-weight:600;letter-spacing:-0.01em;color:${C.ink};line-height:1.1;">${esc(c.name || '')}</span><span style="display:block;margin-top:3px;font-size:8.5pt;letter-spacing:0.14em;text-transform:uppercase;color:${C.muted};">${esc(c.role || '')}</span></div>${dayCells}</div>`;
+        }).join('\n');
+
+        const gridWrap = `<div style="margin-top:14px;">${headerRow}\n${bodyRows}</div>`;
 
         const periodLabel = chunkDates.length
           ? `${fmtDate(chunkDates[0]).long} → ${fmtDate(chunkDates[chunkDates.length - 1]).long} ${new Date(chunkDates[0] + 'T12:00:00').getFullYear()}`
@@ -1908,18 +1932,7 @@ ${GRID_CSS}
     </div>
   </header>
 
-  <table class="grid">
-    <colgroup>${colsHTML}</colgroup>
-    <thead>
-      <tr>
-        <th class="crew-h">Crew</th>
-        ${headerCells}
-      </tr>
-    </thead>
-    <tbody>
-      ${bodyRows}
-    </tbody>
-  </table>
+  ${gridWrap}
 
   <div class="legend">
     <span class="item"><span class="chip ot">OT</span>Overtime</span>
