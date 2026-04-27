@@ -1099,13 +1099,13 @@
     padding: 48px 24px;
   }
 
-  /* A4 LANDSCAPE */
+  /* A4 PORTRAIT */
   .page {
-    width: 297mm;
-    min-height: 210mm;
+    width: 210mm;
+    min-height: auto;
     margin: 0 auto;
     background: var(--paper);
-    padding: 18mm 18mm 14mm;
+    padding: 18mm 14mm 14mm;
     box-shadow: 0 24px 60px -20px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06);
     color: var(--ink);
     font-size: 10.5pt;
@@ -1393,7 +1393,7 @@
   @media print {
     body { background: white; padding: 0; }
     .page { box-shadow: none; margin: 0; }
-    @page { size: A4 landscape; margin: 0; }
+    @page { size: A4 portrait; margin: 0; }
   }
 `;
 
@@ -1970,6 +1970,7 @@ ${GRID_CSS}
 }
 @page { size: A4 portrait; margin: 0; }
 </style>
+<style>.page { width: 210mm !important; min-height: auto !important; padding: 18mm 14mm 14mm !important; } @page { size: A4 portrait; margin: 0; }</style>
 </head>
 <body>
 
@@ -2053,6 +2054,8 @@ ${allPagesHTML}
         container.style.cssText = 'position:fixed;left:-9999px;top:0;';
         Array.from(parsed.querySelectorAll('.page')).forEach(p => container.appendChild(p));
         document.body.appendChild(container);
+
+        console.log('[exportAllPdf] total .page divs in container:', container.querySelectorAll('.page').length);
 
         const opt = {
           margin: 0,
