@@ -2057,6 +2057,81 @@ ${allPagesHTML}
       }
     }
 
+    async function exportWeekPdf(production, weekDays, allCrew) {
+      try {
+        const summaryHTML = generateSummaryHTML(production, allCrew, weekDays);
+        const gridHTML = generateGridHTML(production, weekDays, allCrew);
+
+        const byCrewMap = new Map();
+        weekDays.forEach((d) => {
+          const c = allCrew.find((cc) => cc.id === d.crewId);
+          if (!c) return;
+          if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, []);
+          byCrewMap.get(c.id).push(d);
+        });
+        const crewHTMLs = allCrew
+          .filter(c => byCrewMap.has(c.id))
+          .map(c => generateCrewHTML(c, byCrewMap.get(c.id), production));
+
+        const parser = new DOMParser();
+        const extractPages = (html) => {
+          const doc = parser.parseFromString(html, 'text/html');
+          return Array.from(doc.querySelectorAll('.page')).map(el => el.outerHTML).join('\n');
+        };
+
+        const allPagesHTML = [summaryHTML, gridHTML, ...crewHTMLs]
+          .map(extractPages)
+          .filter(Boolean)
+          .join('\n');
+
+        const combined = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${(production?.title || 'Timesheets')} — Week</title>
+<style>${TIMESHEET_CSS}
+${GRID_CSS}</style>
+</head>
+<body>
+${allPagesHTML}
+</body>
+</html>`;
+
+        const sortedDays = [...weekDays].sort((a, b) => a.date.localeCompare(b.date));
+        const firstDate = sortedDays[0]?.date || '';
+        const filename = `${production?.title || 'Production'} — Week of ${firstDate}.pdf`;
+
+        const parsed = parser.parseFromString(combined, 'text/html');
+        const styleEl = document.createElement('style');
+        styleEl.setAttribute('data-week-pdf', '1');
+        styleEl.textContent = parsed.querySelector('style')?.textContent || '';
+        document.head.appendChild(styleEl);
+
+        const container = document.createElement('div');
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;';
+        Array.from(parsed.querySelectorAll('.page')).forEach(p => container.appendChild(p));
+        document.body.appendChild(container);
+
+        const opt = {
+          margin: 0,
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 3, useCORS: true, letterRendering: true, imageTimeout: 0 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        };
+
+        try {
+          await html2pdf().set(opt).from(container).save();
+        } finally {
+          document.head.removeChild(styleEl);
+          document.body.removeChild(container);
+        }
+      } catch (e) {
+        window.alert(`Export failed: ${e?.message || 'Unknown error'}`);
+        throw e;
+      }
+    }
+
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
 
     const Icon = ({ children, size = 14 }) => (
@@ -3417,6 +3492,36 @@ ${allPagesHTML}
         setBusy(null);
       };
 
+      const detectedWeeks = useMemo(() => {
+        if (days.length === 0) return [];
+        const weekMap = new Map();
+        days.forEach((d) => {
+          const mon = getMonday(d.date);
+          if (!weekMap.has(mon)) weekMap.set(mon, []);
+          weekMap.get(mon).push(d);
+        });
+        const sortedKeys = [...weekMap.keys()].sort();
+        return sortedKeys.map((mon, i) => {
+          const m = new Date(mon + "T12:00:00");
+          const sun = new Date(m); sun.setDate(m.getDate() + 6);
+          const sameMonth = m.getMonth() === sun.getMonth();
+          const startStr = sameMonth ? `${m.getDate()}` : `${m.getDate()} ${m.toLocaleString('en-GB', { month: 'short' })}`;
+          const endStr = `${sun.getDate()} ${sun.toLocaleString('en-GB', { month: 'short' })}`;
+          return {
+            weekNum: i + 1,
+            monday: mon,
+            label: `${startStr}–${endStr}`,
+            days: weekMap.get(mon),
+          };
+        });
+      }, [days]);
+
+      const handleWeekPdf = async (wk) => {
+        setBusy(`week-${wk.weekNum}`);
+        try { await exportWeekPdf(production, wk.days, crew); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
+        setBusy(null);
+      };
+
       const handleCrewPdf = async (c, entries) => {
         setBusy(`pdf-${c.id}`);
         try { await exportCrewPDF(c, entries, production); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
@@ -3473,6 +3578,20 @@ ${allPagesHTML}
               One PDF with a crew summary on page 1, then each crew member's full timesheet on their own page{byCrew.some(({ entries }) => entries.length > 1) ? '(s)' : ''}.
             </div>
           </div>
+
+          {/* Per week */}
+          {detectedWeeks.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Export by Week</div>
+              <div className="flex flex-col gap-2">
+                {detectedWeeks.map((wk) => (
+                  <Btn key={wk.monday} variant="subtle" onClick={() => handleWeekPdf(wk)} disabled={busy !== null}>
+                    <IDownload/>{busy === `week-${wk.weekNum}` ? 'Building…' : `Week ${wk.weekNum} — ${wk.label}`}
+                  </Btn>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Per crew */}
           <div className="space-y-2">
