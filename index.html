@@ -203,8 +203,18 @@
       if (n >= 445) return 1.25;
       return 1.5;
     }
-    const DAY_TYPES = ["Shoot", "Recce", "Pre-light", "De-rig", "Travel Day"];
-    const DEFAULT_HOURS = { "Shoot": 11, "Recce": 9, "Pre-light": 9, "De-rig": 9, "Travel Day": 5 };
+    const DAY_TYPES = ["Shoot", "Pre-light", "Prep Day", "Recce", "Build Day", "De-rig", "Travel Day", "Rest Day"];
+    const DEFAULT_HOURS = {
+      "Shoot": 11,
+      "Pre-light": 9,
+      "Prep Day": 8,
+      "Recce": 8,
+      "Build Day": 8,
+      "De-rig": 8,
+      "Travel Day": 5,
+      "Rest Day": 0,
+    };
+    const ROLES_WITH_BWD_OVERRIDE = ["DoP", "Art Director", "Location Manager"];
     const DEFAULT_PRODUCTION_DAY = {
       dayType: "Shoot",
       callTime: "08:00",
@@ -261,7 +271,7 @@
 
     /* ═══════════════════════════ DERIVED BREAK STATE ═══════════════════════════ */
 
-    function deriveBreakState(day) {
+    function deriveBreakState(day, effectiveDayType = day.dayType) {
       const callH = parseHHMM(day.callTime);
       const wrapH = parseHHMM(day.wrapTime);
       if (callH === null || wrapH === null) return null;
@@ -277,7 +287,10 @@
       const cwdThreshold  = callH + 6.5;
       const lunchLate = !lunchMissed && lunchStartAbs > lateThreshold && lunchStartAbs <= cwdThreshold;
       const lunchVeryLate = !lunchMissed && lunchStartAbs > cwdThreshold;
-      const cwdApplies = (day.dayType === "Shoot" || day.dayType === "Pre-light");
+      // APA §2.3: lunch is only required on Shoot and Pre-light days. Other
+      // non-shoot day types have no meal obligation, so CWD does not trigger
+      // on missed lunch for them. (See note below in calculateDay.)
+      const cwdApplies = (effectiveDayType === "Shoot" || effectiveDayType === "Pre-light");
       const continuousDay = cwdApplies && (lunchMissed || lunchVeryLate);
       const sbDeadline = lunchEndAbs !== null ? lunchEndAbs + 5.5 : null;
       const secondBreakRequired = !continuousDay && sbDeadline !== null && wrapAbs > sbDeadline;
@@ -316,9 +329,26 @@
       const otCoef = crew.noOT ? 0 : (Number(crew.otCoef) || 1);
       const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : bhr * otCoef;
       const bectuOtRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : null;
+
+      // APA §2.3: DoP, Art Director, Location Manager always work to BWD rules,
+      // even on Prep / Recce / Build / De-rig / Pre-light days.
+      const role = (crew && crew.role) || "";
+      const bwdOverrideApplies = ROLES_WITH_BWD_OVERRIDE.includes(role) &&
+        ["Pre-light", "Prep Day", "Recce", "Build Day", "De-rig"].includes(day.dayType);
+      const effectiveDayType = bwdOverrideApplies ? "Shoot" : day.dayType;
+
+      // Rest Day: flat BDR, no breaks, no OT, no penalties.
+      if (effectiveDayType === "Rest Day") {
+        return {
+          meta: { workedHrs: 0, otHrs: 0, bhr, otRate, dayLabel: "Rest Day", notes: [], secondBreakRequired: false, continuousDay: false },
+          lines: [{ label: "Rest Day (flat BDR)", detail: "", rate: null, qty: 1, amount: bdr }],
+          total: bdr,
+        };
+      }
+
       const lines = [];
       const notes = [];
-      const bs = deriveBreakState(day);
+      const bs = deriveBreakState(day, effectiveDayType);
       if (bs === null) {
         return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
       }
@@ -345,7 +375,7 @@
       const treatAsSat = isSaturday && satMode !== "weekday";
       const treatAsSun = isSunday && sunMode !== "weekday";
 
-      if (day.dayType === "Travel Day") {
+      if (effectiveDayType === "Travel Day") {
         const paidHrs = Math.max(workedHrs, 5);
         lines.push({ label: "Travel Day (BHR)", detail: `${callWrapLabel} · min 5h`, rate: bhr, qty: paidHrs, amount: paidHrs * bhr });
         if (workedHrs < 5) notes.push("Min 5h applied");
@@ -357,9 +387,18 @@
 
       let basicHrs;
       if (continuousDay) basicHrs = 9;
-      else if (day.dayType === "Shoot") { basicHrs = 11; if (lunchDuration < 60 && !lunchMissed) basicHrs = 11 - (60 - lunchDuration) / 60; }
-      else if (day.dayType === "Pre-light") { basicHrs = 9; if (lunchDuration < 60 && !lunchMissed) basicHrs = 9 - (60 - lunchDuration) / 60; }
-      else { basicHrs = lunchMissed ? 8 : 8 + lunchDuration / 60; if (lunchDuration > 60) basicHrs = 9; }
+      else if (effectiveDayType === "Shoot") { basicHrs = 11; if (lunchDuration < 60 && !lunchMissed) basicHrs = 11 - (60 - lunchDuration) / 60; }
+      else if (effectiveDayType === "Pre-light") { basicHrs = 9; if (lunchDuration < 60 && !lunchMissed) basicHrs = 9 - (60 - lunchDuration) / 60; }
+      else if (effectiveDayType === "Prep Day" || effectiveDayType === "Recce" || effectiveDayType === "Build Day" || effectiveDayType === "De-rig") {
+        // APA §2.3: 8h base, no lunch obligation. OT after 8h normally.
+        // If a 1st break is given, basic shifts up by lunch duration (capped at 1h → 9h base).
+        basicHrs = 8;
+        if (!lunchMissed && lunchDuration >= 60) basicHrs = 9;
+        else if (!lunchMissed && lunchDuration > 0) basicHrs = 8 + (lunchDuration / 60);
+      }
+      else {
+        throw new Error('Unhandled day type in calculateDay: ' + effectiveDayType);
+      }
 
       const effectiveStart = isLate ? 11 : callH;
       const effectiveHrs = wrapAbs - effectiveStart;
@@ -374,19 +413,19 @@
         });
         if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
       } else if (treatAsSat) {
-        if (day.dayType === "Shoot") {
+        if (effectiveDayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel, rate: bdr * satMult, qty: 1, amount: bdr * satMult });
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
           if (otHrs > 0) { const satOtRate = bectuOtRate ?? bhr * satMult; lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
           const baseHrs = Math.max(Math.min(workedHrs, basicHrs), 8);
           const satMinApplied = baseHrs > workedHrs;
-          lines.push({ label: `Saturday ${day.dayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * satMult, qty: baseHrs, amount: baseHrs * bhr * satMult });
+          lines.push({ label: `Saturday ${effectiveDayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * satMult, qty: baseHrs, amount: baseHrs * bhr * satMult });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
           if (otHrs > 0) { const satOtRate = bectuOtRate ?? bhr * satMult; lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         }
       } else if (treatAsSun) {
-        if (day.dayType === "Shoot") {
+        if (effectiveDayType === "Shoot") {
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
           lines.push({
@@ -398,17 +437,19 @@
         } else {
           const sunPaidHrs = Math.max(workedHrs, 8);
           const sunMinApplied = sunPaidHrs > workedHrs;
-          lines.push({ label: `Sunday ${day.dayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * sunMult, qty: sunPaidHrs, amount: sunPaidHrs * bhr * sunMult });
+          lines.push({ label: `Sunday ${effectiveDayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * sunMult, qty: sunPaidHrs, amount: sunPaidHrs * bhr * sunMult });
         }
       } else {
-        if (day.dayType === "Shoot") {
+        if (effectiveDayType === "Shoot") {
           lines.push({ label: continuousDay ? "BDR (Continuous Working Day)" : "BDR", detail: callWrapLabel, rate: bdr, qty: 1, amount: bdr });
-        } else if (day.dayType === "Pre-light") {
+        } else if (effectiveDayType === "Pre-light") {
           const baseHrs = continuousDay ? 9 : 8;
           lines.push({ label: continuousDay ? "Pre-light Day (CWD 9h × BHR)" : "Pre-light Day (8h × BHR + 1h lunch)", detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
+        } else if (effectiveDayType === "Prep Day" || effectiveDayType === "Recce" || effectiveDayType === "Build Day" || effectiveDayType === "De-rig") {
+          const lunchPart = (lunchMissed || lunchDuration === 0) ? "no lunch" : (lunchDuration >= 60 ? "+ 1h lunch" : `+ ${lunchDuration}m lunch`);
+          lines.push({ label: `${effectiveDayType} (${basicHrs}h × BHR, ${lunchPart})`, detail: callWrapLabel, rate: bhr, qty: basicHrs, amount: basicHrs * bhr });
         } else {
-          const baseHrs = 8;
-          lines.push({ label: `${day.dayType} Day (${baseHrs}h × BHR)`, detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
+          throw new Error('Unhandled day type in calculateDay: ' + effectiveDayType);
         }
 
         if (!crew.noOT) {
