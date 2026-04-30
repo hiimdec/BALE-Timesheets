@@ -2493,61 +2493,11 @@ ${allPagesHTML}
             <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IUsers size={16}/>Crew Roster</h2>
             <div className="flex gap-2">
               {crew.length > 1 && <Btn variant="ghost" onClick={sortByRole}><ISort/>Sort by Role</Btn>}
-              {!editing && <Btn variant="primary" onClick={startNew}><IPlus/>Add Crew</Btn>}
+              <Btn variant="primary" onClick={startNew}><IPlus/>Add Crew</Btn>
             </div>
           </div>
 
-          {editing && (
-            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{editing === "new" ? "New Crew Member" : "Edit Crew Member"}</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Declan Duffy" /></Field>
-                <Field label="Role"><Select key={editing} value={form.role} onChange={(e) => onRoleChange(e.target.value)}>{Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}</Select></Field>
-                <Field label="Basic Day Rate (£)" hint="Editable — default is APA max for role"><Input type="number" step="0.01" value={form.bdr} onChange={(e) => { const bdr = Number(e.target.value); setForm({ ...form, bdr, otCoef: autoOtCoef(bdr) }); }} /></Field>
-                <Field label="OT Coefficient" hint="Grade I=1.5× · II=1.25× · III=1.0×">
-                  <Select value={form.otCoef} onChange={(e) => setForm({ ...form, otCoef: Number(e.target.value) })}>
-                    <option value={1.5}>Grade I — 1.5×</option>
-                    <option value={1.25}>Grade II — 1.25×</option>
-                    <option value={1}>Grade III — 1.0×</option>
-                  </Select>
-                </Field>
-                <Field label="VAT Registered">
-                  <Select value={form.vatRegistered ? "yes" : "no"} onChange={(e) => setForm({ ...form, vatRegistered: e.target.value === "yes" })}>
-                    <option value="no">No — not VAT registered</option>
-                    <option value="yes">Yes — VAT registered</option>
-                  </Select>
-                </Field>
-                {form.vatRegistered && (
-                  <Field label="VAT Rate (%)" hint="Usually 20%">
-                    <Input type="number" min="0" max="100" step="1" value={form.vatRate ?? 20} onChange={(e) => setForm({ ...form, vatRate: Number(e.target.value) })} />
-                  </Field>
-                )}
-                <Field label="Kit Money">
-                  <Select value={form.kitMoneyEnabled ? "yes" : "no"} onChange={(e) => setForm({ ...form, kitMoneyEnabled: e.target.value === "yes" })}>
-                    <option value="no">No kit money</option>
-                    <option value="yes">Yes — kit money applies</option>
-                  </Select>
-                </Field>
-                {form.kitMoneyEnabled && (
-                  <Field label="Kit Money Amount (£)" hint="Added to each working day">
-                    <Input type="number" min="0" step="0.01" value={form.kitMoneyAmount ?? 0} onChange={(e) => setForm({ ...form, kitMoneyAmount: Number(e.target.value) })} />
-                  </Field>
-                )}
-                <Field label="Driver (truck call)" hint="Shows truck call time field on day entries">
-                  <Select value={form.isDriver ? "yes" : "no"} onChange={(e) => setForm({ ...form, isDriver: e.target.value === "yes" })}>
-                    <option value="no">No</option>
-                    <option value="yes">Yes — truck call applies</option>
-                  </Select>
-                </Field>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <Btn onClick={save} variant="success"><ICheck/>Save</Btn>
-                <Btn onClick={cancel} variant="ghost"><IX/>Cancel</Btn>
-              </div>
-            </div>
-          )}
-
-          {crew.length === 0 && !editing && (
+          {crew.length === 0 && (
             <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-[10px]">
               <div className="flex justify-center mb-2 text-neutral-700"><IUsers size={32}/></div>
               <div className="text-neutral-500 text-sm">No crew yet. Hit <span className="text-sky-400 font-bold">ADD CREW</span> to start.</div>
@@ -2591,6 +2541,110 @@ ${allPagesHTML}
                 </div>
               </div>
             ))}
+          </div>
+
+          {editing && (
+            <CrewEditModal
+              editing={editing}
+              form={form}
+              setForm={setForm}
+              onSave={save}
+              onCancel={cancel}
+              onRoleChange={onRoleChange}
+            />
+          )}
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════ CREW EDIT MODAL ═══════════════════════════ */
+
+    function CrewEditModal({ editing, form, setForm, onSave, onCancel, onRoleChange }) {
+      useEffect(() => {
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, []);
+
+      return (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.78)" }}
+          onClick={onCancel}
+        >
+          <div
+            className="bg-neutral-900 w-full rounded-[10px] shadow-2xl border border-neutral-700 flex flex-col"
+            style={{ maxWidth: 640, maxHeight: "calc(100dvh - 1rem)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* ── Fixed header ── */}
+            <div className="flex-shrink-0 px-5 pt-4 pb-3 border-b border-neutral-700">
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
+                  {editing === "new" ? "Add crew member" : "Edit crew member"}
+                </div>
+                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5"><IX size={16}/></button>
+              </div>
+            </div>
+
+            {/* ── Scrollable body ── */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Declan Duffy" /></Field>
+                <Field label="Role">
+                  <Select key={editing} value={form.role} onChange={(e) => onRoleChange(e.target.value)}>
+                    {Object.entries(DEPARTMENTS).map(([dept, roles]) =>
+                      <optgroup key={dept} label={dept}>
+                        {Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}
+                      </optgroup>
+                    )}
+                  </Select>
+                </Field>
+                <Field label="Basic Day Rate (£)" hint="Editable — default is APA max for role">
+                  <Input type="number" step="0.01" value={form.bdr} onChange={(e) => { const bdr = Number(e.target.value); setForm({ ...form, bdr, otCoef: autoOtCoef(bdr) }); }} />
+                </Field>
+                <Field label="OT Coefficient" hint="Grade I=1.5× · II=1.25× · III=1.0×">
+                  <Select value={form.otCoef} onChange={(e) => setForm({ ...form, otCoef: Number(e.target.value) })}>
+                    <option value={1.5}>Grade I — 1.5×</option>
+                    <option value={1.25}>Grade II — 1.25×</option>
+                    <option value={1}>Grade III — 1.0×</option>
+                  </Select>
+                </Field>
+                <Field label="VAT Registered">
+                  <Select value={form.vatRegistered ? "yes" : "no"} onChange={(e) => setForm({ ...form, vatRegistered: e.target.value === "yes" })}>
+                    <option value="no">No — not VAT registered</option>
+                    <option value="yes">Yes — VAT registered</option>
+                  </Select>
+                </Field>
+                {form.vatRegistered && (
+                  <Field label="VAT Rate (%)" hint="Usually 20%">
+                    <Input type="number" min="0" max="100" step="1" value={form.vatRate ?? 20} onChange={(e) => setForm({ ...form, vatRate: Number(e.target.value) })} />
+                  </Field>
+                )}
+                <Field label="Kit Money">
+                  <Select value={form.kitMoneyEnabled ? "yes" : "no"} onChange={(e) => setForm({ ...form, kitMoneyEnabled: e.target.value === "yes" })}>
+                    <option value="no">No kit money</option>
+                    <option value="yes">Yes — kit money applies</option>
+                  </Select>
+                </Field>
+                {form.kitMoneyEnabled && (
+                  <Field label="Kit Money Amount (£)" hint="Added to each working day">
+                    <Input type="number" min="0" step="0.01" value={form.kitMoneyAmount ?? 0} onChange={(e) => setForm({ ...form, kitMoneyAmount: Number(e.target.value) })} />
+                  </Field>
+                )}
+                <Field label="Driver (truck call)" hint="Shows truck call time field on day entries">
+                  <Select value={form.isDriver ? "yes" : "no"} onChange={(e) => setForm({ ...form, isDriver: e.target.value === "yes" })}>
+                    <option value="no">No</option>
+                    <option value="yes">Yes — truck call applies</option>
+                  </Select>
+                </Field>
+              </div>
+            </div>
+
+            {/* ── Fixed footer ── */}
+            <div className="flex-shrink-0 border-t border-neutral-700 px-5 py-3 flex gap-2">
+              <Btn onClick={onSave} variant="success"><ICheck/>Save</Btn>
+              <Btn onClick={onCancel} variant="ghost"><IX/>Cancel</Btn>
+            </div>
           </div>
         </div>
       );
