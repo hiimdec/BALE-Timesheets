@@ -261,7 +261,7 @@
     const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
     const fmtDateShort = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
     const uid = () => Math.random().toString(36).slice(2, 10);
-    const roleRank = (role) => { const i = ROLE_ORDER.indexOf(role); return i === -1 ? 99 : i; };
+    const roleRank = (role) => { const r = role === "Spark" ? "Lighting Technician" : role; const i = ROLE_ORDER.indexOf(r); return i === -1 ? 99 : i; };
     const slug = (s) => (s || "crew").replace(/[^\w]+/g, "_").replace(/^_+|_+$/g, "");
 
     /* ═══════════════════════════ DERIVED BREAK STATE ═══════════════════════════ */
@@ -519,6 +519,13 @@
         cwdBreak1Given: true, cwdBreak2Given: true,
       };
     }
+
+    function migrateCrew(c) {
+      if (c.role === "Spark") return { ...c, role: "Lighting Technician" };
+      return c;
+    }
+
+    const migrateProduction = (p) => ({ ...p, crew: (p.crew || []).map(migrateCrew) });
 
     function useStoredState(key, initial, migrate) {
       const [value, setValue] = useState(() => {
@@ -2423,7 +2430,7 @@ ${allPagesHTML}
 
     function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed, onPushUndo }) {
       const [editing, setEditing] = useState(null);
-      const blank = { id: "", name: "", role: "Spark", bdr: ROLE_DEFAULTS["Spark"].bdr, otCoef: ROLE_DEFAULTS["Spark"].otCoef, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false };
+      const blank = { id: "", name: "", role: "Lighting Technician", bdr: ROLE_DEFAULTS["Lighting Technician"].bdr, otCoef: ROLE_DEFAULTS["Lighting Technician"].otCoef, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
       const dragIdx = useRef(null);
@@ -4045,7 +4052,7 @@ const setDays = (updater) =>
     /* ═══════════════════════════ ROOT ═══════════════════════════ */
 
     function Root() {
-      const [productions, setProductions] = useStoredState("bigals_productions", []);
+      const [productions, setProductions] = useStoredState("bigals_productions", [], migrateProduction);
       const [openId, setOpenId] = useState(null);
 
       // One-time migration: absorb all old localStorage keys into the productions array
@@ -4057,7 +4064,7 @@ const setDays = (updater) =>
           const oldDays = localStorage.getItem("bigals_days");
           if (oldProd || oldCrew || oldDays) {
             let p = oldProd ? JSON.parse(oldProd) : { title: "", prodCo: "", crew: [], days: [] };
-            if (!p.crew?.length && oldCrew) p.crew = JSON.parse(oldCrew);
+            if (!p.crew?.length && oldCrew) p.crew = JSON.parse(oldCrew).map(migrateCrew);
             if (!p.days?.length && oldDays) p.days = JSON.parse(oldDays).map(migrateDay);
             if (!p.defaultDay) p.defaultDay = DEFAULT_PRODUCTION_DAY;
             setProductions([{ id: uid(), ...p }]);
