@@ -2795,7 +2795,7 @@ ${allPagesHTML}
                       set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef });
                     }}>
                       <option value="">— Select Role —</option>
-                      {ROLE_ORDER.map(r => <option key={r} value={r}>{r}</option>)}
+                      {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}
                     </Select>
                   </Field>
                   <Field label="Step-Up BDR (£)" hint="Override for this day only">
