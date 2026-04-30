@@ -3333,6 +3333,12 @@ ${allPagesHTML}
       const [editingDate, setEditingDate] = useState(null);
       const [dateEdit, setDateEdit] = useState({});
 
+      useEffect(() => {
+        if (!editingDate) return;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, [editingDate]);
+
       const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
       const openDateEdit = (date) => {
@@ -3403,38 +3409,6 @@ ${allPagesHTML}
             </div>
             <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap empty cell to add · Tap date to bulk edit</div>
           </div>
-
-          {editingDate && (
-            <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
-                  Edit {weekday(editingDate)} {new Date(editingDate + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — updates all crew on this date
-                </div>
-                <Btn size="sm" variant="ghost" onClick={() => setEditingDate(null)}><IX/></Btn>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <Field label="Day Type">
-                  <Select value={dateEdit.dayType || "Shoot"} onChange={e => setDateEdit(p => ({...p, dayType: e.target.value}))}>
-                    {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Call Time"><TimeInput value={dateEdit.callTime || ""} onChange={e => setDateEdit(p => ({...p, callTime: e.target.value}))} /></Field>
-                <Field label="Wrap Time"><TimeInput value={dateEdit.wrapTime || ""} onChange={e => setDateEdit(p => ({...p, wrapTime: e.target.value}))} /></Field>
-                <Field label="Lunch Start"><TimeInput value={dateEdit.lunchStartTime || ""} onChange={e => setDateEdit(p => ({...p, lunchStartTime: e.target.value}))} /></Field>
-                <Field label="Lunch Duration">
-                  <Select value={dateEdit.lunchDurationMins ?? 60} onChange={e => setDateEdit(p => ({...p, lunchDurationMins: Number(e.target.value)}))}>
-                    {LUNCH_DURATIONS.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
-                  </Select>
-                </Field>
-              </div>
-              <div className="flex gap-2">
-                <Btn variant="success" onClick={() => { onBulkEditDate(editingDate, dateEdit); setEditingDate(null); }}>
-                  <ICheck/>Apply to {weekday(editingDate)}
-                </Btn>
-                <Btn variant="ghost" onClick={() => setEditingDate(null)}><IX/>Cancel</Btn>
-              </div>
-            </div>
-          )}
 
           <div className="overflow-x-auto border border-neutral-800 rounded-[10px] overflow-hidden">
             <table className="border-collapse text-xs w-full" style={{ minWidth: 560 }}>
@@ -3559,6 +3533,63 @@ ${allPagesHTML}
               <span className="text-sm leading-none font-bold">+</span> Add Week
             </button>
           </div>
+
+          {editingDate && (
+            <div
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+              style={{ backgroundColor: "rgba(0,0,0,0.78)" }}
+              onClick={() => setEditingDate(null)}
+            >
+              <div
+                className="bg-neutral-900 w-full rounded-[10px] shadow-2xl border border-neutral-700 flex flex-col"
+                style={{ maxWidth: 640, maxHeight: "calc(100dvh - 1rem)" }}
+                onClick={e => e.stopPropagation()}
+              >
+                {/* ── Fixed header ── */}
+                <div className="flex-shrink-0 px-5 pt-4 pb-3 border-b border-neutral-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1.5">All Crew</div>
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-neutral-100">
+                          {weekday(editingDate)} {new Date(editingDate + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </span>
+                        <span className="text-[11px] text-neutral-500">Updates all existing entries on this date</span>
+                      </div>
+                    </div>
+                    <button onClick={() => setEditingDate(null)} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5"><IX size={16}/></button>
+                  </div>
+                </div>
+
+                {/* ── Scrollable body ── */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <Field label="Day Type">
+                      <Select value={dateEdit.dayType || "Shoot"} onChange={e => setDateEdit(p => ({...p, dayType: e.target.value}))}>
+                        {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Call Time"><TimeInput value={dateEdit.callTime || ""} onChange={e => setDateEdit(p => ({...p, callTime: e.target.value}))} /></Field>
+                    <Field label="Wrap Time"><TimeInput value={dateEdit.wrapTime || ""} onChange={e => setDateEdit(p => ({...p, wrapTime: e.target.value}))} /></Field>
+                    <Field label="Lunch Start"><TimeInput value={dateEdit.lunchStartTime || ""} onChange={e => setDateEdit(p => ({...p, lunchStartTime: e.target.value}))} /></Field>
+                    <Field label="Lunch Duration">
+                      <Select value={dateEdit.lunchDurationMins ?? 60} onChange={e => setDateEdit(p => ({...p, lunchDurationMins: Number(e.target.value)}))}>
+                        {LUNCH_DURATIONS.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
+                      </Select>
+                    </Field>
+                  </div>
+                </div>
+
+                {/* ── Fixed footer ── */}
+                <div className="flex-shrink-0 border-t border-neutral-700 px-5 py-3 flex gap-2">
+                  <Btn variant="success" onClick={() => { onBulkEditDate(editingDate, dateEdit); setEditingDate(null); }}>
+                    <ICheck/>Save
+                  </Btn>
+                  <Btn variant="ghost" onClick={() => setEditingDate(null)}><IX/>Cancel</Btn>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
