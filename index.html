@@ -320,6 +320,7 @@
       const bhr = bdr / 10;
       const otCoef = crew.noOT ? 0 : (Number(crew.otCoef) || 1);
       const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : bhr * otCoef;
+      const bectuOtRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : null;
       const lines = [];
       const notes = [];
       const bs = deriveBreakState(day);
@@ -374,20 +375,20 @@
         lines.push({
           label: "Night Shoot (2× BHR)",
           detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
-          rate: bhr * 2, qty: paidHrs, amount: paidHrs * bhr * 2,
+          rate: bectuOtRate ?? bhr * 2, qty: paidHrs, amount: paidHrs * (bectuOtRate ?? bhr * 2),
         });
         if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
       } else if (treatAsSat) {
         if (day.dayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel, rate: bdr * satMult, qty: 1, amount: bdr * satMult });
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
-          if (otHrs > 0) lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: bhr * satMult, qty: otHrs, amount: otHrs * bhr * satMult });
+          if (otHrs > 0) { const satOtRate = bectuOtRate ?? bhr * satMult; lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
           const baseHrs = Math.max(Math.min(workedHrs, basicHrs), 8);
           const satMinApplied = baseHrs > workedHrs;
           lines.push({ label: `Saturday ${day.dayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * satMult, qty: baseHrs, amount: baseHrs * bhr * satMult });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
-          if (otHrs > 0) lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: bhr * satMult, qty: otHrs, amount: otHrs * bhr * satMult });
+          if (otHrs > 0) { const satOtRate = bectuOtRate ?? bhr * satMult; lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         }
       } else if (treatAsSun) {
         if (day.dayType === "Shoot") {
@@ -439,7 +440,7 @@
               });
             }
             if (tripleHrs > 0) {
-              lines.push({ label: "OT Triple Time (00:00–05:00)", detail: "After midnight", rate: bhr * 3, qty: tripleHrs, amount: tripleHrs * bhr * 3 });
+              lines.push({ label: "OT Triple Time (00:00–05:00)", detail: "After midnight", rate: bectuOtRate ?? bhr * 3, qty: tripleHrs, amount: tripleHrs * (bectuOtRate ?? bhr * 3) });
             }
           }
         }
@@ -602,6 +603,7 @@
         ...crewMember,
         bdr: Number(resolvedDay.stepUpBDR) || crewMember.bdr,
         otCoef: Number(resolvedDay.stepUpOTCoef) || crewMember.otCoef,
+        otRate: resolvedDay.stepUpOTRate ?? null,
       };
     }
 
@@ -643,7 +645,8 @@
       if (ROLE_DEFAULTS[effectiveCrew.role]?.pmpa === true) return null;
       const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
       if (rest === null || rest >= 11) return null;
-      const otRate = (Number(effectiveCrew.bdr) || 0) / 10 * (Number(effectiveCrew.otCoef) || 1);
+      const bhr = (Number(effectiveCrew.bdr) || 0) / 10;
+      const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : bhr * (Number(effectiveCrew.otCoef) || 1);
       const tocHours = 11 - rest;
       return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
     }
@@ -2793,7 +2796,7 @@ ${allPagesHTML}
                     <Select value={v.stepUpRole || ""} onChange={(e) => {
                       const role = e.target.value;
                       const d = ROLE_DEFAULTS[role] || {};
-                      set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef });
+                      set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef, stepUpOTRate: d.otRate ?? null });
                     }}>
                       <option value="">— Select Role —</option>
                       {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}
