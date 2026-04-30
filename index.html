@@ -194,6 +194,7 @@
 
     // Display order across all departments
     const ROLE_ORDER = Object.values(DEPARTMENTS).flatMap(roles => Object.keys(roles));
+    const ROLE_TO_DEPT = Object.fromEntries(Object.entries(DEPARTMENTS).flatMap(([dept, roles]) => Object.keys(roles).map(role => [role, dept])));
 
     // Reverse lookup: role name → department
     function autoOtCoef(bdr) {
