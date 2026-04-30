@@ -2561,10 +2561,20 @@ ${allPagesHTML}
     /* ═══════════════════════════ CREW EDIT MODAL ═══════════════════════════ */
 
     function CrewEditModal({ editing, form, setForm, onSave, onCancel, onRoleChange }) {
+      const [selectedDept, setSelectedDept] = useState(() => ROLE_TO_DEPT[form.role] || "All");
+
       useEffect(() => {
         document.body.style.overflow = "hidden";
         return () => { document.body.style.overflow = ""; };
       }, []);
+
+      const onDeptChange = (dept) => {
+        setSelectedDept(dept);
+        if (dept !== "All") {
+          const firstRole = Object.keys(DEPARTMENTS[dept])[0];
+          onRoleChange(firstRole);
+        }
+      };
 
       return (
         <div
@@ -2591,13 +2601,22 @@ ${allPagesHTML}
             <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Declan Duffy" /></Field>
+                <Field label="Department">
+                  <Select value={selectedDept} onChange={(e) => onDeptChange(e.target.value)}>
+                    <option value="All">All departments</option>
+                    {Object.keys(DEPARTMENTS).map((d) => <option key={d} value={d}>{d}</option>)}
+                  </Select>
+                </Field>
                 <Field label="Role">
-                  <Select key={editing} value={form.role} onChange={(e) => onRoleChange(e.target.value)}>
-                    {Object.entries(DEPARTMENTS).map(([dept, roles]) =>
-                      <optgroup key={dept} label={dept}>
-                        {Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}
-                      </optgroup>
-                    )}
+                  <Select key={selectedDept} value={form.role} onChange={(e) => onRoleChange(e.target.value)}>
+                    {selectedDept === "All"
+                      ? Object.entries(DEPARTMENTS).map(([dept, roles]) =>
+                          <optgroup key={dept} label={dept}>
+                            {Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}
+                          </optgroup>
+                        )
+                      : Object.keys(DEPARTMENTS[selectedDept]).map((r) => <option key={r} value={r}>{r}</option>)
+                    }
                   </Select>
                 </Field>
                 <Field label="Basic Day Rate (£)" hint="Editable — default is APA max for role">
