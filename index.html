@@ -85,14 +85,122 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const ROLE_DEFAULTS = {
-      "Gaffer":    { bdr: 568, otCoef: 1.25 },
-      "Best Boy":  { bdr: 512, otCoef: 1.25 },
-      "Desk Op":   { bdr: 512, otCoef: 1.25 },
-      "Spark":     { bdr: 444, otCoef: 1.5  },
-      "Trainee":   { bdr: 250, otCoef: 1.5  },
+    const DEPARTMENTS = {
+      "Direction & Production": {
+        "Director":             { bdr: 933,  otCoef: 0,    noOT: true },
+        "Producer":             { bdr: 933,  otCoef: 0,    noOT: true },
+        "Production Manager":   { bdr: 609,  otCoef: 1.0,  pmpa: true },
+        "Production Assistant": { bdr: 428,  otCoef: 1.0,  pmpa: true },
+        "Production Runner":    { bdr: 238,  otCoef: 1.0,  pmpa: true },
+      },
+      "Assistant Directors": {
+        "1st AD":                    { bdr: 785, otCoef: 1.0 },
+        "2nd AD":                    { bdr: 435, otCoef: 1.5 },
+        "3rd AD":                    { bdr: 326, otCoef: 1.5 },
+        "Floor Runner / AD Trainee": { bdr: 238, otCoef: 1.5 },
+      },
+      "Script Supervisor": {
+        "Script Supervisor": { bdr: 558, otCoef: 1.25 },
+      },
+      "Locations": {
+        "Location Manager": { bdr: 580, otCoef: 1.25 },
+      },
+      "Camera": {
+        "DoP":                     { bdr: 1516, otCoef: 1.0  },
+        "Camera Operator":         { bdr: 637,  otCoef: 1.25 },
+        "Focus Puller (1st AC)":   { bdr: 558,  otCoef: 1.25 },
+        "Clapper Loader (2nd AC)": { bdr: 435,  otCoef: 1.5  },
+        "DIT":                     { bdr: 512,  otCoef: 1.25 },
+        "Senior Video Operator":   { bdr: 503,  otCoef: 1.25 },
+        "Video Operator":          { bdr: 391,  otCoef: 1.5  },
+      },
+      "Grip": {
+        "Key Grip":     { bdr: 558, otCoef: 1.25 },
+        "Non-Key Grip": { bdr: 511, otCoef: 1.25 },
+      },
+      "Lighting": {
+        "Gaffer":              { bdr: 568, otCoef: 1.25 },
+        "Best Boy":            { bdr: 512, otCoef: 1.25, notApa: true },
+        "Desk Op":             { bdr: 512, otCoef: 1.25 },
+        "Lighting Technician": { bdr: 444, otCoef: 1.5  },
+        "Trainee":             { bdr: 250, otCoef: 1.5,  notApa: true },
+      },
+      "Rigging": {
+        "Master Rigger":   { bdr: 675, otCoef: 1.5, otRate: 102, bectu: true },
+        "Advanced Rigger": { bdr: 515, otCoef: 1.5, otRate: 78,  bectu: true },
+        "Standby Rigger":  { bdr: 515, otCoef: 1.5, otRate: 78,  bectu: true },
+      },
+      "SFX": {
+        "SFX Supervisor":      { bdr: 1516, otCoef: 1.0  },
+        "Sr. SFX Technician":  { bdr: 649,  otCoef: 1.25 },
+        "SFX Technician":      { bdr: 519,  otCoef: 1.25 },
+        "SFX Assistant":       { bdr: 435,  otCoef: 1.5  },
+        "Model Animator":      { bdr: 796,  otCoef: 1.0  },
+        "Model Animator Asst": { bdr: 558,  otCoef: 1.25 },
+      },
+      "Art Dept": {
+        "Art Director":       { bdr: 852, otCoef: 1.0  },
+        "Asst. Art Director": { bdr: 568, otCoef: 1.25 },
+        "Stylist":            { bdr: 628, otCoef: 1.25 },
+        "Props Buyer":        { bdr: 568, otCoef: 1.25 },
+        "Master Props":       { bdr: 506, otCoef: 1.25 },
+        "Props":              { bdr: 386, otCoef: 1.5  },
+        "Props Assistant":    { bdr: 310, otCoef: 1.5  },
+        "Scenic Artist":      { bdr: 714, otCoef: 1.0  },
+        "Home Economist":     { bdr: 649, otCoef: 1.25 },
+      },
+      "Construction": {
+        "Construction Manager": { bdr: 532, otCoef: 1.25 },
+        "Master Painter":       { bdr: 497, otCoef: 1.25 },
+        "Painter":              { bdr: 386, otCoef: 1.5  },
+        "Master Carpenter":     { bdr: 497, otCoef: 1.25 },
+        "Carpenter":            { bdr: 386, otCoef: 1.5  },
+        "Master Plasterer":     { bdr: 497, otCoef: 1.25 },
+        "Plasterer":            { bdr: 386, otCoef: 1.5  },
+        "Standby Construction": { bdr: 386, otCoef: 1.5  },
+        "Stage Hand":           { bdr: 359, otCoef: 1.5  },
+        "Labourer":             { bdr: 299, otCoef: 1.5  },
+      },
+      "Sound": {
+        "Sound Mixer":       { bdr: 649, otCoef: 1.25 },
+        "Boom Operator":     { bdr: 519, otCoef: 1.25 },
+        "Sound Maintenance": { bdr: 423, otCoef: 1.5  },
+        "Sound Assistant":   { bdr: 391, otCoef: 1.5  },
+      },
+      "Costume": {
+        "Costume Designer": { bdr: 674, otCoef: 1.25 },
+        "Wardrobe Buyer":   { bdr: 674, otCoef: 1.25 },
+        "Wardrobe":         { bdr: 386, otCoef: 1.5  },
+      },
+      "Hair & Makeup": {
+        "Chief Make Up Artist": { bdr: 649, otCoef: 1.25 },
+        "Make Up":              { bdr: 386, otCoef: 1.5  },
+        "Chief Hair Designer":  { bdr: 649, otCoef: 1.25 },
+        "Hairdresser":          { bdr: 386, otCoef: 1.5  },
+      },
+      "Other": {
+        "Driver":           { bdr: 299, otCoef: 1.5 },
+        "Covid Supervisor": { bdr: 435, otCoef: 1.5 },
+      },
     };
-    const ROLE_ORDER = ["Gaffer", "Best Boy", "Desk Op", "Spark", "Trainee"];
+
+    // Flat lookup — backwards compatible
+    const ROLE_DEFAULTS = Object.fromEntries(
+      Object.values(DEPARTMENTS).flatMap(roles => Object.entries(roles))
+    );
+
+    // Backwards compat alias so existing saved "Spark" crew still resolves
+    ROLE_DEFAULTS["Spark"] = ROLE_DEFAULTS["Lighting Technician"];
+
+    // Display order across all departments
+    const ROLE_ORDER = Object.values(DEPARTMENTS).flatMap(roles => Object.keys(roles));
+
+    // Reverse lookup: role name → department
+    const ROLE_TO_DEPT = Object.fromEntries(
+      Object.entries(DEPARTMENTS).flatMap(([dept, roles]) =>
+        Object.keys(roles).map(role => [role, dept])
+      )
+    );
 
     function autoOtCoef(bdr) {
       const n = Number(bdr) || 0;
@@ -211,7 +319,7 @@
       const bdr = Number(crew.bdr) || 0;
       const bhr = bdr / 10;
       const otCoef = Number(crew.otCoef) || 1;
-      const otRate = bhr * otCoef;
+      const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : bhr * otCoef;
       const lines = [];
       const notes = [];
       const bs = deriveBreakState(day);
@@ -2337,7 +2445,7 @@ ${allPagesHTML}
         cancel();
       };
       const remove = (id) => { onPushUndo('Crew member removed'); setCrew((prev) => prev.filter((c) => c.id !== id)); setConfirmRemove(null); };
-      const onRoleChange = (role) => { const d = ROLE_DEFAULTS[role]; setForm((f) => ({ ...f, role, bdr: d.bdr, otCoef: autoOtCoef(d.bdr) })); };
+      const onRoleChange = (role) => { const d = ROLE_DEFAULTS[role] || {}; setForm((f) => ({ ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr), otRate: d.otRate ?? null })); };
       const sortByRole = () => {
         setCrew((prev) => [...prev].sort((a, b) => {
           const r = roleRank(a.role) - roleRank(b.role);
