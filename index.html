@@ -2346,6 +2346,19 @@ ${allPagesHTML}
 
     function ProductionForm({ production, setProduction }) {
       const set = (k) => (e) => setProduction({ ...production, [k]: e.target.value });
+      const handleStartDateChange = (e) => {
+        const newDate = e.target.value;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+          const monday = getMonday(newDate);
+          setProduction(prev => ({
+            ...prev,
+            startDate: newDate,
+            weekStarts: [...new Set([...(prev.weekStarts || []), monday])],
+          }));
+        } else {
+          setProduction(prev => ({ ...prev, startDate: newDate }));
+        }
+      };
       const isUntitled = production.title === "Untitled Production" || !production.title;
       const hasNonDefaultWeekend = (production.satRateMode && production.satRateMode !== "apa") || (production.sunRateMode && production.sunRateMode !== "apa");
       const [weekendOpen, setWeekendOpen] = React.useState(hasNonDefaultWeekend);
@@ -2365,7 +2378,7 @@ ${allPagesHTML}
               <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
               <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
             </div>
-            <Field label="Start Date"><Input type="date" value={production.startDate || ""} onChange={set("startDate")} /></Field>
+            <Field label="Start Date"><Input type="date" value={production.startDate || ""} onChange={handleStartDateChange} /></Field>
           </div>
           <div>
             <button
@@ -3045,7 +3058,7 @@ ${allPagesHTML}
       );
     }
 
-    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddWeek, onAddCrew, onAssignAll, onDuplicateDate, onBulkEditDate }) {
+    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddWeek, onAddCrew, onAssignAll, onDuplicateDate, onBulkEditDate, onRemoveWeek }) {
       const [addDayType, setAddDayType] = useState("Shoot");
       const [editingDate, setEditingDate] = useState(null);
       const [dateEdit, setDateEdit] = useState({});
@@ -3181,9 +3194,17 @@ ${allPagesHTML}
                   <tr className={`border-b border-neutral-800 ${weekIdx > 0 ? "border-t-2 border-t-neutral-700" : "border-t border-t-neutral-700"}`}>
                     <td className="px-3 py-1.5 bg-neutral-900 border-r border-neutral-700 whitespace-nowrap"
                       style={{ position: "sticky", left: 0, zIndex: 10 }}>
-                      <div className="text-[8px] text-neutral-600 uppercase tracking-wider leading-none">Week of</div>
-                      <div className="text-[10px] text-neutral-400 font-semibold leading-tight mt-0.5">
-                        {new Date(weekDates[0] + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[8px] text-neutral-600 uppercase tracking-wider leading-none">Week of</div>
+                          <div className="text-[10px] text-neutral-400 font-semibold leading-tight mt-0.5">
+                            {new Date(weekDates[0] + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => onRemoveWeek(weekDates[0])}
+                          className="text-[9px] text-neutral-700 hover:text-red-400 transition-colors font-bold uppercase tracking-wider leading-none"
+                          title="Remove this week">✕</button>
                       </div>
                     </td>
                     {weekDates.map(date => {
@@ -3359,7 +3380,7 @@ ${allPagesHTML}
       );
     }
 
-    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo }) {
+    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -3523,7 +3544,7 @@ ${allPagesHTML}
           )}
 
           {gridView ? (
-            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddWeek={onAddWeek} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onDuplicateDate={handleDuplicateDate} onBulkEditDate={handleBulkEditDate} />
+            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddWeek={onAddWeek} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onDuplicateDate={handleDuplicateDate} onBulkEditDate={handleBulkEditDate} onRemoveWeek={onRemoveWeek} />
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
@@ -3798,8 +3819,8 @@ const setDays = (updater) =>
       const [undoVisible, setUndoVisible] = useState(false);
       const [undoLabel, setUndoLabel] = useState('');
 
-      const pushUndo = (label) => {
-        undoRef.current = { crew: production.crew ?? [], days: production.days ?? [] };
+      const pushUndo = (label, extra = {}) => {
+        undoRef.current = { crew: production.crew ?? [], days: production.days ?? [], ...extra };
         setUndoLabel(label);
         setUndoVisible(true);
         if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -3807,11 +3828,31 @@ const setDays = (updater) =>
       };
       const handleUndo = () => {
         if (!undoRef.current) return;
-        const { crew: c, days: d } = undoRef.current;
-        setProduction(prev => ({ ...prev, crew: c, days: d }));
+        const { crew: c, days: d, weekStarts, gridDates } = undoRef.current;
+        setProduction(prev => ({
+          ...prev,
+          crew: c,
+          days: d,
+          ...(weekStarts !== undefined ? { weekStarts } : {}),
+          ...(gridDates !== undefined ? { gridDates } : {}),
+        }));
         undoRef.current = null;
         setUndoVisible(false);
         if (undoTimerRef.current) { clearTimeout(undoTimerRef.current); undoTimerRef.current = null; }
+      };
+
+      const handleRemoveWeek = (monday) => {
+        pushUndo('Week removed', { weekStarts: production.weekStarts ?? [], gridDates: production.gridDates ?? [] });
+        const weekDates = new Set(Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(monday + "T12:00:00"); d.setDate(d.getDate() + i);
+          return d.toISOString().slice(0, 10);
+        }));
+        setProduction(p => ({
+          ...p,
+          weekStarts: (p.weekStarts || []).filter(w => w !== monday),
+          gridDates: (p.gridDates || []).filter(d => !weekDates.has(d)),
+          days: (p.days || []).filter(d => !weekDates.has(d.date)),
+        }));
       };
 
       useEffect(() => {
@@ -3891,7 +3932,7 @@ const setDays = (updater) =>
                 <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} onPushUndo={pushUndo} />
               </div>
             )}
-            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} />}
+            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
           </div>
 
