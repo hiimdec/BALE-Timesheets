@@ -318,7 +318,7 @@
     function calculateDay(day, crew, weekendOpts = {}) {
       const bdr = Number(crew.bdr) || 0;
       const bhr = bdr / 10;
-      const otCoef = Number(crew.otCoef) || 1;
+      const otCoef = crew.noOT ? 0 : (Number(crew.otCoef) || 1);
       const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : bhr * otCoef;
       const lines = [];
       const notes = [];
@@ -415,30 +415,32 @@
           lines.push({ label: `${day.dayType} Day (${baseHrs}h × BHR)`, detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
         }
 
-        if (isEarly) {
-          const earlyHrs = ceilHalf(7 - callH);
-          lines.push({ label: "Early Call (OT rate)", detail: `${day.callTime} – 07:00`, rate: otRate, qty: earlyHrs, amount: earlyHrs * otRate });
-        }
-
-        const otTotalRaw = Math.max(0, effectiveHrs - basicHrs);
-        const otTotal = ceilHalf(otTotalRaw);
-        if (otTotal > 0) {
-          const otStartAbs = effectiveStart + basicHrs;
-          const otEndAbs = wrapAbs;
-          const tripleStart = Math.max(otStartAbs, 24);
-          const tripleEnd = Math.min(otEndAbs, 29);
-          const tripleRaw = Math.max(0, tripleEnd - tripleStart);
-          const tripleHrs = ceilHalf(tripleRaw);
-          const standardOtHrs = Math.max(0, otTotal - tripleHrs);
-          if (standardOtHrs > 0) {
-            lines.push({
-              label: "OT",
-              detail: tripleHrs > 0 ? `${toHHMM(otStartAbs)} – 00:00` : `${toHHMM(otStartAbs)} – ${toHHMM(otEndAbs)}`,
-              rate: otRate, qty: standardOtHrs, amount: standardOtHrs * otRate,
-            });
+        if (!crew.noOT) {
+          if (isEarly) {
+            const earlyHrs = ceilHalf(7 - callH);
+            lines.push({ label: "Early Call (OT rate)", detail: `${day.callTime} – 07:00`, rate: otRate, qty: earlyHrs, amount: earlyHrs * otRate });
           }
-          if (tripleHrs > 0) {
-            lines.push({ label: "OT Triple Time (00:00–05:00)", detail: "After midnight", rate: bhr * 3, qty: tripleHrs, amount: tripleHrs * bhr * 3 });
+
+          const otTotalRaw = Math.max(0, effectiveHrs - basicHrs);
+          const otTotal = ceilHalf(otTotalRaw);
+          if (otTotal > 0) {
+            const otStartAbs = effectiveStart + basicHrs;
+            const otEndAbs = wrapAbs;
+            const tripleStart = Math.max(otStartAbs, 24);
+            const tripleEnd = Math.min(otEndAbs, 29);
+            const tripleRaw = Math.max(0, tripleEnd - tripleStart);
+            const tripleHrs = ceilHalf(tripleRaw);
+            const standardOtHrs = Math.max(0, otTotal - tripleHrs);
+            if (standardOtHrs > 0) {
+              lines.push({
+                label: "OT",
+                detail: tripleHrs > 0 ? `${toHHMM(otStartAbs)} – 00:00` : `${toHHMM(otStartAbs)} – ${toHHMM(otEndAbs)}`,
+                rate: otRate, qty: standardOtHrs, amount: standardOtHrs * otRate,
+              });
+            }
+            if (tripleHrs > 0) {
+              lines.push({ label: "OT Triple Time (00:00–05:00)", detail: "After midnight", rate: bhr * 3, qty: tripleHrs, amount: tripleHrs * bhr * 3 });
+            }
           }
         }
       }
@@ -603,7 +605,6 @@
       };
     }
 
-    const TOC_EXEMPT_ROLES = ["PM", "PA", "Runner"];
     const roundRate = (n) => Math.ceil(n);
     const PREMIUM_RATE_RE = /\bot\b|early call|night shoot|saturday|sunday|triple|time off the clock/i;
     function applyRateRounding(calc) {
@@ -639,7 +640,7 @@
     }
 
     function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew) {
-      if (TOC_EXEMPT_ROLES.some(r => r.toLowerCase() === (effectiveCrew.role || "").trim().toLowerCase())) return null;
+      if (ROLE_DEFAULTS[effectiveCrew.role]?.pmpa === true) return null;
       const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
       if (rest === null || rest >= 11) return null;
       const otRate = (Number(effectiveCrew.bdr) || 0) / 10 * (Number(effectiveCrew.otCoef) || 1);
