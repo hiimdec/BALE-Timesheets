@@ -3187,7 +3187,9 @@ ${allPagesHTML}
                   )}
                   {!fixedCrewId && (isNew || isNewAll) && (
                     <div className="text-xs text-neutral-500">
-                      {isNewAll ? `${crew.length} crew member${crew.length !== 1 ? "s" : ""} — select date below` : "Select crew member and date below"}
+                      {isNewAll
+                        ? `${crew.length} crew member${crew.length !== 1 ? "s" : ""}${dateStr ? ` — ${dateStr}` : " — select date below"}`
+                        : "Select crew member and date below"}
                     </div>
                   )}
                 </div>
@@ -3328,7 +3330,7 @@ ${allPagesHTML}
       );
     }
 
-    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddWeek, onAddCrew, onAssignAll, onDuplicateDate, onBulkEditDate, onRemoveWeek }) {
+    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddAllOnDate, onAddWeek, onAddCrew, onAssignAll, onDuplicateDate, onBulkEditDate, onRemoveWeek }) {
       const [addDayType, setAddDayType] = useState("Shoot");
       const [editingDate, setEditingDate] = useState(null);
       const [dateEdit, setDateEdit] = useState({});
@@ -3407,7 +3409,7 @@ ${allPagesHTML}
               <span className="text-[10px] text-neutral-500 uppercase tracking-wider whitespace-nowrap">Add as:</span>
               <Select value={addDayType} onChange={e => setAddDayType(e.target.value)}>{DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select>
             </div>
-            <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap empty cell to add · Tap date to bulk edit</div>
+            <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap empty cell to add · Tap date to add all or bulk edit</div>
           </div>
 
           <div className="overflow-x-auto border border-neutral-800 rounded-[10px] overflow-hidden">
@@ -3458,9 +3460,13 @@ ${allPagesHTML}
                       const isEditingThis = editingDate === date;
                       const cellBg    = isSun ? "bg-red-950/40"   : isSat ? "bg-amber-950/40" : "bg-neutral-900";
                       const numColor  = isSun ? "text-red-300"    : isSat ? "text-amber-300"  : "text-neutral-300";
+                      const hasEntries = days.some(d => d.date === date);
                       return (
                         <td key={date}
-                          onClick={() => isEditingThis ? setEditingDate(null) : openDateEdit(date)}
+                          onClick={() => {
+                            if (isEditingThis) { setEditingDate(null); return; }
+                            if (hasEntries) { openDateEdit(date); } else { onAddAllOnDate(date, addDayType); }
+                          }}
                           className={`px-2 py-1.5 text-center cursor-pointer border-r border-neutral-700 transition-colors hover:bg-neutral-800/60 ${cellBg}${isEditingThis ? " ring-2 ring-inset ring-sky-400" : ""}`}>
                           <div className={`text-[11px] font-bold leading-none ${numColor}`}>
                             {new Date(date + "T12:00:00").getDate()}
@@ -3727,6 +3733,15 @@ ${allPagesHTML}
         setFixedCrewId(crewId);
         setFixedDate(date);
       };
+      const handleAddAllFromGrid = (date, dayType = "Shoot") => {
+        if (crew.length === 0) return;
+        const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
+        const callH = parseHHMM(d.callTime) ?? 8;
+        setForm({ ...d, ...makeBlankDay(""), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11) });
+        setEditing("new-all");
+        setFixedCrewId(null);
+        setFixedDate(date);
+      };
       const handleBulkEditDate = (date, overrides) => {
         const { dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins } = overrides;
         setDays(prev => prev.map(d =>
@@ -3845,7 +3860,7 @@ ${allPagesHTML}
           )}
 
           {gridView ? (
-            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddWeek={onAddWeek} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onDuplicateDate={handleDuplicateDate} onBulkEditDate={handleBulkEditDate} onRemoveWeek={onRemoveWeek} />
+            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddAllOnDate={handleAddAllFromGrid} onAddWeek={onAddWeek} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onDuplicateDate={handleDuplicateDate} onBulkEditDate={handleBulkEditDate} onRemoveWeek={onRemoveWeek} />
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
