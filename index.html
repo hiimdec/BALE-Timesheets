@@ -285,15 +285,15 @@
       const lunchEndAbs = lunchMissed ? null : lunchStartAbs + lunchDuration / 60;
       const lateThreshold = callH + 5.5;
       const cwdThreshold  = callH + 6.5;
-      const lunchLate = !lunchMissed && lunchStartAbs > lateThreshold && lunchStartAbs <= cwdThreshold;
-      const lunchVeryLate = !lunchMissed && lunchStartAbs > cwdThreshold;
       // APA §2.3: lunch is only required on Shoot and Pre-light days. Other
-      // non-shoot day types have no meal obligation, so CWD does not trigger
-      // on missed lunch for them. (See note below in calculateDay.)
+      // non-shoot day types have no meal obligation, so CWD, late-lunch
+      // penalties, and 2nd-break obligations do not apply.
       const cwdApplies = (effectiveDayType === "Shoot" || effectiveDayType === "Pre-light");
+      const lunchLate = cwdApplies && !lunchMissed && lunchStartAbs > lateThreshold && lunchStartAbs <= cwdThreshold;
+      const lunchVeryLate = cwdApplies && !lunchMissed && lunchStartAbs > cwdThreshold;
       const continuousDay = cwdApplies && (lunchMissed || lunchVeryLate);
       const sbDeadline = lunchEndAbs !== null ? lunchEndAbs + 5.5 : null;
-      const secondBreakRequired = !continuousDay && sbDeadline !== null && wrapAbs > sbDeadline;
+      const secondBreakRequired = cwdApplies && !continuousDay && sbDeadline !== null && wrapAbs > sbDeadline;
       const cwd1Deadline = callH + 9;
       const cwd2Deadline = callH + 12.5;
       const cwd2Required = continuousDay && wrapAbs > cwd2Deadline;
@@ -483,8 +483,12 @@
       }
 
       if (!isNightShoot) {
+        // Late 1st Break (£10) — bs.lunchLate is already gated to cwdApplies
+        // at source in deriveBreakState, so this only fires on Shoot/Pre-light.
         if (bs.lunchLate) lines.push({ label: "Late 1st Break", detail: "", rate: null, qty: 1, amount: 10 });
-        if ((lunchMissed || bs.lunchVeryLate) && day.noMealProvided) {
+        // Missed Meal (£7.50) — lunchMissed is the raw flag; gate to
+        // cwdApplies so the allowance only applies on Shoot/Pre-light.
+        if (bs.cwdApplies && (lunchMissed || bs.lunchVeryLate) && day.noMealProvided) {
           lines.push({ label: "Missed Meal Allowance", detail: "", rate: null, qty: 1, amount: 7.5 });
         }
         if (secondBreakRequired) {
@@ -988,6 +992,12 @@
   }
   .tag.shoot { background: var(--paper); border-color: var(--rule-hair); }
   .tag.prelight { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
+  .tag.prep   { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
+  .tag.recce  { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
+  .tag.build  { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
+  .tag.derig  { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
+  .tag.travel { background: var(--paper); border-color: var(--rule-hair); }
+  .tag.rest   { background: var(--paper); border-color: var(--rule-hair); color: var(--ink-2); font-style: italic; }
   .tag.call {
     background: transparent;
     border: 0.5pt solid var(--rule-soft);
@@ -1695,6 +1705,12 @@ ${daySectionsHTML}
       let dayTypeClass = 'tag';
       if (dayType === 'Shoot') dayTypeClass = 'tag shoot';
       else if (dayType === 'Pre-light') dayTypeClass = 'tag prelight';
+      else if (dayType === 'Prep Day') dayTypeClass = 'tag prep';
+      else if (dayType === 'Recce') dayTypeClass = 'tag recce';
+      else if (dayType === 'Build Day') dayTypeClass = 'tag build';
+      else if (dayType === 'De-rig') dayTypeClass = 'tag derig';
+      else if (dayType === 'Travel Day') dayTypeClass = 'tag travel';
+      else if (dayType === 'Rest Day') dayTypeClass = 'tag rest';
 
       const dayLabel = meta.dayLabel || 'Standard';
       let callClass = 'tag call';
@@ -2942,6 +2958,9 @@ ${allPagesHTML}
       const isTravelDay = v.dayType === "Travel Day";
       const activeCrew = fixedCrewId ? crew.find(c => c.id === fixedCrewId) : crew.find(c => c.id === v.crewId);
       const isDriverDay = activeCrew?.isDriver === true && !isTravelDay;
+      const role = activeCrew?.role || "";
+      const bwdOverrideApplies = ROLES_WITH_BWD_OVERRIDE.includes(role) &&
+        ["Pre-light", "Prep Day", "Recce", "Build Day", "De-rig"].includes(v.dayType);
 
       const show2ndBreakPill = !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
       const sbPillIsRed = bs?.sbState === "missed" || bs?.sbState === "late";
@@ -2984,6 +3003,14 @@ ${allPagesHTML}
           </Field>
           {!fixedCrewId && !fixedDate && <div className="hidden md:block" />}
 
+          {bwdOverrideApplies && (
+            <div className="md:col-span-2">
+              <StatusMsg kind="info">
+                APA §2.3: {role} always works to Basic Working Day rules, even on non-shoot days. This {v.dayType} is calculated as a Shoot Day (10+1, OT after 11h).
+              </StatusMsg>
+            </div>
+          )}
+
           {isDriverDay && (
             <Field label="Truck Call Time" hint="Pre-unit start — billed at BHR · break deadlines &amp; OT still from call time">
               <TimeInput value={v.truckCallTime || ""} onChange={(e) => set({ truckCallTime: e.target.value })} />
@@ -3014,15 +3041,17 @@ ${allPagesHTML}
               {bs && (
                 <div className="md:col-span-2">
                   {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of 11h.</StatusMsg>}
-                  {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="warn">Lunch missed. Note: CWD doesn't apply to {v.dayType} days.</StatusMsg>}
+                  {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
                   {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
                   {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
-                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
-                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && <StatusMsg kind="ok">On time. Lunch ends {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
+                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
+                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && !bs.cwdApplies && <StatusMsg kind="info">Partial lunch ({bs.lunchDuration}m). Counts toward basic: {(8 + bs.lunchDuration / 60).toFixed(1)}h × BHR.</StatusMsg>}
+                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && bs.cwdApplies && <StatusMsg kind="ok">On time. Lunch ends {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
+                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && !bs.cwdApplies && <StatusMsg kind="ok">Lunch given (1h). Counts toward basic: 9h × BHR.</StatusMsg>}
                 </div>
               )}
 
-              {bs && (bs.lunchMissed || bs.lunchVeryLate) && (
+              {bs && bs.cwdApplies && (bs.lunchMissed || bs.lunchVeryLate) && (
                 <Field label="Meal Provided?" hint="£7.50 allowance if no meal given">
                   <Select value={v.noMealProvided ? "no" : "yes"} onChange={(e) => set({ noMealProvided: e.target.value === "no" })}>
                     <option value="yes">Yes — meal given</option>
@@ -3646,8 +3675,8 @@ ${allPagesHTML}
     function dayTypeDefaults(dayType) {
       return {
         callTime: "08:00",
-        wrapTime: toHHMM(8 + (DEFAULT_HOURS[dayType] || 11)),
-        ...(dayType === "Travel Day" ? { lunchDurationMins: 0 } : {}),
+        wrapTime: toHHMM(8 + (DEFAULT_HOURS[dayType] ?? 11)),
+        ...(dayType === "Travel Day" || dayType === "Rest Day" ? { lunchDurationMins: 0 } : {}),
       };
     }
 
