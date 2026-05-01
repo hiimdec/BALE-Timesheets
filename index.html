@@ -2415,11 +2415,11 @@ ${allPagesHTML}
         disabled={!!disabled}
         onClick={() => !disabled && onChange(!value)}
         className={`relative inline-flex shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:ring-offset-1 focus:ring-offset-neutral-900 ${value ? "bg-sky-400" : "bg-neutral-700"} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-        style={{ width: 51, height: 31, padding: 0 }}
+        style={{ width: 56, height: 30, padding: 0 }}
       >
         <span
           className="pointer-events-none absolute rounded-full bg-white shadow-sm transition-transform duration-150 ease-out"
-          style={{ width: 27, height: 27, top: 2, left: 2, transform: value ? "translateX(20px)" : "translateX(0)" }}
+          style={{ width: 26, height: 24, top: 3, left: 3, transform: value ? "translateX(26px)" : "translateX(0)" }}
         />
       </button>
     );
