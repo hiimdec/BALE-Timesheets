@@ -247,6 +247,7 @@
       defaultKitMoneyAmount: 0,
       defaultPerDiemEnabled: false,
       defaultPerDiemAmount: 0,
+      favourableRounding: true,
     };
 
     const DEFAULT_PRODUCTION_DAY = {
@@ -746,6 +747,7 @@
       isElevenHourDay: p.isElevenHourDay ?? false,
       jobReference: p.jobReference ?? "",
       invoicingEmail: p.invoicingEmail ?? "",
+      favourableRounding: p.favourableRounding ?? true,
     });
 
     function useStoredState(key, initial, migrate) {
@@ -836,17 +838,11 @@
       };
     }
 
-    const roundRate = (n) => Math.ceil(n);
-    const PREMIUM_RATE_RE = /\bot\b|early call|night shoot|saturday|sunday|bank holiday|triple|time off the clock/i;
     function applyRateRounding(calc) {
-      // PM/PA/Runner per APA Appendix 1 §(a) use a flat-multiplier framework
-      // — no APA-style up-rounding on premium rates.
       if (calc.meta?.isPmpa) return calc;
       const lines = calc.lines.map(l => {
-        if (l.rate == null || !PREMIUM_RATE_RE.test(l.label)) return l;
-        const rate = roundRate(l.rate);
-        const amount = typeof l.qty === 'number' ? rate * l.qty : l.amount;
-        return { ...l, rate, amount };
+        if (l.rate == null) return l;
+        return { ...l, amount: Math.ceil(l.amount) };
       });
       const total = lines.reduce((s, l) => s + l.amount, 0);
       return { ...calc, lines, total };
@@ -901,7 +897,8 @@
           calc = { ...calc, lines: [...calc.lines, tocLine], total: calc.total + toc.amount };
         }
       }
-      return applyRateRounding(calc);
+      const useFavourableRounding = production?.favourableRounding ?? true;
+      return useFavourableRounding ? applyRateRounding(calc) : calc;
     }
 
     function generateCrewText(crewMember, entries, production) {
@@ -5107,6 +5104,16 @@ const setDays = (updater) =>
               )}
             </SectionCard>
 
+            <SectionCard title="Calculation">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Favourable rounding</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used.</div>
+                </div>
+                <Toggle value={userPrefs.favourableRounding} onChange={(v) => set({ favourableRounding: v })} ariaLabel="Favourable rounding" />
+              </div>
+            </SectionCard>
+
             <SectionCard title="Data">
               <div className="flex flex-col gap-3">
                 <div>
@@ -5411,6 +5418,7 @@ const setDays = (updater) =>
           defaultDay: DEFAULT_PRODUCTION_DAY,
           bestBoyMode,
           isElevenHourDay: false,
+          favourableRounding: userPrefs.favourableRounding ?? true,
           startDate: todayISO(),
           isNew: true,
         };
