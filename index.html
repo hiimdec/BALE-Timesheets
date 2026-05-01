@@ -85,6 +85,8 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
+    const APP_VERSION = "0.1.0";
+
     const DEPARTMENTS = {
       "Direction & Production": {
         "Director":             { bdr: 933,  otCoef: 0,    noOT: true },
@@ -215,6 +217,22 @@
       "Rest Day": 0,
     };
     const ROLES_WITH_BWD_OVERRIDE = ["DoP", "Art Director", "Location Manager"];
+    const DEFAULT_USER_PREFS = {
+      displayName: "",
+      defaultDepartment: "",
+      defaultRole: "",
+      defaultBDR: 0,
+      defaultOTCoef: 1.5,
+      vatRegistered: false,
+      vatRate: 20,
+      vatNumber: "",
+      defaultMileageRate: 0.5,
+      defaultKitMoneyEnabled: false,
+      defaultKitMoneyAmount: 0,
+      defaultPerDiemEnabled: false,
+      defaultPerDiemAmount: 0,
+    };
+
     const DEFAULT_PRODUCTION_DAY = {
       dayType: "Shoot",
       callTime: "08:00",
@@ -2368,6 +2386,8 @@ ${allPagesHTML}
     const ISort = (p) => <Icon {...p}><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></Icon>;
     const ICopy = (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Icon>;
     const IUpload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>;
+    const IGear = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>;
+    const IArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
@@ -4373,16 +4393,12 @@ const setDays = (updater) =>
       );
     }
 
-    /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
+    /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onExport, onImport, onUpdateDays }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onImport, onResetAll }) {
+      const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
-      const [toastMsg, setToastMsg] = useState(null);
-      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const showWrapNow = (p) => {
-        return (p.days ?? []).some(d => d.date === todayStr);
-      };
+      const [resetConfirm, setResetConfirm] = useState(false);
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -4403,6 +4419,223 @@ const setDays = (updater) =>
           }
         };
         reader.readAsText(file);
+      };
+
+      const deptRoles = userPrefs.defaultDepartment && DEPARTMENTS[userPrefs.defaultDepartment]
+        ? Object.keys(DEPARTMENTS[userPrefs.defaultDepartment])
+        : [];
+
+      const onDeptChange = (dept) => {
+        const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
+        const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
+        set({
+          defaultDepartment: dept,
+          defaultRole: firstRole,
+          defaultBDR: roleDefaults.bdr ?? 0,
+          defaultOTCoef: roleDefaults.otCoef ?? 1.5,
+        });
+      };
+
+      const onRoleChange = (role) => {
+        const d = ROLE_DEFAULTS[role] || {};
+        set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
+      };
+
+      const SectionCard = ({ title, children }) => (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden mb-4">
+          <div className="px-4 py-3 border-b border-neutral-800">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{title}</div>
+          </div>
+          <div className="px-4 py-4 space-y-4">{children}</div>
+        </div>
+      );
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1">
+                <IArrowLeft size={16}/>
+              </button>
+              <div className="flex-1 text-center font-bold uppercase tracking-tight text-sm">Settings</div>
+              <div style={{ width: 24 }} />
+            </div>
+          </div>
+
+          <div className="max-w-2xl mx-auto px-4 py-6">
+
+            <SectionCard title="My Setup">
+              <Field label="Display name" hint="Appears on exported PDFs">
+                <Input
+                  type="text"
+                  placeholder="Your name"
+                  value={userPrefs.displayName}
+                  onChange={(e) => set({ displayName: e.target.value })}
+                />
+              </Field>
+              <Field label="Default department">
+                <Select value={userPrefs.defaultDepartment} onChange={(e) => onDeptChange(e.target.value)}>
+                  <option value="">— none —</option>
+                  {Object.keys(DEPARTMENTS).map(d => <option key={d} value={d}>{d}</option>)}
+                </Select>
+              </Field>
+              {userPrefs.defaultDepartment && deptRoles.length > 0 && (
+                <Field label="Default role">
+                  <Select value={userPrefs.defaultRole} onChange={(e) => onRoleChange(e.target.value)}>
+                    {deptRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                  </Select>
+                </Field>
+              )}
+              {userPrefs.defaultRole && (
+                <Field label="Default BDR (£)" hint="Auto-filled from role; adjust if needed">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={userPrefs.defaultBDR}
+                    onChange={(e) => set({ defaultBDR: Number(e.target.value) })}
+                  />
+                </Field>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Tax &amp; Invoicing">
+              <Field label="VAT registered?">
+                <Select value={userPrefs.vatRegistered ? "yes" : "no"} onChange={(e) => set({ vatRegistered: e.target.value === "yes" })}>
+                  <option value="no">No — not VAT registered</option>
+                  <option value="yes">Yes — VAT registered</option>
+                </Select>
+              </Field>
+              {userPrefs.vatRegistered && (
+                <Field label="VAT rate (%)" hint="Usually 20%">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={userPrefs.vatRate}
+                    onChange={(e) => set({ vatRate: Number(e.target.value) })}
+                  />
+                </Field>
+              )}
+              {userPrefs.vatRegistered && (
+                <Field label="VAT number">
+                  <Input
+                    type="text"
+                    placeholder="GB123456789"
+                    value={userPrefs.vatNumber}
+                    onChange={(e) => set({ vatNumber: e.target.value })}
+                  />
+                </Field>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Defaults for new productions">
+              <Field label="Default mileage rate (£/mile)">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={userPrefs.defaultMileageRate}
+                  onChange={(e) => set({ defaultMileageRate: Number(e.target.value) })}
+                />
+              </Field>
+              <Field label="Kit money">
+                <Select value={userPrefs.defaultKitMoneyEnabled ? "yes" : "no"} onChange={(e) => set({ defaultKitMoneyEnabled: e.target.value === "yes" })}>
+                  <option value="no">No kit money by default</option>
+                  <option value="yes">Yes — kit money enabled by default</option>
+                </Select>
+              </Field>
+              {userPrefs.defaultKitMoneyEnabled && (
+                <Field label="Default kit money amount (£/day)">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={userPrefs.defaultKitMoneyAmount}
+                    onChange={(e) => set({ defaultKitMoneyAmount: Number(e.target.value) })}
+                  />
+                </Field>
+              )}
+              <Field label="Per diem">
+                <Select value={userPrefs.defaultPerDiemEnabled ? "yes" : "no"} onChange={(e) => set({ defaultPerDiemEnabled: e.target.value === "yes" })}>
+                  <option value="no">No per diem by default</option>
+                  <option value="yes">Yes — per diem enabled by default</option>
+                </Select>
+              </Field>
+              {userPrefs.defaultPerDiemEnabled && (
+                <Field label="Default per diem amount (£/day)">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={userPrefs.defaultPerDiemAmount}
+                    onChange={(e) => set({ defaultPerDiemAmount: Number(e.target.value) })}
+                  />
+                </Field>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Data">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <Btn variant="ghost" onClick={onExport}><IDownload/>Export Backup</Btn>
+                  <p className="text-[10px] text-neutral-500 mt-1">Downloads all productions as a JSON file.</p>
+                </div>
+                <div>
+                  <Btn variant="ghost" onClick={() => importRef.current?.click()}><IUpload/>Import Backup</Btn>
+                  <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
+                  <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with the backup.</p>
+                </div>
+                <div className="border-t border-neutral-800 pt-3">
+                  {resetConfirm ? (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-red-400">This will permanently delete all productions and preferences. Are you sure?</p>
+                      <div className="flex gap-2">
+                        <Btn variant="danger" size="sm" onClick={() => { setResetConfirm(false); onResetAll(); }}>Yes, reset everything</Btn>
+                        <Btn variant="ghost" size="sm" onClick={() => setResetConfirm(false)}>Cancel</Btn>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <Btn variant="danger" onClick={() => setResetConfirm(true)}><IReset/>Reset all data</Btn>
+                      <p className="text-[10px] text-neutral-500 mt-1">Clears all productions and settings. Cannot be undone.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="About">
+              <div className="space-y-2 text-[12px] text-neutral-300">
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">App version</span>
+                  <span className="font-mono">{APP_VERSION}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">APA rate version</span>
+                  <span className="font-mono">APA Sept 2025</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-neutral-500">Feedback</span>
+                  <a href="mailto:feedback@timemachineapp.co.uk" className="text-sky-400 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
+                </div>
+              </div>
+            </SectionCard>
+
+          </div>
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
+
+    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onUpdateDays, onOpenSettings }) {
+      const [toastMsg, setToastMsg] = useState(null);
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const showWrapNow = (p) => {
+        return (p.days ?? []).some(d => d.date === todayStr);
       };
 
       // Derive a sort key (YYYY-MM-DD or null) for each production — display only, no mutation
@@ -4444,9 +4677,7 @@ const setDays = (updater) =>
                 <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Productions</div>
               </div>
               <div className="flex items-center gap-2 flex-wrap justify-end">
-                <Btn variant="ghost" size="sm" onClick={onExport}><IDownload/>Export Backup</Btn>
-                <Btn variant="ghost" size="sm" onClick={() => importRef.current?.click()}><IUpload/>Import Backup</Btn>
-                <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
+                <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-lg hover:bg-neutral-800" title="Settings"><IGear size={16}/></button>
                 <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
               </div>
             </div>
@@ -4498,7 +4729,9 @@ const setDays = (updater) =>
 
     function Root() {
       const [productions, setProductions] = useStoredState("bigals_productions", [], migrateProduction);
+      const [userPrefs, setUserPrefs] = useStoredState("bigals_user_prefs", DEFAULT_USER_PREFS);
       const [openId, setOpenId] = useState(null);
+      const [showSettings, setShowSettings] = useState(false);
 
       // One-time migration: absorb all old localStorage keys into the productions array
       useEffect(() => {
@@ -4565,10 +4798,28 @@ const setDays = (updater) =>
         ));
       };
 
+      const handleResetAll = () => {
+        localStorage.removeItem("bigals_productions");
+        localStorage.removeItem("bigals_user_prefs");
+        window.location.reload();
+      };
+
       const currentProduction = productions.find((p) => p.id === openId);
 
+      if (showSettings) {
+        return (
+          <SettingsScreen
+            userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
+            onClose={() => setShowSettings(false)}
+            onExport={handleExport}
+            onImport={handleImport}
+            onResetAll={handleResetAll}
+          />
+        );
+      }
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onExport={handleExport} onImport={handleImport} onUpdateDays={handleUpdateDays} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
     }
