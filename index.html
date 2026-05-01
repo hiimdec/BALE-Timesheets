@@ -2923,8 +2923,6 @@ ${allPagesHTML}
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
-      const [openPill, setOpenPill] = useState(null);
-      const togglePill = (name) => setOpenPill(prev => prev === name ? null : name);
 
       const onDayTypeChange = (dayType) => {
         const callH = parseHHMM(v.callTime);
@@ -2956,166 +2954,169 @@ ${allPagesHTML}
       const bwdOverrideApplies = ROLES_WITH_BWD_OVERRIDE.includes(role) &&
         ["Pre-light", "Prep Day", "Recce", "Build Day", "De-rig"].includes(v.dayType);
 
-      const show2ndBreakPill = !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
-      const sbPillIsRed = bs?.sbState === "missed" || bs?.sbState === "late";
-
-      const pillBase = "text-[10px] uppercase tracking-[0.12em] font-semibold px-3 py-1 rounded-full border transition-colors";
-      const pillSkyClose  = `${pillBase} border-neutral-600 text-neutral-500 hover:border-neutral-500 hover:text-neutral-400`;
-      const pillSkyOpen   = `${pillBase} border-sky-500 text-sky-300 bg-sky-900/25`;
-      const pillAmberClose = `${pillBase} border-amber-600 text-amber-400 hover:border-amber-500`;
-      const pillRedClose  = `${pillBase} border-red-600 text-red-400 hover:border-red-500`;
-      const pillAmberOpen = `${pillBase} border-amber-500 text-amber-300 bg-amber-900/25`;
-      const pillRedOpen   = `${pillBase} border-red-500 text-red-300 bg-red-900/25`;
-
-      const sb2Class = openPill === "2ndbreak"
-        ? (sbPillIsRed ? pillRedOpen : pillAmberOpen)
-        : (sbPillIsRed ? pillRedClose : pillAmberClose);
+      const show2ndBreakSection = !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
 
       return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {!fixedCrewId && !allCrewMode && (
-            <Field label="Crew Member">
-              <Select value={v.crewId} onChange={(e) => set({ crewId: e.target.value })}>
-                <option value="">— Select —</option>
-                {crew.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.role})</option>)}
-              </Select>
-            </Field>
-          )}
-          {!fixedCrewId && allCrewMode && (
-            <div className="bg-sky-950/30 border border-sky-800 p-2 rounded-[10px]">
-              <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold">All Crew Mode</div>
-              <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage apply to all.</div>
-            </div>
-          )}
-          {!fixedDate && (
-            <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}` : ""}>
-              <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
-            </Field>
-          )}
-          <Field label="Day Type">
-            <Select value={v.dayType} onChange={(e) => onDayTypeChange(e.target.value)}>{DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
-          </Field>
-          {!fixedCrewId && !fixedDate && <div className="hidden md:block" />}
+        <div className="space-y-4">
 
-          {bwdOverrideApplies && (
-            <div className="md:col-span-2">
-              <StatusMsg kind="info">
-                APA §2.3: {role} always works to Basic Working Day rules, even on non-shoot days. This {v.dayType} is calculated as a Shoot Day (10+1, OT after 11h).
-              </StatusMsg>
-            </div>
-          )}
-
-          {isDriverDay && (
-            <Field label="Truck Call Time" hint="Pre-unit start — billed at BHR · break deadlines &amp; OT still from call time">
-              <TimeInput value={v.truckCallTime || ""} onChange={(e) => set({ truckCallTime: e.target.value })} />
-            </Field>
-          )}
-          <Field label="Call Time" hint={callH !== null && callH < 5 ? "→ Night shoot (pre-5am)" : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)" : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call" : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)" : ""}>
-            <TimeInput value={v.callTime} onChange={(e) => onCallChange(e.target.value)} />
-          </Field>
-          <Field label="Wrap Time" hint={autoNextDay ? "Wrap is next day (auto-detected)" : ""}>
-            <TimeInput value={v.wrapTime} onChange={(e) => set({ wrapTime: e.target.value })} />
-          </Field>
-
-          {!isTravelDay && (
-            <>
-              <div className="md:col-span-2 border-t border-neutral-800 pt-3 mt-2">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Lunch (1st Break)</div>
+          {/* ── Section: Day ── */}
+          <SectionCard title="Day">
+            <div className="space-y-3">
+              {!fixedCrewId && !allCrewMode && (
+                <Field label="Crew Member">
+                  <Select value={v.crewId} onChange={(e) => set({ crewId: e.target.value })}>
+                    <option value="">— Select —</option>
+                    {crew.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.role})</option>)}
+                  </Select>
+                </Field>
+              )}
+              {!fixedCrewId && allCrewMode && (
+                <div className="bg-sky-950/30 border border-sky-800 p-2 rounded-[10px]">
+                  <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold">All Crew Mode</div>
+                  <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage apply to all.</div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                {!fixedDate && (
+                  <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}` : ""}>
+                    <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
+                  </Field>
+                )}
+                <Field label="Day Type">
+                  <Select value={v.dayType} onChange={(e) => onDayTypeChange(e.target.value)}>{DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
+                </Field>
               </div>
-
-              <Field label="Lunch Start Time" hint={bs ? `Deadline: ${toHHMM(bs.lateThreshold)} · CWD threshold: ${toHHMM(bs.cwdThreshold)}` : ""}>
-                <TimeInput value={v.lunchStartTime || ""} onChange={(e) => set({ lunchStartTime: e.target.value })} disabled={Number(v.lunchDurationMins) === 0} />
-              </Field>
-              <Field label="Lunch Duration">
-                <Select value={Number(v.lunchDurationMins ?? 60)} onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}>
-                  {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                </Select>
-              </Field>
-
-              {bs && (
-                <div className="md:col-span-2">
-                  {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of 11h.</StatusMsg>}
-                  {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
-                  {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
-                  {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
-                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
-                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && !bs.cwdApplies && <StatusMsg kind="info">Partial lunch ({bs.lunchDuration}m). Counts toward basic: {(8 + bs.lunchDuration / 60).toFixed(1)}h × BHR.</StatusMsg>}
-                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && bs.cwdApplies && <StatusMsg kind="ok">On time. Lunch ends {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
-                  {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && !bs.cwdApplies && <StatusMsg kind="ok">Lunch given (1h). Counts toward basic: 9h × BHR.</StatusMsg>}
-                </div>
+              {bwdOverrideApplies && (
+                <StatusMsg kind="info">
+                  APA §2.3: {role} always works to Basic Working Day rules, even on non-shoot days. This {v.dayType} is calculated as a Shoot Day (10+1, OT after 11h).
+                </StatusMsg>
               )}
+            </div>
+          </SectionCard>
 
-              {bs && bs.cwdApplies && (bs.lunchMissed || bs.lunchVeryLate) && (
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Meal Provided?</div>
-                    <div className="text-[10px] text-neutral-500 mt-0.5">£7.50 allowance if no meal given</div>
-                  </div>
-                  <Toggle value={!v.noMealProvided} onChange={(val) => set({ noMealProvided: !val })} ariaLabel="Meal provided" />
-                </div>
+          {/* ── Section: Times ── */}
+          <SectionCard title="Times">
+            <div className="space-y-3">
+              {isDriverDay && (
+                <Field label="Truck Call Time" hint="Pre-unit start — billed at BHR · break deadlines &amp; OT still from call time">
+                  <TimeInput value={v.truckCallTime || ""} onChange={(e) => set({ truckCallTime: e.target.value })} />
+                </Field>
               )}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Call Time" hint={callH !== null && callH < 5 ? "→ Night shoot (pre-5am)" : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)" : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call" : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)" : ""}>
+                  <TimeInput value={v.callTime} onChange={(e) => onCallChange(e.target.value)} />
+                </Field>
+                <Field label="Wrap Time" hint={autoNextDay ? "Wrap is next day (auto-detected)" : ""}>
+                  <TimeInput value={v.wrapTime} onChange={(e) => set({ wrapTime: e.target.value })} />
+                </Field>
+              </div>
+            </div>
+          </SectionCard>
 
-              {bs && bs.continuousDay && (
-                <>
-                  <div className="md:col-span-2 border-t border-red-900/60 pt-3 mt-2">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-red-400 font-bold mb-2">CWD Breaks</div>
-                    <div className="text-[11px] text-neutral-400 leading-tight mb-3">APA §6.4: CWD requires a 30m break by {toHHMM(bs.cwd1Deadline)} (9h after call){bs.cwd2Required ? `, and another by ${toHHMM(bs.cwd2Deadline)} (12.5h after call)` : ""}. Missed breaks = 30m × BHR penalty.</div>
-                  </div>
+          {/* ── Section: Lunch (1st Break) ── */}
+          {!isTravelDay && (
+            <SectionCard title="Lunch (1st Break)">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Lunch Start Time" hint={bs ? `Deadline: ${toHHMM(bs.lateThreshold)} · CWD threshold: ${toHHMM(bs.cwdThreshold)}` : ""}>
+                    <TimeInput value={v.lunchStartTime || ""} onChange={(e) => set({ lunchStartTime: e.target.value })} disabled={Number(v.lunchDurationMins) === 0} />
+                  </Field>
+                  <Field label="Lunch Duration">
+                    <Select value={Number(v.lunchDurationMins ?? 60)} onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}>
+                      {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+
+                {bs && (
+                  <>
+                    {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of 11h.</StatusMsg>}
+                    {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
+                    {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
+                    {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
+                    {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
+                    {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && !bs.cwdApplies && <StatusMsg kind="info">Partial lunch ({bs.lunchDuration}m). Counts toward basic: {(8 + bs.lunchDuration / 60).toFixed(1)}h × BHR.</StatusMsg>}
+                    {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && bs.cwdApplies && <StatusMsg kind="ok">On time. Lunch ends {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
+                    {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && !bs.cwdApplies && <StatusMsg kind="ok">Lunch given (1h). Counts toward basic: 9h × BHR.</StatusMsg>}
+                  </>
+                )}
+
+                {bs && bs.cwdApplies && (bs.lunchMissed || bs.lunchVeryLate) && (
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Break 1 — by {toHHMM(bs.cwd1Deadline)}</div>
-                      <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak1Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Meal Provided?</div>
+                      <div className="text-[10px] text-neutral-500 mt-0.5">£7.50 allowance if no meal given</div>
                     </div>
-                    <Toggle value={v.cwdBreak1Given !== false} onChange={(val) => set({ cwdBreak1Given: val })} ariaLabel="CWD break 1 given" />
+                    <Toggle value={!v.noMealProvided} onChange={(val) => set({ noMealProvided: !val })} ariaLabel="Meal provided" />
                   </div>
-                  {bs.cwd2Required && (
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Break 2 — by {toHHMM(bs.cwd2Deadline)}</div>
-                        <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak2Given === false ? "Missed — +30m × BHR" : "Given"}</div>
-                      </div>
-                      <Toggle value={v.cwdBreak2Given !== false} onChange={(val) => set({ cwdBreak2Given: val })} ariaLabel="CWD break 2 given" />
-                    </div>
-                  )}
-                </>
-              )}
-            </>
+                )}
+              </div>
+            </SectionCard>
           )}
 
-          {/* ── Section pills ── */}
-          <div className="md:col-span-2 flex flex-wrap gap-2 pt-3 mt-1 border-t border-neutral-800">
-            <button type="button" onClick={() => togglePill("travel")} className={openPill === "travel" ? pillSkyOpen : pillSkyClose}>
-              Travel &amp; Mileage
-            </button>
-            <button type="button" onClick={() => togglePill("perdiem")} className={openPill === "perdiem" ? pillSkyOpen : pillSkyClose}>
-              Per Diem
-            </button>
-            <button type="button" onClick={() => togglePill("stepup")} className={openPill === "stepup" ? (v.stepUpEnabled ? pillAmberOpen : pillSkyOpen) : (v.stepUpEnabled ? pillAmberClose : pillSkyClose)}>
-              Step-Up
-            </button>
-            {show2ndBreakPill && (
-              <button type="button" onClick={() => togglePill("2ndbreak")} className={sb2Class}>
-                2nd Break
-              </button>
-            )}
-          </div>
+          {/* ── Section: 2nd Break ── */}
+          {show2ndBreakSection && (
+            <SectionCard title="2nd Break">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="2nd Break Start" hint={`Deadline: ${toHHMM(bs.sbDeadline)} (5.5h after lunch end)`}>
+                    <TimeInput value={v.secondBreakStartTime || ""} onChange={(e) => set({ secondBreakStartTime: e.target.value })} disabled={Number(v.secondBreakDurationMins) === 0} />
+                  </Field>
+                  <Field label="2nd Break Duration">
+                    <Select value={Number(v.secondBreakDurationMins ?? 30)} onChange={(e) => set({ secondBreakDurationMins: Number(e.target.value) })}>
+                      {SECOND_BREAK_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+                {bs.sbState === "missed" && <StatusMsg kind="bad">Missed — 30m × BHR penalty applied.</StatusMsg>}
+                {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed — treated as missed. 30m × BHR penalty.</StatusMsg>}
+                {bs.sbState === "curtailed" && <StatusMsg kind="warn">Curtailed by {30 - bs.sbDuration}m. {30 - bs.sbDuration}m × BHR penalty.</StatusMsg>}
+                {bs.sbState === "given" && <StatusMsg kind="ok">Given on time.</StatusMsg>}
+              </div>
+            </SectionCard>
+          )}
 
-          {/* ── Travel & Mileage panel ── */}
-          {openPill === "travel" && (
-            <>
+          {/* ── Section: CWD Breaks ── */}
+          {!isTravelDay && bs && bs.continuousDay && (
+            <SectionCard title="CWD Breaks" accent="red">
+              <div className="space-y-3">
+                <div className="text-[11px] text-neutral-400 leading-tight">APA §6.4: CWD requires a 30m break by {toHHMM(bs.cwd1Deadline)} (9h after call){bs.cwd2Required ? `, and another by ${toHHMM(bs.cwd2Deadline)} (12.5h after call)` : ""}. Missed breaks = 30m × BHR penalty.</div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Break 1 — by {toHHMM(bs.cwd1Deadline)}</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak1Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                  </div>
+                  <Toggle value={v.cwdBreak1Given !== false} onChange={(val) => set({ cwdBreak1Given: val })} ariaLabel="CWD break 1 given" />
+                </div>
+                {bs.cwd2Required && (
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Break 2 — by {toHHMM(bs.cwd2Deadline)}</div>
+                      <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak2Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                    </div>
+                    <Toggle value={v.cwdBreak2Given !== false} onChange={(val) => set({ cwdBreak2Given: val })} ariaLabel="CWD break 2 given" />
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+          )}
+
+          {/* ── Section: Travel & Mileage ── */}
+          <SectionCard title="Travel & Mileage">
+            <div className="space-y-3">
               {!isTravelDay && (
-                <>
+                <div className="grid grid-cols-2 gap-3">
                   <Field label="Travel Out (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
                   <Field label="Travel Back (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
-                </>
+                </div>
               )}
               <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE"><Input type="number" min="0" step="0.1" value={v.miles || 0} onChange={(e) => set({ miles: Number(e.target.value) })} /></Field>
-            </>
-          )}
+            </div>
+          </SectionCard>
 
-          {/* ── Per Diem panel ── */}
-          {openPill === "perdiem" && (
-            <>
+          {/* ── Section: Per Diem ── */}
+          <SectionCard title="Per Diem">
+            <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Per Diem</span>
                 <Toggle value={!!v.perDiemEnabled} onChange={(val) => set({ perDiemEnabled: val })} ariaLabel="Per diem" />
@@ -3125,12 +3126,12 @@ ${allPagesHTML}
                   <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
                 </Field>
               )}
-            </>
-          )}
+            </div>
+          </SectionCard>
 
-          {/* ── Step-Up panel ── */}
-          {openPill === "stepup" && (
-            <>
+          {/* ── Section: Step-Up ── */}
+          <SectionCard title="Step-Up">
+            <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Step-Up for this day</span>
                 <Toggle value={!!v.stepUpEnabled} onChange={(val) => set({ stepUpEnabled: val })} ariaLabel="Step-up" />
@@ -3147,40 +3148,23 @@ ${allPagesHTML}
                       {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}
                     </Select>
                   </Field>
-                  <Field label="Step-Up BDR (£)" hint="Override for this day only">
-                    <Input type="number" min="0" step="0.01" value={v.stepUpBDR ?? 0} onChange={(e) => set({ stepUpBDR: Number(e.target.value) })} />
-                  </Field>
-                  <Field label="Step-Up OT Coef">
-                    <Select value={String(v.stepUpOTCoef ?? 1)} onChange={(e) => set({ stepUpOTCoef: Number(e.target.value) })}>
-                      <option value="1">1×</option>
-                      <option value="1.25">1.25×</option>
-                      <option value="1.5">1.5×</option>
-                    </Select>
-                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Step-Up BDR (£)" hint="Override for this day only">
+                      <Input type="number" min="0" step="0.01" value={v.stepUpBDR ?? 0} onChange={(e) => set({ stepUpBDR: Number(e.target.value) })} />
+                    </Field>
+                    <Field label="Step-Up OT Coef">
+                      <Select value={String(v.stepUpOTCoef ?? 1)} onChange={(e) => set({ stepUpOTCoef: Number(e.target.value) })}>
+                        <option value="1">1×</option>
+                        <option value="1.25">1.25×</option>
+                        <option value="1.5">1.5×</option>
+                      </Select>
+                    </Field>
+                  </div>
                 </>
               )}
-            </>
-          )}
+            </div>
+          </SectionCard>
 
-          {/* ── 2nd Break panel ── */}
-          {show2ndBreakPill && openPill === "2ndbreak" && (
-            <>
-              <Field label="2nd Break Start" hint={`Deadline: ${toHHMM(bs.sbDeadline)} (5.5h after lunch end)`}>
-                <TimeInput value={v.secondBreakStartTime || ""} onChange={(e) => set({ secondBreakStartTime: e.target.value })} disabled={Number(v.secondBreakDurationMins) === 0} />
-              </Field>
-              <Field label="2nd Break Duration">
-                <Select value={Number(v.secondBreakDurationMins ?? 30)} onChange={(e) => set({ secondBreakDurationMins: Number(e.target.value) })}>
-                  {SECOND_BREAK_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                </Select>
-              </Field>
-              <div className="md:col-span-2">
-                {bs.sbState === "missed" && <StatusMsg kind="bad">Missed — 30m × BHR penalty applied.</StatusMsg>}
-                {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed — treated as missed. 30m × BHR penalty.</StatusMsg>}
-                {bs.sbState === "curtailed" && <StatusMsg kind="warn">Curtailed by {30 - bs.sbDuration}m. {30 - bs.sbDuration}m × BHR penalty.</StatusMsg>}
-                {bs.sbState === "given" && <StatusMsg kind="ok">Given on time.</StatusMsg>}
-              </div>
-            </>
-          )}
         </div>
       );
     }
@@ -4734,14 +4718,17 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
-    const SectionCard = ({ title, children }) => (
-      <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden mb-4">
-        <div className="px-4 py-3 border-b border-neutral-800">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{title}</div>
+    const SectionCard = ({ title, children, accent }) => {
+      const isRed = accent === "red";
+      return (
+        <div className={`bg-neutral-900 border ${isRed ? "border-red-900/60" : "border-neutral-800"} rounded-[12px] overflow-hidden mb-4`}>
+          <div className={`px-4 py-3 border-b ${isRed ? "border-red-900/60" : "border-neutral-800"}`}>
+            <div className={`text-[10px] uppercase tracking-[0.2em] ${isRed ? "text-red-400" : "text-sky-400"} font-bold`}>{title}</div>
+          </div>
+          <div className="px-4 py-4 space-y-4">{children}</div>
         </div>
-        <div className="px-4 py-4 space-y-4">{children}</div>
-      </div>
-    );
+      );
+    };
 
     function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onImport, onResetAll }) {
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
