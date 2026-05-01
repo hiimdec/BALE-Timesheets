@@ -2366,6 +2366,7 @@ ${allPagesHTML}
     const IUpload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>;
     const IGear = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>;
     const IArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
+    const IHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
@@ -3726,7 +3727,7 @@ ${allPagesHTML}
         <button
           onClick={handleClick}
           className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-orange-500/50 text-orange-300 hover:border-orange-400"}`}
-          style={{ minWidth: 96, height: 30 }}
+          style={{ minWidth: 96, height: 36 }}
           title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}
         >
           {confirming ? "Confirm?" : "WrapNow"}
@@ -3766,7 +3767,7 @@ ${allPagesHTML}
         <button
           onClick={handleClick}
           className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`}
-          style={{ minWidth: 96, height: 30 }}
+          style={{ minWidth: 96, height: 36 }}
           title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}
         >
           {confirming ? "Confirm?" : "LunchNow"}
@@ -3979,7 +3980,11 @@ ${allPagesHTML}
                         : (calc.meta.otHrs > 0 || calc.meta.continuousDay || calc.lines.some(l => l.isTOC)) ? '#f59e0b'
                         : '#22c55e';
                       return (
-                        <div key={d.id} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors border-l-4 rounded-[10px] overflow-hidden" style={{ borderLeftColor: stripeColor }}>
+                        <div key={d.id}
+                          className="bg-neutral-900 border border-neutral-800 active:bg-neutral-800 transition-colors border-l-4 rounded-[10px] overflow-hidden cursor-pointer select-none touch-manipulation"
+                          style={{ borderLeftColor: stripeColor, WebkitTapHighlightColor: 'transparent' }}
+                          onClick={() => startEdit(d)}
+                        >
                           <div className="flex items-center justify-between p-3 gap-3 flex-wrap">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -3992,7 +3997,7 @@ ${allPagesHTML}
                                 {d.callTime}–{d.wrapTime}{(parseHHMM(d.wrapTime) !== null && parseHHMM(d.callTime) !== null && parseHHMM(d.wrapTime) <= parseHHMM(d.callTime)) ? " (+1)" : ""} · {calc.meta.workedHrs.toFixed(1)}h · {calc.meta.dayLabel}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                               <div className="font-mono font-bold text-neutral-100 text-sm">{fmtGBP(calc.total)}</div>
                               <div className="flex gap-1">
                                 <Btn size="sm" variant="ghost" onClick={() => handleDayText(d, c)} title="Send as text"><IMessage/></Btn>
@@ -4386,6 +4391,93 @@ ${allPagesHTML}
       );
     }
 
+    /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
+
+    function BottomMoneyPill({ total, onBack, onViewCalc }) {
+      return (
+        <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
+          <div style={{ height: 56, background: '#f5f5f5', borderRadius: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', overflow: 'hidden', pointerEvents: 'auto' }}>
+            <button
+              onClick={onBack}
+              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}
+            >
+              <IArrowLeft size={20}/>
+            </button>
+            <button
+              onClick={onViewCalc}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#171717', WebkitTapHighlightColor: 'transparent' }}
+            >
+              <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(total)}</span>
+              <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View breakdown</span>
+            </button>
+            <button
+              onClick={onBack}
+              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}
+            >
+              <IHome size={20}/>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════ CALC BREAKDOWN VIEW ═══════════════════════════ */
+
+    function CalcBreakdownView({ production, days, crew, total, onClose }) {
+      const sorted = useMemo(() => [...days].sort((a, b) => {
+        const dc = a.date.localeCompare(b.date);
+        return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
+      }), [days]);
+
+      return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ borderBottom: '1px solid #262626', padding: '12px 16px', paddingTop: 'calc(env(safe-area-inset-top) + 12px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#f5f5f5', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Breakdown</div>
+              {production.title && <div style={{ fontSize: 11, color: '#737373', marginTop: 2 }}>{production.title}</div>}
+            </div>
+            <button onClick={onClose} style={{ color: '#a3a3a3', padding: 8, borderRadius: 8, WebkitTapHighlightColor: 'transparent' }}><IX size={18}/></button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: 16, paddingBottom: 16 }}>
+            {sorted.length === 0 && (
+              <div style={{ textAlign: 'center', color: '#525252', paddingTop: 48, fontSize: 13 }}>No days entered yet</div>
+            )}
+            {sorted.map(d => {
+              const c = crew.find(cc => cc.id === d.crewId);
+              if (!c) return null;
+              const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
+              return (
+                <div key={d.id} style={{ background: '#171717', border: '1px solid #262626', borderRadius: 12, marginBottom: 12, padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtDateShort(d.date)}</span>
+                      <span style={{ color: '#737373', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{weekday(d.date)}</span>
+                      {production.bestBoyMode && <span style={{ color: '#a3a3a3', fontSize: 11 }}>{c.name}</span>}
+                    </div>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtGBP(calc.total)}</span>
+                  </div>
+                  {calc.lines.map((l, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingBottom: 3 }}>
+                      <span style={{ fontSize: 11, color: l.rate === null ? '#fca5a5' : '#737373', flex: 1 }}>
+                        {l.label}{l.detail ? <span style={{ color: '#525252' }}> · {l.detail}</span> : ''}
+                      </span>
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: l.rate === null ? '#fca5a5' : '#a3a3a3', flexShrink: 0 }}>{fmtGBP(l.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ borderTop: '1px solid #1a1a1a', padding: '14px 24px', paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)', background: '#0a0a0a', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Shoot Total</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 20, color: '#f5f5f5' }}>{fmtGBP(total)}</span>
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
     function ProductionApp({ production, setProduction, onBack, userPrefs }) {
@@ -4408,6 +4500,7 @@ const setDays = (updater) =>
   });
       const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
       const [showProdSettings, setShowProdSettings] = useState(false);
+      const [showCalcView, setShowCalcView] = useState(false);
       const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
@@ -4497,10 +4590,20 @@ const setDays = (updater) =>
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
           {undoVisible && (
-            <div className="fixed bottom-[4.5rem] left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-neutral-800 border border-neutral-600 shadow-lg px-4 py-2.5 rounded-full whitespace-nowrap">
+            <div className="fixed bottom-[8rem] left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-neutral-800 border border-neutral-600 shadow-lg px-4 py-2.5 rounded-full whitespace-nowrap">
               <span className="text-[11px] text-neutral-300 uppercase tracking-wide font-bold">{undoLabel}</span>
               <button onClick={handleUndo} className="text-[11px] text-sky-400 hover:text-sky-300 uppercase tracking-wide font-bold transition-colors">Undo</button>
             </div>
+          )}
+
+          {showCalcView && (
+            <CalcBreakdownView
+              production={production}
+              days={days}
+              crew={crew}
+              total={totalShoot}
+              onClose={() => setShowCalcView(false)}
+            />
           )}
 
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -4511,7 +4614,6 @@ const setDays = (updater) =>
               </div>
               <div className="flex items-center gap-3">
                 {saveToast && <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-green-400"><ISave/>Saved</div>}
-                <div className="text-[11px] font-mono text-neutral-400 hidden md:block">Total: <span className="text-neutral-100 font-bold">{fmtGBP(totalShoot)}</span></div>
                 {resetMode ? (
                   <div className="flex gap-1">
                     <Btn size="sm" variant="danger" onClick={clearAll}>Confirm Reset</Btn>
@@ -4541,7 +4643,7 @@ const setDays = (updater) =>
             </div>
           </div>
 
-          <div className="max-w-6xl mx-auto px-4 py-6">
+          <div className="max-w-6xl mx-auto px-4 py-6 pb-32">
             {tab === "setup" && production.bestBoyMode && (
               <div className="space-y-8">
                 <ProductionForm production={production} setProduction={setProduction} onOpenSettings={() => setShowProdSettings(true)} />
@@ -4563,9 +4665,11 @@ const setDays = (updater) =>
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
           </div>
 
-          <div className="text-center text-[10px] text-neutral-600 py-6 uppercase tracking-widest">
+          <div className="text-center text-[10px] text-neutral-600 py-6 pb-32 uppercase tracking-widest">
             Rates per APA Sept 2025
           </div>
+
+          <BottomMoneyPill total={totalShoot} onBack={onBack} onViewCalc={() => setShowCalcView(true)} />
         </div>
       );
     }
@@ -4913,37 +5017,69 @@ const setDays = (updater) =>
         items: g.items.filter(p => p.id !== currentShoot?.id),
       })).filter(g => g.items.length > 0);
 
-      const renderCard = (p) => (
-        <div
-          key={p.id}
-          className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer"
-          onClick={() => onOpen(p.id)}
-        >
-          <div className="flex items-center gap-3 p-4">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
-                {p.bestBoyMode && <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span>}
+      const renderCard = (p, opts = {}) => {
+        const isCurrent = opts.isCurrent || false;
+        const cardSetDays = (updater) => onUpdateDays(p.id, updater);
+        const hasToday = (p.days ?? []).some(d => d.date === todayStr);
+        const bestBoyBadge = p.bestBoyMode ? <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span> : null;
+        const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
+        const wrapperClass = "bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer select-none touch-manipulation";
+
+        if (isCurrent) {
+          return (
+            <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
+              <div className="p-4">
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
+                    {bestBoyBadge}
+                  </div>
+                  <div className="text-sm text-neutral-400 truncate">{metaText}</div>
+                  <div className="text-lg font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
+                </div>
+                <div className="border-t border-neutral-800 -mx-4" />
+                <div className="flex items-center justify-center gap-2 pt-3" onClick={e => e.stopPropagation()}>
+                  {hasToday && <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
+                  {hasToday && <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
+                  <button
+                    onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
+                    className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10 ml-auto"
+                    title="Delete production"
+                  ><ITrash size={16}/></button>
+                </div>
               </div>
-              <div className="text-sm text-neutral-400 truncate">{p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`}</div>
-              <div className="text-base font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
             </div>
-            <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-              {(p.days ?? []).some(d => d.date === todayStr) && (
-                <>
-                  <LunchNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
-                  <WrapNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
-                </>
-              )}
-              <button
-                onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
-                className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10"
-                title="Delete production"
-              ><ITrash size={16}/></button>
+          );
+        }
+
+        return (
+          <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
+            <div className="flex items-center gap-3 p-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
+                  {bestBoyBadge}
+                </div>
+                <div className="text-sm text-neutral-400 truncate">{metaText}</div>
+                <div className="text-base font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                {hasToday && (
+                  <>
+                    <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />
+                    <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />
+                  </>
+                )}
+                <button
+                  onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
+                  className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10"
+                  title="Delete production"
+                ><ITrash size={16}/></button>
+              </div>
             </div>
           </div>
-        </div>
-      );
+        );
+      };
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32">
@@ -4977,7 +5113,7 @@ const setDays = (updater) =>
             {currentShoot && (
               <div className="mb-6">
                 <div className="text-[11px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Current Shoot</div>
-                {renderCard(currentShoot)}
+                {renderCard(currentShoot, { isCurrent: true })}
               </div>
             )}
 
