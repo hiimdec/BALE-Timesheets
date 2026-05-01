@@ -390,6 +390,7 @@
       const sunMode = weekendOpts.sunRateMode ?? "apa";
       const satMult = satMode === "custom" ? (Number(weekendOpts.satRateCustom) || 1.5) : 1.5;
       const sunMult = sunMode === "custom" ? (Number(weekendOpts.sunRateCustom) || 2.0) : 2.0;
+      const isElevenHourDay = !!(weekendOpts.isElevenHourDay);
       const treatAsSat = isSaturday && satMode !== "weekday";
       const treatAsSun = isSunday && sunMode !== "weekday";
 
@@ -405,7 +406,7 @@
 
       let basicHrs;
       if (continuousDay) basicHrs = 9;
-      else if (effectiveDayType === "Shoot") { basicHrs = 11; if (lunchDuration < 60 && !lunchMissed) basicHrs = 11 - (60 - lunchDuration) / 60; }
+      else if (effectiveDayType === "Shoot") { basicHrs = isElevenHourDay ? 12 : 11; if (lunchDuration < 60 && !lunchMissed) basicHrs -= (60 - lunchDuration) / 60; }
       else if (effectiveDayType === "Pre-light") { basicHrs = 9; if (lunchDuration < 60 && !lunchMissed) basicHrs = 9 - (60 - lunchDuration) / 60; }
       else if (effectiveDayType === "Prep Day" || effectiveDayType === "Recce" || effectiveDayType === "Build Day" || effectiveDayType === "De-rig") {
         // APA §2.3: 8h base, no lunch obligation. OT after 8h normally.
@@ -432,7 +433,7 @@
         if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
       } else if (treatAsSat) {
         if (effectiveDayType === "Shoot") {
-          lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel, rate: bdr * satMult, qty: 1, amount: bdr * satMult });
+          lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
           if (otHrs > 0) { const satOtRate = bectuOtRate ?? bhr * satMult; lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
@@ -459,7 +460,7 @@
         }
       } else {
         if (effectiveDayType === "Shoot") {
-          lines.push({ label: continuousDay ? "BDR (Continuous Working Day)" : "BDR", detail: callWrapLabel, rate: bdr, qty: 1, amount: bdr });
+          lines.push({ label: continuousDay ? "BDR (Continuous Working Day)" : "BDR", detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr, qty: 1, amount: bdr });
         } else if (effectiveDayType === "Pre-light") {
           const baseHrs = continuousDay ? 9 : 8;
           lines.push({ label: continuousDay ? "Pre-light Day (CWD 9h × BHR)" : "Pre-light Day (8h × BHR + 1h lunch)", detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
@@ -587,6 +588,7 @@
       ...p,
       crew: (p.crew || []).map(migrateCrew),
       bestBoyMode: p.bestBoyMode ?? ((p.crew?.length ?? 0) > 1),
+      isElevenHourDay: p.isElevenHourDay ?? false,
     });
 
     function useStoredState(key, initial, migrate) {
@@ -2432,6 +2434,24 @@ ${allPagesHTML}
       );
     };
 
+    const Toggle = ({ value, onChange, disabled, ariaLabel }) => (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={!!value}
+        aria-label={ariaLabel}
+        onClick={() => onChange(!value)}
+        disabled={!!disabled}
+        className={`relative flex-shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:ring-offset-1 focus:ring-offset-neutral-900 ${value ? "bg-sky-400" : "bg-neutral-700"} ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+        style={{ width: 40, height: 24 }}
+      >
+        <span
+          className={`absolute top-[2px] rounded-full bg-white shadow-sm transition-transform duration-150 ${value ? "translate-x-[18px]" : "translate-x-[2px]"}`}
+          style={{ width: 20, height: 20 }}
+        />
+      </button>
+    );
+
     const Toast = ({ show, children }) => (
       <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-black px-5 py-2 text-xs uppercase tracking-wide font-bold border border-green-600 rounded-full shadow-lg transition-all ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         {children}
@@ -2440,28 +2460,12 @@ ${allPagesHTML}
 
     /* ═══════════════════════════ PRODUCTION FORM ═══════════════════════════ */
 
-    function ProductionForm({ production, setProduction }) {
-      const set = (k) => (e) => setProduction({ ...production, [k]: e.target.value });
-      const handleStartDateChange = (e) => {
-        const newDate = e.target.value;
-        if (/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
-          const monday = getMonday(newDate);
-          setProduction(prev => ({
-            ...prev,
-            startDate: newDate,
-            weekStarts: [...new Set([...(prev.weekStarts || []), monday])],
-          }));
-        } else {
-          setProduction(prev => ({ ...prev, startDate: newDate }));
-        }
-      };
+    function ProductionForm({ production, setProduction, onOpenSettings }) {
       const isUntitled = production.title === "Untitled Production" || !production.title;
-      const hasNonDefaultWeekend = (production.satRateMode && production.satRateMode !== "apa") || (production.sunRateMode && production.sunRateMode !== "apa");
-      const [weekendOpen, setWeekendOpen] = React.useState(hasNonDefaultWeekend);
+      const hasCustomWeekend = (production.satRateMode && production.satRateMode !== "apa") || (production.sunRateMode && production.sunRateMode !== "apa");
       return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Setup</h2>
-          <div className="text-sm text-neutral-400">Set up the production details, then add crew and days.</div>
 
           {isUntitled && (
             <div className="bg-sky-950/40 border border-sky-800 px-4 py-3 text-sm text-sky-300 flex items-center gap-2 rounded-[10px]">
@@ -2469,60 +2473,18 @@ ${allPagesHTML}
             </div>
           )}
 
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Production Title"><Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" autoFocus={isUntitled} /></Field>
-              <Field label="Production Co."><Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" /></Field>
-            </div>
-            <Field label="Start Date"><Input type="date" value={production.startDate || ""} onChange={handleStartDateChange} /></Field>
-          </div>
-          <div>
-            <button
-              type="button"
-              onClick={() => setWeekendOpen((o) => !o)}
-              className="flex items-center gap-1.5 text-[11px] text-neutral-400 hover:text-neutral-200 transition-colors py-0.5"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: weekendOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-              {weekendOpen ? 'Hide weekend rate overrides' : 'Override weekend rates'}
-              {hasNonDefaultWeekend && !weekendOpen && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-400 text-[10px] font-semibold">custom</span>}
-            </button>
-            {weekendOpen && (
-              <div className="mt-2 bg-neutral-900 border-l-4 border-neutral-700 p-4 space-y-3 rounded-r-[10px]">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Weekend Rate Override</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Field label="Saturday Rate">
-                    <Select value={production.satRateMode || "apa"} onChange={set("satRateMode")}>
-                      <option value="apa">APA standard — 1.5×</option>
-                      <option value="custom">Custom multiplier</option>
-                      <option value="weekday">Weekday rate — no uplift</option>
-                    </Select>
-                  </Field>
-                  {(production.satRateMode || "apa") === "custom" && (
-                    <Field label="Saturday Multiplier" hint="e.g. 1.25 or 2">
-                      <Input type="number" min="0" step="0.01" value={production.satRateCustom ?? 1.5}
-                        onChange={(e) => setProduction({ ...production, satRateCustom: Number(e.target.value) })} />
-                    </Field>
-                  )}
-                  <Field label="Sunday Rate">
-                    <Select value={production.sunRateMode || "apa"} onChange={set("sunRateMode")}>
-                      <option value="apa">APA standard — 2×</option>
-                      <option value="custom">Custom multiplier</option>
-                      <option value="weekday">Weekday rate — no uplift</option>
-                    </Select>
-                  </Field>
-                  {(production.sunRateMode || "apa") === "custom" && (
-                    <Field label="Sunday Multiplier" hint="e.g. 1.5 or 2.5">
-                      <Input type="number" min="0" step="0.01" value={production.sunRateCustom ?? 2}
-                        onChange={(e) => setProduction({ ...production, sunRateCustom: Number(e.target.value) })} />
-                    </Field>
-                  )}
-                </div>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-[10px] p-4 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-semibold text-neutral-100 truncate">{production.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
+              {production.prodCo && <div className="text-sm text-neutral-400 truncate">{production.prodCo}</div>}
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                {production.startDate && <span className="text-[11px] text-neutral-500 font-mono">{fmtDateShort(production.startDate)}</span>}
+                {hasCustomWeekend && <span className="px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-400 text-[10px] font-semibold">custom weekend</span>}
+                {production.isElevenHourDay && <span className="px-1.5 py-0.5 rounded-full bg-sky-900/40 text-sky-400 text-[10px] font-semibold">11h day</span>}
               </div>
-            )}
+            </div>
+            <Btn size="sm" variant="ghost" onClick={onOpenSettings}><IGear size={12}/>Settings</Btn>
           </div>
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Shows on exported PDFs. Start/End date fills the Timesheet Grid. Saved automatically.</div>
         </div>
       );
     }
@@ -2724,34 +2686,31 @@ ${allPagesHTML}
                     <option value={1}>Grade III — 1.0×</option>
                   </Select>
                 </Field>
-                <Field label="VAT Registered">
-                  <Select value={form.vatRegistered ? "yes" : "no"} onChange={(e) => setForm({ ...form, vatRegistered: e.target.value === "yes" })}>
-                    <option value="no">No — not VAT registered</option>
-                    <option value="yes">Yes — VAT registered</option>
-                  </Select>
-                </Field>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">VAT Registered</span>
+                  <Toggle value={form.vatRegistered} onChange={(v) => setForm({ ...form, vatRegistered: v })} ariaLabel="VAT registered" />
+                </div>
                 {form.vatRegistered && (
                   <Field label="VAT Rate (%)" hint="Usually 20%">
                     <Input type="number" min="0" max="100" step="1" value={form.vatRate ?? 20} onChange={(e) => setForm({ ...form, vatRate: Number(e.target.value) })} />
                   </Field>
                 )}
-                <Field label="Kit Money">
-                  <Select value={form.kitMoneyEnabled ? "yes" : "no"} onChange={(e) => setForm({ ...form, kitMoneyEnabled: e.target.value === "yes" })}>
-                    <option value="no">No kit money</option>
-                    <option value="yes">Yes — kit money applies</option>
-                  </Select>
-                </Field>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit Money</span>
+                  <Toggle value={form.kitMoneyEnabled} onChange={(v) => setForm({ ...form, kitMoneyEnabled: v })} ariaLabel="Kit money" />
+                </div>
                 {form.kitMoneyEnabled && (
                   <Field label="Kit Money Amount (£)" hint="Added to each working day">
                     <Input type="number" min="0" step="0.01" value={form.kitMoneyAmount ?? 0} onChange={(e) => setForm({ ...form, kitMoneyAmount: Number(e.target.value) })} />
                   </Field>
                 )}
-                <Field label="Driver (truck call)" hint="Shows truck call time field on day entries">
-                  <Select value={form.isDriver ? "yes" : "no"} onChange={(e) => setForm({ ...form, isDriver: e.target.value === "yes" })}>
-                    <option value="no">No</option>
-                    <option value="yes">Yes — truck call applies</option>
-                  </Select>
-                </Field>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Driver</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5">Shows truck call time on day entries</div>
+                  </div>
+                  <Toggle value={form.isDriver} onChange={(v) => setForm({ ...form, isDriver: v })} ariaLabel="Driver" />
+                </div>
               </div>
             </div>
 
@@ -3108,12 +3067,13 @@ ${allPagesHTML}
               )}
 
               {bs && bs.cwdApplies && (bs.lunchMissed || bs.lunchVeryLate) && (
-                <Field label="Meal Provided?" hint="£7.50 allowance if no meal given">
-                  <Select value={v.noMealProvided ? "no" : "yes"} onChange={(e) => set({ noMealProvided: e.target.value === "no" })}>
-                    <option value="yes">Yes — meal given</option>
-                    <option value="no">No — £7.50 allowance</option>
-                  </Select>
-                </Field>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Meal Provided?</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5">£7.50 allowance if no meal given</div>
+                  </div>
+                  <Toggle value={!v.noMealProvided} onChange={(val) => set({ noMealProvided: !val })} ariaLabel="Meal provided" />
+                </div>
               )}
 
               {bs && bs.continuousDay && (
@@ -3122,19 +3082,21 @@ ${allPagesHTML}
                     <div className="text-[10px] uppercase tracking-[0.2em] text-red-400 font-bold mb-2">CWD Breaks</div>
                     <div className="text-[11px] text-neutral-400 leading-tight mb-3">APA §6.4: CWD requires a 30m break by {toHHMM(bs.cwd1Deadline)} (9h after call){bs.cwd2Required ? `, and another by ${toHHMM(bs.cwd2Deadline)} (12.5h after call)` : ""}. Missed breaks = 30m × BHR penalty.</div>
                   </div>
-                  <Field label={`Break 1 — by ${toHHMM(bs.cwd1Deadline)}`}>
-                    <Select value={v.cwdBreak1Given === false ? "no" : "yes"} onChange={(e) => set({ cwdBreak1Given: e.target.value === "yes" })}>
-                      <option value="yes">Given</option>
-                      <option value="no">Missed (+ 30m × BHR)</option>
-                    </Select>
-                  </Field>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Break 1 — by {toHHMM(bs.cwd1Deadline)}</div>
+                      <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak1Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                    </div>
+                    <Toggle value={v.cwdBreak1Given !== false} onChange={(val) => set({ cwdBreak1Given: val })} ariaLabel="CWD break 1 given" />
+                  </div>
                   {bs.cwd2Required && (
-                    <Field label={`Break 2 — by ${toHHMM(bs.cwd2Deadline)}`}>
-                      <Select value={v.cwdBreak2Given === false ? "no" : "yes"} onChange={(e) => set({ cwdBreak2Given: e.target.value === "yes" })}>
-                        <option value="yes">Given</option>
-                        <option value="no">Missed (+ 30m × BHR)</option>
-                      </Select>
-                    </Field>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Break 2 — by {toHHMM(bs.cwd2Deadline)}</div>
+                        <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak2Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                      </div>
+                      <Toggle value={v.cwdBreak2Given !== false} onChange={(val) => set({ cwdBreak2Given: val })} ariaLabel="CWD break 2 given" />
+                    </div>
                   )}
                 </>
               )}
@@ -3175,12 +3137,10 @@ ${allPagesHTML}
           {/* ── Per Diem panel ── */}
           {openPill === "perdiem" && (
             <>
-              <Field label="Per Diem">
-                <Select value={v.perDiemEnabled ? "yes" : "no"} onChange={(e) => set({ perDiemEnabled: e.target.value === "yes" })}>
-                  <option value="no">No per diem</option>
-                  <option value="yes">Yes — per diem applies</option>
-                </Select>
-              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Per Diem</span>
+                <Toggle value={!!v.perDiemEnabled} onChange={(val) => set({ perDiemEnabled: val })} ariaLabel="Per diem" />
+              </div>
               {v.perDiemEnabled && (
                 <Field label="Per Diem Amount (£)" hint="Added to day total">
                   <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
@@ -3192,12 +3152,10 @@ ${allPagesHTML}
           {/* ── Step-Up panel ── */}
           {openPill === "stepup" && (
             <>
-              <Field label="Step-Up for this day">
-                <Select value={v.stepUpEnabled ? "yes" : "no"} onChange={(e) => set({ stepUpEnabled: e.target.value === "yes" })}>
-                  <option value="no">No step-up</option>
-                  <option value="yes">Stepped-up rate applies</option>
-                </Select>
-              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Step-Up for this day</span>
+                <Toggle value={!!v.stepUpEnabled} onChange={(val) => set({ stepUpEnabled: val })} ariaLabel="Step-up" />
+              </div>
               {v.stepUpEnabled && (
                 <>
                   <Field label="Step-Up Role">
@@ -4231,6 +4189,126 @@ ${allPagesHTML}
       );
     }
 
+    /* ═══════════════════════════ PRODUCTION SETTINGS SHEET ═══════════════════════════ */
+
+    function ProductionSettingsSheet({ production, setProduction, crew, onClose }) {
+      const set = (k) => (e) => setProduction(p => ({ ...p, [k]: e.target.value }));
+      const setNum = (k) => (e) => setProduction(p => ({ ...p, [k]: Number(e.target.value) }));
+
+      const handleStartDateChange = (e) => {
+        const newDate = e.target.value;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+          const monday = getMonday(newDate);
+          setProduction(prev => ({
+            ...prev,
+            startDate: newDate,
+            weekStarts: [...new Set([...(prev.weekStarts || []), monday])],
+          }));
+        } else {
+          setProduction(prev => ({ ...prev, startDate: newDate }));
+        }
+      };
+
+      const displayTitle = production.title || "Production";
+      const headerLabel = displayTitle.length > 28 ? displayTitle.slice(0, 28) + "…" : displayTitle;
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1">
+                <IArrowLeft size={16}/>
+              </button>
+              <div className="flex-1 text-center font-bold uppercase tracking-tight text-sm">{headerLabel} settings</div>
+              <div style={{ width: 24 }} />
+            </div>
+          </div>
+
+          <div className="max-w-2xl mx-auto px-4 py-6">
+
+            <SectionCard title="Production">
+              <Field label="Production title">
+                <Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" />
+              </Field>
+              <Field label="Production company">
+                <Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" />
+              </Field>
+              <Field label="Start date">
+                <Input type="date" value={production.startDate || ""} onChange={handleStartDateChange} />
+              </Field>
+            </SectionCard>
+
+            <SectionCard title="Mode">
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Best Boy mode</span>
+                  <Toggle value={production.bestBoyMode} onChange={(v) => setProduction(p => ({ ...p, bestBoyMode: v }))} ariaLabel="Best Boy mode" />
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-1">Manage a crew with the grid view. Turn off for solo use.</p>
+                {production.bestBoyMode && crew.length <= 1 && (
+                  <StatusMsg kind="info">You'll need to add additional crew members in Crew Manager.</StatusMsg>
+                )}
+                {!production.bestBoyMode && crew.length > 1 && (
+                  <StatusMsg kind="warn">You have {crew.length} crew members. Disabling Best Boy mode hides the grid but keeps your crew data — you can re-enable any time.</StatusMsg>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">11-Hour Day</span>
+                  <Toggle value={production.isElevenHourDay} onChange={(v) => setProduction(p => ({ ...p, isElevenHourDay: v }))} ariaLabel="11-Hour Day" />
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Weekend rates">
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Saturday rate</span>
+                    <div className="text-[11px] text-neutral-500 mt-0.5">{(production.satRateMode || "apa") === "custom" ? `Custom ${production.satRateCustom ?? 1.5}×` : "APA standard 1.5×"}</div>
+                  </div>
+                  <Toggle
+                    value={(production.satRateMode || "apa") === "custom"}
+                    onChange={(v) => setProduction(p => ({ ...p, satRateMode: v ? "custom" : "apa", satRateCustom: p.satRateCustom ?? 1.5 }))}
+                    ariaLabel="Custom Saturday rate"
+                  />
+                </div>
+                {(production.satRateMode || "apa") === "custom" && (
+                  <div className="mt-3">
+                    <Field label="Saturday multiplier" hint="e.g. 1.25 or 2">
+                      <Input type="number" min="0" step="0.01" value={production.satRateCustom ?? 1.5} onChange={setNum("satRateCustom")} />
+                    </Field>
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Sunday rate</span>
+                    <div className="text-[11px] text-neutral-500 mt-0.5">{(production.sunRateMode || "apa") === "custom" ? `Custom ${production.sunRateCustom ?? 2}×` : "APA standard 2×"}</div>
+                  </div>
+                  <Toggle
+                    value={(production.sunRateMode || "apa") === "custom"}
+                    onChange={(v) => setProduction(p => ({ ...p, sunRateMode: v ? "custom" : "apa", sunRateCustom: p.sunRateCustom ?? 2 }))}
+                    ariaLabel="Custom Sunday rate"
+                  />
+                </div>
+                {(production.sunRateMode || "apa") === "custom" && (
+                  <div className="mt-3">
+                    <Field label="Sunday multiplier" hint="e.g. 1.5 or 2.5">
+                      <Input type="number" min="0" step="0.01" value={production.sunRateCustom ?? 2} onChange={setNum("sunRateCustom")} />
+                    </Field>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
     function ProductionApp({ production, setProduction, onBack }) {
@@ -4252,6 +4330,7 @@ const setDays = (updater) =>
     return { ...prev, days: next.map(migrateDay) };
   });
       const [tab, setTab] = useState(production.isNew ? "setup" : "days");
+      const [showProdSettings, setShowProdSettings] = useState(false);
       const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
@@ -4322,6 +4401,17 @@ const setDays = (updater) =>
 
       const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c, findPrevDay(days, d)).total : s; }, 0);
 
+      if (showProdSettings) {
+        return (
+          <ProductionSettingsSheet
+            production={production}
+            setProduction={setProduction}
+            crew={crew}
+            onClose={() => setShowProdSettings(false)}
+          />
+        );
+      }
+
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
@@ -4349,6 +4439,7 @@ const setDays = (updater) =>
                 ) : (
                   <Btn size="sm" variant="ghost" onClick={() => setResetMode(true)}><IReset/>Reset</Btn>
                 )}
+                <button onClick={() => setShowProdSettings(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-lg hover:bg-neutral-800" title="Production settings"><IGear size={16}/></button>
               </div>
             </div>
           </div>
@@ -4371,7 +4462,7 @@ const setDays = (updater) =>
           <div className="max-w-6xl mx-auto px-4 py-6">
             {tab === "setup" && (
               <div className="space-y-8">
-                <ProductionForm production={production} setProduction={setProduction} />
+                <ProductionForm production={production} setProduction={setProduction} onOpenSettings={() => setShowProdSettings(true)} />
                 <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} onPushUndo={pushUndo} />
                 <div>
                   <Btn variant="ghost" size="sm" onClick={() => setShowCancelModal(true)}>Cancellation fees</Btn>
@@ -4443,14 +4534,7 @@ const setDays = (updater) =>
                   <div className="text-sm font-semibold text-neutral-100">Best Boy mode</div>
                   <div className="text-[11px] text-neutral-400 mt-0.5">Manage a crew with the grid view</div>
                 </div>
-                <Select
-                  value={bestBoyMode ? "yes" : "no"}
-                  onChange={(e) => setBestBoyMode(e.target.value === "yes")}
-                  className="w-auto text-[11px] px-2 py-1.5"
-                >
-                  <option value="no">Off</option>
-                  <option value="yes">On</option>
-                </Select>
+                <Toggle value={bestBoyMode} onChange={setBestBoyMode} ariaLabel="Best Boy mode" />
               </div>
             </div>
 
@@ -4569,12 +4653,10 @@ const setDays = (updater) =>
             </SectionCard>
 
             <SectionCard title="Tax &amp; Invoicing">
-              <Field label="VAT registered?">
-                <Select value={userPrefs.vatRegistered ? "yes" : "no"} onChange={(e) => set({ vatRegistered: e.target.value === "yes" })}>
-                  <option value="no">No — not VAT registered</option>
-                  <option value="yes">Yes — VAT registered</option>
-                </Select>
-              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">VAT registered?</span>
+                <Toggle value={userPrefs.vatRegistered} onChange={(v) => set({ vatRegistered: v })} ariaLabel="VAT registered" />
+              </div>
               {userPrefs.vatRegistered && (
                 <Field label="VAT rate (%)" hint="Usually 20%">
                   <Input
@@ -4609,12 +4691,10 @@ const setDays = (updater) =>
                   onChange={(e) => set({ defaultMileageRate: Number(e.target.value) })}
                 />
               </Field>
-              <Field label="Kit money">
-                <Select value={userPrefs.defaultKitMoneyEnabled ? "yes" : "no"} onChange={(e) => set({ defaultKitMoneyEnabled: e.target.value === "yes" })}>
-                  <option value="no">No kit money by default</option>
-                  <option value="yes">Yes — kit money enabled by default</option>
-                </Select>
-              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit money</span>
+                <Toggle value={userPrefs.defaultKitMoneyEnabled} onChange={(v) => set({ defaultKitMoneyEnabled: v })} ariaLabel="Kit money by default" />
+              </div>
               {userPrefs.defaultKitMoneyEnabled && (
                 <Field label="Default kit money amount (£/day)">
                   <Input
@@ -4626,12 +4706,10 @@ const setDays = (updater) =>
                   />
                 </Field>
               )}
-              <Field label="Per diem">
-                <Select value={userPrefs.defaultPerDiemEnabled ? "yes" : "no"} onChange={(e) => set({ defaultPerDiemEnabled: e.target.value === "yes" })}>
-                  <option value="no">No per diem by default</option>
-                  <option value="yes">Yes — per diem enabled by default</option>
-                </Select>
-              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Per diem</span>
+                <Toggle value={userPrefs.defaultPerDiemEnabled} onChange={(v) => set({ defaultPerDiemEnabled: v })} ariaLabel="Per diem by default" />
+              </div>
               {userPrefs.defaultPerDiemEnabled && (
                 <Field label="Default per diem amount (£/day)">
                   <Input
@@ -4699,7 +4777,7 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onUpdateDays, onOpenSettings }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onUpdateDays, onOpenSettings, userPrefs }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const todayStr = new Date().toISOString().slice(0, 10);
@@ -4742,7 +4820,7 @@ const setDays = (updater) =>
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
               <div>
-                <div className="font-bold uppercase tracking-tight leading-none text-sm">Derrick's TimeMachine</div>
+                <div className="font-bold uppercase tracking-tight leading-none text-sm">{(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? `${n}'s TIMEMACHINE` : "TIMEMACHINE"; })()}</div>
                 <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Productions</div>
               </div>
               <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -4769,8 +4847,9 @@ const setDays = (updater) =>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
                       {p.prodCo && <div className="text-sm text-neutral-400 truncate">{p.prodCo}</div>}
-                      <div className="text-[11px] text-neutral-500 mt-1 font-mono">
-                        {(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
+                        <span className="text-[11px] text-neutral-500 font-mono">{(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days</span>
+                        {p.bestBoyMode && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -4856,6 +4935,7 @@ const setDays = (updater) =>
           days: [],
           defaultDay: DEFAULT_PRODUCTION_DAY,
           bestBoyMode,
+          isElevenHourDay: false,
           startDate: todayISO(),
           isNew: true,
         };
@@ -4926,7 +5006,7 @@ const setDays = (updater) =>
         );
       }
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} userPrefs={userPrefs} />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
     }
