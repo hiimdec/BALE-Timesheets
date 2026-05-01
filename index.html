@@ -3885,9 +3885,9 @@ ${allPagesHTML}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><ICal size={16}/>Timesheet Entries</h2>
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="inline-flex rounded-full bg-neutral-800 p-0.5">
-                <button onClick={() => setGridView(false)} className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${!gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>List</button>
-                <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
+              <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
+                <button onClick={() => setGridView(false)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${!gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>List</button>
+                <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
               </div>
               {crew.length > 0 && <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />}
               {!editing && crew.length > 0 && (
@@ -4434,14 +4434,14 @@ const setDays = (updater) =>
 
           <div className="bg-neutral-950 sticky z-30 border-b border-neutral-800" style={{ top: 'calc(65px + env(safe-area-inset-top))' }}>
             <div className="max-w-6xl mx-auto px-4 py-2 flex justify-start overflow-x-auto">
-              <div className="inline-flex rounded-full bg-neutral-800 p-0.5">
+              <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
                 {[
                   { k: "setup",  label: "Setup",      I: IBriefcase },
                   { k: "days",   label: "Timesheets", I: ICal },
                   { k: "export", label: "Export",     I: IShare },
                 ].map(({ k, label, I }) => (
                   <button key={k} onClick={() => setTab(k)}
-                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-400 text-black" : "text-neutral-400"}`}>
+                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-400 text-black" : "text-neutral-400"}`}>
                     <I/>{label}
                   </button>
                 ))}
