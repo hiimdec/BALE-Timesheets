@@ -311,6 +311,8 @@
       return { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...dayOverride, ...day };
     }
 
+    const isPmpaRole = (crew) => ROLE_DEFAULTS[crew?.role]?.pmpa === true;
+
     function calculateDay(day, crew, weekendOpts = {}) {
       const bdr = Number(crew.bdr) || 0;
       const bhr = bdr / 10;
@@ -332,6 +334,14 @@
           lines: [{ label: "Rest Day (flat BDR)", detail: "", rate: null, qty: 1, amount: bdr }],
           total: bdr,
         };
+      }
+
+      // APA Appendix 1 §(a): Production Manager/Assistant/Runner use a
+      // simpler framework — flat BDR with shoot-day multipliers and OT
+      // beyond BWD only. Exempt from §2 (working-day rules), §3 (travel),
+      // §4 (OT grade tables), §5 (TOC), §6 (break penalties).
+      if (isPmpaRole(crew)) {
+        return calculatePmpaDay(day, crew, weekendOpts);
       }
 
       const lines = [];
@@ -524,6 +534,118 @@
       };
     }
 
+    /* ─────────────── PM / PA / Runner — APA Appendix 1 §(a) ─────────────── */
+
+    function calculatePmpaDay(day, crew, weekendOpts = {}) {
+      const bdr = Number(crew.bdr) || 0;
+      const bhr = bdr / 10;
+
+      // Non-shoot day: flat BDR. Travel Day, Pre-light, Prep, Recce, Build,
+      // De-rig — all the same. (Rest Day is handled by the early return in
+      // calculateDay before this branch.)
+      if (day.dayType !== "Shoot") {
+        return {
+          meta: {
+            workedHrs: 0, otHrs: 0, bhr, otRate: bhr,
+            dayLabel: day.dayType || "—", notes: [],
+            secondBreakRequired: false, continuousDay: false, isPmpa: true,
+          },
+          lines: [{ label: `${day.dayType} (flat BDR)`, detail: "", rate: null, qty: 1, amount: bdr }],
+          total: bdr,
+        };
+      }
+
+      // Shoot day. Compute hours, day-of-week, multiplier, OT.
+      const callH = parseHHMM(day.callTime);
+      const wrapH = parseHHMM(day.wrapTime);
+      if (callH === null || wrapH === null) {
+        return {
+          meta: { workedHrs: 0, otHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true },
+          lines: [], total: 0,
+        };
+      }
+      const wrapNextDay = day.wrapNextDay || wrapH <= callH;
+      const wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
+      const workedHrs = wrapAbs - callH;
+      const callWrapLabel = `${day.callTime} – ${day.wrapTime}${wrapNextDay ? " (+1)" : ""}`;
+
+      const dow = dayOfWeek(day.date);
+      const isSaturday = dow === 6;
+      const isSunday = dow === 0;
+      const isNightPre5 = callH < 5;
+      const isNightPost5 = callH >= 17;
+      const isNightShoot = isNightPre5 || isNightPost5;
+
+      // Honour production-level weekend toggles (same as main engine):
+      // weekday → no boost, custom → user multiplier, otherwise APA defaults.
+      const satMode = weekendOpts.satRateMode ?? "apa";
+      const sunMode = weekendOpts.sunRateMode ?? "apa";
+      const satMult = satMode === "custom" ? (Number(weekendOpts.satRateCustom) || 1.5) : 1.5;
+      const sunMult = sunMode === "custom" ? (Number(weekendOpts.sunRateCustom) || 2.0) : 2.0;
+      const treatAsSat = isSaturday && satMode !== "weekday";
+      const treatAsSun = isSunday && sunMode !== "weekday";
+      const isElevenHourDay = !!(weekendOpts.isElevenHourDay);
+
+      // Multiplier per Appendix 1 §(a):
+      //   Night shoot (any dow) → 2×
+      //   Sun/BankHol → 2×
+      //   Sat → 1.5×
+      //   Mon-Fri → 1×
+      // (Night shoot wins over Sat — Sat night is 2×, not 1.5×.)
+      let mult = 1;
+      let dayLineLabel = "BDR";
+      if (isNightShoot) {
+        mult = 2;
+        dayLineLabel = `Night Shoot (2× BDR)`;
+      } else if (treatAsSun) {
+        mult = sunMult;
+        dayLineLabel = `Sunday Shoot (${sunMult}× BDR)`;
+      } else if (treatAsSat) {
+        mult = satMult;
+        dayLineLabel = `Saturday Shoot (${satMult}× BDR)`;
+      }
+
+      // BWD: 11h call-to-tail-lights (12h if production runs 11-hour days).
+      const basicHrs = isElevenHourDay ? 12 : 11;
+      const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
+      const otRate = bhr * mult;
+
+      const lines = [];
+      lines.push({
+        label: dayLineLabel,
+        detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""),
+        rate: bdr * mult, qty: 1, amount: bdr * mult,
+      });
+      if (otHrs > 0) {
+        const otStartAbs = callH + basicHrs;
+        lines.push({
+          label: mult === 1 ? "OT" : `OT (${mult}× BHR)`,
+          detail: `${toHHMM(otStartAbs)} – ${toHHMM(wrapAbs)}`,
+          rate: otRate, qty: otHrs, amount: otHrs * otRate,
+        });
+      }
+
+      // Mileage stays functional even though §3 doesn't apply — defaults to 0.
+      const miles = Number(day.miles) || 0;
+      if (miles > 0) lines.push({ label: "Mileage", detail: `${miles} mi outside M25`, rate: 0.5, qty: miles, amount: miles * 0.5 });
+
+      const total = lines.reduce((s, l) => s + l.amount, 0);
+
+      let dayLabel;
+      if (isNightShoot) dayLabel = isNightPre5 ? "Night Shoot (pre-5am)" : "Night Shoot (post-5pm)";
+      else if (treatAsSat) dayLabel = "Saturday";
+      else if (treatAsSun) dayLabel = "Sunday";
+      else dayLabel = "Standard";
+
+      return {
+        meta: {
+          workedHrs, otHrs, bhr, otRate, dayLabel,
+          notes: [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
+        },
+        lines, total,
+      };
+    }
+
     /* ═══════════════════════════ MIGRATION + STORAGE ═══════════════════════════ */
 
     function migrateDay(d) {
@@ -644,6 +766,7 @@
       if (!resolvedDay?.stepUpEnabled) return crewMember;
       return {
         ...crewMember,
+        role: resolvedDay.stepUpRole || crewMember.role,
         bdr: Number(resolvedDay.stepUpBDR) || crewMember.bdr,
         otCoef: Number(resolvedDay.stepUpOTCoef) || crewMember.otCoef,
         otRate: resolvedDay.stepUpOTRate ?? null,
@@ -653,6 +776,9 @@
     const roundRate = (n) => Math.ceil(n);
     const PREMIUM_RATE_RE = /\bot\b|early call|night shoot|saturday|sunday|triple|time off the clock/i;
     function applyRateRounding(calc) {
+      // PM/PA/Runner per APA Appendix 1 §(a) use a flat-multiplier framework
+      // — no APA-style up-rounding on premium rates.
+      if (calc.meta?.isPmpa) return calc;
       const lines = calc.lines.map(l => {
         if (l.rate == null || !PREMIUM_RATE_RE.test(l.label)) return l;
         const rate = roundRate(l.rate);
@@ -685,7 +811,7 @@
     }
 
     function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew) {
-      if (ROLE_DEFAULTS[effectiveCrew.role]?.pmpa === true) return null;
+      if (isPmpaRole(effectiveCrew)) return null;
       const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
       if (rest === null || rest >= 11) return null;
       const bhr = (Number(effectiveCrew.bdr) || 0) / 10;
@@ -2949,12 +3075,15 @@ ${allPagesHTML}
       const isWeekend = dow === 0 || dow === 6;
       const isTravelDay = v.dayType === "Travel Day";
       const activeCrew = fixedCrewId ? crew.find(c => c.id === fixedCrewId) : crew.find(c => c.id === v.crewId);
-      const isDriverDay = activeCrew?.isDriver === true && !isTravelDay;
-      const role = activeCrew?.role || "";
-      const bwdOverrideApplies = ROLES_WITH_BWD_OVERRIDE.includes(role) &&
+      // Step-up role wins over base role for both BWD-override and PMPA classification.
+      const effectiveRole = (v.stepUpEnabled && v.stepUpRole) ? v.stepUpRole : (activeCrew?.role || "");
+      const isPmpa = ROLE_DEFAULTS[effectiveRole]?.pmpa === true;
+      const isDriverDay = activeCrew?.isDriver === true && !isTravelDay && !isPmpa;
+      const role = effectiveRole;
+      const bwdOverrideApplies = !isPmpa && ROLES_WITH_BWD_OVERRIDE.includes(role) &&
         ["Pre-light", "Prep Day", "Recce", "Build Day", "De-rig"].includes(v.dayType);
 
-      const show2ndBreakSection = !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
+      const show2ndBreakSection = !isPmpa && !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
 
       return (
         <div className="space-y-4">
@@ -2991,6 +3120,11 @@ ${allPagesHTML}
                   APA §2.3: {role} always works to Basic Working Day rules, even on non-shoot days. This {v.dayType} is calculated as a Shoot Day (10+1, OT after 11h).
                 </StatusMsg>
               )}
+              {isPmpa && (
+                <StatusMsg kind="info">
+                  APA Appendix 1 §(a): {role}s use a simpler framework — flat BDR plus OT for hours beyond BWD on shoot days only. No break penalties, no travel time, no triple time.
+                </StatusMsg>
+              )}
             </div>
           </SectionCard>
 
@@ -3014,7 +3148,7 @@ ${allPagesHTML}
           </SectionCard>
 
           {/* ── Section: Lunch (1st Break) ── */}
-          {!isTravelDay && (
+          {!isPmpa && !isTravelDay && (
             <SectionCard title="Lunch (1st Break)">
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -3077,7 +3211,7 @@ ${allPagesHTML}
           )}
 
           {/* ── Section: CWD Breaks ── */}
-          {!isTravelDay && bs && bs.continuousDay && (
+          {!isPmpa && !isTravelDay && bs && bs.continuousDay && (
             <SectionCard title="CWD Breaks" accent="red">
               <div className="space-y-3">
                 <div className="text-[11px] text-neutral-400 leading-tight">APA §6.4: CWD requires a 30m break by {toHHMM(bs.cwd1Deadline)} (9h after call){bs.cwd2Required ? `, and another by ${toHHMM(bs.cwd2Deadline)} (12.5h after call)` : ""}. Missed breaks = 30m × BHR penalty.</div>
