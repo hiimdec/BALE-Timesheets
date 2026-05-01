@@ -589,6 +589,8 @@
       crew: (p.crew || []).map(migrateCrew),
       bestBoyMode: p.bestBoyMode ?? ((p.crew?.length ?? 0) > 1),
       isElevenHourDay: p.isElevenHourDay ?? false,
+      jobReference: p.jobReference ?? "",
+      invoicingEmail: p.invoicingEmail ?? "",
     });
 
     function useStoredState(key, initial, migrate) {
@@ -2418,7 +2420,7 @@ ${allPagesHTML}
       </label>
     );
 
-    const Input = (p) => <input {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${p.className || ""}`} />;
+    const Input = (p) => <input {...p} className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${p.className || ""}`} />;
     const TimeInput = (p) => <Input type="time" step="300" {...p} />;
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
@@ -2439,15 +2441,15 @@ ${allPagesHTML}
         type="button"
         role="switch"
         aria-checked={!!value}
-        aria-label={ariaLabel}
-        onClick={() => onChange(!value)}
+        aria-label={ariaLabel || ""}
         disabled={!!disabled}
-        className={`relative flex-shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:ring-offset-1 focus:ring-offset-neutral-900 ${value ? "bg-sky-400" : "bg-neutral-700"} ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
-        style={{ width: 40, height: 24 }}
+        onClick={() => !disabled && onChange(!value)}
+        className={`relative inline-flex shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:ring-offset-1 focus:ring-offset-neutral-900 ${value ? "bg-sky-400" : "bg-neutral-700"} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+        style={{ width: 44, height: 24, padding: 0 }}
       >
         <span
-          className={`absolute top-[2px] rounded-full bg-white shadow-sm transition-transform duration-150 ${value ? "translate-x-[18px]" : "translate-x-[2px]"}`}
-          style={{ width: 20, height: 20 }}
+          className="pointer-events-none absolute rounded-full bg-white shadow-sm transition-transform duration-150 ease-out"
+          style={{ width: 20, height: 20, top: 2, left: 2, transform: value ? "translateX(20px)" : "translateX(0)" }}
         />
       </button>
     );
@@ -3517,7 +3519,16 @@ ${allPagesHTML}
 
               {weeks.length === 0 ? (
                 <tbody>
-                  <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-neutral-500">No weeks yet — click <strong className="text-neutral-300">+ Add Week</strong> below or add a day entry.</td></tr>
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center">
+                      <button
+                        onClick={handleAddWeek}
+                        className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-sky-400/40 text-sky-400 hover:bg-sky-400/10 hover:border-sky-400 transition-colors text-sm font-bold uppercase tracking-wider"
+                      >
+                        <span className="text-lg leading-none">+</span> Add Week
+                      </button>
+                    </td>
+                  </tr>
                 </tbody>
               ) : weeks.map((weekDates, weekIdx) => (
                 <tbody key={weekDates[0]}>
@@ -3708,7 +3719,7 @@ ${allPagesHTML}
     }
 
     function WrapNowBtn({ days, setDays, showToast }) {
-      const HOLD_MS = 3000;
+      const HOLD_MS = 1500;
       const [progress, setProgress] = useState(0);
       const intervalRef = useRef(null);
       const startRef = useRef(null);
@@ -3763,7 +3774,7 @@ ${allPagesHTML}
           onPointerCancel={endHold}
           className="relative overflow-hidden inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-lg"
           style={{ touchAction: 'none', userSelect: 'none', minWidth: 96, height: 30 }}
-          title="Hold 3 seconds to set today's wrap time"
+          title="Hold 1.5 seconds to set today's wrap time"
         >
           <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none z-0" style={{ width: `${pct}%` }} />
           <span className="relative z-10">{progress > 0 ? `${pct}%` : 'WrapNow'}</span>
@@ -3904,9 +3915,9 @@ ${allPagesHTML}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><ICal size={16}/>Timesheet Entries</h2>
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex border border-neutral-700 overflow-hidden">
-                <button onClick={() => setGridView(false)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold transition-colors ${!gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>List</button>
-                <button onClick={() => setGridView(true)} className={`px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold border-l border-neutral-700 transition-colors ${gridView ? "bg-sky-400 text-black" : "bg-transparent text-neutral-400 hover:text-neutral-200"}`}>Grid</button>
+              <div className="inline-flex rounded-full bg-neutral-800 p-0.5">
+                <button onClick={() => setGridView(false)} className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${!gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>List</button>
+                <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
               </div>
               {crew.length > 0 && <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />}
               {!editing && crew.length > 0 && (
@@ -4236,6 +4247,12 @@ ${allPagesHTML}
               <Field label="Start date">
                 <Input type="date" value={production.startDate || ""} onChange={handleStartDateChange} />
               </Field>
+              <Field label="Job reference">
+                <Input value={production.jobReference || ""} onChange={set("jobReference")} placeholder="e.g. Vodafone Q3, PO#1234" />
+              </Field>
+              <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
+                <Input value={production.invoicingEmail || ""} onChange={set("invoicingEmail")} placeholder="e.g. accounts@minds-eye.tv" />
+              </Field>
             </SectionCard>
 
             <SectionCard title="Mode">
@@ -4261,12 +4278,13 @@ ${allPagesHTML}
               </div>
             </SectionCard>
 
-            <SectionCard title="Weekend rates">
+            <SectionCard title="Weekend rate overrides">
+              <p className="text-[11px] text-neutral-500 -mt-1">App applies APA standard rates by default. Toggle on to override.</p>
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Saturday rate</span>
-                    <div className="text-[11px] text-neutral-500 mt-0.5">{(production.satRateMode || "apa") === "custom" ? `Custom ${production.satRateCustom ?? 1.5}×` : "APA standard 1.5×"}</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5">{(production.satRateMode || "apa") === "custom" ? `Custom ${production.satRateCustom ?? 1.5}×` : "Using APA standard (1.5×)"}</div>
                   </div>
                   <Toggle
                     value={(production.satRateMode || "apa") === "custom"}
@@ -4286,7 +4304,7 @@ ${allPagesHTML}
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Sunday rate</span>
-                    <div className="text-[11px] text-neutral-500 mt-0.5">{(production.sunRateMode || "apa") === "custom" ? `Custom ${production.sunRateCustom ?? 2}×` : "APA standard 2×"}</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5">{(production.sunRateMode || "apa") === "custom" ? `Custom ${production.sunRateCustom ?? 2}×` : "Using APA standard (2.0×)"}</div>
                   </div>
                   <Toggle
                     value={(production.sunRateMode || "apa") === "custom"}
@@ -4444,18 +4462,20 @@ const setDays = (updater) =>
             </div>
           </div>
 
-          <div className="border-b border-neutral-800 bg-neutral-900 sticky z-30" style={{ top: 'calc(65px + env(safe-area-inset-top))' }}>
-            <div className="max-w-6xl mx-auto px-4 flex overflow-x-auto">
-              {[
-                { k: "setup",  label: "Setup",      I: IBriefcase },
-                { k: "days",   label: "Timesheets", I: ICal },
-                { k: "export", label: "Export",     I: IShare },
-              ].map(({ k, label, I }) => (
-                <button key={k} onClick={() => setTab(k)}
-                  className={`px-4 py-3 text-[11px] uppercase tracking-[0.15em] font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${tab === k ? "border-sky-400 text-sky-400" : "border-transparent text-neutral-500 hover:text-neutral-200"}`}>
-                  <I/>{label}
-                </button>
-              ))}
+          <div className="bg-neutral-950 sticky z-30 border-b border-neutral-800" style={{ top: 'calc(65px + env(safe-area-inset-top))' }}>
+            <div className="max-w-6xl mx-auto px-4 py-2 flex justify-start overflow-x-auto">
+              <div className="inline-flex rounded-full bg-neutral-800 p-0.5">
+                {[
+                  { k: "setup",  label: "Setup",      I: IBriefcase },
+                  { k: "days",   label: "Timesheets", I: ICal },
+                  { k: "export", label: "Export",     I: IShare },
+                ].map(({ k, label, I }) => (
+                  <button key={k} onClick={() => setTab(k)}
+                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-400 text-black" : "text-neutral-400"}`}>
+                    <I/>{label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -4931,6 +4951,8 @@ const setDays = (updater) =>
           id: uid(),
           title,
           prodCo: "",
+          jobReference: "",
+          invoicingEmail: "",
           crew: soloCrew,
           days: [],
           defaultDay: DEFAULT_PRODUCTION_DAY,
