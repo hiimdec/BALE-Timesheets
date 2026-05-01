@@ -3695,21 +3695,12 @@ ${allPagesHTML}
     }
 
     function WrapNowBtn({ days, setDays, showToast }) {
-      const HOLD_MS = 1500;
-      const [progress, setProgress] = useState(0);
-      const intervalRef = useRef(null);
-      const startRef = useRef(null);
-      const firedRef = useRef(false);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayEntries = days.filter(d => d.date === todayStr);
+      const alreadyWrapped = todayEntries.some(d => d.wrapTime && d.wrapTime.length > 0);
+      const [confirming, setConfirming] = useState(false);
 
-      const fire = () => {
-        firedRef.current = true;
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const todayEntries = days.filter(d => d.date === todayStr);
-        if (todayEntries.length === 0) {
-          showToast("No work days found for today");
-          setTimeout(() => { setProgress(0); firedRef.current = false; }, 400);
-          return;
-        }
+      const doWrap = () => {
         const now = new Date();
         const totalMins = now.getHours() * 60 + now.getMinutes();
         const rounded = Math.round(totalMins / 5) * 5;
@@ -3718,42 +3709,67 @@ ${allPagesHTML}
         const wrapStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
         setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr } : d));
         showToast(`Wrapped ${todayEntries.length} entr${todayEntries.length === 1 ? 'y' : 'ies'} at ${wrapStr}`);
-        setTimeout(() => { setProgress(0); firedRef.current = false; }, 600);
+        setConfirming(false);
       };
 
-      const startHold = (e) => {
-        e.preventDefault();
-        if (firedRef.current) return;
-        startRef.current = Date.now();
-        intervalRef.current = setInterval(() => {
-          if (firedRef.current) { clearInterval(intervalRef.current); return; }
-          const p = Math.min((Date.now() - startRef.current) / HOLD_MS, 1);
-          setProgress(p);
-          if (p >= 1) { clearInterval(intervalRef.current); fire(); }
-        }, 50);
-      };
-
-      const endHold = () => {
-        clearInterval(intervalRef.current);
-        if (!firedRef.current) {
-          if (progress > 0.05) showToast("Hold to set today's wrap time");
-          setProgress(0);
+      const handleClick = () => {
+        if (todayEntries.length === 0) { showToast("No work days found for today"); return; }
+        if (alreadyWrapped && !confirming) {
+          setConfirming(true);
+          setTimeout(() => setConfirming(false), 4000);
+          return;
         }
+        doWrap();
       };
 
-      const pct = Math.round(progress * 100);
       return (
         <button
-          onPointerDown={startHold}
-          onPointerUp={endHold}
-          onPointerLeave={endHold}
-          onPointerCancel={endHold}
-          className="relative overflow-hidden inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-lg"
-          style={{ touchAction: 'none', userSelect: 'none', minWidth: 96, height: 30 }}
-          title="Hold 1.5 seconds to set today's wrap time"
+          onClick={handleClick}
+          className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-orange-500/50 text-orange-300 hover:border-orange-400"}`}
+          style={{ minWidth: 96, height: 30 }}
+          title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}
         >
-          <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none z-0" style={{ width: `${pct}%` }} />
-          <span className="relative z-10">{progress > 0 ? `${pct}%` : 'WrapNow'}</span>
+          {confirming ? "Confirm?" : "WrapNow"}
+        </button>
+      );
+    }
+
+    function LunchNowBtn({ days, setDays, showToast }) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayEntries = days.filter(d => d.date === todayStr);
+      const alreadyLunched = todayEntries.some(d => d.lunchStartTime && d.lunchStartTime.length > 0);
+      const [confirming, setConfirming] = useState(false);
+
+      const doLunch = () => {
+        const now = new Date();
+        const totalMins = now.getHours() * 60 + now.getMinutes();
+        const rounded = Math.round(totalMins / 5) * 5;
+        const h = Math.floor(rounded / 60) % 24;
+        const m = rounded % 60;
+        const lunchStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        setDays(prev => prev.map(d => d.date === todayStr ? { ...d, lunchStartTime: lunchStr } : d));
+        showToast(`Lunch logged at ${lunchStr}`);
+        setConfirming(false);
+      };
+
+      const handleClick = () => {
+        if (todayEntries.length === 0) { showToast("No work days found for today"); return; }
+        if (alreadyLunched && !confirming) {
+          setConfirming(true);
+          setTimeout(() => setConfirming(false), 4000);
+          return;
+        }
+        doLunch();
+      };
+
+      return (
+        <button
+          onClick={handleClick}
+          className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`}
+          style={{ minWidth: 96, height: 30 }}
+          title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}
+        >
+          {confirming ? "Confirm?" : "LunchNow"}
         </button>
       );
     }
@@ -3897,7 +3913,10 @@ ${allPagesHTML}
                   <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
                 </div>
               )}
-              {crew.length > 0 && <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />}
+              {crew.length > 0 && <>
+                <LunchNowBtn days={days} setDays={setDays} showToast={showToast} />
+                <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />
+              </>}
               {!editing && crew.length > 0 && (
                 <>
                   {production.bestBoyMode && <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>}
@@ -4911,7 +4930,10 @@ const setDays = (updater) =>
             </div>
             <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
               {(p.days ?? []).some(d => d.date === todayStr) && (
-                <WrapNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
+                <>
+                  <LunchNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
+                  <WrapNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
+                </>
               )}
               <button
                 onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
