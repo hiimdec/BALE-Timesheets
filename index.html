@@ -2583,7 +2583,7 @@ ${allPagesHTML}
         className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
     };
-    const TimeInput = ({ onChange, value, ...p }) => {
+    const TimeInput = ({ onChange, value, className, style, ...p }) => {
       const roundTo5 = (timeStr) => {
         if (!timeStr || typeof timeStr !== 'string') return timeStr;
         const m = timeStr.match(/^(\d{1,2}):(\d{2})$/);
@@ -2601,7 +2601,10 @@ ${allPagesHTML}
         }
         if (p.onBlur) p.onBlur(e);
       };
-      return <Input type="time" step="300" value={value} onChange={onChange} onBlur={handleBlur} {...p} />;
+      return <Input type="time" step="300" value={value} onChange={onChange} onBlur={handleBlur}
+        className={`min-w-0 ${className || ""}`}
+        style={{ WebkitAppearance: 'none', ...style }}
+        {...p} />;
     };
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
