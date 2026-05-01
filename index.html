@@ -4464,6 +4464,15 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
+    const SectionCard = ({ title, children }) => (
+      <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden mb-4">
+        <div className="px-4 py-3 border-b border-neutral-800">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{title}</div>
+        </div>
+        <div className="px-4 py-4 space-y-4">{children}</div>
+      </div>
+    );
+
     function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onImport, onResetAll }) {
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
@@ -4509,15 +4518,6 @@ const setDays = (updater) =>
         const d = ROLE_DEFAULTS[role] || {};
         set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
       };
-
-      const SectionCard = ({ title, children }) => (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden mb-4">
-          <div className="px-4 py-3 border-b border-neutral-800">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{title}</div>
-          </div>
-          <div className="px-4 py-4 space-y-4">{children}</div>
-        </div>
-      );
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
