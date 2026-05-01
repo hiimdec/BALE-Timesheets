@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: midnight navy #0e1729 -->
+  <rect width="1024" height="1024" fill="#0e1729"/>
+
+  <!-- TIME — large, sky-400 -->
+  <text
+    x="512" y="430"
+    font-family="'Arial Black', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="900"
+    font-size="310"
+    fill="#38bdf8"
+    text-anchor="middle"
+    dominant-baseline="auto"
+    letter-spacing="-6">TIME</text>
+
+  <!-- Hairline divider -->
+  <rect x="172" y="498" width="680" height="3" fill="#38bdf8" opacity="0.3"/>
+
+  <!-- MACHINE — narrower weight, wider tracking to balance width -->
+  <text
+    x="512" y="668"
+    font-family="'Arial Black', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="900"
+    font-size="168"
+    fill="#38bdf8"
+    text-anchor="middle"
+    dominant-baseline="auto"
+    letter-spacing="10">MACHINE</text>
+</svg>
