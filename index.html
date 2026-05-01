@@ -176,6 +176,52 @@
       return 1.5;
     }
     const DAY_TYPES = ["Shoot", "Pre-light", "Prep Day", "Recce", "Build Day", "De-rig", "Travel Day", "Rest Day"];
+
+    // UK England & Wales bank holidays (gov.uk-verified). APA §2.4 treats
+    // these identically to Sundays — 2× BDR / 2× BHR for all hours worked.
+    const UK_BANK_HOLIDAYS = {
+      "2026-01-01": "New Year's Day",
+      "2026-04-03": "Good Friday",
+      "2026-04-06": "Easter Monday",
+      "2026-05-04": "Early May bank holiday",
+      "2026-05-25": "Spring bank holiday",
+      "2026-08-31": "Summer bank holiday",
+      "2026-12-25": "Christmas Day",
+      "2026-12-28": "Boxing Day (substitute)",
+      "2027-01-01": "New Year's Day",
+      "2027-03-26": "Good Friday",
+      "2027-03-29": "Easter Monday",
+      "2027-05-03": "Early May bank holiday",
+      "2027-05-31": "Spring bank holiday",
+      "2027-08-30": "Summer bank holiday",
+      "2027-12-27": "Christmas Day (substitute)",
+      "2027-12-28": "Boxing Day (substitute)",
+      "2028-01-03": "New Year's Day (substitute)",
+      "2028-04-14": "Good Friday",
+      "2028-04-17": "Easter Monday",
+      "2028-05-01": "Early May bank holiday",
+      "2028-05-29": "Spring bank holiday",
+      "2028-08-28": "Summer bank holiday",
+      "2028-12-25": "Christmas Day",
+      "2028-12-26": "Boxing Day",
+      "2029-01-01": "New Year's Day",
+      "2029-03-30": "Good Friday",
+      "2029-04-02": "Easter Monday",
+      "2029-05-07": "Early May bank holiday",
+      "2029-05-28": "Spring bank holiday",
+      "2029-08-27": "Summer bank holiday",
+      "2029-12-25": "Christmas Day",
+      "2029-12-26": "Boxing Day",
+      "2030-01-01": "New Year's Day",
+      "2030-04-19": "Good Friday",
+      "2030-04-22": "Easter Monday",
+      "2030-05-06": "Early May bank holiday",
+      "2030-05-27": "Spring bank holiday",
+      "2030-08-26": "Summer bank holiday",
+      "2030-12-25": "Christmas Day",
+      "2030-12-26": "Boxing Day",
+    };
+
     const DEFAULT_HOURS = {
       "Shoot": 11,
       "Pre-light": 9,
@@ -250,6 +296,8 @@
     const ceilHalf = (n) => Math.ceil(n * 2) / 2;
     const todayISO = () => new Date().toISOString().slice(0, 10);
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
+    const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
+    const getBankHolidayName = (dateStr) => dateStr ? (UK_BANK_HOLIDAYS[dateStr] || null) : null;
     const weekday = (iso) => { if (!iso) return ""; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" }); };
     const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
     const fmtDateShort = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
@@ -359,6 +407,7 @@
       const dow = dayOfWeek(day.date);
       const isSunday = dow === 0;
       const isSaturday = dow === 6;
+      const isBH = isBankHoliday(day.date);
       const isNightPre5  = callH < 5;
       const isNightPost5 = callH >= 17;
       const isNightShoot = isNightPre5 || isNightPost5;
@@ -372,7 +421,13 @@
       const sunMult = sunMode === "custom" ? (Number(weekendOpts.sunRateCustom) || 2.0) : 2.0;
       const isElevenHourDay = !!(weekendOpts.isElevenHourDay);
       const treatAsSat = isSaturday && satMode !== "weekday";
-      const treatAsSun = isSunday && sunMode !== "weekday";
+      // APA §2.4: bank holidays are paid at Sunday rate. Honour the production's
+      // sunMode toggle for consistency — if the producer has explicitly set
+      // Sunday to "weekday", bank holidays follow suit.
+      const treatAsSun = (isSunday || isBH) && sunMode !== "weekday";
+      // When it's a bank holiday but NOT a Sunday, swap "Sunday" for "Bank Holiday"
+      // in line labels. If the BH falls on a Sunday, keep the existing "Sunday" wording.
+      const sunBranchPrefix = (isBH && !isSunday) ? "Bank Holiday" : "Sunday";
 
       if (effectiveDayType === "Travel Day") {
         const paidHrs = Math.max(workedHrs, 5);
@@ -428,7 +483,7 @@
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
           lines.push({
-            label: `Sunday Shoot (${sunMult}× BHR, flat)`,
+            label: `${sunBranchPrefix} Shoot (${sunMult}× BHR, flat)`,
             detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
             rate: bhr * sunMult, qty: paidHrs, amount: paidHrs * bhr * sunMult,
           });
@@ -436,7 +491,7 @@
         } else {
           const sunPaidHrs = Math.max(workedHrs, 8);
           const sunMinApplied = sunPaidHrs > workedHrs;
-          lines.push({ label: `Sunday ${effectiveDayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * sunMult, qty: sunPaidHrs, amount: sunPaidHrs * bhr * sunMult });
+          lines.push({ label: `${sunBranchPrefix} ${effectiveDayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * sunMult, qty: sunPaidHrs, amount: sunPaidHrs * bhr * sunMult });
         }
       } else {
         if (effectiveDayType === "Shoot") {
@@ -526,8 +581,10 @@
         meta: {
           workedHrs, otHrs: otHrsForMeta, bhr, otRate,
           notes, secondBreakRequired, continuousDay,
+          isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
           dayLabel: isNightShoot ? (isNightPre5 ? "Night Shoot (pre-5am)" : "Night Shoot (post-5pm)")
-                  : treatAsSat ? "Saturday" : treatAsSun ? "Sunday"
+                  : treatAsSat ? "Saturday"
+                  : treatAsSun ? (isBH && !isSunday ? "Bank Holiday" : "Sunday")
                   : isEarly ? "Early Call" : isLate ? "Late Call" : "Standard",
         },
         lines, total,
@@ -549,6 +606,8 @@
             workedHrs: 0, otHrs: 0, bhr, otRate: bhr,
             dayLabel: day.dayType || "—", notes: [],
             secondBreakRequired: false, continuousDay: false, isPmpa: true,
+            isBankHoliday: isBankHoliday(day.date),
+            bankHolidayName: getBankHolidayName(day.date),
           },
           lines: [{ label: `${day.dayType} (flat BDR)`, detail: "", rate: null, qty: 1, amount: bdr }],
           total: bdr,
@@ -572,6 +631,7 @@
       const dow = dayOfWeek(day.date);
       const isSaturday = dow === 6;
       const isSunday = dow === 0;
+      const isBH = isBankHoliday(day.date);
       const isNightPre5 = callH < 5;
       const isNightPost5 = callH >= 17;
       const isNightShoot = isNightPre5 || isNightPost5;
@@ -583,7 +643,9 @@
       const satMult = satMode === "custom" ? (Number(weekendOpts.satRateCustom) || 1.5) : 1.5;
       const sunMult = sunMode === "custom" ? (Number(weekendOpts.sunRateCustom) || 2.0) : 2.0;
       const treatAsSat = isSaturday && satMode !== "weekday";
-      const treatAsSun = isSunday && sunMode !== "weekday";
+      // APA §2.4: bank holidays paid at Sunday rate.
+      const treatAsSun = (isSunday || isBH) && sunMode !== "weekday";
+      const sunBranchPrefix = (isBH && !isSunday) ? "Bank Holiday" : "Sunday";
       const isElevenHourDay = !!(weekendOpts.isElevenHourDay);
 
       // Multiplier per Appendix 1 §(a):
@@ -599,7 +661,7 @@
         dayLineLabel = `Night Shoot (2× BDR)`;
       } else if (treatAsSun) {
         mult = sunMult;
-        dayLineLabel = `Sunday Shoot (${sunMult}× BDR)`;
+        dayLineLabel = `${sunBranchPrefix} Shoot (${sunMult}× BDR)`;
       } else if (treatAsSat) {
         mult = satMult;
         dayLineLabel = `Saturday Shoot (${satMult}× BDR)`;
@@ -634,13 +696,14 @@
       let dayLabel;
       if (isNightShoot) dayLabel = isNightPre5 ? "Night Shoot (pre-5am)" : "Night Shoot (post-5pm)";
       else if (treatAsSat) dayLabel = "Saturday";
-      else if (treatAsSun) dayLabel = "Sunday";
+      else if (treatAsSun) dayLabel = isBH && !isSunday ? "Bank Holiday" : "Sunday";
       else dayLabel = "Standard";
 
       return {
         meta: {
           workedHrs, otHrs, bhr, otRate, dayLabel,
           notes: [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
+          isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
         },
         lines, total,
       };
@@ -774,7 +837,7 @@
     }
 
     const roundRate = (n) => Math.ceil(n);
-    const PREMIUM_RATE_RE = /\bot\b|early call|night shoot|saturday|sunday|triple|time off the clock/i;
+    const PREMIUM_RATE_RE = /\bot\b|early call|night shoot|saturday|sunday|bank holiday|triple|time off the clock/i;
     function applyRateRounding(calc) {
       // PM/PA/Runner per APA Appendix 1 §(a) use a flat-multiplier framework
       // — no APA-style up-rounding on premium rates.
@@ -3073,6 +3136,8 @@ ${allPagesHTML}
       const dow = dayOfWeek(v.date);
       const dayLabel = v.date ? weekday(v.date) : "";
       const isWeekend = dow === 0 || dow === 6;
+      const bhName = getBankHolidayName(v.date);
+      const isBH = !!bhName;
       const isTravelDay = v.dayType === "Travel Day";
       const activeCrew = fixedCrewId ? crew.find(c => c.id === fixedCrewId) : crew.find(c => c.id === v.crewId);
       // Step-up role wins over base role for both BWD-override and PMPA classification.
@@ -3107,7 +3172,7 @@ ${allPagesHTML}
               )}
               <div className="grid grid-cols-2 gap-3">
                 {!fixedDate && (
-                  <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}` : ""}>
+                  <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}${isBH ? " — bank holiday rate applies" : ""}` : ""}>
                     <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
                   </Field>
                 )}
@@ -3123,6 +3188,11 @@ ${allPagesHTML}
               {isPmpa && (
                 <StatusMsg kind="info">
                   APA Appendix 1 §(a): {role}s use a simpler framework — flat BDR plus OT for hours beyond BWD on shoot days only. No break penalties, no travel time, no triple time.
+                </StatusMsg>
+              )}
+              {isBH && (
+                <StatusMsg kind="info">
+                  Bank Holiday — {bhName}. APA §2.4: paid as Sunday rate (2× BDR for shoot day, 2× BHR all hours).
                 </StatusMsg>
               )}
             </div>
@@ -3322,7 +3392,7 @@ ${allPagesHTML}
         const lbl = l.label || '';
         if (/^OT|triple time/i.test(lbl)) return 'amber';
         if (/^Early Call/i.test(lbl)) return 'amber';
-        if (/^(Saturday|Sunday|Night Shoot)/i.test(lbl)) return 'amber';
+        if (/^(Saturday|Sunday|Bank Holiday|Night Shoot)/i.test(lbl)) return 'amber';
         return 'neutral';
       };
       const lineCls = (c) => ({
@@ -3647,9 +3717,12 @@ ${allPagesHTML}
                       const dow = dayOfWeek(date);
                       const isSat = dow === 6;
                       const isSun = dow === 0;
+                      const isBH = isBankHoliday(date);
+                      const treatAsSunCol = isSun || isBH;
                       const isEditingThis = editingDate === date;
-                      const cellBg    = isSun ? "bg-red-950/40"   : isSat ? "bg-amber-950/40" : "bg-neutral-900";
-                      const numColor  = isSun ? "text-red-300"    : isSat ? "text-amber-300"  : "text-neutral-300";
+                      // Bank holidays reuse the Sunday red tint per APA §2.4.
+                      const cellBg    = treatAsSunCol ? "bg-red-950/40"   : isSat ? "bg-amber-950/40" : "bg-neutral-900";
+                      const numColor  = treatAsSunCol ? "text-red-300"    : isSat ? "text-amber-300"  : "text-neutral-300";
                       const hasEntries = days.some(d => d.date === date);
                       return (
                         <td key={date}
@@ -3657,13 +3730,17 @@ ${allPagesHTML}
                             if (isEditingThis) { setEditingDate(null); return; }
                             if (hasEntries) { openDateEdit(date); } else { onAddAllOnDate(date, addDayType); }
                           }}
-                          className={`px-2 py-1.5 text-center cursor-pointer border-r border-neutral-700 transition-colors hover:bg-neutral-800/60 ${cellBg}${isEditingThis ? " ring-2 ring-inset ring-sky-400" : ""}`}>
+                          className={`px-2 py-1.5 text-center cursor-pointer border-r border-neutral-700 transition-colors hover:bg-neutral-800/60 ${cellBg}${isEditingThis ? " ring-2 ring-inset ring-sky-400" : ""}`}
+                          title={isBH ? `Bank Holiday — ${getBankHolidayName(date)}` : undefined}>
                           <div className={`text-[11px] font-bold leading-none ${numColor}`}>
                             {new Date(date + "T12:00:00").getDate()}
                           </div>
                           <div className="text-[8px] text-neutral-600 leading-none mt-0.5">
                             {new Date(date + "T12:00:00").toLocaleDateString("en-GB", { month: "short" })}
                           </div>
+                          {isBH && (
+                            <div className="text-[7px] font-bold text-red-400 leading-none mt-0.5 uppercase tracking-wider">BH</div>
+                          )}
                           <div className="flex items-center justify-center gap-1.5 mt-0.5">
                             <button onClick={e => { e.stopPropagation(); onAssignAll(date, addDayType); }}
                               className="text-[8px] text-neutral-600 hover:text-sky-400 transition-colors font-bold uppercase tracking-wider"
