@@ -34,7 +34,6 @@
       color: #f5f5f5;
     }
     body {
-      padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
@@ -2537,7 +2536,7 @@ ${allPagesHTML}
     const IX = (p) => <Icon {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>;
     const IFile = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></Icon>;
     const IReset = (p) => <Icon {...p}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></Icon>;
-    const ISave = (p) => <Icon {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></Icon>;
+
     const IGrip = (p) => <Icon {...p}><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></Icon>;
     const IUsers2 = (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>;
     const IInfo = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></Icon>;
@@ -2584,7 +2583,26 @@ ${allPagesHTML}
         className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
     };
-    const TimeInput = (p) => <Input type="time" step="300" {...p} />;
+    const TimeInput = ({ onChange, value, ...p }) => {
+      const roundTo5 = (timeStr) => {
+        if (!timeStr || typeof timeStr !== 'string') return timeStr;
+        const m = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+        if (!m) return timeStr;
+        const totalMins = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+        const rounded = Math.round(totalMins / 5) * 5;
+        const h = Math.floor(rounded / 60) % 24;
+        const min = rounded % 60;
+        return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+      };
+      const handleBlur = (e) => {
+        const newVal = roundTo5(e.target.value);
+        if (newVal !== e.target.value && onChange) {
+          onChange({ target: { value: newVal } });
+        }
+        if (p.onBlur) p.onBlur(e);
+      };
+      return <Input type="time" step="300" value={value} onChange={onChange} onBlur={handleBlur} {...p} />;
+    };
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
     const StatusMsg = ({ kind = "info", children }) => {
@@ -3490,7 +3508,7 @@ ${allPagesHTML}
             </div>
 
             {/* ── Fixed footer ── */}
-            <div className="flex-shrink-0 border-t border-neutral-700 px-5 py-3 space-y-2.5">
+            <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 space-y-2.5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
               {activeCalc && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[9px] text-neutral-600 uppercase tracking-wider mr-0.5">Calc</span>
@@ -4693,7 +4711,6 @@ const setDays = (updater) =>
       const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
-      const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
       const [openCrewForm, setOpenCrewForm] = useState(false);
@@ -4753,13 +4770,6 @@ const setDays = (updater) =>
 
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
-      useEffect(() => {
-        if (crew.length === 0 && days.length === 0 && !production.title && !production.prodCo) return;
-        setSaveToast(true);
-        const t = setTimeout(() => setSaveToast(false), 1200);
-        return () => clearTimeout(t);
-      }, [crew, days, production]);
-
       const clearAll = () => {
         setProduction((prev) => ({ id: prev.id, title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY, gridDates: [], weekStarts: [], cancellationData: null }));
         setResetMode(false);
@@ -4805,7 +4815,6 @@ const setDays = (updater) =>
                 <div className="font-bold uppercase tracking-tight leading-none text-sm">{production.title || <span className="text-neutral-500">Untitled Production</span>}</div>
               </div>
               <div className="flex items-center gap-3">
-                {saveToast && <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-green-400"><ISave/>Saved</div>}
                 {resetMode ? (
                   <div className="flex gap-1">
                     <Btn size="sm" variant="danger" onClick={clearAll}>Confirm Reset</Btn>
