@@ -390,6 +390,7 @@
       const sunMode = weekendOpts.sunRateMode ?? "apa";
       const satMult = satMode === "custom" ? (Number(weekendOpts.satRateCustom) || 1.5) : 1.5;
       const sunMult = sunMode === "custom" ? (Number(weekendOpts.sunRateCustom) || 2.0) : 2.0;
+      const isElevenHourDay = !!(weekendOpts.isElevenHourDay);
       const treatAsSat = isSaturday && satMode !== "weekday";
       const treatAsSun = isSunday && sunMode !== "weekday";
 
@@ -405,7 +406,7 @@
 
       let basicHrs;
       if (continuousDay) basicHrs = 9;
-      else if (effectiveDayType === "Shoot") { basicHrs = 11; if (lunchDuration < 60 && !lunchMissed) basicHrs = 11 - (60 - lunchDuration) / 60; }
+      else if (effectiveDayType === "Shoot") { basicHrs = isElevenHourDay ? 12 : 11; if (lunchDuration < 60 && !lunchMissed) basicHrs -= (60 - lunchDuration) / 60; }
       else if (effectiveDayType === "Pre-light") { basicHrs = 9; if (lunchDuration < 60 && !lunchMissed) basicHrs = 9 - (60 - lunchDuration) / 60; }
       else if (effectiveDayType === "Prep Day" || effectiveDayType === "Recce" || effectiveDayType === "Build Day" || effectiveDayType === "De-rig") {
         // APA §2.3: 8h base, no lunch obligation. OT after 8h normally.
@@ -432,7 +433,7 @@
         if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
       } else if (treatAsSat) {
         if (effectiveDayType === "Shoot") {
-          lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel, rate: bdr * satMult, qty: 1, amount: bdr * satMult });
+          lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
           if (otHrs > 0) { const satOtRate = bectuOtRate ?? bhr * satMult; lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
@@ -459,7 +460,7 @@
         }
       } else {
         if (effectiveDayType === "Shoot") {
-          lines.push({ label: continuousDay ? "BDR (Continuous Working Day)" : "BDR", detail: callWrapLabel, rate: bdr, qty: 1, amount: bdr });
+          lines.push({ label: continuousDay ? "BDR (Continuous Working Day)" : "BDR", detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr, qty: 1, amount: bdr });
         } else if (effectiveDayType === "Pre-light") {
           const baseHrs = continuousDay ? 9 : 8;
           lines.push({ label: continuousDay ? "Pre-light Day (CWD 9h × BHR)" : "Pre-light Day (8h × BHR + 1h lunch)", detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
@@ -4256,7 +4257,7 @@ ${allPagesHTML}
                   <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">11-Hour Day</span>
                   <Toggle value={production.isElevenHourDay} onChange={(v) => setProduction(p => ({ ...p, isElevenHourDay: v }))} ariaLabel="11-Hour Day" />
                 </div>
-                <p className="text-[11px] text-neutral-500 mt-1">1 hour of OT is included in the day rate. OT applies after 11h. (Calc engine wired in next build.)</p>
+                <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
               </div>
             </SectionCard>
 
