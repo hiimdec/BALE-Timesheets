@@ -3726,7 +3726,7 @@ ${allPagesHTML}
         <button
           onClick={handleClick}
           className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-orange-500/50 text-orange-300 hover:border-orange-400"}`}
-          style={{ minWidth: 96, height: 30 }}
+          style={{ minWidth: 96, height: 36 }}
           title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}
         >
           {confirming ? "Confirm?" : "WrapNow"}
@@ -3766,7 +3766,7 @@ ${allPagesHTML}
         <button
           onClick={handleClick}
           className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`}
-          style={{ minWidth: 96, height: 30 }}
+          style={{ minWidth: 96, height: 36 }}
           title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}
         >
           {confirming ? "Confirm?" : "LunchNow"}
@@ -4913,37 +4913,69 @@ const setDays = (updater) =>
         items: g.items.filter(p => p.id !== currentShoot?.id),
       })).filter(g => g.items.length > 0);
 
-      const renderCard = (p) => (
-        <div
-          key={p.id}
-          className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer"
-          onClick={() => onOpen(p.id)}
-        >
-          <div className="flex items-center gap-3 p-4">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
-                {p.bestBoyMode && <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span>}
+      const renderCard = (p, opts = {}) => {
+        const isCurrent = opts.isCurrent || false;
+        const cardSetDays = (updater) => onUpdateDays(p.id, updater);
+        const hasToday = (p.days ?? []).some(d => d.date === todayStr);
+        const bestBoyBadge = p.bestBoyMode ? <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span> : null;
+        const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
+        const wrapperClass = "bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer select-none touch-manipulation";
+
+        if (isCurrent) {
+          return (
+            <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
+              <div className="p-4">
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
+                    {bestBoyBadge}
+                  </div>
+                  <div className="text-sm text-neutral-400 truncate">{metaText}</div>
+                  <div className="text-lg font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
+                </div>
+                <div className="border-t border-neutral-800 -mx-4" />
+                <div className="flex items-center justify-center gap-2 pt-3" onClick={e => e.stopPropagation()}>
+                  {hasToday && <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
+                  {hasToday && <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
+                  <button
+                    onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
+                    className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10 ml-auto"
+                    title="Delete production"
+                  ><ITrash size={16}/></button>
+                </div>
               </div>
-              <div className="text-sm text-neutral-400 truncate">{p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`}</div>
-              <div className="text-base font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
             </div>
-            <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-              {(p.days ?? []).some(d => d.date === todayStr) && (
-                <>
-                  <LunchNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
-                  <WrapNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
-                </>
-              )}
-              <button
-                onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
-                className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10"
-                title="Delete production"
-              ><ITrash size={16}/></button>
+          );
+        }
+
+        return (
+          <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
+            <div className="flex items-center gap-3 p-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
+                  {bestBoyBadge}
+                </div>
+                <div className="text-sm text-neutral-400 truncate">{metaText}</div>
+                <div className="text-base font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                {hasToday && (
+                  <>
+                    <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />
+                    <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />
+                  </>
+                )}
+                <button
+                  onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
+                  className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10"
+                  title="Delete production"
+                ><ITrash size={16}/></button>
+              </div>
             </div>
           </div>
-        </div>
-      );
+        );
+      };
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32">
@@ -4977,7 +5009,7 @@ const setDays = (updater) =>
             {currentShoot && (
               <div className="mb-6">
                 <div className="text-[11px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Current Shoot</div>
-                {renderCard(currentShoot)}
+                {renderCard(currentShoot, { isCurrent: true })}
               </div>
             )}
 
