@@ -4846,8 +4846,9 @@ const setDays = (updater) =>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
                       {p.prodCo && <div className="text-sm text-neutral-400 truncate">{p.prodCo}</div>}
-                      <div className="text-[11px] text-neutral-500 mt-1 font-mono">
-                        {(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
+                        <span className="text-[11px] text-neutral-500 font-mono">{(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days</span>
+                        {p.bestBoyMode && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
