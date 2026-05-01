@@ -2390,7 +2390,13 @@ ${allPagesHTML}
       </label>
     );
 
-    const Input = (p) => <input {...p} className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${p.className || ""}`} />;
+    const Input = ({ type, style, className, ...p }) => {
+      const isDate = type === "date";
+      return <input type={type} {...p}
+        style={isDate ? { WebkitAppearance: 'none', fontSize: 14, ...style } : style}
+        className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
+      />;
+    };
     const TimeInput = (p) => <Input type="time" step="300" {...p} />;
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
@@ -4363,7 +4369,7 @@ ${allPagesHTML}
 
     /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
-    function ProductionApp({ production, setProduction, onBack }) {
+    function ProductionApp({ production, setProduction, onBack, userPrefs }) {
 
 // Convenience aliases — child components keep receiving crew/days as before
 const crew = production.crew ?? [];
@@ -4481,7 +4487,7 @@ const setDays = (updater) =>
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
               <div>
-                <button onClick={onBack} className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-400 transition-colors font-bold mb-1 flex items-center gap-1">← Derrick's TimeMachine</button>
+                <button onClick={onBack} className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-400 transition-colors font-bold mb-1 flex items-center gap-1">← {(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? `${n}'s TIMEMACHINE` : "TIMEMACHINE"; })()}</button>
                 <div className="font-bold uppercase tracking-tight leading-none text-sm">{production.title || <span className="text-neutral-500">Untitled Production</span>}</div>
               </div>
               <div className="flex items-center gap-3">
@@ -4877,8 +4883,7 @@ const setDays = (updater) =>
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
               <div>
-                <div className="font-bold uppercase tracking-tight leading-none text-sm">{(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? `${n}'s TIMEMACHINE` : "TIMEMACHINE"; })()}</div>
-                <div className="text-[10px] uppercase tracking-[0.25em] text-sky-400 font-bold mt-0.5">Productions</div>
+                <div className="font-bold uppercase tracking-tight leading-none text-sm">{(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? <>{n}'s <span className="text-sky-400">TIMEMACHINE</span></> : <span className="text-sky-400">TIMEMACHINE</span>; })()}</div>
               </div>
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-lg hover:bg-neutral-800" title="Settings"><IGear size={16}/></button>
@@ -5067,7 +5072,7 @@ const setDays = (updater) =>
       if (!openId || !currentProduction) {
         return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} userPrefs={userPrefs} />;
       }
-      return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
+      return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} />;
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
