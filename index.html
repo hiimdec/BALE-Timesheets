@@ -10,9 +10,13 @@
   <meta name="apple-mobile-web-app-title" content="TimeMachine">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#000000">
-  <link rel="apple-touch-icon" id="apple-touch-icon" sizes="180x180">
-  <link rel="icon" id="favicon">
+  <meta name="theme-color" content="#0e1729">
+  <!-- App icons — served as static files -->
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+  <link rel="manifest" href="manifest.json">
 
   <!-- CDN Dependencies -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -42,40 +46,6 @@
     .app-loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: ui-sans-serif, system-ui; }
   </style>
 
-  <script>
-    // Runtime-generated app icon (so "Add to Home Screen" gets a proper icon)
-    (function() {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 180; canvas.height = 180;
-        const ctx = canvas.getContext('2d');
-        // Background
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, 180, 180);
-        // Sky bar top
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillRect(0, 0, 180, 6);
-        // Text
-        ctx.fillStyle = '#f5f5f5';
-        ctx.font = 'bold 22px -apple-system, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText("BIG AL'S", 90, 75);
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = '600 11px -apple-system, sans-serif';
-        ctx.letterSpacing = '2px';
-        ctx.fillText('TIMESHEET', 90, 100);
-        ctx.fillStyle = '#737373';
-        ctx.font = '10px -apple-system, sans-serif';
-        ctx.fillText('GENERATOR', 90, 115);
-        // Bottom accent
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillRect(40, 145, 100, 3);
-        const dataUrl = canvas.toDataURL('image/png');
-        document.getElementById('apple-touch-icon').href = dataUrl;
-        document.getElementById('favicon').href = dataUrl;
-      } catch (e) { console.error('Icon generation failed', e); }
-    })();
-  </script>
 </head>
 <body>
   <div id="root"><div class="app-loading">Loading Derrick's TimeMachine…</div></div>
