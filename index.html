@@ -583,7 +583,11 @@
       return c;
     }
 
-    const migrateProduction = (p) => ({ ...p, crew: (p.crew || []).map(migrateCrew) });
+    const migrateProduction = (p) => ({
+      ...p,
+      crew: (p.crew || []).map(migrateCrew),
+      bestBoyMode: p.bestBoyMode ?? ((p.crew?.length ?? 0) > 1),
+    });
 
     function useStoredState(key, initial, migrate) {
       const [value, setValue] = useState(() => {
@@ -4393,7 +4397,81 @@ const setDays = (updater) =>
       );
     }
 
+    /* ═══════════════════════════ NEW PRODUCTION SCREEN ═══════════════════════════ */
+
+    function NewProductionScreen({ userPrefs, onCreate, onCancel }) {
+      const [title, setTitle] = useState("");
+      const [bestBoyMode, setBestBoyMode] = useState(false);
+      const inputRef = useRef(null);
+
+      useEffect(() => { inputRef.current?.focus(); }, []);
+
+      const canCreate = title.trim().length > 0;
+      const handleCreate = () => { if (canCreate) onCreate({ title: title.trim(), bestBoyMode }); };
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center">
+              <button onClick={onCancel} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Cancel">
+                <IX size={18}/>
+              </button>
+            </div>
+          </div>
+
+          <div className="max-w-2xl mx-auto px-4 py-10">
+            <h1 className="text-2xl font-bold tracking-tight mb-8">New Production</h1>
+
+            <div className="mb-2">
+              <Field label="Production name">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  placeholder="e.g. Acme Brand Film 2025"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey || true) && canCreate) handleCreate(); }}
+                  className="w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-3 py-3 text-base font-mono outline-none rounded-lg"
+                />
+              </Field>
+            </div>
+            <p className="text-[11px] text-neutral-500 mb-8">You can change this later</p>
+
+            <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] px-4 py-4 mb-8">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-neutral-100">Best Boy mode</div>
+                  <div className="text-[11px] text-neutral-400 mt-0.5">Manage a crew with the grid view</div>
+                </div>
+                <Select
+                  value={bestBoyMode ? "yes" : "no"}
+                  onChange={(e) => setBestBoyMode(e.target.value === "yes")}
+                  className="w-auto text-[11px] px-2 py-1.5"
+                >
+                  <option value="no">Off</option>
+                  <option value="yes">On</option>
+                </Select>
+              </div>
+            </div>
+
+            <Btn variant="primary" onClick={handleCreate} disabled={!canCreate} className="w-full justify-center py-3 text-sm">
+              Create
+            </Btn>
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
+
+    const SectionCard = ({ title, children }) => (
+      <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden mb-4">
+        <div className="px-4 py-3 border-b border-neutral-800">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{title}</div>
+        </div>
+        <div className="px-4 py-4 space-y-4">{children}</div>
+      </div>
+    );
 
     function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onImport, onResetAll }) {
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
@@ -4440,15 +4518,6 @@ const setDays = (updater) =>
         const d = ROLE_DEFAULTS[role] || {};
         set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
       };
-
-      const SectionCard = ({ title, children }) => (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden mb-4">
-          <div className="px-4 py-3 border-b border-neutral-800">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{title}</div>
-          </div>
-          <div className="px-4 py-4 space-y-4">{children}</div>
-        </div>
-      );
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
@@ -4630,7 +4699,7 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onCreate, onDelete, onUpdateDays, onOpenSettings }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onUpdateDays, onOpenSettings }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const todayStr = new Date().toISOString().slice(0, 10);
@@ -4678,7 +4747,7 @@ const setDays = (updater) =>
               </div>
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-lg hover:bg-neutral-800" title="Settings"><IGear size={16}/></button>
-                <Btn variant="primary" onClick={onCreate}><IPlus/>New Production</Btn>
+                <Btn variant="primary" onClick={onNewProduction}><IPlus/>New Production</Btn>
               </div>
             </div>
           </div>
@@ -4732,6 +4801,7 @@ const setDays = (updater) =>
       const [userPrefs, setUserPrefs] = useStoredState("bigals_user_prefs", DEFAULT_USER_PREFS);
       const [openId, setOpenId] = useState(null);
       const [showSettings, setShowSettings] = useState(false);
+      const [showNewProduction, setShowNewProduction] = useState(false);
 
       // One-time migration: absorb all old localStorage keys into the productions array
       useEffect(() => {
@@ -4760,10 +4830,38 @@ const setDays = (updater) =>
         setProductions((prev) => prev.filter((p) => p.id !== id));
         if (openId === id) setOpenId(null);
       };
-      const createProduction = () => {
-        const p = { id: uid(), title: "Untitled Production", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY, isNew: true };
+      const handleNewProduction = ({ title, bestBoyMode }) => {
+        const role = userPrefs.defaultRole || "Lighting Technician";
+        const roleDefaults = ROLE_DEFAULTS[role] || {};
+        const bdr = userPrefs.defaultBDR || roleDefaults.bdr || 0;
+        const otCoef = userPrefs.defaultOTCoef ?? roleDefaults.otCoef ?? 1.5;
+        const soloCrew = bestBoyMode ? [] : [{
+          id: uid(),
+          name: userPrefs.displayName || "You",
+          role,
+          bdr,
+          otCoef,
+          otRate: roleDefaults.otRate ?? null,
+          vatRegistered: userPrefs.vatRegistered ?? false,
+          vatRate: userPrefs.vatRate ?? 20,
+          kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
+          kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
+          isDriver: false,
+        }];
+        const p = {
+          id: uid(),
+          title,
+          prodCo: "",
+          crew: soloCrew,
+          days: [],
+          defaultDay: DEFAULT_PRODUCTION_DAY,
+          bestBoyMode,
+          startDate: todayISO(),
+          isNew: true,
+        };
         setProductions((prev) => [...prev, p]);
         setOpenId(p.id);
+        setShowNewProduction(false);
       };
       const setProduction = (updater) =>
         setProductions((prev) => prev.map((p) =>
@@ -4818,8 +4916,17 @@ const setDays = (updater) =>
           />
         );
       }
+      if (showNewProduction) {
+        return (
+          <NewProductionScreen
+            userPrefs={userPrefs}
+            onCreate={handleNewProduction}
+            onCancel={() => setShowNewProduction(false)}
+          />
+        );
+      }
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onCreate={createProduction} onDelete={deleteProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
     }
