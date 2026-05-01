@@ -3695,21 +3695,12 @@ ${allPagesHTML}
     }
 
     function WrapNowBtn({ days, setDays, showToast }) {
-      const HOLD_MS = 1500;
-      const [progress, setProgress] = useState(0);
-      const intervalRef = useRef(null);
-      const startRef = useRef(null);
-      const firedRef = useRef(false);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayEntries = days.filter(d => d.date === todayStr);
+      const alreadyWrapped = todayEntries.some(d => d.wrapTime && d.wrapTime.length > 0);
+      const [confirming, setConfirming] = useState(false);
 
-      const fire = () => {
-        firedRef.current = true;
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const todayEntries = days.filter(d => d.date === todayStr);
-        if (todayEntries.length === 0) {
-          showToast("No work days found for today");
-          setTimeout(() => { setProgress(0); firedRef.current = false; }, 400);
-          return;
-        }
+      const doWrap = () => {
         const now = new Date();
         const totalMins = now.getHours() * 60 + now.getMinutes();
         const rounded = Math.round(totalMins / 5) * 5;
@@ -3718,42 +3709,67 @@ ${allPagesHTML}
         const wrapStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
         setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr } : d));
         showToast(`Wrapped ${todayEntries.length} entr${todayEntries.length === 1 ? 'y' : 'ies'} at ${wrapStr}`);
-        setTimeout(() => { setProgress(0); firedRef.current = false; }, 600);
+        setConfirming(false);
       };
 
-      const startHold = (e) => {
-        e.preventDefault();
-        if (firedRef.current) return;
-        startRef.current = Date.now();
-        intervalRef.current = setInterval(() => {
-          if (firedRef.current) { clearInterval(intervalRef.current); return; }
-          const p = Math.min((Date.now() - startRef.current) / HOLD_MS, 1);
-          setProgress(p);
-          if (p >= 1) { clearInterval(intervalRef.current); fire(); }
-        }, 50);
-      };
-
-      const endHold = () => {
-        clearInterval(intervalRef.current);
-        if (!firedRef.current) {
-          if (progress > 0.05) showToast("Hold to set today's wrap time");
-          setProgress(0);
+      const handleClick = () => {
+        if (todayEntries.length === 0) { showToast("No work days found for today"); return; }
+        if (alreadyWrapped && !confirming) {
+          setConfirming(true);
+          setTimeout(() => setConfirming(false), 4000);
+          return;
         }
+        doWrap();
       };
 
-      const pct = Math.round(progress * 100);
       return (
         <button
-          onPointerDown={startHold}
-          onPointerUp={endHold}
-          onPointerLeave={endHold}
-          onPointerCancel={endHold}
-          className="relative overflow-hidden inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold border border-orange-500/50 text-orange-300 hover:border-orange-400 rounded-lg"
-          style={{ touchAction: 'none', userSelect: 'none', minWidth: 96, height: 30 }}
-          title="Hold 1.5 seconds to set today's wrap time"
+          onClick={handleClick}
+          className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-orange-500/50 text-orange-300 hover:border-orange-400"}`}
+          style={{ minWidth: 96, height: 30 }}
+          title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}
         >
-          <div className="absolute inset-y-0 left-0 bg-orange-400/25 pointer-events-none z-0" style={{ width: `${pct}%` }} />
-          <span className="relative z-10">{progress > 0 ? `${pct}%` : 'WrapNow'}</span>
+          {confirming ? "Confirm?" : "WrapNow"}
+        </button>
+      );
+    }
+
+    function LunchNowBtn({ days, setDays, showToast }) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayEntries = days.filter(d => d.date === todayStr);
+      const alreadyLunched = todayEntries.some(d => d.lunchStartTime && d.lunchStartTime.length > 0);
+      const [confirming, setConfirming] = useState(false);
+
+      const doLunch = () => {
+        const now = new Date();
+        const totalMins = now.getHours() * 60 + now.getMinutes();
+        const rounded = Math.round(totalMins / 5) * 5;
+        const h = Math.floor(rounded / 60) % 24;
+        const m = rounded % 60;
+        const lunchStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        setDays(prev => prev.map(d => d.date === todayStr ? { ...d, lunchStartTime: lunchStr } : d));
+        showToast(`Lunch logged at ${lunchStr}`);
+        setConfirming(false);
+      };
+
+      const handleClick = () => {
+        if (todayEntries.length === 0) { showToast("No work days found for today"); return; }
+        if (alreadyLunched && !confirming) {
+          setConfirming(true);
+          setTimeout(() => setConfirming(false), 4000);
+          return;
+        }
+        doLunch();
+      };
+
+      return (
+        <button
+          onClick={handleClick}
+          className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`}
+          style={{ minWidth: 96, height: 30 }}
+          title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}
+        >
+          {confirming ? "Confirm?" : "LunchNow"}
         </button>
       );
     }
@@ -3897,7 +3913,10 @@ ${allPagesHTML}
                   <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
                 </div>
               )}
-              {crew.length > 0 && <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />}
+              {crew.length > 0 && <>
+                <LunchNowBtn days={days} setDays={setDays} showToast={showToast} />
+                <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />
+              </>}
               {!editing && crew.length > 0 && (
                 <>
                   {production.bestBoyMode && <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>}
@@ -4844,11 +4863,23 @@ const setDays = (updater) =>
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const todayStr = new Date().toISOString().slice(0, 10);
-      const showWrapNow = (p) => {
-        return (p.days ?? []).some(d => d.date === todayStr);
-      };
+      const displayName = userPrefs?.displayName?.trim() || "";
 
-      // Derive a sort key (YYYY-MM-DD or null) for each production — display only, no mutation
+      // Per-production totals
+      const productionTotals = useMemo(() => {
+        const totals = {};
+        for (const p of productions) {
+          const crew = p.crew ?? [];
+          const days = p.days ?? [];
+          totals[p.id] = days.reduce((sum, d) => {
+            const c = crew.find(cc => cc.id === d.crewId);
+            if (!c) return sum;
+            return sum + calcForDisplay(p, d, c, findPrevDay(days, d)).total;
+          }, 0);
+        }
+        return totals;
+      }, [productions]);
+
       const sortKey = (p) => {
         if (p.startDate) return p.startDate;
         const dates = (p.days ?? []).map(d => d.date).filter(Boolean).sort();
@@ -4856,20 +4887,17 @@ const setDays = (updater) =>
       };
       const monthLabel = (key) => {
         if (!key) return "No Date";
-        const d = new Date(key + "T12:00:00");
-        return d.toLocaleString("default", { month: "long", year: "numeric" });
+        return new Date(key + "T12:00:00").toLocaleString("default", { month: "long", year: "numeric" });
       };
 
-      // Sort descending (most recent first), nulls last
       const sorted = [...productions].sort((a, b) => {
         const ka = sortKey(a), kb = sortKey(b);
-        if (ka === kb) return 0;
-        if (!ka) return 1;
-        if (!kb) return -1;
+        if (ka === kb) return 0; if (!ka) return 1; if (!kb) return -1;
         return ka < kb ? 1 : -1;
       });
 
-      // Group into [{ label, items }] preserving sorted order
+      const currentShoot = sorted.find(p => (p.days ?? []).some(d => d.date === todayStr)) || null;
+
       const groups = [];
       for (const p of sorted) {
         const label = monthLabel(sortKey(p));
@@ -4878,58 +4906,107 @@ const setDays = (updater) =>
         else groups.push({ label, items: [p] });
       }
 
+      // Month totals include current shoot even though it's pinned above groups
+      const groupsDisplay = groups.map(g => ({
+        label: g.label,
+        monthTotal: g.items.reduce((sum, p) => sum + (productionTotals[p.id] || 0), 0),
+        items: g.items.filter(p => p.id !== currentShoot?.id),
+      })).filter(g => g.items.length > 0);
+
+      const renderCard = (p) => (
+        <div
+          key={p.id}
+          className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer"
+          onClick={() => onOpen(p.id)}
+        >
+          <div className="flex items-center gap-3 p-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
+                {p.bestBoyMode && <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span>}
+              </div>
+              <div className="text-sm text-neutral-400 truncate">{p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`}</div>
+              <div className="text-base font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
+            </div>
+            <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+              {(p.days ?? []).some(d => d.date === todayStr) && (
+                <>
+                  <LunchNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
+                  <WrapNowBtn days={p.days ?? []} setDays={(updater) => onUpdateDays(p.id, updater)} showToast={showToast} />
+                </>
+              )}
+              <button
+                onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
+                className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10"
+                title="Delete production"
+              ><ITrash size={16}/></button>
+            </div>
+          </div>
+        </div>
+      );
+
       return (
-        <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-            <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32">
+          {/* Inline (non-sticky) header */}
+          <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-start justify-between">
               <div>
-                <div className="font-bold uppercase tracking-tight leading-none text-sm">{(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? <>{n}'s <span className="text-sky-400">TIMEMACHINE</span></> : <span className="text-sky-400">TIMEMACHINE</span>; })()}</div>
+                {displayName && <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-1">{displayName}'s</div>}
+                <h1 className="text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
               </div>
-              <div className="flex items-center gap-2 flex-wrap justify-end">
-                <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-lg hover:bg-neutral-800" title="Settings"><IGear size={16}/></button>
-                <Btn variant="primary" onClick={onNewProduction}><IPlus/>New Production</Btn>
-              </div>
+              <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800 mt-1" title="Settings">
+                <IGear size={20}/>
+              </button>
             </div>
           </div>
 
-          <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-            <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Your Productions</h2>
+          <div className="max-w-6xl mx-auto px-4">
+            <h2 className="text-2xl font-bold tracking-tight mb-6 mt-2">Shoots</h2>
 
+            {/* Empty state */}
             {productions.length === 0 && (
-              <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center text-sm text-neutral-500 rounded-[10px]">
-                No productions yet. Create one to get started.
+              <div className="py-12 text-center">
+                <div className="flex justify-center mb-4 text-neutral-700"><ICal size={48}/></div>
+                <h3 className="text-xl font-semibold mb-2">No shoots yet</h3>
+                <p className="text-sm text-neutral-400 mb-6">Create your first production to get started</p>
+                <Btn variant="primary" onClick={onNewProduction}><IPlus/>New Production</Btn>
               </div>
             )}
 
-            {groups.map(({ label, items }) => (
-              <div key={label} className="space-y-2">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-semibold pt-2">{label}</div>
-                {items.map((p) => (
-                  <div key={p.id} className="bg-neutral-900 border border-neutral-800 hover:border-sky-400/40 transition-colors p-4 flex items-center justify-between gap-4 flex-wrap rounded-[10px]">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
-                      {p.prodCo && <div className="text-sm text-neutral-400 truncate">{p.prodCo}</div>}
-                      <div className="flex items-center gap-2 flex-wrap mt-1">
-                        <span className="text-[11px] text-neutral-500 font-mono">{(p.crew ?? []).length} crew &nbsp;·&nbsp; {(p.days ?? []).length} days</span>
-                        {p.bestBoyMode && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {showWrapNow(p) && (
-                        <WrapNowBtn
-                          days={p.days ?? []}
-                          setDays={(updater) => onUpdateDays(p.id, updater)}
-                          showToast={showToast}
-                        />
-                      )}
-                      <Btn variant="ghost" size="sm" onClick={() => onDelete(p.id)} title="Delete production"><ITrash/></Btn>
-                      <Btn variant="primary" onClick={() => onOpen(p.id)}>Open →</Btn>
-                    </div>
-                  </div>
-                ))}
+            {/* Current shoot pinned at top */}
+            {currentShoot && (
+              <div className="mb-6">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Current Shoot</div>
+                {renderCard(currentShoot)}
               </div>
-            ))}
+            )}
+
+            {/* Month groups */}
+            <div className="space-y-8">
+              {groupsDisplay.map(({ label, items, monthTotal }) => (
+                <div key={label}>
+                  <div className="flex items-baseline justify-between mb-3">
+                    <div className="text-sm uppercase tracking-[0.15em] font-bold text-sky-400">{label}</div>
+                    <div className="text-base font-bold font-mono text-sky-400">{fmtGBP(monthTotal)}</div>
+                  </div>
+                  <div className="space-y-2">
+                    {items.map(renderCard)}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* Floating action button */}
+          <button
+            onClick={onNewProduction}
+            className="fixed z-30 bg-sky-400 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
+            style={{ width: 56, height: 56, bottom: 'calc(env(safe-area-inset-bottom) + 24px)', right: 24 }}
+            title="New Production"
+          >
+            <IPlus size={24}/>
+          </button>
+
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
         </div>
       );
