@@ -3756,7 +3756,7 @@ ${allPagesHTML}
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
-      const [gridView, setGridView] = useState(true);
+      const [gridView, setGridView] = useState(production.bestBoyMode);
       const [fixedCrewId, setFixedCrewId] = useState(null);
       const [fixedDate, setFixedDate] = useState(null);
 
@@ -3766,7 +3766,7 @@ ${allPagesHTML}
         const callH = parseHHMM(d.callTime) ?? 8;
         setForm({ ...d, ...makeBlankDay(crew[0].id), secondBreakStartTime: toHHMM(callH + 11) });
         setEditing("new");
-        setFixedCrewId(null);
+        setFixedCrewId(!production.bestBoyMode ? crew[0].id : null);
         setFixedDate(null);
       };
       const startNewAll = () => {
@@ -3885,14 +3885,16 @@ ${allPagesHTML}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><ICal size={16}/>Timesheet Entries</h2>
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
-                <button onClick={() => setGridView(false)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${!gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>List</button>
-                <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
-              </div>
+              {production.bestBoyMode && (
+                <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
+                  <button onClick={() => setGridView(false)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${!gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>List</button>
+                  <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
+                </div>
+              )}
               {crew.length > 0 && <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />}
               {!editing && crew.length > 0 && (
                 <>
-                  <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>
+                  {production.bestBoyMode && <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>}
                   <Btn variant="primary" onClick={startNew}><IPlus/>Add Day</Btn>
                 </>
               )}
@@ -4096,8 +4098,8 @@ ${allPagesHTML}
           <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
             <div className="flex items-baseline justify-between">
               <div>
-                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Everyone</div>
-                <div className="text-sm text-neutral-300 mt-0.5">{byCrew.length} crew · {days.length} day entries</div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{production.bestBoyMode ? "Everyone" : "Your Timesheet"}</div>
+                <div className="text-sm text-neutral-300 mt-0.5">{production.bestBoyMode ? `${byCrew.length} crew · ` : ""}{days.length} day entries</div>
               </div>
               <div className="font-mono font-bold text-neutral-100 text-lg">{fmtGBP(grandTotal)}</div>
             </div>
@@ -4111,7 +4113,9 @@ ${allPagesHTML}
 
             </div>
             <div className="text-[11px] text-neutral-500 leading-relaxed">
-              One PDF with a crew summary on page 1, then each crew member's full timesheet on their own page{byCrew.some(({ entries }) => entries.length > 1) ? '(s)' : ''}.
+              {production.bestBoyMode
+                ? `One PDF with a crew summary on page 1, then each crew member's full timesheet on their own page${byCrew.some(({ entries }) => entries.length > 1) ? '(s)' : ''}.`
+                : "Your full timesheet PDF — all day entries with a running total."}
             </div>
           </div>
 
@@ -4129,8 +4133,8 @@ ${allPagesHTML}
             </div>
           )}
 
-          {/* Per crew */}
-          <div className="space-y-2">
+          {/* Per crew — BB mode only */}
+          {production.bestBoyMode && <div className="space-y-2">
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Per Crew Member</div>
             {byCrew.map(({ crew: c, entries }) => {
               const sortedBC = [...entries].sort((a, b) => a.date.localeCompare(b.date));
@@ -4161,7 +4165,7 @@ ${allPagesHTML}
                 </div>
               );
             })}
-          </div>
+          </div>}
 
           <div className="bg-neutral-900 border border-neutral-800 p-3 text-[11px] text-neutral-400 leading-relaxed rounded-[10px]">
             <IInfo/> <span className="align-middle">On iPad: the Share Sheet opens — pick Messages, Mail, or AirDrop. If you hit Save to Files, the PDF goes to Files → On My iPad.</span>
@@ -4292,6 +4296,66 @@ ${allPagesHTML}
               </div>
             </SectionCard>
 
+            {!production.bestBoyMode && (production.crew ?? []).length > 0 && (() => {
+              const m = production.crew[0];
+              const setSoloField = (k) => (e) => setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, [k]: e.target.value } : c) }));
+              const setSoloNum   = (k) => (e) => setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, [k]: Number(e.target.value) } : c) }));
+              const setSoloBool  = (k) => (v) => setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, [k]: v } : c) }));
+              return (
+                <SectionCard title="Your role on this job">
+                  <p className="text-[11px] text-neutral-500 -mt-1">Overrides your global defaults for this production only.</p>
+                  <Field label="Role">
+                    <Select value={m.role} onChange={(e) => {
+                      const role = e.target.value;
+                      const d = ROLE_DEFAULTS[role] || {};
+                      setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, role, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null } : c) }));
+                    }}>
+                      {Object.entries(DEPARTMENTS).map(([dept, roles]) =>
+                        <optgroup key={dept} label={dept}>
+                          {Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}
+                        </optgroup>
+                      )}
+                    </Select>
+                  </Field>
+                  <Field label="Basic Day Rate (£)">
+                    <Input type="number" step="0.01" min="0" value={m.bdr} onChange={setSoloNum("bdr")} />
+                  </Field>
+                  <Field label="OT Coefficient">
+                    <Select value={m.otCoef} onChange={(e) => setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, otCoef: Number(e.target.value) } : c) }))}>
+                      <option value={1.5}>Grade I — 1.5×</option>
+                      <option value={1.25}>Grade II — 1.25×</option>
+                      <option value={1}>Grade III — 1.0×</option>
+                    </Select>
+                  </Field>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">VAT Registered</span>
+                    <Toggle value={m.vatRegistered} onChange={setSoloBool("vatRegistered")} ariaLabel="VAT registered" />
+                  </div>
+                  {m.vatRegistered && (
+                    <Field label="VAT Rate (%)">
+                      <Input type="number" min="0" max="100" step="1" value={m.vatRate ?? 20} onChange={setSoloNum("vatRate")} />
+                    </Field>
+                  )}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit Money</span>
+                    <Toggle value={m.kitMoneyEnabled} onChange={setSoloBool("kitMoneyEnabled")} ariaLabel="Kit money" />
+                  </div>
+                  {m.kitMoneyEnabled && (
+                    <Field label="Kit Money Amount (£)" hint="Added to each working day">
+                      <Input type="number" min="0" step="0.01" value={m.kitMoneyAmount ?? 0} onChange={setSoloNum("kitMoneyAmount")} />
+                    </Field>
+                  )}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Driver</div>
+                      <div className="text-[10px] text-neutral-500 mt-0.5">Shows truck call time on day entries</div>
+                    </div>
+                    <Toggle value={m.isDriver} onChange={setSoloBool("isDriver")} ariaLabel="Driver" />
+                  </div>
+                </SectionCard>
+              );
+            })()}
+
           </div>
         </div>
       );
@@ -4317,7 +4381,7 @@ const setDays = (updater) =>
     const next = typeof updater === "function" ? updater(prev.days ?? []) : updater;
     return { ...prev, days: next.map(migrateDay) };
   });
-      const [tab, setTab] = useState(production.isNew ? "setup" : "days");
+      const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [saveToast, setSaveToast] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
@@ -4372,6 +4436,10 @@ const setDays = (updater) =>
       const handleGridAddDate = (date) => setProduction(p => ({ ...p, gridDates: [...(p.gridDates || []), date] }));
       const handleGridAddWeek = (monday) => setProduction(p => ({ ...p, weekStarts: [...(p.weekStarts || []), monday] }));
       const handleGridAddCrew = () => { setOpenCrewForm(true); setTab("setup"); };
+
+      useEffect(() => {
+        if (!production.bestBoyMode && tab === "setup") setTab("days");
+      }, [production.bestBoyMode]);
 
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
@@ -4435,11 +4503,10 @@ const setDays = (updater) =>
           <div className="bg-neutral-950 sticky z-30 border-b border-neutral-800" style={{ top: 'calc(65px + env(safe-area-inset-top))' }}>
             <div className="max-w-6xl mx-auto px-4 py-2 flex justify-start overflow-x-auto">
               <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
-                {[
-                  { k: "setup",  label: "Setup",      I: IBriefcase },
-                  { k: "days",   label: "Timesheets", I: ICal },
-                  { k: "export", label: "Export",     I: IShare },
-                ].map(({ k, label, I }) => (
+                {(production.bestBoyMode
+                  ? [{ k: "setup", label: "Setup", I: IBriefcase }, { k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
+                  : [{ k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
+                ).map(({ k, label, I }) => (
                   <button key={k} onClick={() => setTab(k)}
                     className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-400 text-black" : "text-neutral-400"}`}>
                     <I/>{label}
@@ -4450,7 +4517,7 @@ const setDays = (updater) =>
           </div>
 
           <div className="max-w-6xl mx-auto px-4 py-6">
-            {tab === "setup" && (
+            {tab === "setup" && production.bestBoyMode && (
               <div className="space-y-8">
                 <ProductionForm production={production} setProduction={setProduction} onOpenSettings={() => setShowProdSettings(true)} />
                 <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} onPushUndo={pushUndo} />
