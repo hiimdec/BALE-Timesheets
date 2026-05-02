@@ -1,0 +1,24 @@
+{
+  "name": "bale-timesheets",
+  "version": "1.0.0",
+  "description": "Timesheets",
+  "main": "index.js",
+  "scripts": {
+    "generate-icons": "node scripts/generate-icons.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:34631/git/hiimdec/BALE-Timesheets"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@fontsource/inter": "^5.2.8"
+  }
+}
