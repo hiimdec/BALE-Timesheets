@@ -2801,8 +2801,8 @@ ${allPagesHTML}
                     </>
                   ) : (
                     <>
-                      <Btn size="sm" variant="ghost" onClick={() => startEdit(c)}><IPencil/></Btn>
-                      <Btn size="sm" variant="ghost" onClick={() => setConfirmRemove(c.id)}><ITrash/></Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => startEdit(c)} aria-label="Edit crew member"><IPencil/></Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => setConfirmRemove(c.id)} aria-label="Delete crew member"><ITrash/></Btn>
                     </>
                   )}
                 </div>
@@ -2859,7 +2859,7 @@ ${allPagesHTML}
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
                   {editing === "new" ? "Add crew member" : "Edit crew member"}
                 </div>
-                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5"><IX size={16}/></button>
+                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5" aria-label="Close"><IX size={16}/></button>
               </div>
             </div>
 
@@ -3052,7 +3052,7 @@ ${allPagesHTML}
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1">Cancellation Fees</div>
                 <div className="text-[11px] text-neutral-500">APA §7 — fees calculated relative to notice date</div>
               </div>
-              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5"><IX size={16}/></button>
+              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5" aria-label="Close"><IX size={16}/></button>
             </div>
 
             {/* ── Scrollable body ── */}
@@ -3077,7 +3077,7 @@ ${allPagesHTML}
                           <th key={col.id} className="px-2 py-1.5 border-r border-b border-neutral-700 bg-neutral-950 align-top" style={{ minWidth: 130 }}>
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-[9px] text-neutral-500 uppercase tracking-wider font-bold">Day {i+1}</span>
-                              <button onClick={() => removeColumn(col.id)} className="text-neutral-700 hover:text-red-400 text-[11px] leading-none px-0.5" title="Remove column">✕</button>
+                              <button onClick={() => removeColumn(col.id)} className="text-neutral-700 hover:text-red-400 text-[11px] leading-none px-0.5" title="Remove column" aria-label="Remove column">✕</button>
                             </div>
                             <Input type="date" value={col.date} onChange={(e) => updateColumn(col.id, { date: e.target.value })} className="text-[10px] px-1.5 py-1 mb-1" />
                             <Select value={col.dayType} onChange={(e) => updateColumn(col.id, { dayType: e.target.value })} className="text-[10px] px-1.5 py-1">
@@ -3087,7 +3087,7 @@ ${allPagesHTML}
                         ))}
                         <th className="px-3 py-2 border-r border-b border-l border-neutral-700 bg-neutral-950 text-right text-[10px] uppercase tracking-wider text-neutral-500 font-bold whitespace-nowrap">Total</th>
                         <th className="px-2 py-1.5 border-b border-neutral-700 bg-neutral-950 align-middle">
-                          <button onClick={addColumn} className="px-2 py-1 text-[10px] uppercase tracking-wider text-sky-400 hover:text-sky-300 font-bold whitespace-nowrap" title="Add a day column">+ Day</button>
+                          <button onClick={addColumn} className="px-2 py-1 text-[10px] uppercase tracking-wider text-sky-400 hover:text-sky-300 font-bold whitespace-nowrap" title="Add a day column" aria-label="Add a day column">+ Day</button>
                         </th>
                       </tr>
                     </thead>
@@ -3506,7 +3506,7 @@ ${allPagesHTML}
                     </div>
                   )}
                 </div>
-                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5"><IX size={16}/></button>
+                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5" aria-label="Close"><IX size={16}/></button>
               </div>
             </div>
 
@@ -3772,7 +3772,8 @@ ${allPagesHTML}
                         <button
                           onClick={() => onRemoveWeek(weekDates[0])}
                           className="text-[9px] text-red-700 hover:text-red-400 transition-colors font-bold leading-none px-0.5"
-                          title="Remove this week">✕</button>
+                          title="Remove this week"
+                          aria-label="Remove this week">✕</button>
                       </div>
                     </td>
                     {weekDates.map(date => {
@@ -3806,11 +3807,13 @@ ${allPagesHTML}
                           <div className="flex items-center justify-center gap-1.5 mt-0.5">
                             <button onClick={e => { e.stopPropagation(); onAssignAll(date, addDayType); }}
                               className="text-[8px] text-neutral-600 hover:text-sky-400 transition-colors font-bold uppercase tracking-wider"
-                              title="Add all crew for this date">+all</button>
+                              title="Add all crew for this date"
+                              aria-label="Assign all crew for this date">+all</button>
                             {days.some(d => d.date === date) && (
                               <button onClick={e => { e.stopPropagation(); onDuplicateDate(date); }}
                                 className="text-neutral-600 hover:text-sky-400 transition-colors"
-                                title="Duplicate this date"><ICopy size={10}/></button>
+                                title="Duplicate this date"
+                                aria-label="Duplicate this date"><ICopy size={10}/></button>
                             )}
                           </div>
                         </td>
@@ -3892,7 +3895,7 @@ ${allPagesHTML}
                         <span className="text-[11px] text-neutral-500">Updates all existing entries on this date</span>
                       </div>
                     </div>
-                    <button onClick={() => setEditingDate(null)} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5"><IX size={16}/></button>
+                    <button onClick={() => setEditingDate(null)} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5" aria-label="Close"><IX size={16}/></button>
                   </div>
                 </div>
 
@@ -4038,6 +4041,7 @@ ${allPagesHTML}
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
+      const [confirmOpts, setConfirmOpts] = useState(null);
       const [gridView, setGridView] = useState(production.bestBoyMode);
       const [fixedCrewId, setFixedCrewId] = useState(null);
       const [fixedDate, setFixedDate] = useState(null);
@@ -4102,8 +4106,13 @@ ${allPagesHTML}
       const handleRemoveAllOnDate = (date) => {
         const count = days.filter(d => d.date === date).length;
         if (count === 0) return;
-        if (!window.confirm(`Remove all ${count} entr${count === 1 ? 'y' : 'ies'} on ${fmtDate(date)}? This cannot be undone.`)) return;
-        setDays(prev => prev.filter(d => d.date !== date));
+        setConfirmOpts({
+          title: "Remove all entries?",
+          message: `Remove all ${count} entr${count === 1 ? 'y' : 'ies'} on ${fmtDate(date)}? This cannot be undone.`,
+          confirmLabel: "Remove",
+          confirmTone: "danger",
+          onConfirm: () => setDays(prev => prev.filter(d => d.date !== date)),
+        });
       };
 
       const handleDuplicateDate = (sourceDate) => {
@@ -4120,8 +4129,13 @@ ${allPagesHTML}
         const existing = days.filter(d => d.date === targetDate);
         const copies = source.map(d => ({ ...d, id: uid(), date: targetDate }));
         if (existing.length > 0) {
-          if (!window.confirm(`${fmtDateShort(targetDate)} already has ${existing.length} entr${existing.length === 1 ? 'y' : 'ies'}. Replace them?`)) return;
-          setDays(prev => [...prev.filter(d => d.date !== targetDate), ...copies]);
+          setConfirmOpts({
+            title: "Replace existing entries?",
+            message: `${fmtDateShort(targetDate)} already has ${existing.length} entr${existing.length === 1 ? 'y' : 'ies'}. Replace them?`,
+            confirmLabel: "Replace",
+            confirmTone: "danger",
+            onConfirm: () => setDays(prev => [...prev.filter(d => d.date !== targetDate), ...copies]),
+          });
         } else {
           setDays(prev => [...prev, ...copies]);
         }
@@ -4256,16 +4270,16 @@ ${allPagesHTML}
                             <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                               <div className="font-mono font-bold text-neutral-100 text-sm">{fmtGBP(calc.total)}</div>
                               <div className="flex gap-1">
-                                <Btn size="sm" variant="ghost" onClick={() => handleDayText(d, c)} title="Send as text"><IMessage/></Btn>
-                                <Btn size="sm" variant="ghost" onClick={() => startEdit(d)}><IPencil/></Btn>
-                                <Btn size="sm" variant="ghost" onClick={() => duplicate(d)} title="Duplicate"><IPlus/></Btn>
+                                <Btn size="sm" variant="ghost" onClick={() => handleDayText(d, c)} title="Send as text" aria-label="Send as text"><IMessage/></Btn>
+                                <Btn size="sm" variant="ghost" onClick={() => startEdit(d)} aria-label="Edit day"><IPencil/></Btn>
+                                <Btn size="sm" variant="ghost" onClick={() => duplicate(d)} title="Duplicate" aria-label="Duplicate day"><IPlus/></Btn>
                                 {confirmRemove === d.id ? (
                                   <>
                                     <Btn size="sm" variant="danger" onClick={() => remove(d.id)}>Del</Btn>
-                                    <Btn size="sm" variant="ghost" onClick={() => setConfirmRemove(null)}><IX/></Btn>
+                                    <Btn size="sm" variant="ghost" onClick={() => setConfirmRemove(null)} aria-label="Cancel delete"><IX/></Btn>
                                   </>
                                 ) : (
-                                  <Btn size="sm" variant="ghost" onClick={() => setConfirmRemove(d.id)}><ITrash/></Btn>
+                                  <Btn size="sm" variant="ghost" onClick={() => setConfirmRemove(d.id)} aria-label="Delete day"><ITrash/></Btn>
                                 )}
                               </div>
                             </div>
@@ -4279,6 +4293,16 @@ ${allPagesHTML}
             })}
           </div>
           )}
+          <ConfirmDialog
+            open={!!confirmOpts}
+            title={confirmOpts?.title}
+            message={confirmOpts?.message}
+            confirmLabel={confirmOpts?.confirmLabel || "Confirm"}
+            confirmTone={confirmOpts?.confirmTone || "danger"}
+            cancelLabel="Cancel"
+            onConfirm={() => { const f = confirmOpts?.onConfirm; setConfirmOpts(null); if (f) f(); }}
+            onCancel={() => setConfirmOpts(null)}
+          />
         </div>
       );
     }
@@ -4487,7 +4511,7 @@ ${allPagesHTML}
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
               </button>
               <div className="flex-1 text-center font-bold uppercase tracking-tight text-sm">{headerLabel} settings</div>
@@ -4686,7 +4710,7 @@ ${allPagesHTML}
               <div style={{ fontSize: 13, fontWeight: 700, color: '#f5f5f5', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Breakdown</div>
               {production.title && <div style={{ fontSize: 11, color: '#737373', marginTop: 2 }}>{production.title}</div>}
             </div>
-            <button onClick={onClose} style={{ color: '#a3a3a3', padding: 8, borderRadius: 8, WebkitTapHighlightColor: 'transparent' }}><IX size={18}/></button>
+            <button onClick={onClose} style={{ color: '#a3a3a3', padding: 8, borderRadius: 8, WebkitTapHighlightColor: 'transparent' }} aria-label="Close"><IX size={18}/></button>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 16, paddingBottom: 16 }}>
@@ -4804,7 +4828,7 @@ ${allPagesHTML}
           >
             <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-700 flex items-center justify-between">
               <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Jump to Day</div>
-              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5"><IX size={16}/></button>
+              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5" aria-label="Close"><IX size={16}/></button>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
               {sorted.map((day, idx) => {
@@ -5124,7 +5148,7 @@ const setDays = (updater) =>
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
-      const [resetMode, setResetMode] = useState(false);
+      const [confirmOpts, setConfirmOpts] = useState(null);
       const [openCrewForm, setOpenCrewForm] = useState(false);
       const [showCancelModal, setShowCancelModal] = useState(false);
       const undoRef = useRef(null);
@@ -5184,7 +5208,6 @@ const setDays = (updater) =>
 
       const clearAll = () => {
         setProduction((prev) => ({ id: prev.id, title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY, gridDates: [], weekStarts: [], cancellationData: null }));
-        setResetMode(false);
       };
 
       const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c, findPrevDay(days, d)).total : s; }, 0);
@@ -5220,38 +5243,38 @@ const setDays = (updater) =>
             />
           )}
 
-          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-            <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <button onClick={onBack} className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-400 transition-colors font-bold mb-1 flex items-center gap-1">← {(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? `${n}'s TIMEMACHINE` : "TIMEMACHINE"; })()}</button>
-                <div className="font-bold uppercase tracking-tight leading-none text-sm">{production.title || <span className="text-neutral-500">Untitled Production</span>}</div>
-              </div>
-              <div className="flex items-center gap-3">
-                {resetMode ? (
-                  <div className="flex gap-1">
-                    <Btn size="sm" variant="danger" onClick={clearAll}>Confirm Reset</Btn>
-                    <Btn size="sm" variant="ghost" onClick={() => setResetMode(false)}>Cancel</Btn>
-                  </div>
-                ) : (
-                  <Btn size="sm" variant="ghost" onClick={() => setResetMode(true)}><IReset/>Reset</Btn>
-                )}
-                <button onClick={() => setShowProdSettings(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-lg hover:bg-neutral-800" title="Production settings"><IGear size={16}/></button>
+          <div className="sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="border-b border-sky-400 bg-black">
+              <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <button onClick={onBack} className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-400 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to productions list">← {(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? `${n}'s TIMEMACHINE` : "TIMEMACHINE"; })()}</button>
+                  <div className="font-bold uppercase tracking-tight leading-none text-sm">{production.title || <span className="text-neutral-500">Untitled Production</span>}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Btn size="sm" variant="ghost" onClick={() => setConfirmOpts({
+                    title: "Reset production data?",
+                    message: `Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays. This cannot be undone.`,
+                    confirmLabel: "Reset",
+                    confirmTone: "danger",
+                    onConfirm: clearAll,
+                  })}><IReset/>Reset</Btn>
+                  <button onClick={() => setShowProdSettings(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-lg hover:bg-neutral-800" aria-label="Production settings" title="Production settings"><IGear size={16}/></button>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="bg-neutral-950 sticky z-30 border-b border-neutral-800" style={{ top: 'calc(65px + env(safe-area-inset-top))' }}>
-            <div className="max-w-6xl mx-auto px-4 py-2 flex justify-start overflow-x-auto">
-              <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
-                {(production.bestBoyMode
-                  ? [{ k: "setup", label: "Setup", I: IBriefcase }, { k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
-                  : [{ k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
-                ).map(({ k, label, I }) => (
-                  <button key={k} onClick={() => setTab(k)}
-                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-400 text-black" : "text-neutral-400"}`}>
-                    <I/>{label}
-                  </button>
-                ))}
+            <div className="bg-neutral-950 border-b border-neutral-800">
+              <div className="max-w-6xl mx-auto px-4 py-2 flex justify-start overflow-x-auto">
+                <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
+                  {(production.bestBoyMode
+                    ? [{ k: "setup", label: "Setup", I: IBriefcase }, { k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
+                    : [{ k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
+                  ).map(({ k, label, I }) => (
+                    <button key={k} onClick={() => setTab(k)}
+                      className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-400 text-black" : "text-neutral-400"}`}>
+                      <I/>{label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -5283,6 +5306,16 @@ const setDays = (updater) =>
           </div>
 
           <BottomMoneyPill total={totalShoot} onBack={onBack} onViewCalc={() => setShowCalcView(true)} />
+          <ConfirmDialog
+            open={!!confirmOpts}
+            title={confirmOpts?.title}
+            message={confirmOpts?.message}
+            confirmLabel={confirmOpts?.confirmLabel || "Confirm"}
+            confirmTone={confirmOpts?.confirmTone || "danger"}
+            cancelLabel="Cancel"
+            onConfirm={() => { const f = confirmOpts?.onConfirm; setConfirmOpts(null); if (f) f(); }}
+            onCancel={() => setConfirmOpts(null)}
+          />
         </div>
       );
     }
@@ -5303,7 +5336,7 @@ const setDays = (updater) =>
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center">
-              <button onClick={onCancel} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Cancel">
+              <button onClick={onCancel} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Cancel" aria-label="Cancel">
                 <IX size={18}/>
               </button>
             </div>
@@ -5359,10 +5392,10 @@ const setDays = (updater) =>
       );
     };
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onImport, onResetAll }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onImport, onResetAll, productionCount = 0 }) {
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
-      const [resetConfirm, setResetConfirm] = useState(false);
+      const [confirmOpts, setConfirmOpts] = useState(null);
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -5377,7 +5410,17 @@ const setDays = (updater) =>
               window.alert('Invalid backup file — not a valid productions export.');
               return;
             }
-            onImport(arr);
+            const n = arr.length;
+            const msg = productionCount > 0
+              ? `Import ${n} production${n === 1 ? '' : 's'}? This will replace your ${productionCount} existing production${productionCount === 1 ? '' : 's'}. This cannot be undone.`
+              : `Import ${n} production${n === 1 ? '' : 's'}?`;
+            setConfirmOpts({
+              title: "Import productions?",
+              message: msg,
+              confirmLabel: "Import",
+              confirmTone: "primary",
+              onConfirm: () => onImport(arr),
+            });
           } catch {
             window.alert('Could not read file — is it a valid JSON backup?');
           }
@@ -5409,7 +5452,7 @@ const setDays = (updater) =>
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
               </button>
               <div className="flex-1 text-center font-bold uppercase tracking-tight text-sm">Settings</div>
@@ -5547,20 +5590,14 @@ const setDays = (updater) =>
                   <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with the backup.</p>
                 </div>
                 <div className="border-t border-neutral-800 pt-3">
-                  {resetConfirm ? (
-                    <div className="space-y-2">
-                      <p className="text-[11px] text-red-400">This will permanently delete all productions and preferences. Are you sure?</p>
-                      <div className="flex gap-2">
-                        <Btn variant="danger" size="sm" onClick={() => { setResetConfirm(false); onResetAll(); }}>Yes, reset everything</Btn>
-                        <Btn variant="ghost" size="sm" onClick={() => setResetConfirm(false)}>Cancel</Btn>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <Btn variant="danger" onClick={() => setResetConfirm(true)}><IReset/>Reset all data</Btn>
-                      <p className="text-[10px] text-neutral-500 mt-1">Clears all productions and settings. Cannot be undone.</p>
-                    </div>
-                  )}
+                  <Btn variant="danger" onClick={() => setConfirmOpts({
+                    title: "Reset everything?",
+                    message: "This deletes ALL productions, crew data, and settings. Cannot be undone. Consider exporting a backup first.",
+                    confirmLabel: "Reset everything",
+                    confirmTone: "danger",
+                    onConfirm: onResetAll,
+                  })}><IReset/>Reset all data</Btn>
+                  <p className="text-[10px] text-neutral-500 mt-1">Clears all productions and settings. Cannot be undone.</p>
                 </div>
               </div>
             </SectionCard>
@@ -5583,6 +5620,16 @@ const setDays = (updater) =>
             </SectionCard>
 
           </div>
+          <ConfirmDialog
+            open={!!confirmOpts}
+            title={confirmOpts?.title}
+            message={confirmOpts?.message}
+            confirmLabel={confirmOpts?.confirmLabel || "Confirm"}
+            confirmTone={confirmOpts?.confirmTone || "danger"}
+            cancelLabel="Cancel"
+            onConfirm={() => { const f = confirmOpts?.onConfirm; setConfirmOpts(null); if (f) f(); }}
+            onCancel={() => setConfirmOpts(null)}
+          />
         </div>
       );
     }
@@ -5592,6 +5639,14 @@ const setDays = (updater) =>
     function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onUpdateDays, onOpenSettings, userPrefs }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+      const [confirmOpts, setConfirmOpts] = useState(null);
+      const confirmDelete = (p) => setConfirmOpts({
+        title: "Delete production?",
+        message: `Delete "${p.title || 'Untitled Production'}"? This cannot be undone.`,
+        confirmLabel: "Delete",
+        confirmTone: "danger",
+        onConfirm: () => onDelete(p.id),
+      });
       const todayStr = new Date().toISOString().slice(0, 10);
       const displayName = userPrefs?.displayName?.trim() || "";
 
@@ -5668,8 +5723,9 @@ const setDays = (updater) =>
                   {hasToday && <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
                   {hasToday && <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
                   <button
-                    onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
+                    onClick={() => confirmDelete(p)}
                     className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10 ml-auto"
+                    aria-label="Delete production"
                     title="Delete production"
                   ><ITrash size={16}/></button>
                 </div>
@@ -5697,8 +5753,9 @@ const setDays = (updater) =>
                   </>
                 )}
                 <button
-                  onClick={() => { if (window.confirm(`Delete "${p.title || 'Untitled Production'}"?\nThis cannot be undone.`)) onDelete(p.id); }}
+                  onClick={() => confirmDelete(p)}
                   className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10"
+                  aria-label="Delete production"
                   title="Delete production"
                 ><ITrash size={16}/></button>
               </div>
@@ -5716,7 +5773,7 @@ const setDays = (updater) =>
                 {displayName && <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-1">{displayName}'s</div>}
                 <h1 className="text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
               </div>
-              <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800 mt-1" title="Settings">
+              <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800 mt-1" title="Settings" aria-label="Settings">
                 <IGear size={20}/>
               </button>
             </div>
@@ -5765,11 +5822,22 @@ const setDays = (updater) =>
             className="fixed z-30 bg-sky-400 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
             style={{ width: 56, height: 56, bottom: 'calc(env(safe-area-inset-bottom) + 24px)', right: 24 }}
             title="New Production"
+            aria-label="New Production"
           >
             <IPlus size={24}/>
           </button>
 
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
+          <ConfirmDialog
+            open={!!confirmOpts}
+            title={confirmOpts?.title}
+            message={confirmOpts?.message}
+            confirmLabel={confirmOpts?.confirmLabel || "Confirm"}
+            confirmTone={confirmOpts?.confirmTone || "danger"}
+            cancelLabel="Cancel"
+            onConfirm={() => { const f = confirmOpts?.onConfirm; setConfirmOpts(null); if (f) f(); }}
+            onCancel={() => setConfirmOpts(null)}
+          />
         </div>
       );
     }
@@ -5806,7 +5874,6 @@ const setDays = (updater) =>
       const openProduction = (id) => setOpenId(id);
       const closeProduction = () => setOpenId(null);
       const deleteProduction = (id) => {
-        if (!window.confirm("Delete this production? This cannot be undone.")) return;
         setProductions((prev) => prev.filter((p) => p.id !== id));
         if (openId === id) setOpenId(null);
       };
@@ -5864,11 +5931,6 @@ const setDays = (updater) =>
       };
 
       const handleImport = (parsed) => {
-        const n = parsed.length;
-        const msg = productions.length > 0
-          ? `Import ${n} production${n === 1 ? '' : 's'}? This will replace your ${productions.length} existing production${productions.length === 1 ? '' : 's'}. This cannot be undone.`
-          : `Import ${n} production${n === 1 ? '' : 's'}?`;
-        if (!window.confirm(msg)) return;
         setProductions(parsed);
       };
 
@@ -5897,6 +5959,7 @@ const setDays = (updater) =>
             onExport={handleExport}
             onImport={handleImport}
             onResetAll={handleResetAll}
+            productionCount={productions.length}
           />
         );
       }
