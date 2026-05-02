@@ -3443,6 +3443,9 @@ ${allPagesHTML}
           >
             {/* ── Fixed header ── */}
             <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
+              <button onClick={onCancel} className="text-[11px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-400 transition-colors flex items-center gap-1 mb-2">
+                <IArrowLeft size={12}/> All Days
+              </button>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1.5">{modalTitle}</div>
@@ -3908,7 +3911,7 @@ ${allPagesHTML}
       };
     }
 
-    function WrapNowBtn({ days, setDays, showToast }) {
+    function WrapNowBtn({ days, setDays, showToast, compact }) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const todayEntries = days.filter(d => d.date === todayStr);
       const alreadyWrapped = todayEntries.some(d => d.wrapTime && d.wrapTime.length > 0);
@@ -3936,19 +3939,20 @@ ${allPagesHTML}
         doWrap();
       };
 
+      const cls = compact
+        ? `inline-flex items-center justify-center text-[9px] uppercase tracking-wider font-bold rounded-lg px-2.5 transition-colors ${confirming ? "border border-amber-500 text-amber-700 bg-amber-100" : "border border-orange-400/70 text-orange-700 hover:border-orange-500"}`
+        : `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-orange-500/50 text-orange-300 hover:border-orange-400"}`;
+
       return (
-        <button
-          onClick={handleClick}
-          className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-orange-500/50 text-orange-300 hover:border-orange-400"}`}
-          style={{ minWidth: 96, height: 36 }}
-          title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}
-        >
+        <button onClick={handleClick} className={cls}
+          style={{ minWidth: compact ? 64 : 96, height: compact ? 36 : 36, flexShrink: 0 }}
+          title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}>
           {confirming ? "Confirm?" : "WrapNow"}
         </button>
       );
     }
 
-    function LunchNowBtn({ days, setDays, showToast }) {
+    function LunchNowBtn({ days, setDays, showToast, compact }) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const todayEntries = days.filter(d => d.date === todayStr);
       const alreadyLunched = todayEntries.some(d => d.lunchStartTime && d.lunchStartTime.length > 0);
@@ -3976,19 +3980,20 @@ ${allPagesHTML}
         doLunch();
       };
 
+      const cls = compact
+        ? `inline-flex items-center justify-center text-[9px] uppercase tracking-wider font-bold rounded-lg px-2.5 transition-colors ${confirming ? "border border-amber-500 text-amber-700 bg-amber-100" : "border border-sky-400/70 text-sky-700 hover:border-sky-500"}`
+        : `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`;
+
       return (
-        <button
-          onClick={handleClick}
-          className={`inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`}
-          style={{ minWidth: 96, height: 36 }}
-          title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}
-        >
+        <button onClick={handleClick} className={cls}
+          style={{ minWidth: compact ? 64 : 96, height: compact ? 36 : 36, flexShrink: 0 }}
+          title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}>
           {confirming ? "Confirm?" : "LunchNow"}
         </button>
       );
     }
 
-    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek }) {
+    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, autoOpenForToday = false, onAutoOpened }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -4116,6 +4121,20 @@ ${allPagesHTML}
         return Object.entries(by).sort(([a], [b]) => a.localeCompare(b));
       }, [days, crew]);
 
+      // Solo mode: auto-open editor for today on first mount
+      useEffect(() => {
+        if (!autoOpenForToday) return;
+        if (!crew[0]) return;
+        const todayStr = todayISO();
+        const todayDay = days.find(d => d.date === todayStr && d.crewId === crew[0].id);
+        if (todayDay) {
+          startEdit(todayDay);
+        } else {
+          startNew();
+        }
+        if (onAutoOpened) onAutoOpened();
+      }, [autoOpenForToday]); // eslint-disable-line react-hooks/exhaustive-deps
+
       return (
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -4127,10 +4146,6 @@ ${allPagesHTML}
                   <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
                 </div>
               )}
-              {crew.length > 0 && <>
-                <LunchNowBtn days={days} setDays={setDays} showToast={showToast} />
-                <WrapNowBtn days={days} setDays={setDays} showToast={showToast} />
-              </>}
               {!editing && crew.length > 0 && (
                 <>
                   {production.bestBoyMode && <Btn variant="subtle" onClick={startNewAll}><IUsers2/>Add Day (All Crew)</Btn>}
@@ -4159,9 +4174,10 @@ ${allPagesHTML}
           )}
 
           {!gridView && days.length === 0 && !editing && crew.length > 0 && (
-            <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-[10px]">
-              <div className="flex justify-center mb-2 text-neutral-700"><ICal size={32}/></div>
-              <div className="text-neutral-500 text-sm">No day entries yet.</div>
+            <div className="border-2 border-dashed border-neutral-700 rounded-[12px] p-8 text-center">
+              <div className="flex justify-center mb-3 text-neutral-700"><ICal size={36}/></div>
+              <p className="text-sm text-neutral-400 mb-4">No days yet — log today to get started.</p>
+              <Btn variant="primary" onClick={startNew}><IPlus/>Add Day</Btn>
             </div>
           )}
 
@@ -4606,27 +4622,27 @@ ${allPagesHTML}
 
     /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
 
-    function BottomMoneyPill({ total, onBack, onViewCalc }) {
+    function BottomMoneyPill({ total, onBack, onViewCalc, showActions, days, setDays, showToast }) {
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
           <div style={{ height: 56, background: '#f5f5f5', borderRadius: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', overflow: 'hidden', pointerEvents: 'auto' }}>
-            <button
-              onClick={onBack}
-              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}
-            >
+            <button onClick={onBack}
+              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
               <IArrowLeft size={20}/>
             </button>
-            <button
-              onClick={onViewCalc}
-              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#171717', WebkitTapHighlightColor: 'transparent' }}
-            >
-              <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(total)}</span>
-              <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View breakdown</span>
+            {showActions && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, paddingRight: 6 }}>
+                <LunchNowBtn days={days} setDays={setDays} showToast={showToast} compact />
+                <WrapNowBtn  days={days} setDays={setDays} showToast={showToast} compact />
+              </div>
+            )}
+            <button onClick={onViewCalc}
+              style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#171717', WebkitTapHighlightColor: 'transparent', overflow: 'hidden' }}>
+              <span style={{ fontWeight: 700, fontSize: showActions ? 15 : 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(total)}</span>
+              {!showActions && <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View breakdown</span>}
             </button>
-            <button
-              onClick={onBack}
-              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}
-            >
+            <button onClick={onBack}
+              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
               <IHome size={20}/>
             </button>
           </div>
@@ -4714,6 +4730,7 @@ const setDays = (updater) =>
       const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
+      const [hasAutoOpened, setHasAutoOpened] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
       const [openCrewForm, setOpenCrewForm] = useState(false);
@@ -4779,6 +4796,7 @@ const setDays = (updater) =>
       };
 
       const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c, findPrevDay(days, d)).total : s; }, 0);
+      const hasTodayDay = !production.bestBoyMode && crew.length > 0 && days.some(d => d.date === todayISO() && d.crewId === crew[0]?.id);
 
       if (showProdSettings) {
         return (
@@ -4865,7 +4883,7 @@ const setDays = (updater) =>
                 onClose={() => setShowCancelModal(false)}
               />
             )}
-            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />}
+            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} autoOpenForToday={!production.bestBoyMode && !hasAutoOpened} onAutoOpened={() => setHasAutoOpened(true)} />}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
           </div>
 
@@ -4873,7 +4891,7 @@ const setDays = (updater) =>
             Rates per APA Sept 2025
           </div>
 
-          <BottomMoneyPill total={totalShoot} onBack={onBack} onViewCalc={() => setShowCalcView(true)} />
+          <BottomMoneyPill total={totalShoot} onBack={onBack} onViewCalc={() => setShowCalcView(true)} showActions={hasTodayDay} days={days} setDays={setDays} showToast={showToast} />
         </div>
       );
     }
