@@ -2649,6 +2649,24 @@ ${allPagesHTML}
       </div>
     );
 
+    function NowBtn({ tone = "sky", onClick, label }) {
+      const colors = {
+        sky: "bg-sky-600 hover:bg-sky-500 text-white",
+        orange: "bg-orange-600 hover:bg-orange-500 text-white",
+        green: "bg-green-600 hover:bg-green-500 text-white",
+      };
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          className={`flex-shrink-0 text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md transition-colors ${colors[tone] || colors.sky}`}
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+        >
+          {label ?? "Now"}
+        </button>
+      );
+    }
+
     /* ═══════════════════════════ PRODUCTION FORM ═══════════════════════════ */
 
     function ProductionForm({ production, setProduction, onOpenSettings }) {
@@ -3131,10 +3149,19 @@ ${allPagesHTML}
 
     /* ═══════════════════════════ DAY ENTRY FORM ═══════════════════════════ */
 
-    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null }) {
+    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast }) {
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
+
+      const computeNowHHMM = () => {
+        const now = new Date();
+        const totalMins = now.getHours() * 60 + now.getMinutes();
+        const rounded = Math.round(totalMins / 5) * 5;
+        const h = Math.floor(rounded / 60) % 24;
+        const m = rounded % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      };
 
       const onDayTypeChange = (dayType) => {
         const callH = parseHHMM(v.callTime);
@@ -3231,10 +3258,16 @@ ${allPagesHTML}
               )}
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Call Time" hint={callH !== null && callH < 5 ? "→ Night shoot (pre-5am)" : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)" : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call" : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)" : ""}>
-                  <TimeInput value={v.callTime} onChange={(e) => onCallChange(e.target.value)} />
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 min-w-0"><TimeInput value={v.callTime} onChange={(e) => onCallChange(e.target.value)} /></div>
+                    {isToday && <NowBtn tone="sky" onClick={() => { const t = computeNowHHMM(); onCallChange(t); showToast?.(`Call ${t}`); }} />}
+                  </div>
                 </Field>
                 <Field label="Wrap Time" hint={autoNextDay ? "Wrap is next day (auto-detected)" : ""}>
-                  <TimeInput value={v.wrapTime} onChange={(e) => set({ wrapTime: e.target.value })} />
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 min-w-0"><TimeInput value={v.wrapTime} onChange={(e) => set({ wrapTime: e.target.value })} /></div>
+                    {isToday && <NowBtn tone="orange" onClick={() => { const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); }} />}
+                  </div>
                 </Field>
               </div>
             </div>
@@ -3246,7 +3279,10 @@ ${allPagesHTML}
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Lunch Start Time" hint={bs ? `Deadline: ${toHHMM(bs.lateThreshold)} · CWD threshold: ${toHHMM(bs.cwdThreshold)}` : ""}>
-                    <TimeInput value={v.lunchStartTime || ""} onChange={(e) => set({ lunchStartTime: e.target.value })} disabled={Number(v.lunchDurationMins) === 0} />
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 min-w-0"><TimeInput value={v.lunchStartTime || ""} onChange={(e) => set({ lunchStartTime: e.target.value })} disabled={Number(v.lunchDurationMins) === 0} /></div>
+                      {isToday && Number(v.lunchDurationMins) !== 0 && <NowBtn tone="sky" onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }} />}
+                    </div>
                   </Field>
                   <Field label="Lunch Duration">
                     <Select value={Number(v.lunchDurationMins ?? 60)} onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}>
@@ -4692,6 +4728,114 @@ ${allPagesHTML}
       );
     }
 
+    function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", confirmTone = "primary", cancelLabel = "Cancel", onConfirm, onCancel }) {
+      useEffect(() => {
+        if (!open) return;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, [open]);
+
+      if (!open) return null;
+
+      const confirmColors = {
+        danger: "bg-red-600 hover:bg-red-500 text-white",
+        primary: "bg-sky-600 hover:bg-sky-500 text-white",
+      };
+
+      return (
+        <div
+          className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
+          onClick={onCancel}
+        >
+          <div
+            className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+            style={{ maxWidth: 400 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 pt-5 pb-4">
+              {title && <div className="text-sm font-bold text-neutral-100 mb-2">{title}</div>}
+              {message && <div className="text-sm text-neutral-400 leading-snug">{message}</div>}
+            </div>
+            <div className="flex flex-col-reverse gap-2 px-4 pb-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                {cancelLabel}
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className={`w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors ${confirmColors[confirmTone] || confirmColors.primary}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                {confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function DayJumpSheet({ open, days, currentDayId, production, crew, onPick, onClose }) {
+      useEffect(() => {
+        if (!open) return;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, [open]);
+
+      if (!open) return null;
+
+      const sorted = [...days].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+      return (
+        <div
+          className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.78)", zIndex: 50 }}
+          onClick={onClose}
+        >
+          <div
+            className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 flex flex-col"
+            style={{ maxWidth: 480, maxHeight: "calc(80dvh - env(safe-area-inset-bottom))" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-700 flex items-center justify-between">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Jump to Day</div>
+              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5"><IX size={16}/></button>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+              {sorted.map((day, idx) => {
+                const c = crew.find(cc => cc.id === day.crewId);
+                const calc = c ? calcForDisplay(production, day, c, findPrevDay(days, day)) : null;
+                const isCurrent = day.id === currentDayId;
+                const dateStr = day.date ? new Date(day.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "—";
+                const times = (day.callTime && day.wrapTime) ? `${day.callTime} – ${day.wrapTime}` : "";
+                return (
+                  <button
+                    key={day.id}
+                    type="button"
+                    onClick={() => { onPick(day.id); onClose(); }}
+                    className={`w-full flex items-center gap-3 px-5 py-3.5 border-b border-neutral-800 text-left transition-colors ${isCurrent ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
+                    style={isCurrent ? { borderLeft: '3px solid #38bdf8' } : { borderLeft: '3px solid transparent' }}
+                  >
+                    <div className="text-xs font-bold text-neutral-400 w-8 flex-shrink-0">D{idx + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-400" : "text-neutral-200"}`}>{dateStr}</div>
+                      {(times || day.dayType) && <div className="text-[11px] text-neutral-500">{[times, day.dayType || "Shoot Day"].filter(Boolean).join(" · ")}</div>}
+                    </div>
+                    {calc && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(calc.total)}</div>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ SOLO DAY PAGE (full-page editor for solo mode) ═══════════════════════════ */
 
     function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs }) {
@@ -4768,13 +4912,14 @@ ${allPagesHTML}
         setDays(prev => prev.map(d => d.id === currentDay.id ? updatedDay : d));
       };
 
-      const deleteCurrentDay = () => {
+      const [confirmDelete, setConfirmDelete] = useState(false);
+
+      const requestDeleteCurrentDay = () => { if (currentDay) setConfirmDelete(true); };
+
+      const performDelete = () => {
+        setConfirmDelete(false);
         if (!currentDay) return;
         if (sortedDays.length === 1) {
-          const ok = window.confirm(
-            `This is the only day in "${production.title || 'this production'}". Deleting it will delete the entire production. Continue?`
-          );
-          if (!ok) return;
           onDeleteProduction();
           return;
         }
@@ -4791,6 +4936,7 @@ ${allPagesHTML}
 
       const [showCalc, setShowCalc] = useState(false);
       const [showSettings, setShowSettings] = useState(false);
+      const [showJumpSheet, setShowJumpSheet] = useState(false);
 
       const totalShoot = useMemo(() => {
         return days.reduce((sum, d) => {
@@ -4819,6 +4965,14 @@ ${allPagesHTML}
         );
       }
 
+      const isLastDay = sortedDays.length === 1;
+      const deleteDateLabel = currentDay.date
+        ? new Date(currentDay.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+        : "this day";
+      const deleteConfirmMessage = isLastDay
+        ? `"${production.title || 'This production'}" has only this day. Deleting it will also delete the entire production.`
+        : `Delete ${deleteDateLabel} (Day ${currentIdx + 1} of ${sortedDays.length})?`;
+
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 80px)' }}>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
@@ -4842,14 +4996,19 @@ ${allPagesHTML}
             </div>
           </div>
 
-          {/* Sub-header — Day X of N + temp Delete (••• menu deferred) */}
+          {/* Sub-header — Day X of N (tappable → jump sheet) + Delete */}
           <div className="max-w-3xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between gap-3">
-            <div className="flex items-baseline gap-2">
+            <button
+              type="button"
+              onClick={() => setShowJumpSheet(true)}
+              className="flex items-baseline gap-2 hover:opacity-70 transition-opacity"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
               <span className="text-xl font-bold tracking-tight text-sky-400">Day {currentIdx + 1}</span>
               <span className="text-sm text-neutral-500">of {sortedDays.length}</span>
-            </div>
-            <button onClick={deleteCurrentDay}
-              className="text-[10px] uppercase tracking-wider font-bold text-red-400 hover:text-red-300 px-2.5 py-1 rounded-md border border-red-900/60 hover:border-red-700 transition-colors"
+            </button>
+            <button onClick={requestDeleteCurrentDay}
+              className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-red-400 px-2.5 py-1 rounded-md border border-neutral-700/60 hover:border-red-900/60 transition-colors"
               title="Delete this day">
               Delete day
             </button>
@@ -4864,6 +5023,8 @@ ${allPagesHTML}
               allCrewMode={false}
               fixedCrewId={crew[0]?.id ?? null}
               fixedDate={null}
+              isToday={currentDay?.date === todayISO()}
+              showToast={showToast}
             />
           </div>
 
@@ -4914,6 +5075,27 @@ ${allPagesHTML}
               onClose={() => setShowCalc(false)}
             />
           )}
+
+          <DayJumpSheet
+            open={showJumpSheet}
+            days={days}
+            currentDayId={currentDayId}
+            production={production}
+            crew={crew}
+            onPick={(id) => setCurrentDayId(id)}
+            onClose={() => setShowJumpSheet(false)}
+          />
+
+          <ConfirmDialog
+            open={confirmDelete}
+            title={isLastDay ? "Delete last day?" : "Delete this day?"}
+            message={deleteConfirmMessage}
+            confirmLabel={isLastDay ? "Delete Production" : "Delete Day"}
+            confirmTone="danger"
+            cancelLabel="Cancel"
+            onConfirm={performDelete}
+            onCancel={() => setConfirmDelete(false)}
+          />
         </div>
       );
     }
