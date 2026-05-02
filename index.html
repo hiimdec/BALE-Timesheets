@@ -2555,6 +2555,7 @@ ${allPagesHTML}
     const IUpload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>;
     const IGear = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>;
     const IArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
+    const IArrowRight = (p) => <Icon {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></Icon>;
     const IHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
@@ -3997,7 +3998,7 @@ ${allPagesHTML}
       );
     }
 
-    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, autoOpenForToday = false, onAutoOpened }) {
+    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -4124,20 +4125,6 @@ ${allPagesHTML}
         }));
         return Object.entries(by).sort(([a], [b]) => a.localeCompare(b));
       }, [days, crew]);
-
-      // Solo mode: auto-open editor for today on first mount
-      useEffect(() => {
-        if (!autoOpenForToday) return;
-        if (!crew[0]) return;
-        const todayStr = todayISO();
-        const todayDay = days.find(d => d.date === todayStr && d.crewId === crew[0].id);
-        if (todayDay) {
-          startEdit(todayDay);
-        } else {
-          startNew();
-        }
-        if (onAutoOpened) onAutoOpened();
-      }, [autoOpenForToday]); // eslint-disable-line react-hooks/exhaustive-deps
 
       return (
         <div className="space-y-4">
@@ -4626,26 +4613,20 @@ ${allPagesHTML}
 
     /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
 
-    function BottomMoneyPill({ total, onBack, onViewCalc, showActions, days, setDays, showToast }) {
+    function BottomMoneyPill({ total, onBack, onViewCalc }) {
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
           <div style={{ height: 56, background: '#f5f5f5', borderRadius: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', overflow: 'hidden', pointerEvents: 'auto' }}>
-            <button onClick={onBack}
+            <button onClick={onBack} aria-label="Back to productions"
               style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
               <IArrowLeft size={20}/>
             </button>
-            {showActions && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, paddingRight: 6 }}>
-                <LunchNowBtn days={days} setDays={setDays} showToast={showToast} compact />
-                <WrapNowBtn  days={days} setDays={setDays} showToast={showToast} compact />
-              </div>
-            )}
-            <button onClick={onViewCalc}
+            <button onClick={onViewCalc} aria-label="View breakdown"
               style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#171717', WebkitTapHighlightColor: 'transparent', overflow: 'hidden' }}>
-              <span style={{ fontWeight: 700, fontSize: showActions ? 15 : 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(total)}</span>
-              {!showActions && <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View breakdown</span>}
+              <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(total)}</span>
+              <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View breakdown</span>
             </button>
-            <button onClick={onBack}
+            <button onClick={onBack} aria-label="Back to productions"
               style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
               <IHome size={20}/>
             </button>
@@ -4711,6 +4692,232 @@ ${allPagesHTML}
       );
     }
 
+    /* ═══════════════════════════ SOLO DAY PAGE (full-page editor for solo mode) ═══════════════════════════ */
+
+    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs }) {
+      const crew = production.crew ?? [];
+      const days = production.days ?? [];
+
+      const setDays = (updater) =>
+        setProduction(prev => {
+          const next = typeof updater === "function" ? updater(prev.days ?? []) : updater;
+          return { ...prev, days: next.map(migrateDay) };
+        });
+
+      const [toastMsg, setToastMsg] = useState(null);
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+
+      const sortedDays = useMemo(() => {
+        return [...days].sort((a, b) => {
+          const dateA = a.date || "";
+          const dateB = b.date || "";
+          if (dateA !== dateB) return dateA.localeCompare(dateB);
+          return (a.id || "").localeCompare(b.id || "");
+        });
+      }, [days]);
+
+      // Ensure at least one day exists when entering solo page
+      useEffect(() => {
+        if (days.length === 0 && crew.length > 0) {
+          const blank = makeBlankDay(crew[0].id);
+          const defaults = production.defaultDay ?? DEFAULT_PRODUCTION_DAY;
+          const initialDay = { ...defaults, ...blank, id: uid(), date: todayISO() };
+          const callH = parseHHMM(initialDay.callTime) ?? 8;
+          initialDay.secondBreakStartTime = toHHMM(callH + 11);
+          setDays([initialDay]);
+        }
+      }, []); // mount-only; intentional — auto-create runs once per page entry
+
+      const [currentDayId, setCurrentDayId] = useState(null);
+
+      // Anchor to today's day (or last day) on first load and re-anchor if current id becomes invalid
+      useEffect(() => {
+        if (sortedDays.length === 0) return;
+        const stillValid = currentDayId && sortedDays.some(d => d.id === currentDayId);
+        if (stillValid) return;
+        const todayStr = todayISO();
+        const todayDay = sortedDays.find(d => d.date === todayStr);
+        setCurrentDayId(todayDay?.id ?? sortedDays[sortedDays.length - 1].id);
+      }, [sortedDays, currentDayId]);
+
+      const currentDay = sortedDays.find(d => d.id === currentDayId) || sortedDays[0];
+      const currentIdx = currentDay ? sortedDays.findIndex(d => d.id === currentDay.id) : -1;
+      const isFirst = currentIdx <= 0;
+      const isLast = currentIdx === sortedDays.length - 1;
+
+      const goPrev = () => { if (!isFirst) setCurrentDayId(sortedDays[currentIdx - 1].id); };
+      const goNext = () => { if (!isLast) setCurrentDayId(sortedDays[currentIdx + 1].id); };
+
+      // addDay computes from currentDay's date + 1 calendar day, not today's date
+      const addDay = () => {
+        const baseDate = currentDay?.date || todayISO();
+        const d = new Date(baseDate + "T12:00:00");
+        d.setDate(d.getDate() + 1);
+        const newDate = d.toISOString().slice(0, 10);
+        const blank = makeBlankDay(crew[0]?.id);
+        const defaults = production.defaultDay ?? DEFAULT_PRODUCTION_DAY;
+        const newDay = { ...defaults, ...blank, id: uid(), date: newDate };
+        const callH = parseHHMM(newDay.callTime) ?? 8;
+        newDay.secondBreakStartTime = toHHMM(callH + 11);
+        setDays(prev => [...prev, newDay]);
+        setCurrentDayId(newDay.id);
+      };
+
+      const handleDayChange = (updatedDay) => {
+        if (!currentDay) return;
+        setDays(prev => prev.map(d => d.id === currentDay.id ? updatedDay : d));
+      };
+
+      const deleteCurrentDay = () => {
+        if (!currentDay) return;
+        if (sortedDays.length === 1) {
+          const ok = window.confirm(
+            `This is the only day in "${production.title || 'this production'}". Deleting it will delete the entire production. Continue?`
+          );
+          if (!ok) return;
+          onDeleteProduction();
+          return;
+        }
+        const remainingDays = days.filter(d => d.id !== currentDay.id);
+        setDays(remainingDays);
+        const remainingSorted = [...remainingDays].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+        const nextAnchor = remainingSorted[currentIdx]?.id
+                        ?? remainingSorted[currentIdx - 1]?.id
+                        ?? remainingSorted[0]?.id
+                        ?? null;
+        setCurrentDayId(nextAnchor);
+        showToast("Day deleted");
+      };
+
+      const [showCalc, setShowCalc] = useState(false);
+      const [showSettings, setShowSettings] = useState(false);
+
+      const totalShoot = useMemo(() => {
+        return days.reduce((sum, d) => {
+          const c = crew.find(cc => cc.id === d.crewId);
+          if (!c) return sum;
+          return sum + calcForDisplay(production, d, c, findPrevDay(days, d)).total;
+        }, 0);
+      }, [days, crew, production]);
+
+      if (showSettings) {
+        return (
+          <ProductionSettingsSheet
+            production={production}
+            setProduction={setProduction}
+            crew={crew}
+            onClose={() => setShowSettings(false)}
+          />
+        );
+      }
+
+      if (!currentDay) {
+        return (
+          <div className="min-h-screen bg-neutral-950 flex items-center justify-center text-neutral-500 text-sm">
+            Loading…
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 80px)' }}>
+          <Toast show={!!toastMsg}>{toastMsg}</Toast>
+
+          {/* Page header */}
+          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onBack} aria-label="Back to productions"
+                className="text-neutral-400 hover:text-sky-400 transition-colors p-2 rounded-full hover:bg-neutral-800"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <IArrowLeft size={18}/>
+              </button>
+              <h1 className="flex-1 text-center text-sm font-bold uppercase tracking-tight truncate">
+                {production.title || <span className="text-neutral-500">Untitled</span>}
+              </h1>
+              <button onClick={() => setShowSettings(true)} aria-label="Production settings"
+                className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-full hover:bg-neutral-800"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <IGear size={16}/>
+              </button>
+            </div>
+          </div>
+
+          {/* Sub-header — Day X of N + temp Delete (••• menu deferred) */}
+          <div className="max-w-3xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <span className="text-xl font-bold tracking-tight text-sky-400">Day {currentIdx + 1}</span>
+              <span className="text-sm text-neutral-500">of {sortedDays.length}</span>
+            </div>
+            <button onClick={deleteCurrentDay}
+              className="text-[10px] uppercase tracking-wider font-bold text-red-400 hover:text-red-300 px-2.5 py-1 rounded-md border border-red-900/60 hover:border-red-700 transition-colors"
+              title="Delete this day">
+              Delete day
+            </button>
+          </div>
+
+          {/* Day editor body */}
+          <div className="max-w-3xl mx-auto px-4 pb-6">
+            <DayEntryForm
+              value={currentDay}
+              onChange={handleDayChange}
+              crew={crew}
+              allCrewMode={false}
+              fixedCrewId={crew[0]?.id ?? null}
+              fixedDate={null}
+            />
+          </div>
+
+          {/* Bottom pill — prev / total / next-or-add */}
+          <div className="fixed left-3 right-3 z-30 flex items-center select-none touch-manipulation"
+            style={{
+              bottom: 'calc(env(safe-area-inset-bottom) + 12px)',
+              height: 56,
+              background: '#f5f5f5',
+              borderRadius: 28,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
+              overflow: 'hidden',
+              WebkitTapHighlightColor: 'transparent',
+            }}>
+            <button onClick={goPrev} disabled={isFirst} aria-label="Previous day"
+              style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                       color: isFirst ? '#d4d4d4' : '#171717', WebkitTapHighlightColor: 'transparent' }}>
+              <IArrowLeft size={20}/>
+            </button>
+            <button onClick={() => setShowCalc(true)} aria-label="View calculation"
+              style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column',
+                       alignItems: 'center', justifyContent: 'center', color: '#171717',
+                       WebkitTapHighlightColor: 'transparent', overflow: 'hidden' }}>
+              <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(totalShoot)}</span>
+              <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View Calculation</span>
+            </button>
+            {isLast ? (
+              <button onClick={addDay} aria-label="Add next day"
+                style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                         color: '#0c4a6e', WebkitTapHighlightColor: 'transparent' }}>
+                <IPlus size={22}/>
+              </button>
+            ) : (
+              <button onClick={goNext} aria-label="Next day"
+                style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                         color: '#171717', WebkitTapHighlightColor: 'transparent' }}>
+                <IArrowRight size={20}/>
+              </button>
+            )}
+          </div>
+
+          {showCalc && (
+            <CalcBreakdownView
+              production={production}
+              days={days}
+              crew={crew}
+              total={totalShoot}
+              onClose={() => setShowCalc(false)}
+            />
+          )}
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
     function ProductionApp({ production, setProduction, onBack, userPrefs }) {
@@ -4734,7 +4941,6 @@ const setDays = (updater) =>
       const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
-      const [hasAutoOpened, setHasAutoOpened] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [resetMode, setResetMode] = useState(false);
       const [openCrewForm, setOpenCrewForm] = useState(false);
@@ -4800,7 +5006,6 @@ const setDays = (updater) =>
       };
 
       const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c, findPrevDay(days, d)).total : s; }, 0);
-      const hasTodayDay = !production.bestBoyMode && crew.length > 0 && days.some(d => d.date === todayISO() && d.crewId === crew[0]?.id);
 
       if (showProdSettings) {
         return (
@@ -4887,7 +5092,7 @@ const setDays = (updater) =>
                 onClose={() => setShowCancelModal(false)}
               />
             )}
-            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} autoOpenForToday={!production.bestBoyMode && !hasAutoOpened} onAutoOpened={() => setHasAutoOpened(true)} />}
+            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
           </div>
 
@@ -4895,7 +5100,7 @@ const setDays = (updater) =>
             Rates per APA Sept 2025
           </div>
 
-          <BottomMoneyPill total={totalShoot} onBack={onBack} onViewCalc={() => setShowCalcView(true)} showActions={hasTodayDay} days={days} setDays={setDays} showToast={showToast} />
+          <BottomMoneyPill total={totalShoot} onBack={onBack} onViewCalc={() => setShowCalcView(true)} />
         </div>
       );
     }
@@ -5524,6 +5729,18 @@ const setDays = (updater) =>
       }
       if (!openId || !currentProduction) {
         return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} userPrefs={userPrefs} />;
+      }
+      if (!currentProduction.bestBoyMode) {
+        return <SoloDayPage
+          production={currentProduction}
+          setProduction={setProduction}
+          onBack={closeProduction}
+          onDeleteProduction={() => {
+            setProductions(prev => prev.filter(p => p.id !== currentProduction.id));
+            setOpenId(null);
+          }}
+          userPrefs={userPrefs}
+        />;
       }
       return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} />;
     }
