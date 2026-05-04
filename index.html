@@ -982,6 +982,13 @@
       };
     }
 
+    function getMonday(dateStr) {
+      const d = new Date(dateStr + "T12:00:00");
+      const dow = d.getDay();
+      d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+      return d.toISOString().slice(0, 10);
+    }
+
     function deriveWeeks(production, days) {
       const mondays = new Set(production.weekStarts || []);
       const allDayDates = [...days.map(d => d.date), ...(production.gridDates || [])];
@@ -2233,6 +2240,20 @@
     }
 
     /* ═══════════════════════════ CANCELLATION CALC MODAL ═══════════════════════════ */
+
+    const CANCEL_DAY_TYPES = ["Shoot", "Recce", "Pre-light", "Build", "Strike"];
+
+    function cancellationPercent(noticeDate, shootDate) {
+      if (!noticeDate || !shootDate) return 0;
+      const a = new Date(noticeDate + "T12:00:00");
+      const b = new Date(shootDate + "T12:00:00");
+      const days = Math.round((b - a) / 86400000);
+      if (days < 0) return 0;
+      if (days <= 1) return 1;
+      if (days <= 3) return 0.75;
+      if (days <= 6) return 0.5;
+      return 0;
+    }
 
     function CancellationCalcModal({ production, setProduction, crew, onClose }) {
       useEffect(() => {
