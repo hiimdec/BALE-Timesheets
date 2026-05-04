@@ -23,7 +23,6 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
     html, body {
@@ -956,1570 +955,855 @@
       return lines.join('\n');
     }
 
-    /* ═══════════════════════════ PDF BUILDERS ═══════════════════════════ */
+    /* ═══════════════════════════ PRINT EXPORT HELPERS ═══════════════════════════ */
 
-    const TIMESHEET_CSS = `
-  :root {
-    --paper: #FAF8F4;
-    --paper-band: #F2EEE6;
-    --paper-band-soft: #F6F3EC;
-    --ink: #15171A;
-    --ink-2: #2B2E33;
-    --muted: #6B7079;
-    --muted-2: #9A9EA6;
-    --rule: #1A1C20;
-    --rule-soft: #D9D4C7;
-    --rule-hair: #E8E3D6;
+    function dayTypeChipClass(dayType) {
+      const map = {
+        "Shoot": "shoot", "Pre-light": "prelight", "Recce": "recce",
+        "Prep Day": "prep", "Build Day": "prep",
+        "De-rig": "derig", "Travel Day": "travel", "Rest Day": "rest",
+      };
+      return map[dayType] || "shoot";
+    }
 
-    --accent: #0E7C8F;
-    --accent-soft: #DFEDF0;
-    --amber: #B7791F;
-    --amber-soft: #FAEFD7;
-    --red: #B42318;
-    --red-soft: #FCE4E1;
-    --green: #2F7A3E;
-  }
+    function penaltyFlags(calc) {
+      if (!calc) return {};
+      const lines = calc.lines || [];
+      const lbls = lines.map(l => (l.label || '').toLowerCase());
+      return {
+        hasOT:         (calc.meta?.otHrs || 0) > 0,
+        hasL1:         lbls.some(l => l === "late 1st break"),
+        hasL2:         lbls.some(l => l.startsWith("late 2nd break")),
+        hasMSB:        lbls.some(l => l === "missed 2nd break"),
+        hasCWD:        !!calc.meta?.continuousDay,
+        hasTOC:        lines.some(l => l.isTOC === true),
+        isNightShoot:  (calc.meta?.dayLabel || "").includes("Night Shoot"),
+        isBankHoliday: !!calc.meta?.isBankHoliday,
+      };
+    }
 
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
+    function computeWeeks(production, days) {
+      if (production.weekStarts?.length > 0) {
+        return [...production.weekStarts].sort().map((mondayISO, idx) => {
+          const sun = new Date(mondayISO + "T12:00:00");
+          sun.setDate(sun.getDate() + 6);
+          return { index: idx, start: mondayISO, end: sun.toISOString().slice(0, 10),
+                   label: `Week ${String(idx + 1).padStart(2, '0')}` };
+        });
+      }
+      if (!days || days.length === 0) return [];
+      const sorted = days.map(d => d.date).filter(Boolean).sort();
+      const firstMon = getMonday(sorted[0]);
+      const latest = sorted[sorted.length - 1];
+      const weeks = [];
+      let cursor = firstMon, idx = 0;
+      while (cursor <= latest) {
+        const sun = new Date(cursor + "T12:00:00");
+        sun.setDate(sun.getDate() + 6);
+        weeks.push({ index: idx, start: cursor, end: sun.toISOString().slice(0, 10),
+                     label: `Week ${String(idx + 1).padStart(2, '0')}` });
+        const next = new Date(cursor + "T12:00:00");
+        next.setDate(next.getDate() + 7);
+        cursor = next.toISOString().slice(0, 10);
+        idx++;
+      }
+      return weeks;
+    }
 
-  body {
-    background: #E8E4DA;
-    font-family: 'Inter', -apple-system, system-ui, sans-serif;
-    color: var(--ink);
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-    padding: 48px 24px;
-  }
+    // Returns array of 7 ISO date strings Mon–Sun for the week containing mondayISO
+    function weekDateRange(mondayISO) {
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(mondayISO + "T12:00:00");
+        d.setDate(d.getDate() + i);
+        return d.toISOString().slice(0, 10);
+      });
+    }
 
-  .page {
-    width: 210mm;
-    min-height: 297mm;
-    margin: 0 auto;
-    background: var(--paper);
-    padding: 22mm 20mm 18mm;
-    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06);
-    color: var(--ink);
-    font-size: 10.5pt;
-    line-height: 1.45;
-    position: relative;
-    display: block;
-    page-break-inside: avoid;
-  }
-  .page + .page { margin-top: 24px; }
+    const PRINT_STYLES = `
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      #print-view {
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #171717;
+        -webkit-font-smoothing: antialiased;
+      }
+      .tnum { font-variant-numeric: tabular-nums; }
+      .page {
+        width: 210mm; height: 297mm;
+        background: white; overflow: hidden;
+        display: flex; flex-direction: column;
+      }
+      .page.ts-page   { padding: 14mm; }
+      .page.grid-page { padding: 12mm; }
 
-  /* HEADER */
-  .doc-header {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: start;
-    gap: 16px;
-    padding-bottom: 14px;
-    border-bottom: 1.25pt solid var(--rule);
-  }
-  .crew-name {
-    font-size: 32pt;
-    line-height: 1;
-    letter-spacing: -0.02em;
-    font-weight: 600;
-    margin: 0;
-    color: var(--ink);
-  }
-  .production {
-    margin: 6px 0 0;
-    font-size: 12pt;
-    font-weight: 400;
-    color: var(--ink-2);
-    letter-spacing: -0.005em;
-  }
-  .production .sub {
-    color: var(--muted);
-    font-weight: 400;
-  }
-  .meta-row {
-    margin-top: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0;
-    font-size: 8.5pt;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-  .meta-row .item {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
-  }
-  .meta-row .item + .item::before {
-    content: "";
-    display: inline-block;
-    width: 1px;
-    height: 9px;
-    background: var(--rule-soft);
-    margin: 0 12px;
-    transform: translateY(1px);
-  }
-  .meta-row .label { color: var(--muted-2); }
-  .meta-row .val { color: var(--ink-2); font-weight: 500; letter-spacing: 0.04em; }
+      /* ── Shared header ── */
+      .doc-header {
+        display: flex; justify-content: space-between;
+        align-items: flex-start; padding-bottom: 12px;
+        border-bottom: 1px solid #d4d4d4; gap: 16px;
+      }
+      .doc-header .hlabel {
+        font-size: 9px; text-transform: uppercase;
+        letter-spacing: 0.18em; color: #737373;
+        font-weight: 700; margin-bottom: 6px;
+      }
+      .doc-header .right { text-align: right; flex-shrink: 0; }
+      .doc-header .right .total {
+        font-size: 22px; font-weight: 800;
+        line-height: 1; margin-top: 4px; letter-spacing: -0.01em;
+      }
+      .doc-header .right .breakdown { font-size: 10.5px; color: #525252; margin-top: 5px; }
 
-  .doc-header .right {
-    text-align: right;
-    padding-top: 4px;
-  }
-  .right .markmark {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 8.5pt;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-  .right .markmark::before {
-    content: "";
-    width: 6px; height: 6px;
-    background: var(--accent);
-    border-radius: 50%;
-    display: inline-block;
-  }
-  .right .prod-co {
-    margin-top: 8px;
-    font-size: 10pt;
-    color: var(--ink-2);
-    font-weight: 500;
-  }
-  .right .doc-id {
-    margin-top: 2px;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 8pt;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-  }
+      /* ── Timesheet header ── */
+      .doc-header .name-role {
+        font-size: 22px; font-weight: 800;
+        letter-spacing: -0.01em; line-height: 1; margin-bottom: 4px;
+      }
+      .doc-header .name-role .role { font-weight: 500; color: #525252; font-size: 14px; }
+      .doc-header .meta { font-size: 10.5px; color: #525252; margin-top: 4px; line-height: 1.5; }
+      .doc-header .meta strong { color: #171717; font-weight: 600; }
+      .doc-header .rate-row {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-size: 10.5px; color: #525252;
+        margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e5e5;
+      }
+      .doc-header .rate-row .num { font-weight: 700; color: #171717; }
+      .doc-header .right .ts-total {
+        font-size: 26px; font-weight: 800;
+        line-height: 1; margin-top: 4px; letter-spacing: -0.01em;
+      }
 
-  /* PERIOD BAR */
-  .period {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: end;
-    gap: 16px;
-    margin-top: 14px;
-    padding-bottom: 14px;
-    border-bottom: 0.5pt solid var(--rule-hair);
-  }
-  .period .lab {
-    font-size: 8pt;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted-2);
-  }
-  .period .val {
-    font-size: 11pt;
-    color: var(--ink-2);
-    margin-top: 4px;
-    letter-spacing: -0.005em;
-  }
-  .period .center {
-    text-align: center;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 9pt;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-    padding-bottom: 2px;
-  }
-  .period .right { text-align: right; }
+      /* ── Grid header ── */
+      .doc-header .grid-title {
+        font-size: 22px; font-weight: 800;
+        letter-spacing: -0.01em; line-height: 1; margin-bottom: 4px;
+      }
 
-  /* DAY BLOCKS */
-  .day {
-    margin-top: 10px;
-    break-inside: avoid;
-  }
-  .day-header {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: baseline;
-    background: var(--paper-band-soft);
-    border-left: 2pt solid var(--ink);
-    padding: 8px 12px 8px 14px;
-    margin: 0 -2px;
-  }
-  .day-header.weekend { background: #FBF4E3; border-left-color: var(--amber); }
-  .day-header.sunday  { background: #F9ECE9; border-left-color: var(--red); }
-  .day-header.breach-day { border-left-color: var(--red); }
-  .day-date {
-    font-size: 12.5pt;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-  }
-  .day-date .dow {
-    font-weight: 400;
-    color: var(--muted);
-    margin-right: 8px;
-  }
-  .day-tags {
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
-    font-size: 8.5pt;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-  .tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 3px;
-    background: rgba(0,0,0,0.04);
-    color: var(--ink-2);
-    font-weight: 500;
-    border: 0.5pt solid var(--rule-hair);
-  }
-  .tag.shoot { background: var(--paper); border-color: var(--rule-hair); }
-  .tag.prelight { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
-  .tag.prep   { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
-  .tag.recce  { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
-  .tag.build  { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
-  .tag.derig  { background: #F0EAD8; border-color: #E1D8BD; color: #6B5A2A; }
-  .tag.travel { background: var(--paper); border-color: var(--rule-hair); }
-  .tag.rest   { background: var(--paper); border-color: var(--rule-hair); color: var(--ink-2); font-style: italic; }
-  .tag.call {
-    background: transparent;
-    border: 0.5pt solid var(--rule-soft);
-    color: var(--muted);
-  }
-  .tag.call.late { color: var(--ink-2); border-color: var(--ink-2); }
-  .tag.call.night { background: var(--ink); color: #F2EEE6; border-color: var(--ink); }
-  .tag.call.early { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-  .tag.call.weekend { background: var(--amber); color: var(--paper); border-color: var(--amber); }
-  .tag.call.sunday  { background: var(--red);   color: var(--paper); border-color: var(--red); }
-  .tag.cwd { background: var(--amber-soft); border-color: #E8C988; color: var(--amber); }
+      /* ── Chip legend ── */
+      .legend {
+        display: flex; align-items: center; flex-wrap: wrap;
+        gap: 8px 12px; padding: 8px 0 6px;
+        font-size: 9px; color: #737373;
+        border-bottom: 1px solid #f5f5f5;
+      }
+      .legend .item { display: inline-flex; align-items: center; gap: 5px; }
 
-  /* LINE ITEMS */
-  .lines {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    margin-top: 2px;
-  }
-  .lines col.c-marker { width: 14px; }
-  .lines col.c-desc { width: auto; }
-  .lines col.c-time { width: 110px; }
-  .lines col.c-rate { width: 70px; }
-  .lines col.c-qty  { width: 44px; }
-  .lines col.c-amt  { width: 96px; }
+      /* ── Day-type chips ── */
+      .chip-day {
+        display: inline-flex; align-items: center; justify-content: center;
+        font-weight: 600; letter-spacing: 0.04em;
+        padding: 2px 6px 2.5px; border-radius: 6px;
+        line-height: 1; white-space: nowrap; flex-shrink: 0;
+      }
+      .ts-page   .chip-day { font-size: 9px;  padding: 2px 8px; }
+      .grid-page .chip-day { font-size: 8px; }
+      .chip-day.shoot    { background: #082f49; color: white; }
+      .chip-day.prelight { background: #075985; color: white; }
+      .chip-day.recce    { background: #0284c7; color: white; }
+      .chip-day.prep     { background: #38bdf8; color: #082f49; }
+      .chip-day.derig    { background: #7dd3fc; color: #082f49; }
+      .chip-day.travel   { background: white; color: #075985; border: 1px solid #075985; padding: 1px 5px 1.5px; }
 
-  .lines td {
-    padding: 6px 6px 6px 0;
-    vertical-align: baseline;
-    border-bottom: 0.4pt solid var(--rule-hair);
-    font-size: 10pt;
-    color: var(--ink-2);
-  }
-  .lines td.marker { padding: 0; padding-left: 14px; position: relative; }
-  .lines td.desc { padding-left: 6px; }
-  .lines td.time, .lines td.rate, .lines td.qty, .lines td.amt {
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum";
-  }
-  .lines td.time { color: var(--muted); font-size: 9.5pt; }
-  .lines td.rate { color: var(--muted); text-align: right; font-size: 9.5pt; }
-  .lines td.qty  { color: var(--muted); text-align: right; font-size: 9.5pt; }
-  .lines td.amt  { text-align: right; font-weight: 500; }
+      /* ── Penalty chips ── */
+      .chip-ot, .chip-msb, .chip-toc, .chip-ns, .chip-cwd {
+        display: inline-flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 8px;
+        letter-spacing: 0.06em; text-transform: uppercase;
+        padding: 1.5px 5px 2px; border-radius: 5px;
+        line-height: 1; white-space: nowrap; flex-shrink: 0;
+      }
+      .ts-page .chip-ot,
+      .ts-page .chip-msb,
+      .ts-page .chip-toc,
+      .ts-page .chip-ns,
+      .ts-page .chip-cwd { font-size: 8.5px; padding: 1.5px 6px 2px; }
+      .chip-ot  { border: 1px solid #dc2626; color: #dc2626; background: white; }
+      .chip-msb { border: 1px solid #d97706; color: #d97706; background: white; }
+      .chip-cwd { background: #d97706; color: white; }
+      .chip-toc { background: #dc2626; color: white; }
+      .chip-ns  { background: #1e1b4b; color: white; }
 
-  .lines tr:last-child td { border-bottom: none; }
+      /* ── Shared footer ── */
+      .doc-footer {
+        margin-top: 10px; padding-top: 10px;
+        border-top: 1px solid #d4d4d4;
+        display: flex; justify-content: space-between;
+        align-items: flex-end; gap: 16px;
+        font-size: 9px; color: #737373;
+      }
+      .doc-footer .pay-info {
+        flex: 1; display: flex; flex-direction: column; gap: 3px;
+      }
+      .doc-footer .pay-info .flbl {
+        text-transform: uppercase; letter-spacing: 0.1em;
+        font-weight: 700; color: #525252;
+      }
+      .doc-footer .pay-info .fval { color: #171717; font-weight: 500; }
+      .doc-footer .brand { text-align: right; line-height: 1.5; }
+      .doc-footer .brand .bname { font-weight: 700; color: #404040; letter-spacing: 0.05em; }
 
-  /* row variants */
-  .lines tr.bdr td.marker::before {
-    content: "";
-    position: absolute;
-    left: 0; top: 9px;
-    width: 2px; height: 12px;
-    background: var(--ink);
-    opacity: 0.25;
-    border-radius: 1px;
-  }
-  .lines tr.kit td { color: var(--muted); font-size: 9.25pt; }
-  .lines tr.kit td.desc { font-style: normal; }
-  .lines tr.kit td.amt { font-weight: 400; color: var(--muted); }
-  .lines tr.kit td.marker::before {
-    content: "";
-    position: absolute;
-    left: 3px; top: 12px;
-    width: 4px; height: 4px;
-    background: var(--muted-2);
-    border-radius: 50%;
-  }
+      /* ══════════ TIMESHEET LAYOUT ══════════ */
 
-  .lines tr.ot td { color: var(--ink-2); }
-  .lines tr.ot td.marker::before {
-    content: "";
-    position: absolute;
-    left: 0; top: 9px;
-    width: 3px; height: 12px;
-    background: var(--amber);
-    border-radius: 1px;
-  }
-  .lines tr.ot td.desc .pill,
-  .lines tr.penalty td.desc .pill,
-  .lines tr.breach td.desc .pill {
-    display: inline-block;
-    font-size: 7.5pt;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 1px 6px;
-    border-radius: 3px;
-    margin-right: 8px;
-    font-weight: 600;
-    transform: translateY(-1px);
-  }
-  .lines tr.ot td.desc .pill { background: var(--amber-soft); color: var(--amber); }
-  .lines tr.ot td.amt { color: var(--amber); font-weight: 600; }
+      .day-list {
+        flex: 1; display: flex; flex-direction: column;
+        gap: 6px; padding-top: 10px; min-height: 0;
+      }
+      .day-row {
+        border: 1px solid #d4d4d4; border-radius: 10px;
+        display: grid; grid-template-columns: 44px 1fr 100px;
+        gap: 12px; padding: 8px 12px; align-items: stretch;
+        flex: 1;
+      }
+      .day-row.rest-row { flex: 0 0 44px; }
 
-  .lines tr.penalty td.marker::before,
-  .lines tr.breach td.marker::before {
-    content: "";
-    position: absolute;
-    left: 0; top: 9px;
-    width: 3px; height: 12px;
-    background: var(--red);
-    border-radius: 1px;
-  }
-  .lines tr.penalty td.desc .pill,
-  .lines tr.breach td.desc .pill {
-    background: var(--red-soft);
-    color: var(--red);
-  }
-  .lines tr.penalty td.amt,
-  .lines tr.breach td.amt {
-    color: var(--red);
-    font-weight: 600;
-  }
-  .lines tr.breach td.desc .breach-detail {
-    color: var(--red);
-    font-size: 8.5pt;
-    letter-spacing: 0.04em;
-    margin-left: 0;
-    display: inline-block;
-  }
+      /* Date col */
+      .day-row .dcol {
+        border-right: 1px solid #e5e5e5; padding-right: 8px;
+        display: flex; flex-direction: column; justify-content: center;
+      }
+      .day-row .dcol .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
+      .day-row .dcol .dnum { font-size: 18px; font-weight: 800; line-height: 1; margin-top: 3px; }
+      .day-row .dcol .dmo  { font-size: 8px; color: #737373; margin-top: 3px; line-height: 1; }
 
-  /* day total */
-  .day-total {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    align-items: baseline;
-    gap: 16px;
-    margin-top: 6px;
-    padding-top: 8px;
-    padding-right: 0;
-    border-top: 0.75pt solid var(--ink);
-  }
-  .day-total .lbl {
-    font-size: 8.5pt;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-    text-align: right;
-    grid-column: 1;
-  }
-  .day-total .currency {
-    text-align: right;
-    font-size: 9pt;
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-    padding-right: 2px;
-    align-self: baseline;
-  }
-  .day-total .amt {
-    text-align: right;
-    font-size: 14pt;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    font-variant-numeric: tabular-nums;
-    min-width: 96px;
-  }
+      /* Body col */
+      .day-row .dbody { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; }
+      .day-row .head-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .day-row .times { font-size: 10px; color: #404040; font-weight: 600; margin-left: auto; }
+      .day-row .times .thrs { color: #737373; font-weight: 500; margin-left: 4px; }
 
-  /* GRAND TOTAL */
-  .grand-total {
-    margin-top: 28px;
-    padding: 18px 18px 18px 20px;
-    background: var(--accent-soft);
-    border-top: 1.5pt solid var(--accent);
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: end;
-    gap: 16px;
-  }
-  .grand-total .lbl {
-    font-size: 9pt;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .grand-total .lbl-sub {
-    margin-top: 6px;
-    font-size: 10pt;
-    color: var(--ink-2);
-    letter-spacing: 0;
-    text-transform: none;
-    font-weight: 400;
-  }
-  .grand-total .amt {
-    font-size: 28pt;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    color: var(--ink);
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-  }
-  .grand-total .amt .ccy {
-    font-weight: 400;
-    color: var(--muted);
-    font-size: 18pt;
-    margin-right: 2px;
-  }
+      /* Line items */
+      .day-row .dlines {
+        display: grid; grid-template-columns: 1fr auto;
+        gap: 1px 16px; font-size: 10px; color: #404040; line-height: 1.35;
+      }
+      .day-row .dlines .ll { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+      .day-row .dlines .lr { font-weight: 600; color: #171717; }
+      .day-row .dlines .ll strong { font-weight: 600; color: #171717; }
+      .day-row .dlines .sep { color: #a3a3a3; margin: 0 4px; }
+      .day-row .dlines .penalty { color: #b45309; font-weight: 600; }
+      .day-row .dlines .ot-lbl { color: #b91c1c; font-weight: 600; }
 
-  /* FOOTER */
-  .doc-footer {
-    margin-top: 22px;
-    padding-top: 10px;
-    border-top: 0.4pt solid var(--rule-hair);
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    gap: 16px;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 7.5pt;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-  }
-  .doc-footer .center { text-align: center; }
-  .doc-footer .right { text-align: right; }
+      /* Total col */
+      .day-row .dtotal {
+        border-left: 1px solid #e5e5e5; padding-left: 10px;
+        display: flex; flex-direction: column; justify-content: center; text-align: right;
+      }
+      .day-row .dtotal .tlbl { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
+      .day-row .dtotal .tval { font-size: 16px; font-weight: 800; line-height: 1; margin-top: 5px; color: #171717; letter-spacing: -0.01em; }
+      .day-row .dtotal .tsub { font-size: 8px; color: #737373; margin-top: 4px; line-height: 1; }
 
-  /* page-only annotation */
-  .pn {
-    position: absolute;
-    top: 22mm;
-    right: 20mm;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 7.5pt;
-    color: var(--muted-2);
-    letter-spacing: 0.06em;
-  }
+      /* Rest row body */
+      .day-row.rest-row .dbody { flex-direction: row; align-items: center; justify-content: center; }
+      .day-row.rest-row .dbody .rest-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.25em; color: #a3a3a3; font-weight: 700; }
+      .day-row.rest-row .dtotal .tlbl { color: #d4d4d4; }
 
-  @media print {
-    body { background: white; padding: 0; }
-    .page { box-shadow: none; margin: 0; }
-  }
-`;
+      /* Sat tint */
+      .day-row.sat { background: #fffbeb; border-color: #fcd34d; }
+      .day-row.sat .dcol { border-right-color: rgba(252,211,77,0.5); }
+      .day-row.sat .dcol .dow  { color: #b45309; }
+      .day-row.sat .dcol .dnum { color: #78350f; }
+      .day-row.sat .dcol .dmo  { color: rgba(180,83,9,0.7); }
+      .day-row.sat .dtotal { border-left-color: rgba(252,211,77,0.5); }
+      .day-row.sat .dtotal .tlbl { color: #b45309; }
+      .day-row.sat .dtotal .tval { color: #78350f; }
+      .day-row.sat .dtotal .tsub { color: rgba(180,83,9,0.7); }
 
-    const GRID_CSS = `
-  :root {
-    --paper: #FAF8F4;
-    --paper-band: #F2EEE6;
-    --paper-band-soft: #F6F3EC;
-    --ink: #15171A;
-    --ink-2: #2B2E33;
-    --muted: #6B7079;
-    --muted-2: #9A9EA6;
-    --rule: #1A1C20;
-    --rule-soft: #D9D4C7;
-    --rule-hair: #E8E3D6;
+      /* Sun/BH tint */
+      .day-row.sun { background: #fef2f2; border-color: #fca5a5; }
+      .day-row.sun .dcol { border-right-color: rgba(252,165,165,0.5); }
+      .day-row.sun .dcol .dow  { color: #b91c1c; }
+      .day-row.sun .dcol .dnum { color: #7f1d1d; }
+      .day-row.sun .dcol .dmo  { color: rgba(185,28,28,0.7); }
+      .day-row.sun .dtotal { border-left-color: rgba(252,165,165,0.5); }
+      .day-row.sun .dtotal .tlbl { color: rgba(185,28,28,0.7); }
+      .day-row.rest-row.sun { background: #fef2f2; border-color: #fca5a5; }
+      .day-row.rest-row.sun .dbody .rest-lbl { color: rgba(185,28,28,0.6); }
 
-    --accent: #0E7C8F;
-    --accent-soft: #DFEDF0;
-    --amber: #B7791F;
-    --amber-soft: #FAEFD7;
-    --amber-tint: #FBF4E3;
-    --red: #B42318;
-    --red-soft: #FCE4E1;
-    --red-tint: #F9ECE9;
-  }
+      /* ══════════ GRID LAYOUT ══════════ */
 
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
+      .grid-wrap {
+        flex: 1; margin-top: 10px;
+        border: 1px solid #d4d4d4; border-radius: 10px;
+        overflow: hidden; display: flex; flex-direction: column; min-height: 0;
+      }
+      .grid {
+        width: 100%; border-collapse: collapse; table-layout: fixed;
+      }
+      .grid th, .grid td { border-right: 1px solid #e5e5e5; border-bottom: 1px solid #e5e5e5; }
+      .grid th:last-child, .grid td:last-child { border-right: none; }
+      .grid tr:last-child td { border-bottom: none; }
 
-  body {
-    background: #E8E4DA;
-    font-family: 'Inter', -apple-system, system-ui, sans-serif;
-    color: var(--ink);
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-    padding: 48px 24px;
-  }
+      .grid thead th {
+        background: #f5f5f5; padding: 6px 4px;
+        text-align: center; vertical-align: middle;
+      }
+      .grid thead th.crew-col { text-align: left; padding-left: 8px; }
+      .grid thead th.total-col { text-align: right; padding-right: 8px; }
+      .grid thead .gdow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #737373; font-weight: 700; line-height: 1; }
+      .grid thead .gdnum { font-size: 12px; font-weight: 800; margin-top: 2px; line-height: 1; }
+      .grid thead .gmo { font-size: 7px; color: #737373; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1; }
+      .grid thead th.sat { background: #fffbeb; }
+      .grid thead th.sat .gdow { color: #b45309; }
+      .grid thead th.sat .gdnum { color: #78350f; }
+      .grid thead th.sat .gmo { color: rgba(180,83,9,0.7); }
+      .grid thead th.sun { background: #fef2f2; }
+      .grid thead th.sun .gdow { color: #b91c1c; }
+      .grid thead th.sun .gdnum { color: #7f1d1d; }
+      .grid thead th.sun .gmo { color: rgba(185,28,28,0.7); }
 
-  /* A4 PORTRAIT */
-  .page {
-    width: 210mm;
-    min-height: auto;
-    margin: 0 auto;
-    background: var(--paper);
-    padding: 18mm 14mm 14mm;
-    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06);
-    color: var(--ink);
-    font-size: 10.5pt;
-    line-height: 1.45;
-    position: relative;
-  }
-  .page + .page { margin-top: 24px; }
+      .grid tbody td { padding: 4px; text-align: center; vertical-align: middle; }
+      .grid tbody td.crew { background: #fafafa; text-align: left; padding: 6px 8px; }
+      .grid tbody td.row-total { background: #fafafa; text-align: right; padding: 6px 8px; }
+      .grid tbody .crew-name { font-size: 10px; font-weight: 700; color: #171717; line-height: 1.2; }
+      .grid tbody .crew-role { font-size: 8px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 600; }
+      .grid tbody td.sat { background: #fffbeb; }
+      .grid tbody td.sun { background: #fef2f2; }
+      .grid tbody td.sat .cell-total-val { color: #78350f; }
+      .grid tbody td.sun .cell-total-val { color: #7f1d1d; }
 
-  /* HEADER */
-  .doc-header {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: end;
-    gap: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1.25pt solid var(--rule);
-  }
-  .doc-title {
-    font-size: 26pt;
-    line-height: 1;
-    letter-spacing: -0.02em;
-    font-weight: 600;
-    margin: 0;
-    color: var(--ink);
-  }
-  .doc-sub {
-    margin: 6px 0 0;
-    font-size: 11pt;
-    color: var(--ink-2);
-  }
-  .doc-sub .muted { color: var(--muted); }
+      .cell-stack {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 3px; padding: 2px 1px; min-height: 56px; justify-content: space-between;
+      }
+      .cell-stack .ctop { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
+      .cell-stack .hrs-line { font-size: 9.5px; color: #171717; font-weight: 600; line-height: 1; }
+      .cell-stack .pens { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 3px; line-height: 1; }
+      .cell-stack .cell-total-val { font-size: 10px; font-weight: 700; color: #171717; line-height: 1; margin-top: 4px; }
 
-  .right { text-align: right; }
-  .markmark {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 8.5pt;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-  .markmark::before {
-    content: "";
-    width: 6px; height: 6px;
-    background: var(--accent);
-    border-radius: 50%;
-    display: inline-block;
-  }
-  .doc-id {
-    margin-top: 4px;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 8pt;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-  }
-  .label-tag {
-    margin-top: 8px;
-    display: inline-block;
-    font-size: 8.5pt;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-  .label-tag b { color: var(--ink-2); font-weight: 500; letter-spacing: 0.08em; }
+      .rest-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: rgba(185,28,28,0.5); font-weight: 700; }
 
-  /* GRID TABLE */
-  .grid {
-    width: 100%;
-    margin-top: 14px;
-    border-collapse: separate;
-    border-spacing: 0;
-    table-layout: fixed;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum";
-  }
-  .grid col.crew-col { width: 150px; }
-  .grid col.day-col  { width: auto; }
+      .row-total .rowtv { font-size: 12px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
+      .row-total .rowth { font-size: 8px; color: #737373; margin-top: 2px; }
 
-  /* ─ header row ─ */
-  .grid thead th {
-    background: transparent;
-    text-align: center;
-    padding: 10px 6px 12px;
-    font-weight: 500;
-    vertical-align: bottom;
-    border-bottom: 0.75pt solid var(--ink);
-  }
-  .grid thead th.crew-h {
-    text-align: left;
-    padding-left: 12px;
-    font-size: 8.5pt;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-  .grid thead .dow {
-    display: block;
-    font-size: 8.5pt;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 3px;
-    font-weight: 500;
-  }
-  .grid thead .date {
-    display: block;
-    font-size: 13pt;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-    line-height: 1;
-  }
-  .grid thead .month {
-    display: block;
-    font-size: 8pt;
-    color: var(--muted);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-top: 3px;
-  }
+      .grid tfoot td {
+        background: #f5f5f5; padding: 6px 4px;
+        text-align: center; vertical-align: middle; border-top: 2px solid #d4d4d4;
+      }
+      .grid tfoot td.crew { text-align: left; padding-left: 8px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; color: #525252; font-weight: 700; }
+      .grid tfoot td.row-total { text-align: right; padding-right: 8px; }
+      .grid tfoot .dtv { font-size: 11px; font-weight: 800; color: #171717; }
+      .grid tfoot .dth { font-size: 8px; color: #737373; margin-top: 1px; }
+      .grid tfoot td.sat { background: #fef3c7; }
+      .grid tfoot td.sun { background: #fee2e2; }
+      .grid tfoot td.row-total .wk-total { font-size: 14px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
 
-  /* weekend column header tints */
-  .grid thead th.sat .dow,
-  .grid thead th.sat .month { color: var(--amber); }
-  .grid thead th.sun .dow,
-  .grid thead th.sun .month { color: var(--red); }
-  .grid thead th.sat { background: var(--amber-tint); }
-  .grid thead th.sun { background: var(--red-tint); }
+      @media print {
+        #root { display: none !important; }
+        #print-view { display: block !important; }
+        body { background: white; padding: 0; margin: 0; }
+        .page { box-shadow: none; margin: 0; page-break-after: always; break-after: page; }
+        .page:last-child { page-break-after: auto; break-after: auto; }
+        @page { size: A4 portrait; margin: 0; }
+      }
+    `;
 
-  /* ─ crew rows ─ */
-  .grid tbody td {
-    padding: 0;
-    vertical-align: middle;
-    border-bottom: 0.4pt solid var(--rule-hair);
-    height: 76px;
-  }
-  .grid tbody td.crew-cell {
-    padding: 12px 12px 12px 12px;
-    background: var(--paper-band-soft);
-    border-right: 0.4pt solid var(--rule-hair);
-    border-bottom: 0.4pt solid var(--rule-hair);
-    vertical-align: middle;
-  }
-  .grid tbody td.crew-cell .name {
-    display: block;
-    font-size: 13pt;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-    line-height: 1.1;
-  }
-  .grid tbody td.crew-cell .role {
-    display: block;
-    margin-top: 3px;
-    font-size: 8.5pt;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
+    /* ── Chip Legend (shared) ── */
+    function ChipLegend() {
+      return (
+        <div className="legend">
+          <span className="item"><span className="chip-ot">OT</span> Overtime</span>
+          <span className="item"><span className="chip-msb">L1</span> Late 1st break</span>
+          <span className="item"><span className="chip-msb">L2</span> Late 2nd break</span>
+          <span className="item"><span className="chip-msb">MSB</span> Missed 2nd break</span>
+          <span className="item"><span className="chip-cwd">CWD</span> Cont. Working Day</span>
+          <span className="item"><span className="chip-toc">TOC</span> Turnaround</span>
+          <span className="item"><span className="chip-ns">NS</span> Night Shoot</span>
+        </div>
+      );
+    }
 
-  /* weekend column body tints */
-  .grid tbody td.sat { background: var(--amber-tint); }
-  .grid tbody td.sun { background: var(--red-tint); }
+    /* ── Penalty chip row (shared helper) ── */
+    function PenChips({ flags }) {
+      const chips = [];
+      if (flags.hasOT)        chips.push(<span key="ot"  className="chip-ot">OT</span>);
+      if (flags.hasL1)        chips.push(<span key="l1"  className="chip-msb">L1</span>);
+      if (flags.hasL2)        chips.push(<span key="l2"  className="chip-msb">L2</span>);
+      if (flags.hasMSB)       chips.push(<span key="msb" className="chip-msb">MSB</span>);
+      if (flags.hasCWD)       chips.push(<span key="cwd" className="chip-cwd">CWD</span>);
+      if (flags.hasTOC)       chips.push(<span key="toc" className="chip-toc">TOC</span>);
+      if (flags.isNightShoot) chips.push(<span key="ns"  className="chip-ns">NS</span>);
+      return chips.length ? <React.Fragment>{chips}</React.Fragment> : null;
+    }
 
-  /* day cell content */
-  .cell {
-    padding: 10px 8px;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    gap: 4px;
-  }
-  .cell .times {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 8.5pt;
-    color: var(--muted);
-    letter-spacing: 0.02em;
-  }
-  .cell .hours {
-    font-size: 14pt;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-    line-height: 1;
-  }
-  .cell .chips {
-    display: flex;
-    gap: 4px;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-top: 2px;
-  }
+    /* ── Single timesheet page ── */
+    function TimesheetPage({ crewMember, weekDates, allDaysForCrew, production, pageNum, totalPages, weekIndex, totalWeeks, grandTotal, grandHrs, grandOTHrs, isFirstPage, userPrefs }) {
+      // Build per-day calc for this week
+      const dayMap = {};
+      (allDaysForCrew || []).forEach(d => { dayMap[d.date] = d; });
 
-  .chip {
-    display: inline-block;
-    font-size: 7pt;
-    line-height: 1;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 3px 5px 2.5px;
-    border-radius: 3px;
-    font-weight: 700;
-    border: 0.5pt solid transparent;
-  }
-  .chip.ot   { background: var(--amber-soft); color: var(--amber); border-color: #E8C988; }
-  .chip.msb  { background: var(--red-soft);   color: var(--red);   border-color: #E8B5AE; }
-  .chip.toc  { background: var(--red);        color: var(--paper); border-color: var(--red); }
-  .chip.cwd  { background: var(--amber-soft); color: var(--amber); border-color: #E8C988; }
+      // Format week range label
+      const rangeStart = new Date(weekDates[0] + "T12:00:00");
+      const rangeEnd   = new Date(weekDates[6] + "T12:00:00");
+      const fmtRange = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      const rangeLabel = `${fmtRange(rangeStart)} – ${fmtRange(rangeEnd)}`;
 
-  .cell.rest {
-    color: var(--muted-2);
-    font-size: 9.5pt;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    font-weight: 500;
-  }
-  .cell.rest .rest-dot {
-    display: inline-block;
-    width: 4px; height: 4px;
-    border-radius: 50%;
-    background: var(--muted-2);
-    margin-right: 6px;
-    transform: translateY(-2px);
-  }
+      // Header meta line
+      const metaParts = [
+        production.title || 'Untitled Production',
+        production.prodCo,
+        rangeLabel,
+        production.jobReference,
+      ].filter(Boolean);
 
-  /* highlight: special day variants for hours */
-  .cell.has-ot .hours { color: var(--ink); }
-  .cell.has-breach .hours { color: var(--red); }
-
-  /* ─── LEGEND ─── */
-  .legend {
-    margin-top: 18px;
-    padding-top: 12px;
-    border-top: 0.4pt solid var(--rule-hair);
-    display: flex;
-    gap: 22px;
-    align-items: center;
-    font-size: 8.5pt;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-    flex-wrap: wrap;
-  }
-  .legend .item {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .legend .item .chip {
-    transform: translateY(-0.5px);
-  }
-  .legend .swatch {
-    width: 12px; height: 12px;
-    border-radius: 2px;
-    border: 0.5pt solid var(--rule-hair);
-    display: inline-block;
-  }
-  .legend .swatch.sat { background: var(--amber-tint); border-color: #E8C988; }
-  .legend .swatch.sun { background: var(--red-tint);   border-color: #E8B5AE; }
-  .legend .sep {
-    width: 1px; height: 12px; background: var(--rule-hair);
-    display: inline-block;
-  }
-
-  /* FOOTER */
-  .doc-footer {
-    margin-top: 16px;
-    padding-top: 10px;
-    border-top: 0.4pt solid var(--rule-hair);
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    gap: 16px;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 7.5pt;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-  }
-  .doc-footer .center { text-align: center; }
-  .doc-footer .right { text-align: right; }
-
-  @media print {
-    body { background: white; padding: 0; }
-    .page { box-shadow: none; margin: 0; }
-    @page { size: A4 portrait; margin: 0; }
-  }
-`;
-
-    function generateCrewHTML(crew, days, production) {
-      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      const bdr = Number(crew?.bdr) || 0;
+      // BDR / OT rate display
+      const bdr = Number(crewMember.bdr) || 0;
       const bhr = bdr / 10;
-      const otCoef = Number(crew?.otCoef) || 1.25;
-      const today = new Date();
-      const docDate = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
-      const prodCode = (production?.title || 'PROD').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'PROD';
-      const crewCode = (crew?.name || 'CREW').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'CREW';
-      const docId = `REF · ${prodCode} / ${crewCode} · ${docDate}`;
+      const otRate = (crewMember.otRate != null && crewMember.otRate > 0)
+        ? Number(crewMember.otRate)
+        : bhr * (Number(crewMember.otCoef) || 1.5);
 
-      const fmtPeriod = (iso) => {
-        if (!iso) return '—';
-        const d = new Date(iso + 'T12:00:00');
-        const wd = d.toLocaleDateString('en-GB', { weekday: 'short' });
-        const mo = d.toLocaleDateString('en-GB', { month: 'long' });
-        return `${wd} ${d.getDate()} ${mo} ${d.getFullYear()}`;
-      };
-      const sortedDays = [...(days || [])].filter(d => d?.date).sort((a, b) => a.date.localeCompare(b.date));
-      const firstIso = sortedDays.length ? sortedDays[0].date : null;
-      const lastIso  = sortedDays.length ? sortedDays[sortedDays.length - 1].date : null;
-      const totalHrs = sortedDays.reduce((s, d) => {
-        const resolved = resolveDay(production, d, crew);
-        const h = gridDisplayHours(resolved);
-        return s + (Number.isFinite(h) ? h : 0);
-      }, 0);
-      const dayCount = sortedDays.length;
-      const periodStats = `${dayCount} day${dayCount === 1 ? '' : 's'} · ${totalHrs.toFixed(1)} hrs`;
+      return (
+        <div className="page ts-page">
+          {/* Header */}
+          <div className="doc-header">
+            <div>
+              <div className="hlabel">{isFirstPage ? 'Crew Timesheet' : `Crew Timesheet · continued`}</div>
+              <div className="name-role">
+                {crewMember.name || 'Unnamed'}
+                {crewMember.role ? <span className="role"> · {crewMember.role}</span> : null}
+              </div>
+              <div className="meta">
+                <strong>{production.title || 'Untitled Production'}</strong>
+                {production.prodCo ? ` · ${production.prodCo}` : ''}
+                <br/>
+                {rangeLabel}
+                {production.jobReference ? ` · ${production.jobReference}` : ''}
+              </div>
+              {isFirstPage && bdr > 0 && (
+                <div className="rate-row">
+                  <span className="num">{fmtGBP(bdr)}</span><span>BDR</span>
+                  <span style={{color:'#d4d4d4'}}>·</span>
+                  <span className="num">{fmtGBP(otRate)}</span><span>OT/h</span>
+                  <span style={{color:'#d4d4d4'}}>·</span>
+                  <span>{(Number(crewMember.otCoef)||1.5)}×</span>
+                </div>
+              )}
+            </div>
+            <div className="right">
+              {isFirstPage ? (
+                <>
+                  <div className="hlabel">Total · {allDaysForCrew.length} day{allDaysForCrew.length !== 1 ? 's' : ''}</div>
+                  <div className="ts-total tnum">{fmtGBP(grandTotal)}</div>
+                  <div className="breakdown tnum">
+                    {grandHrs.toFixed(1)}h worked
+                    {grandOTHrs > 0 ? ` · ${grandOTHrs.toFixed(1)}h OT` : ''}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="hlabel">{`Week ${weekIndex + 1} of ${totalWeeks}`}</div>
+                  <div className="breakdown tnum">{rangeLabel}</div>
+                </>
+              )}
+            </div>
+          </div>
 
-      const calcResults = sortedDays.map((day, i) => {
-        const prevDay = i > 0 ? sortedDays[i - 1] : null;
-        return calcForDisplay(production, day, crew, prevDay);
+          {isFirstPage && <ChipLegend />}
+
+          {/* Day rows */}
+          <div className="day-list">
+            {weekDates.map(dateISO => {
+              const day = dayMap[dateISO];
+              const d = new Date(dateISO + "T12:00:00");
+              const dow = d.toLocaleDateString('en-GB', { weekday: 'short' });
+              const dayNum = d.getDay(); // 0=Sun,6=Sat
+              const isSat = dayNum === 6;
+              const isSun = dayNum === 0;
+              const mo = d.toLocaleDateString('en-GB', { month: 'short' });
+              const dateNum = d.getDate();
+              const tintClass = isSat ? 'sat' : isSun ? 'sun' : '';
+
+              if (!day) {
+                // Rest day
+                return (
+                  <div key={dateISO} className={`day-row rest-row${tintClass ? ' ' + tintClass : ''}`}>
+                    <div className="dcol">
+                      <div className="dow">{dow}</div>
+                      <div className="dnum tnum">{dateNum}</div>
+                      <div className="dmo tnum">{mo}</div>
+                    </div>
+                    <div className="dbody"><span className="rest-lbl">Rest</span></div>
+                    <div className="dtotal"><div className="tlbl">—</div></div>
+                  </div>
+                );
+              }
+
+              // Day with data — but check if it's a Rest Day type
+              if (day.dayType === "Rest Day") {
+                return (
+                  <div key={dateISO} className={`day-row rest-row${tintClass ? ' ' + tintClass : ''}`}>
+                    <div className="dcol">
+                      <div className="dow">{dow}</div>
+                      <div className="dnum tnum">{dateNum}</div>
+                      <div className="dmo tnum">{mo}</div>
+                    </div>
+                    <div className="dbody"><span className="rest-lbl">Rest</span></div>
+                    <div className="dtotal"><div className="tlbl">—</div></div>
+                  </div>
+                );
+              }
+
+              const prevDay = allDaysForCrew
+                .filter(x => x.date < dateISO)
+                .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+              const calc = calcForDisplay(production, day, crewMember, prevDay);
+              const flags = penaltyFlags(calc);
+              const isBH = flags.isBankHoliday;
+              const rowTint = isBH || isSun ? 'sun' : isSat ? 'sat' : '';
+
+              const callTime = day.callTime || '';
+              const wrapTime = day.wrapTime || '';
+              const workedHrs = calc.meta?.workedHrs || 0;
+              const otHrs = calc.meta?.otHrs || 0;
+              const chipClass = dayTypeChipClass(day.dayType);
+
+              return (
+                <div key={dateISO} className={`day-row${rowTint ? ' ' + rowTint : ''}`}>
+                  <div className="dcol">
+                    <div className="dow">{dow}</div>
+                    <div className="dnum tnum">{dateNum}</div>
+                    <div className="dmo tnum">{mo}</div>
+                  </div>
+                  <div className="dbody">
+                    <div className="head-line">
+                      <span className={`chip-day ${chipClass}`}>{day.dayType}</span>
+                      <PenChips flags={flags} />
+                      {callTime && wrapTime && (
+                        <span className="times tnum">{callTime} → {wrapTime} <span className="thrs">{workedHrs.toFixed(1)}h</span></span>
+                      )}
+                    </div>
+                    <div className="dlines">
+                      {calc.lines.map((line, i) => {
+                        const isOT = /\bot\b|\bovertime\b/i.test(line.label || '');
+                        const isPen = line.rate === null && !line.isTOC;
+                        return (
+                          <React.Fragment key={i}>
+                            <span className="ll">
+                              {isOT
+                                ? <><span className="ot-lbl">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
+                                : isPen
+                                ? <><span className="penalty">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
+                                : <><strong>{line.label}</strong>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
+                              }
+                            </span>
+                            <span className="lr tnum">{fmtGBP(line.amount)}</span>
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="dtotal">
+                    <div className="tlbl">Day Total</div>
+                    <div className="tval tnum">{fmtGBP(calc.total)}</div>
+                    {otHrs > 0 && <div className="tsub tnum">{otHrs.toFixed(1)}h OT</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="doc-footer">
+            <div className="pay-info">
+              {isFirstPage && userPrefs?.vatRegistered && userPrefs?.vatNumber
+                ? <span><span className="flbl">VAT No.</span> <span className="fval tnum">{userPrefs.vatNumber}</span></span>
+                : null}
+            </div>
+            <div className="brand">
+              <div className="bname">TIMEMACHINE</div>
+              <div className="tnum">Page {pageNum} of {totalPages}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ── Grid page ── */
+    function GridPage({ crew, weekDates, allDays, production, weekIndex, totalWeeks, pageNum, totalPages, isFirstPage, userPrefs }) {
+      const week = { start: weekDates[0], end: weekDates[6] };
+      const rangeStart = new Date(weekDates[0] + "T12:00:00");
+      const rangeEnd   = new Date(weekDates[6] + "T12:00:00");
+      const fmtShort = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      const rangeLabel = `${fmtShort(rangeStart)} – ${fmtShort(rangeEnd)}`;
+
+      // Build lookup: daysByCrewAndDate[crewId][date] = day object
+      const byCA = {};
+      (allDays || []).forEach(d => {
+        if (d.date >= week.start && d.date <= week.end) {
+          if (!byCA[d.crewId]) byCA[d.crewId] = {};
+          byCA[d.crewId][d.date] = d;
+        }
       });
 
-      const daySectionsHTML = sortedDays.map((day, i) => generateDaySection(day, calcResults[i])).join('\n');
+      // Grand totals
+      let weekTotal = 0, weekHrs = 0, weekOTHrs = 0;
+      const crewTotals = crew.map(c => {
+        const crewDays = Object.values(byCA[c.id] || {});
+        const sorted = [...(allDays || [])].filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+        let tot = 0, hrs = 0;
+        crewDays.forEach(day => {
+          const prev = sorted.filter(x => x.date < day.date).pop() || null;
+          const calc = calcForDisplay(production, day, c, prev);
+          tot += calc.total;
+          hrs += calc.meta?.workedHrs || 0;
+        });
+        weekTotal += tot;
+        weekHrs += hrs;
+        return { tot, hrs };
+      });
 
-      const grandTotal = calcResults.reduce((s, r) => s + (Number(r?.total) || 0), 0);
-      const totalOTHrs = calcResults.reduce((s, r) => {
-        return s + (r?.lines || []).filter(l => /OT|Overtime/i.test(l.label || '')).reduce((qs, l) => qs + (Number(l.qty) || 0), 0);
-      }, 0);
+      // Column day totals
+      const colTotals = weekDates.map(dateISO => {
+        let tot = 0, hrs = 0;
+        crew.forEach((c, ci) => {
+          const day = (byCA[c.id] || {})[dateISO];
+          if (!day || day.dayType === "Rest Day") return;
+          const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+          const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
+          const calc = calcForDisplay(production, day, c, prev);
+          tot += calc.total;
+          hrs += calc.meta?.workedHrs || 0;
+        });
+        return { tot, hrs };
+      });
 
-      const fmtShort = (iso) => {
-        if (!iso) return '—';
-        const d = new Date(iso + 'T12:00:00');
-        return `${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })} ${d.getFullYear()}`;
-      };
-      const periodRange = `${fmtShort(firstIso)} – ${fmtShort(lastIso)}`;
-      const lblSub = `${dayCount} day${dayCount === 1 ? '' : 's'} worked · ${totalHrs.toFixed(1)} hrs · ${totalOTHrs.toFixed(1)} OT hrs · period ${periodRange}`;
+      // Col widths: crew col + 7 day cols + total col
+      const CREW_W = "26mm";
+      const DAY_W  = "19mm";
+      const TOT_W  = "18mm";
 
-      const grandTotalStr = fmtGBP(grandTotal);
-      const grandTotalHTML = grandTotalStr.startsWith('£') ? `<span class="ccy">£</span>${grandTotalStr.slice(1)}` : esc(grandTotalStr);
+      const now = new Date();
+      const genLabel = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        + ' · ' + now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-      const footerRef = `${prodCode} / ${crewCode}`;
+      return (
+        <div className="page grid-page">
+          {/* Header */}
+          <div className="doc-header">
+            <div>
+              <div className="hlabel">Production Grid{production.bestBoyMode ? '' : ''}</div>
+              <div className="grid-title">{production.title || 'Untitled Production'}</div>
+              <div className="meta" style={{fontSize:'10.5px',color:'#525252',marginTop:6}}>
+                {[production.prodCo, `Week ${weekIndex + 1} of ${totalWeeks}`, `${crew.length} crew`, rangeLabel].filter(Boolean).join(' · ')}
+              </div>
+            </div>
+            <div className="right">
+              <div className="hlabel">Week Total</div>
+              <div className="total tnum">{fmtGBP(weekTotal)}</div>
+              <div className="breakdown tnum">{weekHrs.toFixed(0)}h{weekOTHrs > 0 ? ` · ${weekOTHrs.toFixed(0)}h OT` : ''}</div>
+            </div>
+          </div>
 
-      return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>${esc(crew?.name || 'Crew')} — Timesheet · ${esc(production?.title || '')}</title>
-<style>${TIMESHEET_CSS}</style>
-</head>
-<body>
+          {isFirstPage && <ChipLegend />}
 
-<div class="page">
+          {/* Grid */}
+          <div className="grid-wrap">
+            <table className="grid">
+              <colgroup>
+                <col style={{width: CREW_W}}/>
+                {weekDates.map((_, i) => <col key={i} style={{width: DAY_W}}/>)}
+                <col style={{width: TOT_W}}/>
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="crew-col"></th>
+                  {weekDates.map(dateISO => {
+                    const d = new Date(dateISO + "T12:00:00");
+                    const dn = d.getDay();
+                    const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
+                    return (
+                      <th key={dateISO} className={cls || undefined}>
+                        <div className="gdow">{d.toLocaleDateString('en-GB',{weekday:'short'})}</div>
+                        <div className="gdnum">{d.getDate()}</div>
+                        <div className="gmo tnum">{d.toLocaleDateString('en-GB',{month:'short'})}</div>
+                      </th>
+                    );
+                  })}
+                  <th className="total-col"><div className="gdow">Total</div></th>
+                </tr>
+              </thead>
+              <tbody>
+                {crew.map((c, ci) => {
+                  const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+                  return (
+                    <tr key={c.id}>
+                      <td className="crew">
+                        <div className="crew-name">{c.name}</div>
+                        <div className="crew-role">{c.role} · {fmtGBP(c.bdr)}</div>
+                      </td>
+                      {weekDates.map(dateISO => {
+                        const dn = new Date(dateISO + "T12:00:00").getDay();
+                        const colCls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
+                        const day = (byCA[c.id] || {})[dateISO];
+                        if (!day || day.dayType === "Rest Day") {
+                          return (
+                            <td key={dateISO} className={colCls || undefined}>
+                              <span className="rest-label">Rest</span>
+                            </td>
+                          );
+                        }
+                        const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
+                        const calc = calcForDisplay(production, day, c, prev);
+                        const flags = penaltyFlags(calc);
+                        const isBH = flags.isBankHoliday;
+                        const cellCls = (isBH || dn === 0) ? 'sun' : dn === 6 ? 'sat' : '';
+                        const hrs = calc.meta?.workedHrs || 0;
+                        const chipCls = dayTypeChipClass(day.dayType);
+                        const penNodes = [];
+                        if (flags.hasOT)        penNodes.push(<span key="ot"  className="chip-ot">OT</span>);
+                        if (flags.hasL1)        penNodes.push(<span key="l1"  className="chip-msb">L1</span>);
+                        if (flags.hasL2)        penNodes.push(<span key="l2"  className="chip-msb">L2</span>);
+                        if (flags.hasMSB)       penNodes.push(<span key="msb" className="chip-msb">MSB</span>);
+                        if (flags.hasCWD)       penNodes.push(<span key="cwd" className="chip-cwd">CWD</span>);
+                        if (flags.hasTOC)       penNodes.push(<span key="toc" className="chip-toc">TOC</span>);
+                        if (flags.isNightShoot) penNodes.push(<span key="ns"  className="chip-ns">NS</span>);
+                        return (
+                          <td key={dateISO} className={cellCls || undefined}>
+                            <div className="cell-stack">
+                              <div className="ctop">
+                                <span className={`chip-day ${chipCls}`}>{day.dayType}</span>
+                                <span className="hrs-line tnum">{hrs.toFixed(1)}h</span>
+                                {penNodes.length > 0 && <div className="pens">{penNodes}</div>}
+                              </div>
+                              <span className="cell-total-val tnum">{fmtGBP(calc.total)}</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td className="row-total">
+                        <div className="rowtv tnum">{fmtGBP(crewTotals[ci].tot)}</div>
+                        <div className="rowth tnum">{crewTotals[ci].hrs.toFixed(1)}h</div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="crew">Day Totals</td>
+                  {weekDates.map((dateISO, i) => {
+                    const dn = new Date(dateISO + "T12:00:00").getDay();
+                    const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
+                    const ct = colTotals[i];
+                    return (
+                      <td key={dateISO} className={cls || undefined}>
+                        {ct.tot > 0
+                          ? <><div className="dtv tnum">{fmtGBP(ct.tot)}</div><div className="dth tnum">{ct.hrs.toFixed(1)}h</div></>
+                          : <span style={{color:'#d4d4d4'}}>—</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="row-total">
+                    <div className="wk-total tnum">{fmtGBP(weekTotal)}</div>
+                    <div className="dth tnum">{weekHrs.toFixed(0)}h</div>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
-  <header class="doc-header">
-    <div>
-      <h1 class="crew-name">${esc(crew?.name || '')}</h1>
-      <p class="production">${esc(production?.title || '')} <span class="sub">— Crew Timesheet</span></p>
-      <div class="meta-row">
-        <span class="item"><span class="label">Role</span><span class="val">${esc(crew?.role || '')}</span></span>
-        <span class="item"><span class="label">Day Rate</span><span class="val">${esc(fmtGBP(bdr))}</span></span>
-        <span class="item"><span class="label">Hourly</span><span class="val">${esc(fmtGBP(bhr))}</span></span>
-        <span class="item"><span class="label">OT</span><span class="val">${esc(String(otCoef))}×</span></span>
-      </div>
-    </div>
-    <div class="right">
-      <div class="markmark">${esc(production?.title || '')}</div>
-      <div class="prod-co">${esc(production?.prodCo || '')}</div>
-      <div class="doc-id">${esc(docId)}</div>
-    </div>
-  </header>
-
-  <div class="period">
-    <div>
-      <div class="lab">Period Start</div>
-      <div class="val">${esc(fmtPeriod(firstIso))}</div>
-    </div>
-    <div class="center">${esc(periodStats)}</div>
-    <div class="right">
-      <div class="lab">Period End</div>
-      <div class="val">${esc(fmtPeriod(lastIso))}</div>
-    </div>
-  </div>
-
-${daySectionsHTML}
-
-  <div class="grand-total">
-    <div>
-      <div class="lbl">Total Due</div>
-      <div class="lbl-sub">${esc(lblSub)}</div>
-    </div>
-    <div class="amt">${grandTotalHTML}</div>
-  </div>
-
-  <div class="doc-footer">
-    <div>${esc(footerRef)}</div>
-    <div class="center">END OF TIMESHEET</div>
-    <div class="right">Generated ${esc(docDate)}</div>
-  </div>
-
-</div>
-
-</body>
-</html>`;
+          {/* Footer */}
+          <div className="doc-footer">
+            <div className="pay-info">
+              {production.prodCo && <span><span className="flbl">Production:</span> <span className="fval">{production.prodCo}</span></span>}
+              {production.invoicingEmail && <span><span className="flbl">Email:</span> <span className="fval">{production.invoicingEmail}</span></span>}
+              <span><span className="flbl">Generated:</span> <span className="fval tnum">{genLabel}</span></span>
+            </div>
+            <div className="brand">
+              <div className="bname">TIMEMACHINE</div>
+              <div className="tnum">Page {pageNum} of {totalPages} · Week {weekIndex + 1}</div>
+            </div>
+          </div>
+        </div>
+      );
     }
 
-    function generateDaySection(day, calcResult) {
-      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    /* ── PrintView portal ── */
+    function PrintView({ mode, production, crewMember, crewList, days, weeks, exportWeekIndex, userPrefs }) {
+      // mode: "timesheet" | "grid"
+      // For timesheet: crewMember (single), days (all for that crew)
+      // For grid: crewList (all crew), days (all days for selected weeks)
 
-      if (!day?.date) return '';
+      const pages = [];
 
-      const d = new Date(day.date + 'T12:00:00');
-      const dow = d.toLocaleDateString('en-GB', { weekday: 'short' });
-      const mo = d.toLocaleDateString('en-GB', { month: 'long' });
-      const dateStr = `${d.getDate()} ${mo} ${d.getFullYear()}`;
-      const dowNum = d.getDay();
-      const isSat = dowNum === 6;
-      const isSun = dowNum === 0;
-
-      const lines = calcResult?.lines || [];
-      const meta = calcResult?.meta || {};
-      const hasBreach = lines.some(l => l && l.isBreach);
-
-      const headerCls = ['day-header'];
-      if (isSat) headerCls.push('weekend');
-      if (isSun) headerCls.push('sunday');
-      if (hasBreach) headerCls.push('breach-day');
-
-      const dayType = day.dayType || '';
-      let dayTypeClass = 'tag';
-      if (dayType === 'Shoot') dayTypeClass = 'tag shoot';
-      else if (dayType === 'Pre-light') dayTypeClass = 'tag prelight';
-      else if (dayType === 'Prep Day') dayTypeClass = 'tag prep';
-      else if (dayType === 'Recce') dayTypeClass = 'tag recce';
-      else if (dayType === 'Build Day') dayTypeClass = 'tag build';
-      else if (dayType === 'De-rig') dayTypeClass = 'tag derig';
-      else if (dayType === 'Travel Day') dayTypeClass = 'tag travel';
-      else if (dayType === 'Rest Day') dayTypeClass = 'tag rest';
-
-      const dayLabel = meta.dayLabel || 'Standard';
-      let callClass = 'tag call';
-      let callText = dayLabel;
-      if (isSun || /^sunday/i.test(dayLabel))      { callClass = 'tag call sunday';  callText = 'Sunday'; }
-      else if (isSat || /^saturday/i.test(dayLabel)) { callClass = 'tag call weekend'; callText = 'Saturday'; }
-      else if (/night shoot/i.test(dayLabel))      { callClass = 'tag call night';   callText = 'Night Shoot'; }
-      else if (/^early/i.test(dayLabel))           { callClass = 'tag call early';   callText = 'Early Call'; }
-      else if (/^late/i.test(dayLabel))            { callClass = 'tag call late';    callText = 'Late Call'; }
-      else if (/^standard/i.test(dayLabel))        { callClass = 'tag call';         callText = 'Standard'; }
-
-      const showCwd = !!meta.continuousDay;
-
-      const rowsHTML = lines.map(l => {
-        const label = l.label || '';
-        let rowClass = 'bdr';
-        if (/OT|Overtime/i.test(label)) rowClass = 'ot';
-        else if (l.isBreach || /Penalty|Breach|Missed/i.test(label)) rowClass = 'penalty';
-        else if (/Kit|Per Diem|Mileage/i.test(label)) rowClass = 'kit';
-
-        const pillHTML = rowClass === 'ot' ? '<span class="pill">OT</span>' : '';
-        const timeStr = l.timeRange || '';
-        const rateStr = l.rate != null ? fmtGBP(l.rate) : '';
-        const qtyStr = l.qty != null ? String(l.qty) : '';
-        const amtStr = fmtGBP(l.amount);
-
-        return `<tr class="${rowClass}">
-        <td class="marker"></td>
-        <td class="desc">${pillHTML}${esc(label)}</td>
-        <td class="time">${esc(timeStr)}</td>
-        <td class="rate">${esc(rateStr)}</td>
-        <td class="qty">${esc(qtyStr)}</td>
-        <td class="amt">${esc(amtStr)}</td>
-      </tr>`;
-      }).join('');
-
-      return `<section class="day">
-    <div class="${headerCls.join(' ')}">
-      <div class="day-date"><span class="dow">${esc(dow)}</span>${esc(dateStr)}</div>
-      <div class="day-tags">
-        ${dayType ? `<span class="${dayTypeClass}">${esc(dayType)}</span>` : ''}
-        <span class="${callClass}">${esc(callText)}</span>
-        ${showCwd ? '<span class="tag cwd">CWD</span>' : ''}
-      </div>
-    </div>
-    <table class="lines">
-      <colgroup><col class="c-marker"><col class="c-desc"><col class="c-time"><col class="c-rate"><col class="c-qty"><col class="c-amt"></colgroup>
-      <tbody>${rowsHTML}</tbody>
-    </table>
-    <div class="day-total">
-      <div class="lbl">Day Total</div>
-      <div></div>
-      <div class="amt">${fmtGBP(calcResult?.total)}</div>
-    </div>
-  </section>`;
-    }
-
-    async function exportCrewPDF(crew, days, production) {
-      const html = generateCrewHTML(crew, days, production);
-      const filename = `${crew?.name || 'Crew'} — ${production?.title || 'Timesheet'}.pdf`;
-
-      const parsed = new DOMParser().parseFromString(html, 'text/html');
-      const styleEl = document.createElement('style');
-      styleEl.setAttribute('data-crew-pdf', '1');
-      styleEl.textContent = parsed.querySelector('style')?.textContent || '';
-      document.head.appendChild(styleEl);
-
-      const page = parsed.querySelector('.page');
-      const container = document.createElement('div');
-      container.style.cssText = 'position:fixed;left:-9999px;top:0;';
-      container.appendChild(page);
-      document.body.appendChild(container);
-
-      const opt = {
-        margin: 0,
-        filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: 'avoid-all' },
-      };
-
-      try {
-        await html2pdf().set(opt).from(page).save();
-      } finally {
-        document.head.removeChild(styleEl);
-        document.body.removeChild(container);
-      }
-    }
-
-    function generateSummaryHTML(production, allCrew, allDays) {
-      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-      const today = new Date();
-      const docDate = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
-      const prodCode = (production?.title || 'PROD').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'PROD';
-      const docId = `REF · ${prodCode} / SUM · ${docDate}`;
-
-      const crewStats = (allCrew || []).map(c => {
-        const entries = (allDays || [])
-          .filter(d => d.crewId === c.id)
+      if (mode === "timesheet" && crewMember) {
+        const crewDays = (days || [])
+          .filter(d => d.crewId === crewMember.id)
           .sort((a, b) => a.date.localeCompare(b.date));
-        let totalHrs = 0, totalOTHrs = 0, totalAmt = 0;
-        entries.forEach((e, i) => {
-          const resolved = resolveDay(production, e, c);
-          const calc = calculateDay(resolved, c, production);
-          totalHrs += Number(calc.meta.workedHrs) || 0;
-          totalOTHrs += Number(calc.meta.otHrs) || 0;
-          totalAmt += Number(calcForDisplay(production, e, c, entries[i - 1] || null).total) || 0;
+
+        // Compute grand totals
+        let grandTotal = 0, grandHrs = 0, grandOTHrs = 0;
+        crewDays.forEach((day, i) => {
+          const prev = crewDays[i - 1] || null;
+          const calc = calcForDisplay(production, day, crewMember, prev);
+          grandTotal  += calc.total;
+          grandHrs    += calc.meta?.workedHrs || 0;
+          grandOTHrs  += calc.meta?.otHrs     || 0;
         });
-        return { crew: c, days: entries.length, totalHrs, totalOTHrs, totalAmt };
-      }).filter(s => s.days > 0);
 
-      const grandDays  = crewStats.reduce((s, r) => s + r.days, 0);
-      const grandHrs   = crewStats.reduce((s, r) => s + r.totalHrs, 0);
-      const grandOTHrs = crewStats.reduce((s, r) => s + r.totalOTHrs, 0);
-      const grandAmt   = crewStats.reduce((s, r) => s + r.totalAmt, 0);
-      const crewCount  = crewStats.length;
+        // Determine which weeks to render
+        const weeksToRender = exportWeekIndex !== null && exportWeekIndex !== undefined
+          ? [weeks[exportWeekIndex]].filter(Boolean)
+          : weeks;
 
-      const rowsHTML = crewStats.map(s => `
-      <tr class="s-row">
-        <td class="s-name">${esc(s.crew.name)}</td>
-        <td class="s-role">${esc(s.crew.role || '')}</td>
-        <td class="s-num">${s.days}</td>
-        <td class="s-num">${s.totalHrs.toFixed(1)}</td>
-        <td class="s-num">${s.totalOTHrs.toFixed(1)}</td>
-        <td class="s-amt">${fmtGBP(s.totalAmt)}</td>
-      </tr>`).join('');
+        const totalPages = weeksToRender.length;
 
-      return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>Summary · ${esc(production?.title || '')}</title>
-<style>
-${GRID_CSS}
-/* Portrait A4 override */
-.page {
-  width: 210mm;
-  min-height: 297mm;
-  padding: 22mm 20mm 18mm;
-  display: block;
-  page-break-inside: avoid;
-}
-/* Summary table */
-.summary {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
-  font-size: 10.5pt;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-.summary thead th {
-  padding: 8px 10px;
-  text-align: left;
-  font-size: 8.5pt;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 0.75pt solid var(--ink);
-  font-weight: 500;
-}
-.summary thead th.s-num,
-.summary thead th.s-amt { text-align: right; }
-.summary .s-row td {
-  padding: 10px 10px;
-  border-bottom: 0.4pt solid var(--rule-hair);
-  vertical-align: baseline;
-  color: var(--ink-2);
-}
-.summary .s-name {
-  font-size: 12pt;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-}
-.summary .s-role {
-  font-size: 8.5pt;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.summary .s-num { text-align: right; font-size: 10pt; }
-.summary .s-amt { text-align: right; font-weight: 600; font-size: 11pt; color: var(--ink); }
-.summary tfoot td {
-  padding: 12px 10px 8px;
-  border-top: 0.75pt solid var(--ink);
-  font-size: 8.5pt;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-weight: 500;
-}
-.summary tfoot .s-num { text-align: right; font-size: 10pt; letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--ink-2); }
-.summary tfoot .s-amt { text-align: right; font-size: 14pt; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; text-transform: none; }
-@media print {
-  @page { size: A4 portrait; margin: 0; }
-}
-</style>
-</head>
-<body>
-
-<div class="page">
-
-  <header class="doc-header">
-    <div>
-      <h1 class="doc-title">${esc(production?.title || '')}</h1>
-      <p class="doc-sub">Crew Summary <span class="muted">— ${crewCount} crew member${crewCount === 1 ? '' : 's'}</span></p>
-    </div>
-    <div class="right">
-      <div class="markmark">${esc(production?.title || '')}</div>
-      <div class="doc-id">${esc(docId)}</div>
-      <div class="label-tag">Crew · <b>${crewCount}</b></div>
-    </div>
-  </header>
-
-  <table class="summary">
-    <thead>
-      <tr>
-        <th class="s-name">Name</th>
-        <th class="s-role">Role</th>
-        <th class="s-num">Days</th>
-        <th class="s-num">Hours</th>
-        <th class="s-num">OT Hrs</th>
-        <th class="s-amt">Total</th>
-      </tr>
-    </thead>
-    <tbody>${rowsHTML}</tbody>
-    <tfoot>
-      <tr>
-        <td class="s-name" colspan="2">Grand Total</td>
-        <td class="s-num">${grandDays}</td>
-        <td class="s-num">${grandHrs.toFixed(1)}</td>
-        <td class="s-num">${grandOTHrs.toFixed(1)}</td>
-        <td class="s-amt">${fmtGBP(grandAmt)}</td>
-      </tr>
-    </tfoot>
-  </table>
-
-  <div class="doc-footer">
-    <div>${esc(prodCode)} / SUM</div>
-    <div class="center">END OF SUMMARY</div>
-    <div class="right">Generated ${esc(docDate)}</div>
-  </div>
-
-</div>
-
-</body>
-</html>`;
-    }
-
-    function generateGridHTML(production, allDays, allCrew) {
-      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-      const today = new Date();
-      const docDate = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
-      const prodCode = (production?.title || 'PROD').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'PROD';
-      const docId = `REF · ${prodCode} / GRID · ${docDate}`;
-
-      const dateSet = new Set([
-        ...((production?.gridDates) || []),
-        ...((allDays || []).map(d => d?.date).filter(Boolean)),
-      ]);
-      const allDates = [...dateSet].sort();
-
-      const fmtDate = (iso) => {
-        const d = new Date(iso + 'T12:00:00');
-        return {
-          dow: d.toLocaleDateString('en-GB', { weekday: 'short' }),
-          date: String(d.getDate()),
-          month: d.toLocaleDateString('en-GB', { month: 'short' }),
-          dayNum: d.getDay(),
-          long: `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`,
-        };
-      };
-
-      const fmtHrs = (h) => {
-        if (!Number.isFinite(h) || h <= 0) return '0h';
-        return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
-      };
-
-      // Inline style constants (hardcoded colours so html2canvas doesn't need var() resolution)
-      const C = {
-        ink:        '#15171A',
-        ink2:       '#2B2E33',
-        muted:      '#6B7079',
-        ruleHair:   '#E8E3D6',
-        paperBand:  '#F6F3EC',
-        amber:      '#B7791F',
-        amberTint:  '#FBF4E3',
-        red:        '#B42318',
-        redTint:    '#F9ECE9',
-      };
-
-      const CREW_W = '200px';
-
-      const renderDayCell = (crewMember, date) => {
-        const day = (allDays || []).find(d => d.crewId === crewMember.id && d.date === date);
-        const dInfo = fmtDate(date);
-        const isSat = dInfo.dayNum === 6;
-        const isSun = dInfo.dayNum === 0;
-        const bg = isSat ? C.amberTint : isSun ? C.redTint : 'transparent';
-        const wrapStyle = `flex:1;min-height:76px;display:flex;align-items:center;justify-content:center;border-right:0.4pt solid ${C.ruleHair};background:${bg};`;
-
-        if (!day) {
-          return `<div style="${wrapStyle}"><div class="cell rest" style="padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:4px;"><span class="rest-dot"></span>Rest</div></div>`;
-        }
-
-        const resolved = resolveDay(production, day, crewMember);
-        const { meta, lines } = calculateDay(resolved, crewMember, production);
-
-        const hasOT      = (meta.otHrs || 0) > 0;
-        const hasCWD     = !!meta.continuousDay;
-        const hasMSB     = lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label || ''));
-        const hasTOC     = lines.some(l => l.isTOC);
-        const isTOCBreach = lines.some(l => l.isTOC && l.isBreach);
-
-        const cellClasses = ['cell'];
-        if (hasOT)       cellClasses.push('has-ot');
-        if (isTOCBreach) cellClasses.push('has-breach');
-
-        const chips = [];
-        if (hasOT)  chips.push('<span class="chip ot">OT</span>');
-        if (hasMSB) chips.push('<span class="chip msb">MSB</span>');
-        if (hasTOC) chips.push('<span class="chip toc">TOC</span>');
-        if (hasCWD) chips.push('<span class="chip cwd">CWD</span>');
-
-        const ct  = resolved.callTime  || '—';
-        const wt  = resolved.wrapTime  || '—';
-        const hrs = gridDisplayHours(resolved);
-        const hrsColor = isTOCBreach ? C.red : C.ink;
-
-        return `<div style="${wrapStyle}"><div class="${cellClasses.join(' ')}" style="padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:4px;"><div class="times" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8.5pt;color:${C.muted};letter-spacing:0.02em;">${esc(ct)}–${esc(wt)}</div><div class="hours" style="font-size:14pt;font-weight:600;letter-spacing:-0.01em;color:${hrsColor};line-height:1;">${esc(fmtHrs(hrs))}</div>${chips.length ? `<div class="chips" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-top:2px;">${chips.join('')}</div>` : ''}</div></div>`;
-      };
-
-      const PER_PAGE = 5;
-      const pageDateChunks = [];
-      if (allDates.length === 0) {
-        pageDateChunks.push([]);
-      } else {
-        for (let i = 0; i < allDates.length; i += PER_PAGE) {
-          pageDateChunks.push(allDates.slice(i, i + PER_PAGE));
-        }
+        weeksToRender.forEach((wk, pi) => {
+          const weekDates = weekDateRange(wk.start);
+          pages.push(
+            <TimesheetPage
+              key={wk.start}
+              crewMember={crewMember}
+              weekDates={weekDates}
+              allDaysForCrew={crewDays}
+              production={production}
+              pageNum={pi + 1}
+              totalPages={totalPages}
+              weekIndex={wk.index}
+              totalWeeks={weeks.length}
+              grandTotal={grandTotal}
+              grandHrs={grandHrs}
+              grandOTHrs={grandOTHrs}
+              isFirstPage={pi === 0}
+              userPrefs={userPrefs}
+            />
+          );
+        });
       }
-      const pageCount = pageDateChunks.length;
-      const crewCount = (allCrew || []).length;
 
-      const renderPage = (chunkDates, idx) => {
-        // Header row
-        const headerDayCells = chunkDates.map(date => {
-          const di = fmtDate(date);
-          const isSat = di.dayNum === 6;
-          const isSun = di.dayNum === 0;
-          const bg        = isSat ? C.amberTint : isSun ? C.redTint   : 'transparent';
-          const accentClr = isSat ? C.amber     : isSun ? C.red       : C.muted;
-          return `<div style="flex:1;text-align:center;padding:10px 6px 12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;background:${bg};"><span style="display:block;font-size:8.5pt;letter-spacing:0.18em;text-transform:uppercase;color:${accentClr};margin-bottom:3px;font-weight:500;">${esc(di.dow)}</span><span style="display:block;font-size:13pt;font-weight:600;letter-spacing:-0.01em;color:${C.ink};line-height:1;">${esc(di.date)}</span><span style="display:block;font-size:8pt;color:${accentClr};letter-spacing:0.08em;text-transform:uppercase;margin-top:3px;">${esc(di.month)}</span></div>`;
-        }).join('');
+      if (mode === "grid" && crewList) {
+        const weeksToRender = exportWeekIndex !== null && exportWeekIndex !== undefined
+          ? [weeks[exportWeekIndex]].filter(Boolean)
+          : weeks;
 
-        const headerRow = `<div style="display:flex;align-items:stretch;border-bottom:0.75pt solid ${C.ink};"><div style="width:${CREW_W};flex-shrink:0;padding:10px 12px 12px;display:flex;align-items:flex-end;font-size:8.5pt;letter-spacing:0.16em;text-transform:uppercase;color:${C.muted};">Crew</div>${headerDayCells}</div>`;
+        const totalPages = weeksToRender.length;
 
-        // Body rows
-        const bodyRows = (allCrew || []).map(c => {
-          const dayCells = chunkDates.map(date => renderDayCell(c, date)).join('');
-          return `<div style="display:flex;align-items:stretch;border-bottom:0.4pt solid ${C.ruleHair};"><div style="width:${CREW_W};flex-shrink:0;padding:12px;background:${C.paperBand};border-right:0.4pt solid ${C.ruleHair};display:flex;flex-direction:column;justify-content:center;"><span style="display:block;font-size:13pt;font-weight:600;letter-spacing:-0.01em;color:${C.ink};line-height:1.1;">${esc(c.name || '')}</span><span style="display:block;margin-top:3px;font-size:8.5pt;letter-spacing:0.14em;text-transform:uppercase;color:${C.muted};">${esc(c.role || '')}</span></div>${dayCells}</div>`;
-        }).join('\n');
-
-        const gridWrap = `<div style="margin-top:14px;">${headerRow}\n${bodyRows}</div>`;
-
-        const periodLabel = chunkDates.length
-          ? `${fmtDate(chunkDates[0]).long} → ${fmtDate(chunkDates[chunkDates.length - 1]).long} ${new Date(chunkDates[0] + 'T12:00:00').getFullYear()}`
-          : '—';
-        const subLabel = pageCount > 1
-          ? `Grid Overview <span class="muted">— Page ${idx + 1} of ${pageCount} · ${esc(periodLabel)}</span>`
-          : `Grid Overview <span class="muted">— ${esc(periodLabel)}</span>`;
-        const footerCenter = pageCount > 1
-          ? (idx + 1 < pageCount ? `Page ${idx + 1} of ${pageCount} — continues` : 'END OF GRID OVERVIEW')
-          : 'END OF GRID OVERVIEW';
-
-        return `<div class="page">
-  <header class="doc-header">
-    <div>
-      <h1 class="doc-title">${esc(production?.title || '')}</h1>
-      <p class="doc-sub">${subLabel}</p>
-    </div>
-    <div class="right">
-      <div class="markmark">${esc(production?.title || '')}</div>
-      <div class="doc-id">${esc(docId)}</div>
-      <div class="label-tag">Crew · <b>${crewCount}</b> &nbsp;·&nbsp; Days · <b>${chunkDates.length}</b></div>
-    </div>
-  </header>
-
-  ${gridWrap}
-
-  <div class="legend">
-    <span class="item"><span class="chip ot">OT</span>Overtime</span>
-    <span class="item"><span class="chip msb">MSB</span>Missed/Late Break</span>
-    <span class="item"><span class="chip toc">TOC</span>Time Off Clock — breach</span>
-    <span class="item"><span class="chip cwd">CWD</span>Continuous Working Day</span>
-    <span class="sep"></span>
-    <span class="item"><span class="swatch sat"></span>Saturday</span>
-    <span class="item"><span class="swatch sun"></span>Sunday</span>
-  </div>
-
-  <div class="doc-footer">
-    <div>${esc(prodCode)} / GRID · Page ${idx + 1} of ${pageCount}</div>
-    <div class="center">${footerCenter}</div>
-    <div class="right">Generated ${esc(docDate)}</div>
-  </div>
-</div>`;
-      };
-
-      const pagesHTML = pageDateChunks.map((chunk, i) => renderPage(chunk, i)).join('\n\n');
-
-      return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>Grid Overview · ${esc(production?.title || '')}</title>
-<style>
-${GRID_CSS}
-.page {
-  width: 210mm;
-  min-height: auto;
-  padding: 18mm 14mm 14mm;
-  display: block;
-  page-break-inside: avoid;
-}
-@page { size: A4 portrait; margin: 0; }
-</style>
-<style>.page { width: 210mm !important; min-height: auto !important; padding: 18mm 14mm 14mm !important; } @page { size: A4 portrait; margin: 0; }</style>
-</head>
-<body>
-
-${pagesHTML}
-
-</body>
-</html>`;
-    }
-
-    function getMonday(dateStr) {
-      const d = new Date(dateStr + "T12:00:00");
-      const dow = d.getDay();
-      d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-      return d.toISOString().slice(0, 10);
-    }
-
-    const CANCEL_DAY_TYPES = ["Shoot", "Recce", "Pre-light", "Build", "Strike"];
-
-    function cancellationPercent(noticeDate, shootDate) {
-      if (!noticeDate || !shootDate) return 0;
-      const a = new Date(noticeDate + "T12:00:00");
-      const b = new Date(shootDate + "T12:00:00");
-      const days = Math.round((b - a) / 86400000);
-      if (days < 0) return 0;
-      if (days <= 1) return 1;
-      if (days <= 3) return 0.75;
-      if (days <= 6) return 0.5;
-      return 0;
-    }
-
-    function deriveWeeks(production, days) {
-      const mondays = new Set(production.weekStarts || []);
-      const allDayDates = [...days.map(d => d.date), ...(production.gridDates || [])];
-      for (const date of allDayDates) mondays.add(getMonday(date));
-      if (mondays.size === 0) return [];
-      return [...mondays].sort().map(mon => {
-        const d = new Date(mon + "T12:00:00");
-        return Array.from({ length: 7 }, (_, i) => {
-          const day = new Date(d);
-          day.setDate(d.getDate() + i);
-          return day.toISOString().slice(0, 10);
+        weeksToRender.forEach((wk, pi) => {
+          const weekDates = weekDateRange(wk.start);
+          pages.push(
+            <GridPage
+              key={wk.start}
+              crew={crewList}
+              weekDates={weekDates}
+              allDays={days}
+              production={production}
+              weekIndex={wk.index}
+              totalWeeks={weeks.length}
+              pageNum={pi + 1}
+              totalPages={totalPages}
+              isFirstPage={pi === 0}
+              userPrefs={userPrefs}
+            />
+          );
         });
-      });
-    }
-
-    async function exportAllPdf(production, crew, days) {
-      try {
-        const summaryHTML = generateSummaryHTML(production, crew, days);
-        const gridHTML = generateGridHTML(production, days, crew);
-
-        const byCrewMap = new Map();
-        days.forEach((d) => {
-          const c = crew.find((cc) => cc.id === d.crewId);
-          if (!c) return;
-          if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, []);
-          byCrewMap.get(c.id).push(d);
-        });
-        const crewHTMLs = crew
-          .filter(c => byCrewMap.has(c.id))
-          .map(c => generateCrewHTML(c, byCrewMap.get(c.id), production));
-
-        const parser = new DOMParser();
-        const extractPages = (html) => {
-          const doc = parser.parseFromString(html, 'text/html');
-          return Array.from(doc.querySelectorAll('.page')).map(el => el.outerHTML).join('\n');
-        };
-
-        const allPagesHTML = [summaryHTML, gridHTML, ...crewHTMLs]
-          .map(extractPages).filter(Boolean).join('\n');
-
-        const combined = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>${(production?.title || 'Timesheets')} — Timesheets</title>
-<style>${TIMESHEET_CSS}
-${GRID_CSS}
-.page { width: 210mm; min-height: auto; page-break-inside: avoid; display: block; }
-@page { size: A4 portrait; margin: 0; }</style>
-</head>
-<body>
-${allPagesHTML}
-</body>
-</html>`;
-
-        const filename = `${production?.title || 'Production'} — Timesheets.pdf`;
-
-        const parsed = parser.parseFromString(combined, 'text/html');
-        const styleEl = document.createElement('style');
-        styleEl.setAttribute('data-all-pdf', '1');
-        styleEl.textContent = parsed.querySelector('style')?.textContent || '';
-        document.head.appendChild(styleEl);
-
-        const container = document.createElement('div');
-        container.style.cssText = 'position:fixed;left:-9999px;top:0;';
-        Array.from(parsed.querySelectorAll('.page')).forEach(p => container.appendChild(p));
-        document.body.appendChild(container);
-
-        const opt = {
-          margin: 0,
-          filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 3, useCORS: true, letterRendering: true, imageTimeout: 0 },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        };
-
-        try {
-          await html2pdf().set(opt).from(container).save();
-        } finally {
-          document.head.removeChild(styleEl);
-          document.body.removeChild(container);
-        }
-      } catch (e) {
-        window.alert(`Export failed: ${e?.message || 'Unknown error'}`);
-        throw e;
       }
-    }
 
-    async function exportWeekPdf(production, weekDays, allCrew) {
-      try {
-        const summaryHTML = generateSummaryHTML(production, allCrew, weekDays);
-        const gridHTML = generateGridHTML(production, weekDays, allCrew);
-
-        const byCrewMap = new Map();
-        weekDays.forEach((d) => {
-          const c = allCrew.find((cc) => cc.id === d.crewId);
-          if (!c) return;
-          if (!byCrewMap.has(c.id)) byCrewMap.set(c.id, []);
-          byCrewMap.get(c.id).push(d);
-        });
-        const crewHTMLs = allCrew
-          .filter(c => byCrewMap.has(c.id))
-          .map(c => generateCrewHTML(c, byCrewMap.get(c.id), production));
-
-        const parser = new DOMParser();
-        const extractPages = (html) => {
-          const doc = parser.parseFromString(html, 'text/html');
-          return Array.from(doc.querySelectorAll('.page')).map(el => el.outerHTML).join('\n');
-        };
-
-        const allPagesHTML = [summaryHTML, gridHTML, ...crewHTMLs]
-          .map(extractPages)
-          .filter(Boolean)
-          .join('\n');
-
-        const combined = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>${(production?.title || 'Timesheets')} — Week</title>
-<style>${TIMESHEET_CSS}
-${GRID_CSS}
-.page { width: 210mm; min-height: auto; page-break-inside: avoid; display: block; }
-@page { size: A4 portrait; margin: 0; }</style>
-</head>
-<body>
-${allPagesHTML}
-</body>
-</html>`;
-
-        const sortedDays = [...weekDays].sort((a, b) => a.date.localeCompare(b.date));
-        const firstDate = sortedDays[0]?.date || '';
-        const filename = `${production?.title || 'Production'} — Week of ${firstDate}.pdf`;
-
-        const parsed = parser.parseFromString(combined, 'text/html');
-        const styleEl = document.createElement('style');
-        styleEl.setAttribute('data-week-pdf', '1');
-        styleEl.textContent = parsed.querySelector('style')?.textContent || '';
-        document.head.appendChild(styleEl);
-
-        const container = document.createElement('div');
-        container.style.cssText = 'position:fixed;left:-9999px;top:0;';
-        Array.from(parsed.querySelectorAll('.page')).forEach(p => container.appendChild(p));
-        document.body.appendChild(container);
-
-        const opt = {
-          margin: 0,
-          filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 3, useCORS: true, letterRendering: true, imageTimeout: 0 },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        };
-
-        try {
-          await html2pdf().set(opt).from(container).save();
-        } finally {
-          document.head.removeChild(styleEl);
-          document.body.removeChild(container);
-        }
-      } catch (e) {
-        window.alert(`Export failed: ${e?.message || 'Unknown error'}`);
-        throw e;
-      }
+      return ReactDOM.createPortal(
+        <div id="print-view">
+          <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
+          {pages}
+        </div>,
+        document.body
+      );
     }
 
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
@@ -4307,10 +3591,107 @@ ${allPagesHTML}
       );
     }
 
-    /* ═══════════════════════════ EXPORT TAB ═══════════════════════════ */
+    /* ═══════════════════════════ EXPORT TAB (BB mode) ═══════════════════════════ */
 
-    function ExportTab({ production, crew, days, showToast }) {
-      const [busy, setBusy] = useState(null);
+    // Week picker bottom sheet — lists weeks and lets user pick one
+    function WeekPickerSheet({ open, weeks, onPick, onClose, title }) {
+      useEffect(() => {
+        if (!open) return;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, [open]);
+      if (!open) return null;
+      const fmtWeekRange = (wk) => {
+        const s = new Date(wk.start + "T12:00:00");
+        const e = new Date(wk.end   + "T12:00:00");
+        const opt = { day: 'numeric', month: 'short' };
+        return `${s.toLocaleDateString('en-GB', opt)} – ${e.toLocaleDateString('en-GB', { ...opt, year: 'numeric' })}`;
+      };
+      return (
+        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+             style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
+             onClick={onClose}>
+          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+               style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-2">
+              <div className="text-sm font-bold text-neutral-100">{title || "Select week"}</div>
+            </div>
+            <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
+              {weeks.map(wk => (
+                <button key={wk.start} type="button"
+                  onClick={() => { onPick(wk.index); onClose(); }}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm text-neutral-100 flex items-center justify-between"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <span className="font-semibold">{wk.label}</span>
+                  <span className="text-neutral-400 text-[11px]">{fmtWeekRange(wk)}</span>
+                </button>
+              ))}
+            </div>
+            <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
+              <button type="button" onClick={onClose}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Crew picker bottom sheet — lists crew and lets user pick one
+    function CrewPickerSheet({ open, crew, days, production, onPick, onClose, title }) {
+      useEffect(() => {
+        if (!open) return;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, [open]);
+      if (!open) return null;
+      return (
+        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+             style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
+             onClick={onClose}>
+          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+               style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-2">
+              <div className="text-sm font-bold text-neutral-100">{title || "Select crew member"}</div>
+            </div>
+            <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
+              {crew.map(c => {
+                const cDays = (days || []).filter(d => d.crewId === c.id);
+                const sorted = [...cDays].sort((a, b) => a.date.localeCompare(b.date));
+                const total = sorted.reduce((s, d, i) => s + calcForDisplay(production, d, c, sorted[i-1]||null).total, 0);
+                return (
+                  <button key={c.id} type="button"
+                    onClick={() => { onPick(c.id); onClose(); }}
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors flex items-center justify-between gap-3"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <div>
+                      <div className="text-sm font-semibold text-neutral-100">{c.name}</div>
+                      <div className="text-[10px] text-neutral-400 uppercase tracking-wide mt-0.5">{c.role} · {cDays.length} day{cDays.length !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div className="text-sm font-bold text-neutral-200 font-mono flex-shrink-0">{fmtGBP(total)}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
+              <button type="button" onClick={onClose}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ExportTab({ production, crew, days, showToast, userPrefs }) {
+      // exportState: null | { mode: "timesheet"|"grid", crewId: string|null, weekIdx: number|null }
+      const [exportState, setExportState]   = useState(null);
+      const [showWeekPicker, setShowWeekPicker] = useState(false);
+      const [showCrewPicker, setShowCrewPicker] = useState(false);
+      // pendingExport: partially-built export awaiting week or crew selection
+      const [pendingExport, setPendingExport] = useState(null);
+
+      const weeks = useMemo(() => computeWeeks(production, days), [production, days]);
 
       const byCrew = useMemo(() => {
         const m = new Map();
@@ -4327,159 +3708,172 @@ ${allPagesHTML}
         return s + sortedG.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedG[i - 1] || null).total, 0);
       }, 0);
 
-      const handleAllPdf = async () => {
-        setBusy('all-pdf');
-        try { await exportAllPdf(production, crew, days); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
+      // Trigger print after PrintView mounts
+      useEffect(() => {
+        if (!exportState) return;
+        const timer = setTimeout(() => {
+          const cleanup = () => setExportState(null);
+          window.addEventListener('afterprint', cleanup, { once: true });
+          window.print();
+          // Fallback clear after 30s if afterprint doesn't fire
+          const fallback = setTimeout(cleanup, 30000);
+          return () => clearTimeout(fallback);
+        }, 300);
+        return () => clearTimeout(timer);
+      }, [exportState]);
+
+      const triggerExport = (mode, crewId, weekIdx) => {
+        setExportState({ mode, crewId: crewId || null, weekIdx: weekIdx !== undefined ? weekIdx : null });
       };
 
-      const handleAllPdfDownload = async () => {
-        setBusy('all-pdf-dl');
-        try { await exportAllPdf(production, crew, days, { download: true }); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
+      // Handlers for the two-step flows (need crew OR week first)
+      const handleGridAll = () => {
+        if (days.length === 0) return;
+        triggerExport("grid", null, null);
+      };
+      const handleGridWeek = () => {
+        if (weeks.length === 1) { triggerExport("grid", null, 0); return; }
+        setPendingExport({ mode: "grid", crewId: null });
+        setShowWeekPicker(true);
+      };
+      const handleCrewTS = () => {
+        if (byCrew.length === 1) { triggerExport("timesheet", byCrew[0].crew.id, null); return; }
+        setPendingExport({ mode: "timesheet", weekIdx: null });
+        setShowCrewPicker(true);
+      };
+      const handleCrewTSWeek = () => {
+        if (byCrew.length === 1) {
+          if (weeks.length === 1) { triggerExport("timesheet", byCrew[0].crew.id, 0); return; }
+          setPendingExport({ mode: "timesheet", crewId: byCrew[0].crew.id });
+          setShowWeekPicker(true);
+          return;
+        }
+        setPendingExport({ mode: "timesheet", needsWeek: true });
+        setShowCrewPicker(true);
       };
 
-      const detectedWeeks = useMemo(() => {
-        if (days.length === 0) return [];
-        const weekMap = new Map();
-        days.forEach((d) => {
-          const mon = getMonday(d.date);
-          if (!weekMap.has(mon)) weekMap.set(mon, []);
-          weekMap.get(mon).push(d);
-        });
-        const sortedKeys = [...weekMap.keys()].sort();
-        return sortedKeys.map((mon, i) => {
-          const m = new Date(mon + "T12:00:00");
-          const sun = new Date(m); sun.setDate(m.getDate() + 6);
-          const sameMonth = m.getMonth() === sun.getMonth();
-          const startStr = sameMonth ? `${m.getDate()}` : `${m.getDate()} ${m.toLocaleString('en-GB', { month: 'short' })}`;
-          const endStr = `${sun.getDate()} ${sun.toLocaleString('en-GB', { month: 'short' })}`;
-          return {
-            weekNum: i + 1,
-            monday: mon,
-            label: `${startStr}–${endStr}`,
-            days: weekMap.get(mon),
-          };
-        });
-      }, [days]);
-
-      const handleWeekPdf = async (wk) => {
-        setBusy(`week-${wk.weekNum}`);
-        try { await exportWeekPdf(production, wk.days, crew); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
+      const onWeekPicked = (weekIdx) => {
+        if (pendingExport) {
+          triggerExport(pendingExport.mode, pendingExport.crewId || null, weekIdx);
+          setPendingExport(null);
+        }
       };
-
-      const handleCrewPdf = async (c, entries) => {
-        setBusy(`pdf-${c.id}`);
-        try { await exportCrewPDF(c, entries, production); showToast('PDF ready'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
-      };
-
-      const handleCrewPdfDownload = async (c, entries) => {
-        setBusy(`pdf-dl-${c.id}`);
-        try { await exportCrewPDF(c, entries, production); showToast('PDF downloaded'); } catch (e) { console.error(e); showToast('Export failed'); }
-        setBusy(null);
+      const onCrewPicked = (crewId) => {
+        if (!pendingExport) return;
+        if (pendingExport.needsWeek) {
+          if (weeks.length === 1) { triggerExport("timesheet", crewId, 0); setPendingExport(null); return; }
+          setPendingExport({ ...pendingExport, crewId, needsWeek: false });
+          setShowWeekPicker(true);
+        } else {
+          triggerExport(pendingExport.mode, crewId, pendingExport.weekIdx !== undefined ? pendingExport.weekIdx : null);
+          setPendingExport(null);
+        }
       };
 
       const handleCrewText = async (c, entries) => {
-        setBusy(`txt-${c.id}`);
         try {
           const text = generateCrewText(c, entries, production);
           const r = await shareTextOrCopy(text, `${c.name} Timesheet`);
           if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
         } catch (e) { console.error(e); }
-        setBusy(null);
       };
+
+      // Build PrintView props from exportState
+      const exportCrewMember = exportState?.crewId
+        ? crew.find(c => c.id === exportState.crewId)
+        : null;
 
       if (byCrew.length === 0) {
         return (
           <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-[10px]">
             <div className="flex justify-center mb-2 text-neutral-700"><IFile size={32}/></div>
-            <div className="text-neutral-500 text-sm">Nothing to export yet. Add crew and day entries first.</div>
+            <div className="text-neutral-500 text-sm">Add crew and day entries first.</div>
           </div>
         );
       }
+
+      const noDays = days.length === 0;
 
       return (
         <div className="space-y-6">
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IShare size={16}/>Export</h2>
 
-          {/* Combined export */}
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 space-y-3 rounded-r-[10px]">
-            <div className="flex items-baseline justify-between">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{production.bestBoyMode ? "Everyone" : "Your Timesheet"}</div>
-                <div className="text-sm text-neutral-300 mt-0.5">{production.bestBoyMode ? `${byCrew.length} crew · ` : ""}{days.length} day entries</div>
-              </div>
-              <div className="font-mono font-bold text-neutral-100 text-lg">{fmtGBP(grandTotal)}</div>
+          {/* Grand total summary */}
+          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 rounded-r-[10px] flex items-baseline justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{byCrew.length} crew · {days.length} day entries</div>
+              <div className="text-[11px] text-neutral-500 mt-0.5">{weeks.length} week{weeks.length !== 1 ? 's' : ''}</div>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <Btn variant="primary" onClick={handleAllPdf} disabled={busy !== null}>
-                <IDownload/>{busy === 'all-pdf' ? 'Building…' : 'Share PDF'}
-              </Btn>
-              <Btn variant="subtle" onClick={handleAllPdfDownload} disabled={busy !== null}>
-                <IDownload/>{busy === 'all-pdf-dl' ? 'Building…' : 'Download PDF'}
-              </Btn>
-
-            </div>
-            <div className="text-[11px] text-neutral-500 leading-relaxed">
-              {production.bestBoyMode
-                ? `One PDF with a crew summary on page 1, then each crew member's full timesheet on their own page${byCrew.some(({ entries }) => entries.length > 1) ? '(s)' : ''}.`
-                : "Your full timesheet PDF — all day entries with a running total."}
-            </div>
+            <div className="font-mono font-bold text-neutral-100 text-lg">{fmtGBP(grandTotal)}</div>
           </div>
 
-          {/* Per week */}
-          {detectedWeeks.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Export by Week</div>
-              <div className="flex flex-col gap-2">
-                {detectedWeeks.map((wk) => (
-                  <Btn key={wk.monday} variant="subtle" onClick={() => handleWeekPdf(wk)} disabled={busy !== null}>
-                    <IDownload/>{busy === `week-${wk.weekNum}` ? 'Building…' : `Week ${wk.weekNum} — ${wk.label}`}
-                  </Btn>
-                ))}
-              </div>
-            </div>
+          {/* Group 1 — Production Grid */}
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Production Grid</div>
+            <Btn variant="primary" onClick={handleGridAll} disabled={noDays}>
+              <IDownload/>Export Full Production Grid (PDF)
+            </Btn>
+            {weeks.length > 1 && (
+              <Btn variant="subtle" onClick={handleGridWeek} disabled={noDays}>
+                <IDownload/>Export Single Week (PDF)
+              </Btn>
+            )}
+          </div>
+
+          {/* Group 2 — Individual Timesheets */}
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Individual Timesheets</div>
+            <Btn variant="subtle" onClick={handleCrewTS} disabled={noDays}>
+              <IDownload/>Export Crew Timesheet (PDF)
+            </Btn>
+            {weeks.length > 1 && (
+              <Btn variant="subtle" onClick={handleCrewTSWeek} disabled={noDays}>
+                <IDownload/>Export Crew Timesheet, Single Week (PDF)
+              </Btn>
+            )}
+          </div>
+
+          {/* Text export per crew member */}
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Text / Clipboard</div>
+            {byCrew.map(({ crew: c, entries }) => (
+              <Btn key={c.id} variant="ghost" onClick={() => handleCrewText(c, entries)}>
+                <IMessage/>{c.name} — Text
+              </Btn>
+            ))}
+          </div>
+
+          {/* PrintView portal — renders when exportState is set */}
+          {exportState && (
+            <PrintView
+              mode={exportState.mode}
+              production={production}
+              crewMember={exportCrewMember}
+              crewList={crew}
+              days={days}
+              weeks={weeks}
+              exportWeekIndex={exportState.weekIdx}
+              userPrefs={userPrefs}
+            />
           )}
 
-          {/* Per crew — BB mode only */}
-          {production.bestBoyMode && <div className="space-y-2">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Per Crew Member</div>
-            {byCrew.map(({ crew: c, entries }) => {
-              const sortedBC = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-              const total = sortedBC.reduce((s, e, i) => s + calcForDisplay(production, e, c, sortedBC[i - 1] || null).total, 0);
-              const totalHrs = entries.reduce((s, e) => s + calculateDay(resolveDay(production, e, c), c, production).meta.workedHrs, 0);
-              return (
-                <div key={c.id} className="bg-neutral-900 border border-neutral-800 p-3 rounded-[10px]">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-neutral-100">{c.name}</span>
-                        <span className="text-[10px] uppercase tracking-wider bg-neutral-800 text-neutral-400 px-1.5 py-0.5">{c.role}</span>
-                      </div>
-                      <div className="text-[11px] text-neutral-400 font-mono mt-1">{entries.length} day{entries.length !== 1 ? 's' : ''} · {totalHrs.toFixed(1)}h · <span className="text-neutral-100 font-bold">{fmtGBP(total)}</span></div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Btn size="md" variant="subtle" onClick={() => handleCrewText(c, entries)} disabled={busy !== null}>
-                        <IMessage/>{busy === `txt-${c.id}` ? '…' : 'Text'}
-                      </Btn>
-                      <Btn size="md" variant="subtle" onClick={() => handleCrewPdf(c, entries)} disabled={busy !== null}>
-                        <IDownload/>{busy === `pdf-${c.id}` ? '…' : 'Share PDF'}
-                      </Btn>
-                      <Btn size="md" variant="ghost" onClick={() => handleCrewPdfDownload(c, entries)} disabled={busy !== null}>
-                        <IDownload/>{busy === `pdf-dl-${c.id}` ? '…' : 'Download PDF'}
-                      </Btn>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>}
-
-          <div className="bg-neutral-900 border border-neutral-800 p-3 text-[11px] text-neutral-400 leading-relaxed rounded-[10px]">
-            <IInfo/> <span className="align-middle">On iPad: the Share Sheet opens — pick Messages, Mail, or AirDrop. If you hit Save to Files, the PDF goes to Files → On My iPad.</span>
-          </div>
+          {/* Pickers */}
+          <WeekPickerSheet
+            open={showWeekPicker}
+            weeks={weeks}
+            title="Select week"
+            onPick={onWeekPicked}
+            onClose={() => { setShowWeekPicker(false); setPendingExport(null); }}
+          />
+          <CrewPickerSheet
+            open={showCrewPicker}
+            crew={crew}
+            days={days}
+            production={production}
+            title="Select crew member"
+            onPick={onCrewPicked}
+            onClose={() => { setShowCrewPicker(false); setPendingExport(null); }}
+          />
         </div>
       );
     }
@@ -4961,6 +4355,23 @@ ${allPagesHTML}
       const [showCalc, setShowCalc] = useState(false);
       const [showSettings, setShowSettings] = useState(false);
       const [showJumpSheet, setShowJumpSheet] = useState(false);
+      const [showExportSheet, setShowExportSheet] = useState(false);
+      const [soloExportState, setSoloExportState] = useState(null);
+
+      const soloWeeks = useMemo(() => computeWeeks(production, days), [production, days]);
+      const soloCrew = crew[0] || null;
+
+      useEffect(() => {
+        if (!soloExportState) return;
+        const timer = setTimeout(() => {
+          const cleanup = () => setSoloExportState(null);
+          window.addEventListener('afterprint', cleanup, { once: true });
+          window.print();
+          const fallback = setTimeout(cleanup, 30000);
+          return () => clearTimeout(fallback);
+        }, 300);
+        return () => clearTimeout(timer);
+      }, [soloExportState]);
 
       const totalShoot = useMemo(() => {
         return days.reduce((sum, d) => {
@@ -5012,6 +4423,11 @@ ${allPagesHTML}
               <h1 className="flex-1 text-center text-sm font-bold uppercase tracking-tight truncate">
                 {production.title || <span className="text-neutral-500">Untitled</span>}
               </h1>
+              <button onClick={() => setShowExportSheet(true)} aria-label="Export"
+                className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-full hover:bg-neutral-800"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <IShare size={16}/>
+              </button>
               <button onClick={() => setShowSettings(true)} aria-label="Production settings"
                 className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-full hover:bg-neutral-800"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
@@ -5120,6 +4536,63 @@ ${allPagesHTML}
             onConfirm={performDelete}
             onCancel={() => setConfirmDelete(false)}
           />
+
+          {/* Solo export bottom sheet */}
+          {showExportSheet && (
+            <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+                 style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
+                 onClick={() => setShowExportSheet(false)}>
+              <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+                   style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+                <div className="px-5 pt-5 pb-2">
+                  <div className="text-sm font-bold text-neutral-100 flex items-center gap-2"><IShare size={14}/>Export</div>
+                </div>
+                <div className="px-4 pb-4 flex flex-col gap-2">
+                  <button type="button"
+                    onClick={() => {
+                      setShowExportSheet(false);
+                      if (soloCrew) setSoloExportState({ mode: "timesheet" });
+                    }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IDownload size={15}/>Export Timesheet (PDF)
+                  </button>
+                  <button type="button"
+                    onClick={async () => {
+                      setShowExportSheet(false);
+                      if (!soloCrew) return;
+                      const sortedE = [...days].sort((a, b) => a.date.localeCompare(b.date));
+                      const text = generateCrewText(soloCrew, sortedE, production);
+                      const r = await shareTextOrCopy(text, `${soloCrew.name} Timesheet`);
+                      if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
+                    }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IMessage size={15}/>Export Timesheet (Text)
+                  </button>
+                </div>
+                <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
+                  <button type="button" onClick={() => setShowExportSheet(false)}
+                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Solo PrintView portal */}
+          {soloExportState && soloCrew && (
+            <PrintView
+              mode="timesheet"
+              production={production}
+              crewMember={soloCrew}
+              crewList={crew}
+              days={days}
+              weeks={soloWeeks}
+              exportWeekIndex={null}
+              userPrefs={userPrefs}
+            />
+          )}
         </div>
       );
     }
@@ -5298,7 +4771,7 @@ const setDays = (updater) =>
               />
             )}
             {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />}
-            {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} />}
+            {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
           </div>
 
           <div className="text-center text-[10px] text-neutral-600 py-6 pb-32 uppercase tracking-widest">
