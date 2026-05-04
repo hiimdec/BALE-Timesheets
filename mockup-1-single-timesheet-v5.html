@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Time Machine — Mockup 1: Individual Timesheet (v5)</title>
+<style>
+  /* Reset & base */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #2a2a2a;
+    padding: 30px 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #171717;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    width: 210mm;
+    height: 297mm;
+    background: white;
+    margin: 0 auto 30px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    overflow: hidden;
+    padding: 14mm;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Mockup banner — only outside print */
+  .mockup-banner {
+    max-width: 210mm;
+    margin: 0 auto 12px;
+    padding: 12px 16px;
+    background: #262626;
+    color: #d4d4d4;
+    font-size: 12px;
+    border-left: 2px solid #38bdf8;
+    border-radius: 6px;
+  }
+  .mockup-banner .pill {
+    background: #38bdf8;
+    color: #171717;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-right: 8px;
+    border-radius: 6px;
+  }
+
+  /* Tabular numerals everywhere money appears */
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* Header */
+  .doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #d4d4d4;
+    gap: 16px;
+  }
+  .doc-header .label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: #737373;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .doc-header .name-role {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .doc-header .name-role .role {
+    font-weight: 500;
+    color: #525252;
+    font-size: 14px;
+  }
+  .doc-header .meta {
+    font-size: 10.5px;
+    color: #525252;
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .doc-header .meta strong { color: #171717; font-weight: 600; }
+  .doc-header .rate-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    color: #525252;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #e5e5e5;
+  }
+  .doc-header .rate-row .num {
+    font-weight: 700;
+    color: #171717;
+  }
+  .doc-header .right {
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .doc-header .right .total {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1;
+    margin-top: 4px;
+    letter-spacing: -0.01em;
+  }
+  .doc-header .right .breakdown {
+    font-size: 10.5px;
+    color: #525252;
+    margin-top: 4px;
+  }
+
+  /* Chip legend (first page only) */
+  .legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 8px 0 6px;
+    font-size: 9px;
+    color: #737373;
+    border-bottom: 1px solid #f5f5f5;
+  }
+  .legend .item { display: inline-flex; align-items: center; gap: 5px; }
+
+  /* Day row */
+  .day-list {
+    flex: 1;
+    display: grid;
+    grid-template-rows: repeat(6, 1fr) 0.45fr;
+    gap: 6px;
+    padding-top: 10px;
+    min-height: 0;
+  }
+
+  .day {
+    border: 1px solid #d4d4d4;
+    border-radius: 10px;
+    display: grid;
+    grid-template-columns: 44px 1fr 100px;
+    gap: 12px;
+    padding: 8px 12px;
+    align-items: stretch;
+  }
+
+  /* Date column */
+  .day .date {
+    border-right: 1px solid #e5e5e5;
+    padding-right: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .day .date .dow {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #737373;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .day .date .num {
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
+    margin-top: 3px;
+  }
+  .day .date .mo {
+    font-size: 8px;
+    color: #737373;
+    margin-top: 3px;
+    line-height: 1;
+  }
+
+  /* Body column */
+  .day .body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    min-width: 0;
+  }
+  .day .head-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .day .times {
+    font-size: 10px;
+    color: #404040;
+    font-weight: 600;
+    margin-left: auto;
+  }
+  .day .times .hrs {
+    color: #737373;
+    font-weight: 500;
+    margin-left: 4px;
+  }
+
+  /* Line items */
+  .day .lines {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1px 16px;
+    font-size: 10px;
+    color: #404040;
+    line-height: 1.35;
+  }
+  .day .lines .ll { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+  .day .lines .lr { font-weight: 600; color: #171717; }
+  .day .lines .ll strong { font-weight: 600; color: #171717; }
+  .day .lines .ll .sep { color: #a3a3a3; margin: 0 4px; }
+  .day .lines .ll .penalty { color: #b45309; font-weight: 600; }
+  .day .lines .ll .ot { color: #b91c1c; font-weight: 600; }
+
+  /* Total column */
+  .day .total {
+    border-left: 1px solid #e5e5e5;
+    padding-left: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: right;
+  }
+  .day .total .lbl {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #737373;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .day .total .val {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1;
+    margin-top: 5px;
+    color: #171717;
+    letter-spacing: -0.01em;
+  }
+  .day .total .sub {
+    font-size: 8px;
+    color: #737373;
+    margin-top: 4px;
+    line-height: 1;
+  }
+
+  /* Saturday tint — light amber on whole row */
+  .day.sat {
+    background: #fffbeb;
+    border-color: #fcd34d;
+  }
+  .day.sat .date { border-right-color: rgba(252, 211, 77, 0.5); }
+  .day.sat .date .dow { color: #b45309; }
+  .day.sat .date .num { color: #78350f; }
+  .day.sat .date .mo  { color: rgba(180, 83, 9, 0.7); }
+  .day.sat .total { border-left-color: rgba(252, 211, 77, 0.5); }
+  .day.sat .total .lbl { color: #b45309; }
+  .day.sat .total .val { color: #78350f; }
+  .day.sat .total .sub { color: rgba(180, 83, 9, 0.7); }
+
+  /* Sunday tint — light red */
+  .day.sun {
+    background: #fef2f2;
+    border-color: #fca5a5;
+  }
+  .day.sun .date { border-right-color: rgba(252, 165, 165, 0.5); }
+  .day.sun .date .dow { color: #b91c1c; }
+  .day.sun .date .num { color: #7f1d1d; }
+  .day.sun .date .mo  { color: rgba(185, 28, 28, 0.7); }
+  .day.sun .total { border-left-color: rgba(252, 165, 165, 0.5); }
+  .day.sun .total .lbl { color: rgba(185, 28, 28, 0.7); }
+
+  /* Rest day — half height, dimmed */
+  .day.rest {
+    border-color: #e5e5e5;
+    background: #fafafa;
+  }
+  .day.rest .body {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+  }
+  .day.rest .body .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.25em;
+    color: #a3a3a3;
+    font-weight: 700;
+  }
+  .day.rest.sun {
+    background: #fef2f2;
+    border-color: #fca5a5;
+  }
+  .day.rest.sun .body .label {
+    color: rgba(185, 28, 28, 0.6);
+  }
+  .day.rest .total .lbl { color: #d4d4d4; }
+  .day.rest .total .val { color: #d4d4d4; font-size: 12px; font-weight: 600; }
+
+  /* DAY-TYPE CHIPS — Blue lightness scale, all distinct */
+  .chip-day {
+    display: inline-flex;
+    align-items: center;
+    font-weight: 600;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 6px;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+  /* Anchor — most common day, deepest blue */
+  .chip-day.shoot    { background: #082f49; color: white; }
+  /* Pre-light — closely related to Shoot */
+  .chip-day.prelight { background: #075985; color: white; }
+  /* Recce — planning, mid-blue */
+  .chip-day.recce    { background: #0284c7; color: white; }
+  /* Prep / Build — preparation */
+  .chip-day.prep     { background: #38bdf8; color: #082f49; }
+  .chip-day.build    { background: #38bdf8; color: #082f49; }
+  /* De-rig / Strike — wind-down */
+  .chip-day.derig    { background: #7dd3fc; color: #082f49; }
+  .chip-day.strike   { background: #7dd3fc; color: #082f49; }
+  /* Travel — distinct outline (in-transit, not on-set) */
+  .chip-day.travel   { background: white; color: #075985; border: 1px solid #075985; }
+
+  /* PENALTY CHIPS — keep red/amber for warning semantics.
+     L1 = Late 1st Break, L2 = Late 2nd Break, M2 = Missed 2nd Break,
+     CWD = Continuous Working Day, TOC = Turnaround breach,
+     OT = Overtime, NS = Night Shoot */
+  .chip-ot, .chip-msb, .chip-toc, .chip-ns, .chip-cwd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 8.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 1.5px 6px 2px;
+    border-radius: 6px;
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .chip-ot  { border: 1px solid #dc2626; color: #dc2626; background: white; }
+  .chip-msb { border: 1px solid #d97706; color: #d97706; background: white; }
+  .chip-cwd { background: #d97706; color: white; }
+  .chip-toc { background: #dc2626; color: white; }
+  .chip-ns  { background: #1e1b4b; color: white; }
+
+  /* Footer */
+  .doc-footer {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #d4d4d4;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    font-size: 9px;
+    color: #737373;
+  }
+  .doc-footer .pay-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .doc-footer .pay-info .lbl {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    color: #525252;
+  }
+  .doc-footer .pay-info .val {
+    color: #171717;
+    font-weight: 500;
+  }
+  .doc-footer .brand {
+    text-align: right;
+    line-height: 1.5;
+  }
+  .doc-footer .brand .name {
+    font-weight: 700;
+    color: #404040;
+    letter-spacing: 0.05em;
+  }
+
+  @media print {
+    body { background: white; padding: 0; }
+    .page { box-shadow: none; margin: 0; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    .mockup-banner { display: none; }
+    @page { size: A4 portrait; margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="mockup-banner">
+  <span class="pill">MOCKUP 01 · v5</span>
+  Single timesheet · blue lightness scale day chips · black totals · payment footer · half-height rest
+</div>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="doc-header">
+    <div>
+      <div class="label">Crew Timesheet</div>
+      <div class="name-role">James Whitfield <span class="role">· Spark</span></div>
+      <div class="meta">
+        <strong>ASOS SS26 Campaign</strong> · Friday Films Ltd<br>
+        28 Apr – 04 May 2026 · PO #FF-2026-184
+      </div>
+      <div class="rate-row">
+        <span class="num">£444.00</span><span>BDR</span>
+        <span style="color:#d4d4d4">·</span>
+        <span class="num">£83.25</span><span>OT/h</span>
+        <span style="color:#d4d4d4">·</span>
+        <span>1.5×</span>
+      </div>
+    </div>
+    <div class="right">
+      <div class="label">Total · 6 days</div>
+      <div class="total tnum">£3,103.76</div>
+      <div class="breakdown tnum">52.0h worked · 5.5h OT</div>
+    </div>
+  </div>
+
+  <!-- CHIP LEGEND (first page only) -->
+  <div class="legend">
+    <span class="item"><span class="chip-ot">OT</span> Overtime</span>
+    <span class="item"><span class="chip-msb">L1</span> Late 1st</span>
+    <span class="item"><span class="chip-msb">L2</span> Late 2nd</span>
+    <span class="item"><span class="chip-msb">MSB</span> Missed 2nd</span>
+    <span class="item"><span class="chip-cwd">CWD</span> Cont. Working Day</span>
+    <span class="item"><span class="chip-toc">TOC</span> Turnaround</span>
+    <span class="item"><span class="chip-ns">NS</span> Night Shoot</span>
+  </div>
+
+  <!-- 7 DAYS -->
+  <div class="day-list">
+
+    <!-- Day 1: Mon 28 - Prep Day -->
+    <div class="day">
+      <div class="date">
+        <div class="dow">Mon</div>
+        <div class="num">28</div>
+        <div class="mo tnum">Apr</div>
+      </div>
+      <div class="body">
+        <div class="head-line">
+          <span class="chip-day prep">Prep</span>
+          <span class="times tnum">09:00 → 13:00 <span class="hrs">4.0h</span></span>
+        </div>
+        <div class="lines">
+          <span class="ll"><strong>Half Prep Day</strong> <span class="sep">·</span> 4h × £55.50</span>
+          <span class="lr tnum">£222.00</span>
+        </div>
+      </div>
+      <div class="total">
+        <div class="lbl">Day Total</div>
+        <div class="val tnum">£222.00</div>
+      </div>
+    </div>
+
+    <!-- Day 2: Tue 29 - Recce -->
+    <div class="day">
+      <div class="date">
+        <div class="dow">Tue</div>
+        <div class="num">29</div>
+        <div class="mo tnum">Apr</div>
+      </div>
+      <div class="body">
+        <div class="head-line">
+          <span class="chip-day recce">Recce</span>
+          <span class="times tnum">10:00 → 16:00 <span class="hrs">6.0h</span></span>
+        </div>
+        <div class="lines">
+          <span class="ll"><strong>Recce Day</strong> <span class="sep">·</span> 6h × £55.50</span>
+          <span class="lr tnum">£333.00</span>
+        </div>
+      </div>
+      <div class="total">
+        <div class="lbl">Day Total</div>
+        <div class="val tnum">£333.00</div>
+      </div>
+    </div>
+
+    <!-- Day 3: Wed 30 - Pre-light -->
+    <div class="day">
+      <div class="date">
+        <div class="dow">Wed</div>
+        <div class="num">30</div>
+        <div class="mo tnum">Apr</div>
+      </div>
+      <div class="body">
+        <div class="head-line">
+          <span class="chip-day prelight">Pre-light</span>
+          <span class="times tnum">08:00 → 17:00 <span class="hrs">9.0h</span></span>
+        </div>
+        <div class="lines">
+          <span class="ll"><strong>Pre-light Day</strong> <span class="sep">·</span> 8h × £55.50 + 1h lunch</span>
+          <span class="lr tnum">£444.00</span>
+        </div>
+      </div>
+      <div class="total">
+        <div class="lbl">Day Total</div>
+        <div class="val tnum">£444.00</div>
+      </div>
+    </div>
+
+    <!-- Day 4: Thu 01 - Shoot, no penalties -->
+    <div class="day">
+      <div class="date">
+        <div class="dow">Thu</div>
+        <div class="num">01</div>
+        <div class="mo tnum">May</div>
+      </div>
+      <div class="body">
+        <div class="head-line">
+          <span class="chip-day shoot">Shoot</span>
+          <span class="times tnum">07:00 → 18:00 <span class="hrs">11.0h</span></span>
+        </div>
+        <div class="lines">
+          <span class="ll"><strong>BDR</strong> <span class="sep">·</span> Standard Day, 1h lunch</span>
+          <span class="lr tnum">£444.00</span>
+        </div>
+      </div>
+      <div class="total">
+        <div class="lbl">Day Total</div>
+        <div class="val tnum">£444.00</div>
+      </div>
+    </div>
+
+    <!-- Day 5: Fri 02 - Shoot with OT -->
+    <div class="day">
+      <div class="date">
+        <div class="dow">Fri</div>
+        <div class="num">02</div>
+        <div class="mo tnum">May</div>
+      </div>
+      <div class="body">
+        <div class="head-line">
+          <span class="chip-day shoot">Shoot</span>
+          <span class="chip-ot">OT</span>
+          <span class="times tnum">07:00 → 21:30 <span class="hrs">14.5h</span></span>
+        </div>
+        <div class="lines">
+          <span class="ll"><strong>BDR</strong> <span class="sep">·</span> Standard Day</span>
+          <span class="lr tnum">£444.00</span>
+          <span class="ll"><span class="ot">OT</span> <span class="sep">·</span> 18:00 → 21:30 <span class="sep">·</span> 3.5h × £83.25</span>
+          <span class="lr tnum">£291.38</span>
+        </div>
+      </div>
+      <div class="total">
+        <div class="lbl">Day Total</div>
+        <div class="val tnum">£735.38</div>
+        <div class="sub tnum">3.5h OT</div>
+      </div>
+    </div>
+
+    <!-- Day 6: Sat 03 - Saturday SHOOT (highlighted) + Late Lunch breach + OT -->
+    <div class="day sat">
+      <div class="date">
+        <div class="dow">Sat</div>
+        <div class="num">03</div>
+        <div class="mo tnum">May</div>
+      </div>
+      <div class="body">
+        <div class="head-line">
+          <span class="chip-day shoot">Shoot</span>
+          <span class="chip-ot">OT</span>
+          <span class="chip-msb">L1</span>
+          <span class="times tnum">07:00 → 20:00 <span class="hrs">13.0h</span></span>
+        </div>
+        <div class="lines">
+          <span class="ll"><strong>Sat BDR (1.5×)</strong> <span class="sep">·</span> Standard Day</span>
+          <span class="lr tnum">£666.00</span>
+          <span class="ll"><span class="ot">OT</span> <span class="sep">·</span> 18:00 → 20:00 <span class="sep">·</span> 2h × £124.88</span>
+          <span class="lr tnum">£249.76</span>
+          <span class="ll"><span class="penalty">Late 1st Break</span> <span class="sep">·</span> Penalty</span>
+          <span class="lr tnum">£10.00</span>
+        </div>
+      </div>
+      <div class="total">
+        <div class="lbl">Day Total</div>
+        <div class="val tnum">£925.76</div>
+        <div class="sub tnum">2.0h OT</div>
+      </div>
+    </div>
+
+    <!-- Day 7: Sun 04 - Rest (half height) -->
+    <div class="day rest sun">
+      <div class="date">
+        <div class="dow">Sun</div>
+        <div class="num">04</div>
+        <div class="mo tnum">May</div>
+      </div>
+      <div class="body">
+        <span class="label">Rest</span>
+      </div>
+      <div class="total">
+        <div class="lbl">—</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER — VAT info on left, brand on right -->
+  <div class="doc-footer">
+    <div class="pay-info">
+      <span><span class="lbl">VAT No.</span> <span class="val tnum">GB 192 7634 51</span></span>
+    </div>
+    <div class="brand">
+      <div class="name">TIMEMACHINE</div>
+      <div class="tnum">Page 1 of 1</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
