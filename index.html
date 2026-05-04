@@ -1063,7 +1063,7 @@
         align-items: flex-start; padding-bottom: 12px;
         border-bottom: 1px solid #d4d4d4; gap: 16px;
       }
-      .doc-header .hlabel {
+      .doc-header .label {
         font-size: 9px; text-transform: uppercase;
         letter-spacing: 0.18em; color: #737373;
         font-weight: 700; margin-bottom: 6px;
@@ -1073,6 +1073,7 @@
         font-size: 22px; font-weight: 800;
         line-height: 1; margin-top: 4px; letter-spacing: -0.01em;
       }
+      .ts-page .doc-header .right .total { font-size: 26px; }
       .doc-header .right .breakdown { font-size: 10.5px; color: #525252; margin-top: 5px; }
 
       /* ── Timesheet header ── */
@@ -1089,13 +1090,9 @@
         margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e5e5;
       }
       .doc-header .rate-row .num { font-weight: 700; color: #171717; }
-      .doc-header .right .ts-total {
-        font-size: 26px; font-weight: 800;
-        line-height: 1; margin-top: 4px; letter-spacing: -0.01em;
-      }
 
       /* ── Grid header ── */
-      .doc-header .grid-title {
+      .doc-header .title {
         font-size: 22px; font-weight: 800;
         letter-spacing: -0.01em; line-height: 1; margin-bottom: 4px;
       }
@@ -1121,8 +1118,10 @@
       .chip-day.shoot    { background: #082f49; color: white; }
       .chip-day.prelight { background: #075985; color: white; }
       .chip-day.recce    { background: #0284c7; color: white; }
-      .chip-day.prep     { background: #38bdf8; color: #082f49; }
-      .chip-day.derig    { background: #7dd3fc; color: #082f49; }
+      .chip-day.prep,
+      .chip-day.build    { background: #38bdf8; color: #082f49; }
+      .chip-day.derig,
+      .chip-day.strike   { background: #7dd3fc; color: #082f49; }
       .chip-day.travel   { background: white; color: #075985; border: 1px solid #075985; padding: 1px 5px 1.5px; }
 
       /* ── Penalty chips ── */
@@ -1152,93 +1151,95 @@
         align-items: flex-end; gap: 16px;
         font-size: 9px; color: #737373;
       }
-      .doc-footer .pay-info {
-        flex: 1; display: flex; flex-direction: column; gap: 3px;
-      }
-      .doc-footer .pay-info .flbl {
+      .doc-footer .pay-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+      .doc-footer .pay-info .lbl {
         text-transform: uppercase; letter-spacing: 0.1em;
         font-weight: 700; color: #525252;
       }
-      .doc-footer .pay-info .fval { color: #171717; font-weight: 500; }
+      .doc-footer .pay-info .val { color: #171717; font-weight: 500; }
       .doc-footer .brand { text-align: right; line-height: 1.5; }
-      .doc-footer .brand .bname { font-weight: 700; color: #404040; letter-spacing: 0.05em; }
+      .doc-footer .brand .name { font-weight: 700; color: #404040; letter-spacing: 0.05em; }
 
       /* ══════════ TIMESHEET LAYOUT ══════════ */
 
       .day-list {
-        flex: 1; display: flex; flex-direction: column;
-        gap: 6px; padding-top: 10px; min-height: 0;
+        flex: 1;
+        display: grid;
+        grid-template-rows: repeat(6, 1fr) 0.45fr;
+        gap: 6px;
+        padding-top: 10px;
+        min-height: 0;
       }
-      .day-row {
+      .day {
         border: 1px solid #d4d4d4; border-radius: 10px;
         display: grid; grid-template-columns: 44px 1fr 100px;
         gap: 12px; padding: 8px 12px; align-items: stretch;
-        flex: 1;
       }
-      .day-row.rest-row { flex: 0 0 44px; }
 
       /* Date col */
-      .day-row .dcol {
+      .day .date {
         border-right: 1px solid #e5e5e5; padding-right: 8px;
         display: flex; flex-direction: column; justify-content: center;
       }
-      .day-row .dcol .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
-      .day-row .dcol .dnum { font-size: 18px; font-weight: 800; line-height: 1; margin-top: 3px; }
-      .day-row .dcol .dmo  { font-size: 8px; color: #737373; margin-top: 3px; line-height: 1; }
+      .day .date .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
+      .day .date .num { font-size: 18px; font-weight: 800; line-height: 1; margin-top: 3px; }
+      .day .date .mo  { font-size: 8px; color: #737373; margin-top: 3px; line-height: 1; }
 
       /* Body col */
-      .day-row .dbody { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; }
-      .day-row .head-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-      .day-row .times { font-size: 10px; color: #404040; font-weight: 600; margin-left: auto; }
-      .day-row .times .thrs { color: #737373; font-weight: 500; margin-left: 4px; }
+      .day .body { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; }
+      .day .head-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .day .times { font-size: 10px; color: #404040; font-weight: 600; margin-left: auto; }
+      .day .times .hrs { color: #737373; font-weight: 500; margin-left: 4px; }
 
       /* Line items */
-      .day-row .dlines {
+      .day .lines {
         display: grid; grid-template-columns: 1fr auto;
         gap: 1px 16px; font-size: 10px; color: #404040; line-height: 1.35;
       }
-      .day-row .dlines .ll { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-      .day-row .dlines .lr { font-weight: 600; color: #171717; }
-      .day-row .dlines .ll strong { font-weight: 600; color: #171717; }
-      .day-row .dlines .sep { color: #a3a3a3; margin: 0 4px; }
-      .day-row .dlines .penalty { color: #b45309; font-weight: 600; }
-      .day-row .dlines .ot-lbl { color: #b91c1c; font-weight: 600; }
+      .day .lines .ll { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+      .day .lines .lr { font-weight: 600; color: #171717; }
+      .day .lines .ll strong { font-weight: 600; color: #171717; }
+      .day .lines .ll .sep { color: #a3a3a3; margin: 0 4px; }
+      .day .lines .ll .penalty { color: #b45309; font-weight: 600; }
+      .day .lines .ll .ot { color: #b91c1c; font-weight: 600; }
 
       /* Total col */
-      .day-row .dtotal {
+      .day .total {
         border-left: 1px solid #e5e5e5; padding-left: 10px;
         display: flex; flex-direction: column; justify-content: center; text-align: right;
       }
-      .day-row .dtotal .tlbl { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
-      .day-row .dtotal .tval { font-size: 16px; font-weight: 800; line-height: 1; margin-top: 5px; color: #171717; letter-spacing: -0.01em; }
-      .day-row .dtotal .tsub { font-size: 8px; color: #737373; margin-top: 4px; line-height: 1; }
+      .day .total .lbl { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
+      .day .total .val { font-size: 16px; font-weight: 800; line-height: 1; margin-top: 5px; color: #171717; letter-spacing: -0.01em; }
+      .day .total .sub { font-size: 8px; color: #737373; margin-top: 4px; line-height: 1; }
 
-      /* Rest row body */
-      .day-row.rest-row .dbody { flex-direction: row; align-items: center; justify-content: center; }
-      .day-row.rest-row .dbody .rest-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.25em; color: #a3a3a3; font-weight: 700; }
-      .day-row.rest-row .dtotal .tlbl { color: #d4d4d4; }
+      /* Rest day */
+      .day.rest { border-color: #e5e5e5; background: #fafafa; }
+      .day.rest .body { flex-direction: row; align-items: center; justify-content: center; }
+      .day.rest .body .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.25em; color: #a3a3a3; font-weight: 700; }
+      .day.rest .total .lbl { color: #d4d4d4; }
+      .day.rest .total .val { color: #d4d4d4; font-size: 12px; font-weight: 600; }
 
       /* Sat tint */
-      .day-row.sat { background: #fffbeb; border-color: #fcd34d; }
-      .day-row.sat .dcol { border-right-color: rgba(252,211,77,0.5); }
-      .day-row.sat .dcol .dow  { color: #b45309; }
-      .day-row.sat .dcol .dnum { color: #78350f; }
-      .day-row.sat .dcol .dmo  { color: rgba(180,83,9,0.7); }
-      .day-row.sat .dtotal { border-left-color: rgba(252,211,77,0.5); }
-      .day-row.sat .dtotal .tlbl { color: #b45309; }
-      .day-row.sat .dtotal .tval { color: #78350f; }
-      .day-row.sat .dtotal .tsub { color: rgba(180,83,9,0.7); }
+      .day.sat { background: #fffbeb; border-color: #fcd34d; }
+      .day.sat .date { border-right-color: rgba(252,211,77,0.5); }
+      .day.sat .date .dow  { color: #b45309; }
+      .day.sat .date .num  { color: #78350f; }
+      .day.sat .date .mo   { color: rgba(180,83,9,0.7); }
+      .day.sat .total { border-left-color: rgba(252,211,77,0.5); }
+      .day.sat .total .lbl { color: #b45309; }
+      .day.sat .total .val { color: #78350f; }
+      .day.sat .total .sub { color: rgba(180,83,9,0.7); }
 
       /* Sun/BH tint */
-      .day-row.sun { background: #fef2f2; border-color: #fca5a5; }
-      .day-row.sun .dcol { border-right-color: rgba(252,165,165,0.5); }
-      .day-row.sun .dcol .dow  { color: #b91c1c; }
-      .day-row.sun .dcol .dnum { color: #7f1d1d; }
-      .day-row.sun .dcol .dmo  { color: rgba(185,28,28,0.7); }
-      .day-row.sun .dtotal { border-left-color: rgba(252,165,165,0.5); }
-      .day-row.sun .dtotal .tlbl { color: rgba(185,28,28,0.7); }
-      .day-row.rest-row.sun { background: #fef2f2; border-color: #fca5a5; }
-      .day-row.rest-row.sun .dbody .rest-lbl { color: rgba(185,28,28,0.6); }
+      .day.sun { background: #fef2f2; border-color: #fca5a5; }
+      .day.sun .date { border-right-color: rgba(252,165,165,0.5); }
+      .day.sun .date .dow  { color: #b91c1c; }
+      .day.sun .date .num  { color: #7f1d1d; }
+      .day.sun .date .mo   { color: rgba(185,28,28,0.7); }
+      .day.sun .total { border-left-color: rgba(252,165,165,0.5); }
+      .day.sun .total .lbl { color: rgba(185,28,28,0.7); }
+      .day.rest.sun { background: #fef2f2; border-color: #fca5a5; }
+      .day.rest.sun .body .label { color: rgba(185,28,28,0.6); }
 
       /* ══════════ GRID LAYOUT ══════════ */
 
@@ -1247,9 +1248,7 @@
         border: 1px solid #d4d4d4; border-radius: 10px;
         overflow: hidden; display: flex; flex-direction: column; min-height: 0;
       }
-      .grid {
-        width: 100%; border-collapse: collapse; table-layout: fixed;
-      }
+      .grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
       .grid th, .grid td { border-right: 1px solid #e5e5e5; border-bottom: 1px solid #e5e5e5; }
       .grid th:last-child, .grid td:last-child { border-right: none; }
       .grid tr:last-child td { border-bottom: none; }
@@ -1260,41 +1259,42 @@
       }
       .grid thead th.crew-col { text-align: left; padding-left: 8px; }
       .grid thead th.total-col { text-align: right; padding-right: 8px; }
-      .grid thead .gdow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #737373; font-weight: 700; line-height: 1; }
-      .grid thead .gdnum { font-size: 12px; font-weight: 800; margin-top: 2px; line-height: 1; }
-      .grid thead .gmo { font-size: 7px; color: #737373; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1; }
+      .grid thead .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #737373; font-weight: 700; line-height: 1; }
+      .grid thead .num { font-size: 12px; font-weight: 800; margin-top: 2px; line-height: 1; }
+      .grid thead .mo  { font-size: 7px; color: #737373; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1; }
       .grid thead th.sat { background: #fffbeb; }
-      .grid thead th.sat .gdow { color: #b45309; }
-      .grid thead th.sat .gdnum { color: #78350f; }
-      .grid thead th.sat .gmo { color: rgba(180,83,9,0.7); }
+      .grid thead th.sat .dow { color: #b45309; }
+      .grid thead th.sat .num { color: #78350f; }
+      .grid thead th.sat .mo  { color: rgba(180,83,9,0.7); }
       .grid thead th.sun { background: #fef2f2; }
-      .grid thead th.sun .gdow { color: #b91c1c; }
-      .grid thead th.sun .gdnum { color: #7f1d1d; }
-      .grid thead th.sun .gmo { color: rgba(185,28,28,0.7); }
+      .grid thead th.sun .dow { color: #b91c1c; }
+      .grid thead th.sun .num { color: #7f1d1d; }
+      .grid thead th.sun .mo  { color: rgba(185,28,28,0.7); }
 
       .grid tbody td { padding: 4px; text-align: center; vertical-align: middle; }
       .grid tbody td.crew { background: #fafafa; text-align: left; padding: 6px 8px; }
       .grid tbody td.row-total { background: #fafafa; text-align: right; padding: 6px 8px; }
-      .grid tbody .crew-name { font-size: 10px; font-weight: 700; color: #171717; line-height: 1.2; }
-      .grid tbody .crew-role { font-size: 8px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 600; }
+      .grid tbody .name { font-size: 10px; font-weight: 700; color: #171717; line-height: 1.2; }
+      .grid tbody .role { font-size: 8px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 600; }
       .grid tbody td.sat { background: #fffbeb; }
       .grid tbody td.sun { background: #fef2f2; }
-      .grid tbody td.sat .cell-total-val { color: #78350f; }
-      .grid tbody td.sun .cell-total-val { color: #7f1d1d; }
+      .grid tbody td.sat .total-val { color: #78350f; }
+      .grid tbody td.sun .total-val { color: #7f1d1d; }
 
       .cell-stack {
         display: flex; flex-direction: column; align-items: center;
         gap: 3px; padding: 2px 1px; min-height: 56px; justify-content: space-between;
       }
-      .cell-stack .ctop { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
+      .cell-stack .top { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
       .cell-stack .hrs-line { font-size: 9.5px; color: #171717; font-weight: 600; line-height: 1; }
       .cell-stack .pens { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 3px; line-height: 1; }
-      .cell-stack .cell-total-val { font-size: 10px; font-weight: 700; color: #171717; line-height: 1; margin-top: 4px; }
+      .cell-stack .pens:empty { display: none; }
+      .cell-stack .total-val { font-size: 10px; font-weight: 700; color: #171717; line-height: 1; }
 
       .rest-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: rgba(185,28,28,0.5); font-weight: 700; }
 
-      .row-total .rowtv { font-size: 12px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
-      .row-total .rowth { font-size: 8px; color: #737373; margin-top: 2px; }
+      .row-total .total-val { font-size: 12px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
+      .row-total .total-hrs { font-size: 8px; color: #737373; margin-top: 2px; }
 
       .grid tfoot td {
         background: #f5f5f5; padding: 6px 4px;
@@ -1302,11 +1302,11 @@
       }
       .grid tfoot td.crew { text-align: left; padding-left: 8px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; color: #525252; font-weight: 700; }
       .grid tfoot td.row-total { text-align: right; padding-right: 8px; }
-      .grid tfoot .dtv { font-size: 11px; font-weight: 800; color: #171717; }
-      .grid tfoot .dth { font-size: 8px; color: #737373; margin-top: 1px; }
+      .grid tfoot .day-total-val { font-size: 11px; font-weight: 800; color: #171717; }
+      .grid tfoot .day-total-hrs { font-size: 8px; color: #737373; margin-top: 1px; }
       .grid tfoot td.sat { background: #fef3c7; }
       .grid tfoot td.sun { background: #fee2e2; }
-      .grid tfoot td.row-total .wk-total { font-size: 14px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
+      .grid tfoot td.row-total .week-total { font-size: 14px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
 
       @media print {
         #root { display: none !important; }
@@ -1378,7 +1378,7 @@
           {/* Header */}
           <div className="doc-header">
             <div>
-              <div className="hlabel">{isFirstPage ? 'Crew Timesheet' : `Crew Timesheet · continued`}</div>
+              <div className="label">{isFirstPage ? 'Crew Timesheet' : `Crew Timesheet · continued`}</div>
               <div className="name-role">
                 {crewMember.name || 'Unnamed'}
                 {crewMember.role ? <span className="role"> · {crewMember.role}</span> : null}
@@ -1403,8 +1403,8 @@
             <div className="right">
               {isFirstPage ? (
                 <>
-                  <div className="hlabel">Total · {allDaysForCrew.length} day{allDaysForCrew.length !== 1 ? 's' : ''}</div>
-                  <div className="ts-total tnum">{fmtGBP(grandTotal)}</div>
+                  <div className="label">Total · {allDaysForCrew.length} day{allDaysForCrew.length !== 1 ? 's' : ''}</div>
+                  <div className="total tnum">{fmtGBP(grandTotal)}</div>
                   <div className="breakdown tnum">
                     {grandHrs.toFixed(1)}h worked
                     {grandOTHrs > 0 ? ` · ${grandOTHrs.toFixed(1)}h OT` : ''}
@@ -1412,7 +1412,7 @@
                 </>
               ) : (
                 <>
-                  <div className="hlabel">{`Week ${weekIndex + 1} of ${totalWeeks}`}</div>
+                  <div className="label">{`Week ${weekIndex + 1} of ${totalWeeks}`}</div>
                   <div className="breakdown tnum">{rangeLabel}</div>
                 </>
               )}
@@ -1437,14 +1437,14 @@
               if (!day) {
                 // Rest day
                 return (
-                  <div key={dateISO} className={`day-row rest-row${tintClass ? ' ' + tintClass : ''}`}>
-                    <div className="dcol">
+                  <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
+                    <div className="date">
                       <div className="dow">{dow}</div>
-                      <div className="dnum tnum">{dateNum}</div>
-                      <div className="dmo tnum">{mo}</div>
+                      <div className="num tnum">{dateNum}</div>
+                      <div className="mo tnum">{mo}</div>
                     </div>
-                    <div className="dbody"><span className="rest-lbl">Rest</span></div>
-                    <div className="dtotal"><div className="tlbl">—</div></div>
+                    <div className="body"><span className="label">Rest</span></div>
+                    <div className="total"><div className="lbl">—</div></div>
                   </div>
                 );
               }
@@ -1452,14 +1452,14 @@
               // Day with data — but check if it's a Rest Day type
               if (day.dayType === "Rest Day") {
                 return (
-                  <div key={dateISO} className={`day-row rest-row${tintClass ? ' ' + tintClass : ''}`}>
-                    <div className="dcol">
+                  <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
+                    <div className="date">
                       <div className="dow">{dow}</div>
-                      <div className="dnum tnum">{dateNum}</div>
-                      <div className="dmo tnum">{mo}</div>
+                      <div className="num tnum">{dateNum}</div>
+                      <div className="mo tnum">{mo}</div>
                     </div>
-                    <div className="dbody"><span className="rest-lbl">Rest</span></div>
-                    <div className="dtotal"><div className="tlbl">—</div></div>
+                    <div className="body"><span className="label">Rest</span></div>
+                    <div className="total"><div className="lbl">—</div></div>
                   </div>
                 );
               }
@@ -1479,21 +1479,21 @@
               const chipClass = dayTypeChipClass(day.dayType);
 
               return (
-                <div key={dateISO} className={`day-row${rowTint ? ' ' + rowTint : ''}`}>
-                  <div className="dcol">
+                <div key={dateISO} className={`day${rowTint ? ' ' + rowTint : ''}`}>
+                  <div className="date">
                     <div className="dow">{dow}</div>
-                    <div className="dnum tnum">{dateNum}</div>
-                    <div className="dmo tnum">{mo}</div>
+                    <div className="num tnum">{dateNum}</div>
+                    <div className="mo tnum">{mo}</div>
                   </div>
-                  <div className="dbody">
+                  <div className="body">
                     <div className="head-line">
                       <span className={`chip-day ${chipClass}`}>{day.dayType}</span>
                       <PenChips flags={flags} />
                       {callTime && wrapTime && (
-                        <span className="times tnum">{callTime} → {wrapTime} <span className="thrs">{workedHrs.toFixed(1)}h</span></span>
+                        <span className="times tnum">{callTime} → {wrapTime} <span className="hrs">{workedHrs.toFixed(1)}h</span></span>
                       )}
                     </div>
-                    <div className="dlines">
+                    <div className="lines">
                       {calc.lines.map((line, i) => {
                         const isOT = /\bot\b|\bovertime\b/i.test(line.label || '');
                         const isPen = line.rate === null && !line.isTOC;
@@ -1501,7 +1501,7 @@
                           <React.Fragment key={i}>
                             <span className="ll">
                               {isOT
-                                ? <><span className="ot-lbl">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
+                                ? <><span className="ot">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
                                 : isPen
                                 ? <><span className="penalty">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
                                 : <><strong>{line.label}</strong>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
@@ -1513,10 +1513,10 @@
                       })}
                     </div>
                   </div>
-                  <div className="dtotal">
-                    <div className="tlbl">Day Total</div>
-                    <div className="tval tnum">{fmtGBP(calc.total)}</div>
-                    {otHrs > 0 && <div className="tsub tnum">{otHrs.toFixed(1)}h OT</div>}
+                  <div className="total">
+                    <div className="lbl">Day Total</div>
+                    <div className="val tnum">{fmtGBP(calc.total)}</div>
+                    {otHrs > 0 && <div className="sub tnum">{otHrs.toFixed(1)}h OT</div>}
                   </div>
                 </div>
               );
@@ -1527,11 +1527,11 @@
           <div className="doc-footer">
             <div className="pay-info">
               {isFirstPage && userPrefs?.vatRegistered && userPrefs?.vatNumber
-                ? <span><span className="flbl">VAT No.</span> <span className="fval tnum">{userPrefs.vatNumber}</span></span>
+                ? <span><span className="lbl">VAT No.</span> <span className="val tnum">{userPrefs.vatNumber}</span></span>
                 : null}
             </div>
             <div className="brand">
-              <div className="bname">TIMEMACHINE</div>
+              <div className="name">TIMEMACHINE</div>
               <div className="tnum">Page {pageNum} of {totalPages}</div>
             </div>
           </div>
@@ -1602,14 +1602,14 @@
           {/* Header */}
           <div className="doc-header">
             <div>
-              <div className="hlabel">Production Grid{production.bestBoyMode ? '' : ''}</div>
-              <div className="grid-title">{production.title || 'Untitled Production'}</div>
+              <div className="label">Production Grid</div>
+              <div className="title">{production.title || 'Untitled Production'}</div>
               <div className="meta" style={{fontSize:'10.5px',color:'#525252',marginTop:6}}>
                 {[production.prodCo, `Week ${weekIndex + 1} of ${totalWeeks}`, `${crew.length} crew`, rangeLabel].filter(Boolean).join(' · ')}
               </div>
             </div>
             <div className="right">
-              <div className="hlabel">Week Total</div>
+              <div className="label">Week Total</div>
               <div className="total tnum">{fmtGBP(weekTotal)}</div>
               <div className="breakdown tnum">{weekHrs.toFixed(0)}h{weekOTHrs > 0 ? ` · ${weekOTHrs.toFixed(0)}h OT` : ''}</div>
             </div>
@@ -1634,13 +1634,13 @@
                     const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
                     return (
                       <th key={dateISO} className={cls || undefined}>
-                        <div className="gdow">{d.toLocaleDateString('en-GB',{weekday:'short'})}</div>
-                        <div className="gdnum">{d.getDate()}</div>
-                        <div className="gmo tnum">{d.toLocaleDateString('en-GB',{month:'short'})}</div>
+                        <div className="dow">{d.toLocaleDateString('en-GB',{weekday:'short'})}</div>
+                        <div className="num">{d.getDate()}</div>
+                        <div className="mo tnum">{d.toLocaleDateString('en-GB',{month:'short'})}</div>
                       </th>
                     );
                   })}
-                  <th className="total-col"><div className="gdow">Total</div></th>
+                  <th className="total-col"><div className="dow">Total</div></th>
                 </tr>
               </thead>
               <tbody>
@@ -1649,8 +1649,8 @@
                   return (
                     <tr key={c.id}>
                       <td className="crew">
-                        <div className="crew-name">{c.name}</div>
-                        <div className="crew-role">{c.role} · {fmtGBP(c.bdr)}</div>
+                        <div className="name">{c.name}</div>
+                        <div className="role">{c.role} · {fmtGBP(c.bdr)}</div>
                       </td>
                       {weekDates.map(dateISO => {
                         const dn = new Date(dateISO + "T12:00:00").getDay();
@@ -1681,19 +1681,19 @@
                         return (
                           <td key={dateISO} className={cellCls || undefined}>
                             <div className="cell-stack">
-                              <div className="ctop">
+                              <div className="top">
                                 <span className={`chip-day ${chipCls}`}>{day.dayType}</span>
                                 <span className="hrs-line tnum">{hrs.toFixed(1)}h</span>
                                 {penNodes.length > 0 && <div className="pens">{penNodes}</div>}
                               </div>
-                              <span className="cell-total-val tnum">{fmtGBP(calc.total)}</span>
+                              <span className="total-val tnum">{fmtGBP(calc.total)}</span>
                             </div>
                           </td>
                         );
                       })}
                       <td className="row-total">
-                        <div className="rowtv tnum">{fmtGBP(crewTotals[ci].tot)}</div>
-                        <div className="rowth tnum">{crewTotals[ci].hrs.toFixed(1)}h</div>
+                        <div className="total-val tnum">{fmtGBP(crewTotals[ci].tot)}</div>
+                        <div className="total-hrs tnum">{crewTotals[ci].hrs.toFixed(1)}h</div>
                       </td>
                     </tr>
                   );
@@ -1709,14 +1709,14 @@
                     return (
                       <td key={dateISO} className={cls || undefined}>
                         {ct.tot > 0
-                          ? <><div className="dtv tnum">{fmtGBP(ct.tot)}</div><div className="dth tnum">{ct.hrs.toFixed(1)}h</div></>
+                          ? <><div className="day-total-val tnum">{fmtGBP(ct.tot)}</div><div className="day-total-hrs tnum">{ct.hrs.toFixed(1)}h</div></>
                           : <span style={{color:'#d4d4d4'}}>—</span>}
                       </td>
                     );
                   })}
                   <td className="row-total">
-                    <div className="wk-total tnum">{fmtGBP(weekTotal)}</div>
-                    <div className="dth tnum">{weekHrs.toFixed(0)}h</div>
+                    <div className="week-total tnum">{fmtGBP(weekTotal)}</div>
+                    <div className="day-total-hrs tnum">{weekHrs.toFixed(0)}h</div>
                   </td>
                 </tr>
               </tfoot>
@@ -1726,12 +1726,12 @@
           {/* Footer */}
           <div className="doc-footer">
             <div className="pay-info">
-              {production.prodCo && <span><span className="flbl">Production:</span> <span className="fval">{production.prodCo}</span></span>}
-              {production.invoicingEmail && <span><span className="flbl">Email:</span> <span className="fval">{production.invoicingEmail}</span></span>}
-              <span><span className="flbl">Generated:</span> <span className="fval tnum">{genLabel}</span></span>
+              {production.prodCo && <span><span className="lbl">Production:</span> <span className="val">{production.prodCo}</span></span>}
+              {production.invoicingEmail && <span><span className="lbl">Email:</span> <span className="val">{production.invoicingEmail}</span></span>}
+              <span><span className="lbl">Generated:</span> <span className="val tnum">{genLabel}</span></span>
             </div>
             <div className="brand">
-              <div className="bname">TIMEMACHINE</div>
+              <div className="name">TIMEMACHINE</div>
               <div className="tnum">Page {pageNum} of {totalPages} · Week {weekIndex + 1}</div>
             </div>
           </div>
