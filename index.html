@@ -982,6 +982,21 @@
       };
     }
 
+    function deriveWeeks(production, days) {
+      const mondays = new Set(production.weekStarts || []);
+      const allDayDates = [...days.map(d => d.date), ...(production.gridDates || [])];
+      for (const date of allDayDates) mondays.add(getMonday(date));
+      if (mondays.size === 0) return [];
+      return [...mondays].sort().map(mon => {
+        const d = new Date(mon + "T12:00:00");
+        return Array.from({ length: 7 }, (_, i) => {
+          const day = new Date(d);
+          day.setDate(d.getDate() + i);
+          return day.toISOString().slice(0, 10);
+        });
+      });
+    }
+
     function computeWeeks(production, days) {
       if (production.weekStarts?.length > 0) {
         return [...production.weekStarts].sort().map((mondayISO, idx) => {
