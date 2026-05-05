@@ -1889,6 +1889,7 @@
     const ICopy = (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Icon>;
     const IUpload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>;
     const IGear = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>;
+    const ICalc = (p) => <Icon {...p}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><circle cx="9" cy="12" r="0.8" fill="currentColor"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/><circle cx="15" cy="12" r="0.8" fill="currentColor"/><circle cx="9" cy="15" r="0.8" fill="currentColor"/><circle cx="12" cy="15" r="0.8" fill="currentColor"/><circle cx="15" cy="15" r="0.8" fill="currentColor"/><circle cx="9" cy="18" r="0.8" fill="currentColor"/><circle cx="12" cy="18" r="0.8" fill="currentColor"/><circle cx="15" cy="18" r="0.8" fill="currentColor"/></Icon>;
     const IArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
     const IArrowRight = (p) => <Icon {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></Icon>;
     const IHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
@@ -2285,11 +2286,15 @@
       return 0;
     }
 
-    function CancellationCalcModal({ production, setProduction, crew, onClose }) {
+    function CancellationCalcModal({ production, setProduction, crew, setCrew, onClose }) {
       useEffect(() => {
         document.body.style.overflow = "hidden";
         return () => { document.body.style.overflow = ""; };
       }, []);
+
+      // Standalone crew-entry state (used when setCrew is provided)
+      const [newName, setNewName] = useState("");
+      const [newBDR, setNewBDR] = useState("");
 
       const data = production.cancellationData;
 
@@ -2361,7 +2366,7 @@
       const rowTotals = crewCalcs.map(c => c.cells.reduce((s, n) => s + n, 0));
 
       const [copied, setCopied] = useState(false);
-      const copyBreakdown = () => {
+      const copyBreakdown = async () => {
         const lines = [];
         lines.push(production.title || "Production");
         lines.push(`Cancellation notice: ${noticeDate ? fmtDateShort(noticeDate) : "—"}`);
@@ -2379,10 +2384,12 @@
         });
         lines.push("");
         lines.push(`Grand total: ${fmtGBP(grandTotal)}`);
-        navigator.clipboard.writeText(lines.join("\n")).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        });
+        lines.push("");
+        lines.push("—");
+        lines.push("Generated with TimeMachine · timemachineapp.co.uk");
+        await shareTextOrCopy(lines.join("\n"), production.title || "Cancellation fees");
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
       };
 
       return (
@@ -2413,9 +2420,36 @@
                 </Field>
               </div>
 
-              {crew.length === 0 ? (
+              {setCrew && (
+                <div className="mb-4 flex items-end gap-2 flex-wrap">
+                  <div className="flex-1 min-w-[140px]">
+                    <Field label="Name">
+                      <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Crew member name" />
+                    </Field>
+                  </div>
+                  <div style={{ width: 110 }}>
+                    <Field label="Day rate (£)">
+                      <Input type="number" min="0" step="0.01" value={newBDR} onChange={e => setNewBDR(e.target.value)} placeholder="0.00" />
+                    </Field>
+                  </div>
+                  <Btn variant="primary" size="sm"
+                    onClick={() => {
+                      const name = newName.trim();
+                      if (!name) return;
+                      setCrew(prev => [...prev, { id: uid(), name, role: "Crew", bdr: Number(newBDR) || 0 }]);
+                      setNewName(""); setNewBDR("");
+                    }}
+                    disabled={!newName.trim()}
+                  ><IPlus size={14}/>Add</Btn>
+                </div>
+              )}
+              {crew.length === 0 && !setCrew ? (
                 <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">
                   Add crew first to calculate cancellation fees.
+                </div>
+              ) : crew.length === 0 && setCrew ? (
+                <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">
+                  Add a crew member above to begin.
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-neutral-800 rounded-[10px]">
@@ -2445,8 +2479,17 @@
                       {crewCalcs.map(({ member, dayInfo, cells, isBlock }, ci) => (
                         <tr key={member.id} className="border-b border-neutral-800">
                           <td className="px-3 py-2 border-r border-neutral-700 bg-neutral-950 whitespace-nowrap align-top">
-                            <div className="text-[11px] font-semibold text-neutral-200">{member.name}</div>
-                            <div className="text-[9px] text-neutral-500 uppercase tracking-wider">{member.role}{isBlock ? " · Block" : ""}</div>
+                            <div className="flex items-start justify-between gap-1">
+                              <div>
+                                <div className="text-[11px] font-semibold text-neutral-200">{member.name}</div>
+                                <div className="text-[9px] text-neutral-500 uppercase tracking-wider">{member.role}{isBlock ? " · Block" : ""}</div>
+                              </div>
+                              {setCrew && (
+                                <button onClick={() => setCrew(prev => prev.filter(c => c.id !== member.id))}
+                                  className="text-neutral-700 hover:text-red-400 text-[11px] leading-none px-0.5 mt-0.5 flex-shrink-0"
+                                  title="Remove" aria-label="Remove crew member">✕</button>
+                              )}
+                            </div>
                           </td>
                           {dayInfo.map((d, i) => (
                             <td key={d.col.id} className="px-2 py-1.5 border-r border-neutral-700 bg-neutral-900 align-top">
@@ -5628,7 +5671,10 @@ const setDays = (updater) =>
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [actionSheet, setActionSheet] = useState(null);
-      const confirmDelete = (p) => setConfirmOpts({
+      const [showCancellationCalc, setShowCancellationCalc] = useState(false);
+      const [calcProd, setCalcProd] = useState(() => ({ title: "", startDate: new Date().toISOString().slice(0, 10), cancellationData: null }));
+      const [calcCrew, setCalcCrew] = useState([]);
+const confirmDelete = (p) => setConfirmOpts({
         title: "Delete production?",
         message: `Delete "${p.title || 'Untitled Production'}"? This cannot be undone.`,
         confirmLabel: "Delete",
@@ -5763,9 +5809,14 @@ const setDays = (updater) =>
                 {displayName && <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-1">{displayName}'s</div>}
                 <h1 className="text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
               </div>
-              <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800 mt-1" title="Settings" aria-label="Settings">
-                <IGear size={20}/>
-              </button>
+              <div className="flex items-center gap-1 mt-1">
+                <button onClick={() => setShowCancellationCalc(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Cancellation Calculator" aria-label="Cancellation Calculator">
+                  <ICalc size={20}/>
+                </button>
+                <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Settings" aria-label="Settings">
+                  <IGear size={20}/>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -5872,6 +5923,16 @@ const setDays = (updater) =>
                 </div>
               </div>
             </div>
+          )}
+
+          {showCancellationCalc && (
+            <CancellationCalcModal
+              production={calcProd}
+              setProduction={setCalcProd}
+              crew={calcCrew}
+              setCrew={setCalcCrew}
+              onClose={() => setShowCancellationCalc(false)}
+            />
           )}
 
           <ConfirmDialog
