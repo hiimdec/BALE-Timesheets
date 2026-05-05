@@ -719,6 +719,7 @@
     /* ═══════════════════════════ MIGRATION + STORAGE ═══════════════════════════ */
 
     function migrateDay(d) {
+      d = { note: "", ...d };
       if (d.lunchStartTime !== undefined) return d;
       if (!d.callTime) return d;
       const callH = parseHHMM(d.callTime) || 8;
@@ -1225,6 +1226,7 @@
       .day .total .lbl { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
       .day .total .val { font-size: 16px; font-weight: 800; line-height: 1; margin-top: 5px; color: #171717; letter-spacing: -0.01em; }
       .day .total .sub { font-size: 8px; color: #737373; margin-top: 4px; line-height: 1; }
+      .day-note { font-style: italic; font-size: 9.5px; color: #525252; padding: 5px 0 2px; line-height: 1.4; white-space: pre-wrap; }
 
       /* Rest day */
       .day.rest { border-color: #e5e5e5; background: #fafafa; }
@@ -1554,6 +1556,7 @@
                         );
                       })}
                     </div>
+                    {day.note && day.note.trim() && <div className="day-note">{day.note}</div>}
                   </div>
                   <div className="total">
                     <div className="lbl">Day Total</div>
@@ -1874,6 +1877,7 @@
     const ICheck = (p) => <Icon {...p}><polyline points="20 6 9 17 4 12"/></Icon>;
     const IX = (p) => <Icon {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>;
     const IFile = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></Icon>;
+    const INote = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/></Icon>;
     const IReset = (p) => <Icon {...p}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></Icon>;
 
     const IGrip = (p) => <Icon {...p}><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></Icon>;
@@ -2827,6 +2831,21 @@
                 </>
               )}
             </div>
+            <div className="space-y-1">
+              <Field label="Notes" hint="e.g. rain delay, client overtime requested">
+                <textarea
+                  value={v.note || ""}
+                  onChange={(e) => set({ note: e.target.value })}
+                  placeholder="Add a note about this day…"
+                  rows={3}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
+                  style={{ fontFamily: 'inherit' }}
+                />
+                <div className={`text-xs mt-1 text-right ${(v.note || "").length > 1000 ? "text-red-400" : (v.note || "").length > 500 ? "text-amber-400" : "text-neutral-600"}`}>
+                  {(v.note || "").length} / 500
+                </div>
+              </Field>
+            </div>
           </Disclosure>
 
         </div>
@@ -3479,6 +3498,7 @@
         travelOutMins: 0, travelBackMins: 0, miles: 0,
         perDiemEnabled: false, perDiemAmount: 0,
         stepUpEnabled: false, stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
+        note: "",
       };
     }
 
@@ -3810,6 +3830,7 @@
                               <div className="text-[11px] text-neutral-400 font-mono mt-1">
                                 {d.callTime}–{d.wrapTime}{(parseHHMM(d.wrapTime) !== null && parseHHMM(d.callTime) !== null && parseHHMM(d.wrapTime) <= parseHHMM(d.callTime)) ? " (+1)" : ""} · {calc.meta.workedHrs.toFixed(1)}h · {calc.meta.dayLabel}
                               </div>
+                              {d.note?.trim() && <div className="flex items-center gap-1 mt-1"><INote size={11} className="text-neutral-600 flex-shrink-0"/><span className="text-[10px] text-neutral-600">Note</span></div>}
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                               <div className="font-mono font-bold text-neutral-100 text-sm">{fmtGBP(calc.total)}</div>
@@ -4586,6 +4607,7 @@
                       <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-400" : "text-neutral-200"}`}>{dateStr}</div>
                       {(times || day.dayType) && <div className="text-[11px] text-neutral-500">{[times, day.dayType || "Shoot Day"].filter(Boolean).join(" · ")}</div>}
                     </div>
+                    {day.note?.trim() && <INote size={13} className="text-neutral-600 flex-shrink-0"/>}
                     {calc && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(calc.total)}</div>}
                   </button>
                 );
