@@ -1,1 +1,34 @@
+# Dependencies
 node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*~
+.vscode/
+.idea/
+
+# Test / dev outputs
+*.pdf
+!APA RULES.pdf
+Screenshot_*.png
+Screenshot_*.jpeg
+test-*.html
+*-test.html
+test-*.png
+*_render*.png
+rendered-*.png
+preview-*.png
+
+# Old index snapshots
+index_BU_*.html
+index-*.html
+index-old.html
+index-backup.html
+
+# Build outputs (future-proof)
+/dist/
+/build/

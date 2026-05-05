@@ -12,11 +12,11 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0e1729">
   <!-- App icons — served as static files -->
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
-  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
 
   <!-- CDN Dependencies -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -177,6 +177,8 @@
 
     // UK England & Wales bank holidays (gov.uk-verified). APA §2.4 treats
     // these identically to Sundays — 2× BDR / 2× BHR for all hours worked.
+    // Data starts at 2026. Production days dated in 2025 or earlier will not
+    // receive bank-holiday tinting or the 2× multiplier.
     const UK_BANK_HOLIDAYS = {
       "2026-01-01": "New Year's Day",
       "2026-04-03": "Good Friday",
@@ -303,7 +305,12 @@
     const fmtDateShort = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
     const uid = () => Math.random().toString(36).slice(2, 10);
     const roleRank = (role) => { const r = role === "Spark" ? "Lighting Technician" : role; const i = ROLE_ORDER.indexOf(r); return i === -1 ? 99 : i; };
-    const slug = (s) => (s || "crew").replace(/[^\w]+/g, "_").replace(/^_+|_+$/g, "");
+
+    // First 60 mins of travel each way are non-billable. Travel only becomes
+    // chargeable once work plus net travel exceeds the standard working day —
+    // if you wrapped early, the unused portion of your working day is absorbed
+    // before travel becomes payable.
+    const TRAVEL_TIME_EXPLAINER = "The first 60 minutes of travel in each direction are non-billable. Travel only becomes chargeable once work plus net travel time exceeds the standard working day threshold — if you wrapped early, the unused portion of your working day is absorbed before any travel becomes payable.";
 
     /* ═══════════════════════════ DERIVED BREAK STATE ═══════════════════════════ */
 
@@ -760,6 +767,12 @@
           if (raw) {
             let v = JSON.parse(raw);
             if (migrate && Array.isArray(v)) v = v.map(migrate);
+            // For plain-object stores, merge initial so new keys added to the
+            // default object get safe values for existing users.
+            if (v !== null && typeof v === 'object' && !Array.isArray(v) &&
+                initial !== null && typeof initial === 'object' && !Array.isArray(initial)) {
+              v = { ...initial, ...v };
+            }
             return v;
           }
         } catch {}
@@ -772,21 +785,6 @@
     }
 
     /* ═══════════════════════════ SHARE / DOWNLOAD HELPERS ═══════════════════════════ */
-
-    async function shareOrDownloadBlob(blob, filename, { download = false } = {}) {
-      if (!download) {
-        const file = new File([blob], filename, { type: 'application/pdf' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try { await navigator.share({ files: [file], title: filename }); return; } catch (e) {
-            if (e.name === 'AbortError') return;
-          }
-        }
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
 
     async function shareTextOrCopy(text, title) {
       if (navigator.share) {
@@ -990,6 +988,8 @@
       return d.toISOString().slice(0, 10);
     }
 
+    // Returns string[][] — each inner array is 7 ISO date strings Mon–Sun.
+    // Used by DaysManager grid headers.
     function deriveWeeks(production, days) {
       const mondays = new Set(production.weekStarts || []);
       const allDayDates = [...days.map(d => d.date), ...(production.gridDates || [])];
@@ -1005,6 +1005,7 @@
       });
     }
 
+    // Returns {index, start, end, label}[] — used by ExportTab and TimesheetPage.
     function computeWeeks(production, days) {
       if (production.weekStarts?.length > 0) {
         return [...production.weekStarts].sort().map((mondayISO, idx) => {
@@ -2495,6 +2496,7 @@
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
+      const [showTravelInfo, setShowTravelInfo] = useState(false);
 
       const computeNowHHMM = () => {
         const now = new Date();
@@ -2706,21 +2708,32 @@
             </SectionCard>
           )}
 
-          {/* ── Section: Travel & Mileage ── */}
-          <SectionCard title="Travel & Mileage">
-            <div className="space-y-3">
-              {!isTravelDay && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Travel Out (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
-                  <Field label="Travel Back (mins)" hint="First hour deducted"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
-                </div>
-              )}
-              <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE"><Input type="number" min="0" step="0.1" value={v.miles || 0} onChange={(e) => set({ miles: Number(e.target.value) })} /></Field>
-            </div>
+          {/* ── Section: Mileage ── */}
+          <SectionCard title="Mileage">
+            <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE">
+              <Input type="number" min="0" step="0.1" value={v.miles || 0} onChange={(e) => set({ miles: Number(e.target.value) })} />
+            </Field>
           </SectionCard>
 
-          {/* ── Section: Per Diem ── */}
-          <SectionCard title="Per Diem">
+          {/* ── Extras disclosure: travel time, per diem, step-up ── */}
+          <Disclosure label="Extras">
+            {!isTravelDay && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Travel Time</span>
+                  <button type="button" onClick={() => setShowTravelInfo(s => !s)}
+                    className="text-neutral-600 hover:text-sky-400 transition-colors"
+                    aria-label="Travel time calculation info">
+                    <IInfo size={12}/>
+                  </button>
+                </div>
+                {showTravelInfo && <StatusMsg kind="info">{TRAVEL_TIME_EXPLAINER}</StatusMsg>}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Travel Out (mins)"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
+                  <Field label="Travel Back (mins)"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
+                </div>
+              </div>
+            )}
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Per Diem</span>
@@ -2732,10 +2745,6 @@
                 </Field>
               )}
             </div>
-          </SectionCard>
-
-          {/* ── Section: Step-Up ── */}
-          <SectionCard title="Step-Up">
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Step-Up for this day</span>
@@ -2768,7 +2777,7 @@
                 </>
               )}
             </div>
-          </SectionCard>
+          </Disclosure>
 
         </div>
       );
@@ -2985,10 +2994,11 @@
       );
     }
 
-    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddAllOnDate, onAddWeek, onAddCrew, onAssignAll, onDuplicateDate, onBulkEditDate, onRemoveWeek }) {
+    function TimesheetGrid({ production, crew, days, onEditDay, onAddDay, onAddAllOnDate, onAddWeek, onAddCrew, onAssignAll, onDuplicateDate, onBulkEditDate, onRemoveWeek, onRemoveDate }) {
       const [addDayType, setAddDayType] = useState("Shoot");
       const [editingDate, setEditingDate] = useState(null);
       const [dateEdit, setDateEdit] = useState({});
+      const [showTravelInfo, setShowTravelInfo] = useState(false);
 
       useEffect(() => {
         if (!editingDate) return;
@@ -3004,12 +3014,25 @@
         const resolved = firstEntry && firstMember
           ? resolveDay(production, firstEntry, firstMember)
           : { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay || {}) };
+        const callH = parseHHMM(resolved.callTime || "08:00") ?? 8;
         setDateEdit({
           dayType: resolved.dayType || "Shoot",
           callTime: resolved.callTime || "08:00",
           wrapTime: resolved.wrapTime || "19:00",
           lunchStartTime: resolved.lunchStartTime || "13:30",
           lunchDurationMins: resolved.lunchDurationMins ?? 60,
+          secondBreakStartTime: firstEntry?.secondBreakStartTime || toHHMM(callH + 11),
+          secondBreakDurationMins: firstEntry?.secondBreakDurationMins ?? 0,
+          miles: firstEntry?.miles ?? 0,
+          travelOutMins: firstEntry?.travelOutMins ?? 0,
+          travelBackMins: firstEntry?.travelBackMins ?? 0,
+          perDiemEnabled: firstEntry?.perDiemEnabled ?? false,
+          perDiemAmount: firstEntry?.perDiemAmount ?? 0,
+          stepUpEnabled: firstEntry?.stepUpEnabled ?? false,
+          stepUpRole: firstEntry?.stepUpRole ?? "",
+          stepUpBDR: firstEntry?.stepUpBDR ?? 0,
+          stepUpOTCoef: firstEntry?.stepUpOTCoef ?? 1,
+          stepUpOTRate: firstEntry?.stepUpOTRate ?? null,
         });
         setEditingDate(date);
       };
@@ -3216,6 +3239,7 @@
 
           {editingDate && (
             <div
+              role="dialog" aria-modal="true" aria-labelledby="date-edit-title"
               className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
               style={{ backgroundColor: "rgba(0,0,0,0.78)" }}
               onClick={() => setEditingDate(null)}
@@ -3229,7 +3253,7 @@
                 <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1.5">All Crew</div>
+                      <div id="date-edit-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1.5">All Crew</div>
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-neutral-100">
                           {weekday(editingDate)} {new Date(editingDate + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
@@ -3242,30 +3266,141 @@
                 </div>
 
                 {/* ── Scrollable body ── */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <Field label="Day Type">
-                      <Select value={dateEdit.dayType || "Shoot"} onChange={e => setDateEdit(p => ({...p, dayType: e.target.value}))}>
-                        {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                      </Select>
-                    </Field>
-                    <Field label="Call Time"><TimeInput value={dateEdit.callTime || ""} onChange={e => setDateEdit(p => ({...p, callTime: e.target.value}))} /></Field>
-                    <Field label="Wrap Time"><TimeInput value={dateEdit.wrapTime || ""} onChange={e => setDateEdit(p => ({...p, wrapTime: e.target.value}))} /></Field>
-                    <Field label="Lunch Start"><TimeInput value={dateEdit.lunchStartTime || ""} onChange={e => setDateEdit(p => ({...p, lunchStartTime: e.target.value}))} /></Field>
-                    <Field label="Lunch Duration">
-                      <Select value={dateEdit.lunchDurationMins ?? 60} onChange={e => setDateEdit(p => ({...p, lunchDurationMins: Number(e.target.value)}))}>
-                        {LUNCH_DURATIONS.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
-                      </Select>
-                    </Field>
+                <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0 space-y-4">
+                  {/* Core: day type, times, lunch */}
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden">
+                    <div className="px-4 py-3 border-b border-neutral-800">
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Day</div>
+                    </div>
+                    <div className="px-4 py-4 space-y-3">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <Field label="Day Type">
+                          <Select value={dateEdit.dayType || "Shoot"} onChange={e => setDateEdit(p => ({...p, dayType: e.target.value}))}>
+                            {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="Call Time"><TimeInput value={dateEdit.callTime || ""} onChange={e => setDateEdit(p => ({...p, callTime: e.target.value}))} /></Field>
+                        <Field label="Wrap Time"><TimeInput value={dateEdit.wrapTime || ""} onChange={e => setDateEdit(p => ({...p, wrapTime: e.target.value}))} /></Field>
+                        {dateEdit.dayType !== "Travel Day" && dateEdit.dayType !== "Rest Day" && <>
+                          <Field label="Lunch Start"><TimeInput value={dateEdit.lunchStartTime || ""} onChange={e => setDateEdit(p => ({...p, lunchStartTime: e.target.value}))} /></Field>
+                          <Field label="Lunch Duration">
+                            <Select value={dateEdit.lunchDurationMins ?? 60} onChange={e => setDateEdit(p => ({...p, lunchDurationMins: Number(e.target.value)}))}>
+                              {LUNCH_DURATIONS.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
+                            </Select>
+                          </Field>
+                        </>}
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Core: 2nd break */}
+                  {dateEdit.dayType !== "Travel Day" && dateEdit.dayType !== "Rest Day" && (
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden">
+                      <div className="px-4 py-3 border-b border-neutral-800">
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">2nd Break</div>
+                      </div>
+                      <div className="px-4 py-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="2nd Break Start">
+                            <TimeInput value={dateEdit.secondBreakStartTime || ""} onChange={e => setDateEdit(p => ({...p, secondBreakStartTime: e.target.value}))} disabled={Number(dateEdit.secondBreakDurationMins) === 0} />
+                          </Field>
+                          <Field label="2nd Break Duration">
+                            <Select value={Number(dateEdit.secondBreakDurationMins ?? 0)} onChange={e => setDateEdit(p => ({...p, secondBreakDurationMins: Number(e.target.value)}))}>
+                              {SECOND_BREAK_DURATIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                            </Select>
+                          </Field>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Core: mileage */}
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden">
+                    <div className="px-4 py-3 border-b border-neutral-800">
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Mileage</div>
+                    </div>
+                    <div className="px-4 py-4">
+                      <Field label="Mileage (outside M25)" hint="£0.50/mi return from W1F 9SE">
+                        <Input type="number" min="0" step="0.1" value={dateEdit.miles ?? 0} onChange={e => setDateEdit(p => ({...p, miles: Number(e.target.value)}))} />
+                      </Field>
+                    </div>
+                  </div>
+
+                  {/* Extras: travel time, per diem, step-up */}
+                  <Disclosure label="Extras">
+                    {dateEdit.dayType !== "Travel Day" && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Travel Time</span>
+                          <button type="button" onClick={() => setShowTravelInfo(s => !s)}
+                            className="text-neutral-600 hover:text-sky-400 transition-colors"
+                            aria-label="Travel time calculation info">
+                            <IInfo size={12}/>
+                          </button>
+                        </div>
+                        {showTravelInfo && <StatusMsg kind="info">{TRAVEL_TIME_EXPLAINER}</StatusMsg>}
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="Travel Out (mins)"><Input type="number" min="0" value={dateEdit.travelOutMins ?? 0} onChange={e => setDateEdit(p => ({...p, travelOutMins: Number(e.target.value)}))} /></Field>
+                          <Field label="Travel Back (mins)"><Input type="number" min="0" value={dateEdit.travelBackMins ?? 0} onChange={e => setDateEdit(p => ({...p, travelBackMins: Number(e.target.value)}))} /></Field>
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Per Diem</span>
+                        <Toggle value={!!dateEdit.perDiemEnabled} onChange={val => setDateEdit(p => ({...p, perDiemEnabled: val}))} ariaLabel="Per diem" />
+                      </div>
+                      {dateEdit.perDiemEnabled && (
+                        <Field label="Per Diem Amount (£)" hint="Added to day total">
+                          <Input type="number" min="0" step="0.01" value={dateEdit.perDiemAmount ?? 0} onChange={e => setDateEdit(p => ({...p, perDiemAmount: Number(e.target.value)}))} />
+                        </Field>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Step-Up for all crew</span>
+                        <Toggle value={!!dateEdit.stepUpEnabled} onChange={val => setDateEdit(p => ({...p, stepUpEnabled: val}))} ariaLabel="Step-up" />
+                      </div>
+                      {dateEdit.stepUpEnabled && (
+                        <>
+                          <Field label="Step-Up Role">
+                            <Select value={dateEdit.stepUpRole || ""} onChange={e => {
+                              const role = e.target.value;
+                              const d = ROLE_DEFAULTS[role] || {};
+                              setDateEdit(p => ({...p, stepUpRole: role, stepUpBDR: d.bdr ?? p.stepUpBDR, stepUpOTCoef: d.otCoef ?? 1, stepUpOTRate: d.otRate ?? null}));
+                            }}>
+                              <option value="">— Select Role —</option>
+                              {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}</optgroup>)}
+                            </Select>
+                          </Field>
+                          <div className="grid grid-cols-2 gap-3">
+                            <Field label="Step-Up BDR (£)" hint="Override for this day only">
+                              <Input type="number" min="0" step="0.01" value={dateEdit.stepUpBDR ?? 0} onChange={e => setDateEdit(p => ({...p, stepUpBDR: Number(e.target.value)}))} />
+                            </Field>
+                            <Field label="Step-Up OT Coef">
+                              <Select value={String(dateEdit.stepUpOTCoef ?? 1)} onChange={e => setDateEdit(p => ({...p, stepUpOTCoef: Number(e.target.value)}))}>
+                                <option value="1">1×</option>
+                                <option value="1.25">1.25×</option>
+                                <option value="1.5">1.5×</option>
+                              </Select>
+                            </Field>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </Disclosure>
                 </div>
 
                 {/* ── Fixed footer ── */}
                 <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 flex gap-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
                   <Btn variant="success" onClick={() => { onBulkEditDate(editingDate, dateEdit); setEditingDate(null); }}>
-                    <ICheck/>Save
+                    <ICheck/>Save all
                   </Btn>
                   <Btn variant="ghost" onClick={() => setEditingDate(null)}><IX/>Cancel</Btn>
+                  <div className="flex-1" />
+                  <Btn variant="danger" onClick={() => { setEditingDate(null); onRemoveDate(editingDate); }}>
+                    <ITrash size={14}/>Delete
+                  </Btn>
                 </div>
               </div>
             </div>
@@ -3384,6 +3519,7 @@
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
+      const [dupDateDialog, setDupDateDialog] = useState(null);
       const [gridView, setGridView] = useState(production.bestBoyMode);
       const [fixedCrewId, setFixedCrewId] = useState(null);
       const [fixedDate, setFixedDate] = useState(null);
@@ -3436,9 +3572,22 @@
         setFixedDate(date);
       };
       const handleBulkEditDate = (date, overrides) => {
-        const { dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins } = overrides;
+        const {
+          dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins,
+          secondBreakStartTime, secondBreakDurationMins,
+          miles, travelOutMins, travelBackMins,
+          perDiemEnabled, perDiemAmount,
+          stepUpEnabled, stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
+        } = overrides;
         setDays(prev => prev.map(d =>
-          d.date !== date ? d : { ...d, dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins }
+          d.date !== date ? d : {
+            ...d,
+            dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins,
+            secondBreakStartTime, secondBreakDurationMins,
+            miles, travelOutMins, travelBackMins,
+            perDiemEnabled, perDiemAmount,
+            stepUpEnabled, stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
+          }
         ));
       };
       const handleAssignAllOnDate = (date, dayType = "Shoot") => {
@@ -3462,11 +3611,14 @@
         if (source.length === 0) return;
         const next = new Date(sourceDate + "T12:00:00");
         next.setDate(next.getDate() + 1);
-        const defaultTarget = next.toISOString().slice(0, 10);
-        const input = window.prompt(`Copy ${source.length} entr${source.length === 1 ? 'y' : 'ies'} from ${fmtDateShort(sourceDate)} to:`, defaultTarget);
-        if (!input) return;
-        const targetDate = input.trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) { showToast("Invalid date — use YYYY-MM-DD"); return; }
+        setDupDateDialog({ sourceDate, targetDate: next.toISOString().slice(0, 10), count: source.length });
+      };
+
+      const confirmDuplicateDate = (targetDate) => {
+        const { sourceDate } = dupDateDialog;
+        setDupDateDialog(null);
+        const source = days.filter(d => d.date === sourceDate);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) { showToast("Invalid date"); return; }
         if (targetDate === sourceDate) { showToast("Target date is the same as source"); return; }
         const existing = days.filter(d => d.date === targetDate);
         const copies = source.map(d => ({ ...d, id: uid(), date: targetDate }));
@@ -3565,7 +3717,7 @@
           )}
 
           {gridView ? (
-            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddAllOnDate={handleAddAllFromGrid} onAddWeek={onAddWeek} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onDuplicateDate={handleDuplicateDate} onBulkEditDate={handleBulkEditDate} onRemoveWeek={onRemoveWeek} />
+            <TimesheetGrid production={production} crew={crew} days={days} onEditDay={handleEditDayFromGrid} onAddDay={handleAddDayFromGrid} onAddAllOnDate={handleAddAllFromGrid} onAddWeek={onAddWeek} onAddCrew={onAddCrew} onAssignAll={handleAssignAllOnDate} onDuplicateDate={handleDuplicateDate} onBulkEditDate={handleBulkEditDate} onRemoveWeek={onRemoveWeek} onRemoveDate={handleRemoveAllOnDate} />
           ) : (
           <div className="space-y-4">
             {grouped.map(([date, entries]) => {
@@ -3644,6 +3796,11 @@
             cancelLabel="Cancel"
             onConfirm={() => { const f = confirmOpts?.onConfirm; setConfirmOpts(null); if (f) f(); }}
             onCancel={() => setConfirmOpts(null)}
+          />
+          <DuplicateDateDialog
+            opts={dupDateDialog}
+            onConfirm={confirmDuplicateDate}
+            onCancel={() => setDupDateDialog(null)}
           />
         </div>
       );
@@ -3833,7 +3990,7 @@
           const text = generateCrewText(c, entries, production);
           const r = await shareTextOrCopy(text, `${c.name} Timesheet`);
           if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
-        } catch (e) { console.error(e); }
+        } catch {}
       };
 
       // Build PrintView props from exportState
@@ -4220,6 +4377,7 @@
 
       return (
         <div
+          role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title"
           className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
           style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
           onClick={onCancel}
@@ -4230,7 +4388,7 @@
             onClick={e => e.stopPropagation()}
           >
             <div className="px-5 pt-5 pb-4">
-              {title && <div className="text-sm font-bold text-neutral-100 mb-2">{title}</div>}
+              {title && <div id="confirm-dialog-title" className="text-sm font-bold text-neutral-100 mb-2">{title}</div>}
               {message && <div className="text-sm text-neutral-400 leading-snug">{message}</div>}
             </div>
             <div className="flex flex-col-reverse gap-2 px-4 pb-5 sm:flex-row sm:justify-end">
@@ -4256,6 +4414,61 @@
       );
     }
 
+    function DuplicateDateDialog({ opts, onConfirm, onCancel }) {
+      const [targetDate, setTargetDate] = useState(opts?.targetDate || "");
+      useEffect(() => { if (opts) setTargetDate(opts.targetDate); }, [opts?.targetDate]);
+      useEffect(() => {
+        if (!opts) return;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, [!!opts]);
+
+      if (!opts) return null;
+      const { sourceDate, count } = opts;
+      const label = `${count} entr${count === 1 ? 'y' : 'ies'}`;
+
+      return (
+        <div
+          role="dialog" aria-modal="true" aria-labelledby="dup-date-title"
+          className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
+          onClick={onCancel}
+        >
+          <div
+            className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+            style={{ maxWidth: 400 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 pt-5 pb-4">
+              <div id="dup-date-title" className="text-sm font-bold text-neutral-100 mb-3">
+                Copy {label} from {fmtDateShort(sourceDate)} to…
+              </div>
+              <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+            </div>
+            <div className="flex flex-col-reverse gap-2 px-4 pb-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => onConfirm(targetDate)}
+                disabled={!targetDate}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     function DayJumpSheet({ open, days, currentDayId, production, crew, onPick, onClose }) {
       useEffect(() => {
         if (!open) return;
@@ -4269,6 +4482,7 @@
 
       return (
         <div
+          role="dialog" aria-modal="true" aria-labelledby="jump-sheet-title"
           className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
           style={{ backgroundColor: "rgba(0,0,0,0.78)", zIndex: 50 }}
           onClick={onClose}
@@ -4279,7 +4493,7 @@
             onClick={e => e.stopPropagation()}
           >
             <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-700 flex items-center justify-between">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Jump to Day</div>
+              <div id="jump-sheet-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Jump to Day</div>
               <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5" aria-label="Close"><IX size={16}/></button>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -4881,7 +5095,7 @@ const setDays = (updater) =>
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="e.g. Acme Brand Film 2025"
+                  placeholder={`e.g. Acme Brand Film ${new Date().getFullYear()}`}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey || true) && canCreate) handleCreate(); }}
@@ -4911,6 +5125,21 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
+    function makeDeptRoleHandlers(set, userPrefs) {
+      return {
+        onDeptChange: (dept) => {
+          const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
+          const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
+          set({ defaultDepartment: dept, defaultRole: firstRole,
+                defaultBDR: roleDefaults.bdr ?? 0, defaultOTCoef: roleDefaults.otCoef ?? 1.5 });
+        },
+        onRoleChange: (role) => {
+          const d = ROLE_DEFAULTS[role] || {};
+          set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
+        },
+      };
+    }
+
     /* ═══════════════════════════ ONBOARDING ═══════════════════════════ */
 
     function OnboardingScreen({ userPrefs, set, onComplete }) {
@@ -4925,21 +5154,7 @@ const setDays = (updater) =>
         ? Object.keys(DEPARTMENTS[userPrefs.defaultDepartment])
         : [];
 
-      const onDeptChange = (dept) => {
-        const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
-        const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
-        set({
-          defaultDepartment: dept,
-          defaultRole: firstRole,
-          defaultBDR: roleDefaults.bdr ?? 0,
-          defaultOTCoef: roleDefaults.otCoef ?? 1.5,
-        });
-      };
-
-      const onRoleChange = (role) => {
-        const d = ROLE_DEFAULTS[role] || {};
-        set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
-      };
+      const { onDeptChange, onRoleChange } = makeDeptRoleHandlers(set, userPrefs);
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center px-6 py-12" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -5099,10 +5314,30 @@ const setDays = (updater) =>
       );
     };
 
+    const Disclosure = ({ label, children, defaultOpen = false }) => {
+      const [open, setOpen] = useState(defaultOpen);
+      return (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden mb-4">
+          <button
+            type="button"
+            onClick={() => setOpen(o => !o)}
+            className={`w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-neutral-800/40 transition-colors${open ? " border-b border-neutral-800" : ""}`}
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            <span className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{label}</span>
+            {open ? <IUp size={14} className="text-neutral-500 flex-shrink-0" /> : <IDown size={14} className="text-neutral-500 flex-shrink-0" />}
+          </button>
+          {open && <div className="px-4 py-4 space-y-4">{children}</div>}
+        </div>
+      );
+    };
+
     function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onImport, onResetAll, productionCount = 0 }) {
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
+      const [toastMsg, setToastMsg] = useState(null);
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -5114,7 +5349,7 @@ const setDays = (updater) =>
             const raw = JSON.parse(ev.target.result);
             const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.productions) ? raw.productions : null);
             if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
-              window.alert('Invalid backup file — not a valid productions export.');
+              showToast('Invalid backup file — not a valid productions export.');
               return;
             }
             const n = arr.length;
@@ -5129,7 +5364,7 @@ const setDays = (updater) =>
               onConfirm: () => onImport(arr),
             });
           } catch {
-            window.alert('Could not read file — is it a valid JSON backup?');
+            showToast('Could not read file — is it a valid JSON backup?');
           }
         };
         reader.readAsText(file);
@@ -5139,21 +5374,7 @@ const setDays = (updater) =>
         ? Object.keys(DEPARTMENTS[userPrefs.defaultDepartment])
         : [];
 
-      const onDeptChange = (dept) => {
-        const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
-        const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
-        set({
-          defaultDepartment: dept,
-          defaultRole: firstRole,
-          defaultBDR: roleDefaults.bdr ?? 0,
-          defaultOTCoef: roleDefaults.otCoef ?? 1.5,
-        });
-      };
-
-      const onRoleChange = (role) => {
-        const d = ROLE_DEFAULTS[role] || {};
-        set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
-      };
+      const { onDeptChange, onRoleChange } = makeDeptRoleHandlers(set, userPrefs);
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
@@ -5355,6 +5576,7 @@ const setDays = (updater) =>
             </SectionCard>
 
           </div>
+          <Toast show={!!toastMsg}>{toastMsg}</Toast>
           <ConfirmDialog
             open={!!confirmOpts}
             title={confirmOpts?.title}
