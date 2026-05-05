@@ -1251,41 +1251,59 @@
 
       .grid-wrap {
         flex: 1; margin-top: 10px;
+        overflow: hidden; min-height: 0;
+      }
+      .grid-table {
+        display: flex; flex-direction: column; width: 100%;
         border: 1px solid #d4d4d4; border-radius: 10px;
-        overflow: hidden; display: flex; flex-direction: column; min-height: 0;
+        overflow: hidden;
       }
-      .grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-      .grid th, .grid td { border-right: 1px solid #e5e5e5; border-bottom: 1px solid #e5e5e5; }
-      .grid th:last-child, .grid td:last-child { border-right: none; }
-      .grid tr:last-child td { border-bottom: none; }
+      .grid-row {
+        display: grid;
+        grid-template-columns: 26mm repeat(7, 19mm) 18mm;
+        border-bottom: 1px solid #e5e5e5;
+      }
+      .grid-row:last-child { border-bottom: none; }
+      .grid-cell {
+        padding: 4px; border-right: 1px solid #e5e5e5;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .grid-cell:last-child { border-right: none; }
 
-      .grid thead th {
+      /* Head row */
+      .grid-head .grid-cell {
         background: #f5f5f5; padding: 6px 4px;
-        text-align: center; vertical-align: middle;
+        flex-direction: column; text-align: center;
       }
-      .grid thead th.crew-col { text-align: left; padding-left: 8px; }
-      .grid thead th.total-col { text-align: right; padding-right: 8px; }
-      .grid thead .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #737373; font-weight: 700; line-height: 1; }
-      .grid thead .num { font-size: 12px; font-weight: 800; margin-top: 2px; line-height: 1; }
-      .grid thead .mo  { font-size: 7px; color: #737373; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1; }
-      .grid thead th.sat { background: #fffbeb; }
-      .grid thead th.sat .dow { color: #b45309; }
-      .grid thead th.sat .num { color: #78350f; }
-      .grid thead th.sat .mo  { color: rgba(180,83,9,0.7); }
-      .grid thead th.sun { background: #fef2f2; }
-      .grid thead th.sun .dow { color: #b91c1c; }
-      .grid thead th.sun .num { color: #7f1d1d; }
-      .grid thead th.sun .mo  { color: rgba(185,28,28,0.7); }
+      .grid-head .grid-cell.crew-col { justify-content: flex-start; align-items: flex-start; padding-left: 8px; }
+      .grid-head .grid-cell.total-col { justify-content: center; align-items: center; padding-right: 8px; }
+      .grid-head .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #737373; font-weight: 700; line-height: 1; }
+      .grid-head .num { font-size: 12px; font-weight: 800; margin-top: 2px; line-height: 1; }
+      .grid-head .mo  { font-size: 7px; color: #737373; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1; }
+      .grid-head .grid-cell.sat { background: #fffbeb; }
+      .grid-head .grid-cell.sat .dow { color: #b45309; }
+      .grid-head .grid-cell.sat .num { color: #78350f; }
+      .grid-head .grid-cell.sat .mo  { color: rgba(180,83,9,0.7); }
+      .grid-head .grid-cell.sun { background: #fef2f2; }
+      .grid-head .grid-cell.sun .dow { color: #b91c1c; }
+      .grid-head .grid-cell.sun .num { color: #7f1d1d; }
+      .grid-head .grid-cell.sun .mo  { color: rgba(185,28,28,0.7); }
 
-      .grid tbody td { padding: 4px; text-align: center; vertical-align: middle; }
-      .grid tbody td.crew { background: #fafafa; text-align: left; padding: 6px 8px; }
-      .grid tbody td.row-total { background: #fafafa; text-align: right; padding: 6px 8px; }
-      .grid tbody .name { font-size: 10px; font-weight: 700; color: #171717; line-height: 1.2; }
-      .grid tbody .role { font-size: 8px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 600; }
-      .grid tbody td.sat { background: #fffbeb; }
-      .grid tbody td.sun { background: #fef2f2; }
-      .grid tbody td.sat .total-val { color: #78350f; }
-      .grid tbody td.sun .total-val { color: #7f1d1d; }
+      /* Body rows */
+      .grid-body .grid-cell.crew {
+        background: #fafafa; flex-direction: column;
+        justify-content: center; align-items: flex-start; padding: 6px 8px;
+      }
+      .grid-body .grid-cell.row-total {
+        background: #fafafa; flex-direction: column;
+        justify-content: center; align-items: flex-end; padding: 6px 8px;
+      }
+      .grid-body .name { font-size: 10px; font-weight: 700; color: #171717; line-height: 1.2; }
+      .grid-body .role { font-size: 8px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 600; }
+      .grid-body .grid-cell.sat { background: #fffbeb; }
+      .grid-body .grid-cell.sun { background: #fef2f2; }
+      .grid-body .grid-cell.sat .total-val { color: #78350f; }
+      .grid-body .grid-cell.sun .total-val { color: #7f1d1d; }
 
       .cell-stack {
         display: flex; flex-direction: column; align-items: center;
@@ -1302,17 +1320,21 @@
       .row-total .total-val { font-size: 12px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
       .row-total .total-hrs { font-size: 8px; color: #737373; margin-top: 2px; }
 
-      .grid tfoot td {
-        background: #f5f5f5; padding: 6px 4px;
-        text-align: center; vertical-align: middle; border-top: 2px solid #d4d4d4;
+      /* Foot row */
+      .grid-foot { border-top: 2px solid #d4d4d4; }
+      .grid-foot .grid-cell { background: #f5f5f5; padding: 6px 4px; }
+      .grid-foot .grid-cell.crew {
+        justify-content: flex-start; padding-left: 8px;
+        text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; color: #525252; font-weight: 700;
       }
-      .grid tfoot td.crew { text-align: left; padding-left: 8px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; color: #525252; font-weight: 700; }
-      .grid tfoot td.row-total { text-align: right; padding-right: 8px; }
-      .grid tfoot .day-total-val { font-size: 11px; font-weight: 800; color: #171717; }
-      .grid tfoot .day-total-hrs { font-size: 8px; color: #737373; margin-top: 1px; }
-      .grid tfoot td.sat { background: #fef3c7; }
-      .grid tfoot td.sun { background: #fee2e2; }
-      .grid tfoot td.row-total .week-total { font-size: 14px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
+      .grid-foot .grid-cell.row-total {
+        flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 8px;
+      }
+      .grid-foot .day-total-val { font-size: 11px; font-weight: 800; color: #171717; }
+      .grid-foot .day-total-hrs { font-size: 8px; color: #737373; margin-top: 1px; }
+      .grid-foot .grid-cell.sat { background: #fef3c7; }
+      .grid-foot .grid-cell.sun { background: #fee2e2; }
+      .grid-foot .grid-cell.row-total .week-total { font-size: 14px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
 
       @media print {
         #root { display: none !important; }
@@ -1599,11 +1621,6 @@
         return { tot, hrs };
       });
 
-      // Col widths: crew col + 7 day cols + total col
-      const CREW_W = "26mm";
-      const DAY_W  = "19mm";
-      const TOT_W  = "18mm";
-
       const now = new Date();
       const genLabel = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         + ' · ' + now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -1630,108 +1647,99 @@
 
           {/* Grid */}
           <div className="grid-wrap">
-            <table className="grid">
-              <colgroup>
-                <col style={{width: CREW_W}}/>
-                {weekDates.map((_, i) => <col key={i} style={{width: DAY_W}}/>)}
-                <col style={{width: TOT_W}}/>
-              </colgroup>
-              <thead>
-                <tr>
-                  <th className="crew-col"></th>
-                  {weekDates.map(dateISO => {
-                    const d = new Date(dateISO + "T12:00:00");
-                    const dn = d.getDay();
-                    const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
-                    return (
-                      <th key={dateISO} className={cls || undefined}>
-                        <div className="dow">{d.toLocaleDateString('en-GB',{weekday:'short'})}</div>
-                        <div className="num">{d.getDate()}</div>
-                        <div className="mo tnum">{d.toLocaleDateString('en-GB',{month:'short'})}</div>
-                      </th>
-                    );
-                  })}
-                  <th className="total-col"><div className="dow">Total</div></th>
-                </tr>
-              </thead>
-              <tbody>
-                {crew.map((c, ci) => {
-                  const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+            <div className="grid-table">
+              <div className="grid-row grid-head">
+                <div className="grid-cell crew-col"></div>
+                {weekDates.map(dateISO => {
+                  const d = new Date(dateISO + "T12:00:00");
+                  const dn = d.getDay();
+                  const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
                   return (
-                    <tr key={c.id}>
-                      <td className="crew">
-                        <div className="name">{c.name}</div>
-                        <div className="role">{c.role} · {fmtGBP(c.bdr)}</div>
-                      </td>
-                      {weekDates.map(dateISO => {
-                        const dn = new Date(dateISO + "T12:00:00").getDay();
-                        const colCls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
-                        const day = (byCA[c.id] || {})[dateISO];
-                        if (!day || day.dayType === "Rest Day") {
-                          return (
-                            <td key={dateISO} className={colCls || undefined}>
-                              <span className="rest-label">Rest</span>
-                            </td>
-                          );
-                        }
-                        const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
-                        const calc = calcForDisplay(production, day, c, prev);
-                        const flags = penaltyFlags(calc);
-                        const isBH = flags.isBankHoliday;
-                        const cellCls = (isBH || dn === 0) ? 'sun' : dn === 6 ? 'sat' : '';
-                        const hrs = calc.meta?.workedHrs || 0;
-                        const chipCls = dayTypeChipClass(day.dayType);
-                        const penNodes = [];
-                        if (flags.hasOT)        penNodes.push(<span key="ot"  className="chip-ot">OT</span>);
-                        if (flags.hasL1)        penNodes.push(<span key="l1"  className="chip-msb">L1</span>);
-                        if (flags.hasL2)        penNodes.push(<span key="l2"  className="chip-msb">L2</span>);
-                        if (flags.hasMSB)       penNodes.push(<span key="msb" className="chip-msb">MSB</span>);
-                        if (flags.hasCWD)       penNodes.push(<span key="cwd" className="chip-cwd">CWD</span>);
-                        if (flags.hasTOC)       penNodes.push(<span key="toc" className="chip-toc">TOC</span>);
-                        if (flags.isNightShoot) penNodes.push(<span key="ns"  className="chip-ns">NS</span>);
-                        return (
-                          <td key={dateISO} className={cellCls || undefined}>
-                            <div className="cell-stack">
-                              <div className="top">
-                                <span className={`chip-day ${chipCls}`}>{day.dayType}</span>
-                                <span className="hrs-line tnum">{hrs.toFixed(1)}h</span>
-                                {penNodes.length > 0 && <div className="pens">{penNodes}</div>}
-                              </div>
-                              <span className="total-val tnum">{fmtGBP(calc.total)}</span>
-                            </div>
-                          </td>
-                        );
-                      })}
-                      <td className="row-total">
-                        <div className="total-val tnum">{fmtGBP(crewTotals[ci].tot)}</div>
-                        <div className="total-hrs tnum">{crewTotals[ci].hrs.toFixed(1)}h</div>
-                      </td>
-                    </tr>
+                    <div key={dateISO} className={`grid-cell${cls ? ' ' + cls : ''}`}>
+                      <div className="dow">{d.toLocaleDateString('en-GB',{weekday:'short'})}</div>
+                      <div className="num">{d.getDate()}</div>
+                      <div className="mo tnum">{d.toLocaleDateString('en-GB',{month:'short'})}</div>
+                    </div>
                   );
                 })}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td className="crew">Day Totals</td>
-                  {weekDates.map((dateISO, i) => {
-                    const dn = new Date(dateISO + "T12:00:00").getDay();
-                    const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
-                    const ct = colTotals[i];
-                    return (
-                      <td key={dateISO} className={cls || undefined}>
-                        {ct.tot > 0
-                          ? <><div className="day-total-val tnum">{fmtGBP(ct.tot)}</div><div className="day-total-hrs tnum">{ct.hrs.toFixed(1)}h</div></>
-                          : <span style={{color:'#d4d4d4'}}>—</span>}
-                      </td>
-                    );
-                  })}
-                  <td className="row-total">
-                    <div className="week-total tnum">{fmtGBP(weekTotal)}</div>
-                    <div className="day-total-hrs tnum">{weekHrs.toFixed(0)}h</div>
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                <div className="grid-cell total-col"><div className="dow">Total</div></div>
+              </div>
+
+              {crew.map((c, ci) => {
+                const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+                return (
+                  <div key={c.id} className="grid-row grid-body">
+                    <div className="grid-cell crew">
+                      <div className="name">{c.name}</div>
+                      <div className="role">{c.role} · {fmtGBP(c.bdr)}</div>
+                    </div>
+                    {weekDates.map(dateISO => {
+                      const dn = new Date(dateISO + "T12:00:00").getDay();
+                      const colCls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
+                      const day = (byCA[c.id] || {})[dateISO];
+                      if (!day || day.dayType === "Rest Day") {
+                        return (
+                          <div key={dateISO} className={`grid-cell${colCls ? ' ' + colCls : ''}`}>
+                            <span className="rest-label">Rest</span>
+                          </div>
+                        );
+                      }
+                      const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
+                      const calc = calcForDisplay(production, day, c, prev);
+                      const flags = penaltyFlags(calc);
+                      const isBH = flags.isBankHoliday;
+                      const cellCls = (isBH || dn === 0) ? 'sun' : dn === 6 ? 'sat' : '';
+                      const hrs = calc.meta?.workedHrs || 0;
+                      const chipCls = dayTypeChipClass(day.dayType);
+                      const penNodes = [];
+                      if (flags.hasOT)        penNodes.push(<span key="ot"  className="chip-ot">OT</span>);
+                      if (flags.hasL1)        penNodes.push(<span key="l1"  className="chip-msb">L1</span>);
+                      if (flags.hasL2)        penNodes.push(<span key="l2"  className="chip-msb">L2</span>);
+                      if (flags.hasMSB)       penNodes.push(<span key="msb" className="chip-msb">MSB</span>);
+                      if (flags.hasCWD)       penNodes.push(<span key="cwd" className="chip-cwd">CWD</span>);
+                      if (flags.hasTOC)       penNodes.push(<span key="toc" className="chip-toc">TOC</span>);
+                      if (flags.isNightShoot) penNodes.push(<span key="ns"  className="chip-ns">NS</span>);
+                      return (
+                        <div key={dateISO} className={`grid-cell${cellCls ? ' ' + cellCls : ''}`}>
+                          <div className="cell-stack">
+                            <div className="top">
+                              <span className={`chip-day ${chipCls}`}>{day.dayType}</span>
+                              <span className="hrs-line tnum">{hrs.toFixed(1)}h</span>
+                              {penNodes.length > 0 && <div className="pens">{penNodes}</div>}
+                            </div>
+                            <span className="total-val tnum">{fmtGBP(calc.total)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="grid-cell row-total">
+                      <div className="total-val tnum">{fmtGBP(crewTotals[ci].tot)}</div>
+                      <div className="total-hrs tnum">{crewTotals[ci].hrs.toFixed(1)}h</div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="grid-row grid-foot">
+                <div className="grid-cell crew">Day Totals</div>
+                {weekDates.map((dateISO, i) => {
+                  const dn = new Date(dateISO + "T12:00:00").getDay();
+                  const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
+                  const ct = colTotals[i];
+                  return (
+                    <div key={dateISO} className={`grid-cell${cls ? ' ' + cls : ''}`}>
+                      {ct.tot > 0
+                        ? <><div className="day-total-val tnum">{fmtGBP(ct.tot)}</div><div className="day-total-hrs tnum">{ct.hrs.toFixed(1)}h</div></>
+                        : <span style={{color:'#d4d4d4'}}>—</span>}
+                    </div>
+                  );
+                })}
+                <div className="grid-cell row-total">
+                  <div className="week-total tnum">{fmtGBP(weekTotal)}</div>
+                  <div className="day-total-hrs tnum">{weekHrs.toFixed(0)}h</div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Footer */}
