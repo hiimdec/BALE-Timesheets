@@ -55,6 +55,20 @@
 
     const APP_VERSION = "0.1.0";
 
+    const COMPARISON_ITEMS = [
+      { emoji: "🥖", label: "Greggs sausage rolls", price: 1.30 },
+      { emoji: "🚇", label: "Tube journeys", price: 3.10 },
+      { emoji: "🥪", label: "Tesco meal deals", price: 3.40 },
+      { emoji: "☕", label: "oat flat whites", price: 4.20 },
+      { emoji: "🍺", label: "pints in London", price: 6.50 },
+      { emoji: "📼", label: "rolls of gaffer tape", price: 15 },
+      { emoji: "🪛", label: "Leathermans", price: 100 },
+      { emoji: "📺", label: "months of Netflix", price: 17.99 },
+      { emoji: "📻", label: "lost walkie-talkies", price: 450 },
+      { emoji: "💻", label: "new iPhones", price: 1200 },
+      { emoji: "🏠", label: "years of mortgage on a £450k London flat", price: 24000 },
+    ];
+
     const DEPARTMENTS = {
       "Direction & Production": {
         "Director":             { bdr: 933,  otCoef: 0,    noOT: true },
@@ -1898,6 +1912,7 @@
     const IArrowRight = (p) => <Icon {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></Icon>;
     const IHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
     const ISearch = (p) => <Icon {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></Icon>;
+    const IStats = (p) => <Icon {...p}><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/><line x1="3" y1="20" x2="21" y2="20"/></Icon>;
     const IExternalLink = (p) => <Icon {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
@@ -5687,9 +5702,334 @@ const setDays = (updater) =>
       );
     }
 
+    /* ═══════════════════════════ STATS SCREEN ═══════════════════════════ */
+
+    function StatsScreen({ productions, userPrefs, onClose }) {
+      const [filter, setFilter] = useState('all');
+      const [expandedStat, setExpandedStat] = useState(null);
+      const [showAllMonths, setShowAllMonths] = useState(false);
+
+      const toggleExpand = (key) => { setExpandedStat(prev => prev === key ? null : key); setShowAllMonths(false); };
+      const fmtMonth = (yyyymm) => new Date(yyyymm + '-01T12:00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+
+      const enrichedDays = useMemo(() => {
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        let startISO, endISO;
+        if (filter === 'taxyear') {
+          const yr = (now.getMonth() < 3 || (now.getMonth() === 3 && now.getDate() < 6)) ? now.getFullYear() - 1 : now.getFullYear();
+          startISO = `${yr}-04-06`; endISO = `${yr + 1}-04-05`;
+        } else if (filter === 'ytd') {
+          startISO = `${now.getFullYear()}-01-01`; endISO = today;
+        }
+        const result = [];
+        for (const p of productions) {
+          const days = filter === 'all' ? (p.days || []) : (p.days || []).filter(d => d.date >= startISO && d.date <= endISO);
+          for (const day of days) {
+            const crew = (p.crew || []).find(c => c.id === day.crewId);
+            if (!crew) continue;
+            try {
+              const calc = calcForDisplay(p, day, crew, findPrevDay(p.days || [], day));
+              result.push({ day, production: p, crew, calc });
+            } catch {}
+          }
+        }
+        return result;
+      }, [productions, filter]);
+
+      const taxYearTotal = useMemo(() => {
+        if (filter === 'taxyear') return null;
+        const now = new Date();
+        const yr = (now.getMonth() < 3 || (now.getMonth() === 3 && now.getDate() < 6)) ? now.getFullYear() - 1 : now.getFullYear();
+        const s = `${yr}-04-06`, e = `${yr + 1}-04-05`;
+        let total = 0;
+        for (const p of productions) {
+          for (const day of (p.days || []).filter(d => d.date >= s && d.date <= e)) {
+            const crew = (p.crew || []).find(c => c.id === day.crewId);
+            if (!crew) continue;
+            try { total += calcForDisplay(p, day, crew, findPrevDay(p.days || [], day)).total; } catch {}
+          }
+        }
+        return total;
+      }, [productions, filter]);
+
+      const stats = useMemo(() => {
+        if (enrichedDays.length === 0) return null;
+        const totalEarnings = enrichedDays.reduce((s, e) => s + e.calc.total, 0);
+        const workingDaysSet = new Set(enrichedDays.filter(e => e.day.callTime || e.day.wrapTime).map(e => `${e.production.id}:${e.day.date}`));
+        const shootDaysSet = new Set(enrichedDays.filter(e => e.day.dayType === 'Shoot').map(e => `${e.production.id}:${e.day.date}`));
+        const totalHours = enrichedDays.reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
+        const productionsWorkedCount = new Set(enrichedDays.map(e => e.production.id)).size;
+
+        const workingDates = [...new Set(
+          enrichedDays.filter(e => e.day.dayType !== 'Rest Day' && (e.day.callTime || e.day.wrapTime)).map(e => e.day.date)
+        )].sort();
+        let longestStreak = workingDates.length > 0 ? 1 : 0, curStreak = longestStreak;
+        for (let i = 1; i < workingDates.length; i++) {
+          const diff = (new Date(workingDates[i]) - new Date(workingDates[i - 1])) / 86400000;
+          if (diff === 1) { curStreak++; longestStreak = Math.max(longestStreak, curStreak); } else curStreak = 1;
+        }
+
+        const wdc = workingDaysSet.size, sdc = shootDaysSet.size;
+        const avgDayEarnings = wdc > 0 ? totalEarnings / wdc : 0;
+        const avgPerShoot = productionsWorkedCount > 0 ? totalEarnings / productionsWorkedCount : 0;
+        const shootHours = enrichedDays.filter(e => e.day.dayType === 'Shoot').reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
+        const avgShootLen = sdc > 0 ? shootHours / sdc : 0;
+
+        const earningsByDay = {}, earningsByMonth = {}, uniqueDaysByMonth = {}, earningsByProdCo = {}, dayTypeMap = {};
+        const lateLunchSet = new Set(), tocBreachSet = new Set(), nightShootSet = new Set();
+        let otEarnings = 0, lateLunchEarnings = 0;
+
+        for (const e of enrichedDays) {
+          const pKey = `${e.production.id}:${e.day.date}`;
+          const mo = e.day.date.slice(0, 7);
+          const co = e.production.prodCo?.trim() || '(Unknown)';
+          const type = e.day.dayType || 'Unknown';
+          earningsByDay[pKey] = { date: e.day.date, amount: (earningsByDay[pKey]?.amount || 0) + e.calc.total };
+          earningsByMonth[mo] = (earningsByMonth[mo] || 0) + e.calc.total;
+          if (!uniqueDaysByMonth[mo]) uniqueDaysByMonth[mo] = new Set();
+          uniqueDaysByMonth[mo].add(pKey);
+          earningsByProdCo[co] = (earningsByProdCo[co] || 0) + e.calc.total;
+          if (!dayTypeMap[type]) dayTypeMap[type] = new Set();
+          dayTypeMap[type].add(pKey);
+          for (const l of e.calc.lines) {
+            if ((l.label || '').includes(' OT')) otEarnings += l.amount;
+            if ((l.label || '').toLowerCase().startsWith('late')) lateLunchEarnings += l.amount;
+          }
+          const flags = penaltyFlags(e.calc);
+          if (flags.hasL1) lateLunchSet.add(pKey);
+          if (e.calc.lines.some(l => l.isTOC && l.isBreach)) tocBreachSet.add(pKey);
+          if ((e.calc.meta.dayLabel || '').includes('Night Shoot')) nightShootSet.add(pKey);
+        }
+
+        const highestDay = Object.values(earningsByDay).reduce((best, d) => d.amount > (best?.amount || 0) ? d : best, null);
+        const busiestMonthEntry = Object.entries(earningsByMonth).reduce((best, [m, a]) => a > (best?.[1] || 0) ? [m, a] : best, null);
+        const topProdCoEntry = Object.entries(earningsByProdCo).reduce((best, [co, a]) => a > (best?.[1] || 0) ? [co, a] : best, null);
+        const daysByType = Object.entries(dayTypeMap).map(([type, set]) => ({ type, count: set.size })).sort((a, b) => b.count - a.count);
+
+        const now2 = new Date();
+        let allMonthsInRange;
+        if (filter === 'taxyear') {
+          const yr = (now2.getMonth() < 3 || (now2.getMonth() === 3 && now2.getDate() < 6)) ? now2.getFullYear() - 1 : now2.getFullYear();
+          allMonthsInRange = Array.from({ length: 12 }, (_, i) => new Date(yr, 3 + i, 1).toISOString().slice(0, 7)).reverse();
+        } else if (filter === 'ytd') {
+          allMonthsInRange = Array.from({ length: now2.getMonth() + 1 }, (_, i) => `${now2.getFullYear()}-${String(i + 1).padStart(2, '0')}`).reverse();
+        } else {
+          const moKeys = Object.keys(earningsByMonth).sort();
+          if (moKeys.length > 0) {
+            const months = [];
+            let cur = new Date(moKeys[0] + '-01T12:00:00');
+            const end = new Date(moKeys[moKeys.length - 1] + '-01T12:00:00');
+            while (cur <= end) { months.push(cur.toISOString().slice(0, 7)); cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); }
+            allMonthsInRange = months.reverse();
+          } else { allMonthsInRange = []; }
+        }
+        const monthBreakdown = allMonthsInRange.map(mo => ({ month: mo, amount: earningsByMonth[mo] || 0, days: uniqueDaysByMonth[mo]?.size || 0 }));
+
+        return {
+          totalEarnings, workingDaysCount: wdc, shootDaysCount: sdc, totalHours, productionsWorkedCount, longestStreak,
+          avgDayEarnings, avgPerShoot, avgShootLen, highestDay, daysByType, monthBreakdown, otEarnings,
+          lateLunchEarnings, lateLunchCount: lateLunchSet.size, tocBreachCount: tocBreachSet.size, nightShootCount: nightShootSet.size,
+          busiestMonth: busiestMonthEntry ? { key: busiestMonthEntry[0], amount: busiestMonthEntry[1] } : null,
+          topProdCo: topProdCoEntry ? { name: topProdCoEntry[0], amount: topProdCoEntry[1] } : null,
+        };
+      }, [enrichedDays, filter]);
+
+      const heroLabel = filter === 'all' ? 'All-time earnings' : filter === 'taxyear' ? 'Tax year earnings' : 'Year to date';
+
+      const ComparisonContent = ({ amount }) => (
+        <div className="mt-3 pt-3 border-t border-neutral-800">
+          <div className="text-xs text-neutral-500 mb-2">That's roughly…</div>
+          {COMPARISON_ITEMS.map(item => {
+            const qty = amount / item.price;
+            if (qty < 0.1) return null;
+            const displayQty = item.price >= 1000 ? qty.toFixed(1) : Math.round(qty).toLocaleString('en-GB');
+            return (
+              <div key={item.label} className="flex items-center gap-2 py-1">
+                <span className="flex-shrink-0 text-base" style={{ width: 22 }}>{item.emoji}</span>
+                <span className="font-mono text-sm text-neutral-200 flex-shrink-0 text-right" style={{ minWidth: '5rem' }}>{displayQty}</span>
+                <span className="text-xs text-neutral-400 leading-tight">{item.label}</span>
+              </div>
+            );
+          }).filter(Boolean)}
+          <div className="text-[10px] text-neutral-600 mt-2">(at typical London prices)</div>
+        </div>
+      );
+
+      const MonthTableContent = () => {
+        const visible = showAllMonths ? stats.monthBreakdown : stats.monthBreakdown.slice(0, 24);
+        return (
+          <div className="mt-3 pt-3 border-t border-neutral-800">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th className="text-left text-[10px] uppercase tracking-wider text-neutral-500 pb-2 font-normal">Month</th>
+                  <th className="text-right text-[10px] uppercase tracking-wider text-neutral-500 pb-2 font-normal">Earnings</th>
+                  <th className="text-right text-[10px] uppercase tracking-wider text-neutral-500 pb-2 font-normal">Days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map(({ month, amount, days }) => (
+                  <tr key={month}>
+                    <td className="py-1.5 text-sm text-neutral-300">{fmtMonth(month)}</td>
+                    <td className="py-1.5 text-sm font-mono text-right text-neutral-200">{amount > 0 ? fmtGBP(amount) : '—'}</td>
+                    <td className="py-1.5 text-sm text-right text-neutral-400">{days > 0 ? days : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {stats.monthBreakdown.length > 24 && !showAllMonths && (
+              <button onClick={ev => { ev.stopPropagation(); setShowAllMonths(true); }}
+                className="mt-2 text-xs text-sky-400 hover:text-sky-300 transition-colors">
+                Show all {stats.monthBreakdown.length} months
+              </button>
+            )}
+          </div>
+        );
+      };
+
+      const SectionHdr = ({ children }) => (
+        <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold mt-8 mb-3">{children}</div>
+      );
+
+      const StatCard = ({ label, value, sub }) => (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4">
+          <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 mb-2">{label}</div>
+          <div className="text-2xl font-bold font-mono text-neutral-100 tabular-nums">{value}</div>
+          {sub && <div className="text-xs text-neutral-500 mt-1">{sub}</div>}
+        </div>
+      );
+
+      const TappableCard = ({ label, value, sub, statKey, children }) => {
+        const expanded = expandedStat === statKey;
+        return (
+          <div onClick={() => toggleExpand(statKey)}
+            className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4 cursor-pointer select-none transition-colors hover:border-neutral-700"
+            style={{ WebkitTapHighlightColor: 'transparent' }}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 mb-2">{label}</div>
+              <IDown size={13} className="text-neutral-600 flex-shrink-0 mt-0.5"
+                style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}/>
+            </div>
+            <div className="text-2xl font-bold font-mono text-neutral-100 tabular-nums">{value}</div>
+            {sub && <div className="text-xs text-neutral-500 mt-1">{sub}</div>}
+            <div style={{ overflow: 'hidden', maxHeight: expanded ? 1200 : 0, transition: 'max-height 0.25s ease' }}>
+              {children}
+            </div>
+          </div>
+        );
+      };
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1" aria-label="Back">
+                <IArrowLeft size={16}/>
+              </button>
+              <h1 className="font-bold text-sm uppercase tracking-wide">Stats</h1>
+            </div>
+            <div className="max-w-2xl mx-auto px-4 pb-3">
+              <div className="flex bg-neutral-900 rounded-xl p-1 gap-1">
+                {[['all', 'All time'], ['taxyear', 'Tax year'], ['ytd', 'Year to date']].map(([k, l]) => (
+                  <button key={k} onClick={() => { setFilter(k); setExpandedStat(null); setShowAllMonths(false); }}
+                    className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${filter === k ? 'bg-sky-400 text-black' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="max-w-2xl mx-auto px-4 pt-4 pb-32">
+            {enrichedDays.length === 0 ? (
+              <div className="py-20 text-center">
+                <div className="flex justify-center mb-4 text-neutral-700"><IStats size={48}/></div>
+                <h3 className="text-xl font-semibold mb-2">No data yet</h3>
+                <p className="text-sm text-neutral-400 max-w-xs mx-auto">Add some productions with logged days and your stats will appear here.</p>
+              </div>
+            ) : (
+              <>
+                <div className="mt-2 space-y-3">
+                  <TappableCard label={heroLabel} value={fmtGBP(stats.totalEarnings)} statKey="alltime">
+                    {filter === 'all' ? <MonthTableContent /> : <ComparisonContent amount={stats.totalEarnings} />}
+                  </TappableCard>
+                  {taxYearTotal !== null && (
+                    <TappableCard label="Tax year earnings" value={fmtGBP(taxYearTotal)} statKey="taxyear">
+                      <ComparisonContent amount={taxYearTotal} />
+                    </TappableCard>
+                  )}
+                </div>
+
+                <SectionHdr>Activity</SectionHdr>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard label="Working days" value={stats.workingDaysCount}/>
+                  <StatCard label="Shoot days" value={stats.shootDaysCount}/>
+                  <StatCard label="Total hours" value={stats.totalHours.toFixed(1) + 'h'}/>
+                  <StatCard label="Productions" value={stats.productionsWorkedCount}/>
+                  <StatCard label="Longest streak" value={`${stats.longestStreak} day${stats.longestStreak !== 1 ? 's' : ''}`} sub="consecutive working days"/>
+                </div>
+
+                <SectionHdr>Averages</SectionHdr>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard label="Avg day earnings" value={fmtGBP(stats.avgDayEarnings)}/>
+                  <StatCard label="Avg per shoot" value={fmtGBP(stats.avgPerShoot)}/>
+                  <StatCard label="Avg shoot day" value={`${stats.avgShootLen.toFixed(1)}h`} sub="worked hours"/>
+                </div>
+
+                <SectionHdr>Highlights</SectionHdr>
+                <div className="space-y-3">
+                  {stats.highestDay && (
+                    <TappableCard label="Highest earning day" value={fmtGBP(stats.highestDay.amount)} sub={stats.highestDay.date} statKey="highest">
+                      <ComparisonContent amount={stats.highestDay.amount}/>
+                    </TappableCard>
+                  )}
+                  {stats.busiestMonth && (
+                    <StatCard label="Busiest month" value={fmtGBP(stats.busiestMonth.amount)} sub={fmtMonth(stats.busiestMonth.key)}/>
+                  )}
+                  {stats.topProdCo && (
+                    <StatCard label="Top production co." value={fmtGBP(stats.topProdCo.amount)} sub={stats.topProdCo.name}/>
+                  )}
+                </div>
+
+                <SectionHdr>Earnings breakdown</SectionHdr>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard label="Overtime earned" value={fmtGBP(stats.otEarnings)}/>
+                  <StatCard label="Late lunch earned" value={fmtGBP(stats.lateLunchEarnings)}/>
+                  <StatCard label="Late lunches" value={stats.lateLunchCount}/>
+                  <StatCard label="TOC breaches" value={stats.tocBreachCount}/>
+                  <StatCard label="Night shoots" value={stats.nightShootCount}/>
+                </div>
+
+                {stats.daysByType.length > 0 && (
+                  <>
+                    <SectionHdr>Days by type</SectionHdr>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4">
+                      {(() => {
+                        const maxCount = stats.daysByType[0]?.count || 1;
+                        return stats.daysByType.map(({ type, count }) => (
+                          <div key={type} className="flex items-center gap-3 py-1.5">
+                            <div className="text-xs text-neutral-400 flex-shrink-0" style={{ minWidth: 72 }}>{type}</div>
+                            <div className="flex-1">
+                              <div className="bg-sky-400/25 rounded-full h-2" style={{ width: `${Math.max(2, (count / maxCount) * 100)}%` }}/>
+                            </div>
+                            <div className="text-xs font-mono text-neutral-300 flex-shrink-0 text-right" style={{ minWidth: 28 }}>{count}</div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, userPrefs }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -5852,6 +6192,9 @@ const confirmDelete = (p) => setConfirmOpts({
                 <h1 className="text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
               </div>
               <div className="flex items-center gap-1 mt-1">
+                <button onClick={onOpenStats} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Stats" aria-label="Stats">
+                  <IStats size={20}/>
+                </button>
                 <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-400" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
                   <ISearch size={20}/>
                 </button>
@@ -6038,6 +6381,7 @@ const confirmDelete = (p) => setConfirmOpts({
       const [userPrefs, setUserPrefs] = useStoredState("bigals_user_prefs", DEFAULT_USER_PREFS);
       const [openId, setOpenId] = useState(null);
       const [showSettings, setShowSettings] = useState(false);
+      const [showStats, setShowStats] = useState(false);
       const [showNewProduction, setShowNewProduction] = useState(false);
 
       // Treat existing users (stored prefs without onboardingComplete) as already onboarded
@@ -6173,6 +6517,9 @@ const confirmDelete = (p) => setConfirmOpts({
           />
         );
       }
+      if (showStats) {
+        return <StatsScreen productions={productions} userPrefs={userPrefs} onClose={() => setShowStats(false)} />;
+      }
       if (showNewProduction) {
         return (
           <NewProductionScreen
@@ -6183,7 +6530,7 @@ const confirmDelete = (p) => setConfirmOpts({
         );
       }
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} userPrefs={userPrefs} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} />;
       }
       if (!currentProduction.bestBoyMode) {
         return <SoloDayPage
