@@ -4313,7 +4313,7 @@
 
     /* ═══════════════════════════ CALC BREAKDOWN VIEW ═══════════════════════════ */
 
-    function CalcBreakdownView({ production, days, crew, total, onClose }) {
+    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText }) {
       const sorted = useMemo(() => [...days].sort((a, b) => {
         const dc = a.date.localeCompare(b.date);
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
@@ -4360,9 +4360,29 @@
             })}
           </div>
 
-          <div style={{ borderTop: '1px solid #1a1a1a', padding: '14px 24px', paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)', background: '#0a0a0a', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Shoot Total</span>
-            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 20, color: '#f5f5f5' }}>{fmtGBP(total)}</span>
+          <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <div style={{ padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Shoot Total</span>
+              <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 20, color: '#f5f5f5' }}>{fmtGBP(total)}</span>
+            </div>
+            {(onExportPDF || onExportText) && (
+              <div style={{ borderTop: '1px solid #1a1a1a', padding: '12px 16px', display: 'flex', gap: 8 }}>
+                {onExportPDF && (
+                  <button type="button" onClick={onExportPDF}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300"
+                    style={{ minHeight: 44, WebkitTapHighlightColor: 'transparent' }}>
+                    <IDownload size={15}/>Export PDF
+                  </button>
+                )}
+                {onExportText && (
+                  <button type="button" onClick={onExportText}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300"
+                    style={{ minHeight: 44, WebkitTapHighlightColor: 'transparent' }}>
+                    <IMessage size={15}/>Export Text
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       );
@@ -4652,6 +4672,17 @@
         return () => clearTimeout(timer);
       }, [soloExportState]);
 
+      const handleExportPDF = () => {
+        if (soloCrew) setSoloExportState({ mode: "timesheet" });
+      };
+      const handleExportText = async () => {
+        if (!soloCrew) return;
+        const sortedE = [...days].sort((a, b) => a.date.localeCompare(b.date));
+        const text = generateCrewText(soloCrew, sortedE, production);
+        const r = await shareTextOrCopy(text, `${soloCrew.name} Timesheet`);
+        if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
+      };
+
       const totalShoot = useMemo(() => {
         return days.reduce((sum, d) => {
           const c = crew.find(cc => cc.id === d.crewId);
@@ -4792,6 +4823,8 @@
               crew={crew}
               total={totalShoot}
               onClose={() => setShowCalc(false)}
+              onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
+              onExportText={async () => { setShowCalc(false); await handleExportText(); }}
             />
           )}
 
@@ -4828,23 +4861,13 @@
                 </div>
                 <div className="px-4 pb-4 flex flex-col gap-2">
                   <button type="button"
-                    onClick={() => {
-                      setShowExportSheet(false);
-                      if (soloCrew) setSoloExportState({ mode: "timesheet" });
-                    }}
+                    onClick={() => { setShowExportSheet(false); handleExportPDF(); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IDownload size={15}/>Export Timesheet (PDF)
                   </button>
                   <button type="button"
-                    onClick={async () => {
-                      setShowExportSheet(false);
-                      if (!soloCrew) return;
-                      const sortedE = [...days].sort((a, b) => a.date.localeCompare(b.date));
-                      const text = generateCrewText(soloCrew, sortedE, production);
-                      const r = await shareTextOrCopy(text, `${soloCrew.name} Timesheet`);
-                      if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
-                    }}
+                    onClick={async () => { setShowExportSheet(false); await handleExportText(); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IMessage size={15}/>Export Timesheet (Text)
