@@ -762,6 +762,9 @@
     }
 
     function userCrewIdsInProduction(production, userPrefs) {
+      if (!production.bestBoyMode) {
+        return (production.crew || []).map(c => c.id);
+      }
       const targetName = (userPrefs?.displayName || "").toLowerCase().trim();
       if (!targetName) return [];
       return (production.crew || [])
