@@ -246,6 +246,7 @@
       defaultPerDiemEnabled: false,
       defaultPerDiemAmount: 0,
       favourableRounding: true,
+      onboardingComplete: false,
     };
 
     const DEFAULT_PRODUCTION_DAY = {
@@ -1882,6 +1883,7 @@
     const IArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
     const IArrowRight = (p) => <Icon {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></Icon>;
     const IHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
+    const IExternalLink = (p) => <Icon {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
@@ -4908,6 +4910,182 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
+    /* ═══════════════════════════ ONBOARDING ═══════════════════════════ */
+
+    function OnboardingScreen({ userPrefs, set, onComplete }) {
+      const [step, setStep] = useState(1);
+
+      const completeOnboarding = () => {
+        set({ onboardingComplete: true });
+        onComplete();
+      };
+
+      const deptRoles = userPrefs.defaultDepartment && DEPARTMENTS[userPrefs.defaultDepartment]
+        ? Object.keys(DEPARTMENTS[userPrefs.defaultDepartment])
+        : [];
+
+      const onDeptChange = (dept) => {
+        const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
+        const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
+        set({
+          defaultDepartment: dept,
+          defaultRole: firstRole,
+          defaultBDR: roleDefaults.bdr ?? 0,
+          defaultOTCoef: roleDefaults.otCoef ?? 1.5,
+        });
+      };
+
+      const onRoleChange = (role) => {
+        const d = ROLE_DEFAULTS[role] || {};
+        set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
+      };
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center px-6 py-12" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="w-full max-w-sm">
+
+            {step === 1 && (
+              <div className="space-y-6">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">Step 1 of 3</div>
+                  <h1 className="text-2xl font-extrabold tracking-tight text-neutral-100 mb-2">Welcome to<br/>Time Machine</h1>
+                  <p className="text-sm text-neutral-400 leading-relaxed">The APA timesheet calculator for UK commercial crew.</p>
+                </div>
+
+                <Field label="Your name" hint="Appears on your exported timesheets">
+                  <Input
+                    type="text"
+                    placeholder="e.g. Jane Smith"
+                    value={userPrefs.displayName}
+                    onChange={(e) => set({ displayName: e.target.value })}
+                  />
+                </Field>
+
+                <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 text-sm text-neutral-400 leading-relaxed">
+                  <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-400 mb-2">Beta · Local only</div>
+                  Your data stays on this device. No cloud sync yet — use <span className="text-neutral-300 font-medium">Settings → Export Backup</span> to keep a copy.
+                </div>
+
+                <Btn variant="primary" size="lg" className="w-full justify-center" onClick={() => setStep(2)}>Continue</Btn>
+                <button className="w-full text-center text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1" onClick={completeOnboarding}>Skip setup</button>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-6">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">Step 2 of 3</div>
+                  <h1 className="text-2xl font-extrabold tracking-tight text-neutral-100 mb-2">Default role<br/>and rate</h1>
+                  <p className="text-sm text-neutral-400">You can override these per-job at any time.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <Field label="Department">
+                    <Select value={userPrefs.defaultDepartment} onChange={(e) => onDeptChange(e.target.value)}>
+                      <option value="">— pick a department —</option>
+                      {Object.keys(DEPARTMENTS).map(d => <option key={d} value={d}>{d}</option>)}
+                    </Select>
+                  </Field>
+
+                  {userPrefs.defaultDepartment && deptRoles.length > 0 && (
+                    <Field label="Role">
+                      <Select value={userPrefs.defaultRole} onChange={(e) => onRoleChange(e.target.value)}>
+                        {deptRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                      </Select>
+                    </Field>
+                  )}
+
+                  {userPrefs.defaultRole && (
+                    <Field label="BDR (£)" hint="Auto-filled from the APA rate card — edit if negotiated differently">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={userPrefs.defaultBDR}
+                        onChange={(e) => set({ defaultBDR: Number(e.target.value) })}
+                      />
+                    </Field>
+                  )}
+
+                  <Field label="VAT registered?">
+                    <Toggle value={userPrefs.vatRegistered} onChange={(v) => set({ vatRegistered: v })} ariaLabel="VAT registered" />
+                  </Field>
+
+                  {userPrefs.vatRegistered && (
+                    <>
+                      <Field label="VAT number">
+                        <Input
+                          type="text"
+                          placeholder="GB 123 4567 89"
+                          value={userPrefs.vatNumber}
+                          onChange={(e) => set({ vatNumber: e.target.value })}
+                        />
+                      </Field>
+                      <Field label="VAT rate (%)">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={userPrefs.vatRate}
+                          onChange={(e) => set({ vatRate: Number(e.target.value) })}
+                        />
+                      </Field>
+                    </>
+                  )}
+                </div>
+
+                <Btn variant="primary" size="lg" className="w-full justify-center" onClick={() => setStep(3)}>Continue</Btn>
+                <button className="w-full text-center text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1" onClick={completeOnboarding}>Skip setup</button>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="space-y-6">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">All set</div>
+                  <h1 className="text-2xl font-extrabold tracking-tight text-neutral-100 mb-2">
+                    You're ready{userPrefs.displayName ? `, ${userPrefs.displayName.split(' ')[0]}` : ''}.
+                  </h1>
+                  <p className="text-sm text-neutral-400">Time to log your first shoot.</p>
+                </div>
+
+                {userPrefs.defaultRole && (
+                  <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Role</span>
+                      <span className="text-neutral-100 font-medium">{userPrefs.defaultRole}</span>
+                    </div>
+                    {userPrefs.defaultDepartment && (
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Department</span>
+                        <span className="text-neutral-100 font-medium">{userPrefs.defaultDepartment}</span>
+                      </div>
+                    )}
+                    {userPrefs.defaultBDR > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">BDR</span>
+                        <span className="text-neutral-100 font-medium font-mono">{fmtGBP(userPrefs.defaultBDR)}</span>
+                      </div>
+                    )}
+                    {userPrefs.vatRegistered && (
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">VAT</span>
+                        <span className="text-neutral-100 font-medium">{userPrefs.vatRate ?? 20}%{userPrefs.vatNumber ? ` · ${userPrefs.vatNumber}` : ''}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <Btn variant="primary" size="lg" className="w-full justify-center" onClick={completeOnboarding}>+ Add Production</Btn>
+              </div>
+            )}
+
+          </div>
+        </div>
+      );
+    }
+
     const SectionCard = ({ title, children, accent }) => {
       const isRed = accent === "red";
       return (
@@ -5128,6 +5306,34 @@ const setDays = (updater) =>
                   <p className="text-[10px] text-neutral-500 mt-1">Clears all productions and settings. Cannot be undone.</p>
                 </div>
               </div>
+            </SectionCard>
+
+            <SectionCard title="App">
+              <div className="flex flex-col gap-1">
+                <Btn variant="ghost" onClick={() => setConfirmOpts({
+                  title: "Re-run setup?",
+                  message: "Your existing settings won't be lost — you'll just be guided through them again.",
+                  confirmLabel: "Re-run setup",
+                  confirmTone: "primary",
+                  onConfirm: () => set({ onboardingComplete: false }),
+                })}>Re-run setup wizard</Btn>
+                <p className="text-[10px] text-neutral-500 mt-1">Walk through name, role, rate, and VAT settings again.</p>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Reference">
+              <a
+                href="https://www.a-p-a.net/about/recommended-terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between gap-3 text-sm text-neutral-300 hover:text-sky-400 transition-colors py-1 group"
+              >
+                <div>
+                  <div className="font-medium">APA Recommended Terms</div>
+                  <div className="text-[10px] text-neutral-500 mt-0.5 group-hover:text-neutral-400 transition-colors">Official rate card and working terms — opens in a new tab</div>
+                </div>
+                <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-400 transition-colors"/>
+              </a>
             </SectionCard>
 
             <SectionCard title="About">
@@ -5379,6 +5585,11 @@ const setDays = (updater) =>
       const [showSettings, setShowSettings] = useState(false);
       const [showNewProduction, setShowNewProduction] = useState(false);
 
+      // Treat existing users (stored prefs without onboardingComplete) as already onboarded
+      useEffect(() => {
+        setUserPrefs(p => p.onboardingComplete === undefined ? { ...p, onboardingComplete: true } : p);
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
       // One-time migration: absorb all old localStorage keys into the productions array
       useEffect(() => {
         try {
@@ -5477,6 +5688,16 @@ const setDays = (updater) =>
       };
 
       const currentProduction = productions.find((p) => p.id === openId);
+
+      if (!userPrefs.onboardingComplete) {
+        return (
+          <OnboardingScreen
+            userPrefs={userPrefs}
+            set={(updates) => setUserPrefs(prev => ({ ...prev, ...updates }))}
+            onComplete={() => {}}
+          />
+        );
+      }
 
       if (showSettings) {
         return (
