@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>Derrick's TimeMachine</title>
+  <title>TimeMachine</title>
 
   <!-- PWA / iOS Home Screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -46,7 +46,7 @@
 
 </head>
 <body>
-  <div id="root"><div class="app-loading">Loading Derrick's TimeMachine…</div></div>
+  <div id="root"><div class="app-loading">Loading TimeMachine…</div></div>
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
@@ -177,6 +177,8 @@
 
     // UK England & Wales bank holidays (gov.uk-verified). APA §2.4 treats
     // these identically to Sundays — 2× BDR / 2× BHR for all hours worked.
+    // Data starts at 2026. Production days dated in 2025 or earlier will not
+    // receive bank-holiday tinting or the 2× multiplier.
     const UK_BANK_HOLIDAYS = {
       "2026-01-01": "New Year's Day",
       "2026-04-03": "Good Friday",
@@ -303,7 +305,6 @@
     const fmtDateShort = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
     const uid = () => Math.random().toString(36).slice(2, 10);
     const roleRank = (role) => { const r = role === "Spark" ? "Lighting Technician" : role; const i = ROLE_ORDER.indexOf(r); return i === -1 ? 99 : i; };
-    const slug = (s) => (s || "crew").replace(/[^\w]+/g, "_").replace(/^_+|_+$/g, "");
 
     /* ═══════════════════════════ DERIVED BREAK STATE ═══════════════════════════ */
 
@@ -760,6 +761,12 @@
           if (raw) {
             let v = JSON.parse(raw);
             if (migrate && Array.isArray(v)) v = v.map(migrate);
+            // For plain-object stores, merge initial so new keys added to the
+            // default object get safe values for existing users.
+            if (v !== null && typeof v === 'object' && !Array.isArray(v) &&
+                initial !== null && typeof initial === 'object' && !Array.isArray(initial)) {
+              v = { ...initial, ...v };
+            }
             return v;
           }
         } catch {}
@@ -772,21 +779,6 @@
     }
 
     /* ═══════════════════════════ SHARE / DOWNLOAD HELPERS ═══════════════════════════ */
-
-    async function shareOrDownloadBlob(blob, filename, { download = false } = {}) {
-      if (!download) {
-        const file = new File([blob], filename, { type: 'application/pdf' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try { await navigator.share({ files: [file], title: filename }); return; } catch (e) {
-            if (e.name === 'AbortError') return;
-          }
-        }
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
 
     async function shareTextOrCopy(text, title) {
       if (navigator.share) {
@@ -990,6 +982,8 @@
       return d.toISOString().slice(0, 10);
     }
 
+    // Returns string[][] — each inner array is 7 ISO date strings Mon–Sun.
+    // Used by DaysManager grid headers.
     function deriveWeeks(production, days) {
       const mondays = new Set(production.weekStarts || []);
       const allDayDates = [...days.map(d => d.date), ...(production.gridDates || [])];
@@ -1005,6 +999,7 @@
       });
     }
 
+    // Returns {index, start, end, label}[] — used by ExportTab and TimesheetPage.
     function computeWeeks(production, days) {
       if (production.weekStarts?.length > 0) {
         return [...production.weekStarts].sort().map((mondayISO, idx) => {
@@ -3384,6 +3379,7 @@
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
+      const [dupDateDialog, setDupDateDialog] = useState(null);
       const [gridView, setGridView] = useState(production.bestBoyMode);
       const [fixedCrewId, setFixedCrewId] = useState(null);
       const [fixedDate, setFixedDate] = useState(null);
@@ -3462,11 +3458,14 @@
         if (source.length === 0) return;
         const next = new Date(sourceDate + "T12:00:00");
         next.setDate(next.getDate() + 1);
-        const defaultTarget = next.toISOString().slice(0, 10);
-        const input = window.prompt(`Copy ${source.length} entr${source.length === 1 ? 'y' : 'ies'} from ${fmtDateShort(sourceDate)} to:`, defaultTarget);
-        if (!input) return;
-        const targetDate = input.trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) { showToast("Invalid date — use YYYY-MM-DD"); return; }
+        setDupDateDialog({ sourceDate, targetDate: next.toISOString().slice(0, 10), count: source.length });
+      };
+
+      const confirmDuplicateDate = (targetDate) => {
+        const { sourceDate } = dupDateDialog;
+        setDupDateDialog(null);
+        const source = days.filter(d => d.date === sourceDate);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) { showToast("Invalid date"); return; }
         if (targetDate === sourceDate) { showToast("Target date is the same as source"); return; }
         const existing = days.filter(d => d.date === targetDate);
         const copies = source.map(d => ({ ...d, id: uid(), date: targetDate }));
@@ -3644,6 +3643,11 @@
             cancelLabel="Cancel"
             onConfirm={() => { const f = confirmOpts?.onConfirm; setConfirmOpts(null); if (f) f(); }}
             onCancel={() => setConfirmOpts(null)}
+          />
+          <DuplicateDateDialog
+            opts={dupDateDialog}
+            onConfirm={confirmDuplicateDate}
+            onCancel={() => setDupDateDialog(null)}
           />
         </div>
       );
@@ -3833,7 +3837,7 @@
           const text = generateCrewText(c, entries, production);
           const r = await shareTextOrCopy(text, `${c.name} Timesheet`);
           if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
-        } catch (e) { console.error(e); }
+        } catch {}
       };
 
       // Build PrintView props from exportState
@@ -4220,6 +4224,7 @@
 
       return (
         <div
+          role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title"
           className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
           style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
           onClick={onCancel}
@@ -4230,7 +4235,7 @@
             onClick={e => e.stopPropagation()}
           >
             <div className="px-5 pt-5 pb-4">
-              {title && <div className="text-sm font-bold text-neutral-100 mb-2">{title}</div>}
+              {title && <div id="confirm-dialog-title" className="text-sm font-bold text-neutral-100 mb-2">{title}</div>}
               {message && <div className="text-sm text-neutral-400 leading-snug">{message}</div>}
             </div>
             <div className="flex flex-col-reverse gap-2 px-4 pb-5 sm:flex-row sm:justify-end">
@@ -4256,6 +4261,61 @@
       );
     }
 
+    function DuplicateDateDialog({ opts, onConfirm, onCancel }) {
+      const [targetDate, setTargetDate] = useState(opts?.targetDate || "");
+      useEffect(() => { if (opts) setTargetDate(opts.targetDate); }, [opts?.targetDate]);
+      useEffect(() => {
+        if (!opts) return;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+      }, [!!opts]);
+
+      if (!opts) return null;
+      const { sourceDate, count } = opts;
+      const label = `${count} entr${count === 1 ? 'y' : 'ies'}`;
+
+      return (
+        <div
+          role="dialog" aria-modal="true" aria-labelledby="dup-date-title"
+          className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
+          onClick={onCancel}
+        >
+          <div
+            className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+            style={{ maxWidth: 400 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 pt-5 pb-4">
+              <div id="dup-date-title" className="text-sm font-bold text-neutral-100 mb-3">
+                Copy {label} from {fmtDateShort(sourceDate)} to…
+              </div>
+              <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+            </div>
+            <div className="flex flex-col-reverse gap-2 px-4 pb-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => onConfirm(targetDate)}
+                disabled={!targetDate}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     function DayJumpSheet({ open, days, currentDayId, production, crew, onPick, onClose }) {
       useEffect(() => {
         if (!open) return;
@@ -4269,6 +4329,7 @@
 
       return (
         <div
+          role="dialog" aria-modal="true" aria-labelledby="jump-sheet-title"
           className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
           style={{ backgroundColor: "rgba(0,0,0,0.78)", zIndex: 50 }}
           onClick={onClose}
@@ -4279,7 +4340,7 @@
             onClick={e => e.stopPropagation()}
           >
             <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-700 flex items-center justify-between">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Jump to Day</div>
+              <div id="jump-sheet-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Jump to Day</div>
               <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5" aria-label="Close"><IX size={16}/></button>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -4881,7 +4942,7 @@ const setDays = (updater) =>
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="e.g. Acme Brand Film 2025"
+                  placeholder={`e.g. Acme Brand Film ${new Date().getFullYear()}`}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey || true) && canCreate) handleCreate(); }}
@@ -4911,6 +4972,21 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
+    function makeDeptRoleHandlers(set, userPrefs) {
+      return {
+        onDeptChange: (dept) => {
+          const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
+          const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
+          set({ defaultDepartment: dept, defaultRole: firstRole,
+                defaultBDR: roleDefaults.bdr ?? 0, defaultOTCoef: roleDefaults.otCoef ?? 1.5 });
+        },
+        onRoleChange: (role) => {
+          const d = ROLE_DEFAULTS[role] || {};
+          set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
+        },
+      };
+    }
+
     /* ═══════════════════════════ ONBOARDING ═══════════════════════════ */
 
     function OnboardingScreen({ userPrefs, set, onComplete }) {
@@ -4925,21 +5001,7 @@ const setDays = (updater) =>
         ? Object.keys(DEPARTMENTS[userPrefs.defaultDepartment])
         : [];
 
-      const onDeptChange = (dept) => {
-        const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
-        const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
-        set({
-          defaultDepartment: dept,
-          defaultRole: firstRole,
-          defaultBDR: roleDefaults.bdr ?? 0,
-          defaultOTCoef: roleDefaults.otCoef ?? 1.5,
-        });
-      };
-
-      const onRoleChange = (role) => {
-        const d = ROLE_DEFAULTS[role] || {};
-        set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
-      };
+      const { onDeptChange, onRoleChange } = makeDeptRoleHandlers(set, userPrefs);
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center px-6 py-12" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -5103,6 +5165,8 @@ const setDays = (updater) =>
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
+      const [toastMsg, setToastMsg] = useState(null);
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -5114,7 +5178,7 @@ const setDays = (updater) =>
             const raw = JSON.parse(ev.target.result);
             const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.productions) ? raw.productions : null);
             if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
-              window.alert('Invalid backup file — not a valid productions export.');
+              showToast('Invalid backup file — not a valid productions export.');
               return;
             }
             const n = arr.length;
@@ -5129,7 +5193,7 @@ const setDays = (updater) =>
               onConfirm: () => onImport(arr),
             });
           } catch {
-            window.alert('Could not read file — is it a valid JSON backup?');
+            showToast('Could not read file — is it a valid JSON backup?');
           }
         };
         reader.readAsText(file);
@@ -5139,21 +5203,7 @@ const setDays = (updater) =>
         ? Object.keys(DEPARTMENTS[userPrefs.defaultDepartment])
         : [];
 
-      const onDeptChange = (dept) => {
-        const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
-        const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
-        set({
-          defaultDepartment: dept,
-          defaultRole: firstRole,
-          defaultBDR: roleDefaults.bdr ?? 0,
-          defaultOTCoef: roleDefaults.otCoef ?? 1.5,
-        });
-      };
-
-      const onRoleChange = (role) => {
-        const d = ROLE_DEFAULTS[role] || {};
-        set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
-      };
+      const { onDeptChange, onRoleChange } = makeDeptRoleHandlers(set, userPrefs);
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
@@ -5355,6 +5405,7 @@ const setDays = (updater) =>
             </SectionCard>
 
           </div>
+          <Toast show={!!toastMsg}>{toastMsg}</Toast>
           <ConfirmDialog
             open={!!confirmOpts}
             title={confirmOpts?.title}
