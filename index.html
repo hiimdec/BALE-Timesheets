@@ -1268,6 +1268,7 @@
       .grid-cell {
         padding: 4px; border-right: 1px solid #e5e5e5;
         display: flex; align-items: center; justify-content: center;
+        min-width: 0; overflow: hidden;
       }
       .grid-cell:last-child { border-right: none; }
 
@@ -1277,7 +1278,7 @@
         flex-direction: column; text-align: center;
       }
       .grid-head .grid-cell.crew-col { justify-content: flex-start; align-items: flex-start; padding-left: 8px; }
-      .grid-head .grid-cell.total-col { justify-content: center; align-items: center; padding-right: 8px; }
+      .grid-head .grid-cell.total-col { justify-content: center; align-items: center; padding-right: 8px; background: #fafafa; }
       .grid-head .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #737373; font-weight: 700; line-height: 1; }
       .grid-head .num { font-size: 12px; font-weight: 800; margin-top: 2px; line-height: 1; }
       .grid-head .mo  { font-size: 7px; color: #737373; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1; }
@@ -1323,7 +1324,7 @@
 
       /* Foot row */
       .grid-foot { border-top: 2px solid #d4d4d4; }
-      .grid-foot .grid-cell { background: #f5f5f5; padding: 6px 4px; }
+      .grid-foot .grid-cell { background: #f5f5f5; padding: 6px 4px; flex-direction: column; }
       .grid-foot .grid-cell.crew {
         justify-content: flex-start; padding-left: 8px;
         text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; color: #525252; font-weight: 700;
