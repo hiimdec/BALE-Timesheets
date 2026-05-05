@@ -55,6 +55,20 @@
 
     const APP_VERSION = "0.1.0";
 
+    const COMPARISON_ITEMS = [
+      { emoji: "🥖", label: "Greggs sausage rolls", price: 1.30 },
+      { emoji: "🚇", label: "Tube journeys", price: 3.10 },
+      { emoji: "🥪", label: "Tesco meal deals", price: 3.40 },
+      { emoji: "☕", label: "oat flat whites", price: 4.20 },
+      { emoji: "🍺", label: "pints in London", price: 6.50 },
+      { emoji: "📼", label: "rolls of gaffer tape", price: 15 },
+      { emoji: "🪛", label: "Leathermans", price: 100 },
+      { emoji: "📺", label: "months of Netflix", price: 17.99 },
+      { emoji: "📻", label: "lost walkie-talkies", price: 450 },
+      { emoji: "💻", label: "new iPhones", price: 1200 },
+      { emoji: "🏠", label: "years of mortgage on a £450k London flat", price: 24000 },
+    ];
+
     const DEPARTMENTS = {
       "Direction & Production": {
         "Director":             { bdr: 933,  otCoef: 0,    noOT: true },
@@ -719,6 +733,7 @@
     /* ═══════════════════════════ MIGRATION + STORAGE ═══════════════════════════ */
 
     function migrateDay(d) {
+      d = { note: "", ...d };
       if (d.lunchStartTime !== undefined) return d;
       if (!d.callTime) return d;
       const callH = parseHHMM(d.callTime) || 8;
@@ -744,6 +759,14 @@
     function migrateCrew(c) {
       if (c.role === "Spark") c = { ...c, role: "Lighting Technician" };
       return { isDriver: false, ...c };
+    }
+
+    function userCrewIdsInProduction(production, userPrefs) {
+      const targetName = (userPrefs?.displayName || "").toLowerCase().trim();
+      if (!targetName) return [];
+      return (production.crew || [])
+        .filter(c => (c.name || "").toLowerCase().trim() === targetName)
+        .map(c => c.id);
     }
 
     const migrateProduction = (p) => ({
@@ -922,6 +945,9 @@
         prevEntry = d;
       });
       lines.push(`TOTAL: ${fmtGBP(grandTotal)}`);
+      lines.push('');
+      lines.push('—');
+      lines.push('Generated with TimeMachine · timemachineapp.co.uk');
       return lines.join('\n');
     }
 
@@ -951,6 +977,9 @@
       } else {
         lines.push(`TOTAL: ${fmtGBP(calc.total)}`);
       }
+      lines.push('');
+      lines.push('—');
+      lines.push('Generated with TimeMachine · timemachineapp.co.uk');
       return lines.join('\n');
     }
 
@@ -1219,6 +1248,7 @@
       .day .total .lbl { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
       .day .total .val { font-size: 16px; font-weight: 800; line-height: 1; margin-top: 5px; color: #171717; letter-spacing: -0.01em; }
       .day .total .sub { font-size: 8px; color: #737373; margin-top: 4px; line-height: 1; }
+      .day-note { font-style: italic; font-size: 9.5px; color: #525252; padding: 5px 0 2px; line-height: 1.4; white-space: pre-wrap; }
 
       /* Rest day */
       .day.rest { border-color: #e5e5e5; background: #fafafa; }
@@ -1548,6 +1578,7 @@
                         );
                       })}
                     </div>
+                    {day.note && day.note.trim() && <div className="day-note">{day.note}</div>}
                   </div>
                   <div className="total">
                     <div className="lbl">Day Total</div>
@@ -1859,6 +1890,7 @@
     );
     const IPlus = (p) => <Icon {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Icon>;
     const ITrash = (p) => <Icon {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></Icon>;
+    const IKebab = ({ size = 18, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>;
     const IPencil = (p) => <Icon {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></Icon>;
     const IUsers = (p) => <Icon {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>;
     const ICal = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>;
@@ -1867,6 +1899,7 @@
     const ICheck = (p) => <Icon {...p}><polyline points="20 6 9 17 4 12"/></Icon>;
     const IX = (p) => <Icon {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>;
     const IFile = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></Icon>;
+    const INote = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/></Icon>;
     const IReset = (p) => <Icon {...p}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></Icon>;
 
     const IGrip = (p) => <Icon {...p}><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></Icon>;
@@ -1882,9 +1915,12 @@
     const ICopy = (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Icon>;
     const IUpload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>;
     const IGear = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>;
+    const ICalc = (p) => <Icon {...p}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><circle cx="9" cy="12" r="0.8" fill="currentColor"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/><circle cx="15" cy="12" r="0.8" fill="currentColor"/><circle cx="9" cy="15" r="0.8" fill="currentColor"/><circle cx="12" cy="15" r="0.8" fill="currentColor"/><circle cx="15" cy="15" r="0.8" fill="currentColor"/><circle cx="9" cy="18" r="0.8" fill="currentColor"/><circle cx="12" cy="18" r="0.8" fill="currentColor"/><circle cx="15" cy="18" r="0.8" fill="currentColor"/></Icon>;
     const IArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
     const IArrowRight = (p) => <Icon {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></Icon>;
     const IHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
+    const ISearch = (p) => <Icon {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></Icon>;
+    const IStats = (p) => <Icon {...p}><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/><line x1="3" y1="20" x2="21" y2="20"/></Icon>;
     const IExternalLink = (p) => <Icon {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
@@ -2278,11 +2314,15 @@
       return 0;
     }
 
-    function CancellationCalcModal({ production, setProduction, crew, onClose }) {
+    function CancellationCalcModal({ production, setProduction, crew, setCrew, onClose }) {
       useEffect(() => {
         document.body.style.overflow = "hidden";
         return () => { document.body.style.overflow = ""; };
       }, []);
+
+      // Standalone crew-entry state (used when setCrew is provided)
+      const [newName, setNewName] = useState("");
+      const [newBDR, setNewBDR] = useState("");
 
       const data = production.cancellationData;
 
@@ -2354,7 +2394,7 @@
       const rowTotals = crewCalcs.map(c => c.cells.reduce((s, n) => s + n, 0));
 
       const [copied, setCopied] = useState(false);
-      const copyBreakdown = () => {
+      const copyBreakdown = async () => {
         const lines = [];
         lines.push(production.title || "Production");
         lines.push(`Cancellation notice: ${noticeDate ? fmtDateShort(noticeDate) : "—"}`);
@@ -2372,10 +2412,12 @@
         });
         lines.push("");
         lines.push(`Grand total: ${fmtGBP(grandTotal)}`);
-        navigator.clipboard.writeText(lines.join("\n")).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        });
+        lines.push("");
+        lines.push("—");
+        lines.push("Generated with TimeMachine · timemachineapp.co.uk");
+        await shareTextOrCopy(lines.join("\n"), production.title || "Cancellation fees");
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
       };
 
       return (
@@ -2406,9 +2448,36 @@
                 </Field>
               </div>
 
-              {crew.length === 0 ? (
+              {setCrew && (
+                <div className="mb-4 flex items-end gap-2 flex-wrap">
+                  <div className="flex-1 min-w-[140px]">
+                    <Field label="Name">
+                      <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Crew member name" />
+                    </Field>
+                  </div>
+                  <div style={{ width: 110 }}>
+                    <Field label="Day rate (£)">
+                      <Input type="number" min="0" step="0.01" value={newBDR} onChange={e => setNewBDR(e.target.value)} placeholder="0.00" />
+                    </Field>
+                  </div>
+                  <Btn variant="primary" size="sm"
+                    onClick={() => {
+                      const name = newName.trim();
+                      if (!name) return;
+                      setCrew(prev => [...prev, { id: uid(), name, role: "Crew", bdr: Number(newBDR) || 0 }]);
+                      setNewName(""); setNewBDR("");
+                    }}
+                    disabled={!newName.trim()}
+                  ><IPlus size={14}/>Add</Btn>
+                </div>
+              )}
+              {crew.length === 0 && !setCrew ? (
                 <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">
                   Add crew first to calculate cancellation fees.
+                </div>
+              ) : crew.length === 0 && setCrew ? (
+                <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">
+                  Add a crew member above to begin.
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-neutral-800 rounded-[10px]">
@@ -2438,8 +2507,17 @@
                       {crewCalcs.map(({ member, dayInfo, cells, isBlock }, ci) => (
                         <tr key={member.id} className="border-b border-neutral-800">
                           <td className="px-3 py-2 border-r border-neutral-700 bg-neutral-950 whitespace-nowrap align-top">
-                            <div className="text-[11px] font-semibold text-neutral-200">{member.name}</div>
-                            <div className="text-[9px] text-neutral-500 uppercase tracking-wider">{member.role}{isBlock ? " · Block" : ""}</div>
+                            <div className="flex items-start justify-between gap-1">
+                              <div>
+                                <div className="text-[11px] font-semibold text-neutral-200">{member.name}</div>
+                                <div className="text-[9px] text-neutral-500 uppercase tracking-wider">{member.role}{isBlock ? " · Block" : ""}</div>
+                              </div>
+                              {setCrew && (
+                                <button onClick={() => setCrew(prev => prev.filter(c => c.id !== member.id))}
+                                  className="text-neutral-700 hover:text-red-400 text-[11px] leading-none px-0.5 mt-0.5 flex-shrink-0"
+                                  title="Remove" aria-label="Remove crew member">✕</button>
+                              )}
+                            </div>
                           </td>
                           {dayInfo.map((d, i) => (
                             <td key={d.col.id} className="px-2 py-1.5 border-r border-neutral-700 bg-neutral-900 align-top">
@@ -2776,6 +2854,21 @@
                   </div>
                 </>
               )}
+            </div>
+            <div className="space-y-1">
+              <Field label="Notes" hint="e.g. rain delay, client overtime requested">
+                <textarea
+                  value={v.note || ""}
+                  onChange={(e) => set({ note: e.target.value })}
+                  placeholder="Add a note about this day…"
+                  rows={3}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
+                  style={{ fontFamily: 'inherit' }}
+                />
+                <div className={`text-xs mt-1 text-right ${(v.note || "").length > 1000 ? "text-red-400" : (v.note || "").length > 500 ? "text-amber-400" : "text-neutral-600"}`}>
+                  {(v.note || "").length} / 500
+                </div>
+              </Field>
             </div>
           </Disclosure>
 
@@ -3429,6 +3522,7 @@
         travelOutMins: 0, travelBackMins: 0, miles: 0,
         perDiemEnabled: false, perDiemAmount: 0,
         stepUpEnabled: false, stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
+        note: "",
       };
     }
 
@@ -3760,6 +3854,7 @@
                               <div className="text-[11px] text-neutral-400 font-mono mt-1">
                                 {d.callTime}–{d.wrapTime}{(parseHHMM(d.wrapTime) !== null && parseHHMM(d.callTime) !== null && parseHHMM(d.wrapTime) <= parseHHMM(d.callTime)) ? " (+1)" : ""} · {calc.meta.workedHrs.toFixed(1)}h · {calc.meta.dayLabel}
                               </div>
+                              {d.note?.trim() && <div className="flex items-center gap-1 mt-1"><INote size={11} className="text-neutral-600 flex-shrink-0"/><span className="text-[10px] text-neutral-600">Note</span></div>}
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                               <div className="font-mono font-bold text-neutral-100 text-sm">{fmtGBP(calc.total)}</div>
@@ -4306,7 +4401,7 @@
 
     /* ═══════════════════════════ CALC BREAKDOWN VIEW ═══════════════════════════ */
 
-    function CalcBreakdownView({ production, days, crew, total, onClose }) {
+    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText }) {
       const sorted = useMemo(() => [...days].sort((a, b) => {
         const dc = a.date.localeCompare(b.date);
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
@@ -4353,9 +4448,29 @@
             })}
           </div>
 
-          <div style={{ borderTop: '1px solid #1a1a1a', padding: '14px 24px', paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)', background: '#0a0a0a', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Shoot Total</span>
-            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 20, color: '#f5f5f5' }}>{fmtGBP(total)}</span>
+          <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <div style={{ padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Shoot Total</span>
+              <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 20, color: '#f5f5f5' }}>{fmtGBP(total)}</span>
+            </div>
+            {(onExportPDF || onExportText) && (
+              <div style={{ borderTop: '1px solid #1a1a1a', padding: '12px 16px', display: 'flex', gap: 8 }}>
+                {onExportPDF && (
+                  <button type="button" onClick={onExportPDF}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300"
+                    style={{ minHeight: 44, WebkitTapHighlightColor: 'transparent' }}>
+                    <IDownload size={15}/>Export PDF
+                  </button>
+                )}
+                {onExportText && (
+                  <button type="button" onClick={onExportText}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300"
+                    style={{ minHeight: 44, WebkitTapHighlightColor: 'transparent' }}>
+                    <IMessage size={15}/>Export Text
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       );
@@ -4516,6 +4631,7 @@
                       <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-400" : "text-neutral-200"}`}>{dateStr}</div>
                       {(times || day.dayType) && <div className="text-[11px] text-neutral-500">{[times, day.dayType || "Shoot Day"].filter(Boolean).join(" · ")}</div>}
                     </div>
+                    {day.note?.trim() && <INote size={13} className="text-neutral-600 flex-shrink-0"/>}
                     {calc && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(calc.total)}</div>}
                   </button>
                 );
@@ -4644,6 +4760,17 @@
         }, 300);
         return () => clearTimeout(timer);
       }, [soloExportState]);
+
+      const handleExportPDF = () => {
+        if (soloCrew) setSoloExportState({ mode: "timesheet" });
+      };
+      const handleExportText = async () => {
+        if (!soloCrew) return;
+        const sortedE = [...days].sort((a, b) => a.date.localeCompare(b.date));
+        const text = generateCrewText(soloCrew, sortedE, production);
+        const r = await shareTextOrCopy(text, `${soloCrew.name} Timesheet`);
+        if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
+      };
 
       const totalShoot = useMemo(() => {
         return days.reduce((sum, d) => {
@@ -4785,6 +4912,8 @@
               crew={crew}
               total={totalShoot}
               onClose={() => setShowCalc(false)}
+              onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
+              onExportText={async () => { setShowCalc(false); await handleExportText(); }}
             />
           )}
 
@@ -4821,23 +4950,13 @@
                 </div>
                 <div className="px-4 pb-4 flex flex-col gap-2">
                   <button type="button"
-                    onClick={() => {
-                      setShowExportSheet(false);
-                      if (soloCrew) setSoloExportState({ mode: "timesheet" });
-                    }}
+                    onClick={() => { setShowExportSheet(false); handleExportPDF(); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IDownload size={15}/>Export Timesheet (PDF)
                   </button>
                   <button type="button"
-                    onClick={async () => {
-                      setShowExportSheet(false);
-                      if (!soloCrew) return;
-                      const sortedE = [...days].sort((a, b) => a.date.localeCompare(b.date));
-                      const text = generateCrewText(soloCrew, sortedE, production);
-                      const r = await shareTextOrCopy(text, `${soloCrew.name} Timesheet`);
-                      if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
-                    }}
+                    onClick={async () => { setShowExportSheet(false); await handleExportText(); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IMessage size={15}/>Export Timesheet (Text)
@@ -5591,13 +5710,386 @@ const setDays = (updater) =>
       );
     }
 
+    /* ═══════════════════════════ STATS SCREEN ═══════════════════════════ */
+
+    function StatsScreen({ productions, userPrefs, onClose, onOpenSettings }) {
+      const [filter, setFilter] = useState('all');
+      const [expandedStat, setExpandedStat] = useState(null);
+      const [showAllMonths, setShowAllMonths] = useState(false);
+
+      const displayName = (userPrefs?.displayName || "").trim();
+
+      const toggleExpand = (key) => { setExpandedStat(prev => prev === key ? null : key); setShowAllMonths(false); };
+      const fmtMonth = (yyyymm) => new Date(yyyymm + '-01T12:00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+
+      const { enrichedDays, excludedCount } = useMemo(() => {
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        let startISO, endISO;
+        if (filter === 'taxyear') {
+          const yr = (now.getMonth() < 3 || (now.getMonth() === 3 && now.getDate() < 6)) ? now.getFullYear() - 1 : now.getFullYear();
+          startISO = `${yr}-04-06`; endISO = `${yr + 1}-04-05`;
+        } else if (filter === 'ytd') {
+          startISO = `${now.getFullYear()}-01-01`; endISO = today;
+        }
+        const days = [];
+        let excluded = 0;
+        for (const p of productions) {
+          const userCrewIds = userCrewIdsInProduction(p, userPrefs);
+          if (userCrewIds.length === 0) {
+            const hasDaysInRange = filter === 'all'
+              ? (p.days || []).length > 0
+              : (p.days || []).some(d => d.date >= startISO && d.date <= endISO);
+            if (hasDaysInRange) excluded++;
+            continue;
+          }
+          const pDays = filter === 'all'
+            ? (p.days || []).filter(d => userCrewIds.includes(d.crewId))
+            : (p.days || []).filter(d => d.date >= startISO && d.date <= endISO && userCrewIds.includes(d.crewId));
+          for (const day of pDays) {
+            const crew = (p.crew || []).find(c => c.id === day.crewId);
+            if (!crew) continue;
+            try {
+              const calc = calcForDisplay(p, day, crew, findPrevDay(p.days || [], day));
+              days.push({ day, production: p, crew, calc });
+            } catch {}
+          }
+        }
+        return { enrichedDays: days, excludedCount: excluded };
+      }, [productions, filter, userPrefs]);
+
+      const taxYearTotal = useMemo(() => {
+        if (filter === 'taxyear') return null;
+        const now = new Date();
+        const yr = (now.getMonth() < 3 || (now.getMonth() === 3 && now.getDate() < 6)) ? now.getFullYear() - 1 : now.getFullYear();
+        const s = `${yr}-04-06`, e = `${yr + 1}-04-05`;
+        let total = 0;
+        for (const p of productions) {
+          const userCrewIds = userCrewIdsInProduction(p, userPrefs);
+          if (userCrewIds.length === 0) continue;
+          for (const day of (p.days || []).filter(d => d.date >= s && d.date <= e && userCrewIds.includes(d.crewId))) {
+            const crew = (p.crew || []).find(c => c.id === day.crewId);
+            if (!crew) continue;
+            try { total += calcForDisplay(p, day, crew, findPrevDay(p.days || [], day)).total; } catch {}
+          }
+        }
+        return total;
+      }, [productions, filter, userPrefs]);
+
+      const stats = useMemo(() => {
+        if (enrichedDays.length === 0) return null;
+        const totalEarnings = enrichedDays.reduce((s, e) => s + e.calc.total, 0);
+        const workingDaysSet = new Set(enrichedDays.filter(e => e.day.callTime || e.day.wrapTime).map(e => `${e.production.id}:${e.day.date}`));
+        const shootDaysSet = new Set(enrichedDays.filter(e => e.day.dayType === 'Shoot').map(e => `${e.production.id}:${e.day.date}`));
+        const totalHours = enrichedDays.reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
+        const productionsWorkedCount = new Set(enrichedDays.map(e => e.production.id)).size;
+
+        const workingDates = [...new Set(
+          enrichedDays.filter(e => e.day.dayType !== 'Rest Day' && (e.day.callTime || e.day.wrapTime)).map(e => e.day.date)
+        )].sort();
+        let longestStreak = workingDates.length > 0 ? 1 : 0, curStreak = longestStreak;
+        for (let i = 1; i < workingDates.length; i++) {
+          const diff = (new Date(workingDates[i]) - new Date(workingDates[i - 1])) / 86400000;
+          if (diff === 1) { curStreak++; longestStreak = Math.max(longestStreak, curStreak); } else curStreak = 1;
+        }
+
+        const wdc = workingDaysSet.size, sdc = shootDaysSet.size;
+        const avgDayEarnings = wdc > 0 ? totalEarnings / wdc : 0;
+        const avgPerShoot = productionsWorkedCount > 0 ? totalEarnings / productionsWorkedCount : 0;
+        const shootHours = enrichedDays.filter(e => e.day.dayType === 'Shoot').reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
+        const avgShootLen = sdc > 0 ? shootHours / sdc : 0;
+
+        const earningsByDay = {}, earningsByMonth = {}, uniqueDaysByMonth = {}, earningsByProdCo = {}, dayTypeMap = {};
+        const lateLunchSet = new Set(), tocBreachSet = new Set(), nightShootSet = new Set();
+        let otEarnings = 0, lateLunchEarnings = 0;
+
+        for (const e of enrichedDays) {
+          const pKey = `${e.production.id}:${e.day.date}`;
+          const mo = e.day.date.slice(0, 7);
+          const co = e.production.prodCo?.trim() || '(Unknown)';
+          const type = e.day.dayType || 'Unknown';
+          earningsByDay[pKey] = { date: e.day.date, amount: (earningsByDay[pKey]?.amount || 0) + e.calc.total };
+          earningsByMonth[mo] = (earningsByMonth[mo] || 0) + e.calc.total;
+          if (!uniqueDaysByMonth[mo]) uniqueDaysByMonth[mo] = new Set();
+          uniqueDaysByMonth[mo].add(pKey);
+          earningsByProdCo[co] = (earningsByProdCo[co] || 0) + e.calc.total;
+          if (!dayTypeMap[type]) dayTypeMap[type] = new Set();
+          dayTypeMap[type].add(pKey);
+          for (const l of e.calc.lines) {
+            if ((l.label || '').includes(' OT')) otEarnings += l.amount;
+            if ((l.label || '').toLowerCase().startsWith('late')) lateLunchEarnings += l.amount;
+          }
+          const flags = penaltyFlags(e.calc);
+          if (flags.hasL1) lateLunchSet.add(pKey);
+          if (e.calc.lines.some(l => l.isTOC && l.isBreach)) tocBreachSet.add(pKey);
+          if ((e.calc.meta.dayLabel || '').includes('Night Shoot')) nightShootSet.add(pKey);
+        }
+
+        const highestDay = Object.values(earningsByDay).reduce((best, d) => d.amount > (best?.amount || 0) ? d : best, null);
+        const busiestMonthEntry = Object.entries(earningsByMonth).reduce((best, [m, a]) => a > (best?.[1] || 0) ? [m, a] : best, null);
+        const topProdCoEntry = Object.entries(earningsByProdCo).reduce((best, [co, a]) => a > (best?.[1] || 0) ? [co, a] : best, null);
+        const daysByType = Object.entries(dayTypeMap).map(([type, set]) => ({ type, count: set.size })).sort((a, b) => b.count - a.count);
+
+        const now2 = new Date();
+        let allMonthsInRange;
+        if (filter === 'taxyear') {
+          const yr = (now2.getMonth() < 3 || (now2.getMonth() === 3 && now2.getDate() < 6)) ? now2.getFullYear() - 1 : now2.getFullYear();
+          allMonthsInRange = Array.from({ length: 12 }, (_, i) => new Date(yr, 3 + i, 1).toISOString().slice(0, 7)).reverse();
+        } else if (filter === 'ytd') {
+          allMonthsInRange = Array.from({ length: now2.getMonth() + 1 }, (_, i) => `${now2.getFullYear()}-${String(i + 1).padStart(2, '0')}`).reverse();
+        } else {
+          const moKeys = Object.keys(earningsByMonth).sort();
+          if (moKeys.length > 0) {
+            const months = [];
+            let cur = new Date(moKeys[0] + '-01T12:00:00');
+            const end = new Date(moKeys[moKeys.length - 1] + '-01T12:00:00');
+            while (cur <= end) { months.push(cur.toISOString().slice(0, 7)); cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); }
+            allMonthsInRange = months.reverse();
+          } else { allMonthsInRange = []; }
+        }
+        const monthBreakdown = allMonthsInRange.map(mo => ({ month: mo, amount: earningsByMonth[mo] || 0, days: uniqueDaysByMonth[mo]?.size || 0 }));
+
+        return {
+          totalEarnings, workingDaysCount: wdc, shootDaysCount: sdc, totalHours, productionsWorkedCount, longestStreak,
+          avgDayEarnings, avgPerShoot, avgShootLen, highestDay, daysByType, monthBreakdown, otEarnings,
+          lateLunchEarnings, lateLunchCount: lateLunchSet.size, tocBreachCount: tocBreachSet.size, nightShootCount: nightShootSet.size,
+          busiestMonth: busiestMonthEntry ? { key: busiestMonthEntry[0], amount: busiestMonthEntry[1] } : null,
+          topProdCo: topProdCoEntry ? { name: topProdCoEntry[0], amount: topProdCoEntry[1] } : null,
+        };
+      }, [enrichedDays, filter]);
+
+      const heroLabel = filter === 'all' ? 'All-time earnings' : filter === 'taxyear' ? 'Tax year earnings' : 'Year to date';
+
+      const ComparisonContent = ({ amount }) => (
+        <div className="mt-3 pt-3 border-t border-neutral-800">
+          <div className="text-xs text-neutral-500 mb-2">That's roughly…</div>
+          {COMPARISON_ITEMS.map(item => {
+            const qty = amount / item.price;
+            if (qty < 0.1) return null;
+            const displayQty = item.price >= 1000 ? qty.toFixed(1) : Math.round(qty).toLocaleString('en-GB');
+            return (
+              <div key={item.label} className="flex items-center gap-2 py-1">
+                <span className="flex-shrink-0 text-base" style={{ width: 22 }}>{item.emoji}</span>
+                <span className="font-mono text-sm text-neutral-200 flex-shrink-0 text-right" style={{ minWidth: '5rem' }}>{displayQty}</span>
+                <span className="text-xs text-neutral-400 leading-tight">{item.label}</span>
+              </div>
+            );
+          }).filter(Boolean)}
+          <div className="text-[10px] text-neutral-600 mt-2">(at typical London prices)</div>
+        </div>
+      );
+
+      const MonthTableContent = () => {
+        const visible = showAllMonths ? stats.monthBreakdown : stats.monthBreakdown.slice(0, 24);
+        return (
+          <div className="mt-3 pt-3 border-t border-neutral-800">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th className="text-left text-[10px] uppercase tracking-wider text-neutral-500 pb-2 font-normal">Month</th>
+                  <th className="text-right text-[10px] uppercase tracking-wider text-neutral-500 pb-2 font-normal">Earnings</th>
+                  <th className="text-right text-[10px] uppercase tracking-wider text-neutral-500 pb-2 font-normal">Days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map(({ month, amount, days }) => (
+                  <tr key={month}>
+                    <td className="py-1.5 text-sm text-neutral-300">{fmtMonth(month)}</td>
+                    <td className="py-1.5 text-sm font-mono text-right text-neutral-200">{amount > 0 ? fmtGBP(amount) : '—'}</td>
+                    <td className="py-1.5 text-sm text-right text-neutral-400">{days > 0 ? days : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {stats.monthBreakdown.length > 24 && !showAllMonths && (
+              <button onClick={ev => { ev.stopPropagation(); setShowAllMonths(true); }}
+                className="mt-2 text-xs text-sky-400 hover:text-sky-300 transition-colors">
+                Show all {stats.monthBreakdown.length} months
+              </button>
+            )}
+          </div>
+        );
+      };
+
+      const SectionHdr = ({ children }) => (
+        <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold mt-8 mb-3">{children}</div>
+      );
+
+      const StatCard = ({ label, value, sub }) => (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4">
+          <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 mb-2">{label}</div>
+          <div className="text-2xl font-bold font-mono text-neutral-100 tabular-nums">{value}</div>
+          {sub && <div className="text-xs text-neutral-500 mt-1">{sub}</div>}
+        </div>
+      );
+
+      const TappableCard = ({ label, value, sub, statKey, children }) => {
+        const expanded = expandedStat === statKey;
+        return (
+          <div onClick={() => toggleExpand(statKey)}
+            className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4 cursor-pointer select-none transition-colors hover:border-neutral-700"
+            style={{ WebkitTapHighlightColor: 'transparent' }}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 mb-2">{label}</div>
+              <IDown size={13} className="text-neutral-600 flex-shrink-0 mt-0.5"
+                style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}/>
+            </div>
+            <div className="text-2xl font-bold font-mono text-neutral-100 tabular-nums">{value}</div>
+            {sub && <div className="text-xs text-neutral-500 mt-1">{sub}</div>}
+            <div style={{ overflow: 'hidden', maxHeight: expanded ? 1200 : 0, transition: 'max-height 0.25s ease' }}>
+              {children}
+            </div>
+          </div>
+        );
+      };
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1" aria-label="Back">
+                <IArrowLeft size={16}/>
+              </button>
+              <h1 className="font-bold text-sm uppercase tracking-wide">Stats</h1>
+            </div>
+            <div className="max-w-2xl mx-auto px-4 pb-3">
+              <div className="flex bg-neutral-900 rounded-xl p-1 gap-1">
+                {[['all', 'All time'], ['taxyear', 'Tax year'], ['ytd', 'Year to date']].map(([k, l]) => (
+                  <button key={k} onClick={() => { setFilter(k); setExpandedStat(null); setShowAllMonths(false); }}
+                    className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${filter === k ? 'bg-sky-400 text-black' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="max-w-2xl mx-auto px-4 pt-4 pb-32">
+            {!displayName ? (
+              <div className="py-20 text-center">
+                <div className="flex justify-center mb-4 text-neutral-700"><IStats size={48}/></div>
+                <h3 className="text-xl font-semibold mb-2">Set your name to see your stats</h3>
+                <p className="text-sm text-neutral-400 max-w-xs mx-auto mb-6">Stats track your own work by matching crew member names. Add your name in Settings to get started.</p>
+                {onOpenSettings && (
+                  <button onClick={onOpenSettings} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold text-neutral-200 transition-colors">
+                    <IGear size={14}/>Settings
+                  </button>
+                )}
+              </div>
+            ) : enrichedDays.length === 0 ? (
+              <div className="py-20 text-center">
+                <div className="flex justify-center mb-4 text-neutral-700"><IStats size={48}/></div>
+                <h3 className="text-xl font-semibold mb-2">No data yet for '{displayName}'</h3>
+                <p className="text-sm text-neutral-400 max-w-xs mx-auto">Make sure crew members in your productions have your name to be counted in stats.</p>
+              </div>
+            ) : (
+              <>
+                <div className="mt-2 space-y-3">
+                  <TappableCard label={heroLabel} value={fmtGBP(stats.totalEarnings)} statKey="alltime">
+                    {filter === 'all' ? <MonthTableContent /> : <ComparisonContent amount={stats.totalEarnings} />}
+                  </TappableCard>
+                  {taxYearTotal !== null && (
+                    <TappableCard label="Tax year earnings" value={fmtGBP(taxYearTotal)} statKey="taxyear">
+                      <ComparisonContent amount={taxYearTotal} />
+                    </TappableCard>
+                  )}
+                </div>
+
+                <SectionHdr>Activity</SectionHdr>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard label="Working days" value={stats.workingDaysCount}/>
+                  <StatCard label="Shoot days" value={stats.shootDaysCount}/>
+                  <StatCard label="Total hours" value={stats.totalHours.toFixed(1) + 'h'}/>
+                  <StatCard label="Productions" value={stats.productionsWorkedCount}/>
+                  <StatCard label="Longest streak" value={`${stats.longestStreak} day${stats.longestStreak !== 1 ? 's' : ''}`} sub="consecutive working days"/>
+                </div>
+
+                <SectionHdr>Averages</SectionHdr>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard label="Avg day earnings" value={fmtGBP(stats.avgDayEarnings)}/>
+                  <StatCard label="Avg per shoot" value={fmtGBP(stats.avgPerShoot)}/>
+                  <StatCard label="Avg shoot day" value={`${stats.avgShootLen.toFixed(1)}h`} sub="worked hours"/>
+                </div>
+
+                <SectionHdr>Highlights</SectionHdr>
+                <div className="space-y-3">
+                  {stats.highestDay && (
+                    <TappableCard label="Highest earning day" value={fmtGBP(stats.highestDay.amount)} sub={stats.highestDay.date} statKey="highest">
+                      <ComparisonContent amount={stats.highestDay.amount}/>
+                    </TappableCard>
+                  )}
+                  {stats.busiestMonth && (
+                    <StatCard label="Busiest month" value={fmtGBP(stats.busiestMonth.amount)} sub={fmtMonth(stats.busiestMonth.key)}/>
+                  )}
+                  {stats.topProdCo && (
+                    <StatCard label="Top production co." value={fmtGBP(stats.topProdCo.amount)} sub={stats.topProdCo.name}/>
+                  )}
+                </div>
+
+                <SectionHdr>Earnings breakdown</SectionHdr>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard label="Overtime earned" value={fmtGBP(stats.otEarnings)}/>
+                  <StatCard label="Late lunch earned" value={fmtGBP(stats.lateLunchEarnings)}/>
+                  <StatCard label="Late lunches" value={stats.lateLunchCount}/>
+                  <StatCard label="TOC breaches" value={stats.tocBreachCount}/>
+                  <StatCard label="Night shoots" value={stats.nightShootCount}/>
+                </div>
+
+                {stats.daysByType.length > 0 && (
+                  <>
+                    <SectionHdr>Days by type</SectionHdr>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4">
+                      {(() => {
+                        const maxCount = stats.daysByType[0]?.count || 1;
+                        return stats.daysByType.map(({ type, count }) => (
+                          <div key={type} className="flex items-center gap-3 py-1.5">
+                            <div className="text-xs text-neutral-400 flex-shrink-0" style={{ minWidth: 72 }}>{type}</div>
+                            <div className="flex-1">
+                              <div className="bg-sky-400/25 rounded-full h-2" style={{ width: `${Math.max(2, (count / maxCount) * 100)}%` }}/>
+                            </div>
+                            <div className="text-xs font-mono text-neutral-300 flex-shrink-0 text-right" style={{ minWidth: 28 }}>{count}</div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </>
+                )}
+
+                {excludedCount > 0 && (
+                  <div className="mt-8 bg-amber-900/20 border border-amber-700/30 rounded-[12px] p-4">
+                    <div className="text-xs font-semibold text-amber-300 mb-1">
+                      {excludedCount} production{excludedCount !== 1 ? 's' : ''} excluded
+                    </div>
+                    <p className="text-xs text-neutral-400 leading-relaxed">
+                      {excludedCount} production{excludedCount !== 1 ? 's don\'t' : ' doesn\'t'} include a crew member matching '{displayName}'. {excludedCount !== 1 ? 'They are' : 'It is'} excluded from stats.
+                      Check for typos in crew names.
+                    </p>
+                    <button onClick={onClose} className="mt-3 text-xs text-amber-300 hover:text-amber-200 transition-colors underline underline-offset-2">
+                      Back to productions
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onUpdateDays, onOpenSettings, userPrefs }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
-      const confirmDelete = (p) => setConfirmOpts({
+      const [actionSheet, setActionSheet] = useState(null);
+      const [showCancellationCalc, setShowCancellationCalc] = useState(false);
+      const [calcProd, setCalcProd] = useState(() => ({ title: "", startDate: new Date().toISOString().slice(0, 10), cancellationData: null }));
+      const [calcCrew, setCalcCrew] = useState([]);
+      const [searchOpen, setSearchOpen] = useState(false);
+      const [query, setQuery] = useState("");
+      const searchInputRef = useRef(null);
+const confirmDelete = (p) => setConfirmOpts({
         title: "Delete production?",
         message: `Delete "${p.title || 'Untitled Production'}"? This cannot be undone.`,
         confirmLabel: "Delete",
@@ -5655,6 +6147,22 @@ const setDays = (updater) =>
         items: g.items.filter(p => p.id !== currentShoot?.id),
       })).filter(g => g.items.length > 0);
 
+      useEffect(() => {
+        if (searchOpen && searchInputRef.current) searchInputRef.current.focus();
+      }, [searchOpen]);
+
+      const trimmedQuery = query.trim().toLowerCase();
+      const matchesProduction = (p, q) => {
+        if (!q) return true;
+        if ((p.title || "").toLowerCase().includes(q)) return true;
+        if ((p.prodCo || "").toLowerCase().includes(q)) return true;
+        if ((p.jobReference || "").toLowerCase().includes(q)) return true;
+        if ((p.crew ?? []).some(c => (c.name || "").toLowerCase().includes(q))) return true;
+        if ((p.days ?? []).some(d => (d.note || "").toLowerCase().includes(q))) return true;
+        return false;
+      };
+      const filteredSorted = trimmedQuery ? sorted.filter(p => matchesProduction(p, trimmedQuery)) : [];
+
       const renderCard = (p, opts = {}) => {
         const isCurrent = opts.isCurrent || false;
         const cardSetDays = (updater) => onUpdateDays(p.id, updater);
@@ -5680,11 +6188,12 @@ const setDays = (updater) =>
                   {hasToday && <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
                   {hasToday && <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
                   <button
-                    onClick={() => confirmDelete(p)}
-                    className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10 ml-auto"
-                    aria-label="Delete production"
-                    title="Delete production"
-                  ><ITrash size={16}/></button>
+                    onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
+                    className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 ml-auto flex items-center justify-center"
+                    style={{ minWidth: 44, minHeight: 44 }}
+                    aria-label="Production options"
+                    title="Production options"
+                  ><IKebab size={16}/></button>
                 </div>
               </div>
             </div>
@@ -5710,11 +6219,12 @@ const setDays = (updater) =>
                   </>
                 )}
                 <button
-                  onClick={() => confirmDelete(p)}
-                  className="text-neutral-600 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-400/10"
-                  aria-label="Delete production"
-                  title="Delete production"
-                ><ITrash size={16}/></button>
+                  onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
+                  className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center"
+                  style={{ minWidth: 44, minHeight: 44 }}
+                  aria-label="Production options"
+                  title="Production options"
+                ><IKebab size={16}/></button>
               </div>
             </div>
           </div>
@@ -5730,47 +6240,95 @@ const setDays = (updater) =>
                 {displayName && <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-1">{displayName}'s</div>}
                 <h1 className="text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
               </div>
-              <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800 mt-1" title="Settings" aria-label="Settings">
-                <IGear size={20}/>
-              </button>
+              <div className="flex items-center gap-1 mt-1">
+                <button onClick={onOpenStats} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Stats" aria-label="Stats">
+                  <IStats size={20}/>
+                </button>
+                <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-400" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
+                  <ISearch size={20}/>
+                </button>
+                <button onClick={() => setShowCancellationCalc(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Cancellation Calculator" aria-label="Cancellation Calculator">
+                  <ICalc size={20}/>
+                </button>
+                <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Settings" aria-label="Settings">
+                  <IGear size={20}/>
+                </button>
+              </div>
             </div>
+            {searchOpen && (
+              <div className="max-w-6xl mx-auto px-4 pb-3">
+                <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2.5">
+                  <ISearch size={15} className="text-neutral-500 flex-shrink-0"/>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    placeholder="Search shoots, crew, notes…"
+                    className="flex-1 bg-transparent text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none"
+                  />
+                  {query && (
+                    <button type="button" onClick={() => setQuery("")} className="text-neutral-500 hover:text-neutral-300 flex-shrink-0 transition-colors" aria-label="Clear search">
+                      <IX size={15}/>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="max-w-6xl mx-auto px-4">
             <h2 className="text-2xl font-bold tracking-tight mb-6 mt-2">Shoots</h2>
 
-            {/* Empty state */}
-            {productions.length === 0 && (
-              <div className="py-12 text-center">
-                <div className="flex justify-center mb-4 text-neutral-700"><ICal size={48}/></div>
-                <h3 className="text-xl font-semibold mb-2">No shoots yet</h3>
-                <p className="text-sm text-neutral-400 mb-6">Create your first production to get started</p>
-                <Btn variant="primary" onClick={onNewProduction}><IPlus/>New Production</Btn>
-              </div>
-            )}
-
-            {/* Current shoot pinned at top */}
-            {currentShoot && (
-              <div className="mb-6">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Current Shoot</div>
-                {renderCard(currentShoot, { isCurrent: true })}
-              </div>
-            )}
-
-            {/* Month groups */}
-            <div className="space-y-8">
-              {groupsDisplay.map(({ label, items, monthTotal }) => (
-                <div key={label}>
-                  <div className="flex items-baseline justify-between mb-3">
-                    <div className="text-sm uppercase tracking-[0.15em] font-bold text-sky-400">{label}</div>
-                    <div className="text-base font-bold font-mono text-sky-400">{fmtGBP(monthTotal)}</div>
-                  </div>
-                  <div className="space-y-2">
-                    {items.map(renderCard)}
-                  </div>
+            {trimmedQuery ? (
+              /* Search results */
+              filteredSorted.length === 0 ? (
+                <div className="py-12 text-center">
+                  <div className="flex justify-center mb-4 text-neutral-700"><ISearch size={48}/></div>
+                  <h3 className="text-xl font-semibold mb-2">No matches</h3>
+                  <p className="text-sm text-neutral-400">Try a different search term</p>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredSorted.map(renderCard)}
+                </div>
+              )
+            ) : (
+              <>
+                {/* Empty state */}
+                {productions.length === 0 && (
+                  <div className="py-12 text-center">
+                    <div className="flex justify-center mb-4 text-neutral-700"><ICal size={48}/></div>
+                    <h3 className="text-xl font-semibold mb-2">No shoots yet</h3>
+                    <p className="text-sm text-neutral-400 mb-6">Create your first production to get started</p>
+                    <Btn variant="primary" onClick={onNewProduction}><IPlus/>New Production</Btn>
+                  </div>
+                )}
+
+                {/* Current shoot pinned at top */}
+                {currentShoot && (
+                  <div className="mb-6">
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Current Shoot</div>
+                    {renderCard(currentShoot, { isCurrent: true })}
+                  </div>
+                )}
+
+                {/* Month groups */}
+                <div className="space-y-8">
+                  {groupsDisplay.map(({ label, items, monthTotal }) => (
+                    <div key={label}>
+                      <div className="flex items-baseline justify-between mb-3">
+                        <div className="text-sm uppercase tracking-[0.15em] font-bold text-sky-400">{label}</div>
+                        <div className="text-base font-bold font-mono text-sky-400">{fmtGBP(monthTotal)}</div>
+                      </div>
+                      <div className="space-y-2">
+                        {items.map(renderCard)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Floating action button */}
@@ -5785,6 +6343,72 @@ const setDays = (updater) =>
           </button>
 
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
+
+          {/* Production action sheet (kebab menu) */}
+          {actionSheet && (
+            <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+                 style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
+                 onClick={() => setActionSheet(null)}>
+              <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+                   style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+                <div className="px-5 pt-5 pb-3">
+                  <div className="text-sm font-bold text-neutral-100 truncate">{actionSheet.title || 'Untitled Production'}</div>
+                </div>
+                <div className="px-4 pb-4 flex flex-col gap-2">
+                  <button type="button"
+                    onClick={() => { const p = actionSheet; setActionSheet(null); onDuplicate(p); showToast("Duplicated — edit the copy"); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <ICopy size={15}/>Duplicate
+                  </button>
+                  <button type="button"
+                    onClick={async () => {
+                      const p = actionSheet;
+                      setActionSheet(null);
+                      const pCrew = p.crew ?? [];
+                      const pDays = p.days ?? [];
+                      let text;
+                      if (p.bestBoyMode) {
+                        const parts = pCrew.map(c => generateCrewText(c, pDays.filter(d => d.crewId === c.id), p));
+                        text = parts.join('\n\n—\n\n');
+                      } else {
+                        const c = pCrew[0];
+                        if (!c) { showToast("No crew member"); return; }
+                        text = generateCrewText(c, pDays, p);
+                      }
+                      const r = await shareTextOrCopy(text, p.title || 'Timesheet');
+                      if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
+                    }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IShare size={15}/>Share Times
+                  </button>
+                  <button type="button"
+                    onClick={() => { const p = actionSheet; setActionSheet(null); confirmDelete(p); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-red-400 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <ITrash size={15}/>Delete
+                  </button>
+                </div>
+                <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
+                  <button type="button" onClick={() => setActionSheet(null)}
+                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showCancellationCalc && (
+            <CancellationCalcModal
+              production={calcProd}
+              setProduction={setCalcProd}
+              crew={calcCrew}
+              setCrew={setCalcCrew}
+              onClose={() => setShowCancellationCalc(false)}
+            />
+          )}
+
           <ConfirmDialog
             open={!!confirmOpts}
             title={confirmOpts?.title}
@@ -5806,6 +6430,7 @@ const setDays = (updater) =>
       const [userPrefs, setUserPrefs] = useStoredState("bigals_user_prefs", DEFAULT_USER_PREFS);
       const [openId, setOpenId] = useState(null);
       const [showSettings, setShowSettings] = useState(false);
+      const [showStats, setShowStats] = useState(false);
       const [showNewProduction, setShowNewProduction] = useState(false);
 
       // Treat existing users (stored prefs without onboardingComplete) as already onboarded
@@ -5838,6 +6463,12 @@ const setDays = (updater) =>
       const deleteProduction = (id) => {
         setProductions((prev) => prev.filter((p) => p.id !== id));
         if (openId === id) setOpenId(null);
+      };
+      const duplicateProduction = (p) => {
+        const newId = uid();
+        const copy = { ...p, id: newId, title: `${p.title || 'Untitled Production'} (copy)`, days: [], weekStarts: [], gridDates: [] };
+        setProductions(prev => [...prev, copy]);
+        setOpenId(newId);
       };
       const handleNewProduction = ({ title, bestBoyMode }) => {
         const role = userPrefs.defaultRole || "Lighting Technician";
@@ -5935,6 +6566,9 @@ const setDays = (updater) =>
           />
         );
       }
+      if (showStats) {
+        return <StatsScreen productions={productions} userPrefs={userPrefs} onClose={() => setShowStats(false)} onOpenSettings={() => { setShowStats(false); setShowSettings(true); }} />;
+      }
       if (showNewProduction) {
         return (
           <NewProductionScreen
@@ -5945,7 +6579,7 @@ const setDays = (updater) =>
         );
       }
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} userPrefs={userPrefs} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} />;
       }
       if (!currentProduction.bestBoyMode) {
         return <SoloDayPage
