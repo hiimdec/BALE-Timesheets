@@ -1897,6 +1897,7 @@
     const IArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
     const IArrowRight = (p) => <Icon {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></Icon>;
     const IHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
+    const ISearch = (p) => <Icon {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></Icon>;
     const IExternalLink = (p) => <Icon {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
@@ -5696,6 +5697,9 @@ const setDays = (updater) =>
       const [showCancellationCalc, setShowCancellationCalc] = useState(false);
       const [calcProd, setCalcProd] = useState(() => ({ title: "", startDate: new Date().toISOString().slice(0, 10), cancellationData: null }));
       const [calcCrew, setCalcCrew] = useState([]);
+      const [searchOpen, setSearchOpen] = useState(false);
+      const [query, setQuery] = useState("");
+      const searchInputRef = useRef(null);
 const confirmDelete = (p) => setConfirmOpts({
         title: "Delete production?",
         message: `Delete "${p.title || 'Untitled Production'}"? This cannot be undone.`,
@@ -5753,6 +5757,22 @@ const confirmDelete = (p) => setConfirmOpts({
         monthTotal: g.items.reduce((sum, p) => sum + (productionTotals[p.id] || 0), 0),
         items: g.items.filter(p => p.id !== currentShoot?.id),
       })).filter(g => g.items.length > 0);
+
+      useEffect(() => {
+        if (searchOpen && searchInputRef.current) searchInputRef.current.focus();
+      }, [searchOpen]);
+
+      const trimmedQuery = query.trim().toLowerCase();
+      const matchesProduction = (p, q) => {
+        if (!q) return true;
+        if ((p.title || "").toLowerCase().includes(q)) return true;
+        if ((p.prodCo || "").toLowerCase().includes(q)) return true;
+        if ((p.jobReference || "").toLowerCase().includes(q)) return true;
+        if ((p.crew ?? []).some(c => (c.name || "").toLowerCase().includes(q))) return true;
+        if ((p.days ?? []).some(d => (d.note || "").toLowerCase().includes(q))) return true;
+        return false;
+      };
+      const filteredSorted = trimmedQuery ? sorted.filter(p => matchesProduction(p, trimmedQuery)) : [];
 
       const renderCard = (p, opts = {}) => {
         const isCurrent = opts.isCurrent || false;
@@ -5832,6 +5852,9 @@ const confirmDelete = (p) => setConfirmOpts({
                 <h1 className="text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
               </div>
               <div className="flex items-center gap-1 mt-1">
+                <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-400" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
+                  <ISearch size={20}/>
+                </button>
                 <button onClick={() => setShowCancellationCalc(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Cancellation Calculator" aria-label="Cancellation Calculator">
                   <ICalc size={20}/>
                 </button>
@@ -5840,43 +5863,80 @@ const confirmDelete = (p) => setConfirmOpts({
                 </button>
               </div>
             </div>
+            {searchOpen && (
+              <div className="max-w-6xl mx-auto px-4 pb-3">
+                <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2.5">
+                  <ISearch size={15} className="text-neutral-500 flex-shrink-0"/>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    placeholder="Search shoots, crew, notes…"
+                    className="flex-1 bg-transparent text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none"
+                  />
+                  {query && (
+                    <button type="button" onClick={() => setQuery("")} className="text-neutral-500 hover:text-neutral-300 flex-shrink-0 transition-colors" aria-label="Clear search">
+                      <IX size={15}/>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="max-w-6xl mx-auto px-4">
             <h2 className="text-2xl font-bold tracking-tight mb-6 mt-2">Shoots</h2>
 
-            {/* Empty state */}
-            {productions.length === 0 && (
-              <div className="py-12 text-center">
-                <div className="flex justify-center mb-4 text-neutral-700"><ICal size={48}/></div>
-                <h3 className="text-xl font-semibold mb-2">No shoots yet</h3>
-                <p className="text-sm text-neutral-400 mb-6">Create your first production to get started</p>
-                <Btn variant="primary" onClick={onNewProduction}><IPlus/>New Production</Btn>
-              </div>
-            )}
-
-            {/* Current shoot pinned at top */}
-            {currentShoot && (
-              <div className="mb-6">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Current Shoot</div>
-                {renderCard(currentShoot, { isCurrent: true })}
-              </div>
-            )}
-
-            {/* Month groups */}
-            <div className="space-y-8">
-              {groupsDisplay.map(({ label, items, monthTotal }) => (
-                <div key={label}>
-                  <div className="flex items-baseline justify-between mb-3">
-                    <div className="text-sm uppercase tracking-[0.15em] font-bold text-sky-400">{label}</div>
-                    <div className="text-base font-bold font-mono text-sky-400">{fmtGBP(monthTotal)}</div>
-                  </div>
-                  <div className="space-y-2">
-                    {items.map(renderCard)}
-                  </div>
+            {trimmedQuery ? (
+              /* Search results */
+              filteredSorted.length === 0 ? (
+                <div className="py-12 text-center">
+                  <div className="flex justify-center mb-4 text-neutral-700"><ISearch size={48}/></div>
+                  <h3 className="text-xl font-semibold mb-2">No matches</h3>
+                  <p className="text-sm text-neutral-400">Try a different search term</p>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredSorted.map(renderCard)}
+                </div>
+              )
+            ) : (
+              <>
+                {/* Empty state */}
+                {productions.length === 0 && (
+                  <div className="py-12 text-center">
+                    <div className="flex justify-center mb-4 text-neutral-700"><ICal size={48}/></div>
+                    <h3 className="text-xl font-semibold mb-2">No shoots yet</h3>
+                    <p className="text-sm text-neutral-400 mb-6">Create your first production to get started</p>
+                    <Btn variant="primary" onClick={onNewProduction}><IPlus/>New Production</Btn>
+                  </div>
+                )}
+
+                {/* Current shoot pinned at top */}
+                {currentShoot && (
+                  <div className="mb-6">
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Current Shoot</div>
+                    {renderCard(currentShoot, { isCurrent: true })}
+                  </div>
+                )}
+
+                {/* Month groups */}
+                <div className="space-y-8">
+                  {groupsDisplay.map(({ label, items, monthTotal }) => (
+                    <div key={label}>
+                      <div className="flex items-baseline justify-between mb-3">
+                        <div className="text-sm uppercase tracking-[0.15em] font-bold text-sky-400">{label}</div>
+                        <div className="text-base font-bold font-mono text-sky-400">{fmtGBP(monthTotal)}</div>
+                      </div>
+                      <div className="space-y-2">
+                        {items.map(renderCard)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Floating action button */}
