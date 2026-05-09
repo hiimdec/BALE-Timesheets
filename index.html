@@ -188,6 +188,7 @@
       return 1.5;
     }
     const DAY_TYPES = ["Shoot", "Pre-light", "Prep Day", "Recce", "Build Day", "De-rig", "Travel Day", "Rest Day"];
+    const DISCRETIONARY_LUNCH_DAY_TYPES = ["Prep Day", "Recce", "Build Day", "De-rig"];
 
     // UK England & Wales bank holidays (gov.uk-verified). APA §2.4 treats
     // these identically to Sundays — 2× BDR / 2× BHR for all hours worked.
@@ -393,7 +394,7 @@
       // even on Prep / Recce / Build / De-rig / Pre-light days.
       const role = (crew && crew.role) || "";
       const bwdOverrideApplies = ROLES_WITH_BWD_OVERRIDE.includes(role) &&
-        ["Pre-light", "Prep Day", "Recce", "Build Day", "De-rig"].includes(day.dayType);
+        ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(day.dayType);
       const effectiveDayType = bwdOverrideApplies ? "Shoot" : day.dayType;
 
       // Rest Day: flat BDR, no breaks, no OT, no penalties.
@@ -464,7 +465,7 @@
       if (continuousDay) basicHrs = 9;
       else if (effectiveDayType === "Shoot") { basicHrs = isElevenHourDay ? 12 : 11; if (lunchDuration < 60 && !lunchMissed) basicHrs -= (60 - lunchDuration) / 60; }
       else if (effectiveDayType === "Pre-light") { basicHrs = 9; if (lunchDuration < 60 && !lunchMissed) basicHrs = 9 - (60 - lunchDuration) / 60; }
-      else if (effectiveDayType === "Prep Day" || effectiveDayType === "Recce" || effectiveDayType === "Build Day" || effectiveDayType === "De-rig") {
+      else if (DISCRETIONARY_LUNCH_DAY_TYPES.includes(effectiveDayType)) {
         // APA §2.3: 8h base, no lunch obligation. OT after 8h normally.
         // If a 1st break is given, basic shifts up by lunch duration (capped at 1h → 9h base).
         basicHrs = 8;
@@ -520,7 +521,7 @@
         } else if (effectiveDayType === "Pre-light") {
           const baseHrs = continuousDay ? 9 : 8;
           lines.push({ label: continuousDay ? "Pre-light Day (CWD 9h × BHR)" : "Pre-light Day (8h × BHR + 1h lunch)", detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
-        } else if (effectiveDayType === "Prep Day" || effectiveDayType === "Recce" || effectiveDayType === "Build Day" || effectiveDayType === "De-rig") {
+        } else if (DISCRETIONARY_LUNCH_DAY_TYPES.includes(effectiveDayType)) {
           const lunchPart = (lunchMissed || lunchDuration === 0) ? "no lunch" : (lunchDuration >= 60 ? "+ 1h lunch" : `+ ${lunchDuration}m lunch`);
           lines.push({ label: `${effectiveDayType} (${basicHrs}h × BHR, ${lunchPart})`, detail: callWrapLabel, rate: bhr, qty: basicHrs, amount: basicHrs * bhr });
         } else {
@@ -2621,7 +2622,7 @@
       const isDriverDay = activeCrew?.isDriver === true && !isTravelDay && !isPmpa;
       const role = effectiveRole;
       const bwdOverrideApplies = !isPmpa && ROLES_WITH_BWD_OVERRIDE.includes(role) &&
-        ["Pre-light", "Prep Day", "Recce", "Build Day", "De-rig"].includes(v.dayType);
+        ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(v.dayType);
 
       const show2ndBreakSection = !isPmpa && !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
 
@@ -2702,19 +2703,27 @@
           {!isPmpa && !isTravelDay && (
             <SectionCard title="Lunch (1st Break)">
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Lunch Start Time" hint={bs ? `Deadline: ${toHHMM(bs.lateThreshold)} · CWD threshold: ${toHHMM(bs.cwdThreshold)}` : ""}>
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex-1 min-w-0"><TimeInput value={v.lunchStartTime || ""} onChange={(e) => set({ lunchStartTime: e.target.value })} disabled={Number(v.lunchDurationMins) === 0} /></div>
-                      {isToday && Number(v.lunchDurationMins) !== 0 && <NowBtn tone="sky" onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }} />}
-                    </div>
-                  </Field>
+                {DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType) ? (
                   <Field label="Lunch Duration">
                     <Select value={Number(v.lunchDurationMins ?? 60)} onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}>
                       {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
                     </Select>
                   </Field>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Lunch Start Time" hint={bs ? `Deadline: ${toHHMM(bs.lateThreshold)} · CWD threshold: ${toHHMM(bs.cwdThreshold)}` : ""}>
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-1 min-w-0"><TimeInput value={v.lunchStartTime || ""} onChange={(e) => set({ lunchStartTime: e.target.value })} disabled={Number(v.lunchDurationMins) === 0} /></div>
+                        {isToday && Number(v.lunchDurationMins) !== 0 && <NowBtn tone="sky" onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }} />}
+                      </div>
+                    </Field>
+                    <Field label="Lunch Duration">
+                      <Select value={Number(v.lunchDurationMins ?? 60)} onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}>
+                        {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                      </Select>
+                    </Field>
+                  </div>
+                )}
 
                 {bs && (
                   <>
