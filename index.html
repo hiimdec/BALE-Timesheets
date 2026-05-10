@@ -262,7 +262,8 @@
       defaultKitMoneyAmount: 0,
       defaultPerDiemEnabled: false,
       defaultPerDiemAmount: 0,
-      favourableRounding: true,
+      favourableRounding: false,
+      apaRounding: false,
       onboardingComplete: false,
     };
 
@@ -311,6 +312,7 @@
     };
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
     const ceilHalf = (n) => Math.ceil(n * 2) / 2;
+    const computeBHR = (bdr, apaRounding) => { const raw = (Number(bdr) || 0) / 10; return apaRounding ? Math.round(raw) : raw; };
     const todayISO = () => new Date().toISOString().slice(0, 10);
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
     const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
@@ -385,7 +387,7 @@
 
     function calculateDay(day, crew, weekendOpts = {}) {
       const bdr = Number(crew.bdr) || 0;
-      const bhr = bdr / 10;
+      const bhr = computeBHR(bdr, weekendOpts.apaRounding);
       const otCoef = crew.noOT ? 0 : (Number(crew.otCoef) || 1);
       const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : bhr * otCoef;
       const bectuOtRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : null;
@@ -617,7 +619,7 @@
 
     function calculatePmpaDay(day, crew, weekendOpts = {}) {
       const bdr = Number(crew.bdr) || 0;
-      const bhr = bdr / 10;
+      const bhr = computeBHR(bdr, weekendOpts.apaRounding);
 
       // Non-shoot day: flat BDR. Travel Day, Pre-light, Prep, Recce, Build,
       // De-rig — all the same. (Rest Day is handled by the early return in
@@ -780,7 +782,8 @@
       isElevenHourDay: p.isElevenHourDay ?? false,
       jobReference: p.jobReference ?? "",
       invoicingEmail: p.invoicingEmail ?? "",
-      favourableRounding: p.favourableRounding ?? true,
+      favourableRounding: p.favourableRounding ?? false,
+      apaRounding: p.apaRounding ?? false,
       startDate: p.startDate ?? todayISO(),
       weekStarts: p.weekStarts ?? [],
       gridDates: p.gridDates ?? [],
@@ -897,11 +900,11 @@
         .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
     }
 
-    function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew) {
+    function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew, apaRounding = false) {
       if (isPmpaRole(effectiveCrew)) return null;
       const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
       if (rest === null || rest >= 11) return null;
-      const bhr = (Number(effectiveCrew.bdr) || 0) / 10;
+      const bhr = computeBHR(effectiveCrew.bdr, apaRounding);
       const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : bhr * (Number(effectiveCrew.otCoef) || 1);
       const tocHours = 11 - rest;
       return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
@@ -913,7 +916,7 @@
       let calc = augmentCalc(calculateDay(resolved, effectiveCrew, production), resolved, crewMember);
       if (prevDay) {
         const prevResolved = resolveDay(production, prevDay, crewMember);
-        const toc = calcTOC(prevResolved, resolved, effectiveCrew);
+        const toc = calcTOC(prevResolved, resolved, effectiveCrew, production?.apaRounding ?? false);
         if (toc) {
           const isBreach = toc.isBreach;
           const tocLine = {
@@ -1438,7 +1441,7 @@
 
       // BDR / OT rate display
       const bdr = Number(crewMember.bdr) || 0;
-      const bhr = bdr / 10;
+      const bhr = computeBHR(bdr, production.apaRounding);
       const otRate = (crewMember.otRate != null && crewMember.otRate > 0)
         ? Number(crewMember.otRate)
         : bhr * (Number(crewMember.otCoef) || 1.5);
@@ -5635,6 +5638,13 @@ const setDays = (updater) =>
                 </div>
                 <Toggle value={userPrefs.favourableRounding} onChange={(v) => set({ favourableRounding: v })} ariaLabel="Favourable rounding" />
               </div>
+              <div className="flex items-center justify-between gap-3 mt-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">APA rounding</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40).</div>
+                </div>
+                <Toggle value={userPrefs.apaRounding} onChange={(v) => set({ apaRounding: v })} ariaLabel="APA rounding" />
+              </div>
             </SectionCard>
 
             <SectionCard title="Data">
@@ -6511,7 +6521,8 @@ const confirmDelete = (p) => setConfirmOpts({
           defaultDay: DEFAULT_PRODUCTION_DAY,
           bestBoyMode,
           isElevenHourDay: false,
-          favourableRounding: userPrefs.favourableRounding ?? true,
+          favourableRounding: userPrefs.favourableRounding ?? false,
+          apaRounding: userPrefs.apaRounding ?? false,
           startDate: todayISO(),
           isNew: true,
         };
