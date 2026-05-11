@@ -911,28 +911,54 @@ You don't need to subtract anything yourself.`;
       const myDays = (production.days || [])
         .filter(d => d.crewId === userCrewId)
         .sort((a, b) => a.date.localeCompare(b.date));
-      const items = [];
+
+      // ordered map: aggregation key → { label, dates[], qty, rate, amount, isExpense }
+      const map = new Map();
       let prevDay = null;
+
       for (const day of myDays) {
         const calc = calcForDisplay(production, day, crewMember, prevDay);
         const augmented = augmentCalc(calc, day, crewMember);
-        const dateStr = fmtDateShort(day.date);
         for (const line of augmented.lines) {
-          const detailParts = [dateStr];
-          if (line.detail) detailParts.push(line.detail);
-          items.push({
-            id: uid(),
-            label: line.label,
-            detail: detailParts.join(' — '),
-            qty: typeof line.qty === 'number' ? line.qty : 1,
-            rate: typeof line.rate === 'number' ? line.rate : null,
-            amount: Number(line.amount) || 0,
-            discountedQty: null,
-          });
+          const isExpense = (line.label || "").startsWith("Expense:");
+          let key, displayLabel;
+          if (isExpense) {
+            const category = (line.label || "").replace(/^Expense:\s*/i, "").trim();
+            const desc = (line.detail || "").trim();
+            key = `exp|${category}|${desc}`;
+            displayLabel = desc || category;
+          } else {
+            const prefix = (line.label || "").split(" (")[0].trim();
+            key = `${prefix}|${line.rate ?? "null"}`;
+            displayLabel = prefix;
+          }
+          if (map.has(key)) {
+            const e = map.get(key);
+            e.qty += typeof line.qty === "number" ? line.qty : 1;
+            e.amount += Number(line.amount) || 0;
+            if (day.date && !e.dates.includes(day.date)) e.dates.push(day.date);
+          } else {
+            map.set(key, {
+              label: displayLabel,
+              dates: day.date ? [day.date] : [],
+              qty: typeof line.qty === "number" ? line.qty : 1,
+              rate: typeof line.rate === "number" ? line.rate : null,
+              amount: Number(line.amount) || 0,
+              isExpense,
+            });
+          }
         }
         prevDay = day;
       }
-      return items;
+
+      return [...map.values()].map(e => {
+        const n = e.dates.length;
+        const detail = n === 1 ? fmtDateShort(e.dates[0])
+          : n === 2 ? `${fmtDateShort(e.dates[0])} – ${fmtDateShort(e.dates[n - 1])}`
+          : n > 2 ? `${n} days` : "";
+        const amount = e.rate !== null ? e.qty * e.rate : e.amount;
+        return { id: uid(), label: e.label, detail, qty: e.qty, rate: e.rate, amount, discountedQty: null, isExpense: e.isExpense };
+      });
     }
 
     function buildDefaultNotes(production, userPrefs, userCrewId) {
@@ -976,6 +1002,7 @@ You don't need to subtract anything yourself.`;
         logoBase64: userPrefs.logoBase64 || "",
         lineItems,
         notes,
+        showIndividualExpenses: false,
         status: "draft",
         createdAt: new Date().toISOString(),
       };
@@ -5245,6 +5272,11 @@ You don't need to subtract anything yourself.`;
               <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(totalShoot)}</span>
               <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View Calculation</span>
             </button>
+            <button onClick={() => setInvoiceNav("list")} aria-label="Generate invoice"
+              style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                       color: '#171717', WebkitTapHighlightColor: 'transparent' }}>
+              <IReceipt size={20}/>
+            </button>
             {isLast ? (
               <button onClick={addDay} aria-label="Add next day"
                 style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -6586,33 +6618,49 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ INVOICE COMPONENTS ═══════════════════════════ */
 
-    const INVOICE_STATUS_COLORS = {
-      draft: "text-amber-400 bg-amber-400/10 border-amber-400/30",
-      sent:  "text-sky-400 bg-sky-400/10 border-sky-400/30",
-      paid:  "text-green-400 bg-green-400/10 border-green-400/30",
-    };
-    const INVOICE_STATUS_LABELS = { draft: "Draft", sent: "Sent", paid: "Paid" };
+    function getLineTotal(item) {
+      if (item.discountedQty !== null) {
+        if (item.rate !== null) return item.discountedQty * item.rate;
+        return 0; // null-rate line with any discountedQty = fully waived
+      }
+      return item.rate !== null ? item.qty * item.rate : item.amount;
+    }
 
     function invoiceSubtotal(lineItems) {
-      return (lineItems || []).reduce((sum, item) => {
-        const qty = item.discountedQty !== null ? item.discountedQty : item.qty;
-        return sum + (item.rate !== null ? qty * item.rate : item.amount);
-      }, 0);
+      return (lineItems || []).reduce((sum, item) => sum + getLineTotal(item), 0);
+    }
+
+    function getDisplayStatus(invoice) {
+      if (invoice.status === "paid")
+        return { label: "PAID", classes: "text-green-400 bg-green-400/10 border-green-400/30" };
+      if (invoice.status === "sent") {
+        if (invoice.dueDate) {
+          const todayMs = new Date(todayISO() + "T12:00:00").getTime();
+          const dueMs  = new Date(invoice.dueDate + "T12:00:00").getTime();
+          const daysOver = Math.floor((todayMs - dueMs) / 86400000);
+          if (daysOver > 0)
+            return { label: `OVERDUE ${daysOver}d`, classes: "text-red-300 bg-red-900/40 border-red-700/40" };
+        }
+        return { label: "SENT", classes: "text-sky-400 bg-sky-400/10 border-sky-400/30" };
+      }
+      return { label: "DRAFT", classes: "text-amber-400 bg-amber-400/10 border-amber-400/30" };
     }
 
     function DiscountModal({ item, onSave, onClose }) {
+      const isFixed = item.rate === null; // fixed-amount line (penalty, expense, kit money, etc.)
       const [dqty, setDqty] = React.useState(
-        item.discountedQty !== null ? String(item.discountedQty) : String(item.qty)
+        !isFixed && item.discountedQty !== null ? String(item.discountedQty) : String(item.qty)
       );
       const parsedQty = parseFloat(dqty) || 0;
-      const originalAmount = item.rate !== null ? item.qty * item.rate : item.amount;
-      const discountedAmount = item.rate !== null ? parsedQty * item.rate : item.amount;
+      const originalAmount = isFixed ? item.amount : item.qty * item.rate;
+      const discountedAmount = isFixed ? 0 : parsedQty * item.rate;
       const saving = originalAmount - discountedAmount;
+      const isAlreadyWaived = isFixed && item.discountedQty !== null;
       return (
         <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
           <div className="bg-neutral-900 w-full rounded-[16px] shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
-              <div className="text-sm font-bold text-neutral-100">Discount line</div>
+              <div className="text-sm font-bold text-neutral-100">{isFixed ? "Waive line" : "Discount line"}</div>
               <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 p-1 rounded"><IX size={16}/></button>
             </div>
             <div className="px-5 pb-5 space-y-4">
@@ -6620,30 +6668,41 @@ const setDays = (updater) =>
                 <div className="text-[11px] text-neutral-400 font-semibold">{item.label}</div>
                 {item.detail && <div className="text-[10px] text-neutral-600">{item.detail}</div>}
               </div>
-              <div className="flex items-center gap-3 text-sm text-neutral-400 flex-wrap">
-                <div>Full qty: <span className="text-neutral-200 font-mono">{item.qty}</span></div>
-                {item.rate !== null && <div>Rate: <span className="text-neutral-200 font-mono">{fmtGBP(item.rate)}</span></div>}
-                <div>Full amt: <span className="text-neutral-200 font-mono">{fmtGBP(originalAmount)}</span></div>
-              </div>
-              <Field label="Discounted qty (to bill)">
-                <Input type="number" min="0" step="0.5" value={dqty} onChange={(e) => setDqty(e.target.value)} autoFocus />
-              </Field>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-neutral-400">Billed amount</span>
-                <span className="font-mono font-bold text-neutral-100">{fmtGBP(discountedAmount)}</span>
-              </div>
-              {saving > 0.005 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-neutral-500">Saving</span>
-                  <span className="font-mono text-amber-400">-{fmtGBP(saving)}</span>
+              {isFixed ? (
+                <div className="bg-neutral-800 rounded-xl p-3 text-sm text-neutral-300 leading-relaxed">
+                  This will remove the <span className="font-mono text-neutral-100">{fmtGBP(item.amount)}</span> charge from the invoice total. The line stays visible with a <span className="text-amber-400 font-semibold">Waived</span> badge.
                 </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 text-sm text-neutral-400 flex-wrap">
+                    <div>Full qty: <span className="text-neutral-200 font-mono">{item.qty}</span></div>
+                    <div>Rate: <span className="text-neutral-200 font-mono">{fmtGBP(item.rate)}</span></div>
+                    <div>Full amt: <span className="text-neutral-200 font-mono">{fmtGBP(originalAmount)}</span></div>
+                  </div>
+                  <Field label="Discounted qty (to bill)">
+                    <Input type="number" min="0" step="0.5" value={dqty} onChange={(e) => setDqty(e.target.value)} autoFocus />
+                  </Field>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-neutral-400">Billed amount</span>
+                    <span className="font-mono font-bold text-neutral-100">{fmtGBP(discountedAmount)}</span>
+                  </div>
+                  {saving > 0.005 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-neutral-500">Saving</span>
+                      <span className="font-mono text-amber-400">-{fmtGBP(saving)}</span>
+                    </div>
+                  )}
+                </>
               )}
               <div className="flex gap-3 pt-1">
                 <Btn variant="ghost" className="flex-1 justify-center" onClick={onClose}>Cancel</Btn>
-                <Btn variant="primary" className="flex-1 justify-center" onClick={() => onSave(parsedQty)}>Apply</Btn>
+                <Btn variant="primary" className="flex-1 justify-center"
+                  onClick={() => onSave(isFixed ? 0 : parsedQty)}>
+                  {isFixed ? (isAlreadyWaived ? "Re-waive" : "Waive") : "Apply"}
+                </Btn>
               </div>
               {item.discountedQty !== null && (
-                <button className="w-full text-center text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1" onClick={() => onSave(null)}>Remove discount</button>
+                <button className="w-full text-center text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1" onClick={() => onSave(null)}>Remove {isFixed ? "waiver" : "discount"}</button>
               )}
             </div>
           </div>
@@ -6728,14 +6787,12 @@ const setDays = (updater) =>
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 <IPencil size={15}/>Edit
               </button>
-              {item.rate !== null && (
-                <button type="button" onClick={onDiscount}
-                  className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}>
-                  <ICalc size={15}/>Discount qty
-                  {item.discountedQty !== null && <span className="ml-auto text-[10px] text-amber-400 font-bold uppercase tracking-wide">Active</span>}
-                </button>
-              )}
+              <button type="button" onClick={onDiscount}
+                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <ICalc size={15}/>{item.rate === null ? "Waive line" : "Discount qty"}
+                {item.discountedQty !== null && <span className="ml-auto text-[10px] text-amber-400 font-bold uppercase tracking-wide">Active</span>}
+              </button>
               <button type="button" onClick={onDelete}
                 className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-red-400 flex items-center gap-2"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
@@ -6782,7 +6839,7 @@ const setDays = (updater) =>
         updateInvoice({ lineItems: invoice.lineItems.filter(item => item.id !== itemId) });
 
       const addLineItem = () =>
-        updateInvoice({ lineItems: [...invoice.lineItems, { id: uid(), label: "New item", detail: "", qty: 1, rate: null, amount: 0, discountedQty: null }] });
+        updateInvoice({ lineItems: [...invoice.lineItems, { id: uid(), label: "New item", detail: "", qty: 1, rate: null, amount: 0, discountedQty: null, isExpense: false }] });
 
       const deleteInvoice = () => {
         setProduction(p => ({ ...p, invoices: (p.invoices || []).filter(inv => inv.id !== invoiceId) }));
@@ -6793,6 +6850,50 @@ const setDays = (updater) =>
       const vatAmount = invoice.vatRegistered ? subtotal * (invoice.vatRate || 20) / 100 : 0;
       const total = subtotal + vatAmount;
 
+      // Due-in-days: derived from invoiceDate + dueDate
+      const issueMs = invoice.invoiceDate ? new Date(invoice.invoiceDate + "T12:00:00").getTime() : null;
+      const dueMs   = invoice.dueDate     ? new Date(invoice.dueDate     + "T12:00:00").getTime() : null;
+      const daysFromIssue = (issueMs && dueMs) ? Math.max(0, Math.round((dueMs - issueMs) / 86400000)) : 30;
+
+      // Expense split helpers
+      const isExpenseLine = (item) => item.isExpense || (item.label || "").startsWith("Expense:");
+      const normalLines   = invoice.lineItems.filter(l => !isExpenseLine(l));
+      const expenseLines  = invoice.lineItems.filter(l =>  isExpenseLine(l));
+      const showIndExp    = invoice.showIndividualExpenses ?? false;
+
+      const renderLineRow = (item, labelOverride) => {
+        const lineTotal  = getLineTotal(item);
+        const isWaived   = item.discountedQty !== null && item.rate === null;
+        const isDisc     = item.discountedQty !== null && item.rate !== null;
+        const label      = labelOverride ?? item.label;
+        return (
+          <div key={item.id} className="flex items-start gap-2 py-2 border-b border-neutral-800 last:border-0">
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm ${isWaived ? "line-through text-neutral-500" : "text-neutral-200"}`}>{label}</div>
+              {item.detail && <div className="text-[11px] text-neutral-500 truncate">{item.detail}</div>}
+              {item.rate !== null && (
+                <div className="text-[10px] text-neutral-600 mt-0.5">
+                  {isDisc
+                    ? <><span className="text-amber-400">{item.discountedQty}</span>/{item.qty} × {fmtGBP(item.rate)}</>
+                    : <>{item.qty} × {fmtGBP(item.rate)}</>}
+                </div>
+              )}
+              {isWaived && <span className="text-[10px] font-bold uppercase tracking-wide text-amber-400">Waived</span>}
+            </div>
+            <div className={`text-sm font-mono font-bold flex-shrink-0 pt-0.5 ${isWaived ? "line-through text-neutral-600" : "text-neutral-100"}`}>
+              {isWaived ? fmtGBP(item.amount) : fmtGBP(lineTotal)}
+            </div>
+            <button onClick={() => setActionSheetItem(item)}
+              className="text-neutral-500 hover:text-neutral-300 transition-colors p-1 flex-shrink-0"
+              aria-label="Line options" style={{ WebkitTapHighlightColor: 'transparent' }}>
+              <IKebab size={16}/>
+            </button>
+          </div>
+        );
+      };
+
+      const ds = getDisplayStatus(invoice);
+
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
@@ -6802,8 +6903,8 @@ const setDays = (updater) =>
                 <IArrowLeft size={18}/>
               </button>
               <div className="flex-1 min-w-0 text-sm font-bold truncate">{invoice.invoiceNumber}</div>
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border flex-shrink-0 ${INVOICE_STATUS_COLORS[invoice.status] || INVOICE_STATUS_COLORS.draft}`}>
-                {INVOICE_STATUS_LABELS[invoice.status] || "Draft"}
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border flex-shrink-0 ${ds.classes}`}>
+                {ds.label}
               </span>
             </div>
           </div>
@@ -6815,10 +6916,18 @@ const setDays = (updater) =>
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Invoice date">
-                  <Input type="date" value={invoice.invoiceDate} onChange={(e) => updateInvoice({ invoiceDate: e.target.value })} />
+                  <Input type="date" value={invoice.invoiceDate}
+                    onChange={(e) => {
+                      const d = e.target.value;
+                      updateInvoice({ invoiceDate: d, dueDate: d ? addDays(d, daysFromIssue) : invoice.dueDate });
+                    }} />
                 </Field>
-                <Field label="Due date">
-                  <Input type="date" value={invoice.dueDate} onChange={(e) => updateInvoice({ dueDate: e.target.value })} />
+                <Field label="Due in (days)" hint={invoice.dueDate ? `Due: ${fmtDateShort(invoice.dueDate)}` : ""}>
+                  <Input type="number" min="0" step="1" value={daysFromIssue}
+                    onChange={(e) => {
+                      const days = Math.max(0, Number(e.target.value) || 0);
+                      updateInvoice({ dueDate: addDays(invoice.invoiceDate || todayISO(), days) });
+                    }} />
                 </Field>
               </div>
             </SectionCard>
@@ -6861,35 +6970,39 @@ const setDays = (updater) =>
 
             <SectionCard title="Line items">
               <div className="space-y-1">
-                {invoice.lineItems.length === 0 && (
+                {normalLines.length === 0 && expenseLines.length === 0 && (
                   <div className="text-[11px] text-neutral-500 italic py-2">No line items — tap Add line below.</div>
                 )}
-                {invoice.lineItems.map((item) => {
-                  const billedQty = item.discountedQty !== null ? item.discountedQty : item.qty;
-                  const lineTotal = item.rate !== null ? billedQty * item.rate : item.amount;
-                  return (
-                    <div key={item.id} className="flex items-start gap-2 py-2 border-b border-neutral-800 last:border-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-neutral-200">{item.label}</div>
-                        {item.detail && <div className="text-[11px] text-neutral-500 truncate">{item.detail}</div>}
-                        {item.rate !== null && (
-                          <div className="text-[10px] text-neutral-600 mt-0.5">
-                            {item.discountedQty !== null
-                              ? <><span className="text-amber-400">{item.discountedQty}</span>/{item.qty} × {fmtGBP(item.rate)}</>
-                              : <>{billedQty} × {fmtGBP(item.rate)}</>}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-sm font-mono font-bold text-neutral-100 flex-shrink-0 pt-0.5">{fmtGBP(lineTotal)}</div>
-                      <button onClick={() => setActionSheetItem(item)}
-                        className="text-neutral-500 hover:text-neutral-300 transition-colors p-1 flex-shrink-0"
-                        aria-label="Line options" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                        <IKebab size={16}/>
-                      </button>
+                {normalLines.map(item => renderLineRow(item))}
+
+                {/* Expenses — rolled up by default, individual when toggled */}
+                {expenseLines.length > 0 && !showIndExp && (
+                  <div className="flex items-start gap-2 py-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-neutral-200">Expenses</div>
+                      <div className="text-[11px] text-neutral-500">{expenseLines.length} item{expenseLines.length !== 1 ? "s" : ""}</div>
                     </div>
-                  );
+                    <div className="text-sm font-mono font-bold text-neutral-100 flex-shrink-0 pt-0.5">
+                      {fmtGBP(expenseLines.reduce((s, l) => s + getLineTotal(l), 0))}
+                    </div>
+                    <div style={{ width: 26 }}/>
+                  </div>
+                )}
+                {expenseLines.length > 0 && showIndExp && expenseLines.map(item => {
+                  const expLabel = item.isExpense
+                    ? item.label
+                    : (item.label || "").replace(/^Expense:\s*/i, "").trim() || item.label;
+                  return renderLineRow(item, expLabel);
                 })}
               </div>
+
+              {expenseLines.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-neutral-800 flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Show individual expenses</span>
+                  <Toggle value={showIndExp} onChange={(v) => updateInvoice({ showIndividualExpenses: v })} ariaLabel="Show individual expenses" />
+                </div>
+              )}
+
               <div className="pt-2">
                 <Btn variant="ghost" size="sm" onClick={addLineItem}><IPlus size={13}/>Add line</Btn>
               </div>
@@ -7058,12 +7171,12 @@ const setDays = (updater) =>
                           <div className="text-[11px] text-neutral-500 mt-0.5">{fmtDateShort(inv.invoiceDate)} · Due {fmtDateShort(inv.dueDate)}</div>
                           {inv.toName && <div className="text-[11px] text-neutral-400 mt-0.5 truncate">{inv.toName}</div>}
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                          <div className="text-base font-bold font-mono text-neutral-100">{fmtGBP(total)}</div>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${INVOICE_STATUS_COLORS[inv.status] || INVOICE_STATUS_COLORS.draft}`}>
-                            {INVOICE_STATUS_LABELS[inv.status] || "Draft"}
-                          </span>
-                        </div>
+                        {(() => { const s = getDisplayStatus(inv); return (
+                          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                            <div className="text-base font-bold font-mono text-neutral-100">{fmtGBP(total)}</div>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${s.classes}`}>{s.label}</span>
+                          </div>
+                        ); })()}
                       </div>
                     </button>
                   );
