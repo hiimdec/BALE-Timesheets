@@ -840,16 +840,27 @@
 
     /* ═══════════════════════════ TEXT FORMATTER ═══════════════════════════ */
 
+    const formatOTDuration = (qty) => {
+      const n = Number(qty) || 0;
+      return n % 1 === 0 ? `${n}` : n.toFixed(1);
+    };
+
     function formatLineText(line) {
       const label = line.label;
       const qty = line.qty;
       const timeMatch = line.detail?.match(/^(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})(\s*\(\+1\))?/);
-      const timePart = timeMatch ? `${timeMatch[1]}-${timeMatch[2]}${timeMatch[3] || ''} ` : '';
+      const timePart = timeMatch ? `${timeMatch[1]}-${timeMatch[2]}${timeMatch[3] || ''}` : '';
       if (/mileage/i.test(label)) return `Mileage: ${qty} mi`;
-      const isHoursLine = typeof qty === 'number' && /\bot\b|triple|travel time|early|travel day/i.test(label) && qty !== 1;
+      const isOTLine = /\bot\b|\bovertime\b/i.test(label);
+      if (isOTLine) {
+        const prefix = timePart || line.detail || '';
+        const amountHint = line.amount != null ? ` — ${fmtGBP(line.amount)}` : '';
+        return `${prefix ? prefix + ' — ' : ''}${formatOTDuration(qty)}h ${label}${amountHint}`;
+      }
+      const isHoursLine = typeof qty === 'number' && /triple|travel time|early|travel day/i.test(label) && qty !== 1;
       const hoursHint = isHoursLine ? ` (${qty % 1 === 0 ? qty : qty.toFixed(2)} HR${qty !== 1 ? 'S' : ''})` : '';
       const amountHint = (!isHoursLine || /travel time/i.test(label)) && line.amount != null ? ` — ${fmtGBP(line.amount)}` : '';
-      return `${timePart}${label}${hoursHint}${amountHint}`;
+      return `${timePart ? timePart + ' ' : ''}${label}${hoursHint}${amountHint}`;
     }
 
     function augmentCalc(calc, resolvedDay, crewMember) {
@@ -1579,7 +1590,7 @@
                           <React.Fragment key={i}>
                             <span className="ll">
                               {isOT
-                                ? <><span className="ot">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
+                                ? <>{line.detail ? <>{line.detail}<span className="sep">—</span></> : null}<span className="ot">{formatOTDuration(line.qty)}h {line.label}</span></>
                                 : isPen
                                 ? <><span className="penalty">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
                                 : <><strong>{line.label}</strong>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
@@ -4458,7 +4469,13 @@
                   {calc.lines.map((l, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingBottom: 3 }}>
                       <span style={{ fontSize: 11, color: l.rate === null ? '#fca5a5' : '#737373', flex: 1 }}>
-                        {l.label}{l.detail ? <span style={{ color: '#525252' }}> · {l.detail}</span> : ''}
+                        {(() => {
+                          const isOT = /\bot\b|\bovertime\b/i.test(l.label || '');
+                          if (isOT) {
+                            return <>{l.detail ? <>{l.detail} — </> : null}{formatOTDuration(l.qty)}h {l.label}</>;
+                          }
+                          return <>{l.label}{l.detail ? <span style={{ color: '#525252' }}> · {l.detail}</span> : ''}</>;
+                        })()}
                       </span>
                       <span style={{ fontFamily: 'monospace', fontSize: 11, color: l.rate === null ? '#fca5a5' : '#a3a3a3', flexShrink: 0 }}>{fmtGBP(l.amount)}</span>
                     </div>
