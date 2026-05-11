@@ -895,7 +895,7 @@ You don't need to subtract anything yourself.`;
       const qty = line.qty;
       const timeMatch = line.detail?.match(/^(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})(\s*\(\+1\))?/);
       const timePart = timeMatch ? `${timeMatch[1]}-${timeMatch[2]}${timeMatch[3] || ''}` : '';
-      if (/mileage/i.test(label)) return `Mileage: ${qty} mi`;
+      if (/mileage/i.test(label)) return `Mileage: ${qty} mi — ${fmtGBP(line.amount)}`;
       const isOTLine = /\bot\b|\bovertime\b/i.test(label);
       if (isOTLine) {
         const prefix = timePart || line.detail || '';
@@ -1695,14 +1695,25 @@ You don't need to subtract anything yourself.`;
       .invoice-job-strip {
         background: var(--soft);
         border-left: 3px solid var(--accent);
-        border-radius: 0;
-        padding: 12px 16px;
-        margin-bottom: 24px;
+        padding: 10px 16px;
+        margin-bottom: 20px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 28px;
         font-size: 11px;
         color: var(--muted);
-        line-height: 1.6;
       }
-      .invoice-job-strip strong { color: var(--ink); font-weight: 600; }
+      .invoice-job-strip .job-row { display: flex; gap: 4px; align-items: baseline; line-height: 1.5; }
+      .invoice-job-strip .job-key {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-weight: 700;
+        color: var(--hint);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .invoice-job-strip .job-val { color: var(--ink); font-weight: 500; }
 
       /* Lines */
       .invoice-lines-wrap { margin-bottom: 18px; }
@@ -1795,13 +1806,14 @@ You don't need to subtract anything yourself.`;
       .invoice-totals .row.grand .value { font-size: 18px; }
 
       /* Notes */
-      .invoice-notes { margin-bottom: 18px; page-break-inside: avoid; }
-      .invoice-notes-body {
+      .invoice-notes { margin-bottom: 18px; }
+      .invoice-notes-body { font-size: 11px; line-height: 1.5; color: #404040; }
+      .notes-day {
         white-space: pre-line;
-        font-size: 11px;
-        line-height: 1.5;
-        color: #404040;
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
+      .notes-day + .notes-day { margin-top: 8px; }
 
       /* Bank */
       .invoice-bank {
@@ -2501,16 +2513,33 @@ You don't need to subtract anything yourself.`;
               )}
             </div>
 
-            {/* Job strip */}
+            {/* Job strip — 2×2 grid: Job | Ref / Role | Shoot dates */}
             {(invoice.jobTitle || invoice.jobRole || invoice.jobReference || invoice.shootDateStart) && (
               <div className="invoice-job-strip">
-                {invoice.jobTitle && <div><strong>Production:</strong> {invoice.jobTitle}</div>}
-                {invoice.jobRole && <div><strong>Role:</strong> {invoice.jobRole}</div>}
-                {invoice.jobReference && <div><strong>Job reference:</strong> {invoice.jobReference}</div>}
-                {invoice.shootDateStart && <div><strong>Shoot dates:</strong> {invoice.shootDateStart === invoice.shootDateEnd || !invoice.shootDateEnd
-                  ? fmtInvDate(invoice.shootDateStart)
-                  : `${fmtInvDate(invoice.shootDateStart)} – ${fmtInvDate(invoice.shootDateEnd)}`}
-                </div>}
+                <div className="job-row">
+                  {invoice.jobTitle
+                    ? <><span className="job-key">Job</span><span className="job-val">{invoice.jobTitle}</span></>
+                    : null}
+                </div>
+                <div className="job-row">
+                  {invoice.jobReference
+                    ? <><span className="job-key">Ref</span><span className="job-val">{invoice.jobReference}</span></>
+                    : null}
+                </div>
+                <div className="job-row">
+                  {invoice.jobRole
+                    ? <><span className="job-key">Role</span><span className="job-val">{invoice.jobRole}</span></>
+                    : null}
+                </div>
+                <div className="job-row">
+                  {invoice.shootDateStart
+                    ? <><span className="job-key">Dates</span><span className="job-val">
+                        {invoice.shootDateStart === invoice.shootDateEnd || !invoice.shootDateEnd
+                          ? fmtInvDate(invoice.shootDateStart)
+                          : `${fmtInvDate(invoice.shootDateStart)} – ${fmtInvDate(invoice.shootDateEnd)}`}
+                      </span></>
+                    : null}
+                </div>
               </div>
             )}
 
@@ -2574,11 +2603,15 @@ You don't need to subtract anything yourself.`;
               </div>
             </div>
 
-            {/* Notes */}
+            {/* Notes — split into per-day blocks so page-break-inside: avoid keeps each day together */}
             {invoice.notes && invoice.notes.trim() && (
               <div className="invoice-notes">
                 <div className="invoice-section-label">Notes</div>
-                <div className="invoice-notes-body">{invoice.notes}</div>
+                <div className="invoice-notes-body">
+                  {invoice.notes.split(/\n\n+/).map((block, i) => (
+                    <div key={i} className="notes-day">{block}</div>
+                  ))}
+                </div>
               </div>
             )}
 
