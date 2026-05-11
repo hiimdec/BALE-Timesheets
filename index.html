@@ -2657,23 +2657,41 @@ You don't need to subtract anything yourself.`;
       document.body.appendChild(container);
 
       const root = ReactDOM.createRoot(container);
+      // Fix A: deterministic wait — fonts ready + two rAF frames + 500ms buffer
       await new Promise((resolve) => {
         root.render(<InvoiceDocument invoice={invoice} userPrefs={userPrefs} />);
-        // Give React time to commit + images (logo) time to load
-        setTimeout(resolve, 350);
+        document.fonts.ready.then(() => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => setTimeout(resolve, 500));
+          });
+        });
       });
 
       try {
         const target = container.querySelector('#invoice-print-view') || container;
+        // Fix C: remove min-height so html2pdf measures natural content height
+        const page = target.querySelector('.invoice-page');
+        if (page) page.style.minHeight = 'auto';
+
         const blob = await window.html2pdf()
           .from(target)
           .set({
             margin: 0,
             filename: `${invoice.invoiceNumber}.pdf`,
             image: { type: 'jpeg', quality: 0.95 },
-            html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              logging: false,
+              backgroundColor: '#ffffff',
+              width: 794,       // Fix D: 210mm at 96dpi
+              windowWidth: 794,
+              scrollY: 0,
+              scrollX: 0,
+            },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+            // Fix B: drop avoid-all (causes page-split issues); keep CSS page-break rules
+            pagebreak: { mode: ['css', 'legacy'], avoid: '.notes-day, tr' },
           })
           .outputPdf('blob');
         return blob;
@@ -2691,8 +2709,15 @@ You don't need to subtract anything yourself.`;
       const subjectBase = `Invoice ${invoice.invoiceNumber}`;
       const subject = invoice.jobTitle ? `${subjectBase} — ${invoice.jobTitle}` : subjectBase;
 
+      const subtotal = invoiceSubtotal(invoice.lineItems);
+      const vatAmount = invoice.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
+      const totalStr = fmtGBP(subtotal + vatAmount);
+      const fromName = invoice.fromName || invoice.fromCompanyName || '';
+      const jobRef = invoice.jobTitle ? ` for ${invoice.jobTitle}` : '';
+      const body = `Hi,\n\nPlease find attached invoice ${invoice.invoiceNumber}${jobRef}, total ${totalStr}.\n\nPlease quote ${invoice.invoiceNumber} when paying.\n\nThanks,\n${fromName}`;
+
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: subject, text: subject });
+        await navigator.share({ files: [file], title: subject, text: body });
         return { method: 'share' };
       }
 
