@@ -1842,6 +1842,7 @@ You don't need to subtract anything yourself.`;
         padding: 14px 18px;
         margin-bottom: 18px;
         page-break-inside: avoid;
+        break-inside: avoid;
       }
       .invoice-bank-grid {
         display: grid;
@@ -2624,19 +2625,7 @@ You don't need to subtract anything yourself.`;
               </div>
             </div>
 
-            {/* Notes — split into per-day blocks so page-break-inside: avoid keeps each day together */}
-            {invoice.notes && invoice.notes.trim() && (
-              <div className="invoice-notes">
-                <div className="invoice-section-label">Notes</div>
-                <div className="invoice-notes-body">
-                  {invoice.notes.split(/\n\n+/).map((block, i) => (
-                    <div key={i} className="notes-day">{block}</div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Bank */}
+            {/* Bank — page-break-inside: avoid keeps it whole; sits before notes so it lands on page 1 */}
             {bankFields.length > 0 && (
               <div className="invoice-bank">
                 <div className="invoice-section-label">Payment Details</div>
@@ -2650,6 +2639,26 @@ You don't need to subtract anything yourself.`;
                 </div>
               </div>
             )}
+
+            {/* Notes — strip the trailing "—\nGenerated with TimeMachine" tagline that generateDayText
+                appends; the invoice-footer below already carries that branding. Split into per-day
+                blocks so page-break-inside: avoid on .notes-day keeps each day's lines together. */}
+            {(() => {
+              const cleanNotes = (invoice.notes || '')
+                .replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '')
+                .trim();
+              if (!cleanNotes) return null;
+              return (
+                <div className="invoice-notes">
+                  <div className="invoice-section-label">Notes</div>
+                  <div className="invoice-notes-body">
+                    {cleanNotes.split(/\n\n+/).map((block, i) => (
+                      <div key={i} className="notes-day">{block}</div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Footer */}
             <div className="invoice-footer">
