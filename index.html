@@ -23,6 +23,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
     html, body {
@@ -2370,8 +2371,8 @@ You don't need to subtract anything yourself.`;
       );
     }
 
-    /* ── Invoice PDF print view ── */
-    function InvoicePrintView({ invoice, userPrefs }) {
+    /* ── Invoice PDF document (shared by print + email blob paths) ── */
+    function InvoiceDocument({ invoice, userPrefs }) {
       const fmtInvDate = (iso) => {
         if (!iso) return "";
         return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -2464,7 +2465,7 @@ You don't need to subtract anything yourself.`;
         { key: "SWIFT/BIC",    val: invoice.bankSWIFT },
       ].filter(f => f.val && String(f.val).trim());
 
-      return ReactDOM.createPortal(
+      return (
         <div id="invoice-print-view" className="invoice-print-root">
           <style dangerouslySetInnerHTML={{ __html: INVOICE_PRINT_STYLES }} />
           <div className="invoice-page">
@@ -2635,9 +2636,78 @@ You don't need to subtract anything yourself.`;
               Generated with <strong>TIMEMACHINE</strong> · timemachineapp.co.uk
             </div>
           </div>
-        </div>,
+        </div>
+      );
+    }
+
+    /* ── Portal wrapper for window.print() flow ── */
+    function InvoicePrintView({ invoice, userPrefs }) {
+      return ReactDOM.createPortal(
+        <InvoiceDocument invoice={invoice} userPrefs={userPrefs} />,
         document.body
       );
+    }
+
+    /* ── PDF blob generation via html2pdf (for email/share) ── */
+    async function generateInvoicePdfBlob(invoice, userPrefs) {
+      if (!window.html2pdf) throw new Error('html2pdf not loaded');
+
+      const container = document.createElement('div');
+      container.style.cssText = 'position: absolute; left: -9999px; top: 0; width: 210mm; background: white;';
+      document.body.appendChild(container);
+
+      const root = ReactDOM.createRoot(container);
+      await new Promise((resolve) => {
+        root.render(<InvoiceDocument invoice={invoice} userPrefs={userPrefs} />);
+        // Give React time to commit + images (logo) time to load
+        setTimeout(resolve, 350);
+      });
+
+      try {
+        const target = container.querySelector('#invoice-print-view') || container;
+        const blob = await window.html2pdf()
+          .from(target)
+          .set({
+            margin: 0,
+            filename: `${invoice.invoiceNumber}.pdf`,
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+          })
+          .outputPdf('blob');
+        return blob;
+      } finally {
+        root.unmount();
+        container.remove();
+      }
+    }
+
+    async function shareInvoiceAsEmail(invoice, userPrefs) {
+      const blob = await generateInvoicePdfBlob(invoice, userPrefs);
+      const filename = `${invoice.invoiceNumber}.pdf`;
+      const file = new File([blob], filename, { type: 'application/pdf' });
+
+      const subjectBase = `Invoice ${invoice.invoiceNumber}`;
+      const subject = invoice.jobTitle ? `${subjectBase} — ${invoice.jobTitle}` : subjectBase;
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: subject, text: subject });
+        return { method: 'share' };
+      }
+
+      // Fallback: save PDF locally + open mailto without attachment
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      const mailto = `mailto:${encodeURIComponent(invoice.toEmail || '')}?subject=${encodeURIComponent(subject)}`;
+      window.location.href = mailto;
+      return { method: 'download_fallback' };
     }
 
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
@@ -2666,6 +2736,7 @@ You don't need to subtract anything yourself.`;
     const IInfo = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></Icon>;
     const IAlert = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Icon>;
     const IShare = (p) => <Icon {...p}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></Icon>;
+    const IMail = (p) => <Icon {...p}><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22 6 12 13 2 6"/></Icon>;
     const IDownload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></Icon>;
     const IMessage = (p) => <Icon {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></Icon>;
     const IUp = (p) => <Icon {...p}><polyline points="18 15 12 9 6 15"/></Icon>;
@@ -7488,6 +7559,15 @@ const setDays = (updater) =>
       const [confirmDel, setConfirmDel] = React.useState(false);
       const [confirmRefresh, setConfirmRefresh] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
+      const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false);
+      const [emailSupported] = React.useState(() => {
+        if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return false;
+        try {
+          return navigator.canShare({ files: [new File([''], 'x.pdf', { type: 'application/pdf' })] });
+        } catch {
+          return false;
+        }
+      });
       const [toastMsg, setToastMsg] = React.useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
@@ -7558,6 +7638,31 @@ const setDays = (updater) =>
       const deleteInvoice = () => {
         setProduction(p => ({ ...p, invoices: (p.invoices || []).filter(inv => inv.id !== invoiceId) }));
         onBack();
+      };
+
+      const handleEmail = async () => {
+        if (isGeneratingPdf) return;
+        setIsGeneratingPdf(true);
+        try {
+          const result = await shareInvoiceAsEmail(invoice, userPrefs);
+          if (result.method === 'share' && invoice.status === 'draft') {
+            updateInvoice({ status: 'sent', dateSent: todayISO() });
+            showToast('Invoice sent and marked as sent.');
+          } else if (result.method === 'share') {
+            showToast('Invoice shared.');
+          } else if (result.method === 'download_fallback') {
+            showToast('PDF saved. Attach it to the email and send.');
+          }
+        } catch (err) {
+          if (err && err.name === 'AbortError') {
+            // User cancelled the share sheet — silent
+          } else {
+            console.error('Email share failed:', err);
+            showToast('Could not generate PDF. Please try again.');
+          }
+        } finally {
+          setIsGeneratingPdf(false);
+        }
       };
 
       const subtotal = invoiceSubtotal(invoice.lineItems);
@@ -7793,14 +7898,26 @@ const setDays = (updater) =>
               </SectionCard>
             )}
 
-            <div className="border-t border-neutral-800 pt-4 flex gap-2 items-center">
+            <div className="border-t border-neutral-800 pt-4 flex flex-wrap gap-2 items-center">
               <Btn variant="danger" onClick={() => setConfirmDel(true)}><ITrash size={14}/>Delete</Btn>
-              <div className="flex gap-2 ml-auto">
+              <div className="flex gap-2 ml-auto flex-wrap justify-end">
                 {invoice.status === "paid" ? (
-                  <Btn variant="primary" onClick={() => setPrintTarget(invoice)}><IDownload size={14}/>Export PDF</Btn>
+                  <>
+                    {emailSupported && (
+                      <Btn variant="subtle" onClick={handleEmail} disabled={isGeneratingPdf}>
+                        <IMail size={14}/>{isGeneratingPdf ? "Generating…" : "Email"}
+                      </Btn>
+                    )}
+                    <Btn variant="primary" onClick={() => setPrintTarget(invoice)}><IDownload size={14}/>Export PDF</Btn>
+                  </>
                 ) : (
                   <>
                     <Btn variant="subtle" onClick={() => setPrintTarget(invoice)}><IDownload size={14}/>Export PDF</Btn>
+                    {emailSupported && (
+                      <Btn variant="subtle" onClick={handleEmail} disabled={isGeneratingPdf}>
+                        <IMail size={14}/>{isGeneratingPdf ? "Generating…" : "Email"}
+                      </Btn>
+                    )}
                     {invoice.status === "draft" && (
                       <Btn variant="primary" onClick={() => { updateInvoice({ status: "sent" }); showToast("Marked as sent"); }}>Mark as Sent</Btn>
                     )}
