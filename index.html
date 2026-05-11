@@ -819,6 +819,11 @@ You don't need to subtract anything yourself.`;
       cancellationData: p.cancellationData ?? null,
       toAddress: p.toAddress ?? "",
       invoices: p.invoices ?? [],
+      days: (p.days || []).map(day => {
+        if (day.kitMoneyEnabled !== undefined) return day;
+        const crewMember = (p.crew || []).find(c => c.id === day.crewId);
+        return { ...day, kitMoneyEnabled: crewMember?.kitMoneyEnabled ?? false, kitMoneyAmount: crewMember?.kitMoneyAmount ?? 0 };
+      }),
     });
 
     function useStoredState(key, initial, migrate) {
@@ -891,8 +896,10 @@ You don't need to subtract anything yourself.`;
 
     function augmentCalc(calc, resolvedDay, crewMember) {
       const extra = [];
-      if (crewMember?.kitMoneyEnabled && Number(crewMember.kitMoneyAmount) > 0)
-        extra.push({ label: "Kit Money", detail: "", rate: null, qty: 1, amount: Number(crewMember.kitMoneyAmount) });
+      const kmEnabled = resolvedDay?.kitMoneyEnabled ?? crewMember?.kitMoneyEnabled;
+      const kmAmount  = resolvedDay?.kitMoneyAmount  ?? crewMember?.kitMoneyAmount;
+      if (kmEnabled && Number(kmAmount) > 0)
+        extra.push({ label: "Kit Money", detail: "", rate: null, qty: 1, amount: Number(kmAmount) });
       if (resolvedDay?.perDiemEnabled && Number(resolvedDay.perDiemAmount) > 0)
         extra.push({ label: "Per Diem", detail: "", rate: null, qty: 1, amount: Number(resolvedDay.perDiemAmount) });
       (resolvedDay?.expenses || []).forEach(exp => {
@@ -1002,6 +1009,7 @@ You don't need to subtract anything yourself.`;
         lineItems,
         notes,
         showIndividualExpenses: false,
+        linesEdited: false,
         status: "draft",
         createdAt: new Date().toISOString(),
       };
@@ -2106,9 +2114,13 @@ You don't need to subtract anything yourself.`;
       </label>
     );
 
-    const Input = ({ type, style, className, ...p }) => {
+    const Input = ({ type, style, className, onFocus: onFocusProp, ...p }) => {
       const isDate = type === "date";
-      return <input type={type} {...p}
+      const handleFocus = (e) => {
+        if (type === 'number') e.target.select();
+        if (onFocusProp) onFocusProp(e);
+      };
+      return <input type={type} onFocus={handleFocus} {...p}
         style={isDate ? { WebkitAppearance: 'none', fontSize: 14, ...style } : style}
         className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
@@ -3048,6 +3060,17 @@ You don't need to subtract anything yourself.`;
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit Money</span>
+                <Toggle value={!!v.kitMoneyEnabled} onChange={(val) => set({ kitMoneyEnabled: val })} ariaLabel="Kit money" />
+              </div>
+              {v.kitMoneyEnabled && (
+                <Field label="Kit Money Amount (£)" hint="Added to day total">
+                  <Input type="number" min="0" step="0.01" value={v.kitMoneyAmount ?? 0} onChange={(e) => set({ kitMoneyAmount: Number(e.target.value) })} />
+                </Field>
+              )}
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Expenses</span>
                 <button
                   type="button"
@@ -3387,6 +3410,8 @@ You don't need to subtract anything yourself.`;
           travelBackMins: firstEntry?.travelBackMins ?? 0,
           perDiemEnabled: firstEntry?.perDiemEnabled ?? false,
           perDiemAmount: firstEntry?.perDiemAmount ?? 0,
+          kitMoneyEnabled: firstEntry?.kitMoneyEnabled ?? false,
+          kitMoneyAmount: firstEntry?.kitMoneyAmount ?? 0,
           expenses: firstEntry?.expenses ?? [],
           stepUpEnabled: firstEntry?.stepUpEnabled ?? false,
           stepUpRole: firstEntry?.stepUpRole ?? "",
@@ -3627,6 +3652,14 @@ You don't need to subtract anything yourself.`;
 
                 {/* ── Scrollable body ── */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0 space-y-4">
+                  {(production.invoices || []).some(inv => inv.status === "sent" || inv.status === "paid") && (() => {
+                    const count = (production.invoices || []).filter(inv => inv.status === "sent" || inv.status === "paid").length;
+                    return (
+                      <div className="bg-sky-900/20 border border-sky-700/40 rounded-xl px-3 py-2 text-[11px] text-sky-300">
+                        This production has {count} sent invoice{count !== 1 ? "s" : ""}. Changes here won't update them.
+                      </div>
+                    );
+                  })()}
                   {/* Core: day type, times, lunch */}
                   <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden">
                     <div className="px-4 py-3 border-b border-neutral-800">
@@ -3714,6 +3747,17 @@ You don't need to subtract anything yourself.`;
                       {dateEdit.perDiemEnabled && (
                         <Field label="Per Diem Amount (£)" hint="Added to day total">
                           <Input type="number" min="0" step="0.01" value={dateEdit.perDiemAmount ?? 0} onChange={e => setDateEdit(p => ({...p, perDiemAmount: Number(e.target.value)}))} />
+                        </Field>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit Money</span>
+                        <Toggle value={!!dateEdit.kitMoneyEnabled} onChange={val => setDateEdit(p => ({...p, kitMoneyEnabled: val}))} ariaLabel="Kit money" />
+                      </div>
+                      {dateEdit.kitMoneyEnabled && (
+                        <Field label="Kit Money Amount (£)" hint="Added to day total">
+                          <Input type="number" min="0" step="0.01" value={dateEdit.kitMoneyAmount ?? 0} onChange={e => setDateEdit(p => ({...p, kitMoneyAmount: Number(e.target.value)}))} />
                         </Field>
                       )}
                     </div>
@@ -3832,6 +3876,7 @@ You don't need to subtract anything yourself.`;
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
         perDiemEnabled: false, perDiemAmount: 0,
+        kitMoneyEnabled: false, kitMoneyAmount: 0,
         expenses: [],
         stepUpEnabled: false, stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
         note: "",
@@ -3983,6 +4028,7 @@ You don't need to subtract anything yourself.`;
           secondBreakStartTime, secondBreakDurationMins,
           miles, travelOutMins, travelBackMins,
           perDiemEnabled, perDiemAmount,
+          kitMoneyEnabled, kitMoneyAmount,
           stepUpEnabled, stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
         } = overrides;
         setDays(prev => prev.map(d =>
@@ -3992,6 +4038,7 @@ You don't need to subtract anything yourself.`;
             secondBreakStartTime, secondBreakDurationMins,
             miles, travelOutMins, travelBackMins,
             perDiemEnabled, perDiemAmount,
+            kitMoneyEnabled, kitMoneyAmount,
             stepUpEnabled, stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
           }
         ));
@@ -5032,7 +5079,11 @@ You don't need to subtract anything yourself.`;
         if (days.length === 0 && crew.length > 0) {
           const blank = makeBlankDay(crew[0].id);
           const defaults = production.defaultDay ?? DEFAULT_PRODUCTION_DAY;
-          const initialDay = { ...defaults, ...blank, id: uid(), date: todayISO() };
+          const initialDay = {
+            ...defaults, ...blank, id: uid(), date: todayISO(),
+            kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
+            kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
+          };
           const callH = parseHHMM(initialDay.callTime) ?? 8;
           initialDay.secondBreakStartTime = toHHMM(callH + 11);
           setDays([initialDay]);
@@ -5067,7 +5118,11 @@ You don't need to subtract anything yourself.`;
         const newDate = d.toISOString().slice(0, 10);
         const blank = makeBlankDay(crew[0]?.id);
         const defaults = production.defaultDay ?? DEFAULT_PRODUCTION_DAY;
-        const newDay = { ...defaults, ...blank, id: uid(), date: newDate };
+        const newDay = {
+          ...defaults, ...blank, id: uid(), date: newDate,
+          kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
+          kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
+        };
         const callH = parseHHMM(newDay.callTime) ?? 8;
         newDay.secondBreakStartTime = toHHMM(callH + 11);
         setDays(prev => [...prev, newDay]);
@@ -5134,6 +5189,18 @@ You don't need to subtract anything yourself.`;
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
       };
 
+      const openInvoiceFromButton = () => {
+        const invoices = production.invoices || [];
+        const latestDraft = [...invoices].reverse().find(inv => inv.status === "draft");
+        const target = latestDraft || invoices[invoices.length - 1];
+        if (target) {
+          setInvoiceNav(target.id);
+        } else {
+          const newId = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, soloCrew?.id);
+          setInvoiceNav(newId);
+        }
+      };
+
       const totalShoot = useMemo(() => {
         return days.reduce((sum, d) => {
           const c = crew.find(cc => cc.id === d.crewId);
@@ -5161,6 +5228,7 @@ You don't need to subtract anything yourself.`;
             setProduction={setProduction}
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
+            userCrewId={soloCrew?.id}
             onBack={() => setInvoiceNav("list")}
           />
         );
@@ -5243,6 +5311,14 @@ You don't need to subtract anything yourself.`;
 
           {/* Day editor body */}
           <div className="max-w-3xl mx-auto px-4 pb-6">
+            {(production.invoices || []).some(inv => inv.status === "sent" || inv.status === "paid") && (() => {
+              const count = (production.invoices || []).filter(inv => inv.status === "sent" || inv.status === "paid").length;
+              return (
+                <div className="bg-sky-900/20 border border-sky-700/40 rounded-xl px-3 py-2 text-[11px] text-sky-300 mb-3">
+                  This production has {count} sent invoice{count !== 1 ? "s" : ""}. Changes here won't update them.
+                </div>
+              );
+            })()}
             <DayEntryForm
               value={currentDay}
               onChange={handleDayChange}
@@ -5300,7 +5376,7 @@ You don't need to subtract anything yourself.`;
               crew={crew}
               total={totalShoot}
               onClose={() => setShowCalc(false)}
-              onGenerateInvoice={() => { setShowCalc(false); setInvoiceNav("list"); }}
+              onGenerateInvoice={() => { setShowCalc(false); openInvoiceFromButton(); }}
               onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
               onExportText={async () => { setShowCalc(false); await handleExportText(); }}
               onPickDay={(dayId) => setCurrentDayId(dayId)}
@@ -5352,7 +5428,7 @@ You don't need to subtract anything yourself.`;
                     <IMessage size={15}/>Export Timesheet (Text)
                   </button>
                   <button type="button"
-                    onClick={() => { setShowExportSheet(false); setInvoiceNav("list"); }}
+                    onClick={() => { setShowExportSheet(false); openInvoiceFromButton(); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IReceipt size={15}/>Generate Invoice
@@ -5493,6 +5569,7 @@ const setDays = (updater) =>
             setProduction={setProduction}
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
+            userCrewId={userCrewId}
             onBack={() => setInvoiceNav("list")}
           />
         );
@@ -6811,14 +6888,26 @@ const setDays = (updater) =>
       );
     }
 
-    function InvoiceEditorView({ invoiceId, production, setProduction, userPrefs, setUserPrefs, onBack }) {
+    function InvoiceEditorView({ invoiceId, production, setProduction, userPrefs, setUserPrefs, userCrewId, onBack }) {
       const invoice = (production.invoices || []).find(inv => inv.id === invoiceId);
       const [actionSheetItem, setActionSheetItem] = React.useState(null);
       const [editingItem, setEditingItem] = React.useState(null);
       const [discountingItem, setDiscountingItem] = React.useState(null);
       const [confirmDel, setConfirmDel] = React.useState(false);
+      const [confirmRefresh, setConfirmRefresh] = React.useState(false);
       const [toastMsg, setToastMsg] = React.useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+
+      // Auto-refresh line items for un-edited drafts whenever this invoice is opened
+      React.useEffect(() => {
+        const inv = (production.invoices || []).find(i => i.id === invoiceId);
+        if (!inv || inv.status !== "draft" || inv.linesEdited || !userCrewId) return;
+        const freshLines = buildInvoiceLineItems(production, userPrefs, userCrewId);
+        setProduction(p => ({
+          ...p,
+          invoices: (p.invoices || []).map(i => i.id === invoiceId ? { ...i, lineItems: freshLines } : i),
+        }));
+      }, [invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
       if (!invoice) {
         return (
@@ -6835,13 +6924,13 @@ const setDays = (updater) =>
         }));
 
       const updateLineItem = (itemId, updates) =>
-        updateInvoice({ lineItems: invoice.lineItems.map(item => item.id === itemId ? { ...item, ...updates } : item) });
+        updateInvoice({ lineItems: invoice.lineItems.map(item => item.id === itemId ? { ...item, ...updates } : item), linesEdited: true });
 
       const deleteLineItem = (itemId) =>
-        updateInvoice({ lineItems: invoice.lineItems.filter(item => item.id !== itemId) });
+        updateInvoice({ lineItems: invoice.lineItems.filter(item => item.id !== itemId), linesEdited: true });
 
       const addLineItem = () =>
-        updateInvoice({ lineItems: [...invoice.lineItems, { id: uid(), label: "New item", detail: "", qty: 1, rate: null, amount: 0, discountedQty: null, isExpense: false }] });
+        updateInvoice({ lineItems: [...invoice.lineItems, { id: uid(), label: "New item", detail: "", qty: 1, rate: null, amount: 0, discountedQty: null, isExpense: false }], linesEdited: true });
 
       const deleteInvoice = () => {
         setProduction(p => ({ ...p, invoices: (p.invoices || []).filter(inv => inv.id !== invoiceId) }));
@@ -6971,6 +7060,16 @@ const setDays = (updater) =>
             </SectionCard>
 
             <SectionCard title="Line items">
+              {invoice.status === "draft" && invoice.linesEdited && (
+                <div className="flex items-center justify-between -mt-2 mb-2">
+                  <span className="text-[10px] text-amber-400 uppercase tracking-wide font-bold">Manually edited</span>
+                  <button type="button" onClick={() => setConfirmRefresh(true)}
+                    className="text-[10px] text-sky-400 hover:text-sky-300 font-bold uppercase tracking-wide"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    Refresh from shoot
+                  </button>
+                </div>
+              )}
               <div className="space-y-1">
                 {normalLines.length === 0 && expenseLines.length === 0 && (
                   <div className="text-[11px] text-neutral-500 italic py-2">No line items — tap Add line below.</div>
@@ -7120,6 +7219,17 @@ const setDays = (updater) =>
             confirmLabel="Delete" confirmTone="danger" cancelLabel="Cancel"
             onConfirm={deleteInvoice}
             onCancel={() => setConfirmDel(false)}
+          />
+          <ConfirmDialog
+            open={confirmRefresh}
+            title="Refresh from shoot?"
+            message="Discard your edits and rebuild line items from current shoot data?"
+            confirmLabel="Refresh" confirmTone="primary" cancelLabel="Keep edits"
+            onConfirm={() => {
+              if (userCrewId) updateInvoice({ lineItems: buildInvoiceLineItems(production, userPrefs, userCrewId), linesEdited: false });
+              setConfirmRefresh(false);
+            }}
+            onCancel={() => setConfirmRefresh(false)}
           />
         </div>
       );
