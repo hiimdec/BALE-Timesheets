@@ -312,7 +312,7 @@
     };
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
     const ceilHalf = (n) => Math.ceil(n * 2) / 2;
-    const computeBHR = (bdr, apaRounding) => { const raw = (Number(bdr) || 0) / 10; return apaRounding ? Math.round(raw) : raw; };
+    const computeAPArate = (bdr, multiplier, apaRounding) => { const raw = (Number(bdr) || 0) * multiplier / 10; return apaRounding ? Math.round(raw) : raw; };
     const todayISO = () => new Date().toISOString().slice(0, 10);
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
     const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
@@ -387,9 +387,9 @@
 
     function calculateDay(day, crew, weekendOpts = {}) {
       const bdr = Number(crew.bdr) || 0;
-      const bhr = computeBHR(bdr, weekendOpts.apaRounding);
+      const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
       const otCoef = crew.noOT ? 0 : (Number(crew.otCoef) || 1);
-      const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : bhr * otCoef;
+      const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : computeAPArate(bdr, otCoef, weekendOpts.apaRounding);
       const bectuOtRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : null;
 
       // APA §2.3: DoP, Art Director, Location Manager always work to BWD rules,
@@ -484,38 +484,42 @@
       if (isNightShoot) {
         const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
         const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
+        const nightRate = bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding);
         lines.push({
           label: "Night Shoot (2× BHR)",
           detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
-          rate: bectuOtRate ?? bhr * 2, qty: paidHrs, amount: paidHrs * (bectuOtRate ?? bhr * 2),
+          rate: nightRate, qty: paidHrs, amount: paidHrs * nightRate,
         });
         if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
       } else if (treatAsSat) {
+        const satRate = computeAPArate(bdr, satMult, weekendOpts.apaRounding);
+        const satOtRate = bectuOtRate ?? satRate;
         if (effectiveDayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
-          if (otHrs > 0) { const satOtRate = bectuOtRate ?? bhr * satMult; lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
+          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
           const baseHrs = Math.max(Math.min(workedHrs, basicHrs), 8);
           const satMinApplied = baseHrs > workedHrs;
-          lines.push({ label: `Saturday ${effectiveDayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * satMult, qty: baseHrs, amount: baseHrs * bhr * satMult });
+          lines.push({ label: `Saturday ${effectiveDayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: satRate, qty: baseHrs, amount: baseHrs * satRate });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
-          if (otHrs > 0) { const satOtRate = bectuOtRate ?? bhr * satMult; lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
+          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         }
       } else if (treatAsSun) {
+        const sunRate = computeAPArate(bdr, sunMult, weekendOpts.apaRounding);
         if (effectiveDayType === "Shoot") {
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
           lines.push({
             label: `${sunBranchPrefix} Shoot (${sunMult}× BHR, flat)`,
             detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
-            rate: bhr * sunMult, qty: paidHrs, amount: paidHrs * bhr * sunMult,
+            rate: sunRate, qty: paidHrs, amount: paidHrs * sunRate,
           });
           if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
         } else {
           const sunPaidHrs = Math.max(workedHrs, 8);
           const sunMinApplied = sunPaidHrs > workedHrs;
-          lines.push({ label: `${sunBranchPrefix} ${effectiveDayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: bhr * sunMult, qty: sunPaidHrs, amount: sunPaidHrs * bhr * sunMult });
+          lines.push({ label: `${sunBranchPrefix} ${effectiveDayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: sunRate, qty: sunPaidHrs, amount: sunPaidHrs * sunRate });
         }
       } else {
         if (effectiveDayType === "Shoot") {
@@ -554,7 +558,8 @@
               });
             }
             if (tripleHrs > 0) {
-              lines.push({ label: "OT Triple Time (00:00–05:00)", detail: "After midnight", rate: bectuOtRate ?? bhr * 3, qty: tripleHrs, amount: tripleHrs * (bectuOtRate ?? bhr * 3) });
+              const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+              lines.push({ label: "OT Triple Time (00:00–05:00)", detail: "After midnight", rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
             }
           }
         }
@@ -619,7 +624,7 @@
 
     function calculatePmpaDay(day, crew, weekendOpts = {}) {
       const bdr = Number(crew.bdr) || 0;
-      const bhr = computeBHR(bdr, weekendOpts.apaRounding);
+      const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
 
       // Non-shoot day: flat BDR. Travel Day, Pre-light, Prep, Recce, Build,
       // De-rig — all the same. (Rest Day is handled by the early return in
@@ -694,7 +699,7 @@
       // BWD: 11h call-to-tail-lights (12h if production runs 11-hour days).
       const basicHrs = isElevenHourDay ? 12 : 11;
       const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
-      const otRate = bhr * mult;
+      const otRate = computeAPArate(bdr, mult, weekendOpts.apaRounding);
 
       const lines = [];
       lines.push({
@@ -904,8 +909,8 @@
       if (isPmpaRole(effectiveCrew)) return null;
       const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
       if (rest === null || rest >= 11) return null;
-      const bhr = computeBHR(effectiveCrew.bdr, apaRounding);
-      const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : bhr * (Number(effectiveCrew.otCoef) || 1);
+      const bhr = computeAPArate(effectiveCrew.bdr, 1, apaRounding);
+      const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : computeAPArate(effectiveCrew.bdr, Number(effectiveCrew.otCoef) || 1, apaRounding);
       const tocHours = 11 - rest;
       return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
     }
@@ -1441,10 +1446,10 @@
 
       // BDR / OT rate display
       const bdr = Number(crewMember.bdr) || 0;
-      const bhr = computeBHR(bdr, production.apaRounding);
+      const bhr = computeAPArate(bdr, 1, production.apaRounding);
       const otRate = (crewMember.otRate != null && crewMember.otRate > 0)
         ? Number(crewMember.otRate)
-        : bhr * (Number(crewMember.otCoef) || 1.5);
+        : computeAPArate(bdr, Number(crewMember.otCoef) || 1.5, production.apaRounding);
 
       return (
         <div className="page ts-page">
