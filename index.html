@@ -5780,13 +5780,22 @@ You don't need to subtract anything yourself.`;
       const [showSettings, setShowSettings] = useState(false);
       const [showJumpSheet, setShowJumpSheet] = useState(false);
       const [showExportSheet, setShowExportSheet] = useState(false);
+      const [pendingDeepLink] = useState(() => initialInvoiceId || null);
       const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
       const [soloExportState, setSoloExportState] = useState(null);
 
       // Deep-link: open specific invoice on mount when launched from AllInvoicesView
       useEffect(() => {
-        if (initialInvoiceId) setInvoiceNav(initialInvoiceId);
+        if (pendingDeepLink) setInvoiceNav(pendingDeepLink);
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      const handleEditorClose = () => {
+        if (pendingDeepLink && invoiceNav === pendingDeepLink) {
+          onBack(); // arrived via deep-link — close all the way home
+        } else {
+          setInvoiceNav("list");
+        }
+      };
 
       const soloWeeks = useMemo(() => computeWeeks(production, days), [production, days]);
       const soloCrew = crew[0] || null;
@@ -5854,7 +5863,7 @@ You don't need to subtract anything yourself.`;
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
             userCrewId={soloCrew?.id}
-            onBack={() => setInvoiceNav("list")}
+            onBack={handleEditorClose}
           />
         );
       }
@@ -6106,12 +6115,21 @@ const setDays = (updater) =>
     return { ...prev, days: next.map(migrateDay) };
   });
       const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
+      const [pendingDeepLink] = useState(() => initialInvoiceId || null);
       const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
 
       // Deep-link: open specific invoice on mount when launched from AllInvoicesView
       useEffect(() => {
-        if (initialInvoiceId) setInvoiceNav(initialInvoiceId);
+        if (pendingDeepLink) setInvoiceNav(pendingDeepLink);
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      const handleEditorClose = () => {
+        if (pendingDeepLink && invoiceNav === pendingDeepLink) {
+          onBack(); // arrived via deep-link — close all the way home
+        } else {
+          setInvoiceNav("list");
+        }
+      };
       const userCrewId = userCrewIdsInProduction(production, userPrefs)[0] ?? null;
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
@@ -6200,7 +6218,7 @@ const setDays = (updater) =>
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
             userCrewId={userCrewId}
-            onBack={() => setInvoiceNav("list")}
+            onBack={handleEditorClose}
           />
         );
       }
@@ -8006,7 +8024,57 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
-    function AllInvoicesView({ productions, onOpenInvoice }) {
+    function InvoiceRowActionSheet({ invoice, onClose, onUpdate, onDelete, showToast }) {
+      const [confirmDelete, setConfirmDelete] = useState(false);
+      const markSent = () => { onUpdate({ status: 'sent', dateSent: todayISO() }); showToast('Marked as sent'); onClose(); };
+      const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); onClose(); };
+      const doDelete = () => { onDelete(); showToast('Invoice deleted'); onClose(); };
+      if (confirmDelete) {
+        return (
+          <ConfirmDialog open title="Delete invoice?" message={`Delete ${invoice.invoiceNumber}? This cannot be undone.`}
+            confirmLabel="Delete" confirmTone="danger" onConfirm={doDelete} onCancel={() => setConfirmDelete(false)} />
+        );
+      }
+      return (
+        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
+          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+            style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-3">
+              <div className="text-sm font-bold text-neutral-100 truncate">{invoice.invoiceNumber}</div>
+            </div>
+            <div className="px-4 pb-4 flex flex-col gap-2">
+              {invoice.status === 'draft' && (
+                <button type="button" onClick={markSent}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <ICheck size={15}/>Mark as Sent
+                </button>
+              )}
+              {invoice.status === 'sent' && (
+                <button type="button" onClick={markPaid}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <ICheck size={15}/>Mark as Paid
+                </button>
+              )}
+              <button type="button" onClick={() => setConfirmDelete(true)}
+                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-red-400 flex items-center gap-2"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <ITrash size={15}/>Delete
+              </button>
+            </div>
+            <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
+              <button type="button" onClick={onClose}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function AllInvoicesView({ productions, onOpenInvoice, onUpdateInvoice, onDeleteInvoice, showToast }) {
       const allInvoices = React.useMemo(() => {
         const items = [];
         for (const p of productions) {
@@ -8018,6 +8086,7 @@ const setDays = (updater) =>
       }, [productions]);
 
       const [hidePaid, setHidePaid] = useState(false);
+      const [actionSheetTarget, setActionSheetTarget] = useState(null);
 
       const visible = React.useMemo(() => {
         const filtered = hidePaid ? allInvoices.filter(({ invoice }) => invoice.status !== 'paid') : allInvoices;
@@ -8076,19 +8145,35 @@ const setDays = (updater) =>
                         {invoice.status === 'paid' && invoice.datePaid && ` · Paid ${fmtDateShort(invoice.datePaid)}`}
                       </div>
                     </div>
-                    <div className="flex-shrink-0 text-right">
-                      <div className="font-mono text-sm font-bold text-neutral-100">{fmtGBP(subtotal + vatAmount)}</div>
+                    <div className="flex-shrink-0 flex items-center gap-1">
+                      <div className="font-mono text-sm font-bold text-neutral-100 text-right">{fmtGBP(subtotal + vatAmount)}</div>
+                      <button
+                        onClick={e => { e.stopPropagation(); setActionSheetTarget({ invoice, production }); }}
+                        className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center"
+                        style={{ minWidth: 36, minHeight: 36, WebkitTapHighlightColor: 'transparent' }}
+                        aria-label="Invoice options">
+                        <IKebab size={14}/>
+                      </button>
                     </div>
                   </div>
                 </button>
               );
             })}
           </div>
+          {actionSheetTarget && (
+            <InvoiceRowActionSheet
+              invoice={actionSheetTarget.invoice}
+              onClose={() => setActionSheetTarget(null)}
+              onUpdate={patch => onUpdateInvoice(actionSheetTarget.production.id, actionSheetTarget.invoice.id, patch)}
+              onDelete={() => onDeleteInvoice(actionSheetTarget.production.id, actionSheetTarget.invoice.id)}
+              showToast={showToast}
+            />
+          )}
         </div>
       );
     }
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, onUpdateInvoice, onDeleteInvoice }) {
       const [homeTab, setHomeTab] = useState("productions"); // "productions" | "invoices"
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
@@ -8309,7 +8394,7 @@ const confirmDelete = (p) => setConfirmOpts({
           </div>
 
           {homeTab === "invoices" ? (
-            <AllInvoicesView productions={productions} onOpenInvoice={(productionId, invoiceId) => onOpen(productionId, { invoiceId })} />
+            <AllInvoicesView productions={productions} onOpenInvoice={(productionId, invoiceId) => onOpen(productionId, { invoiceId })} onUpdateInvoice={onUpdateInvoice} onDeleteInvoice={onDeleteInvoice} showToast={showToast} />
           ) : (
           <div className="max-w-6xl mx-auto px-4">
             <h2 className="text-2xl font-bold tracking-tight mb-6 mt-2">Shoots</h2>
@@ -8499,6 +8584,16 @@ const confirmDelete = (p) => setConfirmOpts({
       const [openInvoiceId, setOpenInvoiceId] = useState(null);
       const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); };
       const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); };
+      const handleUpdateInvoice = (productionId, invoiceId, patch) => {
+        setProductions(prev => prev.map(p => p.id !== productionId ? p : {
+          ...p, invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...patch } : inv),
+        }));
+      };
+      const handleDeleteInvoice = (productionId, invoiceId) => {
+        setProductions(prev => prev.map(p => p.id !== productionId ? p : {
+          ...p, invoices: (p.invoices || []).filter(inv => inv.id !== invoiceId),
+        }));
+      };
       const deleteProduction = (id) => {
         setProductions((prev) => prev.filter((p) => p.id !== id));
         if (openId === id) setOpenId(null);
@@ -8619,7 +8714,7 @@ const confirmDelete = (p) => setConfirmOpts({
         );
       }
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} />;
       }
       if (!currentProduction.bestBoyMode) {
         return <SoloDayPage
