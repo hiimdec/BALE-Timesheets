@@ -992,6 +992,7 @@ You don't need to subtract anything yourself.`;
         toName: production.toName ?? "",
         toAddress: production.toAddress ?? "",
         toEmail: production.invoicingEmail ?? "",
+        jobReference: production.jobReference ?? "",
         fromName: userPrefs.displayName || "",
         fromCompanyName: userPrefs.fromCompanyName || "",
         fromAddress: userPrefs.fromAddress || "",
@@ -1551,6 +1552,292 @@ You don't need to subtract anything yourself.`;
       }
     `;
 
+    const INVOICE_PRINT_STYLES = `
+      #invoice-print-view, #invoice-print-view * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+      #invoice-print-view {
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #171717;
+        -webkit-font-smoothing: antialiased;
+        --ink: #171717;
+        --muted: #525252;
+        --hint: #737373;
+        --accent: #0284c7;
+        --hairline: #e5e5e5;
+        --rule: #171717;
+        --tint: #f0f9ff;
+        --soft: #fafafa;
+      }
+      .invoice-page {
+        width: 210mm;
+        min-height: 297mm;
+        padding: 20mm 22mm;
+        background: white;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+      }
+      .invoice-page * { box-sizing: border-box; }
+      .invoice-page .tnum { font-variant-numeric: tabular-nums; }
+
+      /* Header */
+      .invoice-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--accent);
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+      .invoice-header .brand-block { min-width: 0; }
+      .invoice-header .brand-name {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+      }
+      .invoice-header .brand-meta {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 6px;
+        line-height: 1.5;
+      }
+      .invoice-header .brand-logo {
+        max-width: 200px;
+        max-height: 80px;
+        object-fit: contain;
+        display: block;
+      }
+      .invoice-header .right {
+        text-align: right;
+        flex-shrink: 0;
+      }
+      .invoice-header .invoice-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--accent);
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .invoice-header .invoice-number {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+      }
+      .invoice-header .dates {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 8px;
+        line-height: 1.6;
+      }
+      .invoice-header .dates strong { color: var(--ink); font-weight: 600; }
+
+      /* Section labels */
+      .invoice-section-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--accent);
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      /* Parties */
+      .invoice-parties {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 60px;
+        margin-bottom: 24px;
+      }
+      .invoice-parties .party-name {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ink);
+        margin-bottom: 4px;
+      }
+      .invoice-parties .party-line {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.6;
+        white-space: pre-line;
+      }
+
+      /* Job strip */
+      .invoice-job-strip {
+        background: var(--soft);
+        border-left: 3px solid var(--accent);
+        border-radius: 0;
+        padding: 12px 16px;
+        margin-bottom: 24px;
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .invoice-job-strip strong { color: var(--ink); font-weight: 600; }
+
+      /* Lines */
+      .invoice-lines-wrap { margin-bottom: 24px; }
+      .invoice-lines {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+      .invoice-lines thead th {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--hint);
+        font-weight: 700;
+        padding: 8px 8px 10px;
+        text-align: right;
+        border-bottom: 1.5px solid var(--rule);
+      }
+      .invoice-lines thead th:first-child { text-align: left; }
+      .invoice-lines tbody tr { page-break-inside: avoid; }
+      .invoice-lines tbody td {
+        padding: 10px 8px;
+        vertical-align: top;
+        border-bottom: 1px solid #f5f5f5;
+        font-size: 11px;
+        color: var(--ink);
+      }
+      .invoice-lines tbody td.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .invoice-lines tbody td .line-detail {
+        font-size: 10px;
+        color: var(--hint);
+        margin-top: 2px;
+      }
+      .invoice-lines tbody tr.waived td {
+        text-decoration: line-through;
+        color: #a3a3a3;
+      }
+      .invoice-lines tbody tr.waived td .waived-badge {
+        text-decoration: none;
+      }
+      .waived-badge {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 2px 6px;
+        margin-left: 8px;
+        border-radius: 2px;
+        text-decoration: none;
+      }
+
+      /* Totals */
+      .invoice-totals {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 28px;
+      }
+      .invoice-totals .totals-stack { min-width: 280px; }
+      .invoice-totals .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+      .invoice-totals .row .label { color: var(--muted); }
+      .invoice-totals .row .value {
+        font-variant-numeric: tabular-nums;
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .invoice-totals .row.grand {
+        background: var(--tint);
+        border-top: 2px solid var(--accent);
+        padding: 12px 8px;
+        margin-top: 4px;
+      }
+      .invoice-totals .row.grand .label,
+      .invoice-totals .row.grand .value {
+        color: #0c4a6e;
+        font-weight: 700;
+      }
+      .invoice-totals .row.grand .value { font-size: 18px; }
+
+      /* Notes */
+      .invoice-notes { margin-bottom: 24px; page-break-inside: avoid; }
+      .invoice-notes-body {
+        white-space: pre-line;
+        font-size: 12px;
+        line-height: 1.6;
+        color: #404040;
+      }
+
+      /* Bank */
+      .invoice-bank {
+        background: var(--soft);
+        padding: 18px 22px;
+        margin-bottom: 24px;
+        page-break-inside: avoid;
+      }
+      .invoice-bank-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 24px;
+      }
+      .invoice-bank-field {
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .invoice-bank-field .key {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--hint);
+        font-weight: 600;
+        margin-bottom: 1px;
+      }
+      .invoice-bank-field .val {
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Footer */
+      .invoice-footer {
+        border-top: 1px solid #f5f5f5;
+        padding-top: 20px;
+        margin-top: auto;
+        text-align: center;
+        font-size: 10px;
+        color: var(--hint);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+      .invoice-footer strong { color: var(--ink); font-weight: 700; }
+
+      @media print {
+        body { margin: 0; }
+        .invoice-page {
+          page-break-after: always;
+          break-after: page;
+        }
+        .invoice-page:last-child {
+          page-break-after: auto;
+          break-after: auto;
+        }
+        @page { size: A4 portrait; margin: 0; }
+      }
+    `;
+
     /* ── Chip Legend (shared) ── */
     function ChipLegend() {
       return (
@@ -2043,6 +2330,247 @@ You don't need to subtract anything yourself.`;
         <div id="print-view">
           <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
           {pages}
+        </div>,
+        document.body
+      );
+    }
+
+    /* ── Invoice PDF print view ── */
+    function InvoicePrintView({ invoice, userPrefs }) {
+      const fmtInvDate = (iso) => {
+        if (!iso) return "";
+        return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      };
+
+      const isExpenseLine = (item) => item.isExpense || (item.label || "").startsWith("Expense:");
+      const cleanExpenseLabel = (item) => {
+        if (item.isExpense) return item.label || "";
+        return (item.label || "").replace(/^Expense:\s*/i, "").trim() || (item.label || "");
+      };
+
+      const allLines = invoice.lineItems || [];
+      const normalLines = allLines.filter(l => !isExpenseLine(l));
+      const expenseLines = allLines.filter(l => isExpenseLine(l));
+      const showInd = invoice.showIndividualExpenses === true;
+
+      const subtotal = allLines.reduce((s, l) => s + getLineTotal(l), 0);
+      const vatAmount = invoice.vatRegistered ? subtotal * (invoice.vatRate || 20) / 100 : 0;
+      const total = subtotal + vatAmount;
+
+      const renderLineRows = (item, labelOverride) => {
+        const label = labelOverride ?? item.label ?? "";
+        const isFixed = item.rate === null;
+        const hasDisc = item.discountedQty !== null;
+        const billedQty = hasDisc ? item.discountedQty : item.qty;
+        const fullyWaived = hasDisc && (isFixed || billedQty === 0);
+        const partiallyWaived = hasDisc && !fullyWaived && billedQty < item.qty;
+        const waivedQty = partiallyWaived ? (item.qty - billedQty) : 0;
+        const rows = [];
+
+        if (fullyWaived) {
+          // Single strikethrough row — no kept portion
+          rows.push(
+            <tr key={`${item.id}-w`} className="waived">
+              <td>
+                <div>
+                  {label}
+                  <span className="waived-badge">Waived</span>
+                </div>
+                {item.detail && <div className="line-detail">{item.detail}</div>}
+              </td>
+              <td className="num">{isFixed ? "" : item.qty}</td>
+              <td className="num">{isFixed ? "" : fmtGBP(item.rate)}</td>
+              <td className="num">{isFixed ? fmtGBP(item.amount) : fmtGBP(item.qty * item.rate)}</td>
+            </tr>
+          );
+        } else {
+          // Kept portion row (always rendered)
+          rows.push(
+            <tr key={`${item.id}-k`}>
+              <td>
+                <div>{label}</div>
+                {item.detail && <div className="line-detail">{item.detail}</div>}
+              </td>
+              <td className="num">{isFixed ? "" : (partiallyWaived ? billedQty : item.qty)}</td>
+              <td className="num">{isFixed ? "" : fmtGBP(item.rate)}</td>
+              <td className="num">
+                {isFixed
+                  ? fmtGBP(item.amount)
+                  : fmtGBP((partiallyWaived ? billedQty : item.qty) * item.rate)}
+              </td>
+            </tr>
+          );
+          // Waived portion row (only if partial)
+          if (partiallyWaived) {
+            rows.push(
+              <tr key={`${item.id}-w`} className="waived">
+                <td>
+                  <div>
+                    {label}
+                    <span className="waived-badge">Waived</span>
+                  </div>
+                </td>
+                <td className="num">{waivedQty}</td>
+                <td className="num">{fmtGBP(item.rate)}</td>
+                <td className="num">{fmtGBP(waivedQty * item.rate)}</td>
+              </tr>
+            );
+          }
+        }
+        return rows;
+      };
+
+      const bankFields = [
+        { key: "Bank",         val: invoice.bankName },
+        { key: "Account name", val: invoice.bankAccountName },
+        { key: "Sort code",    val: invoice.bankSortCode },
+        { key: "Account no.",  val: invoice.bankAccountNumber },
+        { key: "IBAN",         val: invoice.bankIBAN },
+        { key: "SWIFT/BIC",    val: invoice.bankSWIFT },
+      ].filter(f => f.val && String(f.val).trim());
+
+      return ReactDOM.createPortal(
+        <div id="invoice-print-view" className="invoice-print-root">
+          <style dangerouslySetInnerHTML={{ __html: INVOICE_PRINT_STYLES }} />
+          <div className="invoice-page">
+
+            {/* Header */}
+            <div className="invoice-header">
+              <div className="brand-block">
+                {userPrefs.logoBase64 ? (
+                  <img src={userPrefs.logoBase64} alt="" className="brand-logo"/>
+                ) : (
+                  <>
+                    <div className="brand-name">{invoice.fromName || ""}</div>
+                    {invoice.fromCompanyName && <div className="brand-meta">{invoice.fromCompanyName}</div>}
+                  </>
+                )}
+              </div>
+              <div className="right">
+                <div className="invoice-label">Invoice</div>
+                <div className="invoice-number">{invoice.invoiceNumber}</div>
+                <div className="dates">
+                  <div>Issued <strong>{fmtInvDate(invoice.invoiceDate)}</strong></div>
+                  <div>Due <strong>{fmtInvDate(invoice.dueDate)}</strong></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Parties */}
+            <div className="invoice-parties">
+              <div>
+                <div className="invoice-section-label">From</div>
+                <div className="party-name">{invoice.fromName || ""}</div>
+                {invoice.fromCompanyName && <div className="party-line">{invoice.fromCompanyName}</div>}
+                {invoice.fromAddress && <div className="party-line">{invoice.fromAddress}</div>}
+                {invoice.fromEmail && <div className="party-line">{invoice.fromEmail}</div>}
+                {invoice.vatRegistered && invoice.vatNumber && (
+                  <div className="party-line">VAT: {invoice.vatNumber}</div>
+                )}
+              </div>
+              <div>
+                <div className="invoice-section-label">Bill To</div>
+                <div className="party-name">{invoice.toName || ""}</div>
+                {invoice.toAddress && <div className="party-line">{invoice.toAddress}</div>}
+                {invoice.toEmail && <div className="party-line">{invoice.toEmail}</div>}
+              </div>
+            </div>
+
+            {/* Job strip */}
+            {invoice.jobReference && (
+              <div className="invoice-job-strip">
+                <strong>Job reference:</strong> {invoice.jobReference}
+              </div>
+            )}
+
+            {/* Lines */}
+            <div className="invoice-lines-wrap">
+              <div className="invoice-section-label">Line Items</div>
+              <table className="invoice-lines">
+                <thead>
+                  <tr>
+                    <th style={{ width: '52%' }}>Description</th>
+                    <th style={{ width: '10%' }}>Qty</th>
+                    <th style={{ width: '18%' }}>Rate</th>
+                    <th style={{ width: '20%' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {normalLines.map(item => renderLineRows(item))}
+                  {!showInd && expenseLines.length > 0 && (() => {
+                    const sum = expenseLines.reduce((s, l) => s + getLineTotal(l), 0);
+                    return (
+                      <tr key="expenses-rollup">
+                        <td>
+                          <div>Expenses</div>
+                          <div className="line-detail">{expenseLines.length} item{expenseLines.length !== 1 ? "s" : ""}</div>
+                        </td>
+                        <td className="num"></td>
+                        <td className="num"></td>
+                        <td className="num">{fmtGBP(sum)}</td>
+                      </tr>
+                    );
+                  })()}
+                  {showInd && expenseLines.map(item => renderLineRows(item, cleanExpenseLabel(item)))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Totals */}
+            <div className="invoice-totals">
+              <div className="totals-stack">
+                {invoice.vatRegistered ? (
+                  <>
+                    <div className="row">
+                      <span className="label">Subtotal</span>
+                      <span className="value">{fmtGBP(subtotal)}</span>
+                    </div>
+                    <div className="row">
+                      <span className="label">VAT ({invoice.vatRate || 20}%)</span>
+                      <span className="value">{fmtGBP(vatAmount)}</span>
+                    </div>
+                    <div className="row grand">
+                      <span className="label">Total due</span>
+                      <span className="value">{fmtGBP(total)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="row grand">
+                    <span className="label">Total due</span>
+                    <span className="value">{fmtGBP(total)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Notes */}
+            {invoice.notes && invoice.notes.trim() && (
+              <div className="invoice-notes">
+                <div className="invoice-section-label">Notes</div>
+                <div className="invoice-notes-body">{invoice.notes}</div>
+              </div>
+            )}
+
+            {/* Bank */}
+            {bankFields.length > 0 && (
+              <div className="invoice-bank">
+                <div className="invoice-section-label">Payment Details</div>
+                <div className="invoice-bank-grid">
+                  {bankFields.map(f => (
+                    <div key={f.key} className="invoice-bank-field">
+                      <div className="key">{f.key}</div>
+                      <div className="val">{f.val}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="invoice-footer">
+              Generated with <strong>TIMEMACHINE</strong> · timemachineapp.co.uk
+            </div>
+          </div>
         </div>,
         document.body
       );
@@ -6739,7 +7267,7 @@ const setDays = (updater) =>
         <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
           <div className="bg-neutral-900 w-full rounded-[16px] shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
-              <div className="text-sm font-bold text-neutral-100">{isFixed ? "Waive line" : "Discount line"}</div>
+              <div className="text-sm font-bold text-neutral-100">{isFixed ? "Waive line" : "Waive portion"}</div>
               <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 p-1 rounded"><IX size={16}/></button>
             </div>
             <div className="px-5 pb-5 space-y-4">
@@ -6758,7 +7286,7 @@ const setDays = (updater) =>
                     <div>Rate: <span className="text-neutral-200 font-mono">{fmtGBP(item.rate)}</span></div>
                     <div>Full amt: <span className="text-neutral-200 font-mono">{fmtGBP(originalAmount)}</span></div>
                   </div>
-                  <Field label="Discounted qty (to bill)">
+                  <Field label="Units to bill" hint="Remaining units will be shown with strikethrough but won't be charged.">
                     <Input type="number" min="0" step="0.5" value={dqty} onChange={(e) => setDqty(e.target.value)} autoFocus />
                   </Field>
                   <div className="flex items-center justify-between text-sm">
@@ -6767,7 +7295,7 @@ const setDays = (updater) =>
                   </div>
                   {saving > 0.005 && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-neutral-500">Saving</span>
+                      <span className="text-neutral-500">Waived</span>
                       <span className="font-mono text-amber-400">-{fmtGBP(saving)}</span>
                     </div>
                   )}
@@ -6781,7 +7309,7 @@ const setDays = (updater) =>
                 </Btn>
               </div>
               {item.discountedQty !== null && (
-                <button className="w-full text-center text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1" onClick={() => onSave(null)}>Remove {isFixed ? "waiver" : "discount"}</button>
+                <button className="w-full text-center text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1" onClick={() => onSave(null)}>Remove waiver</button>
               )}
             </div>
           </div>
@@ -6869,7 +7397,7 @@ const setDays = (updater) =>
               <button type="button" onClick={onDiscount}
                 className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <ICalc size={15}/>{item.rate === null ? "Waive line" : "Discount qty"}
+                <ICalc size={15}/>{item.rate === null ? "Waive line" : "Waive portion"}
                 {item.discountedQty !== null && <span className="ml-auto text-[10px] text-amber-400 font-bold uppercase tracking-wide">Active</span>}
               </button>
               <button type="button" onClick={onDelete}
@@ -6895,8 +7423,27 @@ const setDays = (updater) =>
       const [discountingItem, setDiscountingItem] = React.useState(null);
       const [confirmDel, setConfirmDel] = React.useState(false);
       const [confirmRefresh, setConfirmRefresh] = React.useState(false);
+      const [printTarget, setPrintTarget] = React.useState(null);
       const [toastMsg, setToastMsg] = React.useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+
+      // Trigger print after InvoicePrintView mounts
+      React.useEffect(() => {
+        if (!printTarget) return;
+        const originalTitle = document.title;
+        document.title = printTarget.invoiceNumber || "Invoice";
+        const timer = setTimeout(() => {
+          const cleanup = () => {
+            setPrintTarget(null);
+            document.title = originalTitle;
+          };
+          window.addEventListener('afterprint', cleanup, { once: true });
+          window.print();
+          const fallback = setTimeout(cleanup, 30000);
+          return () => clearTimeout(fallback);
+        }, 300);
+        return () => clearTimeout(timer);
+      }, [printTarget]);
 
       // Auto-refresh line items for un-edited drafts whenever this invoice is opened
       React.useEffect(() => {
@@ -7170,24 +7717,27 @@ const setDays = (updater) =>
               </SectionCard>
             )}
 
-            <SectionCard title="Status">
-              <div className="flex gap-2 flex-wrap">
-                {invoice.status !== "draft" && (
-                  <Btn variant="ghost" size="sm" onClick={() => { updateInvoice({ status: "draft" }); showToast("Marked as draft"); }}>Mark as Draft</Btn>
-                )}
-                {invoice.status !== "sent" && (
-                  <Btn variant="ghost" size="sm" onClick={() => { updateInvoice({ status: "sent" }); showToast("Marked as sent"); }}>Mark as Sent</Btn>
-                )}
-                {invoice.status !== "paid" && (
-                  <Btn variant="primary" size="sm" onClick={() => { updateInvoice({ status: "paid" }); showToast("Marked as paid"); }}>Mark as Paid</Btn>
+            <div className="border-t border-neutral-800 pt-4 flex gap-2 items-center">
+              <Btn variant="danger" onClick={() => setConfirmDel(true)}><ITrash size={14}/>Delete</Btn>
+              <div className="flex gap-2 ml-auto">
+                {invoice.status === "paid" ? (
+                  <Btn variant="primary" onClick={() => setPrintTarget(invoice)}><IDownload size={14}/>Export PDF</Btn>
+                ) : (
+                  <>
+                    <Btn variant="subtle" onClick={() => setPrintTarget(invoice)}><IDownload size={14}/>Export PDF</Btn>
+                    {invoice.status === "draft" && (
+                      <Btn variant="primary" onClick={() => { updateInvoice({ status: "sent" }); showToast("Marked as sent"); }}>Mark as Sent</Btn>
+                    )}
+                    {invoice.status === "sent" && (
+                      <Btn variant="primary" onClick={() => { updateInvoice({ status: "paid" }); showToast("Marked as paid"); }}>Mark as Paid</Btn>
+                    )}
+                  </>
                 )}
               </div>
-            </SectionCard>
-
-            <div className="border-t border-neutral-800 pt-4">
-              <Btn variant="danger" onClick={() => setConfirmDel(true)}><ITrash size={14}/>Delete invoice</Btn>
             </div>
           </div>
+
+          {printTarget && <InvoicePrintView invoice={printTarget} userPrefs={userPrefs} />}
 
           {actionSheetItem && (
             <LineItemActionSheet
