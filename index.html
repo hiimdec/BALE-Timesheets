@@ -993,6 +993,13 @@ You don't need to subtract anything yourself.`;
         toAddress: production.toAddress ?? "",
         toEmail: production.invoicingEmail ?? "",
         jobReference: production.jobReference ?? "",
+        jobTitle: production.title ?? "",
+        jobRole: crewMember?.role ?? "",
+        shootDateStart: production.startDate ?? "",
+        shootDateEnd: (() => {
+          const dates = (production.days || []).map(d => d.date).filter(Boolean).sort();
+          return dates[dates.length - 1] ?? "";
+        })(),
         fromName: userPrefs.displayName || "",
         fromCompanyName: userPrefs.fromCompanyName || "",
         fromAddress: userPrefs.fromAddress || "",
@@ -1574,7 +1581,7 @@ You don't need to subtract anything yourself.`;
       .invoice-page {
         width: 210mm;
         min-height: 297mm;
-        padding: 20mm 22mm;
+        padding: 15mm 18mm;
         background: white;
         display: flex;
         flex-direction: column;
@@ -1684,7 +1691,7 @@ You don't need to subtract anything yourself.`;
       .invoice-job-strip strong { color: var(--ink); font-weight: 600; }
 
       /* Lines */
-      .invoice-lines-wrap { margin-bottom: 24px; }
+      .invoice-lines-wrap { margin-bottom: 18px; }
       .invoice-lines {
         width: 100%;
         border-collapse: collapse;
@@ -1744,7 +1751,7 @@ You don't need to subtract anything yourself.`;
       .invoice-totals {
         display: flex;
         justify-content: flex-end;
-        margin-bottom: 28px;
+        margin-bottom: 20px;
       }
       .invoice-totals .totals-stack { min-width: 280px; }
       .invoice-totals .row {
@@ -1774,19 +1781,19 @@ You don't need to subtract anything yourself.`;
       .invoice-totals .row.grand .value { font-size: 18px; }
 
       /* Notes */
-      .invoice-notes { margin-bottom: 24px; page-break-inside: avoid; }
+      .invoice-notes { margin-bottom: 18px; page-break-inside: avoid; }
       .invoice-notes-body {
         white-space: pre-line;
-        font-size: 12px;
-        line-height: 1.6;
+        font-size: 11px;
+        line-height: 1.5;
         color: #404040;
       }
 
       /* Bank */
       .invoice-bank {
         background: var(--soft);
-        padding: 18px 22px;
-        margin-bottom: 24px;
+        padding: 14px 18px;
+        margin-bottom: 18px;
         page-break-inside: avoid;
       }
       .invoice-bank-grid {
@@ -1825,7 +1832,9 @@ You don't need to subtract anything yourself.`;
       .invoice-footer strong { color: var(--ink); font-weight: 700; }
 
       @media print {
-        body { margin: 0; }
+        body > *:not(#invoice-print-view) { display: none !important; }
+        #invoice-print-view { display: block !important; }
+        html, body { background: white !important; margin: 0; }
         .invoice-page {
           page-break-after: always;
           break-after: page;
@@ -2468,18 +2477,26 @@ You don't need to subtract anything yourself.`;
                   <div className="party-line">VAT: {invoice.vatNumber}</div>
                 )}
               </div>
-              <div>
-                <div className="invoice-section-label">Bill To</div>
-                <div className="party-name">{invoice.toName || ""}</div>
-                {invoice.toAddress && <div className="party-line">{invoice.toAddress}</div>}
-                {invoice.toEmail && <div className="party-line">{invoice.toEmail}</div>}
-              </div>
+              {(invoice.toName || invoice.toAddress || invoice.toEmail) && (
+                <div>
+                  <div className="invoice-section-label">Bill To</div>
+                  {invoice.toName && <div className="party-name">{invoice.toName}</div>}
+                  {invoice.toAddress && <div className="party-line">{invoice.toAddress}</div>}
+                  {invoice.toEmail && <div className="party-line">{invoice.toEmail}</div>}
+                </div>
+              )}
             </div>
 
             {/* Job strip */}
-            {invoice.jobReference && (
+            {(invoice.jobTitle || invoice.jobRole || invoice.jobReference || invoice.shootDateStart) && (
               <div className="invoice-job-strip">
-                <strong>Job reference:</strong> {invoice.jobReference}
+                {invoice.jobTitle && <div><strong>Production:</strong> {invoice.jobTitle}</div>}
+                {invoice.jobRole && <div><strong>Role:</strong> {invoice.jobRole}</div>}
+                {invoice.jobReference && <div><strong>Job reference:</strong> {invoice.jobReference}</div>}
+                {invoice.shootDateStart && <div><strong>Shoot dates:</strong> {invoice.shootDateStart === invoice.shootDateEnd || !invoice.shootDateEnd
+                  ? fmtInvDate(invoice.shootDateStart)
+                  : `${fmtInvDate(invoice.shootDateStart)} – ${fmtInvDate(invoice.shootDateEnd)}`}
+                </div>}
               </div>
             )}
 
