@@ -6372,19 +6372,19 @@ const confirmDelete = (p) => setConfirmOpts({
             <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-start justify-between">
               <div>
                 {displayName && <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-1">{displayName}'s</div>}
-                <h1 className="text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
+                <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
               </div>
               <div className="flex items-center gap-1 mt-1">
-                <button onClick={onOpenStats} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Stats" aria-label="Stats">
+                <button onClick={onOpenStats} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Stats" aria-label="Stats">
                   <IStats size={20}/>
                 </button>
-                <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-400" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
+                <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-400" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
                   <ISearch size={20}/>
                 </button>
-                <button onClick={() => setShowCancellationCalc(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Cancellation Calculator" aria-label="Cancellation Calculator">
+                <button onClick={() => setShowCancellationCalc(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Cancellation Calculator" aria-label="Cancellation Calculator">
                   <ICalc size={20}/>
                 </button>
-                <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-3 rounded-full hover:bg-neutral-800" title="Settings" aria-label="Settings">
+                <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Settings" aria-label="Settings">
                   <IGear size={20}/>
                 </button>
               </div>
