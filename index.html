@@ -257,6 +257,24 @@
       vatRegistered: false,
       vatRate: 20,
       vatNumber: "",
+      // Invoicing — From info (displayName is the "From" name)
+      fromCompanyName: "",
+      fromAddress: "",
+      fromEmail: "",
+      // Invoicing — Bank details
+      bankName: "",
+      bankAccountName: "",
+      bankAccountNumber: "",
+      bankSortCode: "",
+      bankIBAN: "",
+      bankSWIFT: "",
+      // Invoicing — Numbering
+      invoicePrefix: "TM-INV-",
+      invoiceNextNumber: 1,
+      // Invoicing — Payment terms
+      paymentTermsDays: 30,
+      // Invoicing — Logo (data URL)
+      logoBase64: "",
       defaultMileageRate: 0.5,
       defaultKitMoneyEnabled: false,
       defaultKitMoneyAmount: 0,
@@ -798,6 +816,8 @@ You don't need to subtract anything yourself.`;
       weekStarts: p.weekStarts ?? [],
       gridDates: p.gridDates ?? [],
       cancellationData: p.cancellationData ?? null,
+      toAddress: p.toAddress ?? "",
+      invoices: p.invoices ?? [],
     });
 
     function useStoredState(key, initial, migrate) {
@@ -4417,6 +4437,16 @@ You don't need to subtract anything yourself.`;
               <Field label="Production company">
                 <Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" />
               </Field>
+              <Field label="Company address" hint="Where the invoice is addressed to">
+                <textarea
+                  value={production.toAddress || ""}
+                  onChange={(e) => setProduction(p => ({ ...p, toAddress: e.target.value }))}
+                  placeholder={"e.g.\n5 Margaret Street\nLondon W1W 8RG"}
+                  rows={3}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
+                  style={{ fontFamily: 'inherit' }}
+                />
+              </Field>
               <Field label="Start date">
                 <Input type="date" value={production.startDate || ""} onChange={handleStartDateChange} />
               </Field>
@@ -5789,6 +5819,107 @@ const setDays = (updater) =>
                   />
                 </Field>
               )}
+            </SectionCard>
+
+            <SectionCard title="Invoicing">
+              <div className="space-y-4">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Your details (on the invoice)</div>
+                  <div className="text-[10px] text-neutral-500 mb-3">Your display name (from My Setup) appears as the invoice's "From" name.</div>
+                  <Field label="Company name" hint="Optional — if you trade as a limited company">
+                    <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
+                  </Field>
+                  <Field label="Your address">
+                    <textarea
+                      value={userPrefs.fromAddress}
+                      onChange={(e) => set({ fromAddress: e.target.value })}
+                      rows={3}
+                      placeholder={"e.g.\n12 Crew Lane\nLondon NW1 8AB"}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
+                      style={{ fontFamily: 'inherit' }}
+                    />
+                  </Field>
+                  <Field label="Email" hint="Where clients reply to about the invoice">
+                    <Input type="email" value={userPrefs.fromEmail} onChange={(e) => set({ fromEmail: e.target.value })} placeholder="you@example.com" />
+                  </Field>
+                </div>
+
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Bank details (for payment)</div>
+                  <Field label="Bank name">
+                    <Input type="text" value={userPrefs.bankName} onChange={(e) => set({ bankName: e.target.value })} placeholder="e.g. Barclays" />
+                  </Field>
+                  <Field label="Account name">
+                    <Input type="text" value={userPrefs.bankAccountName} onChange={(e) => set({ bankAccountName: e.target.value })} placeholder="As it appears on the account" />
+                  </Field>
+                  <Field label="Account number">
+                    <Input type="text" value={userPrefs.bankAccountNumber} onChange={(e) => set({ bankAccountNumber: e.target.value })} placeholder="8 digits" />
+                  </Field>
+                  <Field label="Sort code">
+                    <Input type="text" value={userPrefs.bankSortCode} onChange={(e) => set({ bankSortCode: e.target.value })} placeholder="00-00-00" />
+                  </Field>
+                  <Field label="IBAN" hint="Optional — for international payments">
+                    <Input type="text" value={userPrefs.bankIBAN} onChange={(e) => set({ bankIBAN: e.target.value })} placeholder="GB00 BARC 0000 0000 0000 00" />
+                  </Field>
+                  <Field label="SWIFT / BIC" hint="Optional — for international payments">
+                    <Input type="text" value={userPrefs.bankSWIFT} onChange={(e) => set({ bankSWIFT: e.target.value })} placeholder="BARCGB22" />
+                  </Field>
+                </div>
+
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Invoice numbering</div>
+                  <Field label="Invoice prefix" hint="Appears before the number on each invoice">
+                    <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
+                  </Field>
+                  <Field label="Next invoice number" hint="If you've been invoicing elsewhere, enter your last used number + 1 and we'll continue from there">
+                    <Input type="number" min="1" step="1" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
+                  </Field>
+                </div>
+
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Default payment terms</div>
+                  <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
+                    <Input type="number" min="0" step="1" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
+                  </Field>
+                </div>
+
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Logo (optional)</div>
+                  <div className="text-[10px] text-neutral-500 mb-3">Recommended: square, under 200KB. Renders at ~100px on your invoices.</div>
+                  {userPrefs.logoBase64 ? (
+                    <div className="flex items-center gap-3">
+                      <img src={userPrefs.logoBase64} alt="Logo preview" style={{ maxWidth: 100, maxHeight: 100, borderRadius: 8, background: '#262626' }} />
+                      <Btn variant="ghost" size="sm" onClick={() => set({ logoBase64: "" })}>Remove logo</Btn>
+                    </div>
+                  ) : (
+                    <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm font-semibold text-neutral-200 transition-colors cursor-pointer" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 500 * 1024) {
+                            showToast('Logo file too large — please use under 500KB.');
+                            e.target.value = '';
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (ev) => set({ logoBase64: ev.target.result });
+                          reader.readAsDataURL(file);
+                          e.target.value = '';
+                        }}
+                      />
+                      <IUpload size={14}/> Upload logo
+                    </label>
+                  )}
+                </div>
+
+                <div className="text-[10px] text-neutral-500 italic mt-4 leading-snug">
+                  All your invoicing details stay on your device — we don't store or transmit any of this.
+                </div>
+              </div>
             </SectionCard>
 
             <SectionCard title="Defaults for new productions">
