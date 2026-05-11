@@ -804,6 +804,20 @@ You don't need to subtract anything yourself.`;
         .map(c => c.id);
     }
 
+    function migrateInvoice(inv, p) {
+      if (!inv) return inv;
+      const allDates = (p.days || []).map(d => d.date).filter(Boolean).sort();
+      return {
+        ...inv,
+        linesEdited: inv.linesEdited ?? false,
+        jobTitle: inv.jobTitle ?? p.title ?? "",
+        jobReference: inv.jobReference ?? p.jobReference ?? "",
+        jobRole: inv.jobRole ?? "",
+        shootDateStart: inv.shootDateStart ?? p.startDate ?? allDates[0] ?? "",
+        shootDateEnd: inv.shootDateEnd ?? allDates[allDates.length - 1] ?? "",
+      };
+    }
+
     const migrateProduction = (p) => ({
       ...p,
       crew: (p.crew || []).map(migrateCrew),
@@ -818,7 +832,7 @@ You don't need to subtract anything yourself.`;
       gridDates: p.gridDates ?? [],
       cancellationData: p.cancellationData ?? null,
       toAddress: p.toAddress ?? "",
-      invoices: p.invoices ?? [],
+      invoices: (p.invoices || []).map(inv => migrateInvoice(inv, p)),
       days: (p.days || []).map(day => {
         if (day.kitMoneyEnabled !== undefined) return day;
         const crewMember = (p.crew || []).find(c => c.id === day.crewId);
@@ -7462,14 +7476,26 @@ const setDays = (updater) =>
         return () => clearTimeout(timer);
       }, [printTarget]);
 
-      // Auto-refresh line items for un-edited drafts whenever this invoice is opened
+      // Auto-refresh line items and job context for un-edited drafts whenever this invoice is opened
       React.useEffect(() => {
         const inv = (production.invoices || []).find(i => i.id === invoiceId);
-        if (!inv || inv.status !== "draft" || inv.linesEdited || !userCrewId) return;
-        const freshLines = buildInvoiceLineItems(production, userPrefs, userCrewId);
+        if (!inv || inv.status !== "draft" || inv.linesEdited) return;
+        const userCrew = (production.crew || []).find(c => c.id === userCrewId);
+        const relevantDays = userCrewId
+          ? (production.days || []).filter(d => d.crewId === userCrewId)
+          : (production.days || []);
+        const sortedDates = relevantDays.map(d => d.date).filter(Boolean).sort();
+        const updates = {
+          jobTitle: production.title || "",
+          jobReference: production.jobReference || "",
+          jobRole: userCrew?.role || inv.jobRole || "",
+          shootDateStart: sortedDates[0] || "",
+          shootDateEnd: sortedDates[sortedDates.length - 1] || "",
+        };
+        if (userCrewId) updates.lineItems = buildInvoiceLineItems(production, userPrefs, userCrewId);
         setProduction(p => ({
           ...p,
-          invoices: (p.invoices || []).map(i => i.id === invoiceId ? { ...i, lineItems: freshLines } : i),
+          invoices: (p.invoices || []).map(i => i.id === invoiceId ? { ...i, ...updates } : i),
         }));
       }, [invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
