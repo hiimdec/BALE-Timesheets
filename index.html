@@ -332,6 +332,8 @@
 
 You don't need to subtract anything yourself.`;
 
+    const EXPENSE_CATEGORIES = ["Transport", "Food", "Equipment", "Accommodation", "Other"];
+
     /* ═══════════════════════════ DERIVED BREAK STATE ═══════════════════════════ */
 
     function deriveBreakState(day, effectiveDayType = day.dayType) {
@@ -744,7 +746,7 @@ You don't need to subtract anything yourself.`;
     /* ═══════════════════════════ MIGRATION + STORAGE ═══════════════════════════ */
 
     function migrateDay(d) {
-      d = { note: "", ...d };
+      d = { note: "", expenses: [], ...d };
       if (d.lunchStartTime !== undefined) return d;
       if (!d.callTime) return d;
       const callH = parseHHMM(d.callTime) || 8;
@@ -872,6 +874,11 @@ You don't need to subtract anything yourself.`;
         extra.push({ label: "Kit Money", detail: "", rate: null, qty: 1, amount: Number(crewMember.kitMoneyAmount) });
       if (resolvedDay?.perDiemEnabled && Number(resolvedDay.perDiemAmount) > 0)
         extra.push({ label: "Per Diem", detail: "", rate: null, qty: 1, amount: Number(resolvedDay.perDiemAmount) });
+      (resolvedDay?.expenses || []).forEach(exp => {
+        const amt = Number(exp.amount) || 0;
+        if (amt <= 0) return;
+        extra.push({ label: `Expense: ${exp.category || "Other"}`, detail: exp.description || "", rate: null, qty: 1, amount: amt });
+      });
       if (!extra.length) return calc;
       const lines = [...calc.lines, ...extra];
       return { ...calc, lines, total: calc.total + extra.reduce((s, l) => s + l.amount, 0) };
@@ -2914,6 +2921,49 @@ You don't need to subtract anything yourself.`;
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Expenses</span>
+                <button
+                  type="button"
+                  onClick={() => set({ expenses: [...(v.expenses || []), { id: uid(), amount: 0, category: "Other", description: "" }] })}
+                  className="text-[10px] uppercase tracking-wide text-sky-400 hover:text-sky-300 font-bold flex items-center gap-1"
+                ><IPlus size={11}/>Add expense</button>
+              </div>
+              {(v.expenses || []).length > 0 && (
+                <div className="space-y-2">
+                  {(v.expenses || []).map((exp) => (
+                    <div key={exp.id} className="flex flex-wrap items-center gap-2">
+                      <Select
+                        value={exp.category}
+                        onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, category: e.target.value } : x) })}
+                        className="flex-shrink-0" style={{ width: 116 }}
+                      >
+                        {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </Select>
+                      <Input
+                        type="number" min="0" step="0.01"
+                        value={exp.amount}
+                        onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, amount: Number(e.target.value) || 0 } : x) })}
+                        placeholder="0.00" className="flex-shrink-0" style={{ width: 84 }}
+                      />
+                      <Input
+                        type="text"
+                        value={exp.description}
+                        onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, description: e.target.value } : x) })}
+                        placeholder="Description" className="flex-1 min-w-[80px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => set({ expenses: v.expenses.filter(x => x.id !== exp.id) })}
+                        className="text-neutral-600 hover:text-red-400 transition-colors flex-shrink-0 p-1"
+                        aria-label="Remove expense"
+                      ><IX size={14}/></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Step-Up for this day</span>
                 <Toggle value={!!v.stepUpEnabled} onChange={(val) => set({ stepUpEnabled: val })} ariaLabel="Step-up" />
               </div>
@@ -3210,6 +3260,7 @@ You don't need to subtract anything yourself.`;
           travelBackMins: firstEntry?.travelBackMins ?? 0,
           perDiemEnabled: firstEntry?.perDiemEnabled ?? false,
           perDiemAmount: firstEntry?.perDiemAmount ?? 0,
+          expenses: firstEntry?.expenses ?? [],
           stepUpEnabled: firstEntry?.stepUpEnabled ?? false,
           stepUpRole: firstEntry?.stepUpRole ?? "",
           stepUpBDR: firstEntry?.stepUpBDR ?? 0,
@@ -3541,6 +3592,49 @@ You don't need to subtract anything yourself.`;
                     </div>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Expenses</span>
+                        <button
+                          type="button"
+                          onClick={() => setDateEdit(p => ({ ...p, expenses: [...(p.expenses || []), { id: uid(), amount: 0, category: "Other", description: "" }] }))}
+                          className="text-[10px] uppercase tracking-wide text-sky-400 hover:text-sky-300 font-bold flex items-center gap-1"
+                        ><IPlus size={11}/>Add expense</button>
+                      </div>
+                      {(dateEdit.expenses || []).length > 0 && (
+                        <div className="space-y-2">
+                          {(dateEdit.expenses || []).map((exp) => (
+                            <div key={exp.id} className="flex flex-wrap items-center gap-2">
+                              <Select
+                                value={exp.category}
+                                onChange={(e) => setDateEdit(p => ({ ...p, expenses: p.expenses.map(x => x.id === exp.id ? { ...x, category: e.target.value } : x) }))}
+                                className="flex-shrink-0" style={{ width: 116 }}
+                              >
+                                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                              </Select>
+                              <Input
+                                type="number" min="0" step="0.01"
+                                value={exp.amount}
+                                onChange={(e) => setDateEdit(p => ({ ...p, expenses: p.expenses.map(x => x.id === exp.id ? { ...x, amount: Number(e.target.value) || 0 } : x) }))}
+                                placeholder="0.00" className="flex-shrink-0" style={{ width: 84 }}
+                              />
+                              <Input
+                                type="text"
+                                value={exp.description}
+                                onChange={(e) => setDateEdit(p => ({ ...p, expenses: p.expenses.map(x => x.id === exp.id ? { ...x, description: e.target.value } : x) }))}
+                                placeholder="Description" className="flex-1 min-w-[80px]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setDateEdit(p => ({ ...p, expenses: p.expenses.filter(x => x.id !== exp.id) }))}
+                                className="text-neutral-600 hover:text-red-400 transition-colors flex-shrink-0 p-1"
+                                aria-label="Remove expense"
+                              ><IX size={14}/></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
                         <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Step-Up for all crew</span>
                         <Toggle value={!!dateEdit.stepUpEnabled} onChange={val => setDateEdit(p => ({...p, stepUpEnabled: val}))} ariaLabel="Step-up" />
                       </div>
@@ -3611,6 +3705,7 @@ You don't need to subtract anything yourself.`;
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
         perDiemEnabled: false, perDiemAmount: 0,
+        expenses: [],
         stepUpEnabled: false, stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
         note: "",
       };
