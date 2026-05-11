@@ -8028,6 +8028,8 @@ const setDays = (updater) =>
       const [confirmDelete, setConfirmDelete] = useState(false);
       const markSent = () => { onUpdate({ status: 'sent', dateSent: todayISO() }); showToast('Marked as sent'); onClose(); };
       const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); onClose(); };
+      const revertToDraft = () => { onUpdate({ status: 'draft', dateSent: null }); showToast('Marked as draft'); onClose(); };
+      const revertToSent = () => { onUpdate({ status: 'sent', datePaid: null }); showToast('Marked as unpaid'); onClose(); };
       const doDelete = () => { onDelete(); showToast('Invoice deleted'); onClose(); };
       if (confirmDelete) {
         return (
@@ -8056,6 +8058,20 @@ const setDays = (updater) =>
                   className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
                   <ICheck size={15}/>Mark as Paid
+                </button>
+              )}
+              {invoice.status === 'sent' && (
+                <button type="button" onClick={revertToDraft}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-400 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IReset size={15}/>Mark as Draft
+                </button>
+              )}
+              {invoice.status === 'paid' && (
+                <button type="button" onClick={revertToSent}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-400 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IReset size={15}/>Mark as Unpaid
                 </button>
               )}
               <button type="button" onClick={() => setConfirmDelete(true)}
@@ -8173,8 +8189,7 @@ const setDays = (updater) =>
       );
     }
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, onUpdateInvoice, onDeleteInvoice }) {
-      const [homeTab, setHomeTab] = useState("productions"); // "productions" | "invoices"
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, onUpdateInvoice, onDeleteInvoice, homeTab, setHomeTab }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -8582,6 +8597,7 @@ const confirmDelete = (p) => setConfirmOpts({
       }, []); // runs once on mount only
 
       const [openInvoiceId, setOpenInvoiceId] = useState(null);
+      const [homeTab, setHomeTab] = useState("productions");
       const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); };
       const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); };
       const handleUpdateInvoice = (productionId, invoiceId, patch) => {
@@ -8714,7 +8730,7 @@ const confirmDelete = (p) => setConfirmOpts({
         );
       }
       if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} />;
+        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} homeTab={homeTab} setHomeTab={setHomeTab} />;
       }
       if (!currentProduction.bestBoyMode) {
         return <SoloDayPage
