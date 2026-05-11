@@ -5672,7 +5672,7 @@ You don't need to subtract anything yourself.`;
 
     /* ═══════════════════════════ SOLO DAY PAGE (full-page editor for solo mode) ═══════════════════════════ */
 
-    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs }) {
+    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs, initialInvoiceId }) {
       const crew = production.crew ?? [];
       const days = production.days ?? [];
 
@@ -5782,6 +5782,11 @@ You don't need to subtract anything yourself.`;
       const [showExportSheet, setShowExportSheet] = useState(false);
       const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
       const [soloExportState, setSoloExportState] = useState(null);
+
+      // Deep-link: open specific invoice on mount when launched from AllInvoicesView
+      useEffect(() => {
+        if (initialInvoiceId) setInvoiceNav(initialInvoiceId);
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       const soloWeeks = useMemo(() => computeWeeks(production, days), [production, days]);
       const soloCrew = crew[0] || null;
@@ -6082,7 +6087,7 @@ You don't need to subtract anything yourself.`;
 
     /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
-    function ProductionApp({ production, setProduction, onBack, userPrefs, setUserPrefs }) {
+    function ProductionApp({ production, setProduction, onBack, userPrefs, setUserPrefs, initialInvoiceId }) {
 
 // Convenience aliases — child components keep receiving crew/days as before
 const crew = production.crew ?? [];
@@ -6102,6 +6107,11 @@ const setDays = (updater) =>
   });
       const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
       const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
+
+      // Deep-link: open specific invoice on mount when launched from AllInvoicesView
+      useEffect(() => {
+        if (initialInvoiceId) setInvoiceNav(initialInvoiceId);
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
       const userCrewId = userCrewIdsInProduction(production, userPrefs)[0] ?? null;
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
@@ -7345,6 +7355,35 @@ const setDays = (updater) =>
       return { label: "DRAFT", classes: "text-amber-400 bg-amber-400/10 border-amber-400/30" };
     }
 
+    function toneClasses(tone) {
+      if (tone === 'red')     return "text-red-300 bg-red-900/40 border-red-700/40";
+      if (tone === 'sky')     return "text-sky-300 bg-sky-900/40 border-sky-700/40";
+      if (tone === 'green')   return "text-green-300 bg-green-900/30 border-green-700/30";
+      return "text-neutral-400 bg-neutral-800 border-neutral-700"; // neutral / default
+    }
+
+    function getProductionInvoiceStatus(production) {
+      const invoices = production.invoices || [];
+      if (invoices.length === 0) return null;
+      const todayMs = new Date(todayISO() + 'T12:00:00').getTime();
+      let mostOverdueDays = 0, sentCount = 0, draftCount = 0, paidCount = 0;
+      for (const inv of invoices) {
+        if (inv.status === 'paid') { paidCount++; }
+        else if (inv.status === 'sent') {
+          sentCount++;
+          if (inv.dueDate) {
+            const overdueDays = Math.floor((todayMs - new Date(inv.dueDate + 'T12:00:00').getTime()) / 86400000);
+            if (overdueDays > mostOverdueDays) mostOverdueDays = overdueDays;
+          }
+        } else { draftCount++; }
+      }
+      if (mostOverdueDays > 0) return { label: `OVERDUE ${mostOverdueDays}d`, tone: 'red' };
+      if (sentCount > 0) return { label: sentCount > 1 ? `${sentCount} SENT` : 'SENT', tone: 'sky' };
+      if (draftCount > 0) return { label: draftCount > 1 ? `${draftCount} DRAFT` : 'DRAFT', tone: 'neutral' };
+      if (paidCount > 0) return { label: paidCount > 1 ? `${paidCount} PAID` : 'PAID', tone: 'green' };
+      return null;
+    }
+
     function DiscountModal({ item, onSave, onClose }) {
       const isFixed = item.rate === null; // fixed-amount line (penalty, expense, kit money, etc.)
       const [dqty, setDqty] = React.useState(
@@ -7967,7 +8006,90 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
+    function AllInvoicesView({ productions, onOpenInvoice }) {
+      const allInvoices = React.useMemo(() => {
+        const items = [];
+        for (const p of productions) {
+          for (const inv of (p.invoices || [])) {
+            items.push({ invoice: inv, production: p });
+          }
+        }
+        return items;
+      }, [productions]);
+
+      const [hidePaid, setHidePaid] = useState(false);
+
+      const visible = React.useMemo(() => {
+        const filtered = hidePaid ? allInvoices.filter(({ invoice }) => invoice.status !== 'paid') : allInvoices;
+        const priorityOf = ({ invoice }) => {
+          const s = getDisplayStatus(invoice);
+          if (s.label.startsWith('OVERDUE')) return 0;
+          if (invoice.status === 'sent') return 1;
+          if (invoice.status === 'draft') return 2;
+          return 3;
+        };
+        return [...filtered].sort((a, b) => {
+          const pa = priorityOf(a), pb = priorityOf(b);
+          if (pa !== pb) return pa - pb;
+          return (b.invoice.invoiceDate || '').localeCompare(a.invoice.invoiceDate || '');
+        });
+      }, [allInvoices, hidePaid]);
+
+      if (allInvoices.length === 0) {
+        return (
+          <div className="max-w-6xl mx-auto px-4 py-12 text-center">
+            <div className="flex justify-center mb-4 text-neutral-700"><IReceipt size={40}/></div>
+            <div className="text-neutral-400 text-sm font-semibold">No invoices yet.</div>
+            <div className="text-neutral-500 text-xs mt-2">Open a production and tap Generate Invoice to start.</div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="max-w-6xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs text-neutral-500">{visible.length} invoice{visible.length === 1 ? '' : 's'}</div>
+            <label className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer select-none">
+              <input type="checkbox" checked={hidePaid} onChange={e => setHidePaid(e.target.checked)} className="accent-sky-400"/>
+              Hide paid
+            </label>
+          </div>
+          <div className="space-y-2">
+            {visible.map(({ invoice, production }) => {
+              const s = getDisplayStatus(invoice);
+              const subtotal = invoiceSubtotal(invoice.lineItems);
+              const vatAmount = invoice.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
+              return (
+                <button key={invoice.id} onClick={() => onOpenInvoice(production.id, invoice.id)}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-3 text-left hover:bg-neutral-800 active:bg-neutral-700 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="font-mono text-sm font-bold text-neutral-100 truncate">{invoice.invoiceNumber}</span>
+                        <span className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide border ${s.classes}`}>{s.label}</span>
+                      </div>
+                      <div className="text-xs text-neutral-400 truncate">{production.title || <span className="italic text-neutral-500">Untitled production</span>}</div>
+                      <div className="text-[10px] text-neutral-500 mt-1">
+                        {invoice.invoiceDate && `Issued ${fmtDateShort(invoice.invoiceDate)}`}
+                        {invoice.status === 'sent' && invoice.dueDate && ` · Due ${fmtDateShort(invoice.dueDate)}`}
+                        {invoice.status === 'paid' && invoice.datePaid && ` · Paid ${fmtDateShort(invoice.datePaid)}`}
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0 text-right">
+                      <div className="font-mono text-sm font-bold text-neutral-100">{fmtGBP(subtotal + vatAmount)}</div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
     function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs }) {
+      const [homeTab, setHomeTab] = useState("productions"); // "productions" | "invoices"
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -8061,6 +8183,8 @@ const confirmDelete = (p) => setConfirmOpts({
         const cardSetDays = (updater) => onUpdateDays(p.id, updater);
         const hasToday = (p.days ?? []).some(d => d.date === todayStr);
         const bestBoyBadge = p.bestBoyMode ? <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span> : null;
+        const invStatus = getProductionInvoiceStatus(p);
+        const invChip = invStatus ? <span className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${toneClasses(invStatus.tone)}`}>{invStatus.label}</span> : null;
         const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
         const wrapperClass = "bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer select-none touch-manipulation";
 
@@ -8072,6 +8196,7 @@ const confirmDelete = (p) => setConfirmOpts({
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
                     {bestBoyBadge}
+                    {invChip}
                   </div>
                   <div className="text-sm text-neutral-400 truncate">{metaText}</div>
                   <div className="text-lg font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
@@ -8100,6 +8225,7 @@ const confirmDelete = (p) => setConfirmOpts({
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
                   {bestBoyBadge}
+                  {invChip}
                 </div>
                 <div className="text-sm text-neutral-400 truncate">{metaText}</div>
                 <div className="text-base font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
@@ -8148,7 +8274,19 @@ const confirmDelete = (p) => setConfirmOpts({
                 </button>
               </div>
             </div>
-            {searchOpen && (
+            {/* Home tab strip */}
+            <div className="max-w-6xl mx-auto px-4 pt-1 pb-3">
+              <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
+                {[{ k: "productions", label: "Productions", I: IBriefcase }, { k: "invoices", label: "Invoices", I: IReceipt }].map(({ k, label, I }) => (
+                  <button key={k} onClick={() => setHomeTab(k)}
+                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${homeTab === k ? "bg-sky-400 text-black" : "text-neutral-400 hover:text-neutral-200"}`}>
+                    <I size={11}/>{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {searchOpen && homeTab === "productions" && (
               <div className="max-w-6xl mx-auto px-4 pb-3">
                 <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2.5">
                   <ISearch size={15} className="text-neutral-500 flex-shrink-0"/>
@@ -8170,6 +8308,9 @@ const confirmDelete = (p) => setConfirmOpts({
             )}
           </div>
 
+          {homeTab === "invoices" ? (
+            <AllInvoicesView productions={productions} onOpenInvoice={(productionId, invoiceId) => onOpen(productionId, { invoiceId })} />
+          ) : (
           <div className="max-w-6xl mx-auto px-4">
             <h2 className="text-2xl font-bold tracking-tight mb-6 mt-2">Shoots</h2>
 
@@ -8223,17 +8364,20 @@ const confirmDelete = (p) => setConfirmOpts({
               </>
             )}
           </div>
+          )} {/* end homeTab === "productions" */}
 
-          {/* Floating action button */}
-          <button
-            onClick={onNewProduction}
-            className="fixed z-30 bg-sky-400 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
-            style={{ width: 56, height: 56, bottom: 'calc(env(safe-area-inset-bottom) + 24px)', right: 24 }}
-            title="New Production"
-            aria-label="New Production"
-          >
-            <IPlus size={24}/>
-          </button>
+          {/* Floating action button — only on Productions tab */}
+          {homeTab === "productions" && (
+            <button
+              onClick={onNewProduction}
+              className="fixed z-30 bg-sky-400 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
+              style={{ width: 56, height: 56, bottom: 'calc(env(safe-area-inset-bottom) + 24px)', right: 24 }}
+              title="New Production"
+              aria-label="New Production"
+            >
+              <IPlus size={24}/>
+            </button>
+          )}
 
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
 
@@ -8352,8 +8496,9 @@ const confirmDelete = (p) => setConfirmOpts({
         } catch {}
       }, []); // runs once on mount only
 
-      const openProduction = (id) => setOpenId(id);
-      const closeProduction = () => setOpenId(null);
+      const [openInvoiceId, setOpenInvoiceId] = useState(null);
+      const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); };
+      const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); };
       const deleteProduction = (id) => {
         setProductions((prev) => prev.filter((p) => p.id !== id));
         if (openId === id) setOpenId(null);
@@ -8487,9 +8632,10 @@ const confirmDelete = (p) => setConfirmOpts({
           }}
           userPrefs={userPrefs}
           setUserPrefs={setUserPrefs}
+          initialInvoiceId={openInvoiceId}
         />;
       }
-      return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} />;
+      return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} initialInvoiceId={openInvoiceId} />;
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
