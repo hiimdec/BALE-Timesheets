@@ -4486,7 +4486,7 @@
 
     /* ═══════════════════════════ CALC BREAKDOWN VIEW ═══════════════════════════ */
 
-    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText }) {
+    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay }) {
       const sorted = useMemo(() => [...days].sort((a, b) => {
         const dc = a.date.localeCompare(b.date);
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
@@ -4510,8 +4510,47 @@
               const c = crew.find(cc => cc.id === d.crewId);
               if (!c) return null;
               const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
+              const cardStyle = { background: '#171717', border: '1px solid #262626', borderRadius: 12, marginBottom: 12, padding: '12px 14px' };
+              const lineItems = calc.lines.map((l, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingBottom: 3 }}>
+                  <span style={{ fontSize: 11, color: l.rate === null ? '#fca5a5' : '#737373', flex: 1 }}>
+                    {(() => {
+                      const isOT = /\bot\b|\bovertime\b/i.test(l.label || '');
+                      if (isOT) {
+                        return <>{l.detail ? <>{l.detail} — </> : null}{formatOTDuration(l.qty)}h {l.label}</>;
+                      }
+                      return <>{l.label}{l.detail ? <span style={{ color: '#525252' }}> · {l.detail}</span> : ''}</>;
+                    })()}
+                  </span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: l.rate === null ? '#fca5a5' : '#a3a3a3', flexShrink: 0 }}>{fmtGBP(l.amount)}</span>
+                </div>
+              ));
+              if (onPickDay) {
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className="hover:bg-[#1f1f1f] active:bg-[#262626]"
+                    style={{ ...cardStyle, cursor: 'pointer', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit', transition: 'background-color 0.15s', WebkitTapHighlightColor: 'transparent' }}
+                    onClick={() => { onPickDay(d.id); onClose(); }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtDateShort(d.date)}</span>
+                        <span style={{ color: '#737373', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{weekday(d.date)}</span>
+                        {production.bestBoyMode && <span style={{ color: '#a3a3a3', fontSize: 11 }}>{c.name}</span>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <IArrowRight size={14} style={{ color: '#525252', opacity: 0.6, flexShrink: 0 }} />
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtGBP(calc.total)}</span>
+                      </div>
+                    </div>
+                    {lineItems}
+                  </button>
+                );
+              }
               return (
-                <div key={d.id} style={{ background: '#171717', border: '1px solid #262626', borderRadius: 12, marginBottom: 12, padding: '12px 14px' }}>
+                <div key={d.id} style={cardStyle}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                       <span style={{ fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtDateShort(d.date)}</span>
@@ -4520,20 +4559,7 @@
                     </div>
                     <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtGBP(calc.total)}</span>
                   </div>
-                  {calc.lines.map((l, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingBottom: 3 }}>
-                      <span style={{ fontSize: 11, color: l.rate === null ? '#fca5a5' : '#737373', flex: 1 }}>
-                        {(() => {
-                          const isOT = /\bot\b|\bovertime\b/i.test(l.label || '');
-                          if (isOT) {
-                            return <>{l.detail ? <>{l.detail} — </> : null}{formatOTDuration(l.qty)}h {l.label}</>;
-                          }
-                          return <>{l.label}{l.detail ? <span style={{ color: '#525252' }}> · {l.detail}</span> : ''}</>;
-                        })()}
-                      </span>
-                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: l.rate === null ? '#fca5a5' : '#a3a3a3', flexShrink: 0 }}>{fmtGBP(l.amount)}</span>
-                    </div>
-                  ))}
+                  {lineItems}
                 </div>
               );
             })}
@@ -5005,6 +5031,7 @@
               onClose={() => setShowCalc(false)}
               onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
               onExportText={async () => { setShowCalc(false); await handleExportText(); }}
+              onPickDay={(dayId) => setCurrentDayId(dayId)}
             />
           )}
 
