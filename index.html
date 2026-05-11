@@ -918,8 +918,7 @@ You don't need to subtract anything yourself.`;
 
       for (const day of myDays) {
         const calc = calcForDisplay(production, day, crewMember, prevDay);
-        const augmented = augmentCalc(calc, day, crewMember);
-        for (const line of augmented.lines) {
+        for (const line of calc.lines) {
           const isExpense = (line.label || "").startsWith("Expense:");
           let key, displayLabel;
           if (isExpense) {
@@ -4724,7 +4723,7 @@ You don't need to subtract anything yourself.`;
 
     /* ═══════════════════════════ CALC BREAKDOWN VIEW ═══════════════════════════ */
 
-    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay }) {
+    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay, onGenerateInvoice }) {
       const sorted = useMemo(() => [...days].sort((a, b) => {
         const dc = a.date.localeCompare(b.date);
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
@@ -4808,8 +4807,15 @@ You don't need to subtract anything yourself.`;
               <span style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Shoot Total</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 20, color: '#f5f5f5' }}>{fmtGBP(total)}</span>
             </div>
-            {(onExportPDF || onExportText) && (
+            {(onGenerateInvoice || onExportPDF || onExportText) && (
               <div style={{ borderTop: '1px solid #1a1a1a', padding: '12px 16px', display: 'flex', gap: 8 }}>
+                {onGenerateInvoice && (
+                  <button type="button" onClick={onGenerateInvoice}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300"
+                    style={{ minHeight: 44, WebkitTapHighlightColor: 'transparent' }}>
+                    <IReceipt size={15}/>Invoice
+                  </button>
+                )}
                 {onExportPDF && (
                   <button type="button" onClick={onExportPDF}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300"
@@ -5272,11 +5278,6 @@ You don't need to subtract anything yourself.`;
               <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(totalShoot)}</span>
               <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View Calculation</span>
             </button>
-            <button onClick={() => setInvoiceNav("list")} aria-label="Generate invoice"
-              style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                       color: '#171717', WebkitTapHighlightColor: 'transparent' }}>
-              <IReceipt size={20}/>
-            </button>
             {isLast ? (
               <button onClick={addDay} aria-label="Add next day"
                 style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5299,6 +5300,7 @@ You don't need to subtract anything yourself.`;
               crew={crew}
               total={totalShoot}
               onClose={() => setShowCalc(false)}
+              onGenerateInvoice={() => { setShowCalc(false); setInvoiceNav("list"); }}
               onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
               onExportText={async () => { setShowCalc(false); await handleExportText(); }}
               onPickDay={(dayId) => setCurrentDayId(dayId)}
