@@ -339,6 +339,7 @@
     const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
     const fmtDateShort = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
     const uid = () => Math.random().toString(36).slice(2, 10);
+    const addDays = (isoDate, n) => { const d = new Date(isoDate + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
     const roleRank = (role) => { const r = role === "Spark" ? "Lighting Technician" : role; const i = ROLE_ORDER.indexOf(r); return i === -1 ? 99 : i; };
 
     // Travel time UX copy — caption shows inline, explainer expands on ⓘ tap.
@@ -902,6 +903,85 @@ You don't need to subtract anything yourself.`;
       if (!extra.length) return calc;
       const lines = [...calc.lines, ...extra];
       return { ...calc, lines, total: calc.total + extra.reduce((s, l) => s + l.amount, 0) };
+    }
+
+    function buildInvoiceLineItems(production, userPrefs, userCrewId) {
+      const crewMember = (production.crew || []).find(c => c.id === userCrewId);
+      if (!crewMember) return [];
+      const myDays = (production.days || [])
+        .filter(d => d.crewId === userCrewId)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const items = [];
+      let prevDay = null;
+      for (const day of myDays) {
+        const calc = calcForDisplay(production, day, crewMember, prevDay);
+        const augmented = augmentCalc(calc, day, crewMember);
+        const dateStr = fmtDateShort(day.date);
+        for (const line of augmented.lines) {
+          const detailParts = [dateStr];
+          if (line.detail) detailParts.push(line.detail);
+          items.push({
+            id: uid(),
+            label: line.label,
+            detail: detailParts.join(' — '),
+            qty: typeof line.qty === 'number' ? line.qty : 1,
+            rate: typeof line.rate === 'number' ? line.rate : null,
+            amount: Number(line.amount) || 0,
+            discountedQty: null,
+          });
+        }
+        prevDay = day;
+      }
+      return items;
+    }
+
+    function buildDefaultNotes(production, userPrefs, userCrewId) {
+      const crewMember = (production.crew || []).find(c => c.id === userCrewId);
+      if (!crewMember) return "";
+      const myDays = (production.days || []).filter(d => d.crewId === userCrewId);
+      return generateCrewText(crewMember, myDays, production);
+    }
+
+    function createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId) {
+      const crewMember = (production.crew || []).find(c => c.id === userCrewId);
+      const prefix = userPrefs.invoicePrefix || "INV-";
+      const num = userPrefs.invoiceNextNumber || 1;
+      const invoiceNumber = `${prefix}${String(num).padStart(3, '0')}`;
+      const today = todayISO();
+      const dueDate = addDays(today, Number(userPrefs.paymentTermsDays) || 30);
+      const lineItems = buildInvoiceLineItems(production, userPrefs, userCrewId);
+      const notes = buildDefaultNotes(production, userPrefs, userCrewId);
+      const newId = uid();
+      const invoice = {
+        id: newId,
+        invoiceNumber,
+        invoiceDate: today,
+        dueDate,
+        toName: production.toName ?? "",
+        toAddress: production.toAddress ?? "",
+        toEmail: production.invoicingEmail ?? "",
+        fromName: userPrefs.displayName || "",
+        fromCompanyName: userPrefs.fromCompanyName || "",
+        fromAddress: userPrefs.fromAddress || "",
+        fromEmail: userPrefs.fromEmail || "",
+        bankName: userPrefs.bankName || "",
+        bankAccountName: userPrefs.bankAccountName || "",
+        bankAccountNumber: userPrefs.bankAccountNumber || "",
+        bankSortCode: userPrefs.bankSortCode || "",
+        bankIBAN: userPrefs.bankIBAN || "",
+        bankSWIFT: userPrefs.bankSWIFT || "",
+        vatRegistered: crewMember?.vatRegistered ?? userPrefs.vatRegistered ?? false,
+        vatRate: crewMember?.vatRate ?? userPrefs.vatRate ?? 20,
+        vatNumber: userPrefs.vatNumber || "",
+        logoBase64: userPrefs.logoBase64 || "",
+        lineItems,
+        notes,
+        status: "draft",
+        createdAt: new Date().toISOString(),
+      };
+      setProduction(p => ({ ...p, invoices: [...(p.invoices || []), invoice] }));
+      setUserPrefs(prev => ({ ...prev, invoiceNextNumber: num + 1 }));
+      return newId;
     }
 
     function resolveCrewForDay(resolvedDay, crewMember) {
@@ -1975,6 +2055,7 @@ You don't need to subtract anything yourself.`;
     const ISearch = (p) => <Icon {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></Icon>;
     const IStats = (p) => <Icon {...p}><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/><line x1="3" y1="20" x2="21" y2="20"/></Icon>;
     const IExternalLink = (p) => <Icon {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></Icon>;
+    const IReceipt = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16l3-2 2 2 2-2 2 2 2-2 3 2V4a2 2 0 0 0-2-2z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
@@ -4891,7 +4972,7 @@ You don't need to subtract anything yourself.`;
 
     /* ═══════════════════════════ SOLO DAY PAGE (full-page editor for solo mode) ═══════════════════════════ */
 
-    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs }) {
+    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs }) {
       const crew = production.crew ?? [];
       const days = production.days ?? [];
 
@@ -4991,6 +5072,7 @@ You don't need to subtract anything yourself.`;
       const [showSettings, setShowSettings] = useState(false);
       const [showJumpSheet, setShowJumpSheet] = useState(false);
       const [showExportSheet, setShowExportSheet] = useState(false);
+      const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
       const [soloExportState, setSoloExportState] = useState(null);
 
       const soloWeeks = useMemo(() => computeWeeks(production, days), [production, days]);
@@ -5034,6 +5116,32 @@ You don't need to subtract anything yourself.`;
             setProduction={setProduction}
             crew={crew}
             onClose={() => setShowSettings(false)}
+          />
+        );
+      }
+
+      if (invoiceNav && invoiceNav !== "list") {
+        return (
+          <InvoiceEditorView
+            invoiceId={invoiceNav}
+            production={production}
+            setProduction={setProduction}
+            userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
+            onBack={() => setInvoiceNav("list")}
+          />
+        );
+      }
+      if (invoiceNav === "list") {
+        return (
+          <InvoiceListView
+            production={production}
+            setProduction={setProduction}
+            userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
+            userCrewId={soloCrew?.id}
+            onOpenInvoice={(id) => setInvoiceNav(id)}
+            onClose={() => setInvoiceNav(null)}
           />
         );
       }
@@ -5209,6 +5317,12 @@ You don't need to subtract anything yourself.`;
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IMessage size={15}/>Export Timesheet (Text)
                   </button>
+                  <button type="button"
+                    onClick={() => { setShowExportSheet(false); setInvoiceNav("list"); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IReceipt size={15}/>Generate Invoice
+                  </button>
                 </div>
                 <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
                   <button type="button" onClick={() => setShowExportSheet(false)}
@@ -5238,7 +5352,7 @@ You don't need to subtract anything yourself.`;
 
     /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
-    function ProductionApp({ production, setProduction, onBack, userPrefs }) {
+    function ProductionApp({ production, setProduction, onBack, userPrefs, setUserPrefs }) {
 
 // Convenience aliases — child components keep receiving crew/days as before
 const crew = production.crew ?? [];
@@ -5257,6 +5371,8 @@ const setDays = (updater) =>
     return { ...prev, days: next.map(migrateDay) };
   });
       const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
+      const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
+      const userCrewId = userCrewIdsInProduction(production, userPrefs)[0] ?? null;
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
@@ -5335,6 +5451,32 @@ const setDays = (updater) =>
         );
       }
 
+      if (invoiceNav && invoiceNav !== "list") {
+        return (
+          <InvoiceEditorView
+            invoiceId={invoiceNav}
+            production={production}
+            setProduction={setProduction}
+            userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
+            onBack={() => setInvoiceNav("list")}
+          />
+        );
+      }
+      if (invoiceNav === "list") {
+        return (
+          <InvoiceListView
+            production={production}
+            setProduction={setProduction}
+            userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
+            userCrewId={userCrewId}
+            onOpenInvoice={(id) => setInvoiceNav(id)}
+            onClose={() => setInvoiceNav(null)}
+          />
+        );
+      }
+
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
@@ -5378,10 +5520,10 @@ const setDays = (updater) =>
               <div className="max-w-6xl mx-auto px-4 py-2 flex justify-start overflow-x-auto">
                 <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
                   {(production.bestBoyMode
-                    ? [{ k: "setup", label: "Setup", I: IBriefcase }, { k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
+                    ? [{ k: "setup", label: "Setup", I: IBriefcase }, { k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }, { k: "invoices", label: "Invoices", I: IReceipt }]
                     : [{ k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
                   ).map(({ k, label, I }) => (
-                    <button key={k} onClick={() => setTab(k)}
+                    <button key={k} onClick={() => { if (k === "invoices") { setInvoiceNav("list"); } else { setTab(k); } }}
                       className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-400 text-black" : "text-neutral-400"}`}>
                       <I/>{label}
                     </button>
@@ -5853,10 +5995,20 @@ const setDays = (updater) =>
                     <Input type="text" value={userPrefs.bankAccountName} onChange={(e) => set({ bankAccountName: e.target.value })} placeholder="As it appears on the account" />
                   </Field>
                   <Field label="Account number">
-                    <Input type="text" value={userPrefs.bankAccountNumber} onChange={(e) => set({ bankAccountNumber: e.target.value })} placeholder="8 digits" />
+                    <Input type="text" inputMode="numeric" value={userPrefs.bankAccountNumber}
+                      onChange={(e) => set({ bankAccountNumber: e.target.value.replace(/\D/g, '').slice(0, 8) })}
+                      placeholder="8 digits" />
                   </Field>
                   <Field label="Sort code">
-                    <Input type="text" value={userPrefs.bankSortCode} onChange={(e) => set({ bankSortCode: e.target.value })} placeholder="00-00-00" />
+                    <Input type="text" inputMode="numeric" value={userPrefs.bankSortCode}
+                      onChange={(e) => {
+                        const d = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        const fmt = d.length > 4 ? `${d.slice(0,2)}-${d.slice(2,4)}-${d.slice(4)}`
+                                  : d.length > 2 ? `${d.slice(0,2)}-${d.slice(2)}`
+                                  : d;
+                        set({ bankSortCode: fmt });
+                      }}
+                      placeholder="00-00-00" />
                   </Field>
                   <Field label="IBAN" hint="Optional — for international payments">
                     <Input type="text" value={userPrefs.bankIBAN} onChange={(e) => set({ bankIBAN: e.target.value })} placeholder="GB00 BARC 0000 0000 0000 00" />
@@ -6432,6 +6584,497 @@ const setDays = (updater) =>
       );
     }
 
+    /* ═══════════════════════════ INVOICE COMPONENTS ═══════════════════════════ */
+
+    const INVOICE_STATUS_COLORS = {
+      draft: "text-amber-400 bg-amber-400/10 border-amber-400/30",
+      sent:  "text-sky-400 bg-sky-400/10 border-sky-400/30",
+      paid:  "text-green-400 bg-green-400/10 border-green-400/30",
+    };
+    const INVOICE_STATUS_LABELS = { draft: "Draft", sent: "Sent", paid: "Paid" };
+
+    function invoiceSubtotal(lineItems) {
+      return (lineItems || []).reduce((sum, item) => {
+        const qty = item.discountedQty !== null ? item.discountedQty : item.qty;
+        return sum + (item.rate !== null ? qty * item.rate : item.amount);
+      }, 0);
+    }
+
+    function DiscountModal({ item, onSave, onClose }) {
+      const [dqty, setDqty] = React.useState(
+        item.discountedQty !== null ? String(item.discountedQty) : String(item.qty)
+      );
+      const parsedQty = parseFloat(dqty) || 0;
+      const originalAmount = item.rate !== null ? item.qty * item.rate : item.amount;
+      const discountedAmount = item.rate !== null ? parsedQty * item.rate : item.amount;
+      const saving = originalAmount - discountedAmount;
+      return (
+        <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
+          <div className="bg-neutral-900 w-full rounded-[16px] shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+              <div className="text-sm font-bold text-neutral-100">Discount line</div>
+              <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 p-1 rounded"><IX size={16}/></button>
+            </div>
+            <div className="px-5 pb-5 space-y-4">
+              <div>
+                <div className="text-[11px] text-neutral-400 font-semibold">{item.label}</div>
+                {item.detail && <div className="text-[10px] text-neutral-600">{item.detail}</div>}
+              </div>
+              <div className="flex items-center gap-3 text-sm text-neutral-400 flex-wrap">
+                <div>Full qty: <span className="text-neutral-200 font-mono">{item.qty}</span></div>
+                {item.rate !== null && <div>Rate: <span className="text-neutral-200 font-mono">{fmtGBP(item.rate)}</span></div>}
+                <div>Full amt: <span className="text-neutral-200 font-mono">{fmtGBP(originalAmount)}</span></div>
+              </div>
+              <Field label="Discounted qty (to bill)">
+                <Input type="number" min="0" step="0.5" value={dqty} onChange={(e) => setDqty(e.target.value)} autoFocus />
+              </Field>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-neutral-400">Billed amount</span>
+                <span className="font-mono font-bold text-neutral-100">{fmtGBP(discountedAmount)}</span>
+              </div>
+              {saving > 0.005 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-neutral-500">Saving</span>
+                  <span className="font-mono text-amber-400">-{fmtGBP(saving)}</span>
+                </div>
+              )}
+              <div className="flex gap-3 pt-1">
+                <Btn variant="ghost" className="flex-1 justify-center" onClick={onClose}>Cancel</Btn>
+                <Btn variant="primary" className="flex-1 justify-center" onClick={() => onSave(parsedQty)}>Apply</Btn>
+              </div>
+              {item.discountedQty !== null && (
+                <button className="w-full text-center text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1" onClick={() => onSave(null)}>Remove discount</button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function LineEditModal({ item, onSave, onClose }) {
+      const [label, setLabel] = React.useState(item.label);
+      const [detail, setDetail] = React.useState(item.detail);
+      const [qty, setQty] = React.useState(String(item.qty));
+      const [rate, setRate] = React.useState(item.rate !== null ? String(item.rate) : "");
+      const [amount, setAmount] = React.useState(String(item.amount));
+      const parsedQty = parseFloat(qty) || 0;
+      const parsedRate = parseFloat(rate);
+      const hasRate = rate !== "" && !isNaN(parsedRate);
+      const computedAmount = hasRate ? parsedQty * parsedRate : parseFloat(amount) || 0;
+      const handleSave = () => onSave({
+        ...item,
+        label: label.trim() || item.label,
+        detail: detail.trim(),
+        qty: parsedQty,
+        rate: hasRate ? parsedRate : null,
+        amount: computedAmount,
+      });
+      return (
+        <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
+          <div className="bg-neutral-900 w-full rounded-[16px] shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+              <div className="text-sm font-bold text-neutral-100">Edit line item</div>
+              <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 p-1 rounded"><IX size={16}/></button>
+            </div>
+            <div className="px-5 pb-5 space-y-3">
+              <Field label="Label">
+                <Input type="text" value={label} onChange={(e) => setLabel(e.target.value)} autoFocus />
+              </Field>
+              <Field label="Detail" hint="e.g. date, time range">
+                <Input type="text" value={detail} onChange={(e) => setDetail(e.target.value)} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Qty">
+                  <Input type="number" min="0" step="0.5" value={qty} onChange={(e) => setQty(e.target.value)} />
+                </Field>
+                <Field label="Rate (£)" hint="Blank = fixed amount">
+                  <Input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="—" />
+                </Field>
+              </div>
+              <Field label="Amount (£)" hint={hasRate ? "Computed: qty × rate" : "Fixed amount"}>
+                <Input
+                  type="number" min="0" step="0.01"
+                  value={hasRate ? computedAmount.toFixed(2) : amount}
+                  onChange={(e) => { if (!hasRate) setAmount(e.target.value); }}
+                  disabled={hasRate}
+                  style={hasRate ? { opacity: 0.5 } : {}}
+                />
+              </Field>
+              <div className="flex items-center justify-between text-sm border-t border-neutral-800 pt-2">
+                <span className="text-neutral-400">Line total</span>
+                <span className="font-mono font-bold text-neutral-100">{fmtGBP(computedAmount)}</span>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <Btn variant="ghost" className="flex-1 justify-center" onClick={onClose}>Cancel</Btn>
+                <Btn variant="primary" className="flex-1 justify-center" onClick={handleSave}>Save</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function LineItemActionSheet({ item, onEdit, onDiscount, onDelete, onClose }) {
+      return (
+        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
+          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-3">
+              <div className="text-sm font-bold text-neutral-100 truncate">{item.label}</div>
+              {item.detail && <div className="text-[11px] text-neutral-500 mt-0.5 truncate">{item.detail}</div>}
+            </div>
+            <div className="px-4 pb-4 flex flex-col gap-2">
+              <button type="button" onClick={onEdit}
+                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <IPencil size={15}/>Edit
+              </button>
+              {item.rate !== null && (
+                <button type="button" onClick={onDiscount}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <ICalc size={15}/>Discount qty
+                  {item.discountedQty !== null && <span className="ml-auto text-[10px] text-amber-400 font-bold uppercase tracking-wide">Active</span>}
+                </button>
+              )}
+              <button type="button" onClick={onDelete}
+                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-red-400 flex items-center gap-2"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <ITrash size={15}/>Delete line
+              </button>
+            </div>
+            <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
+              <button type="button" onClick={onClose}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function InvoiceEditorView({ invoiceId, production, setProduction, userPrefs, setUserPrefs, onBack }) {
+      const invoice = (production.invoices || []).find(inv => inv.id === invoiceId);
+      const [actionSheetItem, setActionSheetItem] = React.useState(null);
+      const [editingItem, setEditingItem] = React.useState(null);
+      const [discountingItem, setDiscountingItem] = React.useState(null);
+      const [confirmDel, setConfirmDel] = React.useState(false);
+      const [toastMsg, setToastMsg] = React.useState(null);
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+
+      if (!invoice) {
+        return (
+          <div className="min-h-screen bg-neutral-950 flex items-center justify-center text-neutral-500 text-sm">
+            Invoice not found
+          </div>
+        );
+      }
+
+      const updateInvoice = (updates) =>
+        setProduction(p => ({
+          ...p,
+          invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...updates } : inv),
+        }));
+
+      const updateLineItem = (itemId, updates) =>
+        updateInvoice({ lineItems: invoice.lineItems.map(item => item.id === itemId ? { ...item, ...updates } : item) });
+
+      const deleteLineItem = (itemId) =>
+        updateInvoice({ lineItems: invoice.lineItems.filter(item => item.id !== itemId) });
+
+      const addLineItem = () =>
+        updateInvoice({ lineItems: [...invoice.lineItems, { id: uid(), label: "New item", detail: "", qty: 1, rate: null, amount: 0, discountedQty: null }] });
+
+      const deleteInvoice = () => {
+        setProduction(p => ({ ...p, invoices: (p.invoices || []).filter(inv => inv.id !== invoiceId) }));
+        onBack();
+      };
+
+      const subtotal = invoiceSubtotal(invoice.lineItems);
+      const vatAmount = invoice.vatRegistered ? subtotal * (invoice.vatRate || 20) / 100 : 0;
+      const total = subtotal + vatAmount;
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <Toast show={!!toastMsg}>{toastMsg}</Toast>
+          <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onBack} className="text-neutral-400 hover:text-sky-400 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
+                <IArrowLeft size={18}/>
+              </button>
+              <div className="flex-1 min-w-0 text-sm font-bold truncate">{invoice.invoiceNumber}</div>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border flex-shrink-0 ${INVOICE_STATUS_COLORS[invoice.status] || INVOICE_STATUS_COLORS.draft}`}>
+                {INVOICE_STATUS_LABELS[invoice.status] || "Draft"}
+              </span>
+            </div>
+          </div>
+
+          <div className="max-w-3xl mx-auto px-4 py-6 pb-24 space-y-6">
+            <SectionCard title="Invoice details">
+              <Field label="Invoice number">
+                <Input type="text" value={invoice.invoiceNumber} onChange={(e) => updateInvoice({ invoiceNumber: e.target.value })} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Invoice date">
+                  <Input type="date" value={invoice.invoiceDate} onChange={(e) => updateInvoice({ invoiceDate: e.target.value })} />
+                </Field>
+                <Field label="Due date">
+                  <Input type="date" value={invoice.dueDate} onChange={(e) => updateInvoice({ dueDate: e.target.value })} />
+                </Field>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="From / To">
+              <div className="space-y-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">From (you)</div>
+                  <div className="text-sm text-neutral-300 space-y-0.5">
+                    {invoice.fromName && <div className="font-semibold">{invoice.fromName}</div>}
+                    {invoice.fromCompanyName && <div>{invoice.fromCompanyName}</div>}
+                    {invoice.fromAddress && <div className="whitespace-pre-line text-neutral-400 text-[12px]">{invoice.fromAddress}</div>}
+                    {invoice.fromEmail && <div className="text-neutral-400 text-[12px]">{invoice.fromEmail}</div>}
+                    {!invoice.fromName && !invoice.fromCompanyName && !invoice.fromAddress && !invoice.fromEmail && (
+                      <div className="text-[11px] text-neutral-600 italic">Add your details in Settings → Invoicing</div>
+                    )}
+                  </div>
+                </div>
+                <div className="border-t border-neutral-800 pt-3">
+                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">To (client)</div>
+                  <Field label="Client / company name">
+                    <Input type="text" value={invoice.toName} onChange={(e) => updateInvoice({ toName: e.target.value })} placeholder="Production company name" />
+                  </Field>
+                  <Field label="Client address">
+                    <textarea
+                      value={invoice.toAddress}
+                      onChange={(e) => updateInvoice({ toAddress: e.target.value })}
+                      rows={3}
+                      placeholder={"Address line 1\nLine 2\nPostcode"}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
+                      style={{ fontFamily: 'inherit' }}
+                    />
+                  </Field>
+                  <Field label="Client email">
+                    <Input type="email" value={invoice.toEmail} onChange={(e) => updateInvoice({ toEmail: e.target.value })} placeholder="billing@example.com" />
+                  </Field>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Line items">
+              <div className="space-y-1">
+                {invoice.lineItems.length === 0 && (
+                  <div className="text-[11px] text-neutral-500 italic py-2">No line items — tap Add line below.</div>
+                )}
+                {invoice.lineItems.map((item) => {
+                  const billedQty = item.discountedQty !== null ? item.discountedQty : item.qty;
+                  const lineTotal = item.rate !== null ? billedQty * item.rate : item.amount;
+                  return (
+                    <div key={item.id} className="flex items-start gap-2 py-2 border-b border-neutral-800 last:border-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-neutral-200">{item.label}</div>
+                        {item.detail && <div className="text-[11px] text-neutral-500 truncate">{item.detail}</div>}
+                        {item.rate !== null && (
+                          <div className="text-[10px] text-neutral-600 mt-0.5">
+                            {item.discountedQty !== null
+                              ? <><span className="text-amber-400">{item.discountedQty}</span>/{item.qty} × {fmtGBP(item.rate)}</>
+                              : <>{billedQty} × {fmtGBP(item.rate)}</>}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-sm font-mono font-bold text-neutral-100 flex-shrink-0 pt-0.5">{fmtGBP(lineTotal)}</div>
+                      <button onClick={() => setActionSheetItem(item)}
+                        className="text-neutral-500 hover:text-neutral-300 transition-colors p-1 flex-shrink-0"
+                        aria-label="Line options" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        <IKebab size={16}/>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="pt-2">
+                <Btn variant="ghost" size="sm" onClick={addLineItem}><IPlus size={13}/>Add line</Btn>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Totals">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-neutral-400">Subtotal</span>
+                  <span className="font-mono text-neutral-200">{fmtGBP(subtotal)}</span>
+                </div>
+                {invoice.vatRegistered && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-neutral-400">VAT ({invoice.vatRate || 20}%)</span>
+                    <span className="font-mono text-neutral-200">{fmtGBP(vatAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-bold border-t border-neutral-700 pt-2 mt-2">
+                  <span>{invoice.vatRegistered ? "Total inc. VAT" : "Total"}</span>
+                  <span className="font-mono">{fmtGBP(total)}</span>
+                </div>
+                {invoice.vatRegistered && invoice.vatNumber && (
+                  <div className="text-[10px] text-neutral-500 mt-1">VAT reg: {invoice.vatNumber}</div>
+                )}
+              </div>
+              <div className="mt-4 border-t border-neutral-800 pt-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">VAT registered</span>
+                  <Toggle value={invoice.vatRegistered} onChange={(v) => updateInvoice({ vatRegistered: v })} ariaLabel="VAT registered" />
+                </div>
+                {invoice.vatRegistered && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="VAT rate (%)">
+                      <Input type="number" min="0" max="100" step="1" value={invoice.vatRate} onChange={(e) => updateInvoice({ vatRate: Number(e.target.value) })} />
+                    </Field>
+                    <Field label="VAT number">
+                      <Input type="text" value={invoice.vatNumber} onChange={(e) => updateInvoice({ vatNumber: e.target.value })} placeholder="GB123456789" />
+                    </Field>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Notes">
+              <textarea
+                value={invoice.notes}
+                onChange={(e) => updateInvoice({ notes: e.target.value })}
+                rows={6}
+                placeholder="Timesheet breakdown, payment terms, or any other notes…"
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none font-mono"
+              />
+            </SectionCard>
+
+            {(invoice.bankName || invoice.bankAccountNumber || invoice.bankSortCode || invoice.bankIBAN) && (
+              <SectionCard title="Payment details">
+                <div className="space-y-2 text-sm">
+                  {invoice.bankName && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Bank</span><span className="text-neutral-200 text-right">{invoice.bankName}</span></div>}
+                  {invoice.bankAccountName && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Account name</span><span className="text-neutral-200 text-right">{invoice.bankAccountName}</span></div>}
+                  {invoice.bankAccountNumber && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Account no.</span><span className="text-neutral-200 font-mono text-right">{invoice.bankAccountNumber}</span></div>}
+                  {invoice.bankSortCode && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Sort code</span><span className="text-neutral-200 font-mono text-right">{invoice.bankSortCode}</span></div>}
+                  {invoice.bankIBAN && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">IBAN</span><span className="text-neutral-200 font-mono text-xs text-right">{invoice.bankIBAN}</span></div>}
+                  {invoice.bankSWIFT && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">SWIFT/BIC</span><span className="text-neutral-200 font-mono text-right">{invoice.bankSWIFT}</span></div>}
+                </div>
+              </SectionCard>
+            )}
+
+            <SectionCard title="Status">
+              <div className="flex gap-2 flex-wrap">
+                {invoice.status !== "draft" && (
+                  <Btn variant="ghost" size="sm" onClick={() => { updateInvoice({ status: "draft" }); showToast("Marked as draft"); }}>Mark as Draft</Btn>
+                )}
+                {invoice.status !== "sent" && (
+                  <Btn variant="ghost" size="sm" onClick={() => { updateInvoice({ status: "sent" }); showToast("Marked as sent"); }}>Mark as Sent</Btn>
+                )}
+                {invoice.status !== "paid" && (
+                  <Btn variant="primary" size="sm" onClick={() => { updateInvoice({ status: "paid" }); showToast("Marked as paid"); }}>Mark as Paid</Btn>
+                )}
+              </div>
+            </SectionCard>
+
+            <div className="border-t border-neutral-800 pt-4">
+              <Btn variant="danger" onClick={() => setConfirmDel(true)}><ITrash size={14}/>Delete invoice</Btn>
+            </div>
+          </div>
+
+          {actionSheetItem && (
+            <LineItemActionSheet
+              item={actionSheetItem}
+              onEdit={() => { setEditingItem(actionSheetItem); setActionSheetItem(null); }}
+              onDiscount={() => { setDiscountingItem(actionSheetItem); setActionSheetItem(null); }}
+              onDelete={() => { deleteLineItem(actionSheetItem.id); setActionSheetItem(null); }}
+              onClose={() => setActionSheetItem(null)}
+            />
+          )}
+          {editingItem && (
+            <LineEditModal
+              item={editingItem}
+              onSave={(updated) => { updateLineItem(updated.id, updated); setEditingItem(null); }}
+              onClose={() => setEditingItem(null)}
+            />
+          )}
+          {discountingItem && (
+            <DiscountModal
+              item={discountingItem}
+              onSave={(dqty) => { updateLineItem(discountingItem.id, { discountedQty: dqty }); setDiscountingItem(null); }}
+              onClose={() => setDiscountingItem(null)}
+            />
+          )}
+          <ConfirmDialog
+            open={confirmDel}
+            title="Delete invoice?"
+            message={`Delete ${invoice.invoiceNumber}? This cannot be undone.`}
+            confirmLabel="Delete" confirmTone="danger" cancelLabel="Cancel"
+            onConfirm={deleteInvoice}
+            onCancel={() => setConfirmDel(false)}
+          />
+        </div>
+      );
+    }
+
+    function InvoiceListView({ production, setProduction, userPrefs, setUserPrefs, userCrewId, onOpenInvoice, onClose }) {
+      const [toastMsg, setToastMsg] = React.useState(null);
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+      const invoices = production.invoices || [];
+      const sortedInvoices = [...invoices].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+      const handleNewInvoice = () => {
+        if (!userCrewId) { showToast("No crew member — check Settings → My Setup"); return; }
+        const newId = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
+        onOpenInvoice(newId);
+      };
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <Toast show={!!toastMsg}>{toastMsg}</Toast>
+          <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
+                <IArrowLeft size={18}/>
+              </button>
+              <div className="flex-1 text-sm font-bold">Invoices</div>
+              <Btn variant="primary" size="sm" onClick={handleNewInvoice}><IPlus size={13}/>New Invoice</Btn>
+            </div>
+          </div>
+          <div className="max-w-3xl mx-auto px-4 py-6">
+            {sortedInvoices.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="flex justify-center mb-3 text-neutral-700"><IReceipt size={40}/></div>
+                <div className="text-sm font-semibold text-neutral-400 mb-1">No invoices yet</div>
+                <div className="text-[11px] text-neutral-600 mb-6">Tap New Invoice to generate one from your timesheet</div>
+                <Btn variant="primary" onClick={handleNewInvoice}><IPlus size={13}/>New Invoice</Btn>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sortedInvoices.map((inv) => {
+                  const subtotal = invoiceSubtotal(inv.lineItems);
+                  const vatAmount = inv.vatRegistered ? subtotal * (inv.vatRate || 20) / 100 : 0;
+                  const total = subtotal + vatAmount;
+                  return (
+                    <button key={inv.id} onClick={() => onOpenInvoice(inv.id)}
+                      className="w-full text-left bg-neutral-900 border border-neutral-800 rounded-[12px] p-4 hover:bg-neutral-800 active:bg-neutral-800 transition-colors"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-neutral-100">{inv.invoiceNumber}</div>
+                          <div className="text-[11px] text-neutral-500 mt-0.5">{fmtDateShort(inv.invoiceDate)} · Due {fmtDateShort(inv.dueDate)}</div>
+                          {inv.toName && <div className="text-[11px] text-neutral-400 mt-0.5 truncate">{inv.toName}</div>}
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                          <div className="text-base font-bold font-mono text-neutral-100">{fmtGBP(total)}</div>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${INVOICE_STATUS_COLORS[inv.status] || INVOICE_STATUS_COLORS.draft}`}>
+                            {INVOICE_STATUS_LABELS[inv.status] || "Draft"}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
     function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs }) {
@@ -6953,9 +7596,10 @@ const confirmDelete = (p) => setConfirmOpts({
             setOpenId(null);
           }}
           userPrefs={userPrefs}
+          setUserPrefs={setUserPrefs}
         />;
       }
-      return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} />;
+      return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} />;
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
