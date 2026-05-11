@@ -323,11 +323,14 @@
     const uid = () => Math.random().toString(36).slice(2, 10);
     const roleRank = (role) => { const r = role === "Spark" ? "Lighting Technician" : role; const i = ROLE_ORDER.indexOf(r); return i === -1 ? 99 : i; };
 
-    // First 60 mins of travel each way are non-billable. Travel only becomes
-    // chargeable once work plus net travel exceeds the standard working day —
-    // if you wrapped early, the unused portion of your working day is absorbed
-    // before travel becomes payable.
-    const TRAVEL_TIME_EXPLAINER = "The first 60 minutes of travel in each direction are non-billable. Travel only becomes chargeable once work plus net travel time exceeds the standard working day threshold — if you wrapped early, the unused portion of your working day is absorbed before any travel becomes payable.";
+    // Travel time UX copy — caption shows inline, explainer expands on ⓘ tap.
+    const TRAVEL_TIME_CAPTION = "Enter your full door-to-door travel time — the app handles the APA deductions for you.";
+    const TRAVEL_TIME_EXPLAINER = `Just enter your raw travel time for each direction. The app handles the rest:
+
+- The first 60 mins each way is non-billable per APA — we deduct this for you.
+- If you wrapped early, the unused part of your basic working day absorbs travel time before any becomes chargeable.
+
+You don't need to subtract anything yourself.`;
 
     /* ═══════════════════════════ DERIVED BREAK STATE ═══════════════════════════ */
 
@@ -2890,7 +2893,8 @@
                     <IInfo size={12}/>
                   </button>
                 </div>
-                {showTravelInfo && <StatusMsg kind="info">{TRAVEL_TIME_EXPLAINER}</StatusMsg>}
+                <div className="text-[10px] text-neutral-500 leading-snug">{TRAVEL_TIME_CAPTION}</div>
+                {showTravelInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{TRAVEL_TIME_EXPLAINER}</span></StatusMsg>}
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Travel Out (mins)"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
                   <Field label="Travel Back (mins)"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
@@ -3516,7 +3520,8 @@
                             <IInfo size={12}/>
                           </button>
                         </div>
-                        {showTravelInfo && <StatusMsg kind="info">{TRAVEL_TIME_EXPLAINER}</StatusMsg>}
+                        <div className="text-[10px] text-neutral-500 leading-snug">{TRAVEL_TIME_CAPTION}</div>
+                        {showTravelInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{TRAVEL_TIME_EXPLAINER}</span></StatusMsg>}
                         <div className="grid grid-cols-2 gap-3">
                           <Field label="Travel Out (mins)"><Input type="number" min="0" value={dateEdit.travelOutMins ?? 0} onChange={e => setDateEdit(p => ({...p, travelOutMins: Number(e.target.value)}))} /></Field>
                           <Field label="Travel Back (mins)"><Input type="number" min="0" value={dateEdit.travelBackMins ?? 0} onChange={e => setDateEdit(p => ({...p, travelBackMins: Number(e.target.value)}))} /></Field>
