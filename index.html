@@ -6184,77 +6184,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <button onClick={onClose} style={{ color: '#a3a3a3', padding: 8, borderRadius: 8, WebkitTapHighlightColor: 'transparent' }} aria-label="Close"><IX size={18}/></button>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: 16, paddingBottom: 16 }}>
-            {sorted.length === 0 && (
-              <div style={{ textAlign: 'center', color: '#525252', paddingTop: 48, fontSize: 13 }}>No days entered yet</div>
-            )}
-            {sorted.map(d => {
-              const c = crew.find(cc => cc.id === d.crewId);
-              if (!c) return null;
-              const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
-              const cardStyle = { background: '#171717', border: '1px solid #262626', borderRadius: 12, marginBottom: 12, padding: '12px 14px' };
-              const lineItems = calc.lines.map((l, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingBottom: 3 }}>
-                  <span style={{ fontSize: 11, color: l.rate === null ? '#fca5a5' : '#737373', flex: 1 }}>
-                    {(() => {
-                      const isOT = /\bot\b|\bovertime\b/i.test(l.label || '');
-                      if (isOT) {
-                        return <>{l.detail ? <>{l.detail} — </> : null}{formatOTDuration(l.qty)}h {l.label}</>;
-                      }
-                      return <>{l.label}{l.detail ? <span style={{ color: '#525252' }}> · {l.detail}</span> : ''}</>;
-                    })()}
-                  </span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: l.rate === null ? '#fca5a5' : '#a3a3a3', flexShrink: 0 }}>{fmtGBP(l.amount)}</span>
-                </div>
-              ));
-              if (onPickDay) {
-                return (
-                  <button
-                    key={d.id}
-                    type="button"
-                    className="hover:bg-[#1f1f1f] active:bg-[#262626]"
-                    style={{ ...cardStyle, cursor: 'pointer', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit', transition: 'background-color 0.15s', WebkitTapHighlightColor: 'transparent' }}
-                    onClick={() => { onPickDay(d.id); onClose(); }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtDateShort(d.date)}</span>
-                        <span style={{ color: '#737373', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{weekday(d.date)}</span>
-                        {production.bestBoyMode && <span style={{ color: '#a3a3a3', fontSize: 11 }}>{c.name}</span>}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <IArrowRight size={14} style={{ color: '#525252', opacity: 0.6, flexShrink: 0 }} />
-                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtGBP(calc.total)}</span>
-                      </div>
-                    </div>
-                    {lineItems}
-                  </button>
-                );
-              }
-              return (
-                <div key={d.id} style={cardStyle}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtDateShort(d.date)}</span>
-                      <span style={{ color: '#737373', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{weekday(d.date)}</span>
-                      {production.bestBoyMode && <span style={{ color: '#a3a3a3', fontSize: 11 }}>{c.name}</span>}
-                    </div>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#f5f5f5' }}>{fmtGBP(calc.total)}</span>
-                  </div>
-                  {lineItems}
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            <div style={{ padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, overflowY: 'auto', paddingTop: 16, paddingBottom: 16 }}>
+            {/* Shoot Total */}
+            <div style={{ padding: '4px 24px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Shoot Total</span>
               <div className="font-mono font-extrabold tracking-[-0.02em] flex items-baseline gap-0.5 text-neutral-100">
                 <span className="text-[42px] leading-none">{wholeStr}</span>
                 <span className="text-[22px] leading-none text-neutral-400 font-bold">{penceStr}</span>
               </div>
             </div>
+
+            {/* Earnings meter */}
             {total > 0 && (
               <div className="mx-4 flex h-1.5 rounded-full overflow-hidden bg-neutral-900 mb-3">
                 {buckets.basic > 0 && <div className="bg-sky-500" style={{ width: `${(buckets.basic / total) * 100}%` }} />}
@@ -6263,6 +6203,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {buckets.kit   > 0 && <div className="bg-tm-good" style={{ width: `${(buckets.kit   / total) * 100}%` }} />}
               </div>
             )}
+
+            {/* Legend */}
             {total > 0 && (
               <div className="mx-4 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-neutral-400 mb-4">
                 {buckets.basic > 0 && (
@@ -6295,8 +6237,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 )}
               </div>
             )}
+
+            {/* "In real money" comparison card */}
             {total > 0 && (
-              <div className="mx-4 mb-3 bg-neutral-800/40 border border-dashed border-neutral-700 rounded-xl p-3.5">
+              <div className="mx-4 mb-4 bg-neutral-800/40 border border-dashed border-neutral-700 rounded-xl p-3.5">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold mb-2.5 flex items-center gap-1.5">
                   <span aria-hidden="true">◇</span>
                   <span>In real money</span>
@@ -6322,8 +6266,56 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </ul>
               </div>
             )}
+
+            {/* By-day list */}
+            {sorted.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#525252', paddingTop: 24, fontSize: 13 }}>No days entered yet</div>
+            ) : (
+              <>
+                <h4 className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-2 mx-4">BY DAY</h4>
+                {sorted.map(d => {
+                  const member = crew.find(c => c.id === d.crewId);
+                  if (!member) return null;
+                  const calc = calcForDisplay(production, d, member, findPrevDay(days, d));
+                  const dateLabel = new Date(d.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: 'short', day: 'numeric' }).toUpperCase();
+                  const callT = d.callTime || "—";
+                  const wrapT = d.wrapTime || "—";
+
+                  const dayBuckets = { ot: 0, pen: 0 };
+                  for (const line of calc.lines || []) {
+                    const b = categorizeBreakdownLine(line.label);
+                    if (b === 'ot') dayBuckets.ot += line.amount || 0;
+                    if (b === 'pen') dayBuckets.pen += line.amount || 0;
+                  }
+                  const hasOT = dayBuckets.ot > 0;
+                  const hasPen = dayBuckets.pen > 0;
+                  const isBH = !!getBankHolidayName(d.date);
+
+                  return (
+                    <div key={d.id}
+                         onClick={() => { if (onPickDay) { onPickDay(d.id); onClose(); } }}
+                         className={`flex items-center gap-3 px-3 py-2.5 mx-4 mb-1 bg-neutral-900 border border-neutral-800 rounded-lg transition-colors ${onPickDay ? 'cursor-pointer hover:bg-neutral-800/40' : ''}`}
+                         style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      <span className="text-[10px] font-mono text-neutral-500 tracking-wider w-14 flex-shrink-0">{dateLabel}</span>
+                      <span className="text-[11px] font-mono text-neutral-300 flex-1 min-w-0 truncate">
+                        {callT} <span className="text-neutral-600">→</span> {wrapT}
+                      </span>
+                      <div className="flex gap-1 flex-shrink-0">
+                        {hasOT && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-warn/10 text-tm-warn border border-tm-warn/25 rounded px-1 py-0.5">OT</span>}
+                        {hasPen && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-pen/10 text-tm-pen border border-tm-pen/25 rounded px-1 py-0.5">PEN</span>}
+                        {isBH && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-good/10 text-tm-good border border-tm-good/25 rounded px-1 py-0.5">BH</span>}
+                      </div>
+                      <span className="text-[13px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(calc.total)}</span>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+
+          <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
             {(onGenerateInvoice || onExportPDF || onExportText) && (
-              <div style={{ borderTop: '1px solid #1a1a1a', padding: '12px 16px', display: 'flex', gap: 8 }}>
+              <div style={{ padding: '12px 16px', display: 'flex', gap: 8 }}>
                 {onGenerateInvoice && (
                   <button type="button" onClick={onGenerateInvoice}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300"
