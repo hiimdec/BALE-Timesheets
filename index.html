@@ -3072,8 +3072,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <div className="flex flex-col gap-0.5">
-                    <button onClick={() => moveUp(i)} className="p-1 text-neutral-600 hover:text-sky-400 disabled:opacity-20" disabled={i === 0}><IUp/></button>
-                    <button onClick={() => moveDown(i)} className="p-1 text-neutral-600 hover:text-sky-400 disabled:opacity-20" disabled={i === crew.length - 1}><IDown/></button>
+                    <button onClick={() => moveUp(i)} className="text-neutral-600 hover:text-sky-400 disabled:opacity-20 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} disabled={i === 0}><IUp/></button>
+                    <button onClick={() => moveDown(i)} className="text-neutral-600 hover:text-sky-400 disabled:opacity-20 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} disabled={i === crew.length - 1}><IDown/></button>
                   </div>
                   <div className="text-neutral-600 hidden sm:block"><IGrip/></div>
                   <div className="min-w-0">
@@ -3148,7 +3148,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
                   {editing === "new" ? "Add crew member" : "Edit crew member"}
                 </div>
-                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5" aria-label="Close"><IX size={16}/></button>
+                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
               </div>
             </div>
 
@@ -3364,7 +3364,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1">Cancellation Fees</div>
                 <div className="text-[11px] text-neutral-500">APA §7 — fees calculated relative to notice date</div>
               </div>
-              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5" aria-label="Close"><IX size={16}/></button>
+              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
             </div>
 
             {/* ── Scrollable body ── */}
@@ -3394,7 +3394,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <th key={col.id} className="px-2 py-1.5 border-r border-b border-neutral-700 bg-neutral-950 align-top" style={{ minWidth: 130 }}>
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-[9px] text-neutral-500 uppercase tracking-wider font-bold">Day {i+1}</span>
-                              <button onClick={() => removeColumn(col.id)} className="text-neutral-700 hover:text-red-400 text-[11px] leading-none px-0.5" title="Remove column" aria-label="Remove column">✕</button>
+                              <button onClick={() => removeColumn(col.id)} className="text-neutral-700 hover:text-red-400 text-[11px] flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} title="Remove column" aria-label="Remove column">✕</button>
                             </div>
                             <Input type="date" value={col.date} onChange={(e) => updateColumn(col.id, { date: e.target.value })} className="text-[10px] px-1.5 py-1 mb-1" />
                             <Select value={col.dayType} onChange={(e) => updateColumn(col.id, { dayType: e.target.value })} className="text-[10px] px-1.5 py-1">
@@ -3422,7 +3422,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               </div>
                               {setCrew && !member.isDefaultUser && (
                                 <button onClick={() => setCrew(prev => prev.filter(c => c.id !== member.id))}
-                                  className="text-neutral-700 hover:text-red-400 text-[11px] leading-none px-0.5 mt-0.5 flex-shrink-0"
+                                  className="text-neutral-700 hover:text-red-400 text-[11px] flex items-center justify-center flex-shrink-0"
+                                  style={{ minWidth: 44, minHeight: 44 }}
                                   title="Remove" aria-label="Remove crew member">✕</button>
                               )}
                             </div>
@@ -4114,7 +4115,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                   )}
                 </div>
-                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5" aria-label="Close"><IX size={16}/></button>
+                <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
               </div>
             </div>
 
@@ -4532,7 +4533,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <span className="text-[11px] text-neutral-500">Updates all existing entries on this date</span>
                       </div>
                     </div>
-                    <button onClick={() => setEditingDate(null)} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 mt-0.5 p-0.5" aria-label="Close"><IX size={16}/></button>
+                    <button onClick={() => setEditingDate(null)} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
                   </div>
                 </div>
 
@@ -5978,7 +5979,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           >
             <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-700 flex items-center justify-between">
               <div id="jump-sheet-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Jump to Day</div>
-              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors p-0.5" aria-label="Close"><IX size={16}/></button>
+              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
               {sorted.map((day, idx) => {
@@ -7751,7 +7752,7 @@ const setDays = (updater) =>
           <div className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
               <div className="text-sm font-bold text-neutral-100">{isFixed ? "Waive line" : "Waive portion"}</div>
-              <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 p-1 rounded"><IX size={16}/></button>
+              <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 flex items-center justify-center rounded" style={{ minWidth: 44, minHeight: 44 }}><IX size={16}/></button>
             </div>
             <div className="px-5 pb-5 space-y-4">
               <div>
@@ -7824,7 +7825,7 @@ const setDays = (updater) =>
           <div className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
               <div className="text-sm font-bold text-neutral-100">Edit line item</div>
-              <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 p-1 rounded"><IX size={16}/></button>
+              <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 flex items-center justify-center rounded" style={{ minWidth: 44, minHeight: 44 }}><IX size={16}/></button>
             </div>
             <div className="px-5 pb-5 space-y-3">
               <Field label="Label">
@@ -8462,7 +8463,7 @@ const setDays = (updater) =>
                onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
               <div className="text-sm font-bold text-neutral-100">New Invoice</div>
-              <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-300 transition-colors"><IX size={18}/></button>
+              <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-300 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }}><IX size={18}/></button>
             </div>
             <div className="px-5 pb-2 text-xs text-neutral-500">Choose a production to invoice</div>
             {sorted.length === 0 ? (
