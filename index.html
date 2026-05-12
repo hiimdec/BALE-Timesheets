@@ -42,6 +42,12 @@
     select { -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2338bdf8' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
     /* Loading indicator */
     .app-loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: ui-sans-serif, system-ui; }
+    /* Day-switch micro-animation for SoloDayPill */
+    @keyframes tm-day-switch {
+      0%   { opacity: 0; transform: translateY(4px); }
+      60%  { opacity: 1; transform: translateY(0); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
   </style>
 
 </head>
@@ -5633,6 +5639,52 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
 
+    function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc }) {
+      const [animKey, setAnimKey] = useState(0);
+      useEffect(() => { setAnimKey(k => k + 1); }, [dayIndex]);
+      const circleBtn = (onClick, disabled, bg, color, children, label) => (
+        <button onClick={onClick} disabled={disabled} aria-label={label}
+          style={{ width: 52, height: 52, borderRadius: '50%', background: bg,
+                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                   color, border: 'none', cursor: disabled ? 'default' : 'pointer',
+                   opacity: disabled ? 0.4 : 1, flexShrink: 0,
+                   WebkitTapHighlightColor: 'transparent' }}>
+          {children}
+        </button>
+      );
+      return (
+        <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
+          <div style={{ height: 64, background: '#e8e8e8', borderRadius: 32,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)', display: 'flex',
+                        alignItems: 'center', padding: 6, gap: 6, pointerEvents: 'auto',
+                        WebkitTapHighlightColor: 'transparent' }}>
+            {circleBtn(hasPrev ? onPrev : undefined, !hasPrev, '#f5f5f5', '#171717', <IArrowLeft size={20}/>, "Previous day")}
+            <button onClick={onViewCalc} aria-label="View breakdown"
+              style={{ flex: 1, minWidth: 0, height: 52, background: '#f5f5f5', borderRadius: 26,
+                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                       color: '#171717', border: 'none', cursor: 'pointer',
+                       WebkitTapHighlightColor: 'transparent' }}>
+              <span key={animKey}
+                style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase',
+                         letterSpacing: '0.1em', animation: 'tm-day-switch 240ms ease-out' }}>
+                Day {dayIndex + 1} of {dayCount}
+              </span>
+              <span key={`t${animKey}`}
+                style={{ fontWeight: 700, fontSize: 19, fontFamily: 'ui-monospace, monospace',
+                         lineHeight: 1.1, marginTop: 2, animation: 'tm-day-switch 240ms ease-out' }}>
+                {fmtGBP(total)}
+              </span>
+            </button>
+            {circleBtn(hasNext ? onNext : onAdd, false,
+                       hasNext ? '#f5f5f5' : '#0ea5e9',
+                       hasNext ? '#171717' : '#fff',
+                       hasNext ? <IArrowRight size={20}/> : <IPlus size={20}/>,
+                       hasNext ? "Next day" : "Add day")}
+          </div>
+        </div>
+      );
+    }
+
     function BottomMoneyPill({ total, onBack, onViewCalc }) {
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
@@ -6192,16 +6244,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
           </div>
 
-          {/* Sub-header — Day X of N (tappable → jump sheet) + Delete */}
+          {/* Sub-header — Day X of N (tappable → jump sheet) + Delete. Reduced weight since pill now shows day count. */}
           <div className="max-w-3xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between gap-3">
             <button
               type="button"
               onClick={() => setShowJumpSheet(true)}
-              className="flex items-baseline gap-2 hover:opacity-70 transition-opacity"
+              className="flex items-baseline gap-1.5 hover:opacity-70 transition-opacity"
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              <span className="text-xl font-bold tracking-tight text-sky-400">Day {currentIdx + 1}</span>
-              <span className="text-sm text-neutral-500">of {sortedDays.length}</span>
+              <span className="text-sm font-semibold tracking-tight text-neutral-400">Day {currentIdx + 1}</span>
+              <span className="text-xs text-neutral-600">of {sortedDays.length}</span>
             </button>
             <button onClick={requestDeleteCurrentDay}
               className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-red-400 px-2.5 py-1 rounded-md border border-neutral-700/60 hover:border-red-900/60 transition-colors"
@@ -6233,43 +6285,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             />
           </div>
 
-          {/* Bottom pill — prev / total / next-or-add */}
-          <div className="fixed left-3 right-3 z-30 flex items-center select-none touch-manipulation"
-            style={{
-              bottom: 'calc(env(safe-area-inset-bottom) + 12px)',
-              height: 56,
-              background: '#f5f5f5',
-              borderRadius: 28,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
-              overflow: 'hidden',
-              WebkitTapHighlightColor: 'transparent',
-            }}>
-            <button onClick={goPrev} disabled={isFirst} aria-label="Previous day"
-              style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                       color: isFirst ? '#d4d4d4' : '#171717', WebkitTapHighlightColor: 'transparent' }}>
-              <IArrowLeft size={20}/>
-            </button>
-            <button onClick={() => setShowCalc(true)} aria-label="View calculation"
-              style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column',
-                       alignItems: 'center', justifyContent: 'center', color: '#171717',
-                       WebkitTapHighlightColor: 'transparent', overflow: 'hidden' }}>
-              <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(totalShoot)}</span>
-              <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View Calculation</span>
-            </button>
-            {isLast ? (
-              <button onClick={addDay} aria-label="Add next day"
-                style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                         color: '#0c4a6e', WebkitTapHighlightColor: 'transparent' }}>
-                <IPlus size={22}/>
-              </button>
-            ) : (
-              <button onClick={goNext} aria-label="Next day"
-                style={{ width: 56, height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                         color: '#171717', WebkitTapHighlightColor: 'transparent' }}>
-                <IArrowRight size={20}/>
-              </button>
-            )}
-          </div>
+          <SoloDayPill
+            total={totalShoot}
+            dayIndex={currentIdx}
+            dayCount={sortedDays.length}
+            hasPrev={!isFirst}
+            hasNext={!isLast}
+            onPrev={goPrev}
+            onNext={goNext}
+            onAdd={addDay}
+            onViewCalc={() => setShowCalc(true)}
+          />
 
           {showCalc && (
             <CalcBreakdownView
