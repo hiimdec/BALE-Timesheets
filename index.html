@@ -69,11 +69,22 @@
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
-    /* Day-switch animation for SoloDayPill — 8px lift + subtle scale-in */
-    @keyframes tm-day-switch {
-      0%   { opacity: 0; transform: translateY(8px) scale(0.96); }
-      60%  { opacity: 1; transform: translateY(0) scale(1); }
-      100% { opacity: 1; transform: translateY(0) scale(1); }
+    /* Day-switch animation — horizontal slide + fade for the day-form stage */
+    .tm-day-stage {
+      transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+                  opacity 200ms ease;
+      will-change: transform, opacity;
+    }
+    .tm-day-stage.exiting-left  { transform: translateX(-24px); opacity: 0; transition-duration: 180ms; }
+    .tm-day-stage.exiting-right { transform: translateX(24px);  opacity: 0; transition-duration: 180ms; }
+    .tm-day-stage.entering-left,
+    .tm-day-stage.entering-right { opacity: 0; transition: none; }
+    .tm-day-stage.entering-left  { transform: translateX(-24px); }
+    .tm-day-stage.entering-right { transform: translateX(24px); }
+    /* Pill total/counter swap — quick opacity fade alongside the day-stage transition */
+    @keyframes tm-pill-swap {
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
     /* Live indicator pulse — soft 2s loop for "ON CALL" dot */
     @keyframes tm-pulse {
@@ -5958,12 +5969,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                        WebkitTapHighlightColor: 'transparent' }}>
               <span key={`label-${dayIndex}`}
                 style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase',
-                         letterSpacing: '0.1em', animation: 'tm-day-switch 320ms ease-out' }}>
+                         letterSpacing: '0.1em', animation: 'tm-pill-swap 140ms ease' }}>
                 Day {dayIndex + 1} of {dayCount}
               </span>
               <span key={`total-${dayIndex}`}
                 style={{ fontWeight: 700, fontSize: 19, fontFamily: 'ui-monospace, monospace',
-                         lineHeight: 1.1, marginTop: 2, animation: 'tm-day-switch 320ms ease-out' }}>
+                         lineHeight: 1.1, marginTop: 2, animation: 'tm-pill-swap 140ms ease' }}>
                 {fmtGBP(total)}
               </span>
             </button>
@@ -6341,8 +6352,53 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const isFirst = currentIdx <= 0;
       const isLast = currentIdx === sortedDays.length - 1;
 
-      const goPrev = () => { if (!isFirst) setCurrentDayId(sortedDays[currentIdx - 1].id); };
-      const goNext = () => { if (!isLast) setCurrentDayId(sortedDays[currentIdx + 1].id); };
+      // Day-switch animation state machine. animDirection 'left' = exit toward the
+      // left (user tapped next, new content enters from the right); 'right' = opposite.
+      const [animPhase, setAnimPhase] = useState('idle');
+      const [animDirection, setAnimDirection] = useState(null);
+      const [pendingDayId, setPendingDayId] = useState(null);
+
+      const triggerDaySwitch = (direction, newDayId) => {
+        if (animPhase !== 'idle') return;
+        setPendingDayId(newDayId);
+        setAnimDirection(direction === 'next' ? 'left' : 'right');
+        setAnimPhase('exit');
+      };
+
+      useEffect(() => {
+        if (animPhase === 'exit') {
+          const t = setTimeout(() => {
+            setCurrentDayId(pendingDayId);
+            setAnimPhase('enter');
+          }, 180);
+          return () => clearTimeout(t);
+        }
+        if (animPhase === 'enter') {
+          let raf2;
+          const raf1 = requestAnimationFrame(() => {
+            raf2 = requestAnimationFrame(() => {
+              setAnimPhase('idle');
+              setAnimDirection(null);
+              setPendingDayId(null);
+            });
+          });
+          return () => { cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); };
+        }
+      }, [animPhase, pendingDayId]);
+
+      const goPrev = () => { if (!isFirst) triggerDaySwitch('prev', sortedDays[currentIdx - 1].id); };
+      const goNext = () => { if (!isLast) triggerDaySwitch('next', sortedDays[currentIdx + 1].id); };
+      const handleDayJump = (newDayId) => {
+        const newIdx = sortedDays.findIndex(d => d.id === newDayId);
+        if (newIdx === -1 || newIdx === currentIdx) return;
+        triggerDaySwitch(newIdx > currentIdx ? 'next' : 'prev', newDayId);
+      };
+
+      const stageClass = `tm-day-stage${
+        animPhase === 'exit' ? ` exiting-${animDirection}` :
+        animPhase === 'enter' ? ` entering-${animDirection === 'left' ? 'right' : 'left'}` :
+        ''
+      }`;
 
       // addDay computes from currentDay's date + 1 calendar day, not today's date
       const addDay = () => {
@@ -6539,45 +6595,48 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
           </div>
 
-          {/* Sub-header — Day X of N (tappable → jump sheet) + Delete. Reduced weight since pill now shows day count. */}
-          <div className="max-w-3xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => setShowJumpSheet(true)}
-              className="flex items-baseline gap-1.5 hover:opacity-70 transition-opacity"
-              style={{ WebkitTapHighlightColor: 'transparent' }}
-            >
-              <span className="text-sm font-semibold tracking-tight text-neutral-400">Day {currentIdx + 1}</span>
-              <span className="text-xs text-neutral-600">of {sortedDays.length}</span>
-            </button>
-            <button onClick={requestDeleteCurrentDay}
-              className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-red-400 px-2.5 py-1 rounded-md border border-neutral-700/60 hover:border-red-900/60 transition-colors"
-              title="Delete this day">
-              Delete day
-            </button>
-          </div>
+          {/* Day-specific content — animates on prev/next/jump */}
+          <div className={stageClass}>
+            {/* Sub-header — Day X of N (tappable → jump sheet) + Delete. Reduced weight since pill now shows day count. */}
+            <div className="max-w-3xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setShowJumpSheet(true)}
+                className="flex items-baseline gap-1.5 hover:opacity-70 transition-opacity"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <span className="text-sm font-semibold tracking-tight text-neutral-400">Day {currentIdx + 1}</span>
+                <span className="text-xs text-neutral-600">of {sortedDays.length}</span>
+              </button>
+              <button onClick={requestDeleteCurrentDay}
+                className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-red-400 px-2.5 py-1 rounded-md border border-neutral-700/60 hover:border-red-900/60 transition-colors"
+                title="Delete this day">
+                Delete day
+              </button>
+            </div>
 
-          {/* Day editor body */}
-          <div className="max-w-3xl mx-auto px-4 pb-6">
-            {(production.invoices || []).some(inv => inv.status === "sent" || inv.status === "paid") && (() => {
-              const count = (production.invoices || []).filter(inv => inv.status === "sent" || inv.status === "paid").length;
-              return (
-                <div className="bg-sky-900/20 border border-sky-700/40 rounded-xl px-3 py-2 text-[11px] text-sky-300 mb-3">
-                  This production has {count} sent invoice{count !== 1 ? "s" : ""}. Changes here won't update them.
-                </div>
-              );
-            })()}
-            <DayEntryForm
-              value={currentDay}
-              onChange={handleDayChange}
-              crew={crew}
-              allCrewMode={false}
-              fixedCrewId={crew[0]?.id ?? null}
-              fixedDate={null}
-              isToday={currentDay?.date === todayISO()}
-              showToast={showToast}
-              days={days}
-            />
+            {/* Day editor body */}
+            <div className="max-w-3xl mx-auto px-4 pb-6">
+              {(production.invoices || []).some(inv => inv.status === "sent" || inv.status === "paid") && (() => {
+                const count = (production.invoices || []).filter(inv => inv.status === "sent" || inv.status === "paid").length;
+                return (
+                  <div className="bg-sky-900/20 border border-sky-700/40 rounded-xl px-3 py-2 text-[11px] text-sky-300 mb-3">
+                    This production has {count} sent invoice{count !== 1 ? "s" : ""}. Changes here won't update them.
+                  </div>
+                );
+              })()}
+              <DayEntryForm
+                value={currentDay}
+                onChange={handleDayChange}
+                crew={crew}
+                allCrewMode={false}
+                fixedCrewId={crew[0]?.id ?? null}
+                fixedDate={null}
+                isToday={currentDay?.date === todayISO()}
+                showToast={showToast}
+                days={days}
+              />
+            </div>
           </div>
 
           <SoloDayPill
@@ -6612,7 +6671,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             currentDayId={currentDayId}
             production={production}
             crew={crew}
-            onPick={(id) => setCurrentDayId(id)}
+            onPick={handleDayJump}
             onClose={() => setShowJumpSheet(false)}
           />
 
