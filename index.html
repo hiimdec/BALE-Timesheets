@@ -408,6 +408,18 @@
     let _modalCount = 0;
     const lockBodyScroll   = () => { if (_modalCount === 0) document.body.style.overflow = 'hidden'; _modalCount++; };
     const unlockBodyScroll = () => { _modalCount = Math.max(0, _modalCount - 1); if (_modalCount === 0) document.body.style.overflow = ''; };
+
+    // Close the nearest modal/sheet on Escape. Uses a ref so the listener is
+    // registered once on mount regardless of whether onClose is an inline function.
+    const useEscape = (onClose) => {
+      const ref = useRef(onClose);
+      useEffect(() => { ref.current = onClose; });
+      useEffect(() => {
+        const handler = (e) => { if (e.key === 'Escape') ref.current?.(); };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+      }, []);
+    };
     const weekday = (iso) => { if (!iso) return ""; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" }); };
     const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
     // fmtDateShort → "04/05/2026" (compact: line items, table rows)
@@ -3109,6 +3121,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, []);
+      useEscape(onCancel);
 
       const onDeptChange = (dept) => {
         setSelectedDept(dept);
@@ -3230,6 +3243,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, []);
+      useEscape(onClose);
 
       // Standalone crew-entry state (used when setCrew is provided)
       const [newName, setNewName] = useState("");
@@ -4061,6 +4075,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, []);
+      useEscape(onCancel);
 
       const modalTitle = isNew ? "New Day Entry" : isNewAll ? "New Day — All Crew" : "Edit Day Entry";
 
@@ -4248,6 +4263,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, [editingDate]);
+      useEscape(editingDate ? () => setEditingDate(null) : null);
 
       const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -5162,6 +5178,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, [open]);
+      useEscape(open ? onClose : null);
       if (!open) return null;
       const fmtWeekRange = (wk) => {
         const s = new Date(wk.start + "T12:00:00");
@@ -5206,6 +5223,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, [open]);
+      useEscape(open ? onClose : null);
       if (!open) return null;
       return (
         <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
@@ -5830,6 +5848,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, [open]);
+      useEscape(open ? onCancel : null);
 
       if (!open) return null;
 
@@ -5885,6 +5904,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, [!!opts]);
+      useEscape(opts ? onCancel : null);
 
       if (!opts) return null;
       const { sourceDate, count } = opts;
@@ -5938,6 +5958,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lockBodyScroll();
         return () => { unlockBodyScroll(); };
       }, [open]);
+      useEscape(open ? onClose : null);
 
       if (!open) return null;
 
@@ -7715,6 +7736,7 @@ const setDays = (updater) =>
     }
 
     function DiscountModal({ item, onSave, onClose }) {
+      useEscape(onClose);
       const isFixed = item.rate === null; // fixed-amount line (penalty, expense, kit money, etc.)
       const [dqty, setDqty] = React.useState(
         !isFixed && item.discountedQty !== null ? String(item.discountedQty) : String(item.qty)
@@ -7779,6 +7801,7 @@ const setDays = (updater) =>
     }
 
     function LineEditModal({ item, onSave, onClose }) {
+      useEscape(onClose);
       const [label, setLabel] = React.useState(item.label);
       const [detail, setDetail] = React.useState(item.detail);
       const [qty, setQty] = React.useState(String(item.qty));
@@ -7842,6 +7865,7 @@ const setDays = (updater) =>
     }
 
     function LineItemActionSheet({ item, onEdit, onDiscount, onDelete, onClose }) {
+      useEscape(onClose);
       return (
         <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
           <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
@@ -8351,6 +8375,7 @@ const setDays = (updater) =>
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
     function InvoiceRowActionSheet({ invoice, onClose, onUpdate, onDelete, showToast }) {
+      useEscape(onClose);
       const [confirmDelete, setConfirmDelete] = useState(false);
       const markSent = () => { onUpdate({ status: 'sent', dateSent: todayISO() }); showToast('Marked as sent'); onClose(); };
       const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); onClose(); };
@@ -8417,6 +8442,7 @@ const setDays = (updater) =>
     }
 
     function ProductionPickerSheet({ productions, onClose, onCreateInvoice, onOpenInvoice }) {
+      useEscape(onClose);
       const sorted = React.useMemo(() => {
         return [...productions].sort((a, b) => {
           const aDate = [...(a.days || [])].map(d => d.date).filter(Boolean).sort().slice(-1)[0] || a.startDate || '';
@@ -8471,6 +8497,7 @@ const setDays = (updater) =>
     }
 
     function InvoiceSetupWizard({ userPrefs, setUserPrefs, onClose }) {
+      useEscape(onClose);
       const [step, setStep] = useState(1);
       const [local, setLocal] = useState({
         displayName:      userPrefs.displayName      || '',
