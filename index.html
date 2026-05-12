@@ -46,7 +46,7 @@
 
 </head>
 <body>
-  <div id="root"><div class="app-loading">Loading TimeMachine…</div></div>
+  <div id="root"><div class="app-loading">Loading TimeMachine v0.1.0…</div></div>
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
@@ -897,7 +897,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function migrateInvoice(inv, p) {
       if (!inv) return inv;
       const allDates = (p.days || []).map(d => d.date).filter(Boolean).sort();
-      return {
+      const migrated = {
         ...inv,
         linesEdited: inv.linesEdited ?? false,
         jobTitle: inv.jobTitle ?? p.title ?? "",
@@ -906,6 +906,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         shootDateStart: inv.shootDateStart ?? p.startDate ?? allDates[0] ?? "",
         shootDateEnd: inv.shootDateEnd ?? allDates[allDates.length - 1] ?? "",
       };
+      // Strip any legacy logoBase64 that was snapshotted per-invoice; logo is now read
+      // from userPrefs at render time to avoid duplicating ~500KB per invoice.
+      delete migrated.logoBase64;
+      return migrated;
     }
 
     const migrateProduction = (p) => ({
@@ -1117,7 +1121,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         vatRegistered: crewMember?.vatRegistered ?? userPrefs.vatRegistered ?? false,
         vatRate: crewMember?.vatRate ?? userPrefs.vatRate ?? 20,
         vatNumber: userPrefs.vatNumber || "",
-        logoBase64: userPrefs.logoBase64 || "",
+        // Logo is NOT snapshotted per-invoice — read from userPrefs at render time to avoid
+        // duplicating ~500KB of base64 data into every invoice (iOS Safari 5MB localStorage cap).
         lineItems,
         notes,
         showIndividualExpenses: false,
@@ -7163,7 +7168,7 @@ const setDays = (updater) =>
               <div className="flex flex-col gap-3">
                 <div>
                   <Btn variant="ghost" onClick={onExport}><IDownload/>Export Backup</Btn>
-                  <p className="text-[10px] text-neutral-500 mt-1">Downloads all productions as a JSON file.</p>
+                  <p className="text-[10px] text-neutral-500 mt-1">Downloads all productions as a JSON file. This file contains your data — keep it private.</p>
                 </div>
                 <div>
                   <Btn variant="ghost" onClick={() => importRef.current?.click()}><IUpload/>Import Backup</Btn>
@@ -7173,7 +7178,7 @@ const setDays = (updater) =>
                 <div className="border-t border-neutral-800 pt-3">
                   <Btn variant="danger" onClick={() => setConfirmOpts({
                     title: "Reset everything?",
-                    message: "This deletes ALL productions, crew data, and settings. Cannot be undone. Consider exporting a backup first.",
+                    message: "This permanently deletes ALL productions, crew data, and settings from this device. Nothing is uploaded — it's a local delete only. Consider exporting a backup first.",
                     confirmLabel: "Reset everything",
                     confirmTone: "danger",
                     onConfirm: onResetAll,
@@ -7209,6 +7214,17 @@ const setDays = (updater) =>
                 </div>
                 <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-400 transition-colors"/>
               </a>
+            </SectionCard>
+
+            <SectionCard title="Privacy">
+              <div className="space-y-3 text-[12px] text-neutral-400 leading-relaxed">
+                <p><span className="text-neutral-200 font-semibold">Your data never leaves your device.</span> Productions, days, crew, invoices, and bank details are stored in your browser's local storage only. We have no server, no sync, and no account.</p>
+                <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
+                <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage.</p>
+                <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library — only when you upload a logo or attach an expense receipt. Files — only when you export a PDF or backup. Never accessed without your explicit action.</p>
+                <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset All Data</span>.</p>
+                <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
+              </div>
             </SectionCard>
 
             <SectionCard title="About">
@@ -9174,9 +9190,13 @@ const confirmDelete = (p) => setConfirmOpts({
       };
 
       const handleResetAll = () => {
-        localStorage.removeItem("bigals_productions");
-        localStorage.removeItem("bigals_user_prefs");
-        window.location.reload();
+        try {
+          localStorage.removeItem("bigals_productions");
+          localStorage.removeItem("bigals_user_prefs");
+          window.location.reload();
+        } catch (err) {
+          alert("Couldn't reset data — try closing and reopening the app, or clearing your browser storage manually.");
+        }
       };
 
       const currentProduction = productions.find((p) => p.id === openId);
