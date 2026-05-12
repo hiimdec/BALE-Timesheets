@@ -20,11 +20,33 @@
 
   <!-- CDN Dependencies -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'tm-warn': '#ff8a3d',
+            'tm-pen':  '#f43f5e',
+            'tm-good': '#4ade80',
+          },
+        },
+      },
+    };
+  </script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <style>
+    :root {
+      --tm-accent:     #0ea5e9;
+      --tm-accent-2:   #7dd3fc;
+      --tm-warn:       #ff8a3d;
+      --tm-pen:        #f43f5e;
+      --tm-good:       #4ade80;
+      --tm-pill-paper: #e6e9ed;
+      --tm-pill-ink:   #15171a;
+    }
     html, body {
       -webkit-tap-highlight-color: transparent;
       -webkit-touch-callout: none;
