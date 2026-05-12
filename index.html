@@ -4142,6 +4142,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const show2ndBreakSection = !isPmpa && !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
 
+      // Notes chip local state — spec keeps notes-active derived from text presence
+      // (no schema flag), with a transient open state so tapping an empty-notes
+      // chip can reveal the textarea before the user types. Reset on day switch.
+      const [notesOpen, setNotesOpen] = useState(false);
+      const [secondBreakExpanded, setSecondBreakExpanded] = useState(false);
+      useEffect(() => {
+        setNotesOpen(false);
+        setSecondBreakExpanded(false);
+      }, [v.id]);
+      const noteHasText = !!(v.note && v.note.trim());
+      const notesActive = notesOpen || noteHasText;
+      const toggleNotes = () => {
+        if (notesActive) { setNotesOpen(false); set({ note: "" }); }
+        else { setNotesOpen(true); }
+      };
+
+      // 2nd-break chip status suffix — drives the chip's trailing " — STATE" text.
+      const sbSuffix = !bs ? ""
+        : bs.sbState === "missed"    ? " — MISSED"
+        : bs.sbState === "late"      ? " — LATE"
+        : bs.sbState === "curtailed" ? " — CURTAILED"
+        : bs.sbState === "given"     ? " — ✓"
+        : "";
+
       // Conditions-chip activation. stepUp/kitMoney use their existing *Enabled flags
       // (calc already honours them — persist + ignore). preCall and mileage have no
       // calc-honoured flag, so chip-active falls back to value-presence; the new
@@ -4379,27 +4403,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
           </SectionCard>
 
-          {/* ── Section: 2nd Break ── */}
-          {show2ndBreakSection && (
-            <SectionCard title="2nd Break">
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="2nd Break Start" hint={`Deadline: ${toHHMM(bs.sbDeadline)} (5.5h after lunch end)`}>
-                    <TimeInput value={v.secondBreakStartTime || ""} onChange={(e) => set({ secondBreakStartTime: e.target.value })} disabled={Number(v.secondBreakDurationMins) === 0} />
-                  </Field>
-                  <Field label="2nd Break Duration">
-                    <Select value={Number(v.secondBreakDurationMins ?? 30)} onChange={(e) => set({ secondBreakDurationMins: Number(e.target.value) })}>
-                      {SECOND_BREAK_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                    </Select>
-                  </Field>
-                </div>
-                {bs.sbState === "missed" && <StatusMsg kind="bad">Missed — 30m × BHR penalty applied.</StatusMsg>}
-                {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed — treated as missed. 30m × BHR penalty.</StatusMsg>}
-                {bs.sbState === "curtailed" && <StatusMsg kind="warn">Curtailed by {30 - bs.sbDuration}m. {30 - bs.sbDuration}m × BHR penalty.</StatusMsg>}
-                {bs.sbState === "given" && <StatusMsg kind="ok">Given on time.</StatusMsg>}
-              </div>
-            </SectionCard>
-          )}
+          {/* 2nd-Break SectionCard removed — now lives as a chip in the Conditions row. */}
 
           {/* ── Section: CWD Breaks ── */}
           {!isPmpa && !isTravelDay && bs && bs.continuousDay && (
@@ -4430,6 +4434,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <div className="space-y-2 mb-4">
             <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold px-1">Conditions</div>
             <div className="flex flex-wrap gap-2">
+              {show2ndBreakSection && (
+                <button
+                  type="button"
+                  onClick={() => setSecondBreakExpanded(v2 => !v2)}
+                  className="text-xs font-medium px-3 py-[7px] rounded-full inline-flex items-center gap-1.5 transition-colors active:scale-95 bg-tm-warn/10 border border-tm-warn/40 text-tm-warn"
+                  aria-expanded={secondBreakExpanded}
+                >
+                  <span>2ND BREAK{sbSuffix}</span>
+                  <IChevronDown size={11} strokeWidth={2.5} className={`opacity-60 transition-transform ${secondBreakExpanded ? 'rotate-180' : ''}`} />
+                </button>
+              )}
               {renderChip("stepUp",     "Step-up",     stepUpActive)}
               {!isTravelDay && renderChip("preCall", "Pre-call", preCallActive)}
               {renderChip("mileage",    "Mileage",     mileageActive)}
@@ -4437,8 +4452,39 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {!isTravelDay && renderChip("travelTime", "Travel time", travelTimeActive)}
               {renderChip("perDiem",    "Per diem",    perDiemActive)}
               {renderChip("expenses",   "Expenses",    expensesActive)}
+              <button
+                type="button"
+                onClick={toggleNotes}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium inline-flex items-center gap-1 transition-colors active:scale-95 ${notesActive
+                  ? "bg-sky-500/10 border border-solid border-sky-500 text-sky-500"
+                  : "bg-neutral-900 border border-dashed border-neutral-600 text-neutral-400 hover:bg-neutral-800"}`}
+              >
+                Notes{notesActive && <span aria-hidden="true">×</span>}
+              </button>
             </div>
           </div>
+
+          {/* ── 2nd Break (chip-gated, warn variant) ── */}
+          {show2ndBreakSection && secondBreakExpanded && (
+            <SectionCard variant="condition-warn" title="2nd Break" onClose={() => setSecondBreakExpanded(false)}>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="2nd Break Start" hint={`Deadline: ${toHHMM(bs.sbDeadline)} (5.5h after lunch end)`}>
+                    <TimeInput value={v.secondBreakStartTime || ""} onChange={(e) => set({ secondBreakStartTime: e.target.value })} disabled={Number(v.secondBreakDurationMins) === 0} />
+                  </Field>
+                  <Field label="2nd Break Duration">
+                    <Select value={Number(v.secondBreakDurationMins ?? 30)} onChange={(e) => set({ secondBreakDurationMins: Number(e.target.value) })}>
+                      {SECOND_BREAK_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+                {bs.sbState === "missed" && <StatusMsg kind="bad">Missed — 30m × BHR penalty applied.</StatusMsg>}
+                {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed — treated as missed. 30m × BHR penalty.</StatusMsg>}
+                {bs.sbState === "curtailed" && <StatusMsg kind="warn">Curtailed by {30 - bs.sbDuration}m. {30 - bs.sbDuration}m × BHR penalty.</StatusMsg>}
+                {bs.sbState === "given" && <StatusMsg kind="ok">Given on time.</StatusMsg>}
+              </div>
+            </SectionCard>
+          )}
 
           {/* ── Step-up Role (chip-gated) ── */}
           {stepUpActive && (
@@ -4584,24 +4630,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </SectionCard>
           )}
 
-          {/* ── Extras disclosure: notes only ── */}
-          <Disclosure label="Extras">
-            <div className="space-y-1">
-              <Field label="Notes" hint="e.g. rain delay, client overtime requested">
-                <textarea
-                  value={v.note || ""}
-                  onChange={(e) => set({ note: e.target.value })}
-                  placeholder="Add a note about this day…"
-                  rows={3}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
-                  style={{ fontFamily: 'inherit' }}
-                />
-                <div className={`text-xs mt-1 text-right ${(v.note || "").length > 1000 ? "text-red-400" : (v.note || "").length > 500 ? "text-amber-400" : "text-neutral-600"}`}>
-                  {(v.note || "").length} / 500
-                </div>
-              </Field>
-            </div>
-          </Disclosure>
+          {/* ── Notes (chip-gated) ── */}
+          {notesActive && (
+            <SectionCard variant="condition" title="Notes" onClose={() => { setNotesOpen(false); set({ note: "" }); }}>
+              <textarea
+                value={v.note || ""}
+                onChange={(e) => set({ note: e.target.value })}
+                placeholder="Anything worth remembering about this day…"
+                rows={4}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-[13px] text-neutral-100 placeholder:text-neutral-600 leading-snug resize-y outline-none focus:border-sky-500 transition-colors"
+                style={{ fontFamily: 'inherit' }}
+              />
+              <div className={`text-xs mt-1 text-right ${(v.note || "").length > 1000 ? "text-red-400" : (v.note || "").length > 500 ? "text-amber-400" : "text-neutral-600"}`}>
+                {(v.note || "").length} / 500
+              </div>
+            </SectionCard>
+          )}
 
         </div>
       );
@@ -7729,13 +7773,17 @@ const setDays = (updater) =>
     }
 
     const SectionCard = ({ title, children, accent, variant, onClose }) => {
-      const isCondition = variant === "condition";
+      const isCondition = variant === "condition" || variant === "condition-warn";
+      const isWarn = variant === "condition-warn";
       const isRed = accent === "red";
       if (isCondition) {
+        const accentBorder = isWarn ? "border-tm-warn/25" : "border-sky-500/25";
+        const accentLeft   = isWarn ? "border-l-tm-warn" : "border-l-sky-500";
+        const accentText   = isWarn ? "text-tm-warn"     : "text-sky-500";
         return (
-          <div className="tm-card-in bg-neutral-800/40 border border-sky-500/25 border-l-[3px] border-l-sky-500 rounded-[10px] overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-sky-500/25 flex items-center justify-between gap-3">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">{title}</div>
+          <div className={`tm-card-in bg-neutral-800/40 border ${accentBorder} border-l-[3px] ${accentLeft} rounded-[10px] overflow-hidden mb-4`}>
+            <div className={`px-4 py-3 border-b ${accentBorder} flex items-center justify-between gap-3`}>
+              <div className={`text-[10px] uppercase tracking-[0.2em] ${accentText} font-bold`}>{title}</div>
               {onClose && (
                 <button
                   type="button"
