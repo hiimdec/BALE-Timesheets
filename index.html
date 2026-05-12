@@ -47,11 +47,11 @@
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
-    /* Day-switch micro-animation for SoloDayPill */
+    /* Day-switch animation for SoloDayPill — 8px lift + subtle scale-in */
     @keyframes tm-day-switch {
-      0%   { opacity: 0; transform: translateY(4px); }
-      60%  { opacity: 1; transform: translateY(0); }
-      100% { opacity: 1; transform: translateY(0); }
+      0%   { opacity: 0; transform: translateY(8px) scale(0.96); }
+      60%  { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
     }
   </style>
 
@@ -5669,8 +5669,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
 
     function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc }) {
-      const [animKey, setAnimKey] = useState(0);
-      useEffect(() => { setAnimKey(k => k + 1); }, [dayIndex]);
       const circleBtn = (onClick, disabled, bg, color, children, label) => (
         <button onClick={onClick} disabled={disabled} aria-label={label}
           style={{ width: 52, height: 52, borderRadius: '50%', background: bg,
@@ -5693,14 +5691,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                        color: '#171717', border: 'none', cursor: 'pointer',
                        WebkitTapHighlightColor: 'transparent' }}>
-              <span key={animKey}
+              <span key={`label-${dayIndex}`}
                 style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase',
-                         letterSpacing: '0.1em', animation: 'tm-day-switch 240ms ease-out' }}>
+                         letterSpacing: '0.1em', animation: 'tm-day-switch 320ms ease-out' }}>
                 Day {dayIndex + 1} of {dayCount}
               </span>
-              <span key={`t${animKey}`}
+              <span key={`total-${dayIndex}`}
                 style={{ fontWeight: 700, fontSize: 19, fontFamily: 'ui-monospace, monospace',
-                         lineHeight: 1.1, marginTop: 2, animation: 'tm-day-switch 240ms ease-out' }}>
+                         lineHeight: 1.1, marginTop: 2, animation: 'tm-day-switch 320ms ease-out' }}>
                 {fmtGBP(total)}
               </span>
             </button>
