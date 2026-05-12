@@ -1886,7 +1886,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .invoice-totals .row.grand .value { font-size: 18px; }
 
       /* Notes */
-      .invoice-notes { margin-bottom: 18px; }
+      .invoice-notes { margin-bottom: 18px; page-break-inside: avoid; break-inside: avoid; }
       .invoice-notes-body { font-size: 11px; line-height: 1.5; color: #404040; }
       .notes-day {
         white-space: pre-line;
@@ -7971,6 +7971,20 @@ const setDays = (updater) =>
                     }} />
                 </Field>
               </div>
+            </SectionCard>
+
+            <SectionCard title="Job details">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Job">
+                  <Input type="text" value={invoice.jobTitle || ''} onChange={(e) => updateInvoice({ jobTitle: e.target.value })} placeholder="Production title" />
+                </Field>
+                <Field label="Job Ref">
+                  <Input type="text" value={invoice.jobReference || ''} onChange={(e) => updateInvoice({ jobReference: e.target.value })} placeholder="e.g. Vodafone Q3, PO#1234" />
+                </Field>
+              </div>
+              <Field label="Role">
+                <Input type="text" value={invoice.jobRole || ''} onChange={(e) => updateInvoice({ jobRole: e.target.value })} placeholder="e.g. Gaffer, Spark" />
+              </Field>
             </SectionCard>
 
             <SectionCard title="From / To">
