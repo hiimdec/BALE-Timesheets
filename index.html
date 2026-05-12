@@ -99,6 +99,22 @@
       to   { opacity: 1; transform: translateY(0); }
     }
     .tm-card-in { animation: tm-card-in 220ms ease-out; }
+    /* Hero card — soft sky glow top-right + 1px sky hairline along the top edge */
+    .tm-hero-card {
+      background:
+        radial-gradient(120% 100% at 100% 0%, rgba(14,165,233,0.10) 0%, transparent 50%),
+        #171717;
+      position: relative;
+      overflow: hidden;
+    }
+    .tm-hero-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #0ea5e9, transparent);
+      pointer-events: none;
+    }
   </style>
 
 </head>
@@ -5090,7 +5106,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
-    function WrapNowBtn({ days, setDays, showToast, className = "" }) {
+    function WrapNowBtn({ days, setDays, showToast, className = "", variant }) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const todayEntries = days.filter(d => d.date === todayStr);
       const alreadyWrapped = todayEntries.some(d => d.wrapTime && d.wrapTime.length > 0);
@@ -5118,6 +5134,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         doWrap();
       };
 
+      if (variant === "hero") {
+        const heroCls = `inline-flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.14em] font-bold rounded-[10px] py-2.5 px-3 transition-colors border ${confirming
+          ? "bg-sky-500/20 border-sky-500 text-sky-100"
+          : "bg-sky-500 border-sky-500 text-black hover:bg-sky-400"} ${className}`;
+        return (
+          <button onClick={handleClick} className={heroCls}
+            title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}>
+            <ICheck size={11}/>{confirming ? "Confirm?" : "Wrap now"}
+          </button>
+        );
+      }
+
       const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-sky-500 text-sky-100 bg-sky-500/20" : "bg-sky-500 text-black hover:bg-sky-400"} ${className}`;
 
       return (
@@ -5129,7 +5157,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function LunchNowBtn({ days, setDays, showToast, className = "" }) {
+    function LunchNowBtn({ days, setDays, showToast, className = "", variant }) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const todayEntries = days.filter(d => d.date === todayStr);
       const alreadyLunched = todayEntries.some(d => d.lunchStartTime && d.lunchStartTime.length > 0);
@@ -5156,6 +5184,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         doLunch();
       };
+
+      if (variant === "hero") {
+        const heroCls = `inline-flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.14em] font-bold rounded-[10px] py-2.5 px-3 transition-colors border ${confirming
+          ? "bg-amber-500/10 border-amber-500 text-amber-300"
+          : "bg-neutral-800 border-neutral-700 text-neutral-100 hover:bg-neutral-700"} ${className}`;
+        return (
+          <button onClick={handleClick} className={heroCls}
+            title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}>
+            <ICheck size={11}/>{confirming ? "Confirm?" : "Lunch now"}
+          </button>
+        );
+      }
 
       const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-500"} ${className}`;
 
@@ -9231,6 +9271,14 @@ const setDays = (updater) =>
       const [searchOpen, setSearchOpen] = useState(false);
       const [query, setQuery] = useState("");
       const searchInputRef = useRef(null);
+      // Live clock for the hero card's CLOCKED stat — ticks every 30s so the
+      // "Xh Ym since call" value advances while ON CALL. Static state (WRAPPED
+      // / no call yet) is unaffected by the tick.
+      const [tickNow, setTickNow] = useState(() => new Date());
+      useEffect(() => {
+        const id = setInterval(() => setTickNow(new Date()), 30000);
+        return () => clearInterval(id);
+      }, []);
 const confirmDelete = (p) => setConfirmOpts({
         title: "Delete production?",
         message: `Delete "${p.title || 'Untitled Production'}"? This cannot be undone.`,
@@ -9349,7 +9397,7 @@ const confirmDelete = (p) => setConfirmOpts({
             clockedValue = formatElapsed(Math.round(totalMins));
             if (earliestCallStr) clockedSub = `since ${earliestCallStr}`;
           } else if (earliestCallMins != null) {
-            clockedValue = formatElapsed(timeSinceCall(earliestCallStr));
+            clockedValue = formatElapsed(timeSinceCall(earliestCallStr, tickNow));
             clockedSub = `since ${earliestCallStr}`;
           }
 
@@ -9362,7 +9410,7 @@ const confirmDelete = (p) => setConfirmOpts({
           const showActions = someOnCall && todayRecords.length > 0;
 
           return (
-            <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
+            <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className="tm-hero-card border border-neutral-800 rounded-xl transition-colors cursor-pointer select-none touch-manipulation">
               <div className="p-4">
                 <div className={`flex items-center gap-1.5 text-[11px] tracking-[0.18em] font-bold mb-2 ${stateClass}`}>
                   {showDot && <span className="tm-pulse inline-block rounded-full bg-tm-good" style={{ width: 6, height: 6 }} />}
@@ -9392,8 +9440,8 @@ const confirmDelete = (p) => setConfirmOpts({
                 </div>
                 {showActions ? (
                   <div className="flex items-center gap-2 mt-3" onClick={e => e.stopPropagation()}>
-                    <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} className="flex-1" />
-                    <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} className="flex-1" />
+                    <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} variant="hero" className="flex-1" />
+                    <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} variant="hero" className="flex-1" />
                     <button
                       onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
                       className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center flex-shrink-0"
