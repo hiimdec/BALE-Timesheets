@@ -399,7 +399,12 @@
     const getBankHolidayName = (dateStr) => dateStr ? (UK_BANK_HOLIDAYS[dateStr] || null) : null;
     const weekday = (iso) => { if (!iso) return ""; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" }); };
     const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
+    // fmtDateShort → "04/05/2026" (compact: line items, table rows)
     const fmtDateShort = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+    // fmtDateMed → "4 May 2026" (headers, invoice metadata, prose)
+    const fmtDateMed = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }); };
+    // fmtDateLong → "Wed, 4 May 2026" (day editor headings, weekly summaries)
+    const fmtDateLong = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }); };
     const uid = () => Math.random().toString(36).slice(2, 10);
     const addDays = (isoDate, n) => { const d = new Date(isoDate + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
     const roleRank = (role) => { const r = role === "Spark" ? "Lighting Technician" : role; const i = ROLE_ORDER.indexOf(r); return i === -1 ? 99 : i; };
@@ -5475,6 +5480,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <Toggle value={production.bestBoyMode} onChange={(v) => setProduction(p => ({ ...p, bestBoyMode: v }))} ariaLabel="Best Boy mode" />
                 </div>
                 <p className="text-[11px] text-neutral-500 mt-1">Manage a crew with the grid view. Turn off for solo use.</p>
+                <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">"Best Boy" is the industry term for the assistant to a department head (e.g., Gaffer's Best Boy in lighting, Key Grip's Best Boy in the grip department).</p>
                 {production.bestBoyMode && crew.length <= 1 && (
                   <StatusMsg kind="info">You'll need to add additional crew members in Crew Manager.</StatusMsg>
                 )}
@@ -6669,7 +6675,7 @@ const setDays = (updater) =>
               <div className="space-y-6">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">Step 1 of 3</div>
-                  <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">Welcome to<br/>Time Machine</h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">Welcome to<br/>TimeMachine</h1>
                   <p className="text-sm text-neutral-400 leading-relaxed">The APA timesheet calculator for UK commercial crew.</p>
                 </div>
 
@@ -6797,6 +6803,10 @@ const setDays = (updater) =>
                     )}
                   </div>
                 )}
+
+                <div className="rounded-xl bg-neutral-900 border border-neutral-800 px-4 py-3 text-[11px] text-neutral-500 leading-relaxed">
+                  When you're ready to invoice, we'll guide you through setting up your bank details — everything stays on your device, nothing uploaded.
+                </div>
 
                 <Btn variant="primary" size="lg" className="w-full justify-center" onClick={completeOnboarding}>+ Add Production</Btn>
               </div>
