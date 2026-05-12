@@ -573,6 +573,8 @@
       apaRounding: false,
       onboardingComplete: false,
       lastSeenAppVersion: "",
+      // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off' to hide.
+      comparisonUnit: "Greggs sausage rolls",
     };
 
     // One-way road-miles approximation from W1F 9SE (APA standard origin) per UK outcode district.
@@ -6319,11 +6321,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
 
-    function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc, isToday }) {
-      // Compare line uses the first COMPARISON_SURFACE entry (sausage rolls).
-      const compareLabel = COMPARISON_SURFACE[0];
-      const compareItem = COMPARISON_ITEMS.find(c => c.label === compareLabel);
-      const compareQty = compareItem ? fmtComparisonQty(total / compareItem.price) : "0";
+    function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc, isToday, comparisonUnit }) {
+      // Compare line follows the user's pill-comparison preference. 'off' hides
+      // the line entirely; any other value looks up the matching item by label,
+      // falling back to the first surface entry if the saved label is stale.
+      const unit = comparisonUnit ?? COMPARISON_SURFACE[0];
+      const compareLabel = unit === 'off' ? null
+        : (COMPARISON_SURFACE.includes(unit) ? unit : COMPARISON_SURFACE[0]);
+      const compareItem = compareLabel ? COMPARISON_ITEMS.find(c => c.label === compareLabel) : null;
+      const compareQty = compareItem ? fmtComparisonQty(total / compareItem.price) : null;
       const swap = { animation: 'tm-pill-swap 140ms ease' };
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
@@ -6360,9 +6366,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 )}
               </div>
               <div className="tm-pill-amount pill-amount" key={`amount-${dayIndex}`} style={swap}>{fmtGBP(total)}</div>
-              <div className="tm-pill-compare pill-compare" key={`compare-${dayIndex}`} style={swap}>
-                ≈ {compareQty} {compareLabel}
-              </div>
+              {compareItem && (
+                <div className="tm-pill-compare pill-compare" key={`compare-${dayIndex}`} style={swap}>
+                  ≈ {compareQty} {compareLabel}
+                </div>
+              )}
             </Pill>
           </div>
         </div>
@@ -7305,6 +7313,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onAdd={addDay}
             onViewCalc={() => setShowCalc(true)}
             isToday={currentDay?.date === todayISO()}
+            comparisonUnit={userPrefs?.comparisonUnit}
           />
 
           {showCalc && (
@@ -8278,6 +8287,25 @@ const setDays = (updater) =>
                   <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40).</div>
                 </div>
                 <Toggle value={userPrefs.apaRounding} onChange={(v) => set({ apaRounding: v })} ariaLabel="APA rounding" />
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Display">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Pill comparison</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Shown under the £ amount in the day pill.</div>
+                </div>
+                <Select
+                  value={userPrefs.comparisonUnit ?? COMPARISON_SURFACE[0]}
+                  onChange={(e) => set({ comparisonUnit: e.target.value })}
+                  className="!w-auto"
+                >
+                  {COMPARISON_SURFACE.map(label => (
+                    <option key={label} value={label}>{label}</option>
+                  ))}
+                  <option value="off">Off</option>
+                </Select>
               </div>
             </SectionCard>
 
@@ -9943,8 +9971,10 @@ const confirmDelete = (p) => setConfirmOpts({
           const someOnCall = todayRecords.some(d => d.callTime && d.wrapped !== true);
           const allWrapped = todayRecords.length > 0 && todayRecords.every(d => d.callTime && d.wrapped === true);
 
+          // ON CALL drops its text prefix — the pulsing green dot is the live signal.
+          // WRAPPED and CURRENT SHOOT keep their prefixes (no dot accompanying).
           let stateLabel, stateClass, showDot;
-          if (someOnCall)      { stateLabel = `ON CALL · DAY ${dayIndex} OF ${dayCount}`;       stateClass = "text-tm-good";     showDot = true; }
+          if (someOnCall)      { stateLabel = `DAY ${dayIndex} OF ${dayCount}`;                 stateClass = "text-tm-good";     showDot = true; }
           else if (allWrapped) { stateLabel = `WRAPPED · DAY ${dayIndex} OF ${dayCount}`;       stateClass = "text-neutral-400"; showDot = false; }
           else                 { stateLabel = `CURRENT SHOOT · DAY ${dayIndex} OF ${dayCount}`; stateClass = "text-sky-500";     showDot = false; }
 
