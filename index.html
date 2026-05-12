@@ -61,7 +61,7 @@
     /* Avoid iOS zoom on input focus — inputs must be >= 16px */
     input, select, textarea { font-size: 16px !important; }
     /* Hide native select arrow tint */
-    select { -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2338bdf8' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
+    select { -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230ea5e9' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
     /* Loading indicator */
     .app-loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh; font-family: ui-sans-serif, system-ui; }
     /* Smooth momentum scrolling on iOS for all overflow containers */
@@ -1639,7 +1639,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .chip-day.prelight { background: #075985; color: white; }
       .chip-day.recce    { background: #0284c7; color: white; }
       .chip-day.prep,
-      .chip-day.build    { background: #38bdf8; color: #082f49; }
+      .chip-day.build    { background: #0ea5e9; color: #082f49; }
       .chip-day.derig,
       .chip-day.strike   { background: #7dd3fc; color: #082f49; }
       .chip-day.travel   { background: white; color: #075985; border: 1px solid #075985; padding: 1px 5px 1.5px; }
@@ -3027,7 +3027,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const Btn = ({ children, variant = "primary", size = "md", className = "", ...p }) => {
       const base = "inline-flex items-center gap-2 font-semibold uppercase tracking-wide transition-all border active:scale-95 disabled:opacity-40 disabled:pointer-events-none";
       const variants = {
-        primary: "bg-sky-400 border-sky-500 text-black hover:bg-sky-300",
+        primary: "bg-sky-500 border-sky-500 text-black hover:bg-sky-300",
         ghost:   "bg-transparent border-neutral-700 text-neutral-200 hover:bg-neutral-800 hover:border-neutral-600",
         danger:  "bg-red-600 border-red-700 text-white hover:bg-red-500",
         success: "bg-green-500 border-green-600 text-black hover:bg-green-400",
@@ -3039,7 +3039,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     const Field = ({ label, children, hint, disabled }) => (
       <label className={`block ${disabled ? "opacity-40" : ""}`}>
-        <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-1">{label}</div>
+        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1">{label}</div>
         {children}
         {hint && <div className="text-[10px] text-neutral-500 mt-1 leading-tight">{hint}</div>}
       </label>
@@ -3054,7 +3054,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
       return <input type={type} inputMode={resolvedInputMode} onFocus={handleFocus} {...p}
         style={isDate ? { WebkitAppearance: 'none', ...style } : style}
-        className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
+        className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
     };
     const TimeInput = ({ onChange, value, className, style, ...p }) => {
@@ -3080,7 +3080,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         style={{ WebkitAppearance: 'none', ...style }}
         {...p} />;
     };
-    const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
+    const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
     const StatusMsg = ({ kind = "info", children }) => {
       const colors  = { ok: "text-tm-good",       info: "text-neutral-400",     warn: "text-tm-warn",        bad: "text-tm-pen" };
@@ -3103,7 +3103,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         aria-label={ariaLabel || ""}
         disabled={!!disabled}
         onClick={() => !disabled && onChange(!value)}
-        className={`relative inline-flex shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:ring-offset-1 focus:ring-offset-neutral-900 ${value ? "bg-sky-400" : "bg-neutral-700"} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+        className={`relative inline-flex shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:ring-offset-1 focus:ring-offset-neutral-900 ${value ? "bg-sky-500" : "bg-neutral-700"} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
         style={{ width: 56, height: 30, padding: 0 }}
       >
         <span
@@ -3159,7 +3159,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 {production.startDate && <span className="text-[11px] text-neutral-500 font-mono">{fmtDateShort(production.startDate)}</span>}
                 {hasCustomWeekend && <span className="px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-400 text-[10px] font-semibold">custom weekend</span>}
-                {production.isElevenHourDay && <span className="px-1.5 py-0.5 rounded-full bg-sky-900/40 text-sky-400 text-[10px] font-semibold">11h day</span>}
+                {production.isElevenHourDay && <span className="px-1.5 py-0.5 rounded-full bg-sky-900/40 text-sky-500 text-[10px] font-semibold">11h day</span>}
               </div>
             </div>
             <Btn size="sm" variant="ghost" onClick={onOpenSettings}><IGear size={12}/>Settings</Btn>
@@ -3237,7 +3237,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {crew.length === 0 && (
             <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-xl">
               <div className="flex justify-center mb-2 text-neutral-700"><IUsers size={32}/></div>
-              <div className="text-neutral-500 text-sm">No crew yet. Hit <span className="text-sky-400 font-bold">ADD CREW</span> to start.</div>
+              <div className="text-neutral-500 text-sm">No crew yet. Hit <span className="text-sky-500 font-bold">ADD CREW</span> to start.</div>
             </div>
           )}
 
@@ -3250,12 +3250,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 onDragOver={onDragOver(i)}
                 onDragLeave={onDragLeave}
                 onDrop={onDrop(i)}
-                className={`bg-neutral-900 border transition-all flex items-center justify-between p-3 gap-2 rounded-xl ${overIdx === i ? "border-sky-400 border-t-4" : "border-neutral-800 hover:border-neutral-700"}`}
+                className={`bg-neutral-900 border transition-all flex items-center justify-between p-3 gap-2 rounded-xl ${overIdx === i ? "border-sky-500 border-t-4" : "border-neutral-800 hover:border-neutral-700"}`}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <div className="flex flex-col gap-0.5">
-                    <button onClick={() => moveUp(i)} className="text-neutral-600 hover:text-sky-400 disabled:opacity-20 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} disabled={i === 0}><IUp/></button>
-                    <button onClick={() => moveDown(i)} className="text-neutral-600 hover:text-sky-400 disabled:opacity-20 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} disabled={i === crew.length - 1}><IDown/></button>
+                    <button onClick={() => moveUp(i)} className="text-neutral-600 hover:text-sky-500 disabled:opacity-20 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} disabled={i === 0}><IUp/></button>
+                    <button onClick={() => moveDown(i)} className="text-neutral-600 hover:text-sky-500 disabled:opacity-20 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} disabled={i === crew.length - 1}><IDown/></button>
                   </div>
                   <div className="text-neutral-600 hidden sm:block"><IGrip/></div>
                   <div className="min-w-0">
@@ -3327,7 +3327,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             {/* ── Fixed header ── */}
             <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
               <div className="flex items-start justify-between gap-3">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">
                   {editing === "new" ? "Add crew member" : "Edit crew member"}
                 </div>
                 <button onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors flex-shrink-0 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
@@ -3367,7 +3367,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </Select>
                 </Field>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">VAT Registered</span>
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT Registered</span>
                   <Toggle value={form.vatRegistered} onChange={(v) => setForm({ ...form, vatRegistered: v })} ariaLabel="VAT registered" />
                 </div>
                 {form.vatRegistered && (
@@ -3376,7 +3376,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </Field>
                 )}
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit Money</span>
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit Money</span>
                   <Toggle value={form.kitMoneyEnabled} onChange={(v) => setForm({ ...form, kitMoneyEnabled: v })} ariaLabel="Kit money" />
                 </div>
                 {form.kitMoneyEnabled && (
@@ -3386,7 +3386,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 )}
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Driver</div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Driver</div>
                     <div className="text-[10px] text-neutral-500 mt-0.5">Shows pre-call time on day entries</div>
                   </div>
                   <Toggle value={form.isDriver} onChange={(v) => setForm({ ...form, isDriver: v })} ariaLabel="Driver" />
@@ -3543,7 +3543,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             {/* ── Fixed header ── */}
             <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700 flex items-start justify-between gap-3" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
               <div>
-                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1">Cancellation Fees</div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-1">Cancellation Fees</div>
                 <div className="text-[11px] text-neutral-500">APA §7 — fees calculated relative to notice date</div>
               </div>
               <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
@@ -3586,7 +3586,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         ))}
                         <th className="px-3 py-2 border-r border-b border-l border-neutral-700 bg-neutral-950 text-right text-[10px] uppercase tracking-wider text-neutral-500 font-bold whitespace-nowrap">Total</th>
                         <th className="px-2 py-1.5 border-b border-neutral-700 bg-neutral-950 align-middle">
-                          <button onClick={addColumn} className="px-2 py-1 text-[10px] uppercase tracking-wider text-sky-400 hover:text-sky-300 font-bold whitespace-nowrap" title="Add a day column" aria-label="Add a day column">+ Day</button>
+                          <button onClick={addColumn} className="px-2 py-1 text-[10px] uppercase tracking-wider text-sky-500 hover:text-sky-300 font-bold whitespace-nowrap" title="Add a day column" aria-label="Add a day column">+ Day</button>
                         </th>
                       </tr>
                     </thead>
@@ -3772,7 +3772,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             {[{ k: 'manual', label: 'Manual' }, { k: 'postcode', label: 'Postcode' }].map(({ k, label }) => (
               <button key={k} type="button" onClick={() => updateDay({ mileageMethod: k })}
                 className={`px-3 py-1 rounded-md text-[11px] uppercase tracking-wide font-bold transition-colors ${
-                  method === k ? 'bg-sky-400 text-black' : 'text-neutral-400 hover:text-neutral-200'
+                  method === k ? 'bg-sky-500 text-black' : 'text-neutral-400 hover:text-neutral-200'
                 }`}
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 {label}
@@ -3805,7 +3805,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     const result = lookupPostcodeMiles(day.mileagePostcode, rt);
                     updateDay({ mileageRoundTrip: rt, miles: result ? result.miles : (day.miles || 0) });
                   }}
-                  className="accent-sky-400" />
+                  className="accent-sky-500" />
                 <span className="text-sm text-neutral-300">Round trip</span>
               </label>
               {(() => {
@@ -3833,7 +3833,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           {hasPrevMileage && (
             <button type="button" onClick={copyPrevMileage}
-              className="mt-3 inline-flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+              className="mt-3 inline-flex items-center gap-1.5 text-xs text-sky-500 hover:text-sky-300 transition-colors"
               style={{ WebkitTapHighlightColor: 'transparent' }}>
               <IReset size={12}/>Same as previous day
             </button>
@@ -3912,7 +3912,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               )}
               {!fixedCrewId && allCrewMode && (
                 <div className="bg-sky-950/30 border border-sky-800 p-2 rounded-xl">
-                  <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold">All Crew Mode</div>
+                  <div className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">All Crew Mode</div>
                   <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage apply to all.</div>
                 </div>
               )}
@@ -4006,7 +4006,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {bs && bs.cwdApplies && (bs.lunchMissed || bs.lunchVeryLate) && (
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Meal Provided?</div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Meal Provided?</div>
                       <div className="text-[10px] text-neutral-500 mt-0.5">£7.50 allowance if no meal given</div>
                     </div>
                     <Toggle value={!v.noMealProvided} onChange={(val) => set({ noMealProvided: !val })} ariaLabel="Meal provided" />
@@ -4045,7 +4045,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="text-[11px] text-neutral-400 leading-tight">APA §6.4: CWD requires a 30m break by {toHHMM(bs.cwd1Deadline)} (9h after call){bs.cwd2Required ? `, and another by ${toHHMM(bs.cwd2Deadline)} (12.5h after call)` : ""}. Missed breaks = 30m × BHR penalty.</div>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Break 1 — by {toHHMM(bs.cwd1Deadline)}</div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 1 — by {toHHMM(bs.cwd1Deadline)}</div>
                     <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak1Given === false ? "Missed — +30m × BHR" : "Given"}</div>
                   </div>
                   <Toggle value={v.cwdBreak1Given !== false} onChange={(val) => set({ cwdBreak1Given: val })} ariaLabel="CWD break 1 given" />
@@ -4053,7 +4053,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {bs.cwd2Required && (
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Break 2 — by {toHHMM(bs.cwd2Deadline)}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 2 — by {toHHMM(bs.cwd2Deadline)}</div>
                       <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak2Given === false ? "Missed — +30m × BHR" : "Given"}</div>
                     </div>
                     <Toggle value={v.cwdBreak2Given !== false} onChange={(val) => set({ cwdBreak2Given: val })} ariaLabel="CWD break 2 given" />
@@ -4076,9 +4076,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             {!isTravelDay && (
               <div className="space-y-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Travel Time</span>
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Travel Time</span>
                   <button type="button" onClick={() => setShowTravelInfo(s => !s)}
-                    className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-400/30"
+                    className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
                     style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Travel time calculation info">
                     <IInfo size={12}/>
@@ -4095,9 +4095,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             {!isTravelDay && (
               <div className="space-y-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Pre-call</span>
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Pre-call</span>
                   <button type="button" onClick={() => setShowPreCallInfo(s => !s)}
-                    className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-400/30"
+                    className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
                     style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Pre-call info">
                     <IInfo size={12}/>
@@ -4111,7 +4111,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             )}
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Per Diem</span>
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Per Diem</span>
                 <Toggle value={!!v.perDiemEnabled} onChange={(val) => set({ perDiemEnabled: val })} ariaLabel="Per diem" />
               </div>
               {v.perDiemEnabled && (
@@ -4122,7 +4122,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit Money</span>
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit Money</span>
                 <Toggle value={!!v.kitMoneyEnabled} onChange={(val) => set({ kitMoneyEnabled: val })} ariaLabel="Kit money" />
               </div>
               {v.kitMoneyEnabled && (
@@ -4133,11 +4133,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Expenses</span>
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Expenses</span>
                 <button
                   type="button"
                   onClick={() => set({ expenses: [...(v.expenses || []), { id: uid(), amount: 0, category: "Other", description: "" }] })}
-                  className="text-[10px] uppercase tracking-wide text-sky-400 hover:text-sky-300 font-bold flex items-center gap-1"
+                  className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1"
                 ><IPlus size={11}/>Add expense</button>
               </div>
               {(v.expenses || []).length > 0 && (
@@ -4176,7 +4176,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Step-Up for this day</span>
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Step-Up for this day</span>
                 <Toggle value={!!v.stepUpEnabled} onChange={(val) => set({ stepUpEnabled: val })} ariaLabel="Step-up" />
               </div>
               {v.stepUpEnabled && (
@@ -4280,12 +4280,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           >
             {/* ── Fixed header ── */}
             <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
-              <button onClick={onCancel} className="text-[11px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-400 transition-colors flex items-center gap-1 mb-2">
+              <button onClick={onCancel} className="text-[11px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-500 transition-colors flex items-center gap-1 mb-2">
                 <IArrowLeft size={12}/> All Days
               </button>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1.5">{modalTitle}</div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-1.5">{modalTitle}</div>
                   {fixedCrewId && activeCrew && (
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-neutral-100 truncate">{activeCrew.name}</span>
@@ -4318,13 +4318,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 days={days}
               />
               {isNewAll && (
-                <div className="mt-3 bg-black border border-sky-400 p-3 text-xs text-neutral-300 rounded-xl">
-                  <span className="text-sky-400 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member
+                <div className="mt-3 bg-black border border-sky-500 p-3 text-xs text-neutral-300 rounded-xl">
+                  <span className="text-sky-500 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member
                 </div>
               )}
               {activeCalc && activeCalc.lines.length > 0 && (
                 <div className="mt-4 border border-neutral-800 rounded-lg p-3">
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Cost Breakdown</div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-2">Cost Breakdown</div>
                   <table className="w-full border-collapse text-[11px]">
                     <tbody>
                       {activeCalc.lines.map((l, i) => {
@@ -4574,7 +4574,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <td colSpan={8} className="py-12 text-center">
                       <button
                         onClick={handleAddWeek}
-                        className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-sky-400/40 text-sky-400 hover:bg-sky-400/10 hover:border-sky-400 transition-colors text-sm font-bold uppercase tracking-wider"
+                        className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-sky-500/40 text-sky-500 hover:bg-sky-500/10 hover:border-sky-500 transition-colors text-sm font-bold uppercase tracking-wider"
                       >
                         <span className="text-lg leading-none">+</span> Add Week
                       </button>
@@ -4617,7 +4617,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             if (isEditingThis) { setEditingDate(null); return; }
                             if (hasEntries) { openDateEdit(date); } else { onAddAllOnDate(date, addDayType); }
                           }}
-                          className={`px-2 py-1.5 text-center cursor-pointer border-r border-neutral-700 transition-colors hover:bg-neutral-800/60 ${cellBg}${isEditingThis ? " ring-2 ring-inset ring-sky-400" : ""}`}
+                          className={`px-2 py-1.5 text-center cursor-pointer border-r border-neutral-700 transition-colors hover:bg-neutral-800/60 ${cellBg}${isEditingThis ? " ring-2 ring-inset ring-sky-500" : ""}`}
                           title={isBH ? `Bank Holiday — ${getBankHolidayName(date)}` : undefined}>
                           <div className={`text-[11px] font-bold leading-none ${numColor}`}>
                             {new Date(date + "T12:00:00").getDate()}
@@ -4630,12 +4630,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           )}
                           <div className="flex items-center justify-center gap-1.5 mt-0.5">
                             <button onClick={e => { e.stopPropagation(); onAssignAll(date, addDayType); }}
-                              className="text-[8px] text-neutral-600 hover:text-sky-400 transition-colors font-bold uppercase tracking-wider"
+                              className="text-[8px] text-neutral-600 hover:text-sky-500 transition-colors font-bold uppercase tracking-wider"
                               title="Add all crew for this date"
                               aria-label="Assign all crew for this date">+all</button>
                             {days.some(d => d.date === date) && (
                               <button onClick={e => { e.stopPropagation(); onDuplicateDate(date); }}
-                                className="text-neutral-600 hover:text-sky-400 transition-colors"
+                                className="text-neutral-600 hover:text-sky-500 transition-colors"
                                 title="Duplicate this date"
                                 aria-label="Duplicate this date"><ICopy size={10}/></button>
                             )}
@@ -4679,7 +4679,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <tbody>
                 <tr className="border-t border-neutral-700">
                   <td className="px-3 py-2 bg-neutral-950 border-r border-neutral-700" style={{ position: "sticky", left: 0, zIndex: 10 }}>
-                    <button onClick={onAddCrew} className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-sky-400 transition-colors flex items-center gap-1">
+                    <button onClick={onAddCrew} className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-sky-500 transition-colors flex items-center gap-1">
                       <span className="text-base leading-none">+</span> Crew
                     </button>
                   </td>
@@ -4691,7 +4691,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           <div className="flex justify-center pt-1">
             <button onClick={handleAddWeek}
-              className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-sky-400 border border-neutral-700 hover:border-sky-400 transition-colors px-4 py-1.5 rounded-sm flex items-center gap-1.5">
+              className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-sky-500 border border-neutral-700 hover:border-sky-500 transition-colors px-4 py-1.5 rounded-sm flex items-center gap-1.5">
               <span className="text-sm leading-none font-bold">+</span> Add Week
             </button>
           </div>
@@ -4712,7 +4712,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div id="date-edit-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-1.5">All Crew</div>
+                      <div id="date-edit-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-1.5">All Crew</div>
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-neutral-100">
                           {weekday(editingDate)} {new Date(editingDate + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
@@ -4737,7 +4737,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {/* Core: day type, times, lunch */}
                   <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
                     <div className="px-4 py-3 border-b border-neutral-800">
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Day</div>
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">Day</div>
                     </div>
                     <div className="px-4 py-4 space-y-3">
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -4769,7 +4769,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {dateEdit.dayType !== "Travel Day" && dateEdit.dayType !== "Rest Day" && (
                     <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
                       <div className="px-4 py-3 border-b border-neutral-800">
-                        <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">2nd Break</div>
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">2nd Break</div>
                       </div>
                       <div className="px-4 py-4">
                         <div className="grid grid-cols-2 gap-3">
@@ -4804,9 +4804,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     {dateEdit.dayType !== "Travel Day" && (
                       <div className="space-y-3">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Travel Time</span>
+                          <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Travel Time</span>
                           <button type="button" onClick={() => setShowTravelInfo(s => !s)}
-                            className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-400/30"
+                            className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
                             style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                             aria-label="Travel time calculation info">
                             <IInfo size={12}/>
@@ -4822,7 +4822,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     )}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Per Diem</span>
+                        <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Per Diem</span>
                         <Toggle value={!!dateEdit.perDiemEnabled} onChange={val => setDateEdit(p => ({...p, perDiemEnabled: val}))} ariaLabel="Per diem" />
                       </div>
                       {dateEdit.perDiemEnabled && (
@@ -4833,7 +4833,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit Money</span>
+                        <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit Money</span>
                         <Toggle value={!!dateEdit.kitMoneyEnabled} onChange={val => setDateEdit(p => ({...p, kitMoneyEnabled: val}))} ariaLabel="Kit money" />
                       </div>
                       {dateEdit.kitMoneyEnabled && (
@@ -4844,11 +4844,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Expenses</span>
+                        <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Expenses</span>
                         <button
                           type="button"
                           onClick={() => setDateEdit(p => ({ ...p, expenses: [...(p.expenses || []), { id: uid(), amount: 0, category: "Other", description: "" }] }))}
-                          className="text-[10px] uppercase tracking-wide text-sky-400 hover:text-sky-300 font-bold flex items-center gap-1"
+                          className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1"
                         ><IPlus size={11}/>Add expense</button>
                       </div>
                       {(dateEdit.expenses || []).length > 0 && (
@@ -4887,7 +4887,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Step-Up for all crew</span>
+                        <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Step-Up for all crew</span>
                         <Toggle value={!!dateEdit.stepUpEnabled} onChange={val => setDateEdit(p => ({...p, stepUpEnabled: val}))} ariaLabel="Step-up" />
                       </div>
                       {dateEdit.stepUpEnabled && (
@@ -5031,7 +5031,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         doLunch();
       };
 
-      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`;
+      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-500"}`;
 
       return (
         <button onClick={handleClick} className={cls}
@@ -5226,8 +5226,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="flex items-center gap-2 flex-wrap">
               {production.bestBoyMode && (
                 <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
-                  <button onClick={() => setGridView(false)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${!gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>List</button>
-                  <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-400 text-black" : "text-neutral-400"}`}>Grid</button>
+                  <button onClick={() => setGridView(false)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${!gridView ? "bg-sky-500 text-black" : "text-neutral-400"}`}>List</button>
+                  <button onClick={() => setGridView(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors duration-150 ${gridView ? "bg-sky-500 text-black" : "text-neutral-400"}`}>Grid</button>
                 </div>
               )}
               {!editing && crew.length > 0 && (
@@ -5274,7 +5274,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               return (
                 <div key={date}>
                   <div className="flex items-baseline justify-between mb-2 border-b border-neutral-800 pb-1">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-sky-400">{fmtDate(date)}</div>
+                    <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-sky-500">{fmtDate(date)}</div>
                     <div className="text-sm font-mono text-neutral-300">{fmtGBP(dayTotal)}</div>
                   </div>
                   <div className="space-y-1">
@@ -5304,7 +5304,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               <div className="flex items-center gap-2 flex-wrap">
                                 <div className="font-semibold text-neutral-100">{c.name}</div>
                                 <span className="text-[10px] uppercase tracking-wider bg-neutral-800 text-neutral-400 px-1.5 py-0.5">{c.role}</span>
-                                <span className="text-[10px] uppercase tracking-wider bg-sky-400 text-black px-1.5 py-0.5 font-bold">{d.dayType}</span>
+                                <span className="text-[10px] uppercase tracking-wider bg-sky-500 text-black px-1.5 py-0.5 font-bold">{d.dayType}</span>
                                 {calc.meta.continuousDay && <span className="text-[10px] uppercase tracking-wider bg-red-900 text-red-200 px-1.5 py-0.5 font-bold">CWD</span>}
                               </div>
                               <div className="text-[11px] text-neutral-400 font-mono mt-1">
@@ -5567,9 +5567,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IShare size={16}/>Export</h2>
 
           {/* Grand total summary */}
-          <div className="bg-neutral-900 border-l-4 border-sky-400 p-4 rounded-r-[10px] flex items-baseline justify-between">
+          <div className="bg-neutral-900 border-l-4 border-sky-500 p-4 rounded-r-[10px] flex items-baseline justify-between">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{byCrew.length} crew · {days.length} day entries</div>
+              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">{byCrew.length} crew · {days.length} day entries</div>
               <div className="text-[11px] text-neutral-500 mt-0.5">{weeks.length} week{weeks.length !== 1 ? 's' : ''}</div>
             </div>
             <div className="font-mono font-bold text-neutral-100 text-lg">{fmtGBP(grandTotal)}</div>
@@ -5671,9 +5671,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1" aria-label="Back">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
               </button>
               <div className="flex-1 text-center font-bold uppercase tracking-tight text-sm">{headerLabel} settings</div>
@@ -5714,7 +5714,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <SectionCard title="Mode">
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Best Boy mode</span>
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Best Boy mode</span>
                   <Toggle value={production.bestBoyMode} onChange={(v) => setProduction(p => ({ ...p, bestBoyMode: v }))} ariaLabel="Best Boy mode" />
                 </div>
                 <p className="text-[11px] text-neutral-500 mt-1">Manage a crew with the grid view. Turn off for solo use.</p>
@@ -5728,7 +5728,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">11-Hour Day</span>
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">11-Hour Day</span>
                   <Toggle value={production.isElevenHourDay} onChange={(v) => setProduction(p => ({ ...p, isElevenHourDay: v }))} ariaLabel="11-Hour Day" />
                 </div>
                 <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
@@ -5740,7 +5740,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Saturday rate</span>
+                    <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Saturday rate</span>
                     <div className="text-[11px] text-neutral-500 mt-0.5">{(production.satRateMode || "apa") === "custom" ? `Custom ${production.satRateCustom ?? 1.5}×` : "Using APA standard (1.5×)"}</div>
                   </div>
                   <Toggle
@@ -5760,7 +5760,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Sunday rate</span>
+                    <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Sunday rate</span>
                     <div className="text-[11px] text-neutral-500 mt-0.5">{(production.sunRateMode || "apa") === "custom" ? `Custom ${production.sunRateCustom ?? 2}×` : "Using APA standard (2.0×)"}</div>
                   </div>
                   <Toggle
@@ -5811,7 +5811,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </Select>
                   </Field>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">VAT Registered</span>
+                    <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT Registered</span>
                     <Toggle value={m.vatRegistered} onChange={setSoloBool("vatRegistered")} ariaLabel="VAT registered" />
                   </div>
                   {m.vatRegistered && (
@@ -5820,7 +5820,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </Field>
                   )}
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit Money</span>
+                    <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit Money</span>
                     <Toggle value={m.kitMoneyEnabled} onChange={setSoloBool("kitMoneyEnabled")} ariaLabel="Kit money" />
                   </div>
                   {m.kitMoneyEnabled && (
@@ -5830,7 +5830,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   )}
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Driver</div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Driver</div>
                       <div className="text-[10px] text-neutral-500 mt-0.5">Shows pre-call time on day entries</div>
                     </div>
                     <Toggle value={m.isDriver} onChange={setSoloBool("isDriver")} ariaLabel="Driver" />
@@ -6163,7 +6163,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onClick={e => e.stopPropagation()}
           >
             <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-700 flex items-center justify-between">
-              <div id="jump-sheet-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Jump to Day</div>
+              <div id="jump-sheet-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">Jump to Day</div>
               <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -6179,11 +6179,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     type="button"
                     onClick={() => { onPick(day.id); onClose(); }}
                     className={`w-full flex items-center gap-3 px-5 py-3.5 border-b border-neutral-800 text-left transition-colors ${isCurrent ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
-                    style={isCurrent ? { borderLeft: '3px solid #38bdf8' } : { borderLeft: '3px solid transparent' }}
+                    style={isCurrent ? { borderLeft: '3px solid #0ea5e9' } : { borderLeft: '3px solid transparent' }}
                   >
                     <div className="text-xs font-bold text-neutral-400 w-8 flex-shrink-0">D{idx + 1}</div>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-400" : "text-neutral-200"}`}>{dateStr}</div>
+                      <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-500" : "text-neutral-200"}`}>{dateStr}</div>
                       {(times || day.dayType) && <div className="text-[11px] text-neutral-500">{[times, day.dayType || "Shoot Day"].filter(Boolean).join(" · ")}</div>}
                     </div>
                     {day.note?.trim() && <INote size={13} className="text-neutral-600 flex-shrink-0"/>}
@@ -6429,10 +6429,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
 
           {/* Page header */}
-          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onBack} aria-label="Back to productions"
-                className="text-neutral-400 hover:text-sky-400 transition-colors p-2 rounded-full hover:bg-neutral-800"
+                className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 <IArrowLeft size={18}/>
               </button>
@@ -6744,7 +6744,7 @@ const setDays = (updater) =>
           {undoVisible && (
             <div className="fixed bottom-[8rem] left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-neutral-800 border border-neutral-600 shadow-lg px-4 py-2.5 rounded-full whitespace-nowrap">
               <span className="text-[11px] text-neutral-300 uppercase tracking-wide font-bold">{undoLabel}</span>
-              <button onClick={handleUndo} className="text-[11px] text-sky-400 hover:text-sky-300 uppercase tracking-wide font-bold transition-colors">Undo</button>
+              <button onClick={handleUndo} className="text-[11px] text-sky-500 hover:text-sky-300 uppercase tracking-wide font-bold transition-colors">Undo</button>
             </div>
           )}
 
@@ -6759,10 +6759,10 @@ const setDays = (updater) =>
           )}
 
           <div className="sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-            <div className="border-b border-sky-400 bg-black">
+            <div className="border-b border-sky-500 bg-black">
               <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <button onClick={onBack} className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-400 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to productions list">← {(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? `${n}'s TIMEMACHINE` : "TIMEMACHINE"; })()}</button>
+                  <button onClick={onBack} className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to productions list">← {(() => { const n = userPrefs?.displayName?.trim() || ""; return n ? `${n}'s TIMEMACHINE` : "TIMEMACHINE"; })()}</button>
                   <div className="font-bold uppercase tracking-tight leading-none text-sm">{production.title || <span className="text-neutral-500">Untitled Production</span>}</div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -6785,7 +6785,7 @@ const setDays = (updater) =>
                     : [{ k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
                   ).map(({ k, label, I }) => (
                     <button key={k} onClick={() => { if (k === "invoices") { setInvoiceNav("list"); } else { setTab(k); } }}
-                      className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-400 text-black" : "text-neutral-400"}`}>
+                      className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-sky-500 text-black" : "text-neutral-400"}`}>
                       <I/>{label}
                     </button>
                   ))}
@@ -6869,7 +6869,7 @@ const setDays = (updater) =>
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey || true) && canCreate) handleCreate(); }}
-                  className="w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-3 py-3 text-base font-mono outline-none rounded-lg"
+                  className="w-full bg-neutral-800 border border-neutral-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-3 py-3 text-base font-mono outline-none rounded-lg"
                 />
               </Field>
             </div>
@@ -6933,7 +6933,7 @@ const setDays = (updater) =>
             {step === 1 && (
               <div className="space-y-6">
                 <div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">Step 1 of 3</div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-3">Step 1 of 3</div>
                   <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">Welcome to<br/>TimeMachine</h1>
                   <p className="text-sm text-neutral-400 leading-relaxed">The APA timesheet calculator for UK commercial crew.</p>
                 </div>
@@ -6948,7 +6948,7 @@ const setDays = (updater) =>
                 </Field>
 
                 <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 text-sm text-neutral-400 leading-relaxed">
-                  <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-400 mb-2">Beta · Local only</div>
+                  <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 mb-2">Beta · Local only</div>
                   Your data stays on this device. No cloud sync yet — use <span className="text-neutral-300 font-medium">Settings → Export Backup</span> to keep a copy.
                 </div>
 
@@ -6960,7 +6960,7 @@ const setDays = (updater) =>
             {step === 2 && (
               <div className="space-y-6">
                 <div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">Step 2 of 3</div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-3">Step 2 of 3</div>
                   <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">Default role<br/>and rate</h1>
                   <p className="text-sm text-neutral-400">You can override these per-job at any time.</p>
                 </div>
@@ -7030,7 +7030,7 @@ const setDays = (updater) =>
             {step === 3 && (
               <div className="space-y-6">
                 <div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">All set</div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-3">All set</div>
                   <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">
                     You're ready{userPrefs.displayName ? `, ${userPrefs.displayName.split(' ')[0]}` : ''}.
                   </h1>
@@ -7082,7 +7082,7 @@ const setDays = (updater) =>
       return (
         <div className={`bg-neutral-900 border ${isRed ? "border-red-900/60" : "border-neutral-800"} rounded-xl overflow-hidden mb-4`}>
           <div className={`px-4 py-3 border-b ${isRed ? "border-red-900/60" : "border-neutral-800"}`}>
-            <div className={`text-[10px] uppercase tracking-[0.2em] ${isRed ? "text-red-400" : "text-sky-400"} font-bold`}>{title}</div>
+            <div className={`text-[10px] uppercase tracking-[0.2em] ${isRed ? "text-red-400" : "text-sky-500"} font-bold`}>{title}</div>
           </div>
           <div className="px-4 py-4 space-y-4">{children}</div>
         </div>
@@ -7099,7 +7099,7 @@ const setDays = (updater) =>
             className={`w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-neutral-800/40 transition-colors${open ? " border-b border-neutral-800" : ""}`}
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
-            <span className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{label}</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label}</span>
             <div className="flex items-center gap-2 flex-shrink-0">
               {!open && summary && <span className="text-[11px] text-neutral-400 font-mono">{summary}</span>}
               {open ? <IUp size={14} className="text-neutral-500" /> : <IDown size={14} className="text-neutral-500" />}
@@ -7166,9 +7166,9 @@ const setDays = (updater) =>
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1" aria-label="Back">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
               </button>
               <div className="flex-1 text-center font-bold uppercase tracking-tight text-sm">Settings</div>
@@ -7215,7 +7215,7 @@ const setDays = (updater) =>
 
             <SectionCard title="Tax &amp; Invoicing">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">VAT registered?</span>
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT registered?</span>
                 <Toggle value={userPrefs.vatRegistered} onChange={(v) => set({ vatRegistered: v })} ariaLabel="VAT registered" />
               </div>
               {userPrefs.vatRegistered && (
@@ -7246,7 +7246,7 @@ const setDays = (updater) =>
             <SectionCard title="Invoicing">
               <div className="space-y-4">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Your details (on the invoice)</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Your details (on the invoice)</div>
                   <div className="text-[10px] text-neutral-500 mb-3">Your display name (from My Setup) appears as the invoice's "From" name.</div>
                   <Field label="Company name" hint="Optional — if you trade as a limited company">
                     <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
@@ -7267,7 +7267,7 @@ const setDays = (updater) =>
                 </div>
 
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Bank details (for payment)</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Bank details (for payment)</div>
                   <Field label="Bank name">
                     <Input type="text" value={userPrefs.bankName} onChange={(e) => set({ bankName: e.target.value })} placeholder="e.g. Barclays" />
                   </Field>
@@ -7299,7 +7299,7 @@ const setDays = (updater) =>
                 </div>
 
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Invoice numbering</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Invoice numbering</div>
                   <Field label="Invoice prefix" hint="Appears before the number on each invoice">
                     <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
                   </Field>
@@ -7309,14 +7309,14 @@ const setDays = (updater) =>
                 </div>
 
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Default payment terms</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Default payment terms</div>
                   <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
                     <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
                   </Field>
                 </div>
 
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Logo (optional)</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Logo (optional)</div>
                   <div className="text-[10px] text-neutral-500 mb-3">Recommended: square, under 200KB. Renders at ~100px on your invoices.</div>
                   {userPrefs.logoBase64 ? (
                     <div className="flex items-center gap-3">
@@ -7365,7 +7365,7 @@ const setDays = (updater) =>
                 />
               </Field>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Kit money</span>
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit money</span>
                 <Toggle value={userPrefs.defaultKitMoneyEnabled} onChange={(v) => set({ defaultKitMoneyEnabled: v })} ariaLabel="Kit money by default" />
               </div>
               {userPrefs.defaultKitMoneyEnabled && (
@@ -7380,7 +7380,7 @@ const setDays = (updater) =>
                 </Field>
               )}
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Per diem</span>
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Per diem</span>
                 <Toggle value={userPrefs.defaultPerDiemEnabled} onChange={(v) => set({ defaultPerDiemEnabled: v })} ariaLabel="Per diem by default" />
               </div>
               {userPrefs.defaultPerDiemEnabled && (
@@ -7399,14 +7399,14 @@ const setDays = (updater) =>
             <SectionCard title="Calculation">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Favourable rounding</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Favourable rounding</div>
                   <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used.</div>
                 </div>
                 <Toggle value={userPrefs.favourableRounding} onChange={(v) => set({ favourableRounding: v })} ariaLabel="Favourable rounding" />
               </div>
               <div className="flex items-center justify-between gap-3 mt-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">APA rounding</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">APA rounding</div>
                   <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40).</div>
                 </div>
                 <Toggle value={userPrefs.apaRounding} onChange={(v) => set({ apaRounding: v })} ariaLabel="APA rounding" />
@@ -7455,13 +7455,13 @@ const setDays = (updater) =>
                 href="https://www.a-p-a.net/apa-crew-terms/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-between gap-3 text-sm text-neutral-300 hover:text-sky-400 transition-colors py-1 group"
+                className="flex items-center justify-between gap-3 text-sm text-neutral-300 hover:text-sky-500 transition-colors py-1 group"
               >
                 <div>
                   <div className="font-medium">APA Recommended Terms</div>
                   <div className="text-[10px] text-neutral-500 mt-0.5 group-hover:text-neutral-400 transition-colors">Official rate card and working terms — opens in a new tab</div>
                 </div>
-                <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-400 transition-colors"/>
+                <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-500 transition-colors"/>
               </a>
             </SectionCard>
 
@@ -7482,7 +7482,7 @@ const setDays = (updater) =>
               <ul className="space-y-1.5 mb-3">
                 {RELEASE_NOTES.added.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
-                    <span className="text-sky-400 flex-shrink-0 leading-snug">·</span>
+                    <span className="text-sky-500 flex-shrink-0 leading-snug">·</span>
                     <span className="leading-snug">{item}</span>
                   </li>
                 ))}
@@ -7502,7 +7502,7 @@ const setDays = (updater) =>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-neutral-500">Feedback</span>
-                  <a href="mailto:feedback@timemachineapp.co.uk" className="text-sky-400 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
+                  <a href="mailto:feedback@timemachineapp.co.uk" className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
                 </div>
               </div>
             </SectionCard>
@@ -7716,7 +7716,7 @@ const setDays = (updater) =>
             </table>
             {stats.monthBreakdown.length > 24 && !showAllMonths && (
               <button onClick={ev => { ev.stopPropagation(); setShowAllMonths(true); }}
-                className="mt-2 text-xs text-sky-400 hover:text-sky-300 transition-colors">
+                className="mt-2 text-xs text-sky-500 hover:text-sky-300 transition-colors">
                 Show all {stats.monthBreakdown.length} months
               </button>
             )}
@@ -7758,9 +7758,9 @@ const setDays = (updater) =>
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-400 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-1 -ml-1" aria-label="Back">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
               </button>
               <h1 className="font-bold text-sm uppercase tracking-wide">Stats</h1>
@@ -7769,7 +7769,7 @@ const setDays = (updater) =>
               <div className="flex bg-neutral-900 rounded-xl p-1 gap-1">
                 {[['all', 'All time'], ['taxyear', 'Tax year'], ['ytd', 'Year to date']].map(([k, l]) => (
                   <button key={k} onClick={() => { setFilter(k); setExpandedStat(null); setShowAllMonths(false); }}
-                    className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${filter === k ? 'bg-sky-400 text-black' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                    className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${filter === k ? 'bg-sky-500 text-black' : 'text-neutral-400 hover:text-neutral-200'}`}>
                     {l}
                   </button>
                 ))}
@@ -7858,7 +7858,7 @@ const setDays = (updater) =>
                           <div key={type} className="flex items-center gap-3 py-1.5">
                             <div className="text-xs text-neutral-400 flex-shrink-0" style={{ minWidth: 72 }}>{type}</div>
                             <div className="flex-1">
-                              <div className="bg-sky-400/25 rounded-full h-2" style={{ width: `${Math.max(2, (count / maxCount) * 100)}%` }}/>
+                              <div className="bg-sky-500/25 rounded-full h-2" style={{ width: `${Math.max(2, (count / maxCount) * 100)}%` }}/>
                             </div>
                             <div className="text-xs font-mono text-neutral-300 flex-shrink-0 text-right" style={{ minWidth: 28 }}>{count}</div>
                           </div>
@@ -7914,7 +7914,7 @@ const setDays = (updater) =>
           if (daysOver > 0)
             return { label: `OVERDUE ${daysOver}d`, classes: "text-red-300 bg-red-900/40 border-red-700/40" };
         }
-        return { label: "SENT", classes: "text-sky-400 bg-sky-400/10 border-sky-400/30" };
+        return { label: "SENT", classes: "text-sky-500 bg-sky-500/10 border-sky-500/30" };
       }
       return { label: "DRAFT", classes: "text-amber-400 bg-amber-400/10 border-amber-400/30" };
     }
@@ -8253,7 +8253,7 @@ const setDays = (updater) =>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
           <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onBack} className="text-neutral-400 hover:text-sky-400 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
+              <button onClick={onBack} className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
                 <IArrowLeft size={18}/>
               </button>
               <div className="flex-1 min-w-0 text-sm font-bold truncate">{invoice.invoiceNumber}</div>
@@ -8303,7 +8303,7 @@ const setDays = (updater) =>
             <SectionCard title="From / To">
               <div className="space-y-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">From (you)</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">From (you)</div>
                   <div className="text-sm text-neutral-300 space-y-0.5">
                     {invoice.fromName && <div className="font-semibold">{invoice.fromName}</div>}
                     {invoice.fromCompanyName && <div>{invoice.fromCompanyName}</div>}
@@ -8315,7 +8315,7 @@ const setDays = (updater) =>
                   </div>
                 </div>
                 <div className="border-t border-neutral-800 pt-3">
-                  <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">To (client)</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">To (client)</div>
                   <Field label="Client / company name">
                     <Input type="text" value={invoice.toName} onChange={(e) => updateInvoice({ toName: e.target.value })} placeholder="Production company name" />
                   </Field>
@@ -8341,7 +8341,7 @@ const setDays = (updater) =>
                 <div className="flex items-center justify-between -mt-2 mb-2">
                   <span className="text-[10px] text-amber-400 uppercase tracking-wide font-bold">Manually edited</span>
                   <button type="button" onClick={() => setConfirmRefresh(true)}
-                    className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 flex items-center gap-1 transition-all active:scale-95 active:bg-sky-400/30"
+                    className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 flex items-center gap-1 transition-all active:scale-95 active:bg-sky-500/30"
                     style={{ background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}>
                     <IReset size={10}/> Refresh from shoot
                   </button>
@@ -8376,7 +8376,7 @@ const setDays = (updater) =>
 
               {expenseLines.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-neutral-800 flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Show individual expenses</span>
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Show individual expenses</span>
                   <Toggle value={showIndExp} onChange={(v) => updateInvoice({ showIndividualExpenses: v })} ariaLabel="Show individual expenses" />
                 </div>
               )}
@@ -8408,7 +8408,7 @@ const setDays = (updater) =>
               </div>
               <div className="mt-4 border-t border-neutral-800 pt-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">VAT registered</span>
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT registered</span>
                   <Toggle value={invoice.vatRegistered} onChange={(v) => updateInvoice({ vatRegistered: v })} ariaLabel="VAT registered" />
                 </div>
                 {invoice.vatRegistered && (
@@ -8537,7 +8537,7 @@ const setDays = (updater) =>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
           <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onClose} className="text-neutral-400 hover:text-sky-400 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
                 <IArrowLeft size={18}/>
               </button>
               <div className="flex-1 text-sm font-bold">Invoices</div>
@@ -8745,7 +8745,7 @@ const setDays = (updater) =>
           </div>
           <div className="flex gap-1.5 px-4 pt-4">
             {[1,2,3].map(n => (
-              <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${n <= step ? 'bg-sky-400' : 'bg-neutral-800'}`}/>
+              <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${n <= step ? 'bg-sky-500' : 'bg-neutral-800'}`}/>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-6">
@@ -8779,8 +8779,8 @@ const setDays = (updater) =>
             )}
             {step === 3 && (
               <div className="flex flex-col items-center justify-center py-12 text-center max-w-md mx-auto">
-                <div className="w-14 h-14 rounded-full bg-sky-400/20 flex items-center justify-center mb-4">
-                  <ICheck size={28} className="text-sky-400"/>
+                <div className="w-14 h-14 rounded-full bg-sky-500/20 flex items-center justify-center mb-4">
+                  <ICheck size={28} className="text-sky-500"/>
                 </div>
                 <div className="text-lg font-bold text-neutral-100 mb-2">You're all set</div>
                 <div className="text-sm text-neutral-400 mb-8">Your details have been saved. Tap <strong className="text-neutral-200">+</strong> on the Invoices tab to create your first invoice.</div>
@@ -8859,7 +8859,7 @@ const setDays = (updater) =>
           <div className="flex items-center justify-between mb-3">
             <div className="text-xs text-neutral-500">{visible.length} invoice{visible.length === 1 ? '' : 's'}</div>
             <label className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer select-none">
-              <input type="checkbox" checked={hidePaid} onChange={e => setHidePaid(e.target.checked)} className="accent-sky-400"/>
+              <input type="checkbox" checked={hidePaid} onChange={e => setHidePaid(e.target.checked)} className="accent-sky-500"/>
               Hide paid
             </label>
           </div>
@@ -9008,7 +9008,7 @@ const confirmDelete = (p) => setConfirmOpts({
         const isCurrent = opts.isCurrent || false;
         const cardSetDays = (updater) => onUpdateDays(p.id, updater);
         const hasToday = (p.days ?? []).some(d => d.date === todayStr);
-        const bestBoyBadge = p.bestBoyMode ? <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-400 bg-sky-400/10 border border-sky-400/30">Best Boy</span> : null;
+        const bestBoyBadge = p.bestBoyMode ? <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-500 bg-sky-500/10 border border-sky-500/30">Best Boy</span> : null;
         const invStatus = getProductionInvoiceStatus(p);
         const invChip = invStatus ? <span className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${toneClasses(invStatus.tone)}`}>{invStatus.label}</span> : null;
         const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
@@ -9083,13 +9083,13 @@ const confirmDelete = (p) => setConfirmOpts({
             <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-start justify-between">
               <div>
                 {displayName && <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-1">{displayName}'s</div>}
-                <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight leading-none text-sky-400">TIMEMACHINE</h1>
+                <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight leading-none text-sky-500">TIMEMACHINE</h1>
               </div>
               <div className="flex items-center gap-1 mt-1">
                 <button onClick={onOpenStats} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Stats" aria-label="Stats">
                   <IStats size={20}/>
                 </button>
-                <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-400" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
+                <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-500" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
                   <ISearch size={20}/>
                 </button>
                 <button onClick={() => setShowCancellationCalc(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Cancellation Calculator" aria-label="Cancellation Calculator">
@@ -9105,7 +9105,7 @@ const confirmDelete = (p) => setConfirmOpts({
               <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
                 {[{ k: "productions", label: "Productions", I: IBriefcase }, { k: "invoices", label: "Invoices", I: IReceipt }].map(({ k, label, I }) => (
                   <button key={k} onClick={() => setHomeTab(k)}
-                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${homeTab === k ? "bg-sky-400 text-black" : "text-neutral-400 hover:text-neutral-200"}`}>
+                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${homeTab === k ? "bg-sky-500 text-black" : "text-neutral-400 hover:text-neutral-200"}`}>
                     <I size={11}/>{label}
                   </button>
                 ))}
@@ -9177,7 +9177,7 @@ const confirmDelete = (p) => setConfirmOpts({
                 {/* Current shoot pinned at top */}
                 {currentShoot && (
                   <div className="mb-6">
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Current Shoot</div>
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-2">Current Shoot</div>
                     {renderCard(currentShoot, { isCurrent: true })}
                   </div>
                 )}
@@ -9187,8 +9187,8 @@ const confirmDelete = (p) => setConfirmOpts({
                   {groupsDisplay.map(({ label, items, monthTotal }) => (
                     <div key={label}>
                       <div className="flex items-baseline justify-between mb-3">
-                        <div className="text-sm uppercase tracking-[0.15em] font-bold text-sky-400">{label}</div>
-                        <div className="text-base font-bold font-mono text-sky-400">{fmtGBP(monthTotal)}</div>
+                        <div className="text-sm uppercase tracking-[0.15em] font-bold text-sky-500">{label}</div>
+                        <div className="text-base font-bold font-mono text-sky-500">{fmtGBP(monthTotal)}</div>
                       </div>
                       <div className="space-y-2">
                         {items.map(renderCard)}
@@ -9205,7 +9205,7 @@ const confirmDelete = (p) => setConfirmOpts({
           {homeTab === "productions" && (
             <button
               onClick={onNewProduction}
-              className="fixed z-30 bg-sky-400 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
+              className="fixed z-30 bg-sky-500 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
               style={{ width: 56, height: 56, bottom: 'calc(env(safe-area-inset-bottom) + 24px)', right: 24 }}
               title="New Production"
               aria-label="New Production"
@@ -9216,7 +9216,7 @@ const confirmDelete = (p) => setConfirmOpts({
           {homeTab === "invoices" && (
             <button
               onClick={() => setShowProductionPicker(true)}
-              className="fixed z-30 bg-sky-400 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
+              className="fixed z-30 bg-sky-500 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
               style={{ width: 56, height: 56, bottom: 'calc(env(safe-area-inset-bottom) + 24px)', right: 24 }}
               title="New Invoice"
               aria-label="New Invoice"
@@ -9553,7 +9553,7 @@ const confirmDelete = (p) => setConfirmOpts({
             </div>
           )}
           {showMigrationBanner && (
-            <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 80px)', left: 12, right: 12, zIndex: 9998, background: '#0c1e33', border: '1px solid #38bdf8', borderRadius: 12, color: '#e0f2fe', padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+            <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 80px)', left: 12, right: 12, zIndex: 9998, background: '#0c1e33', border: '1px solid #0ea5e9', borderRadius: 12, color: '#e0f2fe', padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
               <span>Your data was updated to the latest format — everything is fine.</span>
               <button onClick={() => setShowMigrationBanner(false)} style={{ color: '#7dd3fc', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} aria-label="Dismiss">×</button>
             </div>
