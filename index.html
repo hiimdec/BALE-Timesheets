@@ -3919,6 +3919,38 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const show2ndBreakSection = !isPmpa && !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
 
+      // Conditions-chip activation. stepUp/kitMoney use their existing *Enabled flags
+      // (calc already honours them — persist + ignore). preCall and mileage have no
+      // calc-honoured flag, so chip-active falls back to value-presence; the new
+      // *Enabled flag keeps the chip stable before any value is entered, and
+      // deactivation clears the value fields so calc drops them.
+      const stepUpActive   = !!v.stepUpEnabled;
+      const kitMoneyActive = !!v.kitMoneyEnabled;
+      const preCallActive  = v.preCallEnabled !== undefined ? !!v.preCallEnabled : !!(v.preCallTime || v.truckCallTime);
+      const mileageActive  = v.mileageEnabled !== undefined ? !!v.mileageEnabled : (Number(v.miles) > 0 || !!v.mileagePostcode);
+
+      const toggleChip = (key) => {
+        if (key === "stepUp")   set({ stepUpEnabled:   !stepUpActive });
+        if (key === "kitMoney") set({ kitMoneyEnabled: !kitMoneyActive });
+        if (key === "preCall") {
+          if (preCallActive) set({ preCallEnabled: false, preCallTime: "", truckCallTime: "" });
+          else               set({ preCallEnabled: true });
+        }
+        if (key === "mileage") {
+          if (mileageActive) set({ mileageEnabled: false, miles: 0, mileagePostcode: "" });
+          else               set({ mileageEnabled: true });
+        }
+      };
+
+      const chipCls = (active) => `rounded-full px-3 py-1.5 text-xs font-medium inline-flex items-center gap-1 transition-colors ${active
+        ? "bg-sky-500/10 border border-solid border-sky-500 text-sky-500"
+        : "bg-neutral-900 border border-dashed border-neutral-700 text-neutral-400 hover:bg-neutral-800"}`;
+      const renderChip = (key, label, active) => (
+        <button type="button" onClick={() => toggleChip(key)} className={chipCls(active)}>
+          {label}{active && <span aria-hidden="true">×</span>}
+        </button>
+      );
+
       return (
         <div className="space-y-4">
 
@@ -4086,16 +4118,86 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </SectionCard>
           )}
 
-          {/* ── Extras disclosure: mileage, pre-call, travel time, per diem, step-up ── */}
-          <Disclosure label="Extras">
-            {/* ── Nested: Mileage ── */}
-            <Disclosure
-              label="Mileage"
-              summary={v.miles > 0 ? `${v.miles} mi` : 'Not set'}
-              defaultOpen={v.miles > 0 || !!v.mileagePostcode}
-            >
+          {/* ── Conditions chips ── */}
+          <div className="space-y-2 mb-4">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold px-1">Conditions</div>
+            <div className="flex flex-wrap gap-2">
+              {renderChip("stepUp",   "Step-up",   stepUpActive)}
+              {!isTravelDay && renderChip("preCall", "Pre-call", preCallActive)}
+              {renderChip("mileage",  "Mileage",   mileageActive)}
+              {renderChip("kitMoney", "Kit money", kitMoneyActive)}
+            </div>
+          </div>
+
+          {/* ── Step-up Role (chip-gated) ── */}
+          {stepUpActive && (
+            <SectionCard title="Step-up Role">
+              <div className="space-y-3">
+                <Field label="Step-Up Role">
+                  <Select value={v.stepUpRole || ""} onChange={(e) => {
+                    const role = e.target.value;
+                    const d = ROLE_DEFAULTS[role] || {};
+                    set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef, stepUpOTRate: d.otRate ?? null });
+                  }}>
+                    <option value="">— Select Role —</option>
+                    {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}
+                  </Select>
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Step-Up BDR (£)" hint="Override for this day only">
+                    <Input type="number" min="0" step="0.01" value={v.stepUpBDR ?? 0} onChange={(e) => set({ stepUpBDR: Number(e.target.value) })} />
+                  </Field>
+                  <Field label="Step-Up OT Coef">
+                    <Select value={String(v.stepUpOTCoef ?? 1)} onChange={(e) => set({ stepUpOTCoef: Number(e.target.value) })}>
+                      <option value="1">1×</option>
+                      <option value="1.25">1.25×</option>
+                      <option value="1.5">1.5×</option>
+                    </Select>
+                  </Field>
+                </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* ── Pre-call (chip-gated) ── */}
+          {!isTravelDay && preCallActive && (
+            <SectionCard title="Pre-call">
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => setShowPreCallInfo(s => !s)}
+                    className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
+                    style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
+                    aria-label="Pre-call info">
+                    <IInfo size={12}/>
+                  </button>
+                  <span className="text-[10px] text-neutral-500">What counts as pre-call?</span>
+                </div>
+                {showPreCallInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{PRE_CALL_EXPLAINER}</span></StatusMsg>}
+                <Field label="Pre-call time" hint="Early arrival — paid at BHR. Lunch and CWD still measured from main call time.">
+                  <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} />
+                </Field>
+              </div>
+            </SectionCard>
+          )}
+
+          {/* ── Mileage (chip-gated) ── */}
+          {mileageActive && (
+            <SectionCard title="Mileage">
               <MileageInput day={v} updateDay={set} days={days} />
-            </Disclosure>
+            </SectionCard>
+          )}
+
+          {/* ── Kit money (chip-gated) ── */}
+          {kitMoneyActive && (
+            <SectionCard title="Kit money">
+              <Field label="Kit Money Amount (£)" hint="Added to day total">
+                <Input type="number" min="0" step="0.01" value={v.kitMoneyAmount ?? 0} onChange={(e) => set({ kitMoneyAmount: Number(e.target.value) })} />
+              </Field>
+            </SectionCard>
+          )}
+
+          {/* ── Extras disclosure: travel time, per diem, expenses, notes ── */}
+          <Disclosure label="Extras">
             {!isTravelDay && (
               <div className="space-y-3">
                 <div className="flex items-center gap-1.5">
@@ -4115,23 +4217,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
               </div>
             )}
-            {!isTravelDay && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Pre-call</span>
-                  <button type="button" onClick={() => setShowPreCallInfo(s => !s)}
-                    className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
-                    style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
-                    aria-label="Pre-call info">
-                    <IInfo size={12}/>
-                  </button>
-                </div>
-                {showPreCallInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{PRE_CALL_EXPLAINER}</span></StatusMsg>}
-                <Field label="Pre-call time" hint="Early arrival — paid at BHR. Lunch and CWD still measured from main call time.">
-                  <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} />
-                </Field>
-              </div>
-            )}
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Per Diem</span>
@@ -4140,17 +4225,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {v.perDiemEnabled && (
                 <Field label="Per Diem Amount (£)" hint="Added to day total">
                   <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
-                </Field>
-              )}
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit Money</span>
-                <Toggle value={!!v.kitMoneyEnabled} onChange={(val) => set({ kitMoneyEnabled: val })} ariaLabel="Kit money" />
-              </div>
-              {v.kitMoneyEnabled && (
-                <Field label="Kit Money Amount (£)" hint="Added to day total">
-                  <Input type="number" min="0" step="0.01" value={v.kitMoneyAmount ?? 0} onChange={(e) => set({ kitMoneyAmount: Number(e.target.value) })} />
                 </Field>
               )}
             </div>
@@ -4195,38 +4269,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Step-Up for this day</span>
-                <Toggle value={!!v.stepUpEnabled} onChange={(val) => set({ stepUpEnabled: val })} ariaLabel="Step-up" />
-              </div>
-              {v.stepUpEnabled && (
-                <>
-                  <Field label="Step-Up Role">
-                    <Select value={v.stepUpRole || ""} onChange={(e) => {
-                      const role = e.target.value;
-                      const d = ROLE_DEFAULTS[role] || {};
-                      set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef, stepUpOTRate: d.otRate ?? null });
-                    }}>
-                      <option value="">— Select Role —</option>
-                      {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}
-                    </Select>
-                  </Field>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Step-Up BDR (£)" hint="Override for this day only">
-                      <Input type="number" min="0" step="0.01" value={v.stepUpBDR ?? 0} onChange={(e) => set({ stepUpBDR: Number(e.target.value) })} />
-                    </Field>
-                    <Field label="Step-Up OT Coef">
-                      <Select value={String(v.stepUpOTCoef ?? 1)} onChange={(e) => set({ stepUpOTCoef: Number(e.target.value) })}>
-                        <option value="1">1×</option>
-                        <option value="1.25">1.25×</option>
-                        <option value="1.5">1.5×</option>
-                      </Select>
-                    </Field>
-                  </div>
-                </>
               )}
             </div>
             <div className="space-y-1">
