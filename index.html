@@ -3898,7 +3898,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Travel Time</span>
                   <button type="button" onClick={() => setShowTravelInfo(s => !s)}
-                    className="text-neutral-600 hover:text-sky-400 transition-colors"
+                    className="rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Travel time calculation info">
                     <IInfo size={12}/>
                   </button>
@@ -3916,7 +3917,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Pre-call</span>
                   <button type="button" onClick={() => setShowPreCallInfo(s => !s)}
-                    className="text-neutral-600 hover:text-sky-400 transition-colors"
+                    className="rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Pre-call info">
                     <IInfo size={12}/>
                   </button>
@@ -8031,8 +8033,8 @@ const setDays = (updater) =>
               {isWaived ? fmtGBP(item.amount) : fmtGBP(lineTotal)}
             </div>
             <button onClick={() => setActionSheetItem(item)}
-              className="text-neutral-500 hover:text-neutral-300 transition-colors p-1 flex-shrink-0"
-              aria-label="Line options" style={{ WebkitTapHighlightColor: 'transparent' }}>
+              className="rounded-full flex items-center justify-center flex-shrink-0"
+              aria-label="Line options" style={{ width: 36, height: 36, background: 'rgba(115,115,115,0.15)', color: '#a3a3a3', WebkitTapHighlightColor: 'transparent' }}>
               <IKebab size={16}/>
             </button>
           </div>
@@ -8134,9 +8136,9 @@ const setDays = (updater) =>
                 <div className="flex items-center justify-between -mt-2 mb-2">
                   <span className="text-[10px] text-amber-400 uppercase tracking-wide font-bold">Manually edited</span>
                   <button type="button" onClick={() => setConfirmRefresh(true)}
-                    className="text-[10px] text-sky-400 hover:text-sky-300 font-bold uppercase tracking-wide"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    Refresh from shoot
+                    className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 flex items-center gap-1"
+                    style={{ background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}>
+                    <IReset size={10}/> Refresh from shoot
                   </button>
                 </div>
               )}
