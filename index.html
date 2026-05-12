@@ -3204,6 +3204,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     };
 
+    // Shared small-rounded-square status badge — same shape/typography across
+    // all variants, only the colour scheme changes. Variants tie to the
+    // functional palette: draft → tm-warn (in-progress), sent → tm-good (done),
+    // paid → neutral (archived), bestboy → sky-300 outline (role marker),
+    // overdue → tm-pen (operational alert).
+    const Badge = ({ variant, children }) => {
+      const base = "text-[9px] uppercase tracking-[0.14em] font-bold px-1.5 py-[3px] rounded inline-flex items-center flex-shrink-0";
+      const variants = {
+        bestboy: "text-sky-300 border border-sky-300/35 bg-transparent",
+        draft:   "text-tm-warn border border-tm-warn/25 bg-tm-warn/10",
+        sent:    "text-tm-good border border-tm-good/25 bg-tm-good/10",
+        paid:    "text-neutral-500 border border-neutral-700 bg-neutral-800",
+        overdue: "text-tm-pen  border border-tm-pen/25  bg-tm-pen/10",
+      };
+      return <span className={`${base} ${variants[variant] || variants.paid}`}>{children}</span>;
+    };
+
     const Toggle = ({ value, onChange, disabled, ariaLabel }) => (
       <button
         type="button"
@@ -8351,26 +8368,17 @@ const setDays = (updater) =>
     }
 
     function getDisplayStatus(invoice) {
-      if (invoice.status === "paid")
-        return { label: "PAID", classes: "text-green-400 bg-green-400/10 border-green-400/30" };
+      if (invoice.status === "paid") return { label: "PAID", variant: "paid" };
       if (invoice.status === "sent") {
         if (invoice.dueDate) {
           const todayMs = new Date(todayISO() + "T12:00:00").getTime();
           const dueMs  = new Date(invoice.dueDate + "T12:00:00").getTime();
           const daysOver = Math.floor((todayMs - dueMs) / 86400000);
-          if (daysOver > 0)
-            return { label: `OVERDUE ${daysOver}d`, classes: "text-red-300 bg-red-900/40 border-red-700/40" };
+          if (daysOver > 0) return { label: `OVERDUE ${daysOver}d`, variant: "overdue" };
         }
-        return { label: "SENT", classes: "text-sky-500 bg-sky-500/10 border-sky-500/30" };
+        return { label: "SENT", variant: "sent" };
       }
-      return { label: "DRAFT", classes: "text-amber-400 bg-amber-400/10 border-amber-400/30" };
-    }
-
-    function toneClasses(tone) {
-      if (tone === 'red')     return "text-red-300 bg-red-900/40 border-red-700/40";
-      if (tone === 'sky')     return "text-sky-300 bg-sky-900/40 border-sky-700/40";
-      if (tone === 'green')   return "text-green-300 bg-green-900/30 border-green-700/30";
-      return "text-neutral-400 bg-neutral-800 border-neutral-700"; // neutral / default
+      return { label: "DRAFT", variant: "draft" };
     }
 
     function getProductionInvoiceStatus(production) {
@@ -8388,10 +8396,10 @@ const setDays = (updater) =>
           }
         } else { draftCount++; }
       }
-      if (mostOverdueDays > 0) return { label: `OVERDUE ${mostOverdueDays}d`, tone: 'red' };
-      if (sentCount > 0) return { label: sentCount > 1 ? `${sentCount} SENT` : 'SENT', tone: 'sky' };
-      if (draftCount > 0) return { label: draftCount > 1 ? `${draftCount} DRAFT` : 'DRAFT', tone: 'neutral' };
-      if (paidCount > 0) return { label: paidCount > 1 ? `${paidCount} PAID` : 'PAID', tone: 'green' };
+      if (mostOverdueDays > 0) return { label: `OVERDUE ${mostOverdueDays}d`, variant: 'overdue' };
+      if (sentCount > 0)       return { label: sentCount > 1 ? `${sentCount} SENT` : 'SENT', variant: 'sent' };
+      if (draftCount > 0)      return { label: draftCount > 1 ? `${draftCount} DRAFT` : 'DRAFT', variant: 'draft' };
+      if (paidCount > 0)       return { label: paidCount > 1 ? `${paidCount} PAID` : 'PAID', variant: 'paid' };
       return null;
     }
 
@@ -8704,9 +8712,9 @@ const setDays = (updater) =>
                 <IArrowLeft size={18}/>
               </button>
               <div className="flex-1 min-w-0 text-sm font-bold truncate">{invoice.invoiceNumber}</div>
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border flex-shrink-0 ${ds.classes}`}>
+              <Badge variant={ds.variant}>
                 {ds.label}
-              </span>
+              </Badge>
             </div>
           </div>
 
@@ -9018,7 +9026,7 @@ const setDays = (updater) =>
                         {(() => { const s = getDisplayStatus(inv); return (
                           <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                             <div className="text-base font-bold font-mono text-neutral-100">{fmtGBP(total)}</div>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${s.classes}`}>{s.label}</span>
+                            <Badge variant={s.variant}>{s.label}</Badge>
                           </div>
                         ); })()}
                       </div>
@@ -9143,7 +9151,7 @@ const setDays = (updater) =>
                           {mostRecentDate && <div className="text-[10px] text-neutral-500 mt-0.5">{fmtDateShort(mostRecentDate)}</div>}
                         </div>
                         {draft && (
-                          <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide border border-amber-500/40 text-amber-400 bg-amber-500/10">DRAFT</span>
+                          <Badge variant="draft">DRAFT</Badge>
                         )}
                       </div>
                     </button>
@@ -9323,7 +9331,7 @@ const setDays = (updater) =>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="font-mono text-sm font-bold text-neutral-100 truncate">{invoice.invoiceNumber}</span>
-                        <span className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide border ${s.classes}`}>{s.label}</span>
+                        <Badge variant={s.variant}>{s.label}</Badge>
                       </div>
                       <div className="text-xs text-neutral-400 truncate">{production.title || <span className="italic text-neutral-500">Untitled production</span>}</div>
                       <div className="text-[10px] text-neutral-500 mt-1">
@@ -9423,10 +9431,16 @@ const confirmDelete = (p) => setConfirmOpts({
         [productions]
       );
 
+      // Sort/group by the production's actual shoot date — earliest day record
+      // wins so a March shoot added in May groups under March. Falls back to
+      // startDate, then createdAt (truncated to YYYY-MM-DD) for productions
+      // with no days yet.
       const sortKey = (p) => {
-        if (p.startDate) return p.startDate;
         const dates = (p.days ?? []).map(d => d.date).filter(Boolean).sort();
-        return dates.length > 0 ? dates[0] : null;
+        if (dates.length > 0) return dates[0];
+        if (p.startDate) return p.startDate;
+        if (p.createdAt) return p.createdAt.slice(0, 10);
+        return null;
       };
       const monthLabel = (key) => {
         if (!key) return "No Date";
@@ -9478,9 +9492,9 @@ const confirmDelete = (p) => setConfirmOpts({
         const isCurrent = opts.isCurrent || false;
         const cardSetDays = (updater) => onUpdateDays(p.id, updater);
         const hasToday = (p.days ?? []).some(d => d.date === todayStr);
-        const bestBoyBadge = p.bestBoyMode ? <span className="text-[9px] uppercase tracking-[0.14em] font-bold px-1.5 py-[3px] rounded text-sky-300 border border-sky-300/35 bg-transparent flex-shrink-0">BEST BOY</span> : null;
+        const bestBoyBadge = p.bestBoyMode ? <Badge variant="bestboy">BEST BOY</Badge> : null;
         const invStatus = getProductionInvoiceStatus(p);
-        const invChip = invStatus ? <span className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${toneClasses(invStatus.tone)}`}>{invStatus.label}</span> : null;
+        const invChip = invStatus ? <Badge variant={invStatus.variant}>{invStatus.label}</Badge> : null;
         const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
         const wrapperClass = "bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer select-none touch-manipulation";
 
@@ -9694,8 +9708,6 @@ const confirmDelete = (p) => setConfirmOpts({
             />
           ) : (
           <div className="max-w-6xl mx-auto px-4">
-            <h2 className="text-2xl font-bold tracking-tight mb-6 mt-2">Shoots</h2>
-
             {trimmedQuery ? (
               /* Search results */
               filteredSorted.length === 0 ? (
