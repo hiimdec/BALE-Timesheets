@@ -3924,14 +3924,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // calc-honoured flag, so chip-active falls back to value-presence; the new
       // *Enabled flag keeps the chip stable before any value is entered, and
       // deactivation clears the value fields so calc drops them.
-      const stepUpActive   = !!v.stepUpEnabled;
-      const kitMoneyActive = !!v.kitMoneyEnabled;
-      const preCallActive  = v.preCallEnabled !== undefined ? !!v.preCallEnabled : !!(v.preCallTime || v.truckCallTime);
-      const mileageActive  = v.mileageEnabled !== undefined ? !!v.mileageEnabled : (Number(v.miles) > 0 || !!v.mileagePostcode);
+      const stepUpActive     = !!v.stepUpEnabled;
+      const kitMoneyActive   = !!v.kitMoneyEnabled;
+      const perDiemActive    = !!v.perDiemEnabled;
+      const preCallActive    = v.preCallEnabled    !== undefined ? !!v.preCallEnabled    : !!(v.preCallTime || v.truckCallTime);
+      const mileageActive    = v.mileageEnabled    !== undefined ? !!v.mileageEnabled    : (Number(v.miles) > 0 || !!v.mileagePostcode);
+      const travelTimeActive = v.travelTimeEnabled !== undefined ? !!v.travelTimeEnabled : (Number(v.travelOutMins) > 0 || Number(v.travelBackMins) > 0);
+      const expensesActive   = v.expensesEnabled   !== undefined ? !!v.expensesEnabled   : ((v.expenses || []).length > 0);
 
       const toggleChip = (key) => {
-        if (key === "stepUp")   set({ stepUpEnabled:   !stepUpActive });
-        if (key === "kitMoney") set({ kitMoneyEnabled: !kitMoneyActive });
+        if (key === "stepUp")    set({ stepUpEnabled:    !stepUpActive });
+        if (key === "kitMoney")  set({ kitMoneyEnabled:  !kitMoneyActive });
+        if (key === "perDiem")   set({ perDiemEnabled:   !perDiemActive });
         if (key === "preCall") {
           if (preCallActive) set({ preCallEnabled: false, preCallTime: "", truckCallTime: "" });
           else               set({ preCallEnabled: true });
@@ -3939,6 +3943,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (key === "mileage") {
           if (mileageActive) set({ mileageEnabled: false, miles: 0, mileagePostcode: "" });
           else               set({ mileageEnabled: true });
+        }
+        if (key === "travelTime") {
+          if (travelTimeActive) set({ travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 });
+          else                  set({ travelTimeEnabled: true });
+        }
+        if (key === "expenses") {
+          if (expensesActive) set({ expensesEnabled: false, expenses: [] });
+          else                set({ expensesEnabled: true });
         }
       };
 
@@ -4122,10 +4134,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <div className="space-y-2 mb-4">
             <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold px-1">Conditions</div>
             <div className="flex flex-wrap gap-2">
-              {renderChip("stepUp",   "Step-up",   stepUpActive)}
+              {renderChip("stepUp",     "Step-up",     stepUpActive)}
               {!isTravelDay && renderChip("preCall", "Pre-call", preCallActive)}
-              {renderChip("mileage",  "Mileage",   mileageActive)}
-              {renderChip("kitMoney", "Kit money", kitMoneyActive)}
+              {renderChip("mileage",    "Mileage",     mileageActive)}
+              {renderChip("kitMoney",   "Kit money",   kitMoneyActive)}
+              {!isTravelDay && renderChip("travelTime", "Travel time", travelTimeActive)}
+              {renderChip("perDiem",    "Per diem",    perDiemActive)}
+              {renderChip("expenses",   "Expenses",    expensesActive)}
             </div>
           </div>
 
@@ -4196,81 +4211,85 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </SectionCard>
           )}
 
-          {/* ── Extras disclosure: travel time, per diem, expenses, notes ── */}
-          <Disclosure label="Extras">
-            {!isTravelDay && (
+          {/* ── Travel time (chip-gated) ── */}
+          {!isTravelDay && travelTimeActive && (
+            <SectionCard title="Travel time">
               <div className="space-y-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Travel Time</span>
                   <button type="button" onClick={() => setShowTravelInfo(s => !s)}
                     className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
                     style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Travel time calculation info">
                     <IInfo size={12}/>
                   </button>
+                  <span className="text-[10px] text-neutral-500 leading-snug">{TRAVEL_TIME_CAPTION}</span>
                 </div>
-                <div className="text-[10px] text-neutral-500 leading-snug">{TRAVEL_TIME_CAPTION}</div>
                 {showTravelInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{TRAVEL_TIME_EXPLAINER}</span></StatusMsg>}
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Travel Out (mins)"><Input type="number" min="0" inputMode="numeric" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
                   <Field label="Travel Back (mins)"><Input type="number" min="0" inputMode="numeric" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
                 </div>
               </div>
-            )}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Per Diem</span>
-                <Toggle value={!!v.perDiemEnabled} onChange={(val) => set({ perDiemEnabled: val })} ariaLabel="Per diem" />
-              </div>
-              {v.perDiemEnabled && (
-                <Field label="Per Diem Amount (£)" hint="Added to day total">
-                  <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
-                </Field>
-              )}
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Expenses</span>
+            </SectionCard>
+          )}
+
+          {/* ── Per diem (chip-gated) ── */}
+          {perDiemActive && (
+            <SectionCard title="Per diem">
+              <Field label="Per Diem Amount (£)" hint="Added to day total">
+                <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
+              </Field>
+            </SectionCard>
+          )}
+
+          {/* ── Expenses (chip-gated) ── */}
+          {expensesActive && (
+            <SectionCard title="Expenses">
+              <div className="space-y-3">
                 <button
                   type="button"
                   onClick={() => set({ expenses: [...(v.expenses || []), { id: uid(), amount: 0, category: "Other", description: "" }] })}
                   className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1"
                 ><IPlus size={11}/>Add expense</button>
+                {(v.expenses || []).length > 0 && (
+                  <div className="space-y-2">
+                    {(v.expenses || []).map((exp) => (
+                      <div key={exp.id} className="flex flex-wrap items-center gap-2">
+                        <Select
+                          value={exp.category}
+                          onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, category: e.target.value } : x) })}
+                          className="flex-shrink-0" style={{ width: 116 }}
+                        >
+                          {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </Select>
+                        <Input
+                          type="number" min="0" step="0.01"
+                          value={exp.amount}
+                          onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, amount: Number(e.target.value) || 0 } : x) })}
+                          placeholder="0.00" className="flex-shrink-0" style={{ width: 84 }}
+                        />
+                        <Input
+                          type="text"
+                          value={exp.description}
+                          onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, description: e.target.value } : x) })}
+                          placeholder="Description" className="flex-1 min-w-[80px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => set({ expenses: v.expenses.filter(x => x.id !== exp.id) })}
+                          className="text-neutral-600 hover:text-red-400 transition-colors flex-shrink-0 p-1"
+                          aria-label="Remove expense"
+                        ><IX size={14}/></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              {(v.expenses || []).length > 0 && (
-                <div className="space-y-2">
-                  {(v.expenses || []).map((exp) => (
-                    <div key={exp.id} className="flex flex-wrap items-center gap-2">
-                      <Select
-                        value={exp.category}
-                        onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, category: e.target.value } : x) })}
-                        className="flex-shrink-0" style={{ width: 116 }}
-                      >
-                        {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </Select>
-                      <Input
-                        type="number" min="0" step="0.01"
-                        value={exp.amount}
-                        onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, amount: Number(e.target.value) || 0 } : x) })}
-                        placeholder="0.00" className="flex-shrink-0" style={{ width: 84 }}
-                      />
-                      <Input
-                        type="text"
-                        value={exp.description}
-                        onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, description: e.target.value } : x) })}
-                        placeholder="Description" className="flex-1 min-w-[80px]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => set({ expenses: v.expenses.filter(x => x.id !== exp.id) })}
-                        className="text-neutral-600 hover:text-red-400 transition-colors flex-shrink-0 p-1"
-                        aria-label="Remove expense"
-                      ><IX size={14}/></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            </SectionCard>
+          )}
+
+          {/* ── Extras disclosure: notes only ── */}
+          <Disclosure label="Extras">
             <div className="space-y-1">
               <Field label="Notes" hint="e.g. rain delay, client overtime requested">
                 <textarea

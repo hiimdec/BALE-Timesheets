@@ -180,7 +180,7 @@ When `bs` (break state) returns a warning, the `StatusMsg` renders **inside the 
 Below the primary block, a conditions row:
 
 ```
-CONDITIONS  [Step-up]  [Travel]  [Pre-call]  [Mileage]  [Standby]  [Kit money]  [Bank holiday]  [+ More]
+CONDITIONS  [Step-up]  [Pre-call]  [Mileage]  [Kit money]  [Travel time]  [Per diem]  [Expenses]
 ```
 
 Each chip:
@@ -189,19 +189,24 @@ Each chip:
 
 When a chip is activated, an expanded card appears below the chip row containing only that condition's fields. Cards stack in activation order. Tap the chip again (or the `×` on the expanded card) to collapse and clear.
 
-This means: the existing conditional sections (Travel Day, Pre-call, Mileage, etc.) all collapse from "always-visible empty cards" to "tap-to-add." Don't change the data fields inside — just the gating.
+This means: the existing conditional sections (Pre-call, Mileage, Travel time, etc.) all collapse from "always-visible empty cards" to "tap-to-add." Don't change the data fields inside — just the gating.
 
 ### Which sections become chips
 
-- Travel day → chip (was: `dayType === "Travel Day"` controlled)
-- Pre-call → chip (was: pre-call subsection)
-- Mileage → chip (was: separate `MileageInput` section)
-- Step-up role → chip (was: a checkbox inside the role area)
-- Standby → chip
-- Kit money → chip (was: toggle inside Extras)
-- Bank holiday → automatic from date, not a chip (keep as `StatusMsg`)
+- Step-up role → chip (was: toggle inside Extras). Persist + ignore via existing `stepUpEnabled` flag.
+- Pre-call → chip (was: pre-call subsection). New `preCallEnabled` flag with legacy fallback to value-presence; deactivation clears `preCallTime` / `truckCallTime`.
+- Mileage → chip (was: separate `MileageInput` section). New `mileageEnabled` flag with legacy fallback to `miles > 0 || mileagePostcode`; deactivation clears both.
+- Kit money → chip (was: toggle inside Extras). Persist + ignore via existing `kitMoneyEnabled` flag.
+- Travel time → chip (was: section inside Extras). New `travelTimeEnabled` flag with legacy fallback to `travelOutMins > 0 || travelBackMins > 0`; deactivation clears both. Hidden when day type is Travel Day.
+- Per diem → chip (was: toggle inside Extras). Persist + ignore via existing `perDiemEnabled` flag (calc already honours it).
+- Expenses → chip (was: section inside Extras). New `expensesEnabled` flag with legacy fallback to `expenses.length > 0`; deactivation clears the array.
+- Travel day → **not** a chip — it's a `dayType` value selected via the existing Day Type dropdown. Treating it as a chip duplicates a dropdown option.
+- Standby → **not** built — no existing Standby section or fields exist in `DayEntryForm` (only the "Standby Rigger" role name). Implementing it would require new data fields and calc logic, deferred until needed.
+- Bank holiday → automatic from date, not a chip (keep as `StatusMsg`).
 
-Notes stays as its own section below conditions — not a chip — since it's free text.
+Activation policy: for chips backed by a calc-honoured enabled flag (Step-up, Kit money, Per diem), data values are preserved across enable/disable cycles (persist + ignore). For chips backed by value-presence (Pre-call, Mileage, Travel time, Expenses), the new `*Enabled` flag keeps the chip stable but `calcForDisplay` reads the value fields directly, so deactivation clears those values to drop them from totals.
+
+Notes stays as its own section below conditions — not a chip — since it's free text. After this restructure the Extras Disclosure only wraps the Notes field.
 
 ### Day-switch animation
 
