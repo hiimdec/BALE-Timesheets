@@ -3886,13 +3886,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </SectionCard>
           )}
 
-          {/* ── Section: Mileage ── */}
-          <SectionCard title="Mileage">
-            <MileageInput day={v} updateDay={set} days={days} />
-          </SectionCard>
-
-          {/* ── Extras disclosure: pre-call, travel time, per diem, step-up ── */}
+          {/* ── Extras disclosure: mileage, pre-call, travel time, per diem, step-up ── */}
           <Disclosure label="Extras">
+            {/* ── Nested: Mileage ── */}
+            <Disclosure
+              label="Mileage"
+              summary={v.miles > 0 ? `${v.miles} mi` : 'Not set'}
+              defaultOpen={v.miles > 0 || !!v.mileagePostcode}
+            >
+              <MileageInput day={v} updateDay={set} days={days} />
+            </Disclosure>
             {!isTravelDay && (
               <div className="space-y-3">
                 <div className="flex items-center gap-1.5">
@@ -4607,18 +4610,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   )}
 
                   {/* Core: mileage */}
-                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
-                    <div className="px-4 py-3 border-b border-neutral-800">
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Mileage</div>
-                    </div>
-                    <div className="px-4 py-4">
-                      <MileageInput
-                        day={dateEdit}
-                        updateDay={patch => setDateEdit(p => ({...p, ...patch}))}
-                        days={[]}
-                      />
-                    </div>
-                  </div>
+                  <Disclosure
+                    label="Mileage"
+                    summary={dateEdit.miles > 0 ? `${dateEdit.miles} mi` : 'Not set'}
+                    defaultOpen={dateEdit.miles > 0 || !!dateEdit.mileagePostcode}
+                  >
+                    <MileageInput
+                      day={dateEdit}
+                      updateDay={patch => setDateEdit(p => ({...p, ...patch}))}
+                      days={[]}
+                    />
+                  </Disclosure>
 
                   {/* Extras: travel time, per diem, step-up */}
                   <Disclosure label="Extras">
@@ -6911,7 +6913,7 @@ const setDays = (updater) =>
       );
     };
 
-    const Disclosure = ({ label, children, defaultOpen = false }) => {
+    const Disclosure = ({ label, summary, children, defaultOpen = false }) => {
       const [open, setOpen] = useState(defaultOpen);
       return (
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden mb-4">
@@ -6922,7 +6924,10 @@ const setDays = (updater) =>
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <span className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">{label}</span>
-            {open ? <IUp size={14} className="text-neutral-500 flex-shrink-0" /> : <IDown size={14} className="text-neutral-500 flex-shrink-0" />}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {!open && summary && <span className="text-[11px] text-neutral-400 font-mono">{summary}</span>}
+              {open ? <IUp size={14} className="text-neutral-500" /> : <IDown size={14} className="text-neutral-500" />}
+            </div>
           </button>
           {open && <div className="px-4 py-4 space-y-4">{children}</div>}
         </div>
