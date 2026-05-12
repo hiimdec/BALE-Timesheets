@@ -46,6 +46,8 @@
       --tm-good: #4ade80;
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
       --tm-pill-ink: #15171a;
+      --pill-paper: #e6e9ed;
+      --pill-ink: #15171a;
     }
     html, body {
       -webkit-tap-highlight-color: transparent;
@@ -114,6 +116,72 @@
       height: 1px;
       background: linear-gradient(90deg, transparent, #0ea5e9, transparent);
       pointer-events: none;
+    }
+    /* Reusable bottom pill — cool grey paper, fine crosshatch grain texture,
+       44×44 rounded-12 nav buttons, prominent sky-fill on the "add" variant. */
+    .tm-pill {
+      background: var(--pill-paper);
+      color: var(--pill-ink);
+      border-radius: 18px;
+      padding: 10px;
+      display: flex; align-items: center; gap: 8px;
+      box-shadow: 0 10px 32px -8px rgba(0,0,0,0.6), inset 0 -1px 0 rgba(0,0,0,0.05);
+      background-image:
+        linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px);
+      background-size: 12px 12px;
+    }
+    .tm-pill-nav-btn {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.04);
+      border: 1px solid rgba(0,0,0,0.07);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--pill-ink);
+      flex-shrink: 0; cursor: pointer;
+      transition: transform 100ms ease, background 150ms ease;
+    }
+    .tm-pill-nav-btn:active:not(:disabled) {
+      transform: scale(0.94);
+      background: rgba(0,0,0,0.08);
+    }
+    .tm-pill-nav-btn:disabled {
+      opacity: 0.25;
+      pointer-events: none;
+    }
+    .tm-pill-nav-btn-add {
+      background: #0ea5e9;
+      border-color: rgba(0,0,0,0.15);
+      color: #000;
+    }
+    .tm-pill-nav-btn-add:active:not(:disabled) {
+      background: #38bdf8;
+      transform: scale(0.94);
+    }
+    .tm-pill-center {
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column; align-items: center;
+      cursor: pointer; padding: 0 8px;
+    }
+    .tm-pill-topline {
+      font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(21,23,26,0.55); font-weight: 700;
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 1px;
+    }
+    .tm-pill-dot {
+      width: 4px; height: 4px; border-radius: 50%;
+      background: rgba(21,23,26,0.3);
+    }
+    .tm-pill-amount {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 19px; font-weight: 700; letter-spacing: -0.01em;
+      color: var(--pill-ink);
+    }
+    .tm-pill-compare {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px; color: rgba(21,23,26,0.5);
+      margin-top: 1px;
     }
   </style>
 
@@ -3124,6 +3192,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const ICalc = (p) => <Icon {...p}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><circle cx="9" cy="12" r="0.8" fill="currentColor"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/><circle cx="15" cy="12" r="0.8" fill="currentColor"/><circle cx="9" cy="15" r="0.8" fill="currentColor"/><circle cx="12" cy="15" r="0.8" fill="currentColor"/><circle cx="15" cy="15" r="0.8" fill="currentColor"/><circle cx="9" cy="18" r="0.8" fill="currentColor"/><circle cx="12" cy="18" r="0.8" fill="currentColor"/><circle cx="15" cy="18" r="0.8" fill="currentColor"/></Icon>;
     const IArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
     const IArrowRight = (p) => <Icon {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></Icon>;
+    const IChevronLeft  = ({ size = 16, strokeWidth = 2.5 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
+    const IChevronRight = ({ size = 16, strokeWidth = 2.5 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>;
     const IHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
     const ISearch = (p) => <Icon {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></Icon>;
     const IStats = (p) => <Icon {...p}><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/><line x1="3" y1="20" x2="21" y2="20"/></Icon>;
@@ -3220,6 +3290,46 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
       return <span className={`${base} ${variants[variant] || variants.paid}`}>{children}</span>;
     };
+
+    // Bottom pill — cool-grey paper card with two nav buttons flanking a
+    // tappable centre. Visuals (paper, grain, button shapes) come from .tm-pill*
+    // CSS; positioning is the caller's job so the same component can sit at the
+    // bottom of the day editor or the breakdown view without baking layout in.
+    const Pill = ({ leftBtn, rightBtn, children, onCenterClick }) => (
+      <div className="tm-pill">
+        {leftBtn && (
+          <button
+            type="button"
+            className={`tm-pill-nav-btn ${leftBtn.variant === 'add' ? 'tm-pill-nav-btn-add' : ''}`}
+            onClick={leftBtn.onClick}
+            disabled={leftBtn.disabled}
+            aria-label={leftBtn.ariaLabel}
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            {leftBtn.icon}
+          </button>
+        )}
+        <div
+          className="tm-pill-center"
+          onClick={onCenterClick}
+          role={onCenterClick ? 'button' : undefined}
+        >
+          {children}
+        </div>
+        {rightBtn && (
+          <button
+            type="button"
+            className={`tm-pill-nav-btn ${rightBtn.variant === 'add' ? 'tm-pill-nav-btn-add' : ''}`}
+            onClick={rightBtn.onClick}
+            disabled={rightBtn.disabled}
+            aria-label={rightBtn.ariaLabel}
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            {rightBtn.icon}
+          </button>
+        )}
+      </div>
+    );
 
     const Toggle = ({ value, onChange, disabled, ariaLabel }) => (
       <button
@@ -6127,45 +6237,45 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
 
-    function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc }) {
-      const circleBtn = (onClick, disabled, bg, color, children, label) => (
-        <button onClick={onClick} disabled={disabled} aria-label={label}
-          style={{ width: 52, height: 52, borderRadius: '50%', background: bg,
-                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                   color, border: 'none', cursor: disabled ? 'default' : 'pointer',
-                   opacity: disabled ? 0.4 : 1, flexShrink: 0,
-                   WebkitTapHighlightColor: 'transparent' }}>
-          {children}
-        </button>
-      );
+    function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc, isToday }) {
+      // Compare line uses the first COMPARISON_SURFACE entry (sausage rolls).
+      const compareLabel = COMPARISON_SURFACE[0];
+      const compareItem = COMPARISON_ITEMS.find(c => c.label === compareLabel);
+      const compareQty = compareItem ? fmtComparisonQty(total / compareItem.price) : "0";
+      const swap = { animation: 'tm-pill-swap 140ms ease' };
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
-          <div style={{ height: 64, background: 'var(--tm-pill-paper)', borderRadius: 32,
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)', display: 'flex',
-                        alignItems: 'center', padding: 6, gap: 6, pointerEvents: 'auto',
-                        WebkitTapHighlightColor: 'transparent' }}>
-            {circleBtn(hasPrev ? onPrev : undefined, !hasPrev, '#f5f5f5', '#171717', <IArrowLeft size={20}/>, "Previous day")}
-            <button onClick={onViewCalc} aria-label="View breakdown"
-              style={{ flex: 1, minWidth: 0, height: 52, background: '#f5f5f5', borderRadius: 26,
-                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                       color: '#171717', border: 'none', cursor: 'pointer',
-                       WebkitTapHighlightColor: 'transparent' }}>
-              <span key={`label-${dayIndex}`}
-                style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase',
-                         letterSpacing: '0.1em', animation: 'tm-pill-swap 140ms ease' }}>
-                Day {dayIndex + 1} of {dayCount}
-              </span>
-              <span key={`total-${dayIndex}`}
-                style={{ fontWeight: 700, fontSize: 19, fontFamily: 'ui-monospace, monospace',
-                         lineHeight: 1.1, marginTop: 2, animation: 'tm-pill-swap 140ms ease' }}>
-                {fmtGBP(total)}
-              </span>
-            </button>
-            {circleBtn(hasNext ? onNext : onAdd, false,
-                       hasNext ? '#f5f5f5' : '#0ea5e9',
-                       hasNext ? '#171717' : '#fff',
-                       hasNext ? <IArrowRight size={20}/> : <IPlus size={20}/>,
-                       hasNext ? "Next day" : "Add day")}
+          <div style={{ pointerEvents: 'auto' }}>
+            <Pill
+              leftBtn={{
+                icon: <IChevronLeft size={16} strokeWidth={2.5} />,
+                onClick: onPrev,
+                disabled: !hasPrev,
+                ariaLabel: 'Previous day',
+              }}
+              rightBtn={{
+                icon: hasNext ? <IChevronRight size={16} strokeWidth={2.5} /> : <IPlus size={16}/>,
+                onClick: hasNext ? onNext : onAdd,
+                disabled: false,
+                variant: 'add',
+                ariaLabel: hasNext ? 'Next day' : 'Add day',
+              }}
+              onCenterClick={onViewCalc}
+            >
+              <div className="tm-pill-topline pill-counter" key={`topline-${dayIndex}`} style={swap}>
+                <span>DAY {dayIndex + 1} OF {dayCount}</span>
+                {isToday && (
+                  <>
+                    <span className="tm-pill-dot" />
+                    <span>TODAY</span>
+                  </>
+                )}
+              </div>
+              <div className="tm-pill-amount pill-amount" key={`amount-${dayIndex}`} style={swap}>{fmtGBP(total)}</div>
+              <div className="tm-pill-compare pill-compare" key={`compare-${dayIndex}`} style={swap}>
+                ≈ {compareQty} {compareLabel}
+              </div>
+            </Pill>
           </div>
         </div>
       );
@@ -6926,6 +7036,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onNext={goNext}
             onAdd={addDay}
             onViewCalc={() => setShowCalc(true)}
+            isToday={currentDay?.date === todayISO()}
           />
 
           {showCalc && (
