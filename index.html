@@ -1683,6 +1683,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       .invoice-page * { box-sizing: border-box; }
       .invoice-page .tnum { font-variant-numeric: tabular-nums; }
+      /* Block wrapper so break-inside: avoid works — Chrome ignores it on flex children */
+      .invoice-content { display: block; flex: 1; min-width: 0; }
 
       /* Header */
       .invoice-header {
@@ -2551,6 +2553,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         <div id="invoice-print-view" className="invoice-print-root">
           <style dangerouslySetInnerHTML={{ __html: INVOICE_PRINT_STYLES }} />
           <div className="invoice-page">
+            <div className="invoice-content">
 
             {/* Header */}
             <div className="invoice-header">
@@ -2720,6 +2723,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
               );
             })()}
+
+            </div>{/* /invoice-content */}
 
             {/* Footer */}
             <div className="invoice-footer">
