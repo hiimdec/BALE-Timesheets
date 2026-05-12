@@ -9046,7 +9046,7 @@ const confirmDelete = (p) => setConfirmOpts({
         const isCurrent = opts.isCurrent || false;
         const cardSetDays = (updater) => onUpdateDays(p.id, updater);
         const hasToday = (p.days ?? []).some(d => d.date === todayStr);
-        const bestBoyBadge = p.bestBoyMode ? <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-500 bg-sky-500/10 border border-sky-500/30">Best Boy</span> : null;
+        const bestBoyBadge = p.bestBoyMode ? <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-300 border border-sky-300/35">Best Boy</span> : null;
         const invStatus = getProductionInvoiceStatus(p);
         const invChip = invStatus ? <span className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${toneClasses(invStatus.tone)}`}>{invStatus.label}</span> : null;
         const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
