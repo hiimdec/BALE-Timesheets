@@ -9978,6 +9978,18 @@ const confirmDelete = (p) => setConfirmOpts({
             return sum + calcForDisplay(p, d, c, findPrevDay(p.days ?? [], d)).total;
           }, 0);
 
+          // Sum of today's non-basic line items — OT, penalties, kit, per diem,
+          // travel time, expenses, mileage. Only surfaced on the TODAY stat when
+          // > 0, so a pure-basic day shows just the total.
+          const todayExtras = todayRecords.reduce((sum, d) => {
+            const c = (p.crew ?? []).find(cc => cc.id === d.crewId);
+            if (!c) return sum;
+            const calc = calcForDisplay(p, d, c, findPrevDay(p.days ?? [], d));
+            return sum + (calc.lines || []).reduce((s, line) => {
+              return categorizeBreakdownLine(line.label) === 'basic' ? s : s + (Number(line.amount) || 0);
+            }, 0);
+          }, 0);
+
           const showActions = someOnCall && todayRecords.length > 0;
 
           return (
@@ -10002,6 +10014,11 @@ const confirmDelete = (p) => setConfirmOpts({
                   <div>
                     <div className="uppercase text-[9px] tracking-[0.15em] text-neutral-500 font-bold">Today</div>
                     <div className="font-mono text-[17px] font-bold text-sky-500">{fmtGBP(todayTotal)}</div>
+                    {todayExtras > 0 && (
+                      <div className="font-mono text-[10px] text-neutral-500 mt-0.5 leading-none">
+                        +{fmtGBP(todayExtras)} extras
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="uppercase text-[9px] tracking-[0.15em] text-neutral-500 font-bold">Shoot</div>
@@ -10238,7 +10255,7 @@ const confirmDelete = (p) => setConfirmOpts({
           {homeTab === "productions" && (
             <button
               onClick={onNewProduction}
-              className="fixed z-30 bg-sky-500 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
+              className="fixed z-30 bg-sky-500 text-black rounded-2xl shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
               style={{ width: 56, height: 56, bottom: 'calc(env(safe-area-inset-bottom) + 24px)', right: 24 }}
               title="New Production"
               aria-label="New Production"
@@ -10249,7 +10266,7 @@ const confirmDelete = (p) => setConfirmOpts({
           {homeTab === "invoices" && (
             <button
               onClick={() => setShowProductionPicker(true)}
-              className="fixed z-30 bg-sky-500 text-black rounded-full shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
+              className="fixed z-30 bg-sky-500 text-black rounded-2xl shadow-lg hover:bg-sky-300 active:bg-sky-500 transition-colors flex items-center justify-center"
               style={{ width: 56, height: 56, bottom: 'calc(env(safe-area-inset-bottom) + 24px)', right: 24 }}
               title="New Invoice"
               aria-label="New Invoice"
