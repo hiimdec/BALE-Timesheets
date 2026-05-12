@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Bank holiday detection through 2035 (Scotland + England & Wales)
 - Cancellation fee calculation per APA agreed-fee rules
 - Travelling day type with full day-rate logic
-- Day-type support: Shoot, Pre-light, Travel Day, Office Day, Prep Day, Fitting
+- Day-type support: Shoot, Pre-light, Prep Day, Recce, Build Day, De-rig, Travel Day, Rest Day
 - Overtime coefficients: Grade I (1.5×), II (1.25×), III (1.0×)
 - Saturday / Sunday rate overrides
 - Night shoot detection and pricing
