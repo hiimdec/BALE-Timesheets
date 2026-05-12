@@ -4017,7 +4017,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const chipCls = (active) => `rounded-full px-3 py-1.5 text-xs font-medium inline-flex items-center gap-1 transition-colors active:scale-95 ${active
         ? "bg-sky-500/10 border border-solid border-sky-500 text-sky-500"
-        : "bg-neutral-900 border border-dashed border-neutral-700 text-neutral-400 hover:bg-neutral-800"}`;
+        : "bg-neutral-900 border border-dashed border-neutral-600 text-neutral-400 hover:bg-neutral-800"}`;
       const renderChip = (key, label, active) => (
         <button type="button" onClick={() => toggleChip(key)} className={chipCls(active)}>
           {label}{active && <span aria-hidden="true">×</span>}
@@ -4075,44 +4075,109 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {/* ── Section: Times + Lunch (primary block) ── */}
           <SectionCard title="Times">
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Call Time" hint={callH !== null && callH < 5 ? "→ Night shoot (pre-5am)" : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)" : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call" : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)" : ""}>
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 min-w-0"><TimeInput className="!text-2xl" value={v.callTime} onChange={(e) => onCallChange(e.target.value)} /></div>
-                    {isToday && <NowBtn tone="sky" onClick={() => { const t = computeNowHHMM(); onCallChange(t); showToast?.(`Call ${t}`); }} />}
+              {(() => {
+                const callHint = callH !== null && callH < 5 ? "→ Night shoot (pre-5am)"
+                  : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)"
+                  : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call"
+                  : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)"
+                  : "";
+                const wrapHint = autoNextDay ? "Wrap is next day (auto-detected)" : "";
+                const tileInputCls = "!text-2xl !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 w-full";
+                return (
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* CALL tile */}
+                    <div>
+                      <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold">CALL</span>
+                          {isToday && (
+                            <button
+                              type="button"
+                              onClick={() => { const t = computeNowHHMM(); onCallChange(t); showToast?.(`Call ${t}`); }}
+                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded"
+                            >NOW</button>
+                          )}
+                        </div>
+                        <TimeInput
+                          value={v.callTime}
+                          onChange={(e) => onCallChange(e.target.value)}
+                          className={tileInputCls}
+                        />
+                      </div>
+                      {callHint && <div className="text-[10px] text-neutral-500 leading-tight mt-1 px-1">{callHint}</div>}
+                    </div>
+                    {/* WRAP tile */}
+                    <div>
+                      <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold">WRAP</span>
+                          {isToday && (
+                            <button
+                              type="button"
+                              onClick={() => { const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); }}
+                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-tm-warn/15 text-tm-warn px-1.5 py-0.5 rounded"
+                            >NOW</button>
+                          )}
+                        </div>
+                        <TimeInput
+                          value={v.wrapTime}
+                          onChange={(e) => set({ wrapTime: e.target.value })}
+                          className={tileInputCls}
+                        />
+                      </div>
+                      {wrapHint && <div className="text-[10px] text-neutral-500 leading-tight mt-1 px-1">{wrapHint}</div>}
+                    </div>
                   </div>
-                </Field>
-                <Field label="Wrap Time" hint={autoNextDay ? "Wrap is next day (auto-detected)" : ""}>
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 min-w-0"><TimeInput className="!text-2xl" value={v.wrapTime} onChange={(e) => set({ wrapTime: e.target.value })} /></div>
-                    {isToday && <NowBtn tone="orange" onClick={() => { const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); }} />}
-                  </div>
-                </Field>
-              </div>
+                );
+              })()}
 
               {!isPmpa && !isTravelDay && (
                 <div className="border-t border-neutral-800 pt-3 mt-1 space-y-3">
-                  {DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType) ? (
-                    <Field label="Lunch Duration">
-                      <Select value={Number(v.lunchDurationMins ?? 60)} onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}>
-                        {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                      </Select>
-                    </Field>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Lunch Start Time" hint={bs ? `Deadline: ${toHHMM(bs.lateThreshold)} · CWD threshold: ${toHHMM(bs.cwdThreshold)}` : ""}>
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex-1 min-w-0"><TimeInput value={v.lunchStartTime || ""} onChange={(e) => set({ lunchStartTime: e.target.value })} disabled={Number(v.lunchDurationMins) === 0} /></div>
-                          {isToday && Number(v.lunchDurationMins) !== 0 && <NowBtn tone="sky" onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }} />}
-                        </div>
-                      </Field>
-                      <Field label="Lunch Duration">
-                        <Select value={Number(v.lunchDurationMins ?? 60)} onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}>
-                          {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                        </Select>
-                      </Field>
-                    </div>
-                  )}
+                  {(() => {
+                    const isDiscretionary = DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
+                    const dur = Number(v.lunchDurationMins ?? 60);
+                    const chipKind = !bs ? null
+                      : bs.lunchMissed ? { label: 'MISSED', cls: 'bg-tm-pen/10 text-tm-pen border-tm-pen/25' }
+                      : bs.lunchVeryLate ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
+                      : bs.lunchLate ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
+                      : (bs.lunchDuration ?? 60) < 60 ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
+                      : { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/25' };
+                    return (
+                      <div className="flex items-center gap-2 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
+                        <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold flex-shrink-0">LUNCH</span>
+                        {!isDiscretionary && (
+                          <>
+                            <TimeInput
+                              value={v.lunchStartTime || ""}
+                              onChange={(e) => set({ lunchStartTime: e.target.value })}
+                              disabled={dur === 0}
+                              className="!text-base !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 w-auto font-mono font-bold"
+                            />
+                            <span className="text-neutral-600 text-sm">·</span>
+                          </>
+                        )}
+                        <select
+                          value={dur}
+                          onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
+                          className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
+                        >
+                          {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
+                        </select>
+                        {isToday && dur !== 0 && !isDiscretionary && (
+                          <button
+                            type="button"
+                            onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
+                            className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded ml-1 flex-shrink-0"
+                          >NOW</button>
+                        )}
+                        {chipKind && (
+                          <span className={`ml-auto text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${chipKind.cls}`}>
+                            {chipKind.label}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {bs && (
                     <>
