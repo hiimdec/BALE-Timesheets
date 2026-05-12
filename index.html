@@ -62,6 +62,29 @@
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
 
+    /*
+     * TimeMachine — single-file React app (React + Babel + Tailwind, no build step).
+     *
+     * Storage layout (localStorage):
+     *   bigals_productions       — JSON array of Production objects (primary data)
+     *   bigals_user_prefs        — JSON object of user preferences / defaults
+     *   bigals_schema_version    — integer; tracks which migrations have run
+     *   bigals_pre_migration_bk  — JSON snapshot taken before each migration batch
+     *                              (auto-restored on failure; kept until next migration)
+     *
+     * Migration lifecycle (runs once per page load, before ReactDOM.createRoot):
+     *   1. getStoredSchemaVersion() reads bigals_schema_version (0 = never set).
+     *   2. If stored < SCHEMA_VERSION, takePreMigrationSnapshot() backs up raw data.
+     *   3. Each numbered MIGRATIONS[v] entry runs in order.
+     *   4. On success, setStoredSchemaVersion(SCHEMA_VERSION) marks data as current.
+     *   5. On any throw, restoreFromPreMigrationSnapshot() rolls back and returns error.
+     *
+     * Backup file format (v1):
+     *   { version, appVersion, schemaVersion, exportDate, exportedAt, productions[] }
+     *   importBackup() validates, refuses files with schemaVersion > SCHEMA_VERSION,
+     *   writes to localStorage, then calls runMigrations() before reloading.
+     */
+
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
     const APP_VERSION = "0.1.0";
@@ -82,6 +105,40 @@
       ],
       notes: "Initial pre-release. Your feedback shapes the next version.",
     };
+
+    /* ─── Schema version & storage-safety helpers ─── */
+
+    const SCHEMA_VERSION = 1;
+    const SCHEMA_VERSION_KEY = 'bigals_schema_version';
+    const PRE_MIGRATION_BACKUP_KEY = 'bigals_pre_migration_backup';
+
+    function getStoredSchemaVersion() {
+      try { return Number(localStorage.getItem(SCHEMA_VERSION_KEY)) || 0; } catch { return 0; }
+    }
+    function setStoredSchemaVersion(v) {
+      try { localStorage.setItem(SCHEMA_VERSION_KEY, String(v)); } catch {}
+    }
+    function takePreMigrationSnapshot() {
+      try {
+        const snap = {
+          productions: localStorage.getItem('bigals_productions'),
+          schemaVersion: localStorage.getItem(SCHEMA_VERSION_KEY),
+        };
+        localStorage.setItem(PRE_MIGRATION_BACKUP_KEY, JSON.stringify(snap));
+      } catch {}
+    }
+    function restoreFromPreMigrationSnapshot() {
+      try {
+        const raw = localStorage.getItem(PRE_MIGRATION_BACKUP_KEY);
+        if (!raw) return false;
+        const snap = JSON.parse(raw);
+        if (snap.productions != null) localStorage.setItem('bigals_productions', snap.productions);
+        else localStorage.removeItem('bigals_productions');
+        if (snap.schemaVersion != null) localStorage.setItem(SCHEMA_VERSION_KEY, snap.schemaVersion);
+        else localStorage.removeItem(SCHEMA_VERSION_KEY);
+        return true;
+      } catch { return false; }
+    }
 
     const COMPARISON_ITEMS = [
       { emoji: "🥖", label: "Greggs sausage rolls", price: 1.30 },
@@ -352,6 +409,7 @@
       favourableRounding: false,
       apaRounding: false,
       onboardingComplete: false,
+      lastSeenAppVersion: "",
     };
 
     // One-way road-miles approximation from W1F 9SE (APA standard origin) per UK outcode district.
@@ -974,7 +1032,62 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }),
     });
 
+    /* ─── Migration runner ─── */
+
+    // MIGRATIONS[v] brings bigals_productions from schema v-1 → v (operates on raw localStorage).
+    const MIGRATIONS = {
+      1: () => {
+        const raw = localStorage.getItem('bigals_productions');
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return;
+        localStorage.setItem('bigals_productions', JSON.stringify(arr.map(migrateProduction)));
+      },
+    };
+
+    function runMigrations() {
+      const stored = getStoredSchemaVersion();
+      if (stored >= SCHEMA_VERSION) return { ran: false };
+      const hadData = !!localStorage.getItem('bigals_productions');
+      takePreMigrationSnapshot();
+      try {
+        for (let v = stored + 1; v <= SCHEMA_VERSION; v++) {
+          if (MIGRATIONS[v]) MIGRATIONS[v]();
+        }
+        setStoredSchemaVersion(SCHEMA_VERSION);
+        return { ran: hadData, from: stored, to: SCHEMA_VERSION };
+      } catch (err) {
+        restoreFromPreMigrationSnapshot();
+        return { ran: false, error: String(err) };
+      }
+    }
+
+    // Validates, version-checks, writes to localStorage, runs migrations, returns { ok, error }.
+    // Caller is responsible for calling window.location.reload() on ok.
+    function importBackup(rawText) {
+      let parsed;
+      try { parsed = JSON.parse(rawText); } catch { return { ok: false, error: 'Could not parse JSON.' }; }
+      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.productions) ? parsed.productions : null);
+      if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
+        return { ok: false, error: 'Not a valid TimeMachine backup.' };
+      }
+      const fileSchemaVersion = parsed?.schemaVersion ?? 0;
+      if (fileSchemaVersion > SCHEMA_VERSION) {
+        return { ok: false, error: `This backup was made with a newer version of TimeMachine (schema v${fileSchemaVersion}). Update the app first.` };
+      }
+      try {
+        localStorage.setItem('bigals_productions', JSON.stringify(arr));
+        setStoredSchemaVersion(fileSchemaVersion);
+        const result = runMigrations();
+        if (result.error) return { ok: false, error: `Migration failed: ${result.error}` };
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: `Import failed: ${err.message}` };
+      }
+    }
+
     function useStoredState(key, initial, migrate) {
+      const [storageError, setStorageError] = useState(null);
       const [value, setValue] = useState(() => {
         try {
           const raw = localStorage.getItem(key);
@@ -989,13 +1102,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             }
             return v;
           }
-        } catch {}
+        } catch (err) {
+          setTimeout(() => setStorageError(`Read error on "${key}": ${err.message}`), 0);
+        }
         return initial;
       });
       useEffect(() => {
-        try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch (err) {
+          setStorageError(`Write error on "${key}": ${err.message}`);
+        }
       }, [key, value]);
-      return [value, setValue];
+      return [value, setValue, storageError];
     }
 
     /* ═══════════════════════════ SHARE / DOWNLOAD HELPERS ═══════════════════════════ */
@@ -6950,7 +7067,7 @@ const setDays = (updater) =>
       );
     };
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onImport, onResetAll, productionCount = 0 }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0 }) {
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -6963,27 +7080,37 @@ const setDays = (updater) =>
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (ev) => {
-          try {
-            const raw = JSON.parse(ev.target.result);
-            const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.productions) ? raw.productions : null);
-            if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
-              showToast('Invalid backup file — not a valid productions export.');
-              return;
-            }
-            const n = arr.length;
-            const msg = productionCount > 0
-              ? `Import ${n} production${n === 1 ? '' : 's'}? This will replace your ${productionCount} existing production${productionCount === 1 ? '' : 's'}. This cannot be undone.`
-              : `Import ${n} production${n === 1 ? '' : 's'}?`;
-            setConfirmOpts({
-              title: "Import productions?",
-              message: msg,
-              confirmLabel: "Import",
-              confirmTone: "primary",
-              onConfirm: () => onImport(arr),
-            });
-          } catch {
+          const rawText = ev.target.result;
+          let parsed;
+          try { parsed = JSON.parse(rawText); } catch {
             showToast('Could not read file — is it a valid JSON backup?');
+            return;
           }
+          const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.productions) ? parsed.productions : null);
+          if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
+            showToast('Invalid backup file — not a valid productions export.');
+            return;
+          }
+          const fileSchemaVersion = parsed?.schemaVersion ?? 0;
+          if (fileSchemaVersion > SCHEMA_VERSION) {
+            showToast(`This backup needs a newer version of TimeMachine (schema v${fileSchemaVersion}). Please update the app.`);
+            return;
+          }
+          const n = arr.length;
+          const msg = productionCount > 0
+            ? `Restore ${n} production${n === 1 ? '' : 's'}? This will replace your ${productionCount} existing production${productionCount === 1 ? '' : 's'}. This cannot be undone.`
+            : `Restore ${n} production${n === 1 ? '' : 's'} from backup?`;
+          setConfirmOpts({
+            title: "Restore from backup?",
+            message: msg,
+            confirmLabel: "Restore",
+            confirmTone: "danger",
+            onConfirm: () => {
+              const result = importBackup(rawText);
+              if (result.ok) { window.location.reload(); }
+              else { showToast(result.error); }
+            },
+          });
         };
         reader.readAsText(file);
       };
@@ -7250,9 +7377,9 @@ const setDays = (updater) =>
                   <p className="text-[10px] text-neutral-500 mt-1">Downloads all productions as a JSON file. This file contains your data — keep it private.</p>
                 </div>
                 <div>
-                  <Btn variant="ghost" onClick={() => importRef.current?.click()}><IUpload/>Import Backup</Btn>
+                  <Btn variant="ghost" onClick={() => importRef.current?.click()}><IUpload/>Restore from Backup</Btn>
                   <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
-                  <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with the backup.</p>
+                  <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with a previously exported backup file.</p>
                 </div>
                 <div className="border-t border-neutral-800 pt-3">
                   <Btn variant="danger" onClick={() => setConfirmOpts({
@@ -9157,12 +9284,15 @@ const confirmDelete = (p) => setConfirmOpts({
     /* ═══════════════════════════ ROOT ═══════════════════════════ */
 
     function Root() {
-      const [productions, setProductions] = useStoredState("bigals_productions", [], migrateProduction);
-      const [userPrefs, setUserPrefs] = useStoredState("bigals_user_prefs", DEFAULT_USER_PREFS);
+      const [productions, setProductions, prodError] = useStoredState("bigals_productions", [], migrateProduction);
+      const [userPrefs, setUserPrefs, prefsError] = useStoredState("bigals_user_prefs", DEFAULT_USER_PREFS);
+      const storageError = prodError || prefsError || null;
       const [openId, setOpenId] = useState(null);
       const [showSettings, setShowSettings] = useState(false);
       const [showStats, setShowStats] = useState(false);
       const [showNewProduction, setShowNewProduction] = useState(false);
+      const [showMigrationBanner, setShowMigrationBanner] = useState(migrationResult.ran === true);
+      const [versionToast, setVersionToast] = useState(false);
 
       // Treat existing users (stored prefs without onboardingComplete) as already onboarded.
       // Guard with early-return so the state setter is a no-op when already set, avoiding a
@@ -9193,6 +9323,17 @@ const confirmDelete = (p) => setConfirmOpts({
           }
         } catch {}
       }, []); // runs once on mount only
+
+      // Show version-update toast if the user has seen a previous version.
+      useEffect(() => {
+        if (userPrefs.lastSeenAppVersion && userPrefs.lastSeenAppVersion !== APP_VERSION) {
+          setVersionToast(true);
+          setTimeout(() => setVersionToast(false), 3000);
+        }
+        if (userPrefs.lastSeenAppVersion !== APP_VERSION) {
+          setUserPrefs(p => ({ ...p, lastSeenAppVersion: APP_VERSION }));
+        }
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       const [openInvoiceId, setOpenInvoiceId] = useState(null);
       const [homeTab, setHomeTab] = useState("productions");
@@ -9271,18 +9412,22 @@ const confirmDelete = (p) => setConfirmOpts({
         ));
 
       const handleExport = () => {
-        const date = new Date().toISOString().slice(0, 10);
-        const payload = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), productions }, null, 2);
+        const now = new Date();
+        const date = now.toISOString().slice(0, 10);
+        const payload = JSON.stringify({
+          version: 1,
+          appVersion: APP_VERSION,
+          schemaVersion: SCHEMA_VERSION,
+          exportDate: now.toISOString(),
+          exportedAt: now.toISOString(),
+          productions,
+        }, null, 2);
         const blob = new Blob([payload], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = `timemachine-backup-${date}.json`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-      };
-
-      const handleImport = (parsed) => {
-        setProductions(parsed);
       };
 
       const handleUpdateDays = (id, updater) => {
@@ -9297,6 +9442,8 @@ const confirmDelete = (p) => setConfirmOpts({
         try {
           localStorage.removeItem("bigals_productions");
           localStorage.removeItem("bigals_user_prefs");
+          localStorage.removeItem(SCHEMA_VERSION_KEY);
+          localStorage.removeItem(PRE_MIGRATION_BACKUP_KEY);
           window.location.reload();
         } catch (err) {
           alert("Couldn't reset data — try closing and reopening the app, or clearing your browser storage manually.");
@@ -9305,46 +9452,40 @@ const confirmDelete = (p) => setConfirmOpts({
 
       const currentProduction = productions.find((p) => p.id === openId);
 
+      let screen;
       if (!userPrefs.onboardingComplete) {
-        return (
+        screen = (
           <OnboardingScreen
             userPrefs={userPrefs}
             set={(updates) => setUserPrefs(prev => ({ ...prev, ...updates }))}
             onComplete={() => {}}
           />
         );
-      }
-
-      if (showSettings) {
-        return (
+      } else if (showSettings) {
+        screen = (
           <SettingsScreen
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
             onClose={() => setShowSettings(false)}
             onExport={handleExport}
-            onImport={handleImport}
             onResetAll={handleResetAll}
             productionCount={productions.length}
           />
         );
-      }
-      if (showStats) {
-        return <StatsScreen productions={productions} userPrefs={userPrefs} onClose={() => setShowStats(false)} onOpenSettings={() => { setShowStats(false); setShowSettings(true); }} />;
-      }
-      if (showNewProduction) {
-        return (
+      } else if (showStats) {
+        screen = <StatsScreen productions={productions} userPrefs={userPrefs} onClose={() => setShowStats(false)} onOpenSettings={() => { setShowStats(false); setShowSettings(true); }} />;
+      } else if (showNewProduction) {
+        screen = (
           <NewProductionScreen
             userPrefs={userPrefs}
             onCreate={handleNewProduction}
             onCancel={() => setShowNewProduction(false)}
           />
         );
-      }
-      if (!openId || !currentProduction) {
-        return <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} />;
-      }
-      if (!currentProduction.bestBoyMode) {
-        return <SoloDayPage
+      } else if (!openId || !currentProduction) {
+        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} />;
+      } else if (!currentProduction.bestBoyMode) {
+        screen = <SoloDayPage
           production={currentProduction}
           setProduction={setProduction}
           onBack={closeProduction}
@@ -9356,9 +9497,34 @@ const confirmDelete = (p) => setConfirmOpts({
           setUserPrefs={setUserPrefs}
           initialInvoiceId={openInvoiceId}
         />;
+      } else {
+        screen = <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} initialInvoiceId={openInvoiceId} />;
       }
-      return <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} initialInvoiceId={openInvoiceId} />;
+
+      return (
+        <>
+          {screen}
+          {storageError && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#7f1d1d', color: '#fca5a5', padding: '8px 16px', fontSize: 12, fontFamily: 'ui-sans-serif, system-ui', textAlign: 'center' }}>
+              ⚠ Storage error — data may not be saved: {storageError}
+            </div>
+          )}
+          {showMigrationBanner && (
+            <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 80px)', left: 12, right: 12, zIndex: 9998, background: '#0c1e33', border: '1px solid #38bdf8', borderRadius: 12, color: '#e0f2fe', padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+              <span>Your data was updated to the latest format — everything is fine.</span>
+              <button onClick={() => setShowMigrationBanner(false)} style={{ color: '#7dd3fc', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} aria-label="Dismiss">×</button>
+            </div>
+          )}
+          {versionToast && (
+            <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 80px)', left: 12, right: 12, zIndex: 9997, background: '#052e16', border: '1px solid #4ade80', borderRadius: 12, color: '#bbf7d0', padding: '10px 14px', fontSize: 12, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+              Updated to TimeMachine v{APP_VERSION} ✓
+            </div>
+          )}
+        </>
+      );
     }
+
+    const migrationResult = runMigrations();
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<Root />);
