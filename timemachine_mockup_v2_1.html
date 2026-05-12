@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TimeMachine — Design Mockup v2</title>
+<style>
+  :root {
+    /* match existing app — neutral palette */
+    --bg: #0a0a0a;            /* neutral-950 */
+    --bg-soft: #0e0e0e;
+    --card: #171717;          /* neutral-900 */
+    --card-2: #1f1f1f;
+    --border: #262626;        /* neutral-800 */
+    --border-soft: #1f1f1f;
+    --text: #f5f5f5;          /* neutral-100 */
+    --text-2: #a3a3a3;        /* neutral-400 */
+    --text-3: #737373;        /* neutral-500 */
+    --text-4: #525252;        /* neutral-600 */
+
+    /* accents — cool, sky-forward */
+    --accent: #38bdf8;        /* sky-400 — primary, matches current app */
+    --accent-2: #7dd3fc;      /* sky-300 — softer/badges */
+    --accent-deep: #0ea5e9;   /* sky-500 */
+    --accent-glow: rgba(56,189,248,0.15);
+    --accent-warn: #fbbf24;   /* amber-400 — cooler than orange-amber */
+    --accent-bad: #f87171;    /* red-400 */
+    --accent-good: #4ade80;   /* green-400 */
+
+    --pill-paper: #e6e9ed;    /* cool light grey, was warm cream */
+    --pill-ink: #15171a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    background: #060708;
+    color: var(--text);
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 40px 16px 80px; }
+
+  /* page header */
+  .page-header { max-width: 1280px; margin: 0 auto 32px; padding: 0 8px; }
+  .page-header h1 {
+    font-size: clamp(28px, 4.5vw, 44px);
+    letter-spacing: -0.02em;
+    font-weight: 800;
+    color: var(--text); margin: 0 0 8px;
+  }
+  .page-header .sub {
+    color: var(--text-3); font-size: 14px; max-width: 720px; line-height: 1.55;
+  }
+  .page-header .sub strong { color: var(--text-2); font-weight: 600; }
+  .page-header .tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2);
+    color: var(--accent); padding: 4px 10px; border-radius: 100px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  /* mockup grid */
+  .mockup-grid {
+    max-width: 1280px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 1100px) { .mockup-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 720px)  { .mockup-grid { grid-template-columns: 1fr; } }
+
+  .mockup-col { display: flex; flex-direction: column; gap: 12px; }
+  .mockup-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-3); padding-left: 4px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .mockup-label .num { color: var(--accent); font-weight: 700; }
+  .mockup-label .name { color: var(--text-2); font-weight: 600; }
+
+  /* phone frame */
+  .phone {
+    background: var(--bg); border-radius: 36px; overflow: hidden;
+    box-shadow:
+      0 0 0 1px #2a2c30,
+      0 0 0 10px #0d0e10,
+      0 0 0 11px #2a2c30,
+      0 30px 60px -20px rgba(0,0,0,0.7);
+    width: 100%; aspect-ratio: 9 / 19.5;
+    position: relative; display: flex; flex-direction: column;
+    font-size: 14px;
+  }
+  .notch {
+    width: 110px; height: 28px;
+    background: #0d0e10; margin: 8px auto 0;
+    border-radius: 0 0 14px 14px; flex-shrink: 0;
+  }
+  .phone-scroll {
+    flex: 1; overflow-y: auto;
+    padding: 14px 16px 80px;
+    position: relative;
+  }
+  .phone-scroll::-webkit-scrollbar { display: none; }
+
+  /* app bar */
+  .appbar {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .appbar .brand .owner {
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--text-4); font-weight: 700; margin-bottom: 3px;
+  }
+  .appbar .brand .mark {
+    font-size: 24px; letter-spacing: -0.02em;
+    color: var(--accent); text-transform: uppercase;
+    line-height: 0.95; font-weight: 900;
+  }
+  .appbar .icons { display: flex; gap: 4px; margin-top: 6px; }
+  .appbar .icons button {
+    background: transparent; border: 1px solid transparent;
+    width: 34px; height: 34px; border-radius: 50%;
+    color: var(--text-3); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .appbar .icons button:hover { background: var(--card); color: var(--text); }
+  .appbar .icons svg { width: 16px; height: 16px; }
+
+  /* tabs */
+  .tabs {
+    display: flex; gap: 16px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 16px;
+  }
+  .tabs .tab {
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+    padding: 8px 0 10px; cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px; transition: all 0.15s;
+  }
+  .tabs .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tabs .tab .count {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-4); margin-left: 4px; font-weight: 500;
+  }
+
+  /* hero "today" card */
+  .hero {
+    background:
+      radial-gradient(120% 100% at 100% 0%, rgba(56,189,248,0.08) 0%, transparent 50%),
+      var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 20px;
+    position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  .hero .live-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .hero .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-good);
+    box-shadow: 0 0 8px var(--accent-good);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+  }
+  .hero .live-label {
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--accent-good); font-weight: 700;
+  }
+  .hero .title-row {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    margin-bottom: 4px;
+  }
+  .hero h2 {
+    font-size: 19px; line-height: 1.15; color: var(--text);
+    margin: 0; letter-spacing: -0.01em; font-weight: 700;
+  }
+  .hero .badge {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 4px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .badge.bestboy {
+    background: transparent; color: var(--accent-2);
+    border: 1px solid rgba(125,211,252,0.35);
+  }
+  .badge.draft { background: rgba(251,191,36,0.10); color: var(--accent-warn); border: 1px solid rgba(251,191,36,0.25); }
+  .badge.sent  { background: rgba(74,222,128,0.10); color: var(--accent-good); border: 1px solid rgba(74,222,128,0.25); }
+  .badge.paid  { background: var(--card-2); color: var(--text-3); border: 1px solid var(--border); }
+
+  .hero .meta { color: var(--text-3); font-size: 12px; margin-bottom: 14px; }
+  .hero .stats {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+    border-top: 1px solid var(--border-soft);
+    padding-top: 12px;
+  }
+  .hero .stat .label {
+    font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--text-4); font-weight: 700; margin-bottom: 4px;
+  }
+  .hero .stat .value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 17px; font-weight: 700; color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .hero .stat .value.accent { color: var(--accent); }
+  .hero .stat .sub {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; color: var(--text-3); margin-top: 1px;
+  }
+  .hero .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .hero .actions button {
+    flex: 1; padding: 10px;
+    border-radius: 10px; border: 1px solid var(--border);
+    background: var(--card-2); color: var(--text);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: all 0.15s;
+  }
+  .hero .actions button:hover { background: var(--card); border-color: var(--text-4); }
+  .hero .actions button.primary {
+    background: var(--accent); color: #000; border-color: var(--accent);
+  }
+  .hero .actions svg { width: 11px; height: 11px; }
+
+  /* month group */
+  .month-group { margin-bottom: 22px; }
+  .month-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 0 2px 10px;
+    border-bottom: 1px dashed var(--border-soft);
+    margin-bottom: 10px;
+  }
+  .month-head .left {
+    font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+  }
+  .month-head .right {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: var(--text-3);
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .month-head .right .total { color: var(--text); font-weight: 700; }
+  .month-head .right .dim { color: var(--text-4); }
+
+  /* prod card */
+  .prod-card {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .prod-card:hover { background: var(--card-2); border-color: var(--border); }
+  .prod-card .body { flex: 1; min-width: 0; }
+  .prod-card .top { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+  .prod-card .title {
+    font-size: 14px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .prod-card .row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  }
+  .prod-card .meta {
+    font-size: 11px; color: var(--text-3);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .prod-card .meta .dim { color: var(--text-4); }
+  .prod-card .amount {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 15px; font-weight: 700; color: var(--text);
+  }
+  .prod-card.compact { padding: 10px 14px; }
+  .prod-card.compact .title { font-size: 13px; color: var(--text-2); }
+  .prod-card.compact .amount { font-size: 13px; color: var(--text-3); }
+  .prod-card .kebab {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-4); flex-shrink: 0;
+  }
+
+  /* form-top */
+  .form-top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0 12px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 14px;
+  }
+  .form-top .day-counter {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: var(--text-2); font-weight: 700;
+    display: flex; align-items: baseline; gap: 4px;
+  }
+  .form-top .day-counter .of { color: var(--text-4); }
+  .form-top .date {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; color: var(--text-3);
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+
+  /* primary block */
+  .primary-block {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .primary-block .section-label {
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .primary-block .section-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border-soft);
+  }
+  .time-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-bottom: 12px;
+  }
+  .time-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .time-input .lbl {
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700; margin-bottom: 4px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .time-input .now-btn {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px; padding: 2px 5px; border-radius: 3px;
+    background: rgba(56,189,248,0.12); color: var(--accent);
+    font-weight: 700; letter-spacing: 0.1em;
+  }
+  .time-input .now-btn.warm { background: rgba(251,191,36,0.12); color: var(--accent-warn); }
+  .time-input .val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 24px; font-weight: 700; color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .lunch-row {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .lunch-row .lbl {
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+  }
+  .lunch-row .val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 14px; font-weight: 700; color: var(--text);
+  }
+  .lunch-row .sep { color: var(--text-4); margin: 0 4px; }
+  .lunch-row .dur {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-3); font-size: 12px;
+  }
+  .lunch-row .ok-chip {
+    margin-left: auto;
+    font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+    font-weight: 700;
+    padding: 3px 6px; border-radius: 4px;
+  }
+  .lunch-row .ok-chip.good {
+    color: var(--accent-good);
+    background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.22);
+  }
+  .lunch-row .ok-chip.warn {
+    color: var(--accent-warn);
+    background: rgba(251,191,36,0.10); border: 1px solid rgba(251,191,36,0.25);
+  }
+  .lunch-row .ok-chip.bad {
+    color: var(--accent-bad);
+    background: rgba(248,113,113,0.10); border: 1px solid rgba(248,113,113,0.25);
+  }
+
+  /* status inline */
+  .status-inline {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    display: flex; align-items: flex-start; gap: 8px;
+    line-height: 1.4;
+  }
+  .status-inline.warn {
+    background: rgba(251,191,36,0.06); color: var(--accent-warn);
+    border: 1px solid rgba(251,191,36,0.18);
+  }
+  .status-inline.bad {
+    background: rgba(248,113,113,0.06); color: var(--accent-bad);
+    border: 1px solid rgba(248,113,113,0.2);
+  }
+  .status-inline .icon { font-weight: 700; flex-shrink: 0; }
+
+  /* conditions chips */
+  .conditions-label {
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+    margin: 4px 4px 10px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .chip {
+    font-size: 12px; font-weight: 500;
+    padding: 7px 11px; border-radius: 100px;
+    background: var(--card); border: 1px dashed var(--border);
+    color: var(--text-2);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+    transition: all 0.15s;
+  }
+  .chip:hover { background: var(--card-2); color: var(--text); border-style: solid; }
+  .chip.active {
+    background: var(--card-2);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+  }
+  .chip .x { font-size: 10px; opacity: 0.7; margin-left: 2px; }
+  .chip-add { border: 1px dashed var(--border-soft); color: var(--text-4); }
+  .chip-add::before { content: '+ '; opacity: 0.8; }
+
+  /* expanded condition card */
+  .condition-card {
+    background: var(--card-2);
+    border: 1px solid rgba(56,189,248,0.25);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .condition-card .head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .condition-card .head .name {
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+  }
+  .condition-card .head .close {
+    color: var(--text-4); font-size: 14px; cursor: pointer;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .condition-card .head .close:hover { background: var(--bg); color: var(--text-2); }
+  .condition-card .body {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .condition-card .field {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px;
+  }
+  .condition-card .field .lbl {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700; margin-bottom: 3px;
+  }
+  .condition-card .field .v {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; color: var(--text); font-weight: 700;
+  }
+
+  /* pill — cool grey paper */
+  .pill {
+    position: absolute;
+    bottom: 12px; left: 12px; right: 12px;
+    background: var(--pill-paper);
+    color: var(--pill-ink);
+    border-radius: 18px;
+    padding: 10px;
+    display: flex; align-items: center; gap: 8px;
+    box-shadow: 0 10px 32px -8px rgba(0,0,0,0.6), inset 0 -1px 0 rgba(0,0,0,0.05);
+    background-image:
+      linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px);
+    background-size: 12px 12px;
+    z-index: 10;
+  }
+  .pill .nav-btn {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: rgba(0,0,0,0.04);
+    border: 1px solid rgba(0,0,0,0.07);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--pill-ink);
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 100ms ease, background 150ms ease;
+  }
+  .pill .nav-btn:active { transform: scale(0.94); background: rgba(0,0,0,0.08); }
+  .pill .nav-btn.disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+  .pill .nav-btn.add { background: var(--accent); border-color: rgba(0,0,0,0.15); color: #000; }
+  .pill .nav-btn svg { width: 16px; height: 16px; }
+  .pill .center {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center;
+    cursor: pointer; padding: 0 8px;
+  }
+  .pill .center .top-line {
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: rgba(21,23,26,0.55); font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 1px;
+  }
+  .pill .center .top-line .dot {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: rgba(21,23,26,0.3);
+  }
+  .pill .center .amount {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 19px; font-weight: 700; letter-spacing: -0.01em;
+    color: var(--pill-ink);
+  }
+  .pill .center .compare {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px; color: rgba(21,23,26,0.5);
+    margin-top: 1px;
+  }
+
+  /* —— DAY SWITCH ANIMATION —— */
+  .day-stage {
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 200ms ease;
+    will-change: transform, opacity;
+  }
+  .day-stage.exiting-left  { transform: translateX(-24px); opacity: 0; transition-duration: 180ms; }
+  .day-stage.exiting-right { transform: translateX(24px);  opacity: 0; transition-duration: 180ms; }
+  .day-stage.entering-left {
+    transform: translateX(-24px); opacity: 0;
+    transition: none;
+  }
+  .day-stage.entering-right {
+    transform: translateX(24px); opacity: 0;
+    transition: none;
+  }
+
+  /* pill amount swap */
+  .pill-amount, .pill-compare, .pill-counter {
+    transition: opacity 140ms ease;
+    will-change: opacity;
+  }
+  .pill-amount.swapping,
+  .pill-compare.swapping,
+  .pill-counter.swapping { opacity: 0; }
+
+  /* breakdown */
+  .breakdown-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .breakdown-head .back {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--card); border: 1px solid var(--border-soft);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-2);
+  }
+  .breakdown-head h3 {
+    font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase;
+    font-weight: 800; margin: 0;
+  }
+  .breakdown-head .share {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+  }
+
+  /* big total */
+  .big-total {
+    background:
+      radial-gradient(120% 100% at 0% 0%, rgba(56,189,248,0.06) 0%, transparent 60%),
+      var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 18px;
+    margin-bottom: 16px;
+    position: relative; overflow: hidden;
+  }
+  .big-total::before {
+    content: 'GROSS'; position: absolute; top: 14px; right: 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px; letter-spacing: 0.22em;
+    color: var(--text-4); font-weight: 700;
+  }
+  .big-total .label {
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700; margin-bottom: 8px;
+  }
+  .big-total .amount {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 42px; line-height: 1; color: var(--text);
+    letter-spacing: -0.02em; font-weight: 800;
+    margin-bottom: 14px;
+  }
+  .big-total .amount .pence {
+    font-size: 22px; color: var(--text-3); font-weight: 700;
+  }
+  .big-total .meter {
+    display: flex; height: 6px; border-radius: 3px; overflow: hidden;
+    background: var(--bg); margin-bottom: 10px;
+  }
+  .big-total .meter .seg { height: 100%; }
+  .big-total .meter .basic { background: var(--accent); }
+  .big-total .meter .ot { background: var(--accent-2); }
+  .big-total .meter .pen { background: var(--accent-warn); }
+  .big-total .meter .extra { background: var(--accent-good); }
+  .big-total .legend {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; color: var(--text-3);
+  }
+  .big-total .legend .item { display: flex; align-items: center; gap: 5px; }
+  .big-total .legend .swatch { width: 8px; height: 8px; border-radius: 2px; }
+  .big-total .legend .v { color: var(--text); }
+
+  /* comparison block */
+  .greggs {
+    background: var(--card-2);
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .greggs .head {
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .greggs .head::before { content: '◇'; color: var(--accent); }
+  .greggs ul { margin: 0; padding: 0; list-style: none; }
+  .greggs li {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 6px 0;
+    border-top: 1px dashed var(--border-soft);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  }
+  .greggs li:first-child { border-top: none; }
+  .greggs li .qty { font-weight: 700; color: var(--text); flex-shrink: 0; min-width: 50px; }
+  .greggs li .item { color: var(--text-2); flex: 1; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .greggs li .emoji { flex-shrink: 0; font-size: 14px; }
+
+  /* day-by-day */
+  .day-list h4 {
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+    margin: 0 0 10px 2px;
+  }
+  .day-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; margin-bottom: 4px;
+    background: var(--card); border: 1px solid var(--border-soft);
+    border-radius: 10px;
+  }
+  .day-row .date {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; color: var(--text-3); width: 48px; flex-shrink: 0;
+    letter-spacing: 0.06em;
+  }
+  .day-row .times {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: var(--text-2); flex: 1; min-width: 0;
+  }
+  .day-row .times .arr { color: var(--text-4); margin: 0 4px; }
+  .day-row .flags { display: flex; gap: 3px; }
+  .day-row .flags .flag {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8px; letter-spacing: 0.1em; font-weight: 700;
+    padding: 1px 4px; border-radius: 3px;
+    background: rgba(251,191,36,0.12); color: var(--accent-warn);
+    border: 1px solid rgba(251,191,36,0.22);
+  }
+  .day-row .flags .flag.bad {
+    background: rgba(248,113,113,0.10); color: var(--accent-bad);
+    border-color: rgba(248,113,113,0.22);
+  }
+  .day-row .amt {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; font-weight: 700; color: var(--text);
+  }
+
+  /* footer */
+  .footer-note {
+    max-width: 1280px; margin: 64px auto 0; padding: 0 12px;
+    color: var(--text-4); font-size: 12px; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.05em;
+  }
+  .footer-note span { color: var(--accent); }
+
+  /* annotations */
+  .annotations {
+    margin-top: 20px;
+    padding-left: 4px;
+    font-size: 12px; color: var(--text-3);
+    line-height: 1.6;
+  }
+  .annotations p { margin: 0 0 8px; }
+  .annotations strong { color: var(--text); font-weight: 600; }
+  .annotations code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; padding: 1px 4px; border-radius: 3px;
+    background: var(--card); color: var(--accent);
+  }
+  .annotations .live {
+    color: var(--accent); font-weight: 600;
+  }
+
+  /* interactive cue */
+  .interactive-cue {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(56,189,248,0.10);
+    border: 1px solid rgba(56,189,248,0.3);
+    color: var(--accent);
+    padding: 2px 8px; border-radius: 100px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .interactive-cue::before {
+    content: '◉'; font-size: 7px; animation: pulse 1.6s infinite;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="tag">Revision 02 · cooler · system fonts · interactive</div>
+  <h1>TimeMachine — Direction (v2)</h1>
+  <p class="sub">
+    Per your notes: <strong>back to system fonts</strong>, <strong>sky blue stays</strong>, no yellow, cooler greys throughout. Calculator out of the header (now lives in Settings). Day-switch animation is live — click <span class="live">prev / next on mockup 02's pill</span> to feel it.
+  </p>
+</div>
+
+<div class="mockup-grid">
+
+  <!-- ──────────────────────────────────── -->
+  <!-- 01 — HOME -->
+  <!-- ──────────────────────────────────── -->
+  <div class="mockup-col">
+    <div class="mockup-label">
+      <span class="num">01</span><span class="name">Home — Productions</span>
+    </div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-scroll">
+        <div class="appbar">
+          <div class="brand">
+            <div class="owner">Derrick's</div>
+            <div class="mark">TIMEMACHINE</div>
+          </div>
+          <div class="icons">
+            <button title="Stats">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-7"/></svg>
+            </button>
+            <button title="Search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            </button>
+            <button title="Settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active">Shoots <span class="count">12</span></div>
+          <div class="tab">Invoices <span class="count">8</span></div>
+        </div>
+
+        <div class="hero">
+          <div class="live-row">
+            <span class="live-dot"></span>
+            <span class="live-label">ON CALL · DAY 4 OF 7</span>
+          </div>
+          <div class="title-row">
+            <h2>The Bear S04 — Block 2</h2>
+            <span class="badge bestboy">BEST BOY</span>
+          </div>
+          <div class="meta">FX Productions · Wed 13 May · Stage 4</div>
+          <div class="stats">
+            <div class="stat">
+              <div class="label">CLOCKED</div>
+              <div class="value">6h 22m</div>
+              <div class="sub">since 06:00</div>
+            </div>
+            <div class="stat">
+              <div class="label">TODAY</div>
+              <div class="value accent">£541</div>
+              <div class="sub">+£72 OT</div>
+            </div>
+            <div class="stat">
+              <div class="label">SHOOT</div>
+              <div class="value">£2,180</div>
+              <div class="sub">4 days</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v6m0 0l3-3m-3 3L9 5"/><circle cx="12" cy="15" r="6"/></svg>
+              LUNCH NOW
+            </button>
+            <button class="primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12l4 4 14-14"/></svg>
+              WRAP NOW
+            </button>
+          </div>
+        </div>
+
+        <div class="month-group">
+          <div class="month-head">
+            <div class="left">May · 2026</div>
+            <div class="right">
+              <span class="dim">38h</span>
+              <span class="total">£3,420</span>
+            </div>
+          </div>
+          <div class="prod-card">
+            <div class="body">
+              <div class="top">
+                <span class="title">Nationwide — TVC</span>
+                <span class="badge sent">SENT</span>
+              </div>
+              <div class="row">
+                <span class="meta">Pulse Films · 2 days · <span class="dim">11h OT</span></span>
+                <span class="amount">£1,240</span>
+              </div>
+            </div>
+            <div class="kebab">⋯</div>
+          </div>
+          <div class="prod-card">
+            <div class="body">
+              <div class="top">
+                <span class="title">Sky Sports — Idents</span>
+                <span class="badge draft">DRAFT</span>
+              </div>
+              <div class="row">
+                <span class="meta">Untold Studios · 1 day</span>
+                <span class="amount">£612</span>
+              </div>
+            </div>
+            <div class="kebab">⋯</div>
+          </div>
+        </div>
+
+        <div class="month-group">
+          <div class="month-head">
+            <div class="left">April · 2026</div>
+            <div class="right">
+              <span class="dim">62h</span>
+              <span class="total">£4,820</span>
+            </div>
+          </div>
+          <div class="prod-card compact">
+            <div class="body">
+              <div class="row">
+                <span class="title">Asda Easter — Online</span>
+                <span class="amount">£1,485</span>
+              </div>
+            </div>
+          </div>
+          <div class="prod-card compact">
+            <div class="body">
+              <div class="row">
+                <span class="title">BBC Drama — Pilot</span>
+                <span class="amount">£3,335</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="height: 40px;"></div>
+      </div>
+    </div>
+
+    <div class="annotations">
+      <p><strong>Three icons</strong> in the header — Stats · Search · Settings. Calculator moves into Settings as a row.</p>
+      <p><strong>Best Boy badge</strong> reworked as a thin sky-300 outline (no fill). Stops competing with the section headers, still recognisable.</p>
+      <p><strong>Wordmark</strong> uses your existing system font at weight 900, uppercase, tight tracking, in sky-blue. Same DNA as your current logo, just bigger and more committed.</p>
+    </div>
+  </div>
+
+  <!-- ──────────────────────────────────── -->
+  <!-- 02 — DAY ENTRY (INTERACTIVE) -->
+  <!-- ──────────────────────────────────── -->
+  <div class="mockup-col">
+    <div class="mockup-label">
+      <span class="num">02</span><span class="name">Day Entry — try the day-switch</span>
+    </div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-scroll">
+        <div class="appbar">
+          <div class="brand">
+            <div class="owner" style="margin-bottom: 2px;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="vertical-align:-1px; margin-right:2px;"><path d="M15 18l-6-6 6-6"/></svg>
+              SHOOTS
+            </div>
+            <div class="mark" style="font-size: 16px; font-weight: 800; color: var(--text);">THE BEAR S04</div>
+          </div>
+          <div class="icons">
+            <button title="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5L8.6 10.5"/></svg></button>
+            <button title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+          </div>
+        </div>
+
+        <!-- Day stage (animates) -->
+        <div class="day-stage" id="day-stage">
+          <div class="form-top">
+            <div class="day-counter"><span id="counter-num">DAY 4</span> <span class="of">/ <span id="counter-total">7</span></span></div>
+            <div class="date" id="date-label">WED · 13 MAY</div>
+          </div>
+
+          <div class="primary-block">
+            <div class="section-label">TIMES</div>
+            <div class="time-row">
+              <div class="time-input">
+                <div class="lbl">CALL <span class="now-btn">NOW</span></div>
+                <div class="val" id="call-time">06:00</div>
+              </div>
+              <div class="time-input">
+                <div class="lbl">WRAP <span class="now-btn warm">NOW</span></div>
+                <div class="val" id="wrap-time">19:30</div>
+              </div>
+            </div>
+            <div class="lunch-row">
+              <div class="lbl">LUNCH</div>
+              <div class="val" id="lunch-start">12:30</div>
+              <span class="sep">→</span>
+              <div class="val" id="lunch-end">13:00</div>
+              <span class="dur" id="lunch-dur">· 30m</span>
+              <span class="ok-chip warn" id="lunch-chip">CURTAILED</span>
+            </div>
+            <div class="status-inline warn" id="status-msg" style="display: flex;">
+              <span class="icon">⚠</span>
+              <span id="status-text">Curtailed by 30m — OT starts 30m earlier. <strong>+£18</strong> applied.</span>
+            </div>
+          </div>
+
+          <div class="conditions-label">CONDITIONS</div>
+          <div class="chips" id="chips-row">
+            <!-- chips populated by JS -->
+          </div>
+
+          <div id="condition-cards"><!-- expanded cards populated by JS --></div>
+        </div>
+
+        <!-- Pill (interactive) -->
+        <div class="pill">
+          <div class="nav-btn" id="prev-btn" onclick="switchDay('prev')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+          </div>
+          <div class="center">
+            <div class="top-line">
+              <span class="pill-counter" id="pill-counter">DAY 4 OF 7</span>
+              <span class="dot"></span>
+              <span id="pill-today">TODAY</span>
+            </div>
+            <div class="amount pill-amount" id="pill-amount">£541.20</div>
+            <div class="compare pill-compare" id="pill-compare">≈ 416 sausage rolls</div>
+          </div>
+          <div class="nav-btn add" id="next-btn" onclick="switchDay('next')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annotations">
+      <p class="live">↑ Click the prev / next arrows on the pill to see the day-switch animation.</p>
+      <p><strong>The animation</strong> — content slides 24px in the travel direction + fades. ~240ms ease-out. Plus the pill total swaps with a quick opacity flicker. Subtle but unambiguous.</p>
+      <p><strong>Sky blue stays everywhere</strong>. Active chip outline, NOW buttons, section labels, "Step-up Role" condition card — all <code>sky-400</code>. The warm amber for warnings became <code>amber-400</code> (cooler, less orange).</p>
+      <p><strong>Conditions are tap-to-add</strong>. The chip toggles to active state with sky-blue ring; below, an expandable detail card. Tap × to collapse, or × the chip to remove.</p>
+    </div>
+  </div>
+
+  <!-- ──────────────────────────────────── -->
+  <!-- 03 — BREAKDOWN -->
+  <!-- ──────────────────────────────────── -->
+  <div class="mockup-col">
+    <div class="mockup-label">
+      <span class="num">03</span><span class="name">Calc Breakdown</span>
+    </div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-scroll">
+        <div class="breakdown-head">
+          <div class="back">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </div>
+          <h3>Shoot Total</h3>
+          <div class="share">SHARE</div>
+        </div>
+
+        <div class="big-total">
+          <div class="label">THE BEAR S04 · 4 OF 7 DAYS</div>
+          <div class="amount">£2,180<span class="pence">.40</span></div>
+          <div class="meter">
+            <div class="seg basic" style="width: 64%;"></div>
+            <div class="seg ot" style="width: 22%;"></div>
+            <div class="seg pen" style="width: 5%;"></div>
+            <div class="seg extra" style="width: 9%;"></div>
+          </div>
+          <div class="legend">
+            <div class="item"><div class="swatch" style="background: var(--accent);"></div><span>BASIC <span class="v">£1,395</span></span></div>
+            <div class="item"><div class="swatch" style="background: var(--accent-2);"></div><span>OT <span class="v">£480</span></span></div>
+            <div class="item"><div class="swatch" style="background: var(--accent-warn);"></div><span>PEN <span class="v">£108</span></span></div>
+            <div class="item"><div class="swatch" style="background: var(--accent-good);"></div><span>KIT <span class="v">£197</span></span></div>
+          </div>
+        </div>
+
+        <div class="greggs">
+          <div class="head">In real money</div>
+          <ul>
+            <li><span class="emoji">🥖</span><span class="qty">1,677</span><span class="item">Greggs sausage rolls</span></li>
+            <li><span class="emoji">🍺</span><span class="qty">335</span><span class="item">pints in London</span></li>
+            <li><span class="emoji">📼</span><span class="qty">145</span><span class="item">rolls of gaffer tape</span></li>
+            <li><span class="emoji">🪛</span><span class="qty">21</span><span class="item">Leathermans</span></li>
+            <li><span class="emoji">📻</span><span class="qty">4.8</span><span class="item">lost walkie-talkies</span></li>
+            <li><span class="emoji">🏠</span><span class="qty">0.09</span><span class="item">years of London mortgage</span></li>
+          </ul>
+        </div>
+
+        <div class="day-list">
+          <h4>BY DAY</h4>
+          <div class="day-row">
+            <div class="date">MON 11</div>
+            <div class="times">06:00 <span class="arr">→</span> 18:30</div>
+            <div class="flags"></div>
+            <div class="amt">£468</div>
+          </div>
+          <div class="day-row">
+            <div class="date">TUE 12</div>
+            <div class="times">06:00 <span class="arr">→</span> 20:00</div>
+            <div class="flags"><span class="flag">OT</span></div>
+            <div class="amt">£542</div>
+          </div>
+          <div class="day-row">
+            <div class="date">WED 13</div>
+            <div class="times">06:00 <span class="arr">→</span> 19:30</div>
+            <div class="flags"><span class="flag">OT</span><span class="flag bad">CWD</span></div>
+            <div class="amt">£541</div>
+          </div>
+          <div class="day-row">
+            <div class="date">THU 14</div>
+            <div class="times">06:30 <span class="arr">→</span> 21:00</div>
+            <div class="flags"><span class="flag">OT</span></div>
+            <div class="amt">£629</div>
+          </div>
+        </div>
+
+        <div style="height: 90px;"></div>
+
+        <div class="pill">
+          <div class="nav-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </div>
+          <div class="center">
+            <div class="top-line">GENERATE</div>
+            <div class="amount">INVOICE</div>
+            <div class="compare">→ £2,180.40 · 4 days</div>
+          </div>
+          <div class="nav-btn add">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annotations">
+      <p><strong>Earnings meter</strong> uses sky-400 / sky-300 / amber / green — all cool, no orange. One glance: this shoot is 22% OT.</p>
+      <p><strong>Big total</strong> is now monospace (your existing <code>font-mono</code>) at heavy weight, so the number reads like an LED ticker rather than a Hollywood title. More appropriate for a financial number.</p>
+      <p><strong>Greggs comparison</strong> stays surfaced and proud. This is the share moment.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer-note">
+  TimeMachine · v0.1.0 redesign · system fonts · <span>sky-400</span> primary · cool palette · day-switch animation live
+</div>
+
+<script>
+  // ──────────────────────────────────────────────────────────────
+  // Day-switch animation demo
+  // ──────────────────────────────────────────────────────────────
+
+  const days = [
+    {
+      counter: 'DAY 1', date: 'MON · 11 MAY',
+      call: '06:00', wrap: '18:30',
+      lunchStart: '13:00', lunchEnd: '14:00', lunchDur: '· 60m',
+      lunchChip: { text: 'ON TIME', kind: 'good' },
+      status: { show: false },
+      conditions: [],
+      amount: '£468.00', compare: '≈ 360 sausage rolls',
+      today: false,
+    },
+    {
+      counter: 'DAY 2', date: 'TUE · 12 MAY',
+      call: '06:00', wrap: '20:00',
+      lunchStart: '13:00', lunchEnd: '14:00', lunchDur: '· 60m',
+      lunchChip: { text: 'ON TIME', kind: 'good' },
+      status: { show: true, kind: 'warn', html: 'Wrap at 20:00 — 1.5h OT. <strong>+£72</strong> applied.' },
+      conditions: ['Step-up role'],
+      amount: '£542.00', compare: '≈ 417 sausage rolls',
+      today: false,
+    },
+    {
+      counter: 'DAY 3', date: 'WED · 13 MAY',
+      call: '06:00', wrap: '19:30',
+      lunchStart: '12:30', lunchEnd: '13:00', lunchDur: '· 30m',
+      lunchChip: { text: 'CURTAILED', kind: 'warn' },
+      status: { show: true, kind: 'warn', html: 'Curtailed by 30m — OT starts 30m earlier. <strong>+£18</strong> applied.' },
+      conditions: ['Step-up role'],
+      amount: '£541.20', compare: '≈ 416 sausage rolls',
+      today: true,
+    },
+    {
+      counter: 'DAY 4', date: 'THU · 14 MAY',
+      call: '06:30', wrap: '21:00',
+      lunchStart: '14:00', lunchEnd: '14:30', lunchDur: '· 30m',
+      lunchChip: { text: 'LATE', kind: 'bad' },
+      status: { show: true, kind: 'bad', html: 'Late lunch — should have started by 12:00. CWD triggered, OT from 15:30.' },
+      conditions: ['Step-up role', 'Travel day'],
+      amount: '£629.00', compare: '≈ 484 sausage rolls',
+      today: false,
+    },
+  ];
+
+  let currentIdx = 2; // start on WED · DAY 3 (the previously-shown state)
+  let animating = false;
+
+  function renderDay(idx) {
+    const d = days[idx];
+    document.getElementById('counter-num').textContent = d.counter;
+    document.getElementById('counter-total').textContent = days.length;
+    document.getElementById('date-label').textContent = d.date;
+    document.getElementById('call-time').textContent = d.call;
+    document.getElementById('wrap-time').textContent = d.wrap;
+    document.getElementById('lunch-start').textContent = d.lunchStart;
+    document.getElementById('lunch-end').textContent = d.lunchEnd;
+    document.getElementById('lunch-dur').textContent = d.lunchDur;
+
+    const chip = document.getElementById('lunch-chip');
+    chip.textContent = d.lunchChip.text;
+    chip.className = 'ok-chip ' + d.lunchChip.kind;
+
+    const status = document.getElementById('status-msg');
+    if (d.status.show) {
+      status.style.display = 'flex';
+      status.className = 'status-inline ' + d.status.kind;
+      document.getElementById('status-text').innerHTML = d.status.html;
+    } else {
+      status.style.display = 'none';
+    }
+
+    // chips
+    const allConditions = ['Step-up role', 'Travel day', 'Pre-call', 'Mileage', 'Standby', 'Kit money', 'Bank holiday'];
+    const chipsRow = document.getElementById('chips-row');
+    chipsRow.innerHTML = '';
+    allConditions.forEach(name => {
+      const isActive = d.conditions.includes(name);
+      const el = document.createElement('div');
+      el.className = 'chip' + (isActive ? ' active' : '');
+      el.innerHTML = name + (isActive ? ' <span class="x">×</span>' : '');
+      chipsRow.appendChild(el);
+    });
+    const addChip = document.createElement('div');
+    addChip.className = 'chip chip-add';
+    addChip.textContent = 'More';
+    chipsRow.appendChild(addChip);
+
+    // expanded condition cards
+    const cards = document.getElementById('condition-cards');
+    cards.innerHTML = '';
+    d.conditions.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'condition-card';
+      let body = '';
+      if (c === 'Step-up role') {
+        body = `
+          <div class="field" style="grid-column: 1 / -1;"><div class="lbl">ROLE</div><div class="v">Gaffer</div></div>
+          <div class="field"><div class="lbl">BDR</div><div class="v">£568</div></div>
+          <div class="field"><div class="lbl">DAY TYPE</div><div class="v">Shoot</div></div>
+        `;
+      } else if (c === 'Travel day') {
+        body = `
+          <div class="field"><div class="lbl">FROM</div><div class="v">London</div></div>
+          <div class="field"><div class="lbl">TO</div><div class="v">Bristol</div></div>
+          <div class="field"><div class="lbl">HOURS</div><div class="v">3.5h</div></div>
+          <div class="field"><div class="lbl">RATE</div><div class="v">£42</div></div>
+        `;
+      }
+      card.innerHTML = `
+        <div class="head"><div class="name">${c.toUpperCase()}</div><div class="close">×</div></div>
+        <div class="body">${body}</div>
+      `;
+      cards.appendChild(card);
+    });
+
+    // pill
+    document.getElementById('pill-counter').textContent = d.counter + ' OF ' + days.length;
+    document.getElementById('pill-today').textContent = d.today ? 'TODAY' : '';
+    document.getElementById('pill-today').style.display = d.today ? '' : 'none';
+    document.getElementById('pill-amount').textContent = d.amount;
+    document.getElementById('pill-compare').textContent = d.compare;
+
+    // nav button enable state
+    document.getElementById('prev-btn').classList.toggle('disabled', idx === 0);
+    document.getElementById('next-btn').classList.toggle('disabled', idx === days.length - 1);
+  }
+
+  function switchDay(direction) {
+    if (animating) return;
+    const newIdx = direction === 'next' ? currentIdx + 1 : currentIdx - 1;
+    if (newIdx < 0 || newIdx >= days.length) return;
+    animating = true;
+
+    const stage = document.getElementById('day-stage');
+    const pillAmount = document.getElementById('pill-amount');
+    const pillCompare = document.getElementById('pill-compare');
+    const pillCounter = document.getElementById('pill-counter');
+
+    // Exit
+    stage.classList.add(direction === 'next' ? 'exiting-left' : 'exiting-right');
+    pillAmount.classList.add('swapping');
+    pillCompare.classList.add('swapping');
+    pillCounter.classList.add('swapping');
+
+    setTimeout(() => {
+      currentIdx = newIdx;
+      renderDay(currentIdx);
+
+      // Prepare entrance — snap to opposite side without transition
+      stage.classList.remove('exiting-left', 'exiting-right');
+      stage.classList.add(direction === 'next' ? 'entering-right' : 'entering-left');
+
+      requestAnimationFrame(() => {
+        // Force a frame, then animate to neutral
+        requestAnimationFrame(() => {
+          stage.classList.remove('entering-right', 'entering-left');
+          pillAmount.classList.remove('swapping');
+          pillCompare.classList.remove('swapping');
+          pillCounter.classList.remove('swapping');
+        });
+      });
+
+      setTimeout(() => { animating = false; }, 260);
+    }, 180);
+  }
+
+  // initial render
+  renderDay(currentIdx);
+</script>
+
+</body>
+</html>
