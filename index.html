@@ -397,6 +397,11 @@
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
     const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
     const getBankHolidayName = (dateStr) => dateStr ? (UK_BANK_HOLIDAYS[dateStr] || null) : null;
+
+    // Reference-counted body scroll lock — safe when multiple modals stack
+    let _modalCount = 0;
+    const lockBodyScroll   = () => { if (_modalCount === 0) document.body.style.overflow = 'hidden'; _modalCount++; };
+    const unlockBodyScroll = () => { _modalCount = Math.max(0, _modalCount - 1); if (_modalCount === 0) document.body.style.overflow = ''; };
     const weekday = (iso) => { if (!iso) return ""; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" }); };
     const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
     // fmtDateShort → "04/05/2026" (compact: line items, table rows)
@@ -3089,8 +3094,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [selectedDept, setSelectedDept] = useState(() => ROLE_TO_DEPT[form.role] || "All");
 
       useEffect(() => {
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, []);
 
       const onDeptChange = (dept) => {
@@ -3210,8 +3215,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function CancellationCalcModal({ production, setProduction, crew, setCrew, onClose, userPrefs }) {
       useEffect(() => {
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, []);
 
       // Standalone crew-entry state (used when setCrew is provided)
@@ -3485,7 +3490,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         onClick={() => {
                           const name = newName.trim();
                           if (!name) return;
-                          setCrew(prev => [...prev, { id: uid(), name, role: "Crew", bdr: Number(newBDR) || 0 }]);
+                          setCrew(prev => [...prev, { id: uid(), name, role: Object.keys(ROLE_DEFAULTS)[0], bdr: Number(newBDR) || 0 }]);
                           setNewName(""); setNewBDR("");
                           setShowAddPerson(false);
                         }}
@@ -4041,8 +4046,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : "";
 
       useEffect(() => {
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, []);
 
       const modalTitle = isNew ? "New Day Entry" : isNewAll ? "New Day — All Crew" : "Edit Day Entry";
@@ -4228,8 +4233,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       useEffect(() => {
         if (!editingDate) return;
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, [editingDate]);
 
       const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -4953,15 +4958,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (editing === "new-all") {
           const newDays = crew.map((c) => ({ ...form, id: uid(), crewId: c.id }));
           setDays((prev) => [...prev, ...newDays]);
+          cancel();
         } else {
           if (!form.crewId) return;
+          if (editing === "new") {
+            const existing = days.filter(d => d.crewId === form.crewId && d.date === form.date);
+            if (existing.length > 0) {
+              const crewMember = crew.find(c => c.id === form.crewId);
+              setConfirmOpts({
+                title: "Duplicate date",
+                message: `${crewMember?.name || "This crew member"} already has ${existing.length === 1 ? "a day" : `${existing.length} days`} on ${fmtDateShort(form.date)}. Create another anyway?`,
+                confirmLabel: "Create both",
+                confirmTone: "primary",
+                onConfirm: () => { setDays(prev => [...prev, form]); cancel(); },
+              });
+              return;
+            }
+          }
           if (editing !== "new") onPushUndo('Day entry saved');
           setDays((prev) => {
             const exists = prev.find((d) => d.id === form.id);
             return exists ? prev.map((d) => (d.id === form.id ? form : d)) : [...prev, form];
           });
+          cancel();
         }
-        cancel();
       };
 
       const remove = (id) => { onPushUndo('Day entry deleted'); setDays((prev) => prev.filter((d) => d.id !== id)); setConfirmRemove(null); };
@@ -5127,8 +5147,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function WeekPickerSheet({ open, weeks, onPick, onClose, title }) {
       useEffect(() => {
         if (!open) return;
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, [open]);
       if (!open) return null;
       const fmtWeekRange = (wk) => {
@@ -5171,8 +5191,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function CrewPickerSheet({ open, crew, days, production, onPick, onClose, title }) {
       useEffect(() => {
         if (!open) return;
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, [open]);
       if (!open) return null;
       return (
@@ -5749,8 +5769,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", confirmTone = "primary", cancelLabel = "Cancel", onConfirm, onCancel }) {
       useEffect(() => {
         if (!open) return;
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, [open]);
 
       if (!open) return null;
@@ -5804,8 +5824,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       useEffect(() => { if (opts) setTargetDate(opts.targetDate); }, [opts?.targetDate]);
       useEffect(() => {
         if (!opts) return;
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, [!!opts]);
 
       if (!opts) return null;
@@ -5857,8 +5877,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function DayJumpSheet({ open, days, currentDayId, production, crew, onPick, onClose }) {
       useEffect(() => {
         if (!open) return;
-        document.body.style.overflow = "hidden";
-        return () => { document.body.style.overflow = ""; };
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
       }, [open]);
 
       if (!open) return null;
