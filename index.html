@@ -75,6 +75,13 @@
       60%  { opacity: 1; transform: translateY(0) scale(1); }
       100% { opacity: 1; transform: translateY(0) scale(1); }
     }
+    /* Live indicator pulse — soft 2s loop for "ON CALL" dot */
+    @keyframes tm-pulse {
+      0%   { opacity: 1;   transform: scale(1); }
+      50%  { opacity: 0.6; transform: scale(1.3); }
+      100% { opacity: 1;   transform: scale(1); }
+    }
+    .tm-pulse { animation: tm-pulse 2s ease-in-out infinite; }
   </style>
 
 </head>
@@ -498,6 +505,22 @@
       const mm = Math.round((n - hh) * 60);
       return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
     };
+    function timeSinceCall(callTime, now = new Date()) {
+      const callH = parseHHMM(callTime);
+      if (callH == null) return null;
+      const callMins = Math.round(callH * 60);
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      let diff = nowMins - callMins;
+      if (diff < 0) diff += 24 * 60;
+      return diff;
+    }
+    function formatElapsed(minutes) {
+      if (minutes == null || minutes < 0) return "—";
+      if (minutes < 60) return `${minutes}m`;
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `${h}h ${m}m`;
+    }
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
     const ceilHalf = (n) => Math.ceil(n * 2) / 2;
     const computeAPArate = (bdr, multiplier, apaRounding) => { const raw = (Number(bdr) || 0) * multiplier / 10; return apaRounding ? Math.round(raw) : raw; };
@@ -4964,7 +4987,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
-    function WrapNowBtn({ days, setDays, showToast }) {
+    function WrapNowBtn({ days, setDays, showToast, className = "" }) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const todayEntries = days.filter(d => d.date === todayStr);
       const alreadyWrapped = todayEntries.some(d => d.wrapTime && d.wrapTime.length > 0);
@@ -4992,18 +5015,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         doWrap();
       };
 
-      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-amber-500/50 text-amber-300 hover:border-amber-400"}`;
+      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-sky-500 text-sky-100 bg-sky-500/20" : "bg-sky-500 text-black hover:bg-sky-400"} ${className}`;
 
       return (
         <button onClick={handleClick} className={cls}
-          style={{ minWidth: 96, height: 36, flexShrink: 0 }}
+          style={{ minWidth: 96, height: 36 }}
           title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}>
           {confirming ? "Confirm?" : "WrapNow"}
         </button>
       );
     }
 
-    function LunchNowBtn({ days, setDays, showToast }) {
+    function LunchNowBtn({ days, setDays, showToast, className = "" }) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const todayEntries = days.filter(d => d.date === todayStr);
       const alreadyLunched = todayEntries.some(d => d.lunchStartTime && d.lunchStartTime.length > 0);
@@ -5031,11 +5054,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         doLunch();
       };
 
-      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-500"}`;
+      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-500"} ${className}`;
 
       return (
         <button onClick={handleClick} className={cls}
-          style={{ minWidth: 96, height: 36, flexShrink: 0 }}
+          style={{ minWidth: 96, height: 36 }}
           title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}>
           {confirming ? "Confirm?" : "LunchNow"}
         </button>
@@ -9030,30 +9053,103 @@ const confirmDelete = (p) => setConfirmOpts({
         const wrapperClass = "bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer select-none touch-manipulation";
 
         if (isCurrent) {
+          const todayRecords = (p.days ?? []).filter(d => d.date === todayStr);
+          const uniqueDates = Array.from(new Set((p.days ?? []).map(d => d.date))).sort();
+          const dayCount = uniqueDates.length;
+          const dayIndex = uniqueDates.indexOf(todayStr) + 1;
+
+          const someOnCall = todayRecords.some(d => d.callTime && !d.wrapTime);
+          const allWrapped = todayRecords.length > 0 && todayRecords.every(d => d.callTime && d.wrapTime);
+
+          let stateLabel, stateClass, showDot;
+          if (someOnCall)      { stateLabel = `ON CALL · DAY ${dayIndex} OF ${dayCount}`;       stateClass = "text-tm-good";     showDot = true; }
+          else if (allWrapped) { stateLabel = `WRAPPED · DAY ${dayIndex} OF ${dayCount}`;       stateClass = "text-neutral-400"; showDot = false; }
+          else                 { stateLabel = `CURRENT SHOOT · DAY ${dayIndex} OF ${dayCount}`; stateClass = "text-sky-500";     showDot = false; }
+
+          const callMinsList = todayRecords.map(d => parseHHMM(d.callTime)).filter(v => v != null).map(h => Math.round(h * 60));
+          const earliestCallMins = callMinsList.length ? Math.min(...callMinsList) : null;
+          const earliestCallStr = earliestCallMins != null ? toHHMM(earliestCallMins / 60) : null;
+
+          let clockedValue = "—";
+          let clockedSub = "";
+          if (allWrapped) {
+            let totalMins = 0;
+            todayRecords.forEach(d => {
+              const c = parseHHMM(d.callTime);
+              const w = parseHHMM(d.wrapTime);
+              if (c != null && w != null) {
+                let diff = (w - c) * 60;
+                if (diff < 0) diff += 24 * 60;
+                totalMins += diff;
+              }
+            });
+            clockedValue = formatElapsed(Math.round(totalMins));
+            if (earliestCallStr) clockedSub = `since ${earliestCallStr}`;
+          } else if (earliestCallMins != null) {
+            clockedValue = formatElapsed(timeSinceCall(earliestCallStr));
+            clockedSub = `since ${earliestCallStr}`;
+          }
+
+          const todayTotal = todayRecords.reduce((sum, d) => {
+            const c = (p.crew ?? []).find(cc => cc.id === d.crewId);
+            if (!c) return sum;
+            return sum + calcForDisplay(p, d, c, findPrevDay(p.days ?? [], d)).total;
+          }, 0);
+
+          const showActions = someOnCall && todayRecords.length > 0;
+
           return (
             <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
               <div className="p-4">
-                <div className="mb-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
-                    {bestBoyBadge}
-                    {invChip}
+                <div className={`flex items-center gap-1.5 text-[11px] tracking-[0.18em] font-bold mb-2 ${stateClass}`}>
+                  {showDot && <span className="tm-pulse inline-block rounded-full bg-tm-good" style={{ width: 6, height: 6 }} />}
+                  <span>{stateLabel}</span>
+                </div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
+                  {bestBoyBadge}
+                  {invChip}
+                </div>
+                <div className="text-sm text-neutral-400 truncate mb-3">{metaText}</div>
+                <div className="border-t border-neutral-800 -mx-4 px-4 pt-3 grid grid-cols-3 gap-3">
+                  <div>
+                    <div className="uppercase text-[9px] tracking-[0.15em] text-neutral-500 font-bold">Clocked</div>
+                    <div className="font-mono text-[17px] font-bold text-neutral-100">{clockedValue}</div>
+                    {clockedSub && <div className="text-[10px] text-neutral-500 font-mono">{clockedSub}</div>}
                   </div>
-                  <div className="text-sm text-neutral-400 truncate">{metaText}</div>
-                  <div className="text-lg font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
+                  <div>
+                    <div className="uppercase text-[9px] tracking-[0.15em] text-neutral-500 font-bold">Today</div>
+                    <div className="font-mono text-[17px] font-bold text-sky-500">{fmtGBP(todayTotal)}</div>
+                  </div>
+                  <div>
+                    <div className="uppercase text-[9px] tracking-[0.15em] text-neutral-500 font-bold">Shoot</div>
+                    <div className="font-mono text-[17px] font-bold text-neutral-100">{fmtGBP(productionTotals[p.id] || 0)}</div>
+                    <div className="text-[10px] text-neutral-500 font-mono">{dayCount} day{dayCount !== 1 ? 's' : ''}</div>
+                  </div>
                 </div>
-                <div className="border-t border-neutral-800 -mx-4" />
-                <div className="flex items-center justify-center gap-2 pt-3" onClick={e => e.stopPropagation()}>
-                  {hasToday && <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
-                  {hasToday && <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
-                    className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 ml-auto flex items-center justify-center"
-                    style={{ minWidth: 44, minHeight: 44 }}
-                    aria-label="Production options"
-                    title="Production options"
-                  ><IKebab size={16}/></button>
-                </div>
+                {showActions ? (
+                  <div className="flex items-center gap-2 mt-3" onClick={e => e.stopPropagation()}>
+                    <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} className="flex-1" />
+                    <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} className="flex-1" />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
+                      className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center flex-shrink-0"
+                      style={{ minWidth: 44, minHeight: 44 }}
+                      aria-label="Production options"
+                      title="Production options"
+                    ><IKebab size={16}/></button>
+                  </div>
+                ) : (
+                  <div className="flex justify-end mt-2" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
+                      className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center"
+                      style={{ minWidth: 44, minHeight: 44 }}
+                      aria-label="Production options"
+                      title="Production options"
+                    ><IKebab size={16}/></button>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -9189,7 +9285,6 @@ const confirmDelete = (p) => setConfirmOpts({
                 {/* Current shoot pinned at top */}
                 {currentShoot && (
                   <div className="mb-6">
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-2">Current Shoot</div>
                     {renderCard(currentShoot, { isCurrent: true })}
                   </div>
                 )}
