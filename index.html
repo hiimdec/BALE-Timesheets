@@ -3156,8 +3156,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
 
-    const Icon = ({ children, size = 14 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    const Icon = ({ children, size = 14, strokeWidth = 2 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
         {children}
       </svg>
     );
@@ -6253,13 +6253,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 disabled: !hasPrev,
                 ariaLabel: 'Previous day',
               }}
-              rightBtn={{
-                icon: hasNext ? <IChevronRight size={16} strokeWidth={2.5} /> : <IPlus size={16}/>,
-                onClick: hasNext ? onNext : onAdd,
-                disabled: false,
-                variant: 'add',
-                ariaLabel: hasNext ? 'Next day' : 'Add day',
-              }}
+              rightBtn={hasNext
+                ? {
+                    icon: <IChevronRight size={16} strokeWidth={2.5} />,
+                    onClick: onNext,
+                    ariaLabel: 'Next day',
+                  }
+                : {
+                    icon: <IPlus size={16} strokeWidth={2.5} />,
+                    onClick: onAdd,
+                    variant: 'add',
+                    ariaLabel: 'Add day',
+                  }
+              }
               onCenterClick={onViewCalc}
             >
               <div className="tm-pill-topline pill-counter" key={`topline-${dayIndex}`} style={swap}>
