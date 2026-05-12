@@ -66,6 +66,23 @@
 
     const APP_VERSION = "0.1.0";
 
+    const RELEASE_NOTES = {
+      version: APP_VERSION,
+      date: "2026-05-12",
+      added: [
+        "APA-compliant time tracking — call, wrap, lunch deadlines, CWD",
+        "Itemised day breakdown: BDR, overtime, penalties, extras",
+        "Solo mode and Best Boy mode (multi-crew)",
+        "Invoice generation with PDF export",
+        "Postcode → mileage auto-calc with M25 warning",
+        "Pre-call time support for truck driving, pre-light & prep",
+        "Bank holiday detection through 2035",
+        "Cancellation fee calculator (APA agreed-fee rules)",
+        "Local-only storage — your data never leaves your device",
+      ],
+      notes: "Initial pre-release. Your feedback shapes the next version.",
+    };
+
     const COMPARISON_ITEMS = [
       { emoji: "🥖", label: "Greggs sausage rolls", price: 1.30 },
       { emoji: "🚇", label: "Tube journeys", price: 3.10 },
@@ -7287,6 +7304,20 @@ const setDays = (updater) =>
                 <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset All Data</span>.</p>
                 <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
               </div>
+            </SectionCard>
+
+            <SectionCard title="What's new">
+              <div className="font-semibold text-sm text-neutral-200 mb-0.5">Version {RELEASE_NOTES.version}</div>
+              <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
+              <ul className="space-y-1.5 mb-3">
+                {RELEASE_NOTES.added.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
+                    <span className="text-sky-400 flex-shrink-0 leading-snug">·</span>
+                    <span className="leading-snug">{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="text-[11px] text-neutral-400 italic">{RELEASE_NOTES.notes}</div>
             </SectionCard>
 
             <SectionCard title="About">
