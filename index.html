@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>TimeMachine</title>
 
   <!-- PWA / iOS Home Screen -->
@@ -2852,14 +2852,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       </label>
     );
 
-    const Input = ({ type, style, className, onFocus: onFocusProp, ...p }) => {
+    const Input = ({ type, style, className, onFocus: onFocusProp, inputMode: inputModeProp, ...p }) => {
       const isDate = type === "date";
+      const resolvedInputMode = inputModeProp ?? (type === "number" ? "decimal" : undefined);
       const handleFocus = (e) => {
         if (type === 'number') e.target.select();
         if (onFocusProp) onFocusProp(e);
       };
-      return <input type={type} onFocus={handleFocus} {...p}
-        style={isDate ? { WebkitAppearance: 'none', fontSize: 14, ...style } : style}
+      return <input type={type} inputMode={resolvedInputMode} onFocus={handleFocus} {...p}
+        style={isDate ? { WebkitAppearance: 'none', ...style } : style}
         className={`w-full min-w-0 bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
     };
@@ -3176,7 +3177,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 {form.vatRegistered && (
                   <Field label="VAT Rate (%)" hint="Usually 20%">
-                    <Input type="number" min="0" max="100" step="1" value={form.vatRate ?? 20} onChange={(e) => setForm({ ...form, vatRate: Number(e.target.value) })} />
+                    <Input type="number" min="0" max="100" step="1" inputMode="numeric" value={form.vatRate ?? 20} onChange={(e) => setForm({ ...form, vatRate: Number(e.target.value) })} />
                   </Field>
                 )}
                 <div className="flex items-center justify-between gap-3">
@@ -3885,8 +3886,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="text-[10px] text-neutral-500 leading-snug">{TRAVEL_TIME_CAPTION}</div>
                 {showTravelInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{TRAVEL_TIME_EXPLAINER}</span></StatusMsg>}
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Travel Out (mins)"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
-                  <Field label="Travel Back (mins)"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
+                  <Field label="Travel Out (mins)"><Input type="number" min="0" inputMode="numeric" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
+                  <Field label="Travel Back (mins)"><Input type="number" min="0" inputMode="numeric" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
                 </div>
               </div>
             )}
@@ -4610,8 +4611,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <div className="text-[10px] text-neutral-500 leading-snug">{TRAVEL_TIME_CAPTION}</div>
                         {showTravelInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{TRAVEL_TIME_EXPLAINER}</span></StatusMsg>}
                         <div className="grid grid-cols-2 gap-3">
-                          <Field label="Travel Out (mins)"><Input type="number" min="0" value={dateEdit.travelOutMins ?? 0} onChange={e => setDateEdit(p => ({...p, travelOutMins: Number(e.target.value)}))} /></Field>
-                          <Field label="Travel Back (mins)"><Input type="number" min="0" value={dateEdit.travelBackMins ?? 0} onChange={e => setDateEdit(p => ({...p, travelBackMins: Number(e.target.value)}))} /></Field>
+                          <Field label="Travel Out (mins)"><Input type="number" min="0" inputMode="numeric" value={dateEdit.travelOutMins ?? 0} onChange={e => setDateEdit(p => ({...p, travelOutMins: Number(e.target.value)}))} /></Field>
+                          <Field label="Travel Back (mins)"><Input type="number" min="0" inputMode="numeric" value={dateEdit.travelBackMins ?? 0} onChange={e => setDateEdit(p => ({...p, travelBackMins: Number(e.target.value)}))} /></Field>
                         </div>
                       </div>
                     )}
@@ -5609,7 +5610,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                   {m.vatRegistered && (
                     <Field label="VAT Rate (%)">
-                      <Input type="number" min="0" max="100" step="1" value={m.vatRate ?? 20} onChange={setSoloNum("vatRate")} />
+                      <Input type="number" min="0" max="100" step="1" inputMode="numeric" value={m.vatRate ?? 20} onChange={setSoloNum("vatRate")} />
                     </Field>
                   )}
                   <div className="flex items-center justify-between gap-3">
@@ -6805,6 +6806,7 @@ const setDays = (updater) =>
                           min="0"
                           max="100"
                           step="1"
+                          inputMode="numeric"
                           value={userPrefs.vatRate}
                           onChange={(e) => set({ vatRate: Number(e.target.value) })}
                         />
@@ -7003,6 +7005,7 @@ const setDays = (updater) =>
                     min="0"
                     max="100"
                     step="1"
+                    inputMode="numeric"
                     value={userPrefs.vatRate}
                     onChange={(e) => set({ vatRate: Number(e.target.value) })}
                   />
@@ -7081,14 +7084,14 @@ const setDays = (updater) =>
                     <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
                   </Field>
                   <Field label="Next invoice number" hint="If you've been invoicing elsewhere, enter your last used number + 1 and we'll continue from there">
-                    <Input type="number" min="1" step="1" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
+                    <Input type="number" min="1" step="1" inputMode="numeric" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
                   </Field>
                 </div>
 
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold mb-2">Default payment terms</div>
                   <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
-                    <Input type="number" min="0" step="1" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
+                    <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
                   </Field>
                 </div>
 
@@ -8037,7 +8040,7 @@ const setDays = (updater) =>
                     }} />
                 </Field>
                 <Field label="Due in (days)" hint={invoice.dueDate ? `Due: ${fmtDateShort(invoice.dueDate)}` : ""}>
-                  <Input type="number" min="0" step="1" value={daysFromIssue}
+                  <Input type="number" min="0" step="1" inputMode="numeric" value={daysFromIssue}
                     onChange={(e) => {
                       const days = Math.max(0, Number(e.target.value) || 0);
                       updateInvoice({ dueDate: addDays(invoice.invoiceDate || todayISO(), days) });
