@@ -3083,11 +3083,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-800 border border-neutral-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
     const StatusMsg = ({ kind = "info", children }) => {
-      const colors = { ok: "text-green-400", info: "text-neutral-400", warn: "text-amber-400", bad: "text-red-400" };
-      const bgs    = { ok: "bg-green-900/20", info: "bg-neutral-800/40", warn: "bg-amber-900/20", bad: "bg-red-900/20" };
+      const colors  = { ok: "text-tm-good",       info: "text-neutral-400",     warn: "text-tm-warn",        bad: "text-tm-pen" };
+      const bgs     = { ok: "bg-tm-good/10",      info: "bg-neutral-800/40",    warn: "bg-tm-warn/10",       bad: "bg-tm-pen/10" };
+      const borders = { ok: "border-tm-good/25",  info: "border-neutral-700/40", warn: "border-tm-warn/25",  bad: "border-tm-pen/25" };
       const icons = { ok: <ICheck/>, info: <IInfo/>, warn: <IAlert/>, bad: <IWarn/> };
       return (
-        <div className={`text-[11px] ${colors[kind]} ${bgs[kind]} flex items-start gap-1.5 leading-tight mt-1 px-2.5 py-1.5 rounded-md`}>
+        <div className={`text-[11px] ${colors[kind]} ${bgs[kind]} border ${borders[kind]} flex items-start gap-1.5 leading-tight mt-1 px-2.5 py-1.5 rounded-md`}>
           <span className="mt-0.5">{icons[kind]}</span>
           <span>{children}</span>
         </div>
@@ -5858,7 +5859,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
-          <div style={{ height: 64, background: '#e8e8e8', borderRadius: 32,
+          <div style={{ height: 64, background: 'var(--tm-pill-paper)', borderRadius: 32,
                         boxShadow: '0 8px 24px rgba(0,0,0,0.5)', display: 'flex',
                         alignItems: 'center', padding: 6, gap: 6, pointerEvents: 'auto',
                         WebkitTapHighlightColor: 'transparent' }}>
@@ -5892,7 +5893,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function BottomMoneyPill({ total, onBack, onViewCalc }) {
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
-          <div style={{ height: 56, background: '#f5f5f5', borderRadius: 28, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', overflow: 'hidden', pointerEvents: 'auto' }}>
+          <div style={{ height: 56, background: 'var(--tm-pill-paper)', borderRadius: 28, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', overflow: 'hidden', pointerEvents: 'auto' }}>
             <button onClick={onBack} aria-label="Back to productions"
               style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
               <IArrowLeft size={20}/>
