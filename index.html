@@ -7116,6 +7116,13 @@ const setDays = (updater) =>
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+      const [showCalc, setShowCalc] = useState(false);
+      const [calcProd, setCalcProd] = useState(() => ({ title: "", startDate: new Date().toISOString().slice(0, 10), cancellationData: null }));
+      const [calcCrew, setCalcCrew] = useState(() => {
+        const name = userPrefs?.displayName?.trim() || "";
+        if (!name) return [];
+        return [{ id: uid(), name, role: userPrefs?.defaultRole || "Crew", bdr: Number(userPrefs?.defaultBDR) || 0, isDefaultUser: true }];
+      });
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -7177,6 +7184,11 @@ const setDays = (updater) =>
           </div>
 
           <div className="max-w-2xl mx-auto px-4 py-6">
+
+            <SectionCard title="Tools">
+              <Btn variant="ghost" onClick={() => setShowCalc(true)}><ICalc/>Cancellation Calculator</Btn>
+              <p className="text-[10px] text-neutral-500 mt-1">Estimate APA cancellation fees for cancelled or curtailed shoots.</p>
+            </SectionCard>
 
             <SectionCard title="My Setup">
               <Field label="Display name" hint="Appears on exported PDFs">
@@ -7519,6 +7531,16 @@ const setDays = (updater) =>
             onConfirm={() => { const f = confirmOpts?.onConfirm; setConfirmOpts(null); if (f) f(); }}
             onCancel={() => setConfirmOpts(null)}
           />
+          {showCalc && (
+            <CancellationCalcModal
+              production={calcProd}
+              setProduction={setCalcProd}
+              crew={calcCrew}
+              setCrew={setCalcCrew}
+              userPrefs={userPrefs}
+              onClose={() => setShowCalc(false)}
+            />
+          )}
         </div>
       );
     }
@@ -8918,15 +8940,8 @@ const setDays = (updater) =>
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [actionSheet, setActionSheet] = useState(null);
-      const [showCancellationCalc, setShowCancellationCalc] = useState(false);
       const [showProductionPicker, setShowProductionPicker] = useState(false);
       const [showWizard, setShowWizard] = useState(false);
-      const [calcProd, setCalcProd] = useState(() => ({ title: "", startDate: new Date().toISOString().slice(0, 10), cancellationData: null }));
-      const [calcCrew, setCalcCrew] = useState(() => {
-        const name = userPrefs?.displayName?.trim() || "";
-        if (!name) return [];
-        return [{ id: uid(), name, role: userPrefs?.defaultRole || "Crew", bdr: Number(userPrefs?.defaultBDR) || 0, isDefaultUser: true }];
-      });
       const [searchOpen, setSearchOpen] = useState(false);
       const [query, setQuery] = useState("");
       const searchInputRef = useRef(null);
@@ -9091,9 +9106,6 @@ const confirmDelete = (p) => setConfirmOpts({
                 </button>
                 <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-500" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
                   <ISearch size={20}/>
-                </button>
-                <button onClick={() => setShowCancellationCalc(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Cancellation Calculator" aria-label="Cancellation Calculator">
-                  <ICalc size={20}/>
                 </button>
                 <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Settings" aria-label="Settings">
                   <IGear size={20}/>
@@ -9297,17 +9309,6 @@ const confirmDelete = (p) => setConfirmOpts({
                 </div>
               </div>
             </div>
-          )}
-
-          {showCancellationCalc && (
-            <CancellationCalcModal
-              production={calcProd}
-              setProduction={setCalcProd}
-              crew={calcCrew}
-              setCrew={setCalcCrew}
-              userPrefs={userPrefs}
-              onClose={() => setShowCancellationCalc(false)}
-            />
           )}
 
           <ConfirmDialog
