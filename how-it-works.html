@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>How it works · TimeMachine</title>
+  <meta name="description" content="TimeMachine — the APA timesheet calculator for UK commercial crew. See what it does and how it costs your day.">
+  <meta name="theme-color" content="#0e1729">
+
+  <meta property="og:title" content="How TimeMachine works">
+  <meta property="og:description" content="The APA timesheet calculator for UK commercial crew. OT, late breaks, CWDs, weekends, mileage, invoicing — all in one place.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/how-it-works">
+  <meta property="og:type" content="website">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --navy: #0e1729;
+      --ink: #f5f5f5;
+      --muted: #a3a3a3;
+      --muted-2: #737373;
+      --line: #1f1f1f;
+      --line-2: #262626;
+      --sky: #38bdf8;
+      --sky-2: #7dd3fc;
+      --sky-dim: #082f49;
+      --sky-deep: #075985;
+    }
+    html, body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .display { font-family: 'Inter', sans-serif; font-weight: 900; letter-spacing: -0.025em; }
+    .mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .label   { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; color: var(--sky); }
+    .label-muted { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; color: var(--muted-2); }
+
+    /* Lightweight backdrop — no fixed positioning, no mask */
+    body::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 80vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(80% 50% at 50% 0%, #0b1a33 0%, transparent 70%);
+    }
+
+    /* Sticky nav — solid bg, no backdrop-filter (cheaper) */
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.95);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--sky);
+      color: #0a0a0a;
+      font-family: 'Inter', sans-serif;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 14px 22px;
+      border-radius: 12px;
+      font-size: 14px;
+      box-shadow: 0 0 0 1px #38bdf8, 0 10px 30px -10px rgba(56,189,248,0.4);
+    }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-secondary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border: 1px solid var(--line-2);
+      color: var(--ink);
+      padding: 13px 20px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .btn-secondary:hover { border-color: var(--sky); color: var(--sky); }
+
+    .chip {
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 3px 7px; border-radius: 5px; line-height: 1; white-space: nowrap;
+    }
+    .chip.shoot    { background: #082f49; color: #7dd3fc; }
+    .chip.prelight { background: #075985; color: #fff; }
+    .chip.recce    { background: #0284c7; color: #fff; }
+    .chip.prep     { background: #38bdf8; color: #082f49; }
+    .chip.derig    { background: #7dd3fc; color: #082f49; }
+    .chip.travel   { background: transparent; color: #7dd3fc; border: 1px solid #075985; }
+    .chip.ot       { border: 1px solid #dc2626; color: #f87171; background: transparent; }
+    .chip.msb      { border: 1px solid #d97706; color: #fbbf24; background: transparent; }
+    .chip.cwd      { background: #d97706; color: #0a0a0a; }
+    .chip.toc      { background: #1f2937; color: #fbbf24; border: 1px solid #d97706; }
+    .chip.ns       { background: #1e3a8a; color: #93c5fd; }
+
+    .card {
+      background: rgba(23,23,23,0.6);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 22px;
+    }
+
+    .mock {
+      background: #fafaf7;
+      color: #15171A;
+      border-radius: 12px;
+      padding: 24px 22px;
+      font-family: 'Inter', sans-serif;
+      box-shadow: 0 30px 80px -30px rgba(0,0,0,0.7), 0 0 0 1px #1f2937;
+    }
+    .mock .mock-rule { border-color: #D9D4C7; }
+    .mock-chip {
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 2.5px 7px; border-radius: 5px; line-height: 1;
+    }
+    .mock-chip.shoot { background: #082f49; color: white; }
+    .mock-chip.ot    { border: 1px solid #dc2626; color: #dc2626; background: white; }
+    .mock-chip.msb   { border: 1px solid #d97706; color: #d97706; background: white; }
+    .mock-chip.cwd   { background: #d97706; color: white; }
+
+    .platform-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(56,189,248,0.08);
+      border: 1px solid rgba(56,189,248,0.25);
+      color: var(--sky-2);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      padding: 5px 10px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP NAV — wordmark only -->
+  <nav class="top-nav">
+    <div class="max-w-5xl mx-auto px-5 py-3 flex items-center justify-between" style="padding-top: calc(env(safe-area-inset-top) + 12px);">
+      <a href="/" class="display text-[14px]">TIMEMACHINE</a>
+      <a href="https://timemachineapp.co.uk/" class="text-[11px] uppercase tracking-[0.2em] font-bold text-sky-400 hover:text-sky-300">
+        Open the App →
+      </a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="max-w-5xl mx-auto px-5 pt-14 md:pt-24 pb-16">
+    <div class="flex flex-wrap gap-2 mb-5">
+      <span class="platform-badge">Web app · live now</span>
+      <span class="platform-badge" style="opacity: 0.7;">iOS · coming soon</span>
+      <span class="platform-badge" style="background: rgba(255,255,255,0.04); border-color: var(--line-2); color: var(--muted);">Beta</span>
+    </div>
+
+    <h1 class="display text-[56px] md:text-[96px] leading-[0.9] mt-2">
+      <span style="color: var(--sky);">YOUR APA DAY,</span><br>
+      <span style="color: var(--sky-2); font-size: 0.7em; letter-spacing: 0.04em;">TOTALLED.</span>
+    </h1>
+
+    <p class="mt-7 text-[19px] md:text-[22px] text-neutral-300 max-w-2xl leading-snug">
+      TimeMachine tracks the day, calculates the pay, and generates the invoice. Built around the
+      <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener" class="text-sky-400 hover:text-sky-300 underline-offset-4 hover:underline">APA Recommended Terms</a>.
+      Penalties caught, mileage worked out from a postcode, bank details pre-filled on every invoice.
+    </p>
+
+    <div class="mt-9 flex flex-wrap gap-3">
+      <a href="https://timemachineapp.co.uk/" class="btn-primary">
+        Open the App
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <a href="#features" class="btn-secondary">See what it does</a>
+    </div>
+
+    <!-- Chip rail -->
+    <div class="mt-12">
+      <p class="label-muted mb-3">It speaks your language</p>
+      <div class="flex flex-wrap gap-2">
+        <span class="chip shoot">SHOOT</span>
+        <span class="chip prelight">PRELIGHT</span>
+        <span class="chip recce">RECCE</span>
+        <span class="chip prep">PREP</span>
+        <span class="chip derig">DERIG</span>
+        <span class="chip travel">TRAVEL</span>
+        <span class="w-px h-5 bg-neutral-800 self-center mx-2"></span>
+        <span class="chip ot">OT</span>
+        <span class="chip msb">L1 LATE LUNCH</span>
+        <span class="chip msb">L2 LATE 2ND</span>
+        <span class="chip cwd">CWD</span>
+        <span class="chip toc">TOC</span>
+        <span class="chip ns">NIGHT</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHO IT'S FOR -->
+  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
+    <div class="grid md:grid-cols-12 gap-10">
+      <div class="md:col-span-5">
+        <p class="label">Who it's for</p>
+        <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3">Crew who do the maths in the truck.</h2>
+      </div>
+      <div class="md:col-span-7 space-y-5">
+        <p class="text-[17px] text-neutral-300 leading-relaxed">
+          You're on APA terms. You know your BDR. You know what an L1 costs. You've worked enough CWDs to spot one coming. TimeMachine takes the running calculator off your phone and replaces it with a tool that already knows the rules.
+        </p>
+        <p class="text-[17px] text-neutral-300 leading-relaxed">
+          Role-aware: pick <span class="text-neutral-100 font-semibold">Spark</span>, <span class="text-neutral-100 font-semibold">Grip</span>, <span class="text-neutral-100 font-semibold">Construction Manager</span>, <span class="text-neutral-100 font-semibold">PA / PM / Runner</span>, or whatever you actually do — the right rate card loads, and the right §s of the APA terms apply.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- A REAL DAY -->
+  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
+    <p class="label">A real day, totalled</p>
+    <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3 mb-10">What it gives you back.</h2>
+
+    <div class="grid md:grid-cols-12 gap-10 items-start">
+      <div class="md:col-span-7 mock">
+        <div class="flex items-start justify-between border-b mock-rule pb-3 mb-4">
+          <div>
+            <div class="display text-[22px] leading-none">Jane Smith</div>
+            <div class="text-[12px] text-neutral-600 mt-1">Best Boy · Acme Brand Film 2026</div>
+          </div>
+          <div class="text-right">
+            <div class="label-muted" style="color: #6B7079;">Total</div>
+            <div class="mono text-[22px] font-bold mt-0.5">£3,247.50</div>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center justify-between gap-3 text-[13px]">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="mock-chip shoot">SHOOT</span>
+              <span class="font-semibold">Tue 14 Oct</span>
+              <span class="text-neutral-500 mono">07:00 → 19:30</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <span class="mock-chip ot">OT 1.5</span>
+              <span class="mono font-semibold">£697.50</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-3 text-[13px]">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="mock-chip shoot">SHOOT</span>
+              <span class="font-semibold">Wed 15 Oct</span>
+              <span class="text-neutral-500 mono">06:30 → 21:00</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <span class="mock-chip msb">L1</span>
+              <span class="mock-chip ot">OT 3.5</span>
+              <span class="mono font-semibold">£867.00</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-3 text-[13px]">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="mock-chip shoot">SHOOT</span>
+              <span class="font-semibold">Thu 16 Oct</span>
+              <span class="text-neutral-500 mono">08:00 → 23:00</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <span class="mock-chip cwd">CWD</span>
+              <span class="mono font-semibold">£980.00</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-3 text-[13px]">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="mock-chip shoot">SHOOT</span>
+              <span class="font-semibold">Fri 17 Oct</span>
+              <span class="text-neutral-500 mono">07:00 → 19:00</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <span class="mono font-semibold">£703.00</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-5 pt-4 border-t mock-rule text-[11px] text-neutral-600 flex items-center justify-between">
+          <span>Made with TimeMachine</span>
+          <span class="mono">APA Sept 2025</span>
+        </div>
+      </div>
+
+      <div class="md:col-span-5 space-y-5">
+        <p class="text-[16px] text-neutral-300 leading-relaxed">
+          Every row is a day. Every chip is a penalty caught. Every number ties back to the APA rate card for your role.
+        </p>
+        <ul class="space-y-3 text-[14px] text-neutral-400">
+          <li class="flex gap-3"><span class="chip ot self-start mt-0.5">OT</span> Overtime past the 10th hour (or 11th, on 11-hour days)</li>
+          <li class="flex gap-3"><span class="chip msb self-start mt-0.5">L1</span> First break started late — auto-penalty applied</li>
+          <li class="flex gap-3"><span class="chip cwd self-start mt-0.5">CWD</span> Continuous working day, with the extra break check</li>
+        </ul>
+        <p class="text-[13px] text-neutral-500 leading-relaxed">
+          Export as a PDF (looks like the one above) or plain text for WhatsApp / email. Your name on top, "Made with TimeMachine" on the bottom — that's it.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES GRID -->
+  <section id="features" class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
+    <p class="label">Features</p>
+    <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3 mb-10">What's in the box.</h2>
+
+    <div class="grid md:grid-cols-3 gap-4">
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <h3 class="font-semibold text-[15px]">APA rates, baked in</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">BDR and OT for Spark, Gaffer, Grip, Camera, Sound, AD, Production and more. Override if you've got a custom rate.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <h3 class="font-semibold text-[15px]">Solo or Best Boy</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Run your own day, or manage a department — per-crew rates, weekly grid, bulk-edit by date.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <h3 class="font-semibold text-[15px]">Penalties, auto</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Missed lunches, short turnarounds, post-wrap travel, OT, CWD, TOC, night premiums — flagged and costed without you thinking about it.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <h3 class="font-semibold text-[15px]">Weekends, bank hols, 11-hr days</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Sat 1.5×, Sun 2× by default. UK bank holidays through 2035 already loaded — they get the Sunday rate without you remembering.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="3"/><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+          <h3 class="font-semibold text-[15px]">Postcode → mileage</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Paste the unit base postcode — distance from W1F is figured out from 3,000+ UK postcodes baked in. M25 warning. "Same as yesterday" in one tap.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <h3 class="font-semibold text-[15px]">Travel, per diem, kit money</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Travel time both ways at BHR. Per diem, kit money, expenses — all line-itemed on the timesheet and invoice.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <h3 class="font-semibold text-[15px]">Cancellation calculator</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Job binned with 48h notice? Calculate what you're owed straight from the §7 block rules. Per-crew breakdown if you're running a team.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <h3 class="font-semibold text-[15px]">Invoicing</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">One tap from production to invoice. VAT-aware, your bank details pre-filled, auto-incrementing invoice numbers, PDF export. Email opens with the file attached.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <h3 class="font-semibold text-[15px]">Invoice tracking</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Draft → Sent → Paid. Overdue auto-flagged from the due date. See every invoice across every job in one list.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 12l4-4 4 4 6-6"/></svg>
+          <h3 class="font-semibold text-[15px]">Stats &amp; sausage rolls</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Total earnings, day counts, role breakdown, year-on-year. And yes — how many Greggs that's worth.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <h3 class="font-semibold text-[15px]">PDF &amp; text export</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Clean A4 timesheet PDF. Formal A4 invoice. Plain text for WhatsApp / Slack. Landscape crew-grid PDF when you're running a team.</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <h3 class="font-semibold text-[15px]">Yours alone</h3>
+        </div>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">No login. No cloud. No tracking. Bank details never leave your device. Export a backup any time, wipe it all in one tap.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- DETAILS THAT MATTER — the little touches that signal "built by crew" -->
+  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
+    <p class="label">The details that matter</p>
+    <h2 class="display text-[32px] md:text-[40px] leading-[0.95] mt-3 mb-10">The little stuff most apps miss.</h2>
+
+    <div class="grid md:grid-cols-2 gap-x-10 gap-y-7 max-w-3xl">
+      <div>
+        <h3 class="font-semibold text-[15px] mb-1.5 text-neutral-100">Pre-call at BHR</h3>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Truck drivers, pre-light shifts, anyone with an early start — pre-call hours paid at base hourly without breaking the lunch deadline.</p>
+      </div>
+      <div>
+        <h3 class="font-semibold text-[15px] mb-1.5 text-neutral-100">Step-up rates</h3>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Asked to cover the Gaffer for the day? Flag the step-up — the higher rate applies for that day, automatically.</p>
+      </div>
+      <div>
+        <h3 class="font-semibold text-[15px] mb-1.5 text-neutral-100">Auto CWD detection</h3>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Turnaround drops below APA minimums and the app flags a Continuous Working Day before you do, with the right rate.</p>
+      </div>
+      <div>
+        <h3 class="font-semibold text-[15px] mb-1.5 text-neutral-100">Favourable rounding</h3>
+        <p class="text-[13px] text-neutral-400 leading-relaxed">Where the APA terms allow benefit-of-the-doubt rounding, you get it. Toggle off if you prefer the strict reading.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW A DAY FLOWS -->
+  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
+    <p class="label">How a day flows</p>
+    <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3 mb-12">Three taps from wrap to total.</h2>
+
+    <div class="grid md:grid-cols-3 gap-6">
+      <div>
+        <div class="mono text-[60px] font-bold text-sky-400 leading-none">01</div>
+        <h3 class="display text-[20px] mt-3 mb-2">New production</h3>
+        <p class="text-[14px] text-neutral-400 leading-relaxed">Name the job, pick Solo or Best Boy mode. Role, BDR and VAT carry over from your settings.</p>
+      </div>
+      <div>
+        <div class="mono text-[60px] font-bold text-sky-400 leading-none">02</div>
+        <h3 class="display text-[20px] mt-3 mb-2">Tap in the day</h3>
+        <p class="text-[14px] text-neutral-400 leading-relaxed">Call time, wrap, breaks. Tap "Now" when wraps run late. Add travel, mileage or per diem in Extras.</p>
+      </div>
+      <div>
+        <div class="mono text-[60px] font-bold text-sky-400 leading-none">03</div>
+        <h3 class="display text-[20px] mt-3 mb-2">Get the total</h3>
+        <p class="text-[14px] text-neutral-400 leading-relaxed">Tap the money pill for a full breakdown. Export PDF, send to production, generate the invoice. Done.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUST -->
+  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
+    <div class="grid md:grid-cols-2 gap-10">
+      <div>
+        <p class="label">The fine print, plainly</p>
+        <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3">Free during beta. Local. No login. No catch.</h2>
+      </div>
+      <div class="space-y-5">
+        <div class="flex gap-4">
+          <div class="w-10 h-10 rounded-lg bg-sky-950/60 border border-sky-900 flex items-center justify-center flex-shrink-0">
+            <span class="text-sky-400 text-[18px]">£</span>
+          </div>
+          <div>
+            <h3 class="font-semibold text-[15px] mb-1">Free during the beta</h3>
+            <p class="text-[13px] text-neutral-400 leading-relaxed">Pricing isn't worked out yet — when it is, you'll get plenty of notice. No surprises.</p>
+          </div>
+        </div>
+        <div class="flex gap-4">
+          <div class="w-10 h-10 rounded-lg bg-sky-950/60 border border-sky-900 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div>
+            <h3 class="font-semibold text-[15px] mb-1">Your data, your phone</h3>
+            <p class="text-[13px] text-neutral-400 leading-relaxed">No account. No cloud. Everything lives in your browser, on your device. Export a backup whenever you want.</p>
+          </div>
+        </div>
+        <div class="flex gap-4">
+          <div class="w-10 h-10 rounded-lg bg-sky-950/60 border border-sky-900 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div>
+            <h3 class="font-semibold text-[15px] mb-1">It's beta — and honest about it</h3>
+            <p class="text-[13px] text-neutral-400 leading-relaxed">Built around the published APA terms, but always sense-check your final number before sending. Spotted a bug? <a href="mailto:feedback@timemachineapp.co.uk" class="text-sky-400 hover:underline">Tell me.</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
+    <p class="label">Questions you might have</p>
+    <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3 mb-10">FAQ.</h2>
+
+    <div class="space-y-4 max-w-3xl">
+      <details class="group card cursor-pointer">
+        <summary class="list-none flex justify-between items-center gap-4">
+          <h3 class="font-semibold text-[15px]">Does it cover my role?</h3>
+          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
+        </summary>
+        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">If you work on commercials under APA terms, yes — Sparks, Grips, Construction, Art Dept, Camera, PMs, PAs, Runners. The app applies the right §s of the rate card to each role (e.g. §5 TOC and §6 breaks don't apply to PMs/PAs/Runners — the app knows). Custom BDR for anything bespoke.</p>
+      </details>
+
+      <details class="group card cursor-pointer">
+        <summary class="list-none flex justify-between items-center gap-4">
+          <h3 class="font-semibold text-[15px]">Where can I run it?</h3>
+          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
+        </summary>
+        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">Any modern browser, right now. iPhone, Android, laptop, all of it. Tap <span class="text-neutral-100 font-semibold">Share → Add to Home Screen</span> and it behaves like a native app. A proper iOS App Store version is in the pipeline.</p>
+      </details>
+
+      <details class="group card cursor-pointer">
+        <summary class="list-none flex justify-between items-center gap-4">
+          <h3 class="font-semibold text-[15px]">Does it work offline?</h3>
+          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
+        </summary>
+        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">Right now it's a web app, so it needs an internet connection to load. Your data lives locally once you're in, but you'll need signal to open it fresh. Proper offline support is on the list for the iOS version — useful when you're rigging in a barn with two bars.</p>
+      </details>
+
+      <details class="group card cursor-pointer">
+        <summary class="list-none flex justify-between items-center gap-4">
+          <h3 class="font-semibold text-[15px]">What if production disputes my total?</h3>
+          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
+        </summary>
+        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">Every PDF and text export shows the full breakdown — base day rate, every penalty applied, every multiplier, every extra. If they want to argue a number, they can argue the APA terms. The PDF also shows which rate version was used (currently APA Sept 2025).</p>
+      </details>
+
+      <details class="group card cursor-pointer">
+        <summary class="list-none flex justify-between items-center gap-4">
+          <h3 class="font-semibold text-[15px]">Will the rates stay up to date?</h3>
+          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
+        </summary>
+        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">When the APA publishes a new rate card, the app updates and the new version shows in Settings → About. Old productions keep the rates they were costed under.</p>
+      </details>
+
+      <details class="group card cursor-pointer">
+        <summary class="list-none flex justify-between items-center gap-4">
+          <h3 class="font-semibold text-[15px]">What's coming next?</h3>
+          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
+        </summary>
+        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">iOS native app via TestFlight, then App Store. Proper offline mode. More invoice templates. Anything you ask for that more than three people also want.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- BUILT BY -->
+  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
+    <div class="card max-w-3xl mx-auto">
+      <p class="label">Built by</p>
+      <h3 class="display text-[26px] mt-2 mb-3">A spark, on his off-days.</h3>
+      <p class="text-[15px] text-neutral-300 leading-relaxed">
+        TimeMachine started as a phone calculator full of half-remembered APA clauses and OT formulas. It got out of hand. Now it's this. If you find a bug, want a feature, or just want to say hi —
+        <a href="mailto:feedback@timemachineapp.co.uk" class="text-sky-400 hover:underline">feedback@timemachineapp.co.uk</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section class="max-w-5xl mx-auto px-5 py-20 text-center border-t border-neutral-900">
+    <p class="label mb-4">Stop doing maths in your phone calculator</p>
+    <h2 class="display text-[40px] md:text-[64px] leading-[0.95] mb-8">
+      <span style="color: var(--sky);">Open the app.</span>
+    </h2>
+    <a href="https://timemachineapp.co.uk/" class="btn-primary text-[16px] px-8 py-4">
+      Open TimeMachine
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </a>
+    <p class="mt-6 text-[12px] text-neutral-500">No login. Free during beta. Just the app.</p>
+  </section>
+
+  <footer class="max-w-5xl mx-auto px-5 pb-12 pt-6 border-t border-neutral-900">
+    <div class="flex flex-wrap items-center justify-between gap-3 text-[11px] text-neutral-600 mono">
+      <span>TimeMachine v0.1 · APA Sept 2025</span>
+      <div class="flex gap-5">
+        <a href="https://timemachineapp.co.uk/" class="hover:text-sky-400 transition-colors">App</a>
+        <a href="welcome.html" class="hover:text-sky-400 transition-colors">Welcome</a>
+        <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener" class="hover:text-sky-400 transition-colors">APA Terms ↗</a>
+        <a href="mailto:feedback@timemachineapp.co.uk" class="hover:text-sky-400 transition-colors">feedback@</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
