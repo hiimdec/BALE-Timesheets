@@ -170,7 +170,7 @@
 
     /* ─── Schema version & storage-safety helpers ─── */
 
-    const SCHEMA_VERSION = 1;
+    const SCHEMA_VERSION = 2;
     const SCHEMA_VERSION_KEY = 'bigals_schema_version';
     const PRE_MIGRATION_BACKUP_KEY = 'bigals_pre_migration_backup';
 
@@ -1067,6 +1067,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function migrateDay(d) {
       d = { note: "", expenses: [], ...d };
+      // Safety net for the v2 `wrapped` flag: any day still missing it
+      // (e.g. imported backup predating schema v2) gets the same date-based
+      // backfill the migration uses — past = wrapped, today/future = not.
+      if (typeof d.wrapped !== 'boolean') {
+        d = { ...d, wrapped: !!(d.date && d.date < todayISO()) };
+      }
       // Migrate legacy truckCallTime → preCallTime (keep truckCallTime for safe rollback)
       if (d.truckCallTime && !d.preCallTime) d = { ...d, preCallTime: d.truckCallTime };
       if (d.lunchStartTime !== undefined) return d;
@@ -1157,6 +1163,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const arr = JSON.parse(raw);
         if (!Array.isArray(arr)) return;
         localStorage.setItem('bigals_productions', JSON.stringify(arr.map(migrateProduction)));
+      },
+      // v2: introduce explicit `wrapped` flag on each day. Backfill from date:
+      // strictly-past dates are treated as wrapped (already-completed work),
+      // today + future as not-yet-wrapped. The auto-filled wrapTime no longer
+      // implies WRAPPED state — the live ON CALL UI now becomes reachable.
+      2: () => {
+        const raw = localStorage.getItem('bigals_productions');
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return;
+        const today = todayISO();
+        const updated = arr.map(p => ({
+          ...p,
+          days: Array.isArray(p.days) ? p.days.map(d => ({
+            ...d,
+            wrapped: typeof d.wrapped === 'boolean' ? d.wrapped : !!(d.date && d.date < today),
+          })) : p.days,
+        }));
+        localStorage.setItem('bigals_productions', JSON.stringify(updated));
       },
     };
 
@@ -5166,6 +5191,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return {
         id: uid(), crewId, date: todayISO(),
         wrapNextDay: false,
+        wrapped: false,
         preCallTime: "",
         noMealProvided: false, secondBreakDurationMins: 0,
         cwdBreak1Given: true, cwdBreak2Given: true,
@@ -5191,7 +5217,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const h = Math.floor(rounded / 60) % 24;
         const m = rounded % 60;
         const wrapStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-        setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr } : d));
+        setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr, wrapped: true } : d));
         showToast(`Wrapped ${todayEntries.length} entr${todayEntries.length === 1 ? 'y' : 'ies'} at ${wrapStr}`);
         setConfirming(false);
       };
@@ -5323,7 +5349,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => {
         const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
         const callH = parseHHMM(d.callTime) ?? 8;
-        setForm({ ...d, ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11) });
+        setForm({ ...d, ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11), wrapped: !!(date && date < todayISO()) });
         setEditing("new");
         setFixedCrewId(crewId);
         setFixedDate(date);
@@ -5332,7 +5358,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (crew.length === 0) return;
         const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
         const callH = parseHHMM(d.callTime) ?? 8;
-        setForm({ ...d, ...makeBlankDay(""), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11) });
+        setForm({ ...d, ...makeBlankDay(""), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11), wrapped: !!(date && date < todayISO()) });
         setEditing("new-all");
         setFixedCrewId(null);
         setFixedDate(date);
@@ -5364,7 +5390,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
       const handleAssignAllOnDate = (date, dayType = "Shoot") => {
         const toAdd = crew.filter(m => !days.find(d => d.date === date && d.crewId === m.id));
-        if (toAdd.length > 0) setDays(prev => [...prev, ...toAdd.map(m => ({ ...makeBlankDay(m.id), date, dayType, ...dayTypeDefaults(dayType) }))]);
+        if (toAdd.length > 0) setDays(prev => [...prev, ...toAdd.map(m => ({ ...makeBlankDay(m.id), date, dayType, ...dayTypeDefaults(dayType), wrapped: !!(date && date < todayISO()) }))]);
       };
       const handleRemoveAllOnDate = (date) => {
         const count = days.filter(d => d.date === date).length;
@@ -6637,6 +6663,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           ...defaults, ...blank, id: uid(), date: newDate,
           kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
           kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
+          wrapped: newDate < todayISO(),
         };
         const callH = parseHHMM(newDay.callTime) ?? 8;
         newDay.secondBreakStartTime = toHHMM(callH + 11);
@@ -9433,8 +9460,11 @@ const confirmDelete = (p) => setConfirmOpts({
           const dayCount = uniqueDates.length;
           const dayIndex = uniqueDates.indexOf(todayStr) + 1;
 
-          const someOnCall = todayRecords.some(d => d.callTime && !d.wrapTime);
-          const allWrapped = todayRecords.length > 0 && todayRecords.every(d => d.callTime && d.wrapTime);
+          // State now derives from the explicit `wrapped` flag, not wrapTime
+          // presence — wrapTime is auto-filled on day creation and is no
+          // longer a reliable WRAPPED signal.
+          const someOnCall = todayRecords.some(d => d.callTime && d.wrapped !== true);
+          const allWrapped = todayRecords.length > 0 && todayRecords.every(d => d.callTime && d.wrapped === true);
 
           let stateLabel, stateClass, showDot;
           if (someOnCall)      { stateLabel = `ON CALL · DAY ${dayIndex} OF ${dayCount}`;       stateClass = "text-tm-good";     showDot = true; }
@@ -9737,6 +9767,33 @@ const confirmDelete = (p) => setConfirmOpts({
                   <div className="text-sm font-bold text-neutral-100 truncate">{actionSheet.title || 'Untitled Production'}</div>
                 </div>
                 <div className="px-4 pb-4 flex flex-col gap-2">
+                  {(() => {
+                    const t = todayISO();
+                    const todayRecords = (actionSheet.days || []).filter(d => d.date === t);
+                    const hasWrappedToday = todayRecords.length > 0 && todayRecords.every(d => d.wrapped === true);
+                    if (!hasWrappedToday) return null;
+                    return (
+                      <button type="button"
+                        onClick={() => {
+                          const p = actionSheet;
+                          setActionSheet(null);
+                          setConfirmOpts({
+                            title: "Mark today as still on call?",
+                            message: "Clears the wrap on today's day(s) so the live state returns to ON CALL. The wrap time itself stays saved.",
+                            confirmLabel: "Un-wrap",
+                            confirmTone: "primary",
+                            onConfirm: () => {
+                              onUpdateDays(p.id, days => days.map(d => d.date === t ? { ...d, wrapped: false } : d));
+                              showToast("Day un-wrapped — back on call");
+                            },
+                          });
+                        }}
+                        className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        <IReset size={15}/>Un-wrap day
+                      </button>
+                    );
+                  })()}
                   <button type="button"
                     onClick={() => { const p = actionSheet; setActionSheet(null); onDuplicate(p); showToast("Duplicated — edit the copy"); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
