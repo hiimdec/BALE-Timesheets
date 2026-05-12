@@ -6835,14 +6835,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {production.title || <span className="text-neutral-500">Untitled</span>}
               </h1>
               <button onClick={() => setShowExportSheet(true)} aria-label="Export"
-                className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-full hover:bg-neutral-800"
+                className="text-neutral-500 hover:text-neutral-100 transition-colors p-2 rounded-full hover:bg-neutral-900"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <IShare size={16}/>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3"/>
+                  <circle cx="6" cy="12" r="3"/>
+                  <circle cx="18" cy="19" r="3"/>
+                  <path d="M8.6 13.5l6.8 4M15.4 6.5L8.6 10.5"/>
+                </svg>
               </button>
               <button onClick={() => setShowSettings(true)} aria-label="Production settings"
-                className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-full hover:bg-neutral-800"
+                className="text-neutral-500 hover:text-neutral-100 transition-colors p-2 rounded-full hover:bg-neutral-900"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <IGear size={16}/>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
               </button>
             </div>
           </div>
@@ -9395,6 +9403,26 @@ const confirmDelete = (p) => setConfirmOpts({
         return totals;
       }, [productions]);
 
+      // Per-production worked-hours total (for the month-group head's hour figure).
+      const productionHours = useMemo(() => {
+        const hrs = {};
+        for (const p of productions) {
+          const crew = p.crew ?? [];
+          const days = p.days ?? [];
+          hrs[p.id] = days.reduce((sum, d) => {
+            const c = crew.find(cc => cc.id === d.crewId);
+            if (!c) return sum;
+            return sum + (calcForDisplay(p, d, c, findPrevDay(days, d)).meta?.workedHrs || 0);
+          }, 0);
+        }
+        return hrs;
+      }, [productions]);
+
+      const invoicesCount = useMemo(
+        () => productions.reduce((s, p) => s + ((p.invoices || []).length), 0),
+        [productions]
+      );
+
       const sortKey = (p) => {
         if (p.startDate) return p.startDate;
         const dates = (p.days ?? []).map(d => d.date).filter(Boolean).sort();
@@ -9402,7 +9430,8 @@ const confirmDelete = (p) => setConfirmOpts({
       };
       const monthLabel = (key) => {
         if (!key) return "No Date";
-        return new Date(key + "T12:00:00").toLocaleString("default", { month: "long", year: "numeric" });
+        const d = new Date(key + "T12:00:00");
+        return `${d.toLocaleString("default", { month: "long" })} · ${d.getFullYear()}`;
       };
 
       const sorted = [...productions].sort((a, b) => {
@@ -9425,6 +9454,7 @@ const confirmDelete = (p) => setConfirmOpts({
       const groupsDisplay = groups.map(g => ({
         label: g.label,
         monthTotal: g.items.reduce((sum, p) => sum + (productionTotals[p.id] || 0), 0),
+        monthHours: g.items.reduce((sum, p) => sum + (productionHours[p.id] || 0), 0),
         items: g.items.filter(p => p.id !== currentShoot?.id),
       })).filter(g => g.items.length > 0);
 
@@ -9448,7 +9478,7 @@ const confirmDelete = (p) => setConfirmOpts({
         const isCurrent = opts.isCurrent || false;
         const cardSetDays = (updater) => onUpdateDays(p.id, updater);
         const hasToday = (p.days ?? []).some(d => d.date === todayStr);
-        const bestBoyBadge = p.bestBoyMode ? <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-sky-300 border border-sky-300/35">Best Boy</span> : null;
+        const bestBoyBadge = p.bestBoyMode ? <span className="text-[9px] uppercase tracking-[0.14em] font-bold px-1.5 py-[3px] rounded text-sky-300 border border-sky-300/35 bg-transparent flex-shrink-0">BEST BOY</span> : null;
         const invStatus = getProductionInvoiceStatus(p);
         const invChip = invStatus ? <span className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${toneClasses(invStatus.tone)}`}>{invStatus.label}</span> : null;
         const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
@@ -9560,33 +9590,14 @@ const confirmDelete = (p) => setConfirmOpts({
           );
         }
 
+        // Compact variant — single-row dim card for non-current shoots in month groups.
         return (
           <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
-            <div className="flex items-center gap-3 p-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="truncate text-base font-semibold">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
-                  {bestBoyBadge}
-                  {invChip}
-                </div>
-                <div className="text-sm text-neutral-400 truncate">{metaText}</div>
-                <div className="text-base font-bold font-mono text-neutral-100 mt-2">{fmtGBP(productionTotals[p.id] || 0)}</div>
-              </div>
-              <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                {hasToday && (
-                  <>
-                    <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />
-                    <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} />
-                  </>
-                )}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
-                  className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center"
-                  style={{ minWidth: 44, minHeight: 44 }}
-                  aria-label="Production options"
-                  title="Production options"
-                ><IKebab size={16}/></button>
-              </div>
+            <div className="flex items-center gap-3 px-3.5 py-2.5">
+              <h3 className="flex-1 min-w-0 truncate text-[13px] text-neutral-400">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
+              {bestBoyBadge}
+              {invChip}
+              <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
             </div>
           </div>
         );
@@ -9602,26 +9613,49 @@ const confirmDelete = (p) => setConfirmOpts({
                 <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight leading-none text-sky-500">TIMEMACHINE</h1>
               </div>
               <div className="flex items-center gap-1 mt-1">
-                <button onClick={onOpenStats} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Stats" aria-label="Stats">
-                  <IStats size={20}/>
+                <button onClick={onOpenStats} className="w-[34px] h-[34px] rounded-full text-neutral-500 hover:bg-neutral-900 hover:text-neutral-100 flex items-center justify-center transition-colors" title="Stats" aria-label="Stats">
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 3v18h18"/>
+                    <path d="M7 14l4-4 4 4 5-7"/>
+                  </svg>
                 </button>
-                <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800 ${searchOpen ? "text-sky-500" : "text-neutral-400 hover:text-neutral-200"}`} title="Search" aria-label="Search">
-                  <ISearch size={20}/>
+                <button onClick={() => { if (searchOpen) { setSearchOpen(false); setQuery(""); } else { setSearchOpen(true); } }} className={`w-[34px] h-[34px] rounded-full flex items-center justify-center transition-colors ${searchOpen ? "text-sky-500 hover:bg-neutral-900" : "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-100"}`} title="Search" aria-label="Search">
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="7"/>
+                    <path d="M21 21l-4.3-4.3"/>
+                  </svg>
                 </button>
-                <button onClick={onOpenSettings} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 sm:p-3 rounded-full hover:bg-neutral-800" title="Settings" aria-label="Settings">
-                  <IGear size={20}/>
+                <button onClick={onOpenSettings} className="w-[34px] h-[34px] rounded-full text-neutral-500 hover:bg-neutral-900 hover:text-neutral-100 flex items-center justify-center transition-colors" title="Settings" aria-label="Settings">
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
                 </button>
               </div>
             </div>
-            {/* Home tab strip */}
-            <div className="max-w-6xl mx-auto px-4 pt-1 pb-3">
-              <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
-                {[{ k: "productions", label: "Productions", I: IBriefcase }, { k: "invoices", label: "Invoices", I: IReceipt }].map(({ k, label, I }) => (
-                  <button key={k} onClick={() => setHomeTab(k)}
-                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[11px] uppercase tracking-[0.15em] font-bold whitespace-nowrap transition-colors duration-150 ${homeTab === k ? "bg-sky-500 text-black" : "text-neutral-400 hover:text-neutral-200"}`}>
-                    <I size={11}/>{label}
-                  </button>
-                ))}
+            {/* Home tabs — underline style */}
+            <div className="max-w-6xl mx-auto px-4 pt-1 pb-1">
+              <div className="flex gap-4 border-b border-neutral-800 mb-4">
+                <button
+                  onClick={() => setHomeTab('productions')}
+                  className={`text-[11px] uppercase tracking-[0.16em] font-bold py-2 pb-2.5 border-b-2 -mb-px transition-colors ${
+                    homeTab === 'productions'
+                      ? 'text-neutral-100 border-sky-500'
+                      : 'text-neutral-500 border-transparent'
+                  }`}
+                >
+                  Shoots <span className="font-mono text-neutral-600 ml-1 font-medium">{productions.length}</span>
+                </button>
+                <button
+                  onClick={() => setHomeTab('invoices')}
+                  className={`text-[11px] uppercase tracking-[0.16em] font-bold py-2 pb-2.5 border-b-2 -mb-px transition-colors ${
+                    homeTab === 'invoices'
+                      ? 'text-neutral-100 border-sky-500'
+                      : 'text-neutral-500 border-transparent'
+                  }`}
+                >
+                  Invoices <span className="font-mono text-neutral-600 ml-1 font-medium">{invoicesCount}</span>
+                </button>
               </div>
             </div>
 
@@ -9696,11 +9730,14 @@ const confirmDelete = (p) => setConfirmOpts({
 
                 {/* Month groups */}
                 <div className="space-y-8">
-                  {groupsDisplay.map(({ label, items, monthTotal }) => (
+                  {groupsDisplay.map(({ label, items, monthTotal, monthHours }) => (
                     <div key={label}>
-                      <div className="flex items-baseline justify-between mb-3">
-                        <div className="text-sm uppercase tracking-[0.15em] font-bold text-sky-500">{label}</div>
-                        <div className="text-base font-bold font-mono text-sky-500">{fmtGBP(monthTotal)}</div>
+                      <div className="flex items-baseline justify-between border-b border-dashed border-neutral-800 mb-2.5" style={{ padding: '0 2px 10px' }}>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label}</div>
+                        <div className="flex items-baseline gap-2.5">
+                          <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>
+                          <span className="font-mono text-[12px] font-bold text-neutral-100">{fmtGBP(monthTotal)}</span>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         {items.map(renderCard)}
