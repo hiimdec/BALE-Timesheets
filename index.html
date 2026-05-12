@@ -554,6 +554,18 @@
       if (n >= 1) return n.toFixed(1);
       return n.toFixed(2);
     }
+    // Bucket a calc line into 'basic' | 'ot' | 'pen' | 'kit' for the earnings meter.
+    // Order matters: penalty patterns check first so "Missed Meal Allowance" buckets
+    // as pen (not as kit via "allowance"). OT uses \bOT\b so "OT Triple Time" /
+    // "Early Call (OT rate)" / "Saturday OT" all match. Kit covers extras +
+    // allowances. Anything else (BDR / BHR day pay, Pre-call, Night Shoot) is basic.
+    function categorizeBreakdownLine(label) {
+      const s = label || '';
+      if (/late|missed|curtailed|off the clock|breach|penalty/i.test(s)) return 'pen';
+      if (/\bOT\b|overtime|triple time|double time|time and a half/i.test(s)) return 'ot';
+      if (/\bkit\b|per diem|travel time|expense|mileage|allowance/i.test(s)) return 'kit';
+      return 'basic';
+    }
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
     const ceilHalf = (n) => Math.ceil(n * 2) / 2;
     const computeAPArate = (bdr, multiplier, apaRounding) => { const raw = (Number(bdr) || 0) * multiplier / 10; return apaRounding ? Math.round(raw) : raw; };
@@ -6034,6 +6046,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
       }), [days]);
 
+      const buckets = useMemo(() => {
+        const b = { basic: 0, ot: 0, pen: 0, kit: 0 };
+        sorted.forEach(d => {
+          const c = crew.find(cc => cc.id === d.crewId);
+          if (!c) return;
+          const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
+          calc.lines.forEach(line => {
+            b[categorizeBreakdownLine(line.label || '')] += Number(line.amount) || 0;
+          });
+        });
+        const sum = b.basic + b.ot + b.pen + b.kit;
+        const want = Number(total) || 0;
+        if (Math.abs(sum - want) > 0.01) {
+          console.warn(`[earnings meter] bucket sum ${sum.toFixed(2)} does not match total ${want.toFixed(2)} — unmapped line?`);
+        }
+        return b;
+      }, [sorted, crew, production, days, total]);
+
+      const wholeP = Math.floor(Number(total) || 0);
+      const penceP = Math.round(((Number(total) || 0) - wholeP) * 100);
+      const wholeStr = `£${wholeP.toLocaleString("en-GB")}`;
+      const penceStr = `.${String(penceP).padStart(2, "0")}`;
+
       return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
           <div style={{ borderBottom: '1px solid #262626', padding: '12px 16px', paddingTop: 'calc(env(safe-area-inset-top) + 12px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -6108,10 +6143,53 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           </div>
 
           <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            <div style={{ padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 11, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Shoot Total</span>
-              <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 20, color: '#f5f5f5' }}>{fmtGBP(total)}</span>
+              <div className="font-mono font-extrabold tracking-[-0.02em] flex items-baseline gap-0.5 text-neutral-100">
+                <span className="text-[42px] leading-none">{wholeStr}</span>
+                <span className="text-[22px] leading-none text-neutral-400 font-bold">{penceStr}</span>
+              </div>
             </div>
+            {total > 0 && (
+              <div className="mx-4 flex h-1.5 rounded-full overflow-hidden bg-neutral-900 mb-3">
+                {buckets.basic > 0 && <div className="bg-sky-500" style={{ width: `${(buckets.basic / total) * 100}%` }} />}
+                {buckets.ot    > 0 && <div className="bg-tm-warn" style={{ width: `${(buckets.ot    / total) * 100}%` }} />}
+                {buckets.pen   > 0 && <div className="bg-tm-pen"  style={{ width: `${(buckets.pen   / total) * 100}%` }} />}
+                {buckets.kit   > 0 && <div className="bg-tm-good" style={{ width: `${(buckets.kit   / total) * 100}%` }} />}
+              </div>
+            )}
+            {total > 0 && (
+              <div className="mx-4 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-neutral-400 mb-4">
+                {buckets.basic > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-sm bg-sky-500" />
+                    <span>BASIC</span>
+                    <span className="text-neutral-100">{fmtGBP(buckets.basic)}</span>
+                  </div>
+                )}
+                {buckets.ot > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-sm bg-tm-warn" />
+                    <span>OT</span>
+                    <span className="text-neutral-100">{fmtGBP(buckets.ot)}</span>
+                  </div>
+                )}
+                {buckets.pen > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-sm bg-tm-pen" />
+                    <span>PEN</span>
+                    <span className="text-neutral-100">{fmtGBP(buckets.pen)}</span>
+                  </div>
+                )}
+                {buckets.kit > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-sm bg-tm-good" />
+                    <span>KIT</span>
+                    <span className="text-neutral-100">{fmtGBP(buckets.kit)}</span>
+                  </div>
+                )}
+              </div>
+            )}
             {total > 0 && (
               <div className="mx-4 mb-3 bg-neutral-800/40 border border-dashed border-neutral-700 rounded-xl p-3.5">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold mb-2.5 flex items-center gap-1.5">
