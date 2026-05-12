@@ -2819,7 +2819,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         success: "bg-green-500 border-green-600 text-black hover:bg-green-400",
         subtle:  "bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700",
       };
-      const sizes = { sm: "px-2 py-1.5 text-[10px] rounded-[20px]", md: "px-3 py-2.5 text-xs rounded-lg", lg: "px-5 py-3 text-sm rounded-lg" };
+      const sizes = { sm: "px-2 py-1.5 text-[10px] rounded-md", md: "px-3 py-2.5 text-xs rounded-lg", lg: "px-5 py-3 text-sm rounded-lg" };
       return <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...p}>{children}</button>;
     };
 
@@ -2872,7 +2872,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const bgs    = { ok: "bg-green-900/20", info: "bg-neutral-800/40", warn: "bg-amber-900/20", bad: "bg-red-900/20" };
       const icons = { ok: <ICheck/>, info: <IInfo/>, warn: <IAlert/>, bad: <IWarn/> };
       return (
-        <div className={`text-[11px] ${colors[kind]} ${bgs[kind]} flex items-start gap-1.5 leading-tight mt-1 px-2.5 py-1.5 rounded-[6px]`}>
+        <div className={`text-[11px] ${colors[kind]} ${bgs[kind]} flex items-start gap-1.5 leading-tight mt-1 px-2.5 py-1.5 rounded-md`}>
           <span className="mt-0.5">{icons[kind]}</span>
           <span>{children}</span>
         </div>
@@ -2931,12 +2931,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Setup</h2>
 
           {isUntitled && (
-            <div className="bg-sky-950/40 border border-sky-800 px-4 py-3 text-sm text-sky-300 flex items-center gap-2 rounded-[10px]">
+            <div className="bg-sky-950/40 border border-sky-800 px-4 py-3 text-sm text-sky-300 flex items-center gap-2 rounded-xl">
               <IInfo size={14}/> Give this production a name to get started.
             </div>
           )}
 
-          <div className="bg-neutral-900 border border-neutral-800 rounded-[10px] p-4 flex items-center justify-between gap-3">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="font-semibold text-neutral-100 truncate">{production.title || <span className="text-neutral-500 italic">Untitled Production</span>}</div>
               {production.prodCo && <div className="text-sm text-neutral-400 truncate">{production.prodCo}</div>}
@@ -3019,7 +3019,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           </div>
 
           {crew.length === 0 && (
-            <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-[10px]">
+            <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-xl">
               <div className="flex justify-center mb-2 text-neutral-700"><IUsers size={32}/></div>
               <div className="text-neutral-500 text-sm">No crew yet. Hit <span className="text-sky-400 font-bold">ADD CREW</span> to start.</div>
             </div>
@@ -3034,7 +3034,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 onDragOver={onDragOver(i)}
                 onDragLeave={onDragLeave}
                 onDrop={onDrop(i)}
-                className={`bg-neutral-900 border transition-all flex items-center justify-between p-3 gap-2 rounded-[10px] ${overIdx === i ? "border-sky-400 border-t-4" : "border-neutral-800 hover:border-neutral-700"}`}
+                className={`bg-neutral-900 border transition-all flex items-center justify-between p-3 gap-2 rounded-xl ${overIdx === i ? "border-sky-400 border-t-4" : "border-neutral-800 hover:border-neutral-700"}`}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <div className="flex flex-col gap-0.5">
@@ -3103,7 +3103,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           onClick={onCancel}
         >
           <div
-            className="bg-neutral-900 w-full rounded-[10px] shadow-2xl border border-neutral-700 flex flex-col"
+            className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
             style={{ maxWidth: 640, maxHeight: "calc(100dvh - env(safe-area-inset-top) - 1rem)" }}
             onClick={e => e.stopPropagation()}
           >
@@ -3318,7 +3318,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           onClick={onClose}
         >
           <div
-            className="bg-neutral-900 w-full rounded-[10px] shadow-2xl border border-neutral-700 flex flex-col"
+            className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
             style={{ maxWidth: 1200, maxHeight: "calc(100dvh - env(safe-area-inset-top) - 1rem)" }}
             onClick={e => e.stopPropagation()}
           >
@@ -3340,15 +3340,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
 
               {crew.length === 0 && !setCrew ? (
-                <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">
+                <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-xl">
                   Add crew first to calculate cancellation fees.
                 </div>
               ) : crew.length === 0 && setCrew ? (
-                <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">
+                <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-xl">
                   Add a crew member below to begin.
                 </div>
               ) : (
-                <div className="overflow-x-auto border border-neutral-800 rounded-[10px]">
+                <div className="overflow-x-auto border border-neutral-800 rounded-xl">
                   <table className="border-collapse text-[11px] w-full">
                     <thead>
                       <tr>
@@ -3692,7 +3692,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </Field>
               )}
               {!fixedCrewId && allCrewMode && (
-                <div className="bg-sky-950/30 border border-sky-800 p-2 rounded-[10px]">
+                <div className="bg-sky-950/30 border border-sky-800 p-2 rounded-xl">
                   <div className="text-[10px] uppercase tracking-[0.15em] text-sky-400 font-bold">All Crew Mode</div>
                   <div className="text-xs text-neutral-300">Creates a day for each of {crew.length} crew members. Travel & mileage apply to all.</div>
                 </div>
@@ -4049,7 +4049,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           onClick={onCancel}
         >
           <div
-            className="bg-neutral-900 w-full rounded-[10px] shadow-2xl border border-neutral-700 flex flex-col"
+            className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
             style={{ maxWidth: 640, maxHeight: "calc(100dvh - env(safe-area-inset-top) - 1rem)", height: "auto" }}
             onClick={e => e.stopPropagation()}
           >
@@ -4093,12 +4093,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 days={days}
               />
               {isNewAll && (
-                <div className="mt-3 bg-black border border-sky-400 p-3 text-xs text-neutral-300 rounded-[10px]">
+                <div className="mt-3 bg-black border border-sky-400 p-3 text-xs text-neutral-300 rounded-xl">
                   <span className="text-sky-400 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member
                 </div>
               )}
               {activeCalc && activeCalc.lines.length > 0 && (
-                <div className="mt-4 border border-neutral-800 rounded-[8px] p-3">
+                <div className="mt-4 border border-neutral-800 rounded-lg p-3">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-2">Cost Breakdown</div>
                   <table className="w-full border-collapse text-[11px]">
                     <tbody>
@@ -4168,8 +4168,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return bs.workedHrs - (bs.lunchMissed ? 0 : bs.lunchDuration / 60);
     }
 
-    function GridCell({ day, date, production, member, onEditDay, onAddDay, isWeekEnd, isWeekend, prevDay = null, hasTOC = false, isTOCBreach = false }) {
-      const borderR = isWeekEnd ? "border-r border-neutral-500" : "border-r border-neutral-800";
+    function GridCell({ day, date, production, member, onEditDay, onAddDay, isWeekend, prevDay = null, hasTOC = false, isTOCBreach = false }) {
+      const borderR = "border-r border-neutral-800";
       const bgBase  = isWeekend ? "bg-neutral-900/30" : "";
 
       if (!day) {
@@ -4310,7 +4310,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [days]);
 
       if (crew.length === 0) {
-        return <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">Add crew members first.</div>;
+        return <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-xl">Add crew members first.</div>;
       }
 
       return (
@@ -4323,7 +4323,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Tap empty cell to add · Tap date to add all or bulk edit</div>
           </div>
 
-          <div className="overflow-x-auto border border-neutral-800 rounded-[10px] overflow-hidden">
+          <div className="overflow-x-auto border border-neutral-800 rounded-xl overflow-hidden">
             <table className="border-collapse text-xs w-full" style={{ minWidth: 560 }}>
               <thead>
                 <tr className="border-b border-neutral-700">
@@ -4438,7 +4438,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             member={member}
                             onEditDay={onEditDay}
                             onAddDay={(crewId, d) => onAddDay(crewId, d, addDayType)}
-                            isWeekEnd={false}
                             isWeekend={isSat || isSun}
                             prevDay={index[date]?.[member.id] ? (tocMap[index[date][member.id].id]?.prevDay ?? null) : null}
                             hasTOC={!!(index[date]?.[member.id] && tocMap[index[date][member.id].id]?.hasTOC)}
@@ -4479,7 +4478,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onClick={() => setEditingDate(null)}
             >
               <div
-                className="bg-neutral-900 w-full rounded-[10px] shadow-2xl border border-neutral-700 flex flex-col"
+                className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
                 style={{ maxWidth: 640, maxHeight: "calc(100dvh - env(safe-area-inset-top) - 1rem)" }}
                 onClick={e => e.stopPropagation()}
               >
@@ -4510,7 +4509,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     );
                   })()}
                   {/* Core: day type, times, lunch */}
-                  <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden">
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
                     <div className="px-4 py-3 border-b border-neutral-800">
                       <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Day</div>
                     </div>
@@ -4542,7 +4541,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
                   {/* Core: 2nd break */}
                   {dateEdit.dayType !== "Travel Day" && dateEdit.dayType !== "Rest Day" && (
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
                       <div className="px-4 py-3 border-b border-neutral-800">
                         <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">2nd Break</div>
                       </div>
@@ -4562,7 +4561,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   )}
 
                   {/* Core: mileage */}
-                  <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden">
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
                     <div className="px-4 py-3 border-b border-neutral-800">
                       <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold">Mileage</div>
                     </div>
@@ -4739,7 +4738,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
-    function WrapNowBtn({ days, setDays, showToast, compact }) {
+    function WrapNowBtn({ days, setDays, showToast }) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const todayEntries = days.filter(d => d.date === todayStr);
       const alreadyWrapped = todayEntries.some(d => d.wrapTime && d.wrapTime.length > 0);
@@ -4767,20 +4766,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         doWrap();
       };
 
-      const cls = compact
-        ? `inline-flex items-center justify-center text-[9px] uppercase tracking-wider font-bold rounded-lg px-2.5 transition-colors ${confirming ? "border border-amber-500 text-amber-700 bg-amber-100" : "border border-orange-400/70 text-orange-700 hover:border-orange-500"}`
-        : `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-orange-500/50 text-orange-300 hover:border-orange-400"}`;
+      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-amber-500/50 text-amber-300 hover:border-amber-400"}`;
 
       return (
         <button onClick={handleClick} className={cls}
-          style={{ minWidth: compact ? 64 : 96, height: compact ? 36 : 36, flexShrink: 0 }}
+          style={{ minWidth: 96, height: 36, flexShrink: 0 }}
           title={confirming ? "Tap again to overwrite" : "Set today's wrap time to now"}>
           {confirming ? "Confirm?" : "WrapNow"}
         </button>
       );
     }
 
-    function LunchNowBtn({ days, setDays, showToast, compact }) {
+    function LunchNowBtn({ days, setDays, showToast }) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const todayEntries = days.filter(d => d.date === todayStr);
       const alreadyLunched = todayEntries.some(d => d.lunchStartTime && d.lunchStartTime.length > 0);
@@ -4808,13 +4805,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         doLunch();
       };
 
-      const cls = compact
-        ? `inline-flex items-center justify-center text-[9px] uppercase tracking-wider font-bold rounded-lg px-2.5 transition-colors ${confirming ? "border border-amber-500 text-amber-700 bg-amber-100" : "border border-sky-400/70 text-sky-700 hover:border-sky-500"}`
-        : `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`;
+      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-400"}`;
 
       return (
         <button onClick={handleClick} className={cls}
-          style={{ minWidth: compact ? 64 : 96, height: compact ? 36 : 36, flexShrink: 0 }}
+          style={{ minWidth: 96, height: 36, flexShrink: 0 }}
           title={confirming ? "Tap again to overwrite" : "Log today's lunch start time"}>
           {confirming ? "Confirm?" : "LunchNow"}
         </button>
@@ -5003,7 +4998,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
           </div>
 
-          {crew.length === 0 && <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-[10px]">Add crew members first.</div>}
+          {crew.length === 0 && <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-xl">Add crew members first.</div>}
 
           {editing && (
             <DayEditModal
@@ -5022,7 +5017,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           )}
 
           {!gridView && days.length === 0 && !editing && crew.length > 0 && (
-            <div className="border-2 border-dashed border-neutral-700 rounded-[12px] p-8 text-center">
+            <div className="border-2 border-dashed border-neutral-700 rounded-xl p-8 text-center">
               <div className="flex justify-center mb-3 text-neutral-700"><ICal size={36}/></div>
               <p className="text-sm text-neutral-400 mb-4">No days yet — log today to get started.</p>
               <Btn variant="primary" onClick={startNew}><IPlus/>Add Day</Btn>
@@ -5045,7 +5040,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     {entries.map((d) => {
                       const c = crew.find((cc) => cc.id === d.crewId);
                       if (!c) return (
-                        <div key={d.id} className="bg-red-950 border border-red-900 p-3 text-sm text-red-200 flex items-center justify-between rounded-[10px]">
+                        <div key={d.id} className="bg-red-950 border border-red-900 p-3 text-sm text-red-200 flex items-center justify-between rounded-xl">
                           <span>Unassigned crew (deleted)</span>
                           <Btn size="sm" variant="ghost" onClick={() => remove(d.id)}><ITrash/></Btn>
                         </div>
@@ -5053,13 +5048,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
                       const hasPenalty = calc.lines.some(l => l.rate === null);
                       const hasTocBreach = calc.lines.some(l => l.isTOC && l.isBreach);
-                      const stripeColor = (hasPenalty || hasTocBreach) ? '#ef4444'
-                        : (calc.meta.otHrs > 0 || calc.meta.continuousDay || calc.lines.some(l => l.isTOC)) ? '#f59e0b'
-                        : '#22c55e';
+                      // In-app priority stripe: red = penalty/TOC breach, amber = OT/CWD/TOC, green = clean
+                      const stripeClass = (hasPenalty || hasTocBreach) ? 'border-red-500'
+                        : (calc.meta.otHrs > 0 || calc.meta.continuousDay || calc.lines.some(l => l.isTOC)) ? 'border-amber-500'
+                        : 'border-green-500';
                       return (
                         <div key={d.id}
-                          className="bg-neutral-900 border border-neutral-800 active:bg-neutral-800 transition-colors border-l-4 rounded-[10px] overflow-hidden cursor-pointer select-none touch-manipulation"
-                          style={{ borderLeftColor: stripeColor, WebkitTapHighlightColor: 'transparent' }}
+                          className={`bg-neutral-900 border border-neutral-800 active:bg-neutral-800 transition-colors border-l-4 rounded-xl overflow-hidden cursor-pointer select-none touch-manipulation ${stripeClass}`}
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
                           onClick={() => startEdit(d)}
                         >
                           <div className="flex items-center justify-between p-3 gap-3 flex-wrap">
@@ -5140,7 +5136,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
              style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
              onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
                style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-2">
               <div className="text-sm font-bold text-neutral-100">{title || "Select week"}</div>
@@ -5178,7 +5174,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
              style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
              onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
                style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-2">
               <div className="text-sm font-bold text-neutral-100">{title || "Select crew member"}</div>
@@ -5314,7 +5310,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       if (byCrew.length === 0) {
         return (
-          <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-[10px]">
+          <div className="bg-neutral-900 border border-dashed border-neutral-700 p-8 text-center rounded-xl">
             <div className="flex justify-center mb-2 text-neutral-700"><IFile size={32}/></div>
             <div className="text-neutral-500 text-sm">Add crew and day entries first.</div>
           </div>
@@ -5766,7 +5762,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           onClick={onCancel}
         >
           <div
-            className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+            className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
             style={{ maxWidth: 400 }}
             onClick={e => e.stopPropagation()}
           >
@@ -5818,7 +5814,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           onClick={onCancel}
         >
           <div
-            className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+            className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
             style={{ maxWidth: 400 }}
             onClick={e => e.stopPropagation()}
           >
@@ -5871,7 +5867,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           onClick={onClose}
         >
           <div
-            className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 flex flex-col"
+            className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
             style={{ maxWidth: 480, maxHeight: "calc(80dvh - env(safe-area-inset-bottom))" }}
             onClick={e => e.stopPropagation()}
           >
@@ -6284,7 +6280,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
                  style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
                  onClick={() => setShowExportSheet(false)}>
-              <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+              <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
                    style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
                 <div className="px-5 pt-5 pb-2">
                   <div className="text-sm font-bold text-neutral-100 flex items-center gap-2"><IShare size={14}/>Export</div>
@@ -6614,7 +6610,7 @@ const setDays = (updater) =>
             </div>
             <p className="text-[11px] text-neutral-500 mb-8">You can change this later</p>
 
-            <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] px-4 py-4 mb-8">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-4 mb-8">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-sm font-semibold text-neutral-100">Best Boy mode</div>
@@ -6673,7 +6669,7 @@ const setDays = (updater) =>
               <div className="space-y-6">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">Step 1 of 3</div>
-                  <h1 className="text-2xl font-extrabold tracking-tight text-neutral-100 mb-2">Welcome to<br/>Time Machine</h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">Welcome to<br/>Time Machine</h1>
                   <p className="text-sm text-neutral-400 leading-relaxed">The APA timesheet calculator for UK commercial crew.</p>
                 </div>
 
@@ -6700,7 +6696,7 @@ const setDays = (updater) =>
               <div className="space-y-6">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">Step 2 of 3</div>
-                  <h1 className="text-2xl font-extrabold tracking-tight text-neutral-100 mb-2">Default role<br/>and rate</h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">Default role<br/>and rate</h1>
                   <p className="text-sm text-neutral-400">You can override these per-job at any time.</p>
                 </div>
 
@@ -6769,7 +6765,7 @@ const setDays = (updater) =>
               <div className="space-y-6">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-400 font-bold mb-3">All set</div>
-                  <h1 className="text-2xl font-extrabold tracking-tight text-neutral-100 mb-2">
+                  <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">
                     You're ready{userPrefs.displayName ? `, ${userPrefs.displayName.split(' ')[0]}` : ''}.
                   </h1>
                   <p className="text-sm text-neutral-400">Time to log your first shoot.</p>
@@ -6814,7 +6810,7 @@ const setDays = (updater) =>
     const SectionCard = ({ title, children, accent }) => {
       const isRed = accent === "red";
       return (
-        <div className={`bg-neutral-900 border ${isRed ? "border-red-900/60" : "border-neutral-800"} rounded-[12px] overflow-hidden mb-4`}>
+        <div className={`bg-neutral-900 border ${isRed ? "border-red-900/60" : "border-neutral-800"} rounded-xl overflow-hidden mb-4`}>
           <div className={`px-4 py-3 border-b ${isRed ? "border-red-900/60" : "border-neutral-800"}`}>
             <div className={`text-[10px] uppercase tracking-[0.2em] ${isRed ? "text-red-400" : "text-sky-400"} font-bold`}>{title}</div>
           </div>
@@ -6826,7 +6822,7 @@ const setDays = (updater) =>
     const Disclosure = ({ label, children, defaultOpen = false }) => {
       const [open, setOpen] = useState(defaultOpen);
       return (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden mb-4">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden mb-4">
           <button
             type="button"
             onClick={() => setOpen(o => !o)}
@@ -7424,7 +7420,7 @@ const setDays = (updater) =>
       );
 
       const StatCard = ({ label, value, sub }) => (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
           <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 mb-2">{label}</div>
           <div className="text-2xl font-bold font-mono text-neutral-100 tabular-nums">{value}</div>
           {sub && <div className="text-xs text-neutral-500 mt-1">{sub}</div>}
@@ -7435,7 +7431,7 @@ const setDays = (updater) =>
         const expanded = expandedStat === statKey;
         return (
           <div onClick={() => toggleExpand(statKey)}
-            className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4 cursor-pointer select-none transition-colors hover:border-neutral-700"
+            className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 cursor-pointer select-none transition-colors hover:border-neutral-700"
             style={{ WebkitTapHighlightColor: 'transparent' }}>
             <div className="flex items-start justify-between gap-2">
               <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 mb-2">{label}</div>
@@ -7546,7 +7542,7 @@ const setDays = (updater) =>
                 {stats.daysByType.length > 0 && (
                   <>
                     <SectionHdr>Days by type</SectionHdr>
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-[12px] p-4">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
                       {(() => {
                         const maxCount = stats.daysByType[0]?.count || 1;
                         return stats.daysByType.map(({ type, count }) => (
@@ -7564,7 +7560,7 @@ const setDays = (updater) =>
                 )}
 
                 {excludedCount > 0 && (
-                  <div className="mt-8 bg-amber-900/20 border border-amber-700/30 rounded-[12px] p-4">
+                  <div className="mt-8 bg-amber-900/20 border border-amber-700/30 rounded-xl p-4">
                     <div className="text-xs font-semibold text-amber-300 mb-1">
                       {excludedCount} production{excludedCount !== 1 ? 's' : ''} excluded
                     </div>
@@ -7655,7 +7651,7 @@ const setDays = (updater) =>
       const isAlreadyWaived = isFixed && item.discountedQty !== null;
       return (
         <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-[16px] shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+          <div className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
               <div className="text-sm font-bold text-neutral-100">{isFixed ? "Waive line" : "Waive portion"}</div>
               <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 p-1 rounded"><IX size={16}/></button>
@@ -7727,7 +7723,7 @@ const setDays = (updater) =>
       });
       return (
         <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-[16px] shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+          <div className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 mx-4 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
               <div className="text-sm font-bold text-neutral-100">Edit line item</div>
               <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200 p-1 rounded"><IX size={16}/></button>
@@ -7773,7 +7769,7 @@ const setDays = (updater) =>
     function LineItemActionSheet({ item, onEdit, onDiscount, onDelete, onClose }) {
       return (
         <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3">
               <div className="text-sm font-bold text-neutral-100 truncate">{item.label}</div>
               {item.detail && <div className="text-[11px] text-neutral-500 mt-0.5 truncate">{item.detail}</div>}
@@ -8252,7 +8248,7 @@ const setDays = (updater) =>
                   const total = subtotal + vatAmount;
                   return (
                     <button key={inv.id} onClick={() => onOpenInvoice(inv.id)}
-                      className="w-full text-left bg-neutral-900 border border-neutral-800 rounded-[12px] p-4 hover:bg-neutral-800 active:bg-neutral-800 transition-colors"
+                      className="w-full text-left bg-neutral-900 border border-neutral-800 rounded-xl p-4 hover:bg-neutral-800 active:bg-neutral-800 transition-colors"
                       style={{ WebkitTapHighlightColor: 'transparent' }}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -8295,7 +8291,7 @@ const setDays = (updater) =>
       return (
         <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
           style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
             style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3">
               <div className="text-sm font-bold text-neutral-100 truncate">{invoice.invoiceNumber}</div>
@@ -8360,7 +8356,7 @@ const setDays = (updater) =>
         <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
              style={{ backgroundColor: 'rgba(0,0,0,0.82)', zIndex: 80 }}
              onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
                style={{ maxWidth: 420, maxHeight: '80vh' }}
                onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
@@ -8701,7 +8697,7 @@ const confirmDelete = (p) => setConfirmOpts({
         const invStatus = getProductionInvoiceStatus(p);
         const invChip = invStatus ? <span className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${toneClasses(invStatus.tone)}`}>{invStatus.label}</span> : null;
         const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
-        const wrapperClass = "bg-neutral-900 border border-neutral-800 rounded-[12px] overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer select-none touch-manipulation";
+        const wrapperClass = "bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer select-none touch-manipulation";
 
         if (isCurrent) {
           return (
@@ -8938,7 +8934,7 @@ const confirmDelete = (p) => setConfirmOpts({
             <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
                  style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
                  onClick={() => setActionSheet(null)}>
-              <div className="bg-neutral-900 w-full rounded-t-[16px] sm:rounded-[16px] shadow-2xl border border-neutral-700 overflow-hidden"
+              <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
                    style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
                 <div className="px-5 pt-5 pb-3">
                   <div className="text-sm font-bold text-neutral-100 truncate">{actionSheet.title || 'Untitled Production'}</div>
