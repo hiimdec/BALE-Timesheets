@@ -678,6 +678,14 @@
     const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
     // fmtDateShort → "04/05/2026" (compact: line items, table rows)
     const fmtDateShort = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+    const formatDayHeaderDate = (isoDate) => {
+      if (!isoDate) return "";
+      const d = new Date(isoDate + "T12:00:00");
+      const wd = d.toLocaleDateString("en-GB", { weekday: 'short' }).toUpperCase();
+      const dayNum = d.getDate();
+      const month = d.toLocaleDateString("en-GB", { month: 'short' }).toUpperCase();
+      return `${wd} · ${dayNum} ${month}`;
+    };
     // fmtDateMed → "4 May 2026" (headers, invoice metadata, prose)
     const fmtDateMed = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }); };
     // fmtDateLong → "Wed, 4 May 2026" (day editor headings, weekly summaries)
@@ -4080,7 +4088,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ DAY ENTRY FORM ═══════════════════════════ */
 
-    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [] }) {
+    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], onDeleteDay }) {
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
@@ -4220,6 +4228,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <StatusMsg kind="info">
                   Bank Holiday — {bhName}. APA §2.4: paid as Sunday rate (2× BDR for shoot day, 2× BHR all hours).
                 </StatusMsg>
+              )}
+              {onDeleteDay && (
+                <button
+                  type="button"
+                  onClick={onDeleteDay}
+                  className="text-[11px] uppercase tracking-[0.12em] font-bold text-tm-pen/70 hover:text-tm-pen self-start mt-3 px-2 py-1"
+                >
+                  Delete day
+                </button>
               )}
             </div>
           </SectionCard>
@@ -6956,56 +6973,65 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 80px)' }}>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
 
-          {/* Page header */}
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-            <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onBack} aria-label="Back to productions"
-                className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <IArrowLeft size={18}/>
+          {/* Page header — stacked breadcrumb on left, share/settings icons on right */}
+          <div className="bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-3xl mx-auto flex items-start justify-between px-4 pt-4 pb-3">
+              <button
+                type="button"
+                onClick={onBack}
+                className="flex flex-col items-start text-left flex-shrink min-w-0 active:opacity-60 transition-opacity"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+                aria-label="Back to productions"
+              >
+                <span className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold mb-0.5 flex items-center">
+                  <IChevronLeft size={10} strokeWidth={3} className="-ml-0.5 mr-0.5" />
+                  SHOOTS
+                </span>
+                <span className="text-[16px] font-extrabold text-neutral-100 uppercase tracking-tight leading-tight truncate max-w-[60vw]">
+                  {production.title || 'Untitled'}
+                </span>
               </button>
-              <h1 className="flex-1 text-center text-sm font-bold uppercase tracking-tight truncate">
-                {production.title || <span className="text-neutral-500">Untitled</span>}
-              </h1>
-              <button onClick={() => setShowExportSheet(true)} aria-label="Export"
-                className="text-neutral-500 hover:text-neutral-100 transition-colors p-2 rounded-full hover:bg-neutral-900"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="18" cy="5" r="3"/>
-                  <circle cx="6" cy="12" r="3"/>
-                  <circle cx="18" cy="19" r="3"/>
-                  <path d="M8.6 13.5l6.8 4M15.4 6.5L8.6 10.5"/>
-                </svg>
-              </button>
-              <button onClick={() => setShowSettings(true)} aria-label="Production settings"
-                className="text-neutral-500 hover:text-neutral-100 transition-colors p-2 rounded-full hover:bg-neutral-900"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-              </button>
+              <div className="flex gap-1 ml-2 flex-shrink-0">
+                <button type="button" onClick={() => setShowExportSheet(true)}
+                  className="w-[34px] h-[34px] rounded-full text-neutral-500 hover:bg-neutral-900 hover:text-neutral-100 flex items-center justify-center transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                  aria-label="Share">
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3"/>
+                    <circle cx="6" cy="12" r="3"/>
+                    <circle cx="18" cy="19" r="3"/>
+                    <path d="M8.6 13.5l6.8 4M15.4 6.5L8.6 10.5"/>
+                  </svg>
+                </button>
+                <button type="button" onClick={() => setShowSettings(true)}
+                  className="w-[34px] h-[34px] rounded-full text-neutral-500 hover:bg-neutral-900 hover:text-neutral-100 flex items-center justify-center transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                  aria-label="Production settings">
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Day-specific content — animates on prev/next/jump */}
           <div className={stageClass}>
-            {/* Sub-header — Day X of N (tappable → jump sheet) + Delete. Reduced weight since pill now shows day count. */}
-            <div className="max-w-3xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between gap-3">
+            {/* Form-top — DAY counter (tappable → jump sheet) + day-of-week date */}
+            <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-3 border-b border-neutral-800 mb-3.5">
               <button
                 type="button"
                 onClick={() => setShowJumpSheet(true)}
-                className="flex items-baseline gap-1.5 hover:opacity-70 transition-opacity"
+                className="font-mono text-[12px] font-bold flex items-baseline gap-1 hover:opacity-70 transition-opacity"
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
-                <span className="text-sm font-semibold tracking-tight text-neutral-400">Day {currentIdx + 1}</span>
-                <span className="text-xs text-neutral-600">of {sortedDays.length}</span>
+                <span className="text-neutral-400">DAY {currentIdx + 1}</span>
+                <span className="text-neutral-600">/ {sortedDays.length}</span>
               </button>
-              <button onClick={requestDeleteCurrentDay}
-                className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 hover:text-red-400 px-2.5 py-1 rounded-md border border-neutral-700/60 hover:border-red-900/60 transition-colors"
-                title="Delete this day">
-                Delete day
-              </button>
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
+                {formatDayHeaderDate(currentDay?.date)}
+              </div>
             </div>
 
             {/* Day editor body */}
@@ -7028,6 +7054,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 isToday={currentDay?.date === todayISO()}
                 showToast={showToast}
                 days={days}
+                onDeleteDay={requestDeleteCurrentDay}
               />
             </div>
           </div>
