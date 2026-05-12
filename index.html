@@ -3901,7 +3901,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Travel Time</span>
                   <button type="button" onClick={() => setShowTravelInfo(s => !s)}
-                    className="rounded-full flex items-center justify-center flex-shrink-0"
+                    className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-400/30"
                     style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Travel time calculation info">
                     <IInfo size={12}/>
@@ -3920,7 +3920,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Pre-call</span>
                   <button type="button" onClick={() => setShowPreCallInfo(s => !s)}
-                    className="rounded-full flex items-center justify-center flex-shrink-0"
+                    className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-400/30"
                     style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Pre-call info">
                     <IInfo size={12}/>
@@ -4629,7 +4629,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Travel Time</span>
                           <button type="button" onClick={() => setShowTravelInfo(s => !s)}
-                            className="text-neutral-600 hover:text-sky-400 transition-colors"
+                            className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-400/30"
+                            style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
                             aria-label="Travel time calculation info">
                             <IInfo size={12}/>
                           </button>
@@ -8036,7 +8037,7 @@ const setDays = (updater) =>
               {isWaived ? fmtGBP(item.amount) : fmtGBP(lineTotal)}
             </div>
             <button onClick={() => setActionSheetItem(item)}
-              className="rounded-full flex items-center justify-center flex-shrink-0"
+              className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-neutral-500/30"
               aria-label="Line options" style={{ width: 36, height: 36, background: 'rgba(115,115,115,0.15)', color: '#a3a3a3', WebkitTapHighlightColor: 'transparent' }}>
               <IKebab size={16}/>
             </button>
@@ -8139,7 +8140,7 @@ const setDays = (updater) =>
                 <div className="flex items-center justify-between -mt-2 mb-2">
                   <span className="text-[10px] text-amber-400 uppercase tracking-wide font-bold">Manually edited</span>
                   <button type="button" onClick={() => setConfirmRefresh(true)}
-                    className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 flex items-center gap-1"
+                    className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 flex items-center gap-1 transition-all active:scale-95 active:bg-sky-400/30"
                     style={{ background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}>
                     <IReset size={10}/> Refresh from shoot
                   </button>
