@@ -6425,6 +6425,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const [realMoneyExpanded, setRealMoneyExpanded] = useState(true);
       const [showShareMenu, setShowShareMenu] = useState(false);
+      const [expandedDays, setExpandedDays] = useState(() => new Set());
+      const toggleDay = (dayId) => setExpandedDays(s => {
+        const next = new Set(s);
+        if (next.has(dayId)) next.delete(dayId); else next.add(dayId);
+        return next;
+      });
 
       return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
@@ -6573,21 +6579,62 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   const hasPen = dayBuckets.pen > 0;
                   const isBH = !!getBankHolidayName(d.date);
 
+                  const isExpanded = expandedDays.has(d.id);
                   return (
-                    <div key={d.id}
-                         onClick={() => { if (onPickDay) { onPickDay(d.id); onClose(); } }}
-                         className={`flex items-center gap-3 px-3 py-2.5 mx-4 mb-1 bg-neutral-900 border border-neutral-800 rounded-lg transition-colors ${onPickDay ? 'cursor-pointer hover:bg-neutral-800/40' : ''}`}
-                         style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <span className="text-[10px] font-mono text-neutral-500 tracking-wider w-14 flex-shrink-0">{dateLabel}</span>
-                      <span className="text-[11px] font-mono text-neutral-300 flex-1 min-w-0 truncate">
-                        {callT} <span className="text-neutral-600">→</span> {wrapT}
-                      </span>
-                      <div className="flex gap-1 flex-shrink-0">
-                        {hasOT && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-warn/10 text-tm-warn border border-tm-warn/25 rounded px-1 py-0.5">OT</span>}
-                        {hasPen && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-pen/10 text-tm-pen border border-tm-pen/25 rounded px-1 py-0.5">PEN</span>}
-                        {isBH && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-good/10 text-tm-good border border-tm-good/25 rounded px-1 py-0.5">BH</span>}
-                      </div>
-                      <span className="text-[13px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(calc.total)}</span>
+                    <div key={d.id} className="mx-4 mb-1 bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleDay(d.id)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-neutral-800/40 transition-colors text-left"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                        aria-expanded={isExpanded}
+                      >
+                        <span className="text-[10px] font-mono text-neutral-500 tracking-wider w-14 flex-shrink-0">{dateLabel}</span>
+                        <span className="text-[11px] font-mono text-neutral-300 flex-1 min-w-0 truncate">
+                          {callT} <span className="text-neutral-600">→</span> {wrapT}
+                        </span>
+                        <div className="flex gap-1 flex-shrink-0">
+                          {hasOT && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-warn/10 text-tm-warn border border-tm-warn/25 rounded px-1 py-0.5">OT</span>}
+                          {hasPen && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-pen/10 text-tm-pen border border-tm-pen/25 rounded px-1 py-0.5">PEN</span>}
+                          {isBH && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-good/10 text-tm-good border border-tm-good/25 rounded px-1 py-0.5">BH</span>}
+                        </div>
+                        <span className="text-[13px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(calc.total)}</span>
+                        <IChevronDown size={12} strokeWidth={2.5} className={`text-neutral-500 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isExpanded && (
+                        <div className="px-3 py-2.5 border-t border-neutral-800 bg-neutral-950/50">
+                          {(calc.lines || []).length === 0 ? (
+                            <div className="text-[11px] text-neutral-600">No line items</div>
+                          ) : (
+                            <div className="space-y-1">
+                              {calc.lines.map((line, i) => {
+                                const bucket = categorizeBreakdownLine(line.label);
+                                const colorClass =
+                                  bucket === 'ot'  ? 'text-tm-warn' :
+                                  bucket === 'pen' ? 'text-tm-pen'  :
+                                  bucket === 'kit' ? 'text-tm-good' :
+                                                     'text-neutral-200';
+                                return (
+                                  <div key={i} className="flex items-baseline justify-between gap-3 text-[11px] font-mono">
+                                    <span className="text-neutral-400 flex-1 min-w-0 truncate">{line.label}</span>
+                                    <span className={`font-bold ${colorClass} flex-shrink-0`}>{fmtGBP(line.amount)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {onPickDay && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onPickDay(d.id); onClose?.(); }}
+                              className="text-[10px] uppercase tracking-[0.14em] font-bold text-sky-500 hover:text-sky-400 mt-3 px-2 py-1 -ml-2 transition-colors"
+                              style={{ WebkitTapHighlightColor: 'transparent' }}
+                            >
+                              Edit day →
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
