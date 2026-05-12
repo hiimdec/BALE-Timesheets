@@ -413,6 +413,16 @@
 
 You don't need to subtract anything yourself.`;
 
+    // Pre-call UX copy — expands on ⓘ tap inside Extras.
+    const PRE_CALL_EXPLAINER = `Use this when you started before the main unit call. Common scenarios:
+  • Truck driving — loading or delivering gear
+  • Pre-light — sparks setting up lighting before crew arrival
+  • Prep — props, dressing, or any early setup work
+
+The hours between your pre-call and the main call time are paid at BHR (basic hourly rate).
+
+Lunch deadlines, continuous workday (CWD), and overtime are still measured from your main call time — not from the pre-call. So an 07:00 pre-call followed by an 08:00 main call gets you 1 hour of pre-call pay, but lunch is still expected by 13:00 (5h from main call).`;
+
     const EXPENSE_CATEGORIES = ["Transport", "Food", "Equipment", "Accommodation", "Other"];
 
     /* ═══════════════════════════ DERIVED BREAK STATE ═══════════════════════════ */
@@ -509,15 +519,16 @@ You don't need to subtract anything yourself.`;
         return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
       }
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
-      const truckCallH = crew.isDriver && day.truckCallTime ? parseHHMM(day.truckCallTime) : null;
+      const preCallTime = day.preCallTime || day.truckCallTime; // back-compat with legacy truckCallTime
+      const preCallH = preCallTime ? parseHHMM(preCallTime) : null;
       const preUnitHrs = (() => {
-        if (truckCallH === null) return 0;
-        if (truckCallH < callH) return callH - truckCallH;           // same day: truck call → call
-        if (truckCallH > callH) return (24 - truckCallH) + callH;   // truck call before midnight, call after
+        if (preCallH === null) return 0;
+        if (preCallH < callH) return callH - preCallH;           // same day: pre-call → main call
+        if (preCallH > callH) return (24 - preCallH) + callH;   // pre-call before midnight, main call after
         return 0;
       })();
       if (preUnitHrs > 0) {
-        lines.push({ label: "Truck call (pre-unit)", detail: `${day.truckCallTime} – ${day.callTime}`, rate: bhr, qty: preUnitHrs, amount: preUnitHrs * bhr });
+        lines.push({ label: "Pre-call", detail: `${preCallTime} – ${day.callTime}`, rate: bhr, qty: preUnitHrs, amount: preUnitHrs * bhr });
       }
       const dow = dayOfWeek(day.date);
       const isSunday = dow === 0;
@@ -833,6 +844,8 @@ You don't need to subtract anything yourself.`;
 
     function migrateDay(d) {
       d = { note: "", expenses: [], ...d };
+      // Migrate legacy truckCallTime → preCallTime (keep truckCallTime for safe rollback)
+      if (d.truckCallTime && !d.preCallTime) d = { ...d, preCallTime: d.truckCallTime };
       if (d.lunchStartTime !== undefined) return d;
       if (!d.callTime) return d;
       const callH = parseHHMM(d.callTime) || 8;
@@ -3152,7 +3165,7 @@ You don't need to subtract anything yourself.`;
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Driver</div>
-                    <div className="text-[10px] text-neutral-500 mt-0.5">Shows truck call time on day entries</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5">Shows pre-call time on day entries</div>
                   </div>
                   <Toggle value={form.isDriver} onChange={(v) => setForm({ ...form, isDriver: v })} ariaLabel="Driver" />
                 </div>
@@ -3612,6 +3625,7 @@ You don't need to subtract anything yourself.`;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
       const [showTravelInfo, setShowTravelInfo] = useState(false);
+      const [showPreCallInfo, setShowPreCallInfo] = useState(false);
 
       const computeNowHHMM = () => {
         const now = new Date();
@@ -3652,7 +3666,6 @@ You don't need to subtract anything yourself.`;
       // Step-up role wins over base role for both BWD-override and PMPA classification.
       const effectiveRole = (v.stepUpEnabled && v.stepUpRole) ? v.stepUpRole : (activeCrew?.role || "");
       const isPmpa = ROLE_DEFAULTS[effectiveRole]?.pmpa === true;
-      const isDriverDay = activeCrew?.isDriver === true && !isTravelDay && !isPmpa;
       const role = effectiveRole;
       const bwdOverrideApplies = !isPmpa && ROLES_WITH_BWD_OVERRIDE.includes(role) &&
         ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(v.dayType);
@@ -3710,11 +3723,6 @@ You don't need to subtract anything yourself.`;
           {/* ── Section: Times ── */}
           <SectionCard title="Times">
             <div className="space-y-3">
-              {isDriverDay && (
-                <Field label="Truck Call Time" hint="Pre-unit start — billed at BHR · break deadlines &amp; OT still from call time">
-                  <TimeInput value={v.truckCallTime || ""} onChange={(e) => set({ truckCallTime: e.target.value })} />
-                </Field>
-              )}
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Call Time" hint={callH !== null && callH < 5 ? "→ Night shoot (pre-5am)" : callH !== null && callH >= 17 ? "→ Night shoot (post-5pm)" : callH !== null && callH >= 5 && callH < 7 && !isTravelDay ? "→ Early call" : callH !== null && callH >= 11 && callH < 17 && !isTravelDay ? "→ Late call (calc from 11:00)" : ""}>
                   <div className="flex items-center gap-1.5">
@@ -3836,7 +3844,7 @@ You don't need to subtract anything yourself.`;
             <MileageInput day={v} updateDay={set} days={days} />
           </SectionCard>
 
-          {/* ── Extras disclosure: travel time, per diem, step-up ── */}
+          {/* ── Extras disclosure: pre-call, travel time, per diem, step-up ── */}
           <Disclosure label="Extras">
             {!isTravelDay && (
               <div className="space-y-3">
@@ -3854,6 +3862,22 @@ You don't need to subtract anything yourself.`;
                   <Field label="Travel Out (mins)"><Input type="number" min="0" value={v.travelOutMins || 0} onChange={(e) => set({ travelOutMins: Number(e.target.value) })} /></Field>
                   <Field label="Travel Back (mins)"><Input type="number" min="0" value={v.travelBackMins || 0} onChange={(e) => set({ travelBackMins: Number(e.target.value) })} /></Field>
                 </div>
+              </div>
+            )}
+            {!isTravelDay && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Pre-call</span>
+                  <button type="button" onClick={() => setShowPreCallInfo(s => !s)}
+                    className="text-neutral-600 hover:text-sky-400 transition-colors"
+                    aria-label="Pre-call info">
+                    <IInfo size={12}/>
+                  </button>
+                </div>
+                {showPreCallInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{PRE_CALL_EXPLAINER}</span></StatusMsg>}
+                <Field label="Pre-call time" hint="Early arrival — paid at BHR. Lunch and CWD still measured from main call time.">
+                  <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} />
+                </Field>
               </div>
             )}
             <div className="space-y-3">
@@ -4215,6 +4239,7 @@ You don't need to subtract anything yourself.`;
           lunchDurationMins: resolved.lunchDurationMins ?? 60,
           secondBreakStartTime: firstEntry?.secondBreakStartTime || toHHMM(callH + 11),
           secondBreakDurationMins: firstEntry?.secondBreakDurationMins ?? 0,
+          preCallTime: firstEntry?.preCallTime || firstEntry?.truckCallTime || "",
           miles: firstEntry?.miles ?? 0,
           travelOutMins: firstEntry?.travelOutMins ?? 0,
           travelBackMins: firstEntry?.travelBackMins ?? 0,
@@ -4493,6 +4518,11 @@ You don't need to subtract anything yourself.`;
                         </Field>
                         <Field label="Call Time"><TimeInput value={dateEdit.callTime || ""} onChange={e => setDateEdit(p => ({...p, callTime: e.target.value}))} /></Field>
                         <Field label="Wrap Time"><TimeInput value={dateEdit.wrapTime || ""} onChange={e => setDateEdit(p => ({...p, wrapTime: e.target.value}))} /></Field>
+                        {dateEdit.dayType !== "Travel Day" && dateEdit.dayType !== "Rest Day" && (
+                          <Field label="Pre-call Time" hint="Early arrival — paid at BHR. Lunch and CWD from main call.">
+                            <TimeInput value={dateEdit.preCallTime || ""} onChange={e => setDateEdit(p => ({...p, preCallTime: e.target.value}))} />
+                          </Field>
+                        )}
                         {dateEdit.dayType !== "Travel Day" && dateEdit.dayType !== "Rest Day" && <>
                           <Field label="Lunch Start"><TimeInput value={dateEdit.lunchStartTime || ""} onChange={e => setDateEdit(p => ({...p, lunchStartTime: e.target.value}))} /></Field>
                           <Field label="Lunch Duration">
@@ -4692,7 +4722,7 @@ You don't need to subtract anything yourself.`;
       return {
         id: uid(), crewId, date: todayISO(),
         wrapNextDay: false,
-        truckCallTime: "",
+        preCallTime: "",
         noMealProvided: false, secondBreakDurationMins: 0,
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
@@ -4847,6 +4877,7 @@ You don't need to subtract anything yourself.`;
         const {
           dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins,
           secondBreakStartTime, secondBreakDurationMins,
+          preCallTime,
           miles, travelOutMins, travelBackMins,
           perDiemEnabled, perDiemAmount,
           kitMoneyEnabled, kitMoneyAmount,
@@ -4858,6 +4889,7 @@ You don't need to subtract anything yourself.`;
             ...d,
             dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins,
             secondBreakStartTime, secondBreakDurationMins,
+            preCallTime,
             miles, travelOutMins, travelBackMins,
             perDiemEnabled, perDiemAmount,
             kitMoneyEnabled, kitMoneyAmount,
@@ -5554,7 +5586,7 @@ You don't need to subtract anything yourself.`;
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[10px] uppercase tracking-wide text-sky-400 font-bold">Driver</div>
-                      <div className="text-[10px] text-neutral-500 mt-0.5">Shows truck call time on day entries</div>
+                      <div className="text-[10px] text-neutral-500 mt-0.5">Shows pre-call time on day entries</div>
                     </div>
                     <Toggle value={m.isDriver} onChange={setSoloBool("isDriver")} ariaLabel="Driver" />
                   </div>
