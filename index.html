@@ -8047,6 +8047,44 @@ const setDays = (updater) =>
 
       const { onDeptChange, onRoleChange } = makeDeptRoleHandlers(set, userPrefs);
 
+      const vatSummary = userPrefs.vatRegistered
+        ? `VAT ${userPrefs.vatRate || 20}%`
+        : 'Not registered';
+
+      const yourDetailsSummary =
+        (userPrefs.fromCompanyName || '').trim() ||
+        (userPrefs.fromEmail || '').trim() ||
+        '—';
+
+      const bankSummary = (userPrefs.bankAccountNumber || '').length >= 4
+        ? `${((userPrefs.bankName || '').trim() || 'Account')} · ***${userPrefs.bankAccountNumber.slice(-4)}`
+        : '—';
+
+      const numberingSummary = userPrefs.invoicePrefix || userPrefs.invoiceNextNumber
+        ? `${userPrefs.invoicePrefix || ''}${userPrefs.invoiceNextNumber || 1} · Net ${userPrefs.paymentTermsDays ?? 30}`
+        : '—';
+
+      const logoSummary = userPrefs.logoBase64 ? 'Uploaded' : '—';
+
+      const defaultsSummary = (() => {
+        const bits = [];
+        if (Number(userPrefs.defaultMileageRate) > 0) bits.push(`£${userPrefs.defaultMileageRate}/mi`);
+        if (userPrefs.defaultKitMoneyEnabled) bits.push('Kit');
+        if (userPrefs.defaultPerDiemEnabled) bits.push('Per diem');
+        return bits.length ? bits.join(' · ') : '—';
+      })();
+
+      const calcSummary = (() => {
+        const bits = [];
+        if (userPrefs.favourableRounding) bits.push('Favourable');
+        if (userPrefs.apaRounding) bits.push('APA');
+        return bits.length ? `${bits.join(' + ')} rounding` : 'Exact';
+      })();
+
+      const displaySummary = userPrefs.comparisonUnit === 'off'
+        ? 'Off'
+        : (userPrefs.comparisonUnit || 'Greggs sausage rolls');
+
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -8101,7 +8139,7 @@ const setDays = (updater) =>
               )}
             </SectionCard>
 
-            <SectionCard title="Tax &amp; Invoicing">
+            <Disclosure label="Tax & Invoicing" summary={vatSummary}>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT registered?</span>
                 <Toggle value={userPrefs.vatRegistered} onChange={(v) => set({ vatRegistered: v })} ariaLabel="VAT registered" />
@@ -8129,120 +8167,108 @@ const setDays = (updater) =>
                   />
                 </Field>
               )}
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="Invoicing">
-              <div className="space-y-4">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Your details (on the invoice)</div>
-                  <div className="text-[10px] text-neutral-500 mb-3">Your display name (from My Setup) appears as the invoice's "From" name.</div>
-                  <Field label="Company name" hint="Optional — if you trade as a limited company">
-                    <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
-                  </Field>
-                  <Field label="Your address">
-                    <textarea
-                      value={userPrefs.fromAddress}
-                      onChange={(e) => set({ fromAddress: e.target.value })}
-                      rows={3}
-                      placeholder={"e.g.\n12 Crew Lane\nLondon NW1 8AB"}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
-                      style={{ fontFamily: 'inherit' }}
-                    />
-                  </Field>
-                  <Field label="Email" hint="Where clients reply to about the invoice">
-                    <Input type="email" value={userPrefs.fromEmail} onChange={(e) => set({ fromEmail: e.target.value })} placeholder="you@example.com" />
-                  </Field>
+            <Disclosure label="Invoicing — Your details" summary={yourDetailsSummary}>
+              <div className="text-[10px] text-neutral-500 mb-3">Your display name (from My Setup) appears as the invoice's "From" name.</div>
+              <Field label="Company name" hint="Optional — if you trade as a limited company">
+                <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
+              </Field>
+              <Field label="Your address">
+                <textarea
+                  value={userPrefs.fromAddress}
+                  onChange={(e) => set({ fromAddress: e.target.value })}
+                  rows={3}
+                  placeholder={"e.g.\n12 Crew Lane\nLondon NW1 8AB"}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
+                  style={{ fontFamily: 'inherit' }}
+                />
+              </Field>
+              <Field label="Email" hint="Where clients reply to about the invoice">
+                <Input type="email" value={userPrefs.fromEmail} onChange={(e) => set({ fromEmail: e.target.value })} placeholder="you@example.com" />
+              </Field>
+            </Disclosure>
+
+            <Disclosure label="Invoicing — Bank details" summary={bankSummary}>
+              <Field label="Bank name">
+                <Input type="text" value={userPrefs.bankName} onChange={(e) => set({ bankName: e.target.value })} placeholder="e.g. Barclays" />
+              </Field>
+              <Field label="Account name">
+                <Input type="text" value={userPrefs.bankAccountName} onChange={(e) => set({ bankAccountName: e.target.value })} placeholder="As it appears on the account" />
+              </Field>
+              <Field label="Account number">
+                <Input type="text" inputMode="numeric" value={userPrefs.bankAccountNumber}
+                  onChange={(e) => set({ bankAccountNumber: e.target.value.replace(/\D/g, '').slice(0, 8) })}
+                  placeholder="8 digits" />
+              </Field>
+              <Field label="Sort code">
+                <Input type="text" inputMode="numeric" value={userPrefs.bankSortCode}
+                  onChange={(e) => {
+                    const d = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    const fmt = d.length > 4 ? `${d.slice(0,2)}-${d.slice(2,4)}-${d.slice(4)}`
+                              : d.length > 2 ? `${d.slice(0,2)}-${d.slice(2)}`
+                              : d;
+                    set({ bankSortCode: fmt });
+                  }}
+                  placeholder="00-00-00" />
+              </Field>
+              <Field label="IBAN" hint="Optional — for international payments">
+                <Input type="text" value={userPrefs.bankIBAN} onChange={(e) => set({ bankIBAN: e.target.value })} placeholder="GB00 BARC 0000 0000 0000 00" />
+              </Field>
+              <Field label="SWIFT / BIC" hint="Optional — for international payments">
+                <Input type="text" value={userPrefs.bankSWIFT} onChange={(e) => set({ bankSWIFT: e.target.value })} placeholder="BARCGB22" />
+              </Field>
+            </Disclosure>
+
+            <Disclosure label="Invoicing — Numbering & terms" summary={numberingSummary}>
+              <Field label="Invoice prefix" hint="Appears before the number on each invoice">
+                <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
+              </Field>
+              <Field label="Next invoice number" hint="If you've been invoicing elsewhere, enter your last used number + 1 and we'll continue from there">
+                <Input type="number" min="1" step="1" inputMode="numeric" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
+              </Field>
+              <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
+                <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
+              </Field>
+            </Disclosure>
+
+            <Disclosure label="Invoicing — Logo" summary={logoSummary}>
+              <div className="text-[10px] text-neutral-500 mb-3">Recommended: square, under 200KB. Renders at ~100px on your invoices.</div>
+              {userPrefs.logoBase64 ? (
+                <div className="flex items-center gap-3">
+                  <img src={userPrefs.logoBase64} alt="Logo preview" style={{ maxWidth: 100, maxHeight: 100, borderRadius: 8, background: '#262626' }} />
+                  <Btn variant="ghost" size="sm" onClick={() => set({ logoBase64: "" })}>Remove logo</Btn>
                 </div>
+              ) : (
+                <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm font-semibold text-neutral-200 transition-colors cursor-pointer" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 500 * 1024) {
+                        showToast('Logo file too large — please use under 500KB.');
+                        e.target.value = '';
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = (ev) => set({ logoBase64: ev.target.result });
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <IUpload size={14}/> Upload logo
+                </label>
+              )}
+            </Disclosure>
 
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Bank details (for payment)</div>
-                  <Field label="Bank name">
-                    <Input type="text" value={userPrefs.bankName} onChange={(e) => set({ bankName: e.target.value })} placeholder="e.g. Barclays" />
-                  </Field>
-                  <Field label="Account name">
-                    <Input type="text" value={userPrefs.bankAccountName} onChange={(e) => set({ bankAccountName: e.target.value })} placeholder="As it appears on the account" />
-                  </Field>
-                  <Field label="Account number">
-                    <Input type="text" inputMode="numeric" value={userPrefs.bankAccountNumber}
-                      onChange={(e) => set({ bankAccountNumber: e.target.value.replace(/\D/g, '').slice(0, 8) })}
-                      placeholder="8 digits" />
-                  </Field>
-                  <Field label="Sort code">
-                    <Input type="text" inputMode="numeric" value={userPrefs.bankSortCode}
-                      onChange={(e) => {
-                        const d = e.target.value.replace(/\D/g, '').slice(0, 6);
-                        const fmt = d.length > 4 ? `${d.slice(0,2)}-${d.slice(2,4)}-${d.slice(4)}`
-                                  : d.length > 2 ? `${d.slice(0,2)}-${d.slice(2)}`
-                                  : d;
-                        set({ bankSortCode: fmt });
-                      }}
-                      placeholder="00-00-00" />
-                  </Field>
-                  <Field label="IBAN" hint="Optional — for international payments">
-                    <Input type="text" value={userPrefs.bankIBAN} onChange={(e) => set({ bankIBAN: e.target.value })} placeholder="GB00 BARC 0000 0000 0000 00" />
-                  </Field>
-                  <Field label="SWIFT / BIC" hint="Optional — for international payments">
-                    <Input type="text" value={userPrefs.bankSWIFT} onChange={(e) => set({ bankSWIFT: e.target.value })} placeholder="BARCGB22" />
-                  </Field>
-                </div>
+            <div className="text-[10px] text-neutral-500 italic mb-4 leading-snug px-1">
+              All your invoicing details stay on your device — we don't store or transmit any of this.
+            </div>
 
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Invoice numbering</div>
-                  <Field label="Invoice prefix" hint="Appears before the number on each invoice">
-                    <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
-                  </Field>
-                  <Field label="Next invoice number" hint="If you've been invoicing elsewhere, enter your last used number + 1 and we'll continue from there">
-                    <Input type="number" min="1" step="1" inputMode="numeric" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
-                  </Field>
-                </div>
-
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Default payment terms</div>
-                  <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
-                    <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
-                  </Field>
-                </div>
-
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Logo (optional)</div>
-                  <div className="text-[10px] text-neutral-500 mb-3">Recommended: square, under 200KB. Renders at ~100px on your invoices.</div>
-                  {userPrefs.logoBase64 ? (
-                    <div className="flex items-center gap-3">
-                      <img src={userPrefs.logoBase64} alt="Logo preview" style={{ maxWidth: 100, maxHeight: 100, borderRadius: 8, background: '#262626' }} />
-                      <Btn variant="ghost" size="sm" onClick={() => set({ logoBase64: "" })}>Remove logo</Btn>
-                    </div>
-                  ) : (
-                    <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm font-semibold text-neutral-200 transition-colors cursor-pointer" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 500 * 1024) {
-                            showToast('Logo file too large — please use under 500KB.');
-                            e.target.value = '';
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onload = (ev) => set({ logoBase64: ev.target.result });
-                          reader.readAsDataURL(file);
-                          e.target.value = '';
-                        }}
-                      />
-                      <IUpload size={14}/> Upload logo
-                    </label>
-                  )}
-                </div>
-
-                <div className="text-[10px] text-neutral-500 italic mt-4 leading-snug">
-                  All your invoicing details stay on your device — we don't store or transmit any of this.
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Defaults for new productions">
+            <Disclosure label="Defaults for new productions" summary={defaultsSummary}>
               <Field label="Default mileage rate (£/mile)">
                 <Input
                   type="number"
@@ -8282,9 +8308,9 @@ const setDays = (updater) =>
                   />
                 </Field>
               )}
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="Calculation">
+            <Disclosure label="Calculation" summary={calcSummary}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Favourable rounding</div>
@@ -8299,9 +8325,9 @@ const setDays = (updater) =>
                 </div>
                 <Toggle value={userPrefs.apaRounding} onChange={(v) => set({ apaRounding: v })} ariaLabel="APA rounding" />
               </div>
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="Display">
+            <Disclosure label="Display" summary={displaySummary}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Pill comparison</div>
@@ -8318,9 +8344,9 @@ const setDays = (updater) =>
                   <option value="off">Off</option>
                 </Select>
               </div>
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="Data">
+            <Disclosure label="Data">
               <div className="flex flex-col gap-3">
                 <div>
                   <Btn variant="ghost" onClick={onExport}><IDownload/>Export Backup</Btn>
@@ -8342,9 +8368,9 @@ const setDays = (updater) =>
                   <p className="text-[10px] text-neutral-500 mt-1">Clears all productions and settings. Cannot be undone.</p>
                 </div>
               </div>
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="App">
+            <Disclosure label="Re-run setup wizard">
               <div className="flex flex-col gap-1">
                 <Btn variant="ghost" onClick={() => setConfirmOpts({
                   title: "Re-run setup?",
@@ -8355,9 +8381,9 @@ const setDays = (updater) =>
                 })}>Re-run setup wizard</Btn>
                 <p className="text-[10px] text-neutral-500 mt-1">Walk through name, role, rate, and VAT settings again.</p>
               </div>
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="Reference">
+            <Disclosure label="Reference">
               <a
                 href="https://www.a-p-a.net/apa-crew-terms/"
                 target="_blank"
@@ -8370,20 +8396,9 @@ const setDays = (updater) =>
                 </div>
                 <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-500 transition-colors"/>
               </a>
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="Privacy">
-              <div className="space-y-3 text-[12px] text-neutral-400 leading-relaxed">
-                <p><span className="text-neutral-200 font-semibold">Your data never leaves your device.</span> Productions, days, crew, invoices, and bank details are stored in your browser's local storage only. We have no server, no sync, and no account.</p>
-                <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
-                <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app's UI framework (React, Tailwind) loads from public CDNs (cdn.tailwindcss.com, unpkg.com) on each visit — those services see your IP address as part of normal HTTP requests. No data about you or your productions is sent.</p>
-                <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library — only when you upload a logo or attach an expense receipt. Files — only when you export a PDF or backup. Never accessed without your explicit action.</p>
-                <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset All Data</span>.</p>
-                <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="What's new">
+            <Disclosure label="What's new" summary={`v${RELEASE_NOTES.version}`}>
               <div className="font-semibold text-sm text-neutral-200 mb-0.5">Version {RELEASE_NOTES.version}</div>
               <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
               <ul className="space-y-1.5 mb-3">
@@ -8395,9 +8410,9 @@ const setDays = (updater) =>
                 ))}
               </ul>
               <div className="text-[11px] text-neutral-400 italic">{RELEASE_NOTES.notes}</div>
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="About">
+            <Disclosure label="About" summary={`v${APP_VERSION}`}>
               <div className="space-y-2 text-[12px] text-neutral-300">
                 <div className="flex justify-between">
                   <span className="text-neutral-500">App version</span>
@@ -8412,7 +8427,18 @@ const setDays = (updater) =>
                   <a href="mailto:feedback@timemachineapp.co.uk" className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
                 </div>
               </div>
-            </SectionCard>
+            </Disclosure>
+
+            <Disclosure label="Privacy">
+              <div className="space-y-3 text-[12px] text-neutral-400 leading-relaxed">
+                <p><span className="text-neutral-200 font-semibold">Your data never leaves your device.</span> Productions, days, crew, invoices, and bank details are stored in your browser's local storage only. We have no server, no sync, and no account.</p>
+                <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
+                <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app's UI framework (React, Tailwind) loads from public CDNs (cdn.tailwindcss.com, unpkg.com) on each visit — those services see your IP address as part of normal HTTP requests. No data about you or your productions is sent.</p>
+                <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library — only when you upload a logo or attach an expense receipt. Files — only when you export a PDF or backup. Never accessed without your explicit action.</p>
+                <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset All Data</span>.</p>
+                <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
+              </div>
+            </Disclosure>
 
           </div>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
