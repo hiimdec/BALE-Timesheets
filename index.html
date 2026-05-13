@@ -839,7 +839,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
       const preCallTime = day.preCallTime || day.truckCallTime; // back-compat with legacy truckCallTime
       const preCallH = preCallTime ? parseHHMM(preCallTime) : null;
-      const preUnitHrs = (() => {
+      const preUnitHrsRaw = (() => {
         if (preCallH === null) return 0;
         if (preCallH < callH) return callH - preCallH;           // same day: pre-call → main call
         if (preCallH > callH) {
@@ -854,6 +854,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         return 0;
       })();
+      const preUnitHrs = ceilHalf(preUnitHrsRaw);
       if (preUnitHrs > 0) {
         lines.push({ label: "Pre-call", detail: `${preCallTime} – ${day.callTime}`, rate: bhr, qty: preUnitHrs, amount: preUnitHrs * bhr });
       }
@@ -912,7 +913,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       if (isNightShoot) {
         const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
-        const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
+        const paidHrs = ceilHalf(Math.max(workedHrs - lunchDeduct, 10));
         const nightRate = bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding);
         lines.push({
           label: "Night Shoot (2× BHR)",
@@ -1022,7 +1023,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const travelHrs = travelOutRaw + travelBackRaw;
       if (travelHrs > 0) {
         const travelGap = Math.max(0, basicHrs - (workedHrs + preUnitHrs));
-        const chargeableTravel = Math.max(0, travelHrs - travelGap);
+        const chargeableTravel = ceilHalf(Math.max(0, travelHrs - travelGap));
         if (chargeableTravel > 0) {
           lines.push({ label: "Travel Time", detail: "1hr each way deducted", rate: bhr, qty: chargeableTravel, amount: chargeableTravel * bhr });
         } else {
@@ -1595,7 +1596,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (rest === null || rest >= 11) return null;
       const bhr = computeAPArate(effectiveCrew.bdr, 1, apaRounding);
       const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : computeAPArate(effectiveCrew.bdr, Number(effectiveCrew.otCoef) || 1, apaRounding);
-      const tocHours = 11 - rest;
+      const tocHours = ceilHalf(11 - rest);
       return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
     }
 
