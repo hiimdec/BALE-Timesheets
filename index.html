@@ -9159,8 +9159,9 @@ const setDays = (updater) =>
               <button onClick={onBack} className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
                 <IArrowLeft size={18}/>
               </button>
-              <div className="flex-1 min-w-0 text-sm font-bold truncate">{invoice.invoiceNumber}</div>
-              <Badge variant={ds.variant}>{ds.label}</Badge>
+              <div className="flex-1 min-w-0 font-mono text-[10px] tracking-[0.18em] uppercase text-neutral-500 font-bold truncate">
+                Invoices
+              </div>
               <button
                 type="button"
                 onClick={() => setShowHeaderMenu(true)}
@@ -9173,78 +9174,135 @@ const setDays = (updater) =>
             </div>
           </div>
 
-          <div className="max-w-3xl mx-auto px-4 py-6 pb-24 space-y-6">
-            <SectionCard title="Invoice details">
-              <Field label="Invoice number">
-                <Input type="text" value={invoice.invoiceNumber} onChange={(e) => updateInvoice({ invoiceNumber: e.target.value })} />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Invoice date">
-                  <Input type="date" value={invoice.invoiceDate}
-                    onChange={(e) => {
-                      const d = e.target.value;
-                      updateInvoice({ invoiceDate: d, dueDate: d ? addDays(d, daysFromIssue) : invoice.dueDate });
-                    }} />
-                </Field>
-                <Field label="Due in (days)" hint={invoice.dueDate ? `Due: ${fmtDateShort(invoice.dueDate)}` : ""}>
-                  <Input type="number" min="0" step="1" inputMode="numeric" value={daysFromIssue}
-                    onChange={(e) => {
-                      const days = Math.max(0, Number(e.target.value) || 0);
-                      updateInvoice({ dueDate: addDays(invoice.invoiceDate || todayISO(), days) });
-                    }} />
-                </Field>
-              </div>
-            </SectionCard>
+          <div className="max-w-3xl mx-auto px-4 py-6 pb-24 space-y-3">
+            <div className="flex items-center justify-between gap-3 mb-1 pt-1">
+              <span className="font-mono text-[20px] font-bold tracking-wide text-neutral-100">{invoice.invoiceNumber}</span>
+              <Badge variant={ds.variant}>{ds.label}</Badge>
+            </div>
 
-            <SectionCard title="Job details">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Job">
-                  <Input type="text" value={invoice.jobTitle || ''} onChange={(e) => updateInvoice({ jobTitle: e.target.value })} placeholder="Production title" />
-                </Field>
-                <Field label="Job Ref">
-                  <Input type="text" value={invoice.jobReference || ''} onChange={(e) => updateInvoice({ jobReference: e.target.value })} placeholder="e.g. Vodafone Q3, PO#1234" />
-                </Field>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-1 mb-1">
+              <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Issued</span>
+                <input
+                  type="date"
+                  value={invoice.invoiceDate}
+                  onChange={(e) => { const d = e.target.value; updateInvoice({ invoiceDate: d, dueDate: d ? addDays(d, daysFromIssue) : invoice.dueDate }); }}
+                  className="flex-1 bg-transparent text-[12px] font-mono font-semibold text-neutral-100 focus:outline-none"
+                  style={{ WebkitAppearance: 'none' }}
+                />
               </div>
-              <Field label="Role">
-                <Input type="text" value={invoice.jobRole || ''} onChange={(e) => updateInvoice({ jobRole: e.target.value })} placeholder="e.g. Gaffer, Spark" />
-              </Field>
-            </SectionCard>
+              <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Due</span>
+                <span className="flex-1 text-[12px] font-mono font-semibold text-neutral-100 truncate">
+                  {invoice.dueDate ? fmtDateMed(invoice.dueDate) : '—'}{' '}
+                  <span className="text-neutral-500 font-medium">· {daysFromIssue} days</span>
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={daysFromIssue}
+                  onChange={(e) => { const days = Math.max(0, Number(e.target.value) || 0); updateInvoice({ dueDate: addDays(invoice.invoiceDate || todayISO(), days) }); }}
+                  className="w-14 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-[11px] font-mono text-neutral-100 text-center focus:outline-none focus:border-sky-500"
+                  aria-label="Due in days"
+                />
+              </div>
+              {(invoice.shootDateStart || invoice.shootDateEnd) && (
+                <div className="flex items-baseline gap-3 py-2">
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Shoot</span>
+                  <span className="flex-1 text-[12px] font-mono font-semibold text-neutral-100">
+                    {invoice.shootDateStart ? fmtDateMed(invoice.shootDateStart) : '—'}
+                    <span className="text-neutral-500 mx-1.5">—</span>
+                    {invoice.shootDateEnd ? fmtDateMed(invoice.shootDateEnd) : '—'}
+                  </span>
+                </div>
+              )}
+            </div>
 
-            <SectionCard title="From / To">
-              <div className="space-y-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">From (you)</div>
-                  <div className="text-sm text-neutral-300 space-y-0.5">
-                    {invoice.fromName && <div className="font-semibold">{invoice.fromName}</div>}
-                    {invoice.fromCompanyName && <div>{invoice.fromCompanyName}</div>}
-                    {invoice.fromAddress && <div className="whitespace-pre-line text-neutral-400 text-[12px]">{invoice.fromAddress}</div>}
-                    {invoice.fromEmail && <div className="text-neutral-400 text-[12px]">{invoice.fromEmail}</div>}
-                    {!invoice.fromName && !invoice.fromCompanyName && !invoice.fromAddress && !invoice.fromEmail && (
-                      <div className="text-[11px] text-neutral-600 italic">Add your details in Settings → Invoicing</div>
-                    )}
-                  </div>
-                </div>
-                <div className="border-t border-neutral-800 pt-3">
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">To (client)</div>
-                  <Field label="Client / company name">
-                    <Input type="text" value={invoice.toName} onChange={(e) => updateInvoice({ toName: e.target.value })} placeholder="Production company name" />
-                  </Field>
-                  <Field label="Client address">
-                    <textarea
-                      value={invoice.toAddress}
-                      onChange={(e) => updateInvoice({ toAddress: e.target.value })}
-                      rows={3}
-                      placeholder={"Address line 1\nLine 2\nPostcode"}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
-                      style={{ fontFamily: 'inherit' }}
-                    />
-                  </Field>
-                  <Field label="Client email">
-                    <Input type="email" value={invoice.toEmail} onChange={(e) => updateInvoice({ toEmail: e.target.value })} placeholder="billing@example.com" />
-                  </Field>
-                </div>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-1 mb-1">
+              <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Job</span>
+                <input
+                  type="text"
+                  value={invoice.jobTitle || ''}
+                  onChange={(e) => updateInvoice({ jobTitle: e.target.value })}
+                  placeholder="Production title"
+                  className="flex-1 bg-transparent text-[12px] font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
+                />
               </div>
-            </SectionCard>
+              <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Ref</span>
+                <input
+                  type="text"
+                  value={invoice.jobReference || ''}
+                  onChange={(e) => updateInvoice({ jobReference: e.target.value })}
+                  placeholder="e.g. Vodafone Q3, PO#1234"
+                  className="flex-1 bg-transparent text-[12px] font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
+                />
+              </div>
+              <div className="flex items-baseline gap-3 py-2">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Role</span>
+                <input
+                  type="text"
+                  value={invoice.jobRole || ''}
+                  onChange={(e) => updateInvoice({ jobRole: e.target.value })}
+                  placeholder="e.g. Gaffer, Spark"
+                  className="flex-1 bg-transparent text-[12px] font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold mb-1.5">From</div>
+              {(invoice.fromName || invoice.fromCompanyName || invoice.fromEmail || invoice.fromAddress) ? (
+                <>
+                  {invoice.fromName && <div className="text-[14px] font-bold text-neutral-100">{invoice.fromName}</div>}
+                  {invoice.fromCompanyName && <div className="text-[12px] text-neutral-300">{invoice.fromCompanyName}</div>}
+                  {invoice.fromEmail && <div className="text-[12px] text-neutral-400">{invoice.fromEmail}</div>}
+                  {invoice.fromAddress && <div className="text-[11px] text-neutral-500 whitespace-pre-line mt-0.5">{invoice.fromAddress}</div>}
+                </>
+              ) : (
+                <div className="text-[11px] text-neutral-500 italic">Add your invoicing details in Settings</div>
+              )}
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold mb-1.5">To</div>
+              <input
+                type="text"
+                value={invoice.toName || ''}
+                onChange={(e) => updateInvoice({ toName: e.target.value })}
+                placeholder="Client / company name"
+                className="w-full bg-transparent text-[14px] font-bold text-neutral-100 placeholder-neutral-600 focus:outline-none"
+              />
+              <input
+                type="email"
+                value={invoice.toEmail || ''}
+                onChange={(e) => updateInvoice({ toEmail: e.target.value })}
+                placeholder="billing@example.com"
+                className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
+              />
+              {invoice.toAddress !== '' && invoice.toAddress != null ? (
+                <textarea
+                  value={invoice.toAddress}
+                  onChange={(e) => updateInvoice({ toAddress: e.target.value })}
+                  rows={3}
+                  placeholder={"Address line 1\nLine 2\nPostcode"}
+                  className="w-full bg-transparent text-[11px] text-neutral-500 placeholder-neutral-700 focus:outline-none resize-none mt-1.5 font-mono leading-snug"
+                  style={{ fontFamily: 'inherit' }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => updateInvoice({ toAddress: ' ' })}
+                  className="inline-flex items-center gap-1 mt-2 text-[9px] uppercase tracking-[0.16em] font-bold text-sky-500 hover:text-sky-400 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <IPlus size={9}/> Add billing address
+                </button>
+              )}
+            </div>
 
             <SectionCard title="Line items">
               {invoice.status === "draft" && invoice.linesEdited && (
@@ -9419,6 +9477,21 @@ const setDays = (updater) =>
                   <div className="text-sm font-bold text-neutral-100 truncate">{invoice.invoiceNumber}</div>
                 </div>
                 <div className="px-4 pb-4 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = window.prompt('Invoice number', invoice.invoiceNumber);
+                      if (next && next.trim() && next.trim() !== invoice.invoiceNumber) {
+                        updateInvoice({ invoiceNumber: next.trim() });
+                        showToast('Invoice renamed');
+                      }
+                      setShowHeaderMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    <IPencil size={15}/>Rename invoice
+                  </button>
                   {invoice.status === 'draft' && invoice.linesEdited && (
                     <button
                       type="button"
