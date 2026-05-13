@@ -6588,6 +6588,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   const hasOT = dayBuckets.ot > 0;
                   const hasPen = dayBuckets.pen > 0;
                   const isBH = !!getBankHolidayName(d.date);
+                  const dow = dayOfWeek(d.date);
+                  const isWeekendChip = !isBH && (dow === 6 || dow === 0);
+                  const weekendChipLabel = dow === 6 ? 'SAT' : 'SUN';
+                  const weekendChipClasses = dow === 6
+                    ? 'bg-tm-warn/10 text-tm-warn border-tm-warn/25'
+                    : 'bg-tm-pen/10 text-tm-pen border-tm-pen/25';
 
                   const isExpanded = expandedDays.has(d.id);
                   return (
@@ -6606,7 +6612,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <div className="flex gap-1 flex-shrink-0">
                           {hasOT && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-warn/10 text-tm-warn border border-tm-warn/25 rounded px-1 py-0.5">OT</span>}
                           {hasPen && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-pen/10 text-tm-pen border border-tm-pen/25 rounded px-1 py-0.5">PEN</span>}
-                          {isBH && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-good/10 text-tm-good border border-tm-good/25 rounded px-1 py-0.5">BH</span>}
+                          {isBH && <span className="text-[8px] tracking-wider font-bold uppercase bg-tm-pen/10 text-tm-pen border border-tm-pen/25 rounded px-1 py-0.5">BH</span>}
+                          {isWeekendChip && <span className={`text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 ${weekendChipClasses}`}>{weekendChipLabel}</span>}
                         </div>
                         <span className="text-[13px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(calc.total)}</span>
                         <IChevronDown size={12} strokeWidth={2.5} className={`text-neutral-500 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
