@@ -1236,28 +1236,59 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return migrated;
     }
 
-    const migrateProduction = (p) => ({
-      ...p,
-      crew: (p.crew || []).map(migrateCrew),
-      bestBoyMode: p.bestBoyMode ?? ((p.crew?.length ?? 0) > 1),
-      viewMode: p.viewMode ?? 'grid',
-      isElevenHourDay: p.isElevenHourDay ?? false,
-      jobReference: p.jobReference ?? "",
-      invoicingEmail: p.invoicingEmail ?? "",
-      favourableRounding: p.favourableRounding ?? false,
-      apaRounding: p.apaRounding ?? false,
-      startDate: p.startDate ?? todayISO(),
-      weekStarts: p.weekStarts ?? [],
-      gridDates: p.gridDates ?? [],
-      cancellationData: p.cancellationData ?? null,
-      toAddress: p.toAddress ?? "",
-      invoices: (p.invoices || []).map(inv => migrateInvoice(inv, p)),
-      days: (p.days || []).map(day => {
+    const migrateProduction = (p) => {
+      const days = (p.days || []).map(day => {
         if (day.kitMoneyEnabled !== undefined) return day;
         const crewMember = (p.crew || []).find(c => c.id === day.crewId);
         return { ...day, kitMoneyEnabled: crewMember?.kitMoneyEnabled ?? false, kitMoneyAmount: crewMember?.kitMoneyAmount ?? 0 };
-      }),
-    });
+      });
+
+      // dayDefaults backfill: derive from existing crew records per date. Idempotent.
+      const backfilledDefaults = { ...(p.dayDefaults || {}) };
+      const uniqueDates = [...new Set(days.map(d => d.date))];
+      for (const date of uniqueDates) {
+        if (backfilledDefaults[date]) continue;
+        const recordsForDate = days.filter(d => d.date === date);
+        if (recordsForDate.length === 0) continue;
+        const mostCommon = (field) => {
+          const counts = new Map();
+          for (const r of recordsForDate) {
+            const v = r[field];
+            if (v == null || v === '') continue;
+            counts.set(v, (counts.get(v) ?? 0) + 1);
+          }
+          if (counts.size === 0) return recordsForDate[0][field] ?? null;
+          return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+        };
+        backfilledDefaults[date] = {
+          callTime:          mostCommon('callTime') ?? DEFAULT_PRODUCTION_DAY.callTime,
+          wrapTime:          mostCommon('wrapTime') ?? DEFAULT_PRODUCTION_DAY.wrapTime,
+          lunchStartTime:    mostCommon('lunchStartTime') ?? DEFAULT_PRODUCTION_DAY.lunchStartTime,
+          lunchDurationMins: mostCommon('lunchDurationMins') ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins,
+          dayType:           mostCommon('dayType') ?? DEFAULT_PRODUCTION_DAY.dayType,
+        };
+      }
+
+      return {
+        ...p,
+        crew: (p.crew || []).map(migrateCrew),
+        bestBoyMode: p.bestBoyMode ?? ((p.crew?.length ?? 0) > 1),
+        viewMode: p.viewMode ?? 'grid',
+        dayDefaults: backfilledDefaults,
+        isElevenHourDay: p.isElevenHourDay ?? false,
+        jobReference: p.jobReference ?? "",
+        invoicingEmail: p.invoicingEmail ?? "",
+        favourableRounding: p.favourableRounding ?? false,
+        apaRounding: p.apaRounding ?? false,
+        startDate: p.startDate ?? todayISO(),
+        weekStarts: p.weekStarts ?? [],
+        gridDates: p.gridDates ?? [],
+        cancellationData: p.cancellationData ?? null,
+        toAddress: p.toAddress ?? "",
+        invoices: (p.invoices || []).map(inv => migrateInvoice(inv, p)),
+        days,
+      };
+    };
 
     /* ─── Migration runner ─── */
 
@@ -1599,6 +1630,73 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : computeAPArate(effectiveCrew.bdr, Number(effectiveCrew.otCoef) || 1, apaRounding);
       const tocHours = ceilHalf(11 - rest);
       return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
+    }
+
+    function getDayDefaults(production, date) {
+      return production.dayDefaults?.[date] ?? null;
+    }
+
+    function addMinutesToTime(hhmm, mins) {
+      const start = parseHHMM(hhmm);
+      if (start === null) return '';
+      const total = Math.round(start * 60) + Number(mins || 0);
+      const h = Math.floor((total / 60) % 24);
+      const m = ((total % 60) + 60) % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    function setDayDefault(production, date, field, value) {
+      const existingDefaults = production.dayDefaults?.[date] ?? {
+        callTime: DEFAULT_PRODUCTION_DAY.callTime,
+        wrapTime: DEFAULT_PRODUCTION_DAY.wrapTime,
+        lunchStartTime: DEFAULT_PRODUCTION_DAY.lunchStartTime,
+        lunchDurationMins: DEFAULT_PRODUCTION_DAY.lunchDurationMins,
+        dayType: DEFAULT_PRODUCTION_DAY.dayType,
+      };
+      const newDefaults = { ...existingDefaults, [field]: value };
+
+      let newDays = production.days || [];
+      const userCrewId = production.crew?.[0]?.id;
+      if (userCrewId) {
+        const hasUserRecord = newDays.some(d => d.date === date && d.crewId === userCrewId);
+        if (!hasUserRecord) {
+          const seed = {
+            ...DEFAULT_PRODUCTION_DAY,
+            ...(production.defaultDay || {}),
+            ...makeBlankDay(userCrewId),
+            date,
+            callTime: newDefaults.callTime,
+            wrapTime: newDefaults.wrapTime,
+            lunchStartTime: newDefaults.lunchStartTime,
+            lunchDurationMins: newDefaults.lunchDurationMins,
+            dayType: newDefaults.dayType,
+          };
+          newDays = [...newDays, seed];
+        }
+      }
+
+      return {
+        ...production,
+        dayDefaults: { ...(production.dayDefaults || {}), [date]: newDefaults },
+        days: newDays,
+      };
+    }
+
+    function applyDayDefaultsToAllCrew(production, date) {
+      const defaults = getDayDefaults(production, date);
+      if (!defaults) return production;
+      const newDays = (production.days || []).map(d => {
+        if (d.date !== date) return d;
+        return {
+          ...d,
+          callTime: defaults.callTime,
+          wrapTime: defaults.wrapTime,
+          lunchStartTime: defaults.lunchStartTime,
+          lunchDurationMins: defaults.lunchDurationMins,
+          dayType: defaults.dayType,
+        };
+      });
+      return { ...production, days: newDays };
     }
 
     function calcForDisplay(production, day, crewMember, prevDay = null) {
@@ -5973,9 +6071,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function BestBoyMobileDayView({ production, setProduction, userPrefs }) {
+    function BestBoyMobileDayView({ production, setProduction, userPrefs, onPushUndo }) {
       const crew = production.crew || [];
       const days = production.days || [];
+      const [showLunchSheet, setShowLunchSheet] = useState(false);
 
       const computeInitialDate = () => {
         const today = todayISO();
@@ -6048,23 +6147,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const grandTotal = activeCrew.reduce((s, c) => s + c.dayTotal, 0);
       const activeCrewCount = activeCrew.length;
 
-      // Dept defaults: shortcut — use the first active crew member's times on this date.
-      // TODO: V4-3+ — formalize as production-level defaults with per-person overrides.
+      const dayDefaults = getDayDefaults(production, currentDate);
       const firstActiveDay = activeCrew[0]
         ? days.find(d => d.date === currentDate && d.crewId === activeCrew[0].member.id)
         : null;
-      const deptCall = firstActiveDay?.callTime || '—';
-      const deptWrap = firstActiveDay?.wrapTime || '—';
-      const deptLunchStart = firstActiveDay?.lunchStartTime || '—';
-      const deptLunchMins = firstActiveDay?.lunchDurationMins ?? null;
-      const deptLunchEnd = (() => {
-        const start = parseHHMM(deptLunchStart);
-        if (start === null || deptLunchMins === null) return '—';
-        const endMins = start * 60 + deptLunchMins;
-        const h = Math.floor(endMins / 60) % 24;
-        const m = endMins % 60;
-        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-      })();
+      const deptCall = dayDefaults?.callTime ?? firstActiveDay?.callTime ?? '';
+      const deptWrap = dayDefaults?.wrapTime ?? firstActiveDay?.wrapTime ?? '';
+      const deptLunchStart = dayDefaults?.lunchStartTime ?? firstActiveDay?.lunchStartTime ?? '';
+      const deptLunchMins = dayDefaults?.lunchDurationMins ?? firstActiveDay?.lunchDurationMins ?? null;
+      const deptLunchEnd = deptLunchStart && deptLunchMins != null
+        ? addMinutesToTime(deptLunchStart, deptLunchMins)
+        : '';
+
+      const hasUnpropagatedDefaults = useMemo(() => {
+        const defs = getDayDefaults(production, currentDate);
+        if (!defs) return false;
+        const records = (production.days || []).filter(d => d.date === currentDate);
+        if (records.length === 0) return false;
+        return records.some(r =>
+          r.callTime !== defs.callTime ||
+          r.wrapTime !== defs.wrapTime ||
+          r.lunchStartTime !== defs.lunchStartTime ||
+          r.lunchDurationMins !== defs.lunchDurationMins ||
+          r.dayType !== defs.dayType
+        );
+      }, [production.dayDefaults, production.days, currentDate]);
 
       const currentIdx = sortedDates.indexOf(currentDate);
       const dayNumber = currentIdx >= 0 ? currentIdx + 1 : null;
@@ -6073,12 +6180,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const hasNext = currentIdx >= 0 && currentIdx < sortedDates.length - 1;
 
       const recordsForDate = days.filter(d => d.date === currentDate);
-      const dayType = recordsForDate[0]?.dayType || 'Shoot';
+      const dayType = getDayDefaults(production, currentDate)?.dayType
+                   ?? recordsForDate[0]?.dayType
+                   ?? 'Shoot';
       const setDayTypeForDate = (newType) => {
-        setProduction(p => ({
-          ...p,
-          days: p.days.map(d => d.date === currentDate ? { ...d, dayType: newType } : d)
-        }));
+        setProduction(p => setDayDefault(p, currentDate, 'dayType', newType));
       };
 
       const formattedDate = currentDate
@@ -6154,28 +6260,82 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           </div>
 
           <div className="px-4 grid grid-cols-2 gap-2 mb-2">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+            <div className="relative bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
               <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">CALL</div>
-              <div className="font-mono text-[26px] font-bold text-neutral-100 tabular-nums leading-none mt-1.5">{deptCall}</div>
+              <div className="font-mono text-[26px] font-bold text-neutral-100 tabular-nums leading-none mt-1.5">
+                {deptCall || <span className="text-neutral-500 text-base font-sans font-medium">Tap to set</span>}
+              </div>
+              <input
+                type="time"
+                value={deptCall || ''}
+                onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'callTime', e.target.value))}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                aria-label="Edit call time"
+                style={{ WebkitAppearance: 'none' }}
+              />
             </div>
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+            <div className="relative bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
               <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">WRAP</div>
-              <div className="font-mono text-[26px] font-bold text-neutral-100 tabular-nums leading-none mt-1.5">{deptWrap}</div>
+              <div className="font-mono text-[26px] font-bold text-neutral-100 tabular-nums leading-none mt-1.5">
+                {deptWrap || <span className="text-neutral-500 text-base font-sans font-medium">Tap to set</span>}
+              </div>
+              <input
+                type="time"
+                value={deptWrap || ''}
+                onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'wrapTime', e.target.value))}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                aria-label="Edit wrap time"
+                style={{ WebkitAppearance: 'none' }}
+              />
             </div>
           </div>
 
           <div className="px-4 mb-2">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowLunchSheet(true)}
+              className="w-full bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-3.5 py-3 flex items-center gap-3 text-left transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
               <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">LUNCH</div>
-              <div className="font-mono text-sm text-neutral-100 tabular-nums">{deptLunchStart} → {deptLunchEnd}</div>
-              {deptLunchMins !== null && <div className="text-[11px] text-neutral-500 font-mono ml-auto">{deptLunchMins} mins</div>}
-            </div>
+              {deptLunchStart ? (
+                <>
+                  <div className="font-mono text-sm text-neutral-100 tabular-nums">{deptLunchStart} → {deptLunchEnd || '—'}</div>
+                  {deptLunchMins !== null && <div className="text-[11px] text-neutral-500 font-mono ml-auto">{deptLunchMins} mins</div>}
+                </>
+              ) : (
+                <span className="text-neutral-500 text-sm">Tap to set</span>
+              )}
+            </button>
           </div>
 
-          <div className="px-4 -mt-0.5 mb-4 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgba(14,165,233,0.6)' }}/>
-            APPLIES TO ALL UNLESS OVERRIDDEN BELOW
-          </div>
+          {hasUnpropagatedDefaults ? (
+            <div className="px-4 -mt-1 mb-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof onPushUndo === 'function') onPushUndo('Apply defaults');
+                  setProduction(p => applyDayDefaultsToAllCrew(p, currentDate));
+                }}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-sky-500/40 bg-sky-500/[0.06] hover:bg-sky-500/[0.1] transition-colors flex items-center justify-between gap-3 text-left"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgba(14,165,233,0.6)' }}/>
+                  <span className="text-[11px] uppercase tracking-[0.14em] font-bold text-sky-400 truncate">Defaults changed</span>
+                </div>
+                <span className="text-[11px] uppercase tracking-wider font-bold text-sky-400 flex-shrink-0 flex items-center gap-1">
+                  Apply to {recordsForDate.length} crew
+                  <span>→</span>
+                </span>
+              </button>
+            </div>
+          ) : (
+            <div className="px-4 -mt-0.5 mb-4 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgba(14,165,233,0.6)' }}/>
+              APPLIES TO ALL UNLESS OVERRIDDEN BELOW
+            </div>
+          )}
 
           <div className="px-4 mb-2.5 flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CREW</span>
@@ -6240,6 +6400,58 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <IPlus size={13}/>Add to today's crew
             </button>
           </div>
+
+          {showLunchSheet && (() => {
+            const defs = getDayDefaults(production, currentDate);
+            const startVal = defs?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime;
+            const durVal = defs?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins;
+            return (
+              <div
+                className="fixed inset-0 z-50 flex items-end"
+                onClick={() => setShowLunchSheet(false)}
+                style={{ background: 'rgba(0,0,0,0.5)' }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5"
+                  style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+                >
+                  <div className="text-sm font-bold text-neutral-100 mb-3">Lunch</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Start</div>
+                      <input
+                        type="time"
+                        value={startVal}
+                        onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'lunchStartTime', e.target.value))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                        style={{ WebkitAppearance: 'none' }}
+                      />
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Duration (mins)</div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="15"
+                        value={durVal}
+                        onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'lunchDurationMins', Number(e.target.value) || 0))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowLunchSheet(false)}
+                    className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       );
     }
@@ -8219,7 +8431,7 @@ const setDays = (updater) =>
             )}
             {tab === "days" && (
               production.viewMode === 'mobile' && production.bestBoyMode
-                ? <BestBoyMobileDayView production={production} setProduction={setProduction} userPrefs={userPrefs} />
+                ? <BestBoyMobileDayView production={production} setProduction={setProduction} userPrefs={userPrefs} onPushUndo={pushUndo} />
                 : <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />
             )}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
@@ -11613,6 +11825,7 @@ const confirmDelete = (p) => setConfirmOpts({
           defaultDay: DEFAULT_PRODUCTION_DAY,
           bestBoyMode,
           viewMode: 'mobile',
+          dayDefaults: {},
           isElevenHourDay: false,
           favourableRounding: userPrefs.favourableRounding ?? false,
           apaRounding: userPrefs.apaRounding ?? false,
