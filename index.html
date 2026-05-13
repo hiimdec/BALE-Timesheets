@@ -3709,14 +3709,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const data = production.cancellationData;
 
-      const defaultColumns = useMemo(() => {
-        const start = production.startDate || todayISO();
-        return Array.from({ length: 7 }, (_, i) => {
-          const d = new Date(start + "T12:00:00");
-          d.setDate(d.getDate() + i);
-          return { id: `default-${i}`, date: d.toISOString().slice(0, 10), dayType: "Shoot" };
-        });
-      }, [production.startDate]);
+      const defaultColumns = useMemo(() => [], []);
 
       const noticeDate = data?.noticeDate || "";
       const columns = data ? (data.columns || []) : defaultColumns;
@@ -3827,7 +3820,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="flex-1 overflow-auto px-5 py-4 min-h-0">
               <div className="mb-4 max-w-xs">
                 <Field label="Notice given on">
-                  <Input type="date" value={noticeDate} onChange={(e) => setNotice(e.target.value)} />
+                  <div className="relative w-full">
+                    <div className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm font-mono text-neutral-100 min-h-[36px] flex items-center">
+                      {noticeDate ? fmtDateMed(noticeDate) : <span className="text-neutral-500">Tap to set</span>}
+                    </div>
+                    <input
+                      type="date"
+                      value={noticeDate}
+                      onChange={(e) => setNotice(e.target.value)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      aria-label="Notice given on"
+                      style={{ WebkitAppearance: 'none' }}
+                    />
+                  </div>
                 </Field>
               </div>
 
@@ -3881,13 +3886,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">Days</span>
                         <span className="flex-1 h-px bg-neutral-800/60"/>
-                        <button
-                          type="button"
-                          onClick={addColumn}
-                          className="text-[10px] uppercase tracking-wider text-sky-500 hover:text-sky-300 font-bold"
-                          aria-label="Add a day">
-                          + Day
-                        </button>
                       </div>
 
                       <div className="space-y-2">
@@ -3935,6 +3933,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         })}
                       </div>
 
+                      <button
+                        type="button"
+                        onClick={addColumn}
+                        className="w-full px-4 py-3.5 rounded-xl border border-dashed border-neutral-700 hover:border-sky-500 hover:bg-sky-500/[0.03] hover:text-sky-400 text-neutral-500 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors flex items-center justify-center gap-2"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                      >
+                        <IPlus size={13}/>Add day
+                      </button>
+
                       {isBlock && noticeDate && dayInfo.some(d => d.agreedFee > 0) && (
                         <div className="text-[10px] text-neutral-400 leading-relaxed bg-sky-500/[0.04] border border-dashed border-sky-500/25 rounded-lg px-3 py-2">
                           <span className="text-sky-500 font-bold uppercase tracking-wider">Block</span> — 3 or fewer planned days, all calculated at the earliest day's percentage.
@@ -3968,9 +3975,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           </th>
                         ))}
                         <th className="px-3 py-2 border-r border-b border-l border-neutral-700 bg-neutral-950 text-right text-[10px] uppercase tracking-wider text-neutral-500 font-bold whitespace-nowrap">Total</th>
-                        <th className="px-2 py-1.5 border-b border-neutral-700 bg-neutral-950 align-middle">
-                          <button onClick={addColumn} className="px-2 py-1 text-[10px] uppercase tracking-wider text-sky-500 hover:text-sky-300 font-bold whitespace-nowrap" title="Add a day column" aria-label="Add a day column">+ Day</button>
-                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4047,7 +4051,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <td className="px-3 py-2 border-r border-l border-neutral-700 bg-neutral-950 text-right align-middle whitespace-nowrap">
                             <span className="text-[11px] font-mono text-tm-warn font-bold">{fmtGBP(rowTotals[ci])}</span>
                           </td>
-                          <td className="bg-neutral-950" />
                         </tr>
                       ))}
                       <tr className="border-t-2 border-neutral-700 bg-neutral-950">
@@ -4057,11 +4060,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <td key={i} className="px-2 py-2 text-right text-[11px] font-mono text-neutral-200 border-r border-neutral-700 font-bold">{t > 0 ? fmtGBP(t) : "—"}</td>
                         ))}
                         <td className="px-3 py-2 text-right text-[12px] font-mono text-tm-warn font-bold whitespace-nowrap border-l border-neutral-700">{fmtGBP(grandTotal)}</td>
-                        <td className="bg-neutral-950" />
                       </tr>
                     </tbody>
                   </table>
                 </div>
+              )}
+
+              {crew.length >= 2 && (
+                <button
+                  type="button"
+                  onClick={addColumn}
+                  className="w-full mt-3 px-4 py-3.5 rounded-xl border border-dashed border-neutral-700 hover:border-sky-500 hover:bg-sky-500/[0.03] hover:text-sky-400 text-neutral-500 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors flex items-center justify-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <IPlus size={13}/>Add day
+                </button>
               )}
 
               {setCrew && (
@@ -6324,7 +6337,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   onChange={(e) => setProduction(p => ({ ...p, toAddress: e.target.value }))}
                   placeholder={"e.g.\n5 Margaret Street\nLondon W1W 8RG"}
                   rows={3}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
                   style={{ fontFamily: 'inherit' }}
                 />
               </Field>
@@ -7870,7 +7883,7 @@ const setDays = (updater) =>
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey || true) && canCreate) handleCreate(); }}
-                  className="w-full bg-neutral-800 border border-neutral-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-3 py-3 text-base font-mono outline-none rounded-lg"
+                  className="w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-3 py-3 text-base font-mono outline-none rounded-lg"
                 />
               </Field>
             </div>
@@ -8334,7 +8347,7 @@ const setDays = (updater) =>
                   onChange={(e) => set({ fromAddress: e.target.value })}
                   rows={3}
                   placeholder={"e.g.\n12 Crew Lane\nLondon NW1 8AB"}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
                   style={{ fontFamily: 'inherit' }}
                 />
               </Field>
@@ -8482,21 +8495,20 @@ const setDays = (updater) =>
             </Disclosure>
 
             <Disclosure label="Display" summary={displaySummary}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Pill comparison</div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Shown under the £ amount in the day pill.</div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Pill comparison</div>
+                <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Shown under the £ amount in the day pill.</div>
+                <div className="mt-2.5">
+                  <Select
+                    value={userPrefs.comparisonUnit ?? COMPARISON_SURFACE[0]}
+                    onChange={(e) => set({ comparisonUnit: e.target.value })}
+                  >
+                    {COMPARISON_SURFACE.map(label => (
+                      <option key={label} value={label}>{label}</option>
+                    ))}
+                    <option value="off">Off</option>
+                  </Select>
                 </div>
-                <Select
-                  value={userPrefs.comparisonUnit ?? COMPARISON_SURFACE[0]}
-                  onChange={(e) => set({ comparisonUnit: e.target.value })}
-                  className="!w-auto"
-                >
-                  {COMPARISON_SURFACE.map(label => (
-                    <option key={label} value={label}>{label}</option>
-                  ))}
-                  <option value="off">Off</option>
-                </Select>
               </div>
             </Disclosure>
 
@@ -9332,7 +9344,7 @@ const setDays = (updater) =>
         return (
           <div key={item.id} className="flex items-start gap-2 py-2 border-b border-neutral-800 last:border-0">
             <div className="flex-1 min-w-0">
-              <div className={`text-sm ${isWaived ? "line-through text-neutral-500" : "text-neutral-200"}`}>{label}</div>
+              <div className={`text-sm font-semibold ${isWaived ? "line-through text-neutral-500" : "text-neutral-100"}`}>{label}</div>
               {item.detail && <div className="text-[11px] text-neutral-500 truncate">{item.detail}</div>}
               {item.rate !== null && (
                 <div className="text-[10px] text-neutral-600 mt-0.5">
@@ -9530,7 +9542,7 @@ const setDays = (updater) =>
                 {expenseLines.length > 0 && !showIndExp && (
                   <div className="flex items-start gap-2 py-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-neutral-200">Expenses</div>
+                      <div className="text-sm font-semibold text-neutral-100">Expenses</div>
                       <div className="text-[11px] text-neutral-500">{expenseLines.length} item{expenseLines.length !== 1 ? "s" : ""}</div>
                     </div>
                     <div className="text-sm font-mono font-bold text-neutral-100 flex-shrink-0 pt-0.5">
