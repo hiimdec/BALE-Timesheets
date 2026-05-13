@@ -9019,7 +9019,7 @@ const setDays = (updater) =>
       const [confirmDel, setConfirmDel] = React.useState(false);
       const [confirmRefresh, setConfirmRefresh] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
-      const [showSentPrompt, setShowSentPrompt] = React.useState(false);
+      const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
       const [toastMsg, setToastMsg] = React.useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
@@ -9093,8 +9093,14 @@ const setDays = (updater) =>
       };
 
       const handleEmail = () => {
+        const wasDraft = invoice.status === 'draft';
         openInvoiceMailto(invoice);
-        if (invoice.status === 'draft') setShowSentPrompt(true);
+        if (wasDraft) {
+          // Auto-mark sent. The mailto opens the user's mail client; we optimistically
+          // assume they'll send. If they cancel, the header kebab has "Revert to draft".
+          updateInvoice({ status: 'sent', dateSent: todayISO() });
+          showToast('Email opened — marked as sent');
+        }
       };
 
       const subtotal = invoiceSubtotal(invoice.lineItems);
@@ -9154,9 +9160,16 @@ const setDays = (updater) =>
                 <IArrowLeft size={18}/>
               </button>
               <div className="flex-1 min-w-0 text-sm font-bold truncate">{invoice.invoiceNumber}</div>
-              <Badge variant={ds.variant}>
-                {ds.label}
-              </Badge>
+              <Badge variant={ds.variant}>{ds.label}</Badge>
+              <button
+                type="button"
+                onClick={() => setShowHeaderMenu(true)}
+                className="text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 p-2 rounded-full transition-colors"
+                aria-label="More options"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <IKebab size={16}/>
+              </button>
             </div>
           </div>
 
@@ -9235,13 +9248,8 @@ const setDays = (updater) =>
 
             <SectionCard title="Line items">
               {invoice.status === "draft" && invoice.linesEdited && (
-                <div className="flex items-center justify-between -mt-2 mb-2">
-                  <span className="text-[10px] text-amber-400 uppercase tracking-wide font-bold">Manually edited</span>
-                  <button type="button" onClick={() => setConfirmRefresh(true)}
-                    className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 flex items-center gap-1 transition-all active:scale-95 active:bg-sky-500/30"
-                    style={{ background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}>
-                    <IReset size={10}/> Refresh from shoot
-                  </button>
+                <div className="-mt-2 mb-2">
+                  <span className="text-[10px] text-tm-warn uppercase tracking-wide font-bold">Manually edited</span>
                 </div>
               )}
               <div className="space-y-1">
@@ -9344,30 +9352,131 @@ const setDays = (updater) =>
               </SectionCard>
             )}
 
-            {showSentPrompt && invoice.status === "draft" && (
-              <div className="bg-sky-900/20 border border-sky-700/40 rounded-xl p-3 mb-3 flex items-center justify-between gap-3">
-                <div className="text-sm text-sky-300 flex-1">Did you send the email? Mark as sent to track this invoice.</div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <Btn variant="ghost" size="sm" onClick={() => setShowSentPrompt(false)}>Not yet</Btn>
-                  <Btn variant="primary" size="sm" onClick={() => { updateInvoice({ status: "sent", dateSent: todayISO() }); setShowSentPrompt(false); }}>Mark as sent</Btn>
-                </div>
-              </div>
-            )}
-
-            <div className="border-t border-neutral-800 pt-4 flex flex-wrap gap-2 items-center">
-              <Btn variant="danger" onClick={() => setConfirmDel(true)}><ITrash size={14}/>Delete</Btn>
-              <div className="flex gap-2 ml-auto flex-wrap justify-end">
-                <Btn variant="subtle" onClick={() => setPrintTarget(invoice)}><IDownload size={14}/>PDF</Btn>
-                <Btn variant="subtle" onClick={handleEmail}><IMail size={14}/>Email</Btn>
-                {invoice.status === "draft" && (
-                  <Btn variant="primary" onClick={() => { updateInvoice({ status: "sent" }); showToast("Marked as sent"); }}>Mark as Sent</Btn>
-                )}
-                {invoice.status === "sent" && (
-                  <Btn variant="primary" onClick={() => { updateInvoice({ status: "paid" }); showToast("Marked as paid"); }}>Mark as Paid</Btn>
-                )}
-              </div>
+            <div
+              className="border-t border-neutral-800 pt-4 flex gap-2"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+            >
+              {invoice.status === 'draft' && (
+                <>
+                  <Btn variant="subtle" onClick={() => setPrintTarget(invoice)} className="flex-1 justify-center">
+                    <IFile size={13}/>Preview
+                  </Btn>
+                  <Btn
+                    variant="primary"
+                    onClick={handleEmail}
+                    className="flex-[1.4] justify-center"
+                    style={{ boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                  >
+                    <IMail size={13}/>Send via email
+                  </Btn>
+                </>
+              )}
+              {invoice.status === 'sent' && (
+                <>
+                  <Btn variant="subtle" onClick={() => setPrintTarget(invoice)} className="flex-1 justify-center">
+                    <IDownload size={13}/>PDF
+                  </Btn>
+                  <Btn variant="subtle" onClick={handleEmail} className="flex-1 justify-center">
+                    <IMail size={13}/>Email again
+                  </Btn>
+                  <Btn
+                    variant="primary"
+                    onClick={() => {
+                      updateInvoice({ status: 'paid', datePaid: todayISO() });
+                      showToast('Marked as paid');
+                    }}
+                    className="flex-[1.4] justify-center"
+                  >
+                    <ICheck size={13}/>Mark paid
+                  </Btn>
+                </>
+              )}
+              {invoice.status === 'paid' && (
+                <>
+                  <Btn variant="subtle" onClick={() => setPrintTarget(invoice)} className="flex-1 justify-center">
+                    <IDownload size={13}/>PDF
+                  </Btn>
+                  <Btn variant="subtle" onClick={handleEmail} className="flex-1 justify-center">
+                    <IMail size={13}/>Email
+                  </Btn>
+                </>
+              )}
             </div>
           </div>
+
+          {showHeaderMenu && (
+            <div
+              className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+              style={{ backgroundColor: 'rgba(0,0,0,0.82)', zIndex: 80 }}
+              onClick={() => setShowHeaderMenu(false)}
+            >
+              <div
+                className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
+                style={{ maxWidth: 420 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="px-5 pt-5 pb-3">
+                  <div className="text-sm font-bold text-neutral-100 truncate">{invoice.invoiceNumber}</div>
+                </div>
+                <div className="px-4 pb-4 flex flex-col gap-2">
+                  {invoice.status === 'draft' && invoice.linesEdited && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowHeaderMenu(false); setConfirmRefresh(true); }}
+                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <IReset size={15}/>Refresh from shoot
+                    </button>
+                  )}
+                  {invoice.status === 'sent' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateInvoice({ status: 'draft', dateSent: null });
+                        showToast('Reverted to draft');
+                        setShowHeaderMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <IReset size={15}/>Revert to draft
+                    </button>
+                  )}
+                  {invoice.status === 'paid' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateInvoice({ status: 'sent', datePaid: null });
+                        showToast('Marked as unpaid');
+                        setShowHeaderMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <IReset size={15}/>Mark as unpaid
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setShowHeaderMenu(false); setConfirmDel(true); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    <ITrash size={15}/>Delete invoice
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowHeaderMenu(false)}
+                    className="w-full text-center px-4 py-3 rounded-xl text-sm font-semibold text-neutral-500 hover:text-neutral-300"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {printTarget && <InvoicePrintView invoice={printTarget} userPrefs={userPrefs} />}
 
