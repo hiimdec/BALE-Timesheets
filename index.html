@@ -1204,7 +1204,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function migrateCrew(c) {
       if (c.role === "Spark") c = { ...c, role: "Lighting Technician" };
-      return { isDriver: false, ...c };
+      return { isDriver: false, ...c, email: c.email ?? '' };
     }
 
     function userCrewIdsInProduction(production, userPrefs) {
@@ -3546,7 +3546,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed, onPushUndo }) {
       const [editing, setEditing] = useState(null);
-      const blank = { id: "", name: "", role: "Lighting Technician", bdr: ROLE_DEFAULTS["Lighting Technician"].bdr, otCoef: ROLE_DEFAULTS["Lighting Technician"].otCoef, otRate: ROLE_DEFAULTS["Lighting Technician"].otRate ?? null, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false };
+      const blank = { id: "", name: "", role: "Lighting Technician", bdr: ROLE_DEFAULTS["Lighting Technician"].bdr, otCoef: ROLE_DEFAULTS["Lighting Technician"].otCoef, otRate: ROLE_DEFAULTS["Lighting Technician"].otRate ?? null, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false, email: "" };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
       const dragIdx = useRef(null);
@@ -7417,6 +7417,141 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ CALC BREAKDOWN VIEW ═══════════════════════════ */
 
+    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSend }) {
+      const sortedDates = useMemo(
+        () => [...new Set((days || []).map(d => d.date))].sort(),
+        [days]
+      );
+
+      const crewWithTotals = useMemo(() => {
+        return (crew || []).map(member => {
+          let t = 0;
+          let daysWorked = 0;
+          for (const day of days) {
+            if (day.crewId !== member.id) continue;
+            daysWorked += 1;
+            const prev = findPrevDay(days, day);
+            t += calcForDisplay(production, day, member, prev).total;
+          }
+          return { member, total: t, daysWorked, isMe: member.id === (crew[0]?.id) };
+        });
+      }, [production, days, crew]);
+
+      const sortedCrew = useMemo(() => {
+        const me = crewWithTotals.filter(c => c.isMe);
+        const rest = crewWithTotals.filter(c => !c.isMe).sort((a, b) => b.total - a.total);
+        return [...me, ...rest];
+      }, [crewWithTotals]);
+
+      const daysWithTotals = useMemo(() => {
+        return sortedDates.map((date, idx) => {
+          let t = 0;
+          for (const day of days.filter(d => d.date === date)) {
+            const member = crew.find(c => c.id === day.crewId);
+            if (!member) continue;
+            const prev = findPrevDay(days, day);
+            t += calcForDisplay(production, day, member, prev).total;
+          }
+          return { date, dayNumber: idx + 1, total: t };
+        });
+      }, [production, days, crew, sortedDates]);
+
+      return (
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 96px)' }}>
+          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
+              <button onClick={onClose} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Close production overview">
+                <span className="text-neutral-600">‹</span>{(production.title || 'PRODUCTION').toUpperCase()}
+              </button>
+              <div className="text-[20px] font-extrabold tracking-tight text-neutral-100">PRODUCTION TOTAL</div>
+            </div>
+          </div>
+
+          <div className="max-w-6xl mx-auto px-4 py-4">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5 mb-4">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-1.5">
+                {sortedDates.length}-DAY SHOOT · GROSS
+              </div>
+              <div className="font-mono text-[42px] font-bold leading-none text-neutral-100 tabular-nums tracking-tight">
+                {fmtGBP(total)}
+              </div>
+              {/* TODO: V4-4-polish — basic/OT/pen breakdown bar */}
+            </div>
+
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">BY CREW</span>
+              <span className="flex-1 h-px bg-neutral-800/60"/>
+              <span className="text-[10px] font-mono text-neutral-500 font-bold">{crew.length}</span>
+            </div>
+
+            {sortedCrew.map(({ member, total: memberTotal, daysWorked, isMe }) => (
+              <div
+                key={member.id}
+                className={`border rounded-xl px-3.5 py-3 mb-1.5 flex items-center gap-3 ${
+                  isMe ? 'border-sky-500/25 bg-sky-500/[0.03]' : 'border-neutral-800 bg-neutral-900'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px] flex-shrink-0 ${
+                  isMe ? 'bg-sky-500/15 text-sky-400' : 'bg-tm-card-2 text-neutral-400'
+                }`}>
+                  {((member.name || '?').trim()[0] || '?').toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-neutral-100 leading-tight truncate">
+                    {member.name || 'Unnamed'}
+                    {isMe && <span className="ml-1.5 text-[9px] font-semibold text-neutral-500 lowercase">(you)</span>}
+                  </div>
+                  <div className="text-[11px] text-neutral-400 mt-0.5 font-mono">
+                    {daysWorked} {daysWorked === 1 ? 'day' : 'days'} · {member.role || '—'}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(memberTotal)}</div>
+                </div>
+              </div>
+            ))}
+
+            <div className="flex items-center gap-2 mt-6 mb-3">
+              <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">BY DAY</span>
+              <span className="flex-1 h-px bg-neutral-800/60"/>
+              <span className="text-[10px] font-mono text-neutral-500 font-bold">{daysWithTotals.length}</span>
+            </div>
+
+            {daysWithTotals.length > 0 ? (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl divide-y divide-neutral-800">
+                {daysWithTotals.map(({ date, dayNumber, total: dayTotal }) => {
+                  const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                  return (
+                    <div key={date} className="px-3.5 py-2.5 flex items-center justify-between gap-3">
+                      <span className="text-[12px] text-neutral-300 font-mono">D{dayNumber} · {formattedDate}</span>
+                      <span className="font-mono text-[13px] font-bold text-neutral-100 tabular-nums">{fmtGBP(dayTotal)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="bg-neutral-900 border border-dashed border-neutral-700 rounded-xl px-3.5 py-4 text-center text-[12px] text-neutral-500">
+                No days logged yet.
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onOpenSend?.()}
+            className="fixed left-1/2 -translate-x-1/2 z-20 bg-sky-500 hover:bg-sky-400 text-black text-[12px] font-bold uppercase tracking-wider py-2.5 px-6 rounded-full transition-colors flex items-center gap-2"
+            style={{
+              boxShadow: '0 8px 24px rgba(14,165,233,0.4)',
+              WebkitTapHighlightColor: 'transparent',
+              bottom: 'calc(env(safe-area-inset-bottom) + 24px)',
+            }}
+          >
+            <IMail size={14}/>Send Timesheets
+          </button>
+        </div>
+      );
+    }
+
     function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay, onGenerateInvoice }) {
       const sorted = useMemo(() => [...days].sort((a, b) => {
         const dc = a.date.localeCompare(b.date);
@@ -8619,13 +8754,24 @@ const setDays = (updater) =>
           )}
 
           {showCalcView && (
-            <CalcBreakdownView
-              production={production}
-              days={days}
-              crew={crew}
-              total={totalShoot}
-              onClose={() => setShowCalcView(false)}
-            />
+            production.viewMode === 'mobile' && production.bestBoyMode ? (
+              <MultiCrewOverviewView
+                production={production}
+                days={days}
+                crew={crew}
+                total={totalShoot}
+                onClose={() => setShowCalcView(false)}
+                onOpenSend={() => showToast('Send Timesheets sheet coming in V4-4b')}
+              />
+            ) : (
+              <CalcBreakdownView
+                production={production}
+                days={days}
+                crew={crew}
+                total={totalShoot}
+                onClose={() => setShowCalcView(false)}
+              />
+            )
           )}
 
           {drilldownCrewMember ? null : (production.viewMode === 'mobile' && production.bestBoyMode) ? (
@@ -12126,6 +12272,7 @@ const confirmDelete = (p) => setConfirmOpts({
           kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
           kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
           isDriver: false,
+          email: '',
         }];
         const p = {
           id: uid(),
