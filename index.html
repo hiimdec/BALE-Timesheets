@@ -28,6 +28,7 @@
             'tm-warn': '#ff8a3d',    // warm orange — warnings, OT segment
             'tm-pen':  '#f43f5e',    // hot pink-red — penalties
             'tm-good': '#4ade80',    // vibrant green — kit money, "ok" states
+            'tm-card-2': '#1f1f1f',  // one step lighter than card — for chips/pills that need to lift
           }
         }
       }
@@ -46,6 +47,7 @@
       --tm-good: #4ade80;
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
       --tm-pill-ink: #15171a;
+      --tm-card-2: #1f1f1f;
       --pill-paper: #e6e9ed;
       --pill-ink: #15171a;
     }
@@ -9507,7 +9509,7 @@ const setDays = (updater) =>
                     <IDownload size={13}/>PDF
                   </Btn>
                   <Btn variant="subtle" onClick={handleEmail} className="flex-1 justify-center">
-                    <IMail size={13}/>Email again
+                    <IMail size={13}/>Email
                   </Btn>
                   <Btn
                     variant="primary"
@@ -9753,7 +9755,7 @@ const setDays = (updater) =>
                     const active = filterStatus === k;
                     return (
                       <button key={k} onClick={() => setFilterStatus(k)}
-                        className={`inline-flex items-baseline gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider whitespace-nowrap border transition-colors ${active ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-neutral-900 border-neutral-800 text-neutral-500'}`}
+                        className={`inline-flex items-baseline gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider whitespace-nowrap border transition-colors ${active ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-tm-card-2 border-neutral-700 text-neutral-400'}`}
                         style={{ WebkitTapHighlightColor: 'transparent' }}>
                         {label} <span className="font-mono font-medium opacity-70">{n}</span>
                       </button>
