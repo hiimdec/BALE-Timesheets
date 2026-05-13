@@ -3839,6 +3839,115 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="bg-neutral-900 border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500 rounded-xl">
                   Add a crew member below to begin.
                 </div>
+              ) : crew.length === 1 ? (
+                (() => {
+                  const { member, dayInfo, cells, isBlock } = crewCalcs[0];
+                  const memberRowTotal = rowTotals[0];
+                  const setSoloBDR = (val) => setCrew && setCrew(prev => prev.map(c => c.id === member.id ? { ...c, bdr: Number(val) || 0 } : c));
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] font-bold">
+                        <span className="text-neutral-300">{member.name}</span>
+                        {member.isDefaultUser && <span className="text-neutral-600 normal-case tracking-normal text-[10px]">(you)</span>}
+                        <span className="text-neutral-700">·</span>
+                        <span className="text-sky-500">{member.role}</span>
+                      </div>
+
+                      {setCrew && member.isDefaultUser && (
+                        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+                          <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Your day rate (BDR)</div>
+                          {unlockedRowIds.has(member.id) ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number" min="0" step="0.01"
+                                value={member.bdr}
+                                onChange={(e) => setSoloBDR(e.target.value)}
+                              />
+                              <Btn variant="ghost" size="sm" onClick={() => {
+                                setSoloBDR(Number(userPrefs?.defaultBDR) || 0);
+                                setUnlockedRowIds(s => { const n = new Set(s); n.delete(member.id); return n; });
+                              }}>Reset</Btn>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-base font-mono text-neutral-200 flex-1">{fmtGBP(member.bdr)}</span>
+                              <Btn variant="ghost" size="sm" onClick={() => setUnlockedRowIds(s => new Set(s).add(member.id))}>Custom</Btn>
+                            </div>
+                          )}
+                          <div className="text-[10px] text-neutral-500 mt-1.5 leading-tight">Used as the default rate for each day below — you can override per day.</div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">Days</span>
+                        <span className="flex-1 h-px bg-neutral-800/60"/>
+                        <button
+                          type="button"
+                          onClick={addColumn}
+                          className="text-[10px] uppercase tracking-wider text-sky-500 hover:text-sky-300 font-bold"
+                          aria-label="Add a day">
+                          + Day
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {dayInfo.map((d, i) => {
+                          const pctUsed = isBlock
+                            ? cancellationPercent(noticeDate, [...dayInfo].filter(x => x.agreedFee > 0).sort((a, b) => a.col.date.localeCompare(b.col.date))[0]?.col.date || d.col.date)
+                            : d.pct;
+                          return (
+                            <div key={d.col.id} className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="text-[10px] uppercase tracking-wider text-sky-500 font-bold">Day {i + 1}</div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeColumn(d.col.id)}
+                                  className="text-neutral-600 hover:text-tm-pen text-[14px] flex items-center justify-center transition-colors"
+                                  style={{ minWidth: 32, minHeight: 32, WebkitTapHighlightColor: 'transparent' }}
+                                  aria-label="Remove day">✕</button>
+                              </div>
+                              <div className="space-y-3">
+                                <Field label="Date">
+                                  <Input type="date" value={d.col.date} onChange={(e) => updateColumn(d.col.id, { date: e.target.value })} />
+                                </Field>
+                                <Field label="Type">
+                                  <Select value={d.col.dayType} onChange={(e) => updateColumn(d.col.id, { dayType: e.target.value })}>
+                                    {CANCEL_DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                  </Select>
+                                </Field>
+                                <Field label="Rate (£)">
+                                  <Input
+                                    type="number" min="0" step="0.01"
+                                    value={d.agreedFee}
+                                    onChange={(e) => setAgreedFee(member.id, d.col.id, e.target.value)}
+                                  />
+                                </Field>
+                              </div>
+                              {cells[i] > 0 && (
+                                <div className="flex items-baseline gap-2 mt-3 pt-3 border-t border-neutral-800">
+                                  <span className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Fee</span>
+                                  <span className="text-base font-mono font-bold text-tm-warn tabular-nums">{fmtGBP(cells[i])}</span>
+                                  <span className="text-[10px] text-neutral-500 ml-auto font-mono">{Math.round(pctUsed * 100)}%</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {isBlock && noticeDate && dayInfo.some(d => d.agreedFee > 0) && (
+                        <div className="text-[10px] text-neutral-400 leading-relaxed bg-sky-500/[0.04] border border-dashed border-sky-500/25 rounded-lg px-3 py-2">
+                          <span className="text-sky-500 font-bold uppercase tracking-wider">Block</span> — 3 or fewer planned days, all calculated at the earliest day's percentage.
+                        </div>
+                      )}
+
+                      <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3.5 flex items-center justify-between">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-400 font-bold">Total</div>
+                        <div className="text-[28px] font-mono font-bold text-tm-warn tabular-nums leading-none">{fmtGBP(memberRowTotal)}</div>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
                 <div className="overflow-x-auto border border-neutral-800 rounded-xl">
                   <table className="border-collapse text-[11px] w-full">
@@ -3931,12 +4040,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                 className="text-[10px] px-1.5 py-1"
                               />
                               {cells[i] > 0 && (
-                                <div className="text-[10px] text-amber-400 font-mono mt-1">{fmtGBP(cells[i])}</div>
+                                <div className="text-[10px] text-tm-warn font-mono mt-1">{fmtGBP(cells[i])}</div>
                               )}
                             </td>
                           ))}
                           <td className="px-3 py-2 border-r border-l border-neutral-700 bg-neutral-950 text-right align-middle whitespace-nowrap">
-                            <span className="text-[11px] font-mono text-amber-400 font-bold">{fmtGBP(rowTotals[ci])}</span>
+                            <span className="text-[11px] font-mono text-tm-warn font-bold">{fmtGBP(rowTotals[ci])}</span>
                           </td>
                           <td className="bg-neutral-950" />
                         </tr>
@@ -3947,7 +4056,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         {colTotals.map((t, i) => (
                           <td key={i} className="px-2 py-2 text-right text-[11px] font-mono text-neutral-200 border-r border-neutral-700 font-bold">{t > 0 ? fmtGBP(t) : "—"}</td>
                         ))}
-                        <td className="px-3 py-2 text-right text-[12px] font-mono text-amber-400 font-bold whitespace-nowrap border-l border-neutral-700">{fmtGBP(grandTotal)}</td>
+                        <td className="px-3 py-2 text-right text-[12px] font-mono text-tm-warn font-bold whitespace-nowrap border-l border-neutral-700">{fmtGBP(grandTotal)}</td>
                         <td className="bg-neutral-950" />
                       </tr>
                     </tbody>
@@ -3989,15 +4098,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
               )}
 
-              <div className="mt-4 text-[10px] text-neutral-500 leading-relaxed">
-                APA §7: 7+ days = 0% · 6–4 days = 50% · 3–2 days = 75% · 1 day or less = 100%. Days counted include the notice date and exclude the shoot date. Crew members with 3 or fewer planned days are calculated as a single block at the earliest day's percentage.
+              <div className="mt-5 rounded-lg border border-neutral-800 bg-neutral-900/60 px-3.5 py-3">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-1.5">APA §7 — How fees are calculated</div>
+                <div className="text-[11px] text-neutral-400 leading-relaxed">
+                  7+ days notice = 0% · 6–4 days = 50% · 3–2 days = 75% · 1 day or less = 100%. Days counted include the notice date and exclude the shoot date. Crew members with 3 or fewer planned days are calculated as a single block at the earliest day's percentage.
+                </div>
               </div>
             </div>
 
             {/* ── Fixed footer ── */}
-            <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 flex justify-end gap-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
-              <Btn onClick={copyBreakdown} variant="ghost">{copied ? "Copied!" : "Copy breakdown"}</Btn>
-              <Btn onClick={onClose} variant="ghost"><IX/>Close</Btn>
+            <div className="flex-shrink-0 border-t border-neutral-800 px-5 pt-3 flex items-center gap-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 px-3 py-2 rounded-lg transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                Close
+              </button>
+              <div className="flex-1"/>
+              <Btn
+                variant="primary"
+                onClick={copyBreakdown}
+                style={{ boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
+                <ICopy size={14}/>{copied ? "Copied!" : "Copy breakdown"}
+              </Btn>
             </div>
           </div>
         </div>
