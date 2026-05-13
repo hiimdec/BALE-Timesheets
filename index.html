@@ -6072,9 +6072,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const hasPrev = currentIdx > 0;
       const hasNext = currentIdx >= 0 && currentIdx < sortedDates.length - 1;
 
-      const dateStripLabel = currentDate
+      const recordsForDate = days.filter(d => d.date === currentDate);
+      const dayType = recordsForDate[0]?.dayType || 'Shoot';
+      const setDayTypeForDate = (newType) => {
+        setProduction(p => ({
+          ...p,
+          days: p.days.map(d => d.date === currentDate ? { ...d, dayType: newType } : d)
+        }));
+      };
+
+      const formattedDate = currentDate
         ? new Date(currentDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()
-        : '—';
+        : '';
 
       const gbp = fmtGBP(grandTotal);
       const dotIdx = gbp.lastIndexOf('.');
@@ -6083,13 +6092,49 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return (
         <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <div className="px-4 py-2.5 flex items-center justify-between text-[11px] text-neutral-400 font-mono uppercase tracking-[0.08em]">
-            <button disabled={!hasPrev} onClick={() => hasPrev && setCurrentDate(sortedDates[currentIdx - 1])} className="text-neutral-500 disabled:text-neutral-700 w-6 text-left" aria-label="Previous day">‹</button>
-            <span>
-              {dayNumber ? <>DAY <b className="text-neutral-200">{dayNumber}</b> / {totalDays} · </> : null}
-              <span className="text-neutral-200">{dateStripLabel}</span>
-            </span>
-            <button disabled={!hasNext} onClick={() => hasNext && setCurrentDate(sortedDates[currentIdx + 1])} className="text-neutral-500 disabled:text-neutral-700 w-6 text-right" aria-label="Next day">›</button>
+          <div className="px-3 py-3 flex items-center gap-2">
+            <button
+              onClick={() => hasPrev && setCurrentDate(sortedDates[currentIdx - 1])}
+              disabled={!hasPrev}
+              className="w-7 h-7 flex items-center justify-center text-neutral-500 disabled:text-neutral-800 hover:text-neutral-200 transition-colors"
+              aria-label="Previous day"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>
+              ‹
+            </button>
+            <div className="flex-1 flex items-center justify-center gap-2 text-[11px] font-mono uppercase tracking-[0.08em] text-neutral-400">
+              {dayNumber !== null ? (
+                <span>DAY <b className="text-neutral-200">{dayNumber}</b> / {totalDays}</span>
+              ) : (
+                <span className="text-neutral-600">NO DAYS YET</span>
+              )}
+              {recordsForDate.length > 0 && (
+                <>
+                  <span className="text-neutral-700">·</span>
+                  <select
+                    value={dayType}
+                    onChange={(e) => setDayTypeForDate(e.target.value)}
+                    className="bg-tm-card-2 border border-neutral-700 rounded-md px-1.5 py-0.5 text-[11px] font-mono uppercase tracking-wider text-neutral-300 outline-none focus:border-sky-500"
+                    style={{ WebkitAppearance: 'none' }}
+                  >
+                    {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </>
+              )}
+              {currentDate && (
+                <>
+                  <span className="text-neutral-700">·</span>
+                  <span className="text-neutral-200">{formattedDate}</span>
+                </>
+              )}
+            </div>
+            <button
+              onClick={() => hasNext && setCurrentDate(sortedDates[currentIdx + 1])}
+              disabled={!hasNext}
+              className="w-7 h-7 flex items-center justify-center text-neutral-500 disabled:text-neutral-800 hover:text-neutral-200 transition-colors"
+              aria-label="Next day"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>
+              ›
+            </button>
           </div>
 
           <div className="mx-4 mt-2 mb-4 bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5">
@@ -7954,6 +7999,7 @@ const setDays = (updater) =>
       const userCrewId = userCrewIdsInProduction(production, userPrefs)[0] ?? null;
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
+      const [showMobileNav, setShowMobileNav] = useState(false);
       const [toastMsg, setToastMsg] = useState(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [openCrewForm, setOpenCrewForm] = useState(false);
@@ -8077,6 +8123,45 @@ const setDays = (updater) =>
             />
           )}
 
+          {(production.viewMode === 'mobile' && production.bestBoyMode) ? (
+            <div className="sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+              <div className="border-b border-sky-500 bg-black">
+                <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
+                  <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to productions list">
+                    <span className="text-neutral-600">‹</span>SHOOTS
+                  </button>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[22px] font-extrabold tracking-tight text-neutral-100 truncate min-w-0">
+                      {production.title || <span className="text-neutral-500">Untitled production</span>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setShowCalcView(true)}
+                        className="w-8 h-8 rounded-full bg-tm-card-2 hover:bg-neutral-800 flex items-center justify-center text-neutral-300 transition-colors"
+                        aria-label="Share / export production"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        <IShare size={14}/>
+                      </button>
+                      <button
+                        onClick={() => setShowMobileNav(true)}
+                        className="w-8 h-8 rounded-full bg-tm-card-2 hover:bg-neutral-800 flex items-center justify-center text-neutral-300 transition-colors"
+                        aria-label="More actions"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        <IKebab size={14}/>
+                      </button>
+                      <button
+                        onClick={() => setShowProdSettings(true)}
+                        className="w-8 h-8 rounded-full bg-tm-card-2 hover:bg-neutral-800 flex items-center justify-center text-neutral-300 transition-colors"
+                        aria-label="Production settings"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        <IGear size={14}/>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="border-b border-sky-500 bg-black">
               <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
@@ -8112,6 +8197,7 @@ const setDays = (updater) =>
               </div>
             </div>
           </div>
+          )}
 
           <div className="max-w-6xl mx-auto px-4 py-6 pb-32">
             {tab === "setup" && production.bestBoyMode && (
@@ -8154,6 +8240,81 @@ const setDays = (updater) =>
             onConfirm={() => { const f = confirmOpts?.onConfirm; setConfirmOpts(null); if (f) f(); }}
             onCancel={() => setConfirmOpts(null)}
           />
+
+          {showMobileNav && (
+            <div
+              className="fixed inset-0 z-50 flex items-end"
+              onClick={() => setShowMobileNav(false)}
+              style={{ background: 'rgba(0,0,0,0.5)' }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}
+              >
+                <div className="px-5 pt-5 pb-3">
+                  <div className="text-sm font-bold text-neutral-100 truncate">{production.title || 'Production'}</div>
+                </div>
+                <div className="px-4 pb-4 flex flex-col gap-2">
+                  {tab !== 'days' && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowMobileNav(false); setTab('days'); }}
+                      className="w-full text-left px-4 py-3 rounded-xl bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/30 transition-colors text-sm font-semibold text-sky-400 flex items-center gap-2.5"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      <ICal size={15}/>Back to timesheets
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); setTab('setup'); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IBriefcase size={15}/>Setup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); setTab('export'); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IShare size={15}/>Export
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); setInvoiceNav('list'); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IReceipt size={15}/>Invoices
+                  </button>
+                </div>
+                <div className="px-4 pb-3 pt-1 border-t border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMobileNav(false);
+                      setConfirmOpts({
+                        title: 'Reset production data?',
+                        message: `Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays. This cannot be undone.`,
+                        confirmLabel: 'Reset',
+                        confirmTone: 'danger',
+                        onConfirm: clearAll,
+                      });
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-tm-pen hover:bg-tm-pen/[0.05] rounded-xl transition-colors flex items-center gap-2.5"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IReset size={14}/>Reset production data
+                  </button>
+                </div>
+                <div className="px-4 pb-3">
+                  <button type="button" onClick={() => setShowMobileNav(false)}
+                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
