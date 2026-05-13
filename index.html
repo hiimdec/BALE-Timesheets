@@ -6071,20 +6071,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function BestBoyMobileDayView({ production, setProduction, userPrefs, onPushUndo }) {
+    function computeInitialDate(production) {
+      const today = todayISO();
+      const datesWithData = new Set((production.days || []).map(d => d.date));
+      if (datesWithData.has(today)) return today;
+      if (datesWithData.size > 0) return [...datesWithData].sort().reverse()[0];
+      return production.startDate || today;
+    }
+
+    function BestBoyMobileDayView({ production, setProduction, userPrefs, onPushUndo, currentDate, setCurrentDate, onCrewTap }) {
       const crew = production.crew || [];
       const days = production.days || [];
       const [showLunchSheet, setShowLunchSheet] = useState(false);
-
-      const computeInitialDate = () => {
-        const today = todayISO();
-        const datesWithData = new Set(days.map(d => d.date));
-        if (datesWithData.has(today)) return today;
-        if (datesWithData.size > 0) return [...datesWithData].sort().reverse()[0];
-        return production.startDate || today;
-      };
-
-      const [currentDate, setCurrentDate] = useState(computeInitialDate);
 
       const sortedDates = useMemo(
         () => [...new Set(days.map(d => d.date))].sort(),
@@ -6348,7 +6346,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <button
                 key={member.id}
                 type="button"
-                onClick={() => { console.log('TODO V4-3: drill into ' + member.name); }}
+                onClick={() => onCrewTap?.(member)}
                 className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border mb-1.5 transition-colors text-left ${
                   isMe
                     ? 'bg-sky-500/[0.03] border-sky-500/25'
@@ -6452,6 +6450,299 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             );
           })()}
+        </div>
+      );
+    }
+
+    function TimeCardWithOverride({ label, value, defaultValue, onChange, onResetToDefault }) {
+      const isOverridden = defaultValue !== undefined && defaultValue !== null && value !== defaultValue;
+      return (
+        <div className="relative bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3">
+          <div className="flex items-center justify-between mb-1 gap-2">
+            <div className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">{label}</div>
+            {isOverridden && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onResetToDefault(); }}
+                className="relative z-10 text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors"
+                aria-label={`Reset ${label} to department default`}
+                title={`Reset to default (${defaultValue})`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                VAR
+              </button>
+            )}
+          </div>
+          <div className="text-[26px] font-mono font-bold text-neutral-100 leading-none tabular-nums">
+            {value || <span className="text-neutral-500 text-base font-sans font-medium">—</span>}
+          </div>
+          <input
+            type="time"
+            value={value || ''}
+            onChange={(e) => onChange(e.target.value)}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            aria-label={`Edit ${label.toLowerCase()}`}
+            style={{ WebkitAppearance: 'none' }}
+          />
+        </div>
+      );
+    }
+
+    function LunchCardWithOverride({ startValue, durValue, defaultStart, defaultDur, onResetStart, onResetDur }) {
+      const startOverridden = defaultStart != null && startValue !== defaultStart;
+      const durOverridden = defaultDur != null && durValue !== defaultDur;
+      const anyOverridden = startOverridden || durOverridden;
+      const lunchEnd = startValue ? addMinutesToTime(startValue, durValue || 60) : '';
+      return (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 mt-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">LUNCH</span>
+            {startValue ? (
+              <>
+                <span className="font-mono text-[14px] text-neutral-100 tabular-nums">{startValue}</span>
+                <span className="text-neutral-600">→</span>
+                <span className="font-mono text-[14px] text-neutral-100 tabular-nums">{lunchEnd || '—'}</span>
+                <span className="ml-auto text-[11px] font-mono text-neutral-400 tabular-nums">{durValue} mins</span>
+              </>
+            ) : (
+              <span className="text-neutral-500 text-sm">—</span>
+            )}
+          </div>
+          {anyOverridden && (
+            <div className="flex gap-1 mt-2">
+              {startOverridden && (
+                <button type="button" onClick={onResetStart} className="text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset start to ${defaultStart}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · START</button>
+              )}
+              {durOverridden && (
+                <button type="button" onClick={onResetDur} className="text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset duration to ${defaultDur}m`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · DUR</button>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function DayTypeRow({ value, defaultValue, onResetToDefault }) {
+      const isOverridden = defaultValue != null && value !== defaultValue;
+      return (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 flex items-center gap-2 mt-2">
+          <span className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">DAY TYPE</span>
+          <span className="font-mono text-[12px] text-neutral-100 uppercase tracking-wider ml-auto">{value || '—'}</span>
+          {isOverridden && (
+            <button type="button" onClick={onResetToDefault} className="text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset to ${defaultValue}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR</button>
+          )}
+        </div>
+      );
+    }
+
+    function ConditionsDisplay({ dayRecord, calc }) {
+      const pills = [];
+      if (calc?.meta?.continuousDay) pills.push({ label: 'CWD', warn: true });
+      if (calc?.meta?.isElevenHourDay) pills.push({ label: '11h day', warn: false });
+      const otHrs = (calc?.lines || [])
+        .filter(l => /\bot\b|overtime|triple/i.test(l.label))
+        .reduce((s, l) => s + (Number(l.qty) || 0), 0);
+      if (otHrs > 0) pills.push({ label: `OT ${otHrs % 1 ? otHrs.toFixed(1) : otHrs}h`, warn: true });
+      if ((calc?.lines || []).some(l => /late 1st|l1/i.test(l.label))) pills.push({ label: 'Late 1st break', warn: true });
+      if ((calc?.lines || []).some(l => /missed 2nd|late 2nd/i.test(l.label))) pills.push({ label: '2nd break issue', warn: true });
+      if ((calc?.lines || []).some(l => /curtailed/i.test(l.label))) pills.push({ label: 'Curtailed break', warn: true });
+      if ((calc?.lines || []).some(l => /missed cwd|missed meal/i.test(l.label))) pills.push({ label: 'Missed break', warn: true });
+      if (dayRecord?.stepUpEnabled && dayRecord?.stepUpRole) pills.push({ label: `Step-up: ${dayRecord.stepUpRole}`, warn: false });
+      if (dayRecord?.perDiemEnabled) pills.push({ label: `Per diem £${dayRecord.perDiemAmount || 0}`, warn: false });
+      if (dayRecord?.kitMoneyEnabled) pills.push({ label: `Kit £${dayRecord.kitMoneyAmount || 0}`, warn: false });
+      if (Number(dayRecord?.miles) > 0) pills.push({ label: `${dayRecord.miles} mi`, warn: false });
+      if (Number(dayRecord?.travelOutMins) > 0 || Number(dayRecord?.travelBackMins) > 0) pills.push({ label: 'Travel time', warn: false });
+
+      return (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+          <div className="flex flex-wrap gap-1.5">
+            {pills.length === 0 ? (
+              <span className="text-[11px] text-neutral-500">No conditions logged</span>
+            ) : (
+              pills.map(c => (
+                <span key={c.label} className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${c.warn ? 'bg-tm-warn/10 text-tm-warn border border-tm-warn/25' : 'bg-tm-card-2 text-neutral-400 border border-neutral-700'}`}>
+                  {c.label}
+                </span>
+              ))
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onOpenFullEditor }) {
+      const dayRecord = (production.days || []).find(d => d.date === currentDate && d.crewId === crewMember.id);
+      const defaults = getDayDefaults(production, currentDate);
+
+      const sortedDates = useMemo(
+        () => [...new Set((production.days || []).map(d => d.date))].sort(),
+        [production.days]
+      );
+      const prevDate = (() => {
+        const idx = sortedDates.indexOf(currentDate);
+        return idx > 0 ? sortedDates[idx - 1] : null;
+      })();
+      const prevDayRecord = prevDate
+        ? (production.days || []).find(d => d.date === prevDate && d.crewId === crewMember.id)
+        : null;
+      const calc = dayRecord ? calcForDisplay(production, dayRecord, crewMember, prevDayRecord) : null;
+
+      const isOverridden = (field) => {
+        if (!dayRecord || !defaults) return false;
+        return dayRecord[field] !== defaults[field];
+      };
+      const anyTimeOverridden = ['callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins', 'dayType'].some(isOverridden);
+
+      const resetField = (field) => {
+        if (!defaults || !dayRecord) return;
+        setProduction(p => ({
+          ...p,
+          days: p.days.map(d =>
+            d.id === dayRecord.id ? { ...d, [field]: defaults[field] } : d
+          )
+        }));
+      };
+
+      const updateField = (field, value) => {
+        if (!dayRecord) return;
+        setProduction(p => ({
+          ...p,
+          days: p.days.map(d =>
+            d.id === dayRecord.id ? { ...d, [field]: value } : d
+          )
+        }));
+      };
+
+      const dayNumber = sortedDates.indexOf(currentDate) + 1;
+      const isMe = crewMember.id === production.crew?.[0]?.id;
+
+      const formattedDate = currentDate
+        ? new Date(currentDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()
+        : '';
+
+      return (
+        <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="sticky top-0 z-40 bg-black border-b border-sky-500 -mx-4 -mt-6 px-4" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-6xl mx-auto pt-3 pb-3.5">
+              <button
+                onClick={onBack}
+                className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1"
+                aria-label="Back to multi-crew day view">
+                <span className="text-neutral-600">‹</span>{(production.title || 'Production').toUpperCase()}{dayNumber > 0 ? ` · DAY ${dayNumber}` : ''}
+              </button>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[22px] font-extrabold tracking-tight text-neutral-100 truncate flex items-baseline gap-2">
+                    {crewMember.name || 'Unnamed'}
+                    {isMe && <span className="text-[10px] font-semibold text-neutral-500 lowercase">(you)</span>}
+                  </div>
+                  <div className="text-[11px] uppercase tracking-[0.14em] text-sky-500 font-bold mt-0.5">
+                    {crewMember.role || '—'} · £{crewMember.bdr ?? 0} BDR
+                  </div>
+                </div>
+                <button
+                  onClick={() => { /* TODO V4-3c-followup: per-person kebab actions */ }}
+                  className="w-8 h-8 rounded-full bg-tm-card-2 hover:bg-neutral-800 flex items-center justify-center text-neutral-300 flex-shrink-0"
+                  aria-label="More actions"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IKebab size={14}/>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4">
+            <div className="text-[11px] uppercase tracking-[0.14em] text-neutral-500 font-mono mb-3">
+              {formattedDate}
+            </div>
+
+            {dayRecord ? (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5 mb-4">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-1.5">
+                  {isMe ? 'TODAY' : `${(crewMember.name || '').toUpperCase()} TODAY`}
+                </div>
+                <div className="font-mono text-[36px] font-bold leading-none text-neutral-100 tabular-nums tracking-tight">
+                  {fmtGBP(calc.total)}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-neutral-900 border border-dashed border-neutral-700 rounded-2xl px-4 py-6 mb-4 text-center text-neutral-500 text-sm">
+                {crewMember.name || 'This crew member'} is not on this day.
+              </div>
+            )}
+
+            {dayRecord && (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">TIMES</span>
+                  <span className="flex-1 h-px bg-neutral-800/60"/>
+                  {anyTimeOverridden && (
+                    <span className="text-[10px] uppercase tracking-[0.18em] text-tm-warn font-bold">OVERRIDDEN</span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <TimeCardWithOverride
+                    label="CALL"
+                    value={dayRecord.callTime}
+                    defaultValue={defaults?.callTime}
+                    onChange={(v) => updateField('callTime', v)}
+                    onResetToDefault={() => resetField('callTime')}
+                  />
+                  <TimeCardWithOverride
+                    label="WRAP"
+                    value={dayRecord.wrapTime}
+                    defaultValue={defaults?.wrapTime}
+                    onChange={(v) => updateField('wrapTime', v)}
+                    onResetToDefault={() => resetField('wrapTime')}
+                  />
+                </div>
+
+                <LunchCardWithOverride
+                  startValue={dayRecord.lunchStartTime}
+                  durValue={dayRecord.lunchDurationMins}
+                  defaultStart={defaults?.lunchStartTime}
+                  defaultDur={defaults?.lunchDurationMins}
+                  onResetStart={() => resetField('lunchStartTime')}
+                  onResetDur={() => resetField('lunchDurationMins')}
+                />
+
+                <DayTypeRow
+                  value={dayRecord.dayType}
+                  defaultValue={defaults?.dayType}
+                  onResetToDefault={() => resetField('dayType')}
+                />
+
+                <div className="flex items-center gap-2 mt-6 mb-3">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CONDITIONS</span>
+                  <span className="flex-1 h-px bg-neutral-800/60"/>
+                </div>
+                <ConditionsDisplay dayRecord={dayRecord} calc={calc} />
+
+                {dayRecord.note && dayRecord.note.trim() && (
+                  <>
+                    <div className="flex items-center gap-2 mt-6 mb-3">
+                      <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">NOTES</span>
+                      <span className="flex-1 h-px bg-neutral-800/60"/>
+                    </div>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 text-sm text-neutral-300 italic leading-relaxed">
+                      {dayRecord.note}
+                    </div>
+                  </>
+                )}
+
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => onOpenFullEditor?.(crewMember, currentDate)}
+                    className="w-full px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 text-sm font-semibold text-neutral-300 flex items-center justify-center gap-2 transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    <IPencil size={13}/>Edit all fields for this day
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       );
     }
@@ -8212,6 +8503,8 @@ const setDays = (updater) =>
       const [showProdSettings, setShowProdSettings] = useState(false);
       const [showCalcView, setShowCalcView] = useState(false);
       const [showMobileNav, setShowMobileNav] = useState(false);
+      const [currentDate, setCurrentDate] = useState(() => computeInitialDate(production));
+      const [drilldownCrewMember, setDrilldownCrewMember] = useState(null);
       const [toastMsg, setToastMsg] = useState(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [openCrewForm, setOpenCrewForm] = useState(false);
@@ -8335,7 +8628,7 @@ const setDays = (updater) =>
             />
           )}
 
-          {(production.viewMode === 'mobile' && production.bestBoyMode) ? (
+          {drilldownCrewMember ? null : (production.viewMode === 'mobile' && production.bestBoyMode) ? (
             <div className="sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
               <div className="border-b border-sky-500 bg-black">
                 <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
@@ -8431,7 +8724,27 @@ const setDays = (updater) =>
             )}
             {tab === "days" && (
               production.viewMode === 'mobile' && production.bestBoyMode
-                ? <BestBoyMobileDayView production={production} setProduction={setProduction} userPrefs={userPrefs} onPushUndo={pushUndo} />
+                ? (drilldownCrewMember
+                    ? <CrewMemberDayView
+                        crewMember={drilldownCrewMember}
+                        currentDate={currentDate}
+                        production={production}
+                        setProduction={setProduction}
+                        onBack={() => setDrilldownCrewMember(null)}
+                        onOpenFullEditor={(m, date) => {
+                          showToast?.('Full editor coming in next polish');
+                          console.log('TODO V4-3c-followup: open DayEditModal for', m.name, date);
+                        }}
+                      />
+                    : <BestBoyMobileDayView
+                        production={production}
+                        setProduction={setProduction}
+                        userPrefs={userPrefs}
+                        onPushUndo={pushUndo}
+                        currentDate={currentDate}
+                        setCurrentDate={setCurrentDate}
+                        onCrewTap={setDrilldownCrewMember}
+                      />)
                 : <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />
             )}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
