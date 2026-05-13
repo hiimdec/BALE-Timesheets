@@ -6684,21 +6684,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
                    style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
                 <div className="px-5 pt-5 pb-3">
-                  <div className="text-sm font-bold text-neutral-100">Share / export</div>
+                  <div className="text-sm font-bold text-neutral-100 flex items-center gap-2">
+                    <IShare size={14}/>Share / export
+                  </div>
                 </div>
                 <div className="px-4 pb-4 flex flex-col gap-2">
                   {onExportPDF && (
                     <button type="button"
                       onClick={() => { setShowShareMenu(false); onExportPDF(); }}
-                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
+                      style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
                       <IDownload size={15}/>Export PDF
                     </button>
                   )}
                   {onExportText && (
                     <button type="button"
                       onClick={() => { setShowShareMenu(false); onExportText(); }}
-                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                      className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                       style={{ WebkitTapHighlightColor: 'transparent' }}>
                       <IMessage size={15}/>Export text
                     </button>
@@ -6706,7 +6708,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
                   <button type="button" onClick={() => setShowShareMenu(false)}
-                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
                 </div>
               </div>
@@ -7397,26 +7399,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="px-4 pb-4 flex flex-col gap-2">
                   <button type="button"
                     onClick={() => { setShowExportSheet(false); handleExportPDF(); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-sky-900/40 hover:bg-sky-900/60 border border-sky-700/40 transition-colors text-sm font-semibold text-sky-300 flex items-center gap-2"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IDownload size={15}/>Export Timesheet (PDF)
+                    className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
+                    <IDownload size={15}/>Timesheet (PDF)
                   </button>
                   <button type="button"
                     onClick={async () => { setShowExportSheet(false); await handleExportText(); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IMessage size={15}/>Export Timesheet (Text)
+                    <IMessage size={15}/>Timesheet (Text)
                   </button>
                   <button type="button"
                     onClick={() => { setShowExportSheet(false); openInvoiceFromButton(); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IReceipt size={15}/>Generate Invoice
+                    <IReceipt size={15}/>Generate invoice
                   </button>
                 </div>
                 <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
                   <button type="button" onClick={() => setShowExportSheet(false)}
-                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
                 </div>
               </div>
