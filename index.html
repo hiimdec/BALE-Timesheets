@@ -9423,6 +9423,31 @@ const setDays = (updater) =>
       const invoices = production.invoices || [];
       const sortedInvoices = [...invoices].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
+      const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'draft' | 'sent' | 'paid'
+
+      const todayMs = useMemo(() => new Date(todayISO() + 'T12:00:00').getTime(), []);
+
+      const counts = useMemo(() => {
+        let draft = 0, sent = 0, paid = 0, overdue = 0, outstanding = 0;
+        for (const inv of invoices) {
+          const sub = invoiceSubtotal(inv.lineItems);
+          const vat = inv.vatRegistered ? sub * (inv.vatRate || 20) / 100 : 0;
+          const tot = sub + vat;
+          if (inv.status === 'paid') paid++;
+          else if (inv.status === 'sent') {
+            sent++;
+            outstanding += tot;
+            if (inv.dueDate && new Date(inv.dueDate + 'T12:00:00').getTime() < todayMs) overdue++;
+          } else { draft++; outstanding += tot; }
+        }
+        return { draft, sent, paid, overdue, outstanding, all: invoices.length };
+      }, [invoices, todayMs]);
+
+      const filteredInvoices = useMemo(() => {
+        if (filterStatus === 'all') return sortedInvoices;
+        return sortedInvoices.filter(i => i.status === filterStatus);
+      }, [sortedInvoices, filterStatus]);
+
       const handleNewInvoice = () => {
         if (!userCrewId) { showToast("No crew member — check Settings → My Setup"); return; }
         const newId = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
@@ -9450,32 +9475,99 @@ const setDays = (updater) =>
                 <Btn variant="primary" onClick={handleNewInvoice}><IPlus size={13}/>New Invoice</Btn>
               </div>
             ) : (
-              <div className="space-y-3">
-                {sortedInvoices.map((inv) => {
-                  const subtotal = invoiceSubtotal(inv.lineItems);
-                  const vatAmount = inv.vatRegistered ? subtotal * (inv.vatRate || 20) / 100 : 0;
-                  const total = subtotal + vatAmount;
-                  return (
-                    <button key={inv.id} onClick={() => onOpenInvoice(inv.id)}
-                      className="w-full text-left bg-neutral-900 border border-neutral-800 rounded-xl p-4 hover:bg-neutral-800 active:bg-neutral-800 transition-colors"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-bold text-neutral-100">{inv.invoiceNumber}</div>
-                          <div className="text-[11px] text-neutral-500 mt-0.5">{fmtDateShort(inv.invoiceDate)} · Due {fmtDateShort(inv.dueDate)}</div>
-                          {inv.toName && <div className="text-[11px] text-neutral-400 mt-0.5 truncate">{inv.toName}</div>}
+              <>
+                {(counts.outstanding > 0 || counts.overdue > 0) && (
+                  <div className="flex items-baseline gap-1.5 mb-3 text-[11px] text-neutral-500 font-mono flex-wrap">
+                    <span className="text-neutral-100 font-bold text-[13px]">{fmtGBP(counts.outstanding)}</span>
+                    <span className="text-neutral-600">outstanding</span>
+                    {counts.overdue > 0 && (
+                      <>
+                        <span className="text-neutral-700">·</span>
+                        <span className="text-tm-pen font-bold">{counts.overdue} OVERDUE</span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {[
+                    { k: 'all', label: 'All', n: counts.all },
+                    ...(counts.draft > 0 ? [{ k: 'draft', label: 'Draft', n: counts.draft }] : []),
+                    ...(counts.sent > 0 ? [{ k: 'sent', label: 'Sent', n: counts.sent }] : []),
+                    ...(counts.paid > 0 ? [{ k: 'paid', label: 'Paid', n: counts.paid }] : []),
+                  ].map(({ k, label, n }) => {
+                    const active = filterStatus === k;
+                    return (
+                      <button key={k} onClick={() => setFilterStatus(k)}
+                        className={`inline-flex items-baseline gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider whitespace-nowrap border transition-colors ${active ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-neutral-900 border-neutral-800 text-neutral-500'}`}
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        {label} <span className="font-mono font-medium opacity-70">{n}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-2">
+                  {filteredInvoices.map((inv) => {
+                    const subtotal = invoiceSubtotal(inv.lineItems);
+                    const vatAmount = inv.vatRegistered ? subtotal * (inv.vatRate || 20) / 100 : 0;
+                    const total = subtotal + vatAmount;
+                    const dueMs = inv.dueDate ? new Date(inv.dueDate + 'T12:00:00').getTime() : null;
+                    const isOverdue = inv.status === 'sent' && dueMs && dueMs < todayMs;
+                    const daysOverdue = isOverdue ? Math.floor((todayMs - dueMs) / 86400000) : 0;
+                    const daysToDue = (inv.status === 'sent' && dueMs && !isOverdue) ? Math.ceil((dueMs - todayMs) / 86400000) : 0;
+                    const s = getDisplayStatus(inv);
+
+                    return (
+                      <button key={inv.id} onClick={() => onOpenInvoice(inv.id)}
+                        className={`w-full text-left rounded-xl p-3.5 border transition-colors active:bg-neutral-800 ${isOverdue ? 'bg-neutral-900 border-tm-pen/25 hover:border-tm-pen/40' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
+                        style={{
+                          WebkitTapHighlightColor: 'transparent',
+                          ...(isOverdue ? { backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' } : {})
+                        }}>
+                        <div className="flex items-baseline justify-between mb-1">
+                          <span className="text-[10px] font-mono tracking-wider text-neutral-500 font-semibold">{inv.invoiceNumber}</span>
+                          <Badge variant={s.variant}>{s.label}</Badge>
                         </div>
-                        {(() => { const s = getDisplayStatus(inv); return (
-                          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                            <div className="text-base font-bold font-mono text-neutral-100">{fmtGBP(total)}</div>
-                            <Badge variant={s.variant}>{s.label}</Badge>
-                          </div>
-                        ); })()}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                        {inv.toName && <div className="text-[15px] font-bold text-neutral-100 mb-2 truncate">{inv.toName}</div>}
+                        <div className="font-mono font-bold text-[17px] text-neutral-100">{fmtGBP(total)}</div>
+                        {(() => {
+                          if (inv.status === 'paid') {
+                            return (
+                              <div className="text-[11px] text-neutral-500 mt-2 font-mono">
+                                Paid {fmtDateShort(inv.datePaid || inv.dateSent || inv.invoiceDate)}{' '}
+                                <span className="text-tm-good">✓</span>
+                              </div>
+                            );
+                          }
+                          if (isOverdue) {
+                            return (
+                              <div className="text-[11px] text-tm-pen mt-2 font-mono font-bold">
+                                ⚠ {daysOverdue} DAY{daysOverdue !== 1 ? 'S' : ''} OVERDUE{' '}
+                                <span className="text-neutral-600 font-medium">· due {fmtDateShort(inv.dueDate)}</span>
+                              </div>
+                            );
+                          }
+                          if (inv.status === 'sent') {
+                            return (
+                              <div className="text-[11px] text-neutral-400 mt-2 font-mono">
+                                Due {fmtDateShort(inv.dueDate)}{' '}
+                                <span className="text-neutral-600">· in {daysToDue} day{daysToDue !== 1 ? 's' : ''}</span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="text-[11px] text-neutral-500 mt-2 font-mono">
+                              Created {fmtDateShort(inv.createdAt ? inv.createdAt.slice(0,10) : inv.invoiceDate)}{' '}
+                              <span className="text-neutral-600">· not sent</span>
+                            </div>
+                          );
+                        })()}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </div>
