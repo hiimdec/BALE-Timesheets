@@ -5973,6 +5973,232 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    function BestBoyMobileDayView({ production, setProduction, userPrefs }) {
+      const crew = production.crew || [];
+      const days = production.days || [];
+
+      const computeInitialDate = () => {
+        const today = todayISO();
+        const datesWithData = new Set(days.map(d => d.date));
+        if (datesWithData.has(today)) return today;
+        if (datesWithData.size > 0) return [...datesWithData].sort().reverse()[0];
+        return production.startDate || today;
+      };
+
+      const [currentDate, setCurrentDate] = useState(computeInitialDate);
+
+      const sortedDates = useMemo(
+        () => [...new Set(days.map(d => d.date))].sort(),
+        [days]
+      );
+
+      const crewWithCalcs = useMemo(() => {
+        const idx = sortedDates.indexOf(currentDate);
+        const prevDate = idx > 0 ? sortedDates[idx - 1] : null;
+
+        return crew.map(member => {
+          const isMe = member.id === crew[0]?.id;
+          const dayRecord = days.find(d => d.date === currentDate && d.crewId === member.id);
+
+          if (!dayRecord) {
+            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: null };
+          }
+
+          const prevDayRecord = prevDate
+            ? days.find(d => d.date === prevDate && d.crewId === member.id)
+            : null;
+
+          const calc = calcForDisplay(production, dayRecord, member, prevDayRecord);
+
+          const chips = [];
+          const otHrs = calc.lines
+            .filter(l => /\bot\b|overtime|triple/i.test(l.label))
+            .reduce((s, l) => s + (Number(l.qty) || 0), 0);
+          if (otHrs > 0) {
+            chips.push({
+              label: `OT ${otHrs % 1 ? otHrs.toFixed(1) : otHrs}h`,
+              className: 'text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25'
+            });
+          }
+          if (calc.lines.some(l => /late 1st|l1/i.test(l.label))) {
+            chips.push({
+              label: 'L1',
+              className: 'text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-pen/10 text-tm-pen border-tm-pen/25'
+            });
+          }
+          if (calc.lines.some(l => /missed|cwd|breach|penalty|curtailed/i.test(l.label))) {
+            chips.push({
+              label: 'PEN',
+              className: 'text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-pen/10 text-tm-pen border-tm-pen/25'
+            });
+          }
+
+          return { member, isMe, isOff: false, dayTotal: calc.total, calc, chips, offReason: null };
+        });
+      }, [production, currentDate, sortedDates]);
+
+      const sortedCrew = useMemo(() => {
+        const me = crewWithCalcs.filter(c => c.isMe);
+        const active = crewWithCalcs.filter(c => !c.isMe && !c.isOff);
+        const off = crewWithCalcs.filter(c => !c.isMe && c.isOff);
+        return [...me, ...active, ...off];
+      }, [crewWithCalcs]);
+
+      const activeCrew = crewWithCalcs.filter(c => !c.isOff);
+      const grandTotal = activeCrew.reduce((s, c) => s + c.dayTotal, 0);
+      const activeCrewCount = activeCrew.length;
+
+      // Dept defaults: shortcut — use the first active crew member's times on this date.
+      // TODO: V4-3+ — formalize as production-level defaults with per-person overrides.
+      const firstActiveDay = activeCrew[0]
+        ? days.find(d => d.date === currentDate && d.crewId === activeCrew[0].member.id)
+        : null;
+      const deptCall = firstActiveDay?.callTime || '—';
+      const deptWrap = firstActiveDay?.wrapTime || '—';
+      const deptLunchStart = firstActiveDay?.lunchStartTime || '—';
+      const deptLunchMins = firstActiveDay?.lunchDurationMins ?? null;
+      const deptLunchEnd = (() => {
+        const start = parseHHMM(deptLunchStart);
+        if (start === null || deptLunchMins === null) return '—';
+        const endMins = start * 60 + deptLunchMins;
+        const h = Math.floor(endMins / 60) % 24;
+        const m = endMins % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      })();
+
+      const currentIdx = sortedDates.indexOf(currentDate);
+      const dayNumber = currentIdx >= 0 ? currentIdx + 1 : null;
+      const totalDays = sortedDates.length;
+      const hasPrev = currentIdx > 0;
+      const hasNext = currentIdx >= 0 && currentIdx < sortedDates.length - 1;
+
+      const dateStripLabel = currentDate
+        ? new Date(currentDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()
+        : '—';
+
+      const gbp = fmtGBP(grandTotal);
+      const dotIdx = gbp.lastIndexOf('.');
+      const gbpMain = dotIdx >= 0 ? gbp.slice(0, dotIdx) : gbp;
+      const gbpPence = dotIdx >= 0 ? gbp.slice(dotIdx) : '';
+
+      return (
+        <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="px-4 py-2.5 flex items-center justify-between text-[11px] text-neutral-400 font-mono uppercase tracking-[0.08em]">
+            <button disabled={!hasPrev} onClick={() => hasPrev && setCurrentDate(sortedDates[currentIdx - 1])} className="text-neutral-500 disabled:text-neutral-700 w-6 text-left" aria-label="Previous day">‹</button>
+            <span>
+              {dayNumber ? <>DAY <b className="text-neutral-200">{dayNumber}</b> / {totalDays} · </> : null}
+              <span className="text-neutral-200">{dateStripLabel}</span>
+            </span>
+            <button disabled={!hasNext} onClick={() => hasNext && setCurrentDate(sortedDates[currentIdx + 1])} className="text-neutral-500 disabled:text-neutral-700 w-6 text-right" aria-label="Next day">›</button>
+          </div>
+
+          <div className="mx-4 mt-2 mb-4 bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-1.5">
+              TODAY · ALL CREW <span className="text-sky-500 ml-1.5">{activeCrewCount} ACTIVE</span>
+            </div>
+            <div className="font-mono text-[36px] font-bold leading-none text-neutral-100 tabular-nums tracking-tight">
+              {gbpMain}<span className="text-[18px] text-neutral-400 font-medium">{gbpPence}</span>
+            </div>
+            {/* TODO: V4-2-polish — basic/OT/pen dot breakdown */}
+          </div>
+
+          <div className="px-4 mb-2.5 flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">DEPT DEFAULTS</span>
+            <span className="flex-1 h-px bg-neutral-800/60"/>
+            <button onClick={() => { /* TODO: V4-2-followup — wire to a defaults editor */ }} className="text-[10px] uppercase tracking-wider text-sky-500 font-bold">EDIT</button>
+          </div>
+
+          <div className="px-4 grid grid-cols-2 gap-2 mb-2">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">CALL</div>
+              <div className="font-mono text-[26px] font-bold text-neutral-100 tabular-nums leading-none mt-1.5">{deptCall}</div>
+            </div>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">WRAP</div>
+              <div className="font-mono text-[26px] font-bold text-neutral-100 tabular-nums leading-none mt-1.5">{deptWrap}</div>
+            </div>
+          </div>
+
+          <div className="px-4 mb-2">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 flex items-center gap-3">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">LUNCH</div>
+              <div className="font-mono text-sm text-neutral-100 tabular-nums">{deptLunchStart} → {deptLunchEnd}</div>
+              {deptLunchMins !== null && <div className="text-[11px] text-neutral-500 font-mono ml-auto">{deptLunchMins} mins</div>}
+            </div>
+          </div>
+
+          <div className="px-4 -mt-0.5 mb-4 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgba(14,165,233,0.6)' }}/>
+            APPLIES TO ALL UNLESS OVERRIDDEN BELOW
+          </div>
+
+          <div className="px-4 mb-2.5 flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CREW</span>
+            <span className="flex-1 h-px bg-neutral-800/60"/>
+            <span className="text-[10px] font-mono text-neutral-500 font-bold">{activeCrewCount} OF {crew.length}</span>
+          </div>
+
+          <div className="px-4">
+            {sortedCrew.map(({ member, isMe, isOff, dayTotal, chips, offReason }) => (
+              <button
+                key={member.id}
+                type="button"
+                onClick={() => { console.log('TODO V4-3: drill into ' + member.name); }}
+                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border mb-1.5 transition-colors text-left ${
+                  isMe
+                    ? 'bg-sky-500/[0.03] border-sky-500/25'
+                    : isOff
+                    ? 'bg-transparent border-neutral-800 border-dashed opacity-60'
+                    : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
+                }`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px] flex-shrink-0 ${
+                  isMe ? 'bg-sky-500/15 text-sky-400' : 'bg-tm-card-2 text-neutral-400'
+                }`}>
+                  {((member.name || '?').trim()[0] || '?').toUpperCase()}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm font-semibold leading-tight ${isOff ? 'text-neutral-400' : 'text-neutral-100'}`}>
+                    {member.name || 'Unnamed'}
+                    {isMe && <span className="ml-1.5 text-[9px] font-semibold text-neutral-500 lowercase">(you)</span>}
+                  </div>
+                  <div className="text-[11px] text-neutral-400 mt-0.5">
+                    {isOff
+                      ? <span className="text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-bold">{offReason || 'Not on today'}</span>
+                      : `${member.role || '—'} · £${member.bdr ?? 0} BDR`}
+                  </div>
+                  {!isOff && chips.length > 0 && (
+                    <div className="flex gap-1 mt-1.5">
+                      {chips.map(c => <span key={c.label} className={c.className}>{c.label}</span>)}
+                    </div>
+                  )}
+                </div>
+
+                {isOff ? (
+                  <div className="text-neutral-600 font-mono">—</div>
+                ) : (
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(dayTotal)}</div>
+                  </div>
+                )}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => { /* TODO: V4-3 or polish — wire to add-crew-to-today action */ }}
+              className="w-full px-4 py-3.5 rounded-xl border border-dashed border-neutral-700 hover:border-sky-500 hover:bg-sky-500/[0.03] hover:text-sky-400 text-neutral-500 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors flex items-center justify-center gap-2 mt-2 mb-2"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              <IPlus size={13}/>Add to today's crew
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ EXPORT TAB (BB mode) ═══════════════════════════ */
 
     // Week picker bottom sheet — lists weeks and lets user pick one
@@ -7905,7 +8131,11 @@ const setDays = (updater) =>
                 onClose={() => setShowCancelModal(false)}
               />
             )}
-            {tab === "days"   && <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />}
+            {tab === "days" && (
+              production.viewMode === 'mobile' && production.bestBoyMode
+                ? <BestBoyMobileDayView production={production} setProduction={setProduction} userPrefs={userPrefs} />
+                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />
+            )}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
           </div>
 
