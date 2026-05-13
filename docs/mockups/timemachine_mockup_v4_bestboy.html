@@ -1,0 +1,1616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TimeMachine v4 — Best Boy mobile mockup</title>
+<style>
+  :root {
+    --bg: #000000;
+    --card: #0a0a0a;
+    --card-2: #1f1f1f;
+    --border: #262626;
+    --border-soft: #1a1a1a;
+    --ink: #f5f5f5;
+    --ink-2: #a3a3a3;
+    --ink-3: #737373;
+    --ink-4: #525252;
+    --ink-5: #404040;
+    --sky-500: #0ea5e9;
+    --sky-400: #38bdf8;
+    --sky-tint: rgba(14,165,233,0.10);
+    --sky-tint-border: rgba(14,165,233,0.30);
+    --tm-warn: #ff8a3d;
+    --tm-warn-tint: rgba(255,138,61,0.10);
+    --tm-warn-border: rgba(255,138,61,0.25);
+    --tm-pen: #f43f5e;
+    --tm-pen-tint: rgba(244,63,94,0.10);
+    --tm-pen-border: rgba(244,63,94,0.25);
+    --tm-good: #4ade80;
+    --tm-good-tint: rgba(74,222,128,0.10);
+    --tm-good-border: rgba(74,222,128,0.25);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "SF Pro", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #111;
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
+    min-height: 100vh;
+  }
+  .page-header {
+    padding: 60px 40px 40px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .page-header h1 {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .page-header .subtitle {
+    color: var(--ink-3);
+    font-size: 14px;
+  }
+  .page-header .meta {
+    color: var(--ink-4);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-top: 16px;
+    font-weight: 700;
+  }
+  .frames {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    padding: 0 40px 80px;
+    max-width: 1400px;
+    margin: 0 auto;
+    align-items: flex-start;
+  }
+  .frame-col { display: flex; flex-direction: column; gap: 12px; }
+  .frame-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--sky-500);
+  }
+  .frame-desc {
+    font-size: 12px;
+    color: var(--ink-3);
+    max-width: 380px;
+    line-height: 1.55;
+  }
+  .phone {
+    width: 380px;
+    height: 824px;
+    background: var(--bg);
+    border-radius: 50px;
+    box-shadow:
+      0 0 0 8px #1a1a1a,
+      0 0 0 9px #2a2a2a,
+      0 30px 60px rgba(0,0,0,0.6);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .notch {
+    position: absolute;
+    top: 12px; left: 50%;
+    transform: translateX(-50%);
+    width: 110px; height: 30px;
+    background: #000;
+    border-radius: 18px;
+    z-index: 100;
+  }
+  .status-bar {
+    height: 50px;
+    padding: 18px 28px 0;
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    flex-shrink: 0;
+  }
+  .screen {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+  }
+  .screen::-webkit-scrollbar { width: 0; }
+
+  /* Sticky breadcrumb header */
+  .breadcrumb-header {
+    padding: 8px 16px 12px;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+  .breadcrumb-back {
+    font-size: 10px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .breadcrumb-back .arrow { color: var(--ink-4); margin-right: 4px; }
+  .breadcrumb-title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .breadcrumb-actions {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    color: var(--ink-3);
+  }
+  .icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--card-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-2);
+    font-size: 14px;
+  }
+  .day-strip {
+    padding: 0 16px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .day-strip .day-no { color: var(--ink-2); }
+  .day-strip .day-no b { color: var(--ink); font-weight: 700; }
+  .day-strip .day-pick {
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px 3px 10px;
+    color: var(--ink-2);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Hero today total */
+  .hero-card {
+    margin: 4px 16px 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 18px 16px;
+  }
+  .hero-label {
+    font-size: 10px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .hero-label .crew-count {
+    color: var(--sky-500);
+    margin-left: 6px;
+  }
+  .hero-number {
+    font-family: var(--mono);
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-number .pence {
+    font-size: 18px;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .hero-sublabel {
+    font-size: 11px;
+    color: var(--ink-3);
+    display: flex;
+    gap: 14px;
+    align-items: center;
+  }
+  .hero-sublabel .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 4px;
+    transform: translateY(-1px);
+  }
+  .dot-basic { background: var(--sky-500); }
+  .dot-ot { background: var(--tm-warn); }
+  .dot-pen { background: var(--tm-pen); }
+  .hero-sublabel .fmono {
+    font-family: var(--mono);
+    color: var(--ink-2);
+    font-feature-settings: 'tnum';
+  }
+
+  /* Section header */
+  .section-hdr {
+    font-size: 10px;
+    color: var(--sky-500);
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-weight: 700;
+    padding: 0 16px;
+    margin: 12px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-hdr .hairline {
+    flex: 1;
+    height: 1px;
+    background: rgba(38,38,38,0.6);
+  }
+  .section-hdr .right-action {
+    color: var(--sky-500);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .section-hdr .right-count {
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  /* Times cards */
+  .times-row {
+    padding: 0 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .time-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px 12px;
+  }
+  .time-card-label {
+    font-size: 10px;
+    color: var(--sky-500);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .time-card-label .now {
+    color: var(--ink-4);
+    font-size: 8px;
+    background: rgba(255,255,255,0.05);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .time-card-value {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    line-height: 1.05;
+  }
+  .lunch-card {
+    margin: 0 16px 8px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--mono);
+    font-size: 14px;
+  }
+  .lunch-card .label {
+    font-size: 10px;
+    color: var(--sky-500);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 700;
+    font-family: var(--sans);
+  }
+  .lunch-card .arrow { color: var(--ink-4); }
+  .lunch-card .mins { color: var(--ink-3); margin-left: auto; font-size: 11px; }
+
+  /* Default badge */
+  .defaults-note {
+    margin: 4px 16px 16px;
+    font-size: 10px;
+    color: var(--ink-4);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .defaults-note .pulse {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--sky-500);
+    box-shadow: 0 0 8px var(--sky-500);
+  }
+
+  /* Crew list */
+  .crew-list { padding: 0 16px; }
+  .crew-row {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .crew-row:hover { border-color: #333; }
+  .crew-row.me {
+    border-color: rgba(14,165,233,0.25);
+    background: rgba(14,165,233,0.03);
+  }
+  .crew-row.off {
+    background: transparent;
+    border-style: dashed;
+    opacity: 0.6;
+  }
+  .crew-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--card-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--ink-2);
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .crew-avatar.me {
+    background: rgba(14,165,233,0.15);
+    color: var(--sky-400);
+  }
+  .crew-info { flex: 1; min-width: 0; }
+  .crew-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .crew-name .you-tag {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: lowercase;
+    color: var(--ink-4);
+    letter-spacing: 0;
+  }
+  .crew-role {
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-top: 1px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .crew-meta-chips {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .chip {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid;
+  }
+  .chip-ot   { color: var(--tm-warn); background: var(--tm-warn-tint); border-color: var(--tm-warn-border); }
+  .chip-pen  { color: var(--tm-pen);  background: var(--tm-pen-tint);  border-color: var(--tm-pen-border); }
+  .chip-good { color: var(--tm-good); background: var(--tm-good-tint); border-color: var(--tm-good-border); }
+  .chip-var  { color: var(--ink-2);   background: var(--card-2); border-color: var(--border); }
+  .chip-sat  { color: var(--tm-warn); background: var(--tm-warn-tint); border-color: var(--tm-warn-border); }
+  .chip-sun  { color: var(--tm-pen); background: var(--tm-pen-tint); border-color: var(--tm-pen-border); }
+
+  .crew-pay {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    text-align: right;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .crew-pay .small {
+    font-size: 10px;
+    color: var(--ink-3);
+    font-weight: 500;
+    text-align: right;
+    display: block;
+    margin-top: 1px;
+  }
+  .crew-off-label {
+    font-size: 10px;
+    color: var(--ink-4);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+  }
+
+  /* Add crew */
+  .add-crew-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px dashed var(--ink-5);
+    color: var(--ink-3);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    text-align: center;
+    margin-top: 2px;
+    background: transparent;
+  }
+
+  /* Conditions */
+  .conditions-row {
+    padding: 0 16px;
+    margin-bottom: 12px;
+  }
+  .conditions-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .cond-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cond-pill {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 20px;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    color: var(--ink-3);
+  }
+  .cond-pill.on {
+    background: var(--tm-warn-tint);
+    border-color: var(--tm-warn-border);
+    color: var(--tm-warn);
+  }
+
+  /* Bottom action bar */
+  .bottom-bar {
+    padding: 14px 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    background: var(--bg);
+    border-top: 1px solid var(--border-soft);
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .btn-primary {
+    flex: 1;
+    background: var(--sky-500);
+    color: #000;
+    border: none;
+    border-radius: 12px;
+    padding: 13px;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: 0 4px 16px rgba(14,165,233,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-ghost {
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    color: var(--ink-2);
+    border-radius: 12px;
+    padding: 13px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  /* Variances: per-person time override */
+  .variance-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--tm-warn);
+    margin-top: 4px;
+  }
+  .variance-time .strikethrough {
+    color: var(--ink-4);
+    text-decoration: line-through;
+    margin-right: 6px;
+  }
+
+  /* Overview screen */
+  .ov-hero {
+    margin: 4px 16px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 18px;
+  }
+  .ov-hero .title {
+    font-size: 10px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .ov-hero .num {
+    font-family: var(--mono);
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .ov-hero .num .pence {
+    font-size: 22px;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .ov-hero .progress-bar {
+    height: 6px;
+    background: var(--card-2);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 14px 0 8px;
+    display: flex;
+  }
+  .ov-hero .progress-bar > * { height: 100%; }
+  .ov-bar-basic { background: var(--sky-500); flex: 78; }
+  .ov-bar-ot { background: var(--tm-warn); flex: 14; }
+  .ov-bar-pen { background: var(--tm-pen); flex: 8; }
+  .ov-hero .breakdown-row {
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    color: var(--ink-3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+  }
+  .ov-hero .breakdown-row .fmono {
+    font-family: var(--mono);
+    color: var(--ink-2);
+  }
+
+  /* By-crew list */
+  .by-crew-row {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin: 0 16px 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .by-crew-row .name-block { flex: 1; min-width: 0; }
+  .by-crew-row .days-pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-top: 2px;
+  }
+
+  /* Send sheet */
+  .send-sheet {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    padding: 20px 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
+    box-shadow: 0 -20px 40px rgba(0,0,0,0.6);
+  }
+  .send-sheet .grabber {
+    width: 36px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 14px;
+  }
+  .send-sheet h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .send-sheet .subtitle {
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-bottom: 16px;
+  }
+  .send-recipient {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .send-recipient:last-of-type { border: none; }
+  .send-recipient .check {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--sky-500);
+    color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .send-recipient .check.off {
+    background: transparent;
+    border: 1.5px solid var(--ink-5);
+    color: transparent;
+  }
+  .send-recipient .email {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .send-recipient .name {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .send-recipient .total {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: right;
+    color: var(--ink);
+    margin-left: auto;
+  }
+
+  /* Settings mode card */
+  .settings-card {
+    margin: 0 16px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+  }
+  .settings-card .label-row {
+    font-size: 10px;
+    color: var(--sky-500);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .mode-option {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    gap: 12px;
+  }
+  .mode-option.active {
+    border-color: var(--sky-500);
+    background: rgba(14,165,233,0.04);
+  }
+  .mode-option .radio {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--ink-5);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .mode-option.active .radio {
+    border-color: var(--sky-500);
+  }
+  .mode-option.active .radio::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--sky-500);
+  }
+  .mode-option .text { flex: 1; }
+  .mode-option .text strong {
+    display: block;
+    font-size: 13px;
+    color: var(--ink);
+    margin-bottom: 2px;
+  }
+  .mode-option .text small {
+    font-size: 11px;
+    color: var(--ink-3);
+    line-height: 1.4;
+  }
+
+  /* Per-person screen */
+  .pp-header-strip {
+    padding: 0 16px 12px;
+  }
+  .pp-person-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding-top: 4px;
+  }
+  .pp-person-line .name {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+  .pp-person-line .role {
+    font-size: 11px;
+    color: var(--sky-500);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+  }
+
+  /* Toggle */
+  .toggle {
+    width: 38px; height: 22px;
+    background: var(--card-2);
+    border-radius: 11px;
+    position: relative;
+    border: 1px solid var(--border);
+  }
+  .toggle.on {
+    background: var(--sky-500);
+    border-color: var(--sky-500);
+  }
+  .toggle::after {
+    content: '';
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    position: absolute;
+    top: 2px; left: 3px;
+    transition: left 0.15s;
+  }
+  .toggle.on::after { left: 18px; }
+
+  /* Variance editor inline */
+  .variance-row {
+    margin: 0 16px 8px;
+    padding: 10px 14px;
+    background: rgba(255,138,61,0.04);
+    border: 1px solid var(--tm-warn-border);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+  }
+  .variance-row .label {
+    font-size: 9px;
+    color: var(--tm-warn);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+  }
+  .variance-row .name { font-weight: 600; color: var(--ink); }
+  .variance-row .detail { color: var(--ink-3); margin-left: auto; font-family: var(--mono); }
+
+  /* Send timesheets pill at bottom */
+  .send-pill-bottom {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--sky-500);
+    color: #000;
+    padding: 10px 22px;
+    border-radius: 22px;
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow: 0 8px 24px rgba(14,165,233,0.4);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Notes block */
+  .notes-block {
+    margin: 0 16px 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .notes-block .lbl {
+    font-size: 10px;
+    color: var(--sky-500);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .notes-block .txt {
+    font-size: 12px;
+    color: var(--ink-2);
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Best Boy — mobile mode</h1>
+  <div class="subtitle">v4 design exploration · day-first, crew-aware</div>
+  <div class="meta">For Derrick · 5 frames · grid mode preserved as legacy/desktop toggle</div>
+</div>
+
+<div class="frames">
+
+  <!-- ───────── FRAME 1: Day view (default state) ───────── -->
+  <div class="frame-col">
+    <div class="frame-label">Frame 1 — Day view (defaults state)</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="status-bar"><span>10:24</span><span>● ●</span></div>
+      <div class="screen">
+
+        <div class="breadcrumb-header">
+          <div class="breadcrumb-back"><span class="arrow">‹</span> SHOOTS</div>
+          <div class="breadcrumb-title">
+            <span>SUNSILK SS27</span>
+            <span class="breadcrumb-actions">
+              <span class="icon-btn">⤴</span>
+              <span class="icon-btn">⚙</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="day-strip">
+          <span class="day-no">DAY <b>3</b> / 8 · <span style="color:var(--ink-2)">SHOOT</span></span>
+          <span><span class="day-pick">SHOOT ⌄</span> · WED 13 MAY</span>
+        </div>
+
+        <div class="hero-card">
+          <div class="hero-label">TODAY · ALL CREW <span class="crew-count">7 ACTIVE</span></div>
+          <div class="hero-number">£4,328<span class="pence">.50</span></div>
+          <div class="hero-sublabel">
+            <span><span class="dot dot-basic"></span>BASIC <span class="fmono">£3,996</span></span>
+            <span><span class="dot dot-ot"></span>OT <span class="fmono">£266</span></span>
+            <span><span class="dot dot-pen"></span>PEN <span class="fmono">£66</span></span>
+          </div>
+        </div>
+
+        <div class="section-hdr">
+          DEPT DEFAULTS
+          <span class="hairline"></span>
+          <span class="right-action">EDIT</span>
+        </div>
+
+        <div class="times-row">
+          <div class="time-card">
+            <div class="time-card-label">CALL <span class="now">NOW</span></div>
+            <div class="time-card-value">08:00</div>
+          </div>
+          <div class="time-card">
+            <div class="time-card-label">WRAP <span class="now">NOW</span></div>
+            <div class="time-card-value">19:00</div>
+          </div>
+        </div>
+
+        <div class="lunch-card">
+          <span class="label">LUNCH</span>
+          <span>13:00</span>
+          <span class="arrow">→</span>
+          <span>14:00</span>
+          <span class="mins">60 mins</span>
+        </div>
+
+        <div class="defaults-note">
+          <span class="pulse"></span>
+          APPLIES TO ALL UNLESS OVERRIDDEN BELOW
+        </div>
+
+        <div class="section-hdr">
+          CREW
+          <span class="hairline"></span>
+          <span class="right-count">7 OF 8</span>
+        </div>
+
+        <div class="crew-list">
+          <!-- Me first -->
+          <div class="crew-row me">
+            <div class="crew-avatar me">D</div>
+            <div class="crew-info">
+              <div class="crew-name">Derrick <span class="you-tag">(you)</span></div>
+              <div class="crew-role">Best Boy · £444 BDR</div>
+            </div>
+            <div class="crew-pay">£614<span class="small">basic + OT</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">G</div>
+            <div class="crew-info">
+              <div class="crew-name">Mike Garson</div>
+              <div class="crew-role">Gaffer · £550 BDR</div>
+            </div>
+            <div class="crew-pay">£760<span class="small">basic + OT</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">S</div>
+            <div class="crew-info">
+              <div class="crew-name">Sam Whittle</div>
+              <div class="crew-role">Spark · £390 BDR</div>
+            </div>
+            <div class="crew-pay">£540<span class="small">basic + OT</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">J</div>
+            <div class="crew-info">
+              <div class="crew-name">Jay Patel</div>
+              <div class="crew-role">Spark · £390 BDR</div>
+            </div>
+            <div class="crew-pay">£540<span class="small">basic + OT</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">L</div>
+            <div class="crew-info">
+              <div class="crew-name">Leo Andrews</div>
+              <div class="crew-role">Rigger · £370 BDR</div>
+            </div>
+            <div class="crew-pay">£512<span class="small">basic + OT</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">F</div>
+            <div class="crew-info">
+              <div class="crew-name">Fern Adesina</div>
+              <div class="crew-role">Trainee · £200 BDR</div>
+            </div>
+            <div class="crew-pay">£277<span class="small">basic + OT</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">C</div>
+            <div class="crew-info">
+              <div class="crew-name">Chris Holt</div>
+              <div class="crew-role">Generator op · £420 BDR</div>
+            </div>
+            <div class="crew-pay">£581<span class="small">basic + OT</span></div>
+          </div>
+
+          <!-- Off today -->
+          <div class="crew-row off">
+            <div class="crew-avatar">R</div>
+            <div class="crew-info">
+              <div class="crew-name" style="color:var(--ink-3)">Rachel Wong</div>
+              <div class="crew-role"><span class="crew-off-label">REST DAY</span></div>
+            </div>
+            <div class="crew-pay" style="color:var(--ink-4)">—</div>
+          </div>
+
+          <button class="add-crew-btn">+ Add to today's crew</button>
+        </div>
+
+      </div>
+    </div>
+    <div class="frame-desc">
+      <strong style="color:var(--ink-2)">Day-first layout.</strong> Department defaults set once at top (CALL/WRAP/LUNCH). Crew list below shows everyone's day in one scroll — name, role, today's pay. Tap a row to drill into that person's day. Tap "+ Add to today's crew" to flag someone in for today. Off-today members render dashed at the bottom.
+    </div>
+  </div>
+
+  <!-- ───────── FRAME 2: Day view with variances ───────── -->
+  <div class="frame-col">
+    <div class="frame-label">Frame 2 — Day view (with variances)</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="status-bar"><span>17:48</span><span>● ●</span></div>
+      <div class="screen">
+
+        <div class="breadcrumb-header">
+          <div class="breadcrumb-back"><span class="arrow">‹</span> SHOOTS</div>
+          <div class="breadcrumb-title">
+            <span>SUNSILK SS27</span>
+            <span class="breadcrumb-actions">
+              <span class="icon-btn">⤴</span>
+              <span class="icon-btn">⚙</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="day-strip">
+          <span class="day-no">DAY <b>3</b> / 8 · <span style="color:var(--ink-2)">SHOOT</span></span>
+          <span><span class="day-pick">SHOOT ⌄</span> · WED 13 MAY</span>
+        </div>
+
+        <div class="hero-card">
+          <div class="hero-label">TODAY · ALL CREW <span class="crew-count">7 ACTIVE</span></div>
+          <div class="hero-number">£5,118<span class="pence">.20</span></div>
+          <div class="hero-sublabel">
+            <span><span class="dot dot-basic"></span>BASIC <span class="fmono">£3,996</span></span>
+            <span><span class="dot dot-ot"></span>OT <span class="fmono">£842</span></span>
+            <span><span class="dot dot-pen"></span>PEN <span class="fmono">£280</span></span>
+          </div>
+        </div>
+
+        <div class="times-row" style="margin-top:6px">
+          <div class="time-card">
+            <div class="time-card-label">CALL</div>
+            <div class="time-card-value">08:00</div>
+          </div>
+          <div class="time-card">
+            <div class="time-card-label">WRAP</div>
+            <div class="time-card-value">20:30</div>
+          </div>
+        </div>
+
+        <div class="lunch-card">
+          <span class="label">LUNCH</span>
+          <span>13:00</span>
+          <span class="arrow">→</span>
+          <span>14:25</span>
+          <span class="mins" style="color:var(--tm-pen)">25 LATE</span>
+        </div>
+
+        <div class="conditions-row">
+          <div class="conditions-card">
+            <div class="cond-list">
+              <span class="cond-pill on">L1 25m late</span>
+              <span class="cond-pill">2nd brk on time</span>
+              <span class="cond-pill">CWD ok</span>
+              <span class="cond-pill">Travel –</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Variance pre-rolled at top -->
+        <div class="section-hdr">
+          VARIANCES TODAY
+          <span class="hairline"></span>
+          <span class="right-count">2</span>
+        </div>
+
+        <div class="variance-row">
+          <span class="label">EARLY WRAP</span>
+          <span class="name">Mike Garson</span>
+          <span class="detail">19:30 (1h before)</span>
+        </div>
+
+        <div class="variance-row">
+          <span class="label">DAY OFF</span>
+          <span class="name">Fern Adesina</span>
+          <span class="detail">sick — no pay</span>
+        </div>
+
+        <div class="section-hdr">
+          CREW
+          <span class="hairline"></span>
+          <span class="right-count">7 ACTIVE</span>
+        </div>
+
+        <div class="crew-list">
+          <div class="crew-row me">
+            <div class="crew-avatar me">D</div>
+            <div class="crew-info">
+              <div class="crew-name">Derrick <span class="you-tag">(you)</span></div>
+              <div class="crew-role">Best Boy · £444 BDR</div>
+              <div class="crew-meta-chips">
+                <span class="chip chip-ot">OT 2.5h</span>
+                <span class="chip chip-pen">L1</span>
+              </div>
+            </div>
+            <div class="crew-pay">£811<span class="small">+ OT + L1</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">G</div>
+            <div class="crew-info">
+              <div class="crew-name">Mike Garson</div>
+              <div class="crew-role">Gaffer · £550 BDR</div>
+              <div class="crew-meta-chips">
+                <span class="chip chip-var">EARLY 1h</span>
+                <span class="chip chip-pen">L1</span>
+              </div>
+            </div>
+            <div class="crew-pay">£820<span class="small">+ L1 only</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">S</div>
+            <div class="crew-info">
+              <div class="crew-name">Sam Whittle</div>
+              <div class="crew-role">Spark · £390 BDR</div>
+              <div class="crew-meta-chips">
+                <span class="chip chip-ot">OT 2.5h</span>
+                <span class="chip chip-pen">L1</span>
+              </div>
+            </div>
+            <div class="crew-pay">£712<span class="small">+ OT + L1</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">J</div>
+            <div class="crew-info">
+              <div class="crew-name">Jay Patel</div>
+              <div class="crew-role">Spark · £390 BDR</div>
+              <div class="crew-meta-chips">
+                <span class="chip chip-ot">OT 2.5h</span>
+                <span class="chip chip-pen">L1</span>
+              </div>
+            </div>
+            <div class="crew-pay">£712<span class="small">+ OT + L1</span></div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">L</div>
+            <div class="crew-info">
+              <div class="crew-name">Leo Andrews</div>
+              <div class="crew-role">Rigger · £370 BDR</div>
+              <div class="crew-meta-chips">
+                <span class="chip chip-ot">OT 2.5h</span>
+                <span class="chip chip-pen">L1</span>
+              </div>
+            </div>
+            <div class="crew-pay">£684<span class="small">+ OT + L1</span></div>
+          </div>
+
+          <div class="crew-row off">
+            <div class="crew-avatar">F</div>
+            <div class="crew-info">
+              <div class="crew-name" style="color:var(--ink-3)">Fern Adesina</div>
+              <div class="crew-role"><span class="crew-off-label">SICK · NO PAY</span></div>
+            </div>
+            <div class="crew-pay" style="color:var(--ink-4)">—</div>
+          </div>
+
+          <div class="crew-row">
+            <div class="crew-avatar">C</div>
+            <div class="crew-info">
+              <div class="crew-name">Chris Holt</div>
+              <div class="crew-role">Generator op · £420 BDR</div>
+              <div class="crew-meta-chips">
+                <span class="chip chip-ot">OT 2.5h</span>
+                <span class="chip chip-pen">L1</span>
+              </div>
+            </div>
+            <div class="crew-pay">£766<span class="small">+ OT + L1</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="frame-desc">
+      <strong style="color:var(--ink-2)">Variances surface to the top.</strong> When someone's day differs from defaults (early wrap, day off, different role), it gets called out before the crew list. The crew list itself shows per-row chips for OT, penalties, and variances. The hero number aggregates the lot.
+    </div>
+  </div>
+
+  <!-- ───────── FRAME 3: Per-person day (drill-in) ───────── -->
+  <div class="frame-col">
+    <div class="frame-label">Frame 3 — Per-person day (drill-in)</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="status-bar"><span>17:50</span><span>● ●</span></div>
+      <div class="screen">
+
+        <div class="breadcrumb-header">
+          <div class="breadcrumb-back"><span class="arrow">‹</span> SUNSILK SS27 · DAY 3</div>
+          <div class="breadcrumb-title">
+            <span style="font-size:18px">Mike Garson</span>
+            <span class="breadcrumb-actions">
+              <span class="icon-btn" style="background:transparent;color:var(--ink-3);font-size:18px">⋯</span>
+            </span>
+          </div>
+          <div style="font-size:11px;color:var(--sky-500);font-weight:700;text-transform:uppercase;letter-spacing:0.13em;margin-top:2px">Gaffer · £550 BDR</div>
+        </div>
+
+        <div class="hero-card">
+          <div class="hero-label">MIKE TODAY</div>
+          <div class="hero-number">£820<span class="pence">.00</span></div>
+          <div class="hero-sublabel">
+            <span><span class="dot dot-basic"></span>BASIC <span class="fmono">£550</span></span>
+            <span><span class="dot dot-ot"></span>OT <span class="fmono">£0</span></span>
+            <span><span class="dot dot-pen"></span>PEN <span class="fmono">£40</span></span>
+          </div>
+        </div>
+
+        <div class="section-hdr">
+          TIMES
+          <span class="hairline"></span>
+          <span class="right-action" style="color:var(--tm-warn)">OVERRIDDEN</span>
+        </div>
+
+        <div class="times-row">
+          <div class="time-card">
+            <div class="time-card-label">CALL</div>
+            <div class="time-card-value">08:00</div>
+          </div>
+          <div class="time-card" style="border-color:var(--tm-warn-border);background:rgba(255,138,61,0.03)">
+            <div class="time-card-label" style="color:var(--tm-warn)">WRAP <span class="now" style="background:var(--tm-warn-tint);color:var(--tm-warn)">VAR</span></div>
+            <div class="time-card-value">19:30</div>
+          </div>
+        </div>
+
+        <div class="lunch-card">
+          <span class="label">LUNCH</span>
+          <span>13:00</span>
+          <span class="arrow">→</span>
+          <span>14:25</span>
+          <span class="mins" style="color:var(--tm-pen)">25 LATE</span>
+        </div>
+
+        <div class="defaults-note">
+          <span class="pulse" style="background:var(--tm-warn);box-shadow:0 0 8px var(--tm-warn)"></span>
+          1 OVERRIDE · TAP CARD TO RESET TO DEFAULT
+        </div>
+
+        <div class="section-hdr">
+          CONDITIONS
+          <span class="hairline"></span>
+        </div>
+
+        <div class="conditions-row">
+          <div class="conditions-card">
+            <div class="cond-list">
+              <span class="cond-pill on">L1 25m late</span>
+              <span class="cond-pill">2nd brk ok</span>
+              <span class="cond-pill">CWD ok</span>
+              <span class="cond-pill">11h day</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-hdr">
+          NOTES
+          <span class="hairline"></span>
+        </div>
+
+        <div class="notes-block">
+          <div class="txt" style="color:var(--ink-3);font-style:italic">Left at 19:30 for prep on tomorrow's recce</div>
+        </div>
+
+      </div>
+    </div>
+    <div class="frame-desc">
+      <strong style="color:var(--ink-2)">Solo experience, per person.</strong> Tapping any crew row gets you their day — same layout as the existing SoloDayPage. Department defaults show as fields filled in; overrides are marked tm-warn so you can see at a glance what's been changed from the dept default. "OVERRIDDEN" badge in the section header makes the difference visible.
+    </div>
+  </div>
+
+  <!-- ───────── FRAME 4: Production overview multi-crew ───────── -->
+  <div class="frame-col">
+    <div class="frame-label">Frame 4 — Production overview (multi-crew)</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="status-bar"><span>10:30</span><span>● ●</span></div>
+      <div class="screen">
+
+        <div class="breadcrumb-header">
+          <div class="breadcrumb-back"><span class="arrow">‹</span> SUNSILK SS27</div>
+          <div class="breadcrumb-title">
+            <span>PRODUCTION TOTAL</span>
+            <span class="breadcrumb-actions">
+              <span class="icon-btn">⤴</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="ov-hero">
+          <div class="title">8-DAY SHOOT · GROSS</div>
+          <div class="num">£32,184<span class="pence">.50</span></div>
+          <div class="progress-bar">
+            <div class="ov-bar-basic"></div>
+            <div class="ov-bar-ot"></div>
+            <div class="ov-bar-pen"></div>
+          </div>
+          <div class="breakdown-row">
+            <span><span class="dot dot-basic"></span>BASIC <span class="fmono">£25,103</span></span>
+            <span><span class="dot dot-ot"></span>OT <span class="fmono">£4,477</span></span>
+            <span><span class="dot dot-pen"></span>PEN <span class="fmono">£2,604</span></span>
+          </div>
+        </div>
+
+        <div class="section-hdr">
+          BY CREW
+          <span class="hairline"></span>
+          <span class="right-count">8</span>
+        </div>
+
+        <div class="by-crew-row" style="border-color:rgba(14,165,233,0.25);background:rgba(14,165,233,0.03)">
+          <div class="crew-avatar me">D</div>
+          <div class="name-block">
+            <div class="crew-name">Derrick <span class="you-tag">(you)</span></div>
+            <div class="days-pill">8 days · Best Boy</div>
+          </div>
+          <div class="crew-pay">£4,612<span class="small">basic + OT</span></div>
+        </div>
+
+        <div class="by-crew-row">
+          <div class="crew-avatar">G</div>
+          <div class="name-block">
+            <div class="crew-name">Mike Garson</div>
+            <div class="days-pill">8 days · Gaffer</div>
+          </div>
+          <div class="crew-pay">£5,840<span class="small">basic + OT</span></div>
+        </div>
+
+        <div class="by-crew-row">
+          <div class="crew-avatar">S</div>
+          <div class="name-block">
+            <div class="crew-name">Sam Whittle</div>
+            <div class="days-pill">8 days · Spark</div>
+          </div>
+          <div class="crew-pay">£4,160<span class="small">basic + OT</span></div>
+        </div>
+
+        <div class="by-crew-row">
+          <div class="crew-avatar">J</div>
+          <div class="name-block">
+            <div class="crew-name">Jay Patel</div>
+            <div class="days-pill">6 days · Spark</div>
+          </div>
+          <div class="crew-pay">£3,118<span class="small">basic + OT</span></div>
+        </div>
+
+        <div class="by-crew-row">
+          <div class="crew-avatar">L</div>
+          <div class="name-block">
+            <div class="crew-name">Leo Andrews</div>
+            <div class="days-pill">8 days · Rigger</div>
+          </div>
+          <div class="crew-pay">£3,944<span class="small">basic + OT</span></div>
+        </div>
+
+        <div class="by-crew-row">
+          <div class="crew-avatar">F</div>
+          <div class="name-block">
+            <div class="crew-name">Fern Adesina</div>
+            <div class="days-pill">7 days · Trainee</div>
+          </div>
+          <div class="crew-pay">£1,820<span class="small">basic + OT</span></div>
+        </div>
+
+        <div class="by-crew-row">
+          <div class="crew-avatar">C</div>
+          <div class="name-block">
+            <div class="crew-name">Chris Holt</div>
+            <div class="days-pill">5 days · Genny op</div>
+          </div>
+          <div class="crew-pay">£2,580<span class="small">basic + OT</span></div>
+        </div>
+
+        <div class="by-crew-row">
+          <div class="crew-avatar">R</div>
+          <div class="name-block">
+            <div class="crew-name">Rachel Wong</div>
+            <div class="days-pill">4 days · Crew driver</div>
+          </div>
+          <div class="crew-pay">£2,110<span class="small">basic + OT</span></div>
+        </div>
+
+        <div style="padding: 0 16px 100px;">
+          <div class="section-hdr" style="padding:0">
+            BY DAY
+            <span class="hairline"></span>
+            <span class="right-count">8</span>
+          </div>
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:8px 14px;color:var(--ink-3);font-size:11px">
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft)">
+              <span>D1 · Mon 11 May</span><span class="crew-pay" style="font-size:13px">£3,832</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft)">
+              <span>D2 · Tue 12 May</span><span class="crew-pay" style="font-size:13px">£4,012</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0">
+              <span>D3 · Wed 13 May</span><span class="crew-pay" style="font-size:13px">£5,118</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="send-pill-bottom">
+          ✉ SEND TIMESHEETS TO CREW
+        </div>
+
+      </div>
+    </div>
+    <div class="frame-desc">
+      <strong style="color:var(--ink-2)">By crew, then by day.</strong> Hero is the production gross. "By crew" is the headline list — tap any row to drill into that person's productions-wide totals. "By day" follows for chronological view. <strong style="color:var(--sky-400)">Send Timesheets</strong> floats as a primary action — one tap to email everyone their personal PDF.
+    </div>
+  </div>
+
+  <!-- ───────── FRAME 5: Send timesheets + Mode toggle ───────── -->
+  <div class="frame-col">
+    <div class="frame-label">Frame 5 — Send timesheets sheet</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="status-bar"><span>10:35</span><span>● ●</span></div>
+      <div class="screen" style="opacity:0.4;filter:blur(0.5px)">
+
+        <div class="breadcrumb-header">
+          <div class="breadcrumb-back"><span class="arrow">‹</span> SUNSILK SS27</div>
+          <div class="breadcrumb-title">
+            <span>PRODUCTION TOTAL</span>
+          </div>
+        </div>
+
+        <div class="ov-hero">
+          <div class="title">8-DAY SHOOT · GROSS</div>
+          <div class="num">£32,184<span class="pence">.50</span></div>
+        </div>
+      </div>
+
+      <div class="send-sheet">
+        <div class="grabber"></div>
+        <h3>Send timesheets</h3>
+        <div class="subtitle">7 of 8 selected · individual PDFs by email</div>
+
+        <div class="send-recipient">
+          <div class="check">✓</div>
+          <div>
+            <div class="name">Mike Garson</div>
+            <div class="email">mike@garsonlx.co.uk</div>
+          </div>
+          <div class="total">£5,840</div>
+        </div>
+        <div class="send-recipient">
+          <div class="check">✓</div>
+          <div>
+            <div class="name">Sam Whittle</div>
+            <div class="email">sam.whittle@gmail.com</div>
+          </div>
+          <div class="total">£4,160</div>
+        </div>
+        <div class="send-recipient">
+          <div class="check">✓</div>
+          <div>
+            <div class="name">Jay Patel</div>
+            <div class="email">jay@jay-electric.com</div>
+          </div>
+          <div class="total">£3,118</div>
+        </div>
+        <div class="send-recipient">
+          <div class="check">✓</div>
+          <div>
+            <div class="name">Leo Andrews</div>
+            <div class="email">leo.rigs@gmail.com</div>
+          </div>
+          <div class="total">£3,944</div>
+        </div>
+        <div class="send-recipient">
+          <div class="check off">·</div>
+          <div>
+            <div class="name" style="color:var(--ink-3)">Fern Adesina</div>
+            <div class="email" style="color:var(--ink-4)">missing email · add</div>
+          </div>
+          <div class="total" style="color:var(--ink-4)">£1,820</div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:14px">
+          <button class="btn-ghost" style="flex:0">Cancel</button>
+          <button class="btn-primary">Send 7 timesheets</button>
+        </div>
+      </div>
+
+    </div>
+    <div class="frame-desc">
+      <strong style="color:var(--ink-2)">One-tap send.</strong> Bottom sheet shows everyone with a stored email, pre-selected. Missing emails are flagged inline (no failed sends silently). Primary button shows the count so you know what you're committing to.
+    </div>
+  </div>
+
+  <!-- ───────── FRAME 6: Mode toggle in Production Settings ───────── -->
+  <div class="frame-col">
+    <div class="frame-label">Frame 6 — Mode toggle in Production Settings</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="status-bar"><span>10:40</span><span>● ●</span></div>
+      <div class="screen">
+
+        <div class="breadcrumb-header">
+          <div class="breadcrumb-back"><span class="arrow">‹</span> SUNSILK SS27</div>
+          <div class="breadcrumb-title" style="font-size:18px">
+            Production settings
+            <span class="breadcrumb-actions">
+              <span class="icon-btn" style="background:transparent;color:var(--ink-3);font-size:18px">⋯</span>
+            </span>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--sky-500); margin: 0 -16px 14px; padding-top: 14px"></div>
+
+        <div class="settings-card">
+          <div class="label-row">BASICS</div>
+          <div style="font-size:11px;color:var(--ink-3)">Title, dates, etc.</div>
+        </div>
+
+        <div class="settings-card">
+          <div class="label-row">MODE</div>
+
+          <div class="mode-option active">
+            <div class="radio"></div>
+            <div class="text">
+              <strong>Mobile · Day-first</strong>
+              <small>One screen per day with crew listed. Tap to drill into per-person edits. Recommended for phone use.</small>
+            </div>
+          </div>
+
+          <div class="mode-option">
+            <div class="radio"></div>
+            <div class="text">
+              <strong>Grid · Spreadsheet</strong>
+              <small>Crew as rows, days as columns. Bulk-edit cells across the whole production. Best on a laptop or tablet.</small>
+            </div>
+          </div>
+
+          <div style="font-size:10px; color:var(--ink-4); margin-top:10px; line-height:1.5">
+            Both modes read and write the same data — switch any time.
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="label-row">INVOICING DETAILS <span style="color:var(--ink-3);font-weight:500;margin-left:auto;float:right">Minds Eye · accounts@…</span></div>
+        </div>
+
+        <div class="settings-card">
+          <div class="label-row">WEEKEND RATE OVERRIDES <span style="color:var(--ink-3);font-weight:500;margin-left:auto;float:right">APA standard</span></div>
+        </div>
+
+      </div>
+    </div>
+    <div class="frame-desc">
+      <strong style="color:var(--ink-2)">Toggle, don't hide.</strong> The mode lives in Production Settings as an explicit choice — both options described clearly. New productions default to Mobile, but flipping to Grid mode is one tap. Same data; just a different rendering. Existing Best Boy productions migrate as Mobile by default but can flip immediately.
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
