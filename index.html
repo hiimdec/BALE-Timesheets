@@ -9020,6 +9020,8 @@ const setDays = (updater) =>
       const [confirmRefresh, setConfirmRefresh] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
       const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
+      const [notesOpen, setNotesOpen] = React.useState(!!invoice?.notes);
+      const [bankOpen, setBankOpen] = React.useState(false);
       const [toastMsg, setToastMsg] = React.useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
 
@@ -9304,19 +9306,31 @@ const setDays = (updater) =>
               )}
             </div>
 
-            <SectionCard title="Line items">
-              {invoice.status === "draft" && invoice.linesEdited && (
-                <div className="-mt-2 mb-2">
-                  <span className="text-[10px] text-tm-warn uppercase tracking-wide font-bold">Manually edited</span>
-                </div>
-              )}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
+              <div className="flex items-baseline justify-between mb-1.5">
+                <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">
+                  Line items
+                  <span className="text-neutral-600 font-mono font-medium ml-1.5">
+                    {normalLines.length + (expenseLines.length > 0 ? (showIndExp ? expenseLines.length : 1) : 0)}
+                  </span>
+                </span>
+                {!invoice.linesEdited ? (
+                  <span className="text-[8px] tracking-[0.14em] uppercase font-bold text-tm-good bg-tm-good/10 border border-tm-good/25 px-1.5 py-[3px] rounded">
+                    Auto
+                  </span>
+                ) : (
+                  <span className="text-[8px] tracking-[0.14em] uppercase font-bold text-tm-warn bg-tm-warn/10 border border-tm-warn/25 px-1.5 py-[3px] rounded">
+                    Edited
+                  </span>
+                )}
+              </div>
+
               <div className="space-y-1">
                 {normalLines.length === 0 && expenseLines.length === 0 && (
                   <div className="text-[11px] text-neutral-500 italic py-2">No line items — tap Add line below.</div>
                 )}
                 {normalLines.map(item => renderLineRow(item))}
 
-                {/* Expenses — rolled up by default, individual when toggled */}
                 {expenseLines.length > 0 && !showIndExp && (
                   <div className="flex items-start gap-2 py-2">
                     <div className="flex-1 min-w-0">
@@ -9347,67 +9361,125 @@ const setDays = (updater) =>
               <div className="pt-2">
                 <Btn variant="ghost" size="sm" onClick={addLineItem}><IPlus size={13}/>Add line</Btn>
               </div>
-            </SectionCard>
 
-            <SectionCard title="Totals">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-neutral-400">Subtotal</span>
-                  <span className="font-mono text-neutral-200">{fmtGBP(subtotal)}</span>
+              <div className="pt-3 mt-1 border-t border-neutral-700/60">
+                <div className="flex justify-between text-[11px] font-mono py-0.5">
+                  <span className="text-neutral-500 tracking-wider uppercase">Subtotal</span>
+                  <span className="text-neutral-300 font-semibold">{fmtGBP(subtotal)}</span>
                 </div>
                 {invoice.vatRegistered && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-neutral-400">VAT ({invoice.vatRate || 20}%)</span>
-                    <span className="font-mono text-neutral-200">{fmtGBP(vatAmount)}</span>
+                  <div className="flex justify-between text-[11px] font-mono py-0.5">
+                    <span className="text-neutral-500 tracking-wider uppercase">VAT {invoice.vatRate || 20}%</span>
+                    <span className="text-neutral-300 font-semibold">{fmtGBP(vatAmount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-base font-bold border-t border-neutral-700 pt-2 mt-2">
-                  <span>{invoice.vatRegistered ? "Total inc. VAT" : "Total"}</span>
-                  <span className="font-mono">{fmtGBP(total)}</span>
+                <div className="flex justify-between items-baseline pt-2 mt-1 border-t border-neutral-800/60">
+                  <span className="text-[12px] uppercase tracking-wider font-bold text-neutral-100">Total</span>
+                  <span className="font-mono font-bold text-[16px] text-neutral-100 tracking-tight">{fmtGBP(total)}</span>
                 </div>
-                {invoice.vatRegistered && invoice.vatNumber && (
-                  <div className="text-[10px] text-neutral-500 mt-1">VAT reg: {invoice.vatNumber}</div>
-                )}
               </div>
-              <div className="mt-4 border-t border-neutral-800 pt-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT registered</span>
-                  <Toggle value={invoice.vatRegistered} onChange={(v) => updateInvoice({ vatRegistered: v })} ariaLabel="VAT registered" />
-                </div>
-                {invoice.vatRegistered && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="VAT rate (%)">
-                      <Input type="number" min="0" max="100" step="1" value={invoice.vatRate} onChange={(e) => updateInvoice({ vatRate: Number(e.target.value) })} />
-                    </Field>
-                    <Field label="VAT number">
-                      <Input type="text" value={invoice.vatNumber} onChange={(e) => updateInvoice({ vatNumber: e.target.value })} placeholder="GB123456789" />
-                    </Field>
-                  </div>
-                )}
-              </div>
-            </SectionCard>
+            </div>
 
-            <SectionCard title="Notes">
-              <textarea
-                value={invoice.notes}
-                onChange={(e) => updateInvoice({ notes: e.target.value })}
-                rows={6}
-                placeholder="Timesheet breakdown, payment terms, or any other notes…"
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none font-mono"
-              />
-            </SectionCard>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-1">
+              <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">VAT</span>
+                <span className="flex-1 text-[12px] font-mono font-semibold text-neutral-100">
+                  {invoice.vatRegistered ? `${invoice.vatRate || 20}%` : <span className="text-neutral-500">Not registered</span>}
+                </span>
+                <Toggle value={invoice.vatRegistered} onChange={(v) => updateInvoice({ vatRegistered: v })} ariaLabel="VAT registered" />
+              </div>
+              {invoice.vatRegistered && (
+                <>
+                  <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Rate</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      inputMode="numeric"
+                      value={invoice.vatRate}
+                      onChange={(e) => updateInvoice({ vatRate: Number(e.target.value) })}
+                      className="flex-1 bg-transparent text-[12px] font-mono font-semibold text-neutral-100 focus:outline-none"
+                      aria-label="VAT rate"
+                    />
+                    <span className="text-[12px] font-mono text-neutral-500">%</span>
+                  </div>
+                  <div className="flex items-baseline gap-3 py-2">
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Number</span>
+                    <input
+                      type="text"
+                      value={invoice.vatNumber || ''}
+                      onChange={(e) => updateInvoice({ vatNumber: e.target.value })}
+                      placeholder="GB123456789"
+                      className="flex-1 bg-transparent text-[12px] font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setNotesOpen(o => !o)}
+                className="w-full px-4 py-2.5 flex items-center justify-between"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] font-bold text-neutral-500">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ transform: notesOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                    <path d="m9 18 6-6-6-6"/>
+                  </svg>
+                  Notes
+                </span>
+                <span className="text-[11px] text-neutral-600 font-mono">
+                  {invoice.notes ? `${invoice.notes.length} chars` : 'empty'}
+                </span>
+              </button>
+              {notesOpen && (
+                <div className="px-4 pb-3">
+                  <textarea
+                    value={invoice.notes || ''}
+                    onChange={(e) => updateInvoice({ notes: e.target.value })}
+                    rows={5}
+                    placeholder="Timesheet breakdown, payment terms, or any other notes…"
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-[12px] text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-sky-500 resize-none font-mono"
+                  />
+                </div>
+              )}
+            </div>
 
             {(invoice.bankName || invoice.bankAccountNumber || invoice.bankSortCode || invoice.bankIBAN) && (
-              <SectionCard title="Payment details">
-                <div className="space-y-2 text-sm">
-                  {invoice.bankName && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Bank</span><span className="text-neutral-200 text-right">{invoice.bankName}</span></div>}
-                  {invoice.bankAccountName && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Account name</span><span className="text-neutral-200 text-right">{invoice.bankAccountName}</span></div>}
-                  {invoice.bankAccountNumber && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Account no.</span><span className="text-neutral-200 font-mono text-right">{invoice.bankAccountNumber}</span></div>}
-                  {invoice.bankSortCode && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Sort code</span><span className="text-neutral-200 font-mono text-right">{invoice.bankSortCode}</span></div>}
-                  {invoice.bankIBAN && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">IBAN</span><span className="text-neutral-200 font-mono text-xs text-right">{invoice.bankIBAN}</span></div>}
-                  {invoice.bankSWIFT && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">SWIFT/BIC</span><span className="text-neutral-200 font-mono text-right">{invoice.bankSWIFT}</span></div>}
-                </div>
-              </SectionCard>
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setBankOpen(o => !o)}
+                  className="w-full px-4 py-2.5 flex items-center justify-between"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] font-bold text-neutral-500">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+                      style={{ transform: bankOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                      <path d="m9 18 6-6-6-6"/>
+                    </svg>
+                    Bank details
+                  </span>
+                  <span className="text-[11px] text-neutral-600 font-mono">
+                    {[invoice.bankName, invoice.bankAccountNumber ? `••••${invoice.bankAccountNumber.slice(-4)}` : null].filter(Boolean).join(' · ') || '—'}
+                  </span>
+                </button>
+                {bankOpen && (
+                  <div className="px-4 pb-3 space-y-1.5 text-[12px]">
+                    {invoice.bankName && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Bank</span><span className="text-neutral-200 text-right">{invoice.bankName}</span></div>}
+                    {invoice.bankAccountName && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Account name</span><span className="text-neutral-200 text-right">{invoice.bankAccountName}</span></div>}
+                    {invoice.bankAccountNumber && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Account no.</span><span className="text-neutral-200 font-mono text-right">{invoice.bankAccountNumber}</span></div>}
+                    {invoice.bankSortCode && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">Sort code</span><span className="text-neutral-200 font-mono text-right">{invoice.bankSortCode}</span></div>}
+                    {invoice.bankIBAN && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">IBAN</span><span className="text-neutral-200 font-mono text-[11px] text-right break-all">{invoice.bankIBAN}</span></div>}
+                    {invoice.bankSWIFT && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">SWIFT/BIC</span><span className="text-neutral-200 font-mono text-right">{invoice.bankSWIFT}</span></div>}
+                  </div>
+                )}
+              </div>
             )}
 
             <div
