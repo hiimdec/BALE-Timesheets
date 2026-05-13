@@ -6146,6 +6146,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const displayTitle = production.title || "Production";
       const headerLabel = displayTitle.length > 28 ? displayTitle.slice(0, 28) + "…" : displayTitle;
 
+      const invoicingDetailsSummary =
+        (production.toAddress || '').split('\n')[0].trim() ||
+        (production.invoicingEmail || '').trim() ||
+        (production.jobReference || '').trim() ||
+        '—';
+
+      const modeSummary = `${production.bestBoyMode ? 'Best Boy' : 'Solo'} · ${production.isElevenHourDay ? '11h' : '10h'}`;
+
+      const weekendSummary = (() => {
+        const satCustom = (production.satRateMode || 'apa') === 'custom';
+        const sunCustom = (production.sunRateMode || 'apa') === 'custom';
+        if (!satCustom && !sunCustom) return 'APA standard';
+        const bits = [];
+        if (satCustom) bits.push(`Sat ${production.satRateCustom ?? 1.5}×`);
+        if (sunCustom) bits.push(`Sun ${production.sunRateCustom ?? 2}×`);
+        return bits.join(' · ');
+      })();
+
+      const soloMember = (!production.bestBoyMode && (production.crew ?? []).length > 0) ? production.crew[0] : null;
+      const roleSummary = soloMember ? `${soloMember.role || '—'} · £${soloMember.bdr ?? 0}` : '—';
+
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -6160,13 +6181,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           <div className="max-w-2xl mx-auto px-4 py-6">
 
-            <SectionCard title="Production">
+            <SectionCard title="Basics">
               <Field label="Production title">
                 <Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" />
               </Field>
               <Field label="Production company">
                 <Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" />
               </Field>
+              <Field label="Start date">
+                <Input type="date" value={production.startDate || ""} onChange={handleStartDateChange} />
+              </Field>
+            </SectionCard>
+
+            <Disclosure label="Invoicing details" summary={invoicingDetailsSummary}>
               <Field label="Company address" hint="Where the invoice is addressed to">
                 <textarea
                   value={production.toAddress || ""}
@@ -6177,18 +6204,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   style={{ fontFamily: 'inherit' }}
                 />
               </Field>
-              <Field label="Start date">
-                <Input type="date" value={production.startDate || ""} onChange={handleStartDateChange} />
-              </Field>
               <Field label="Job reference">
                 <Input value={production.jobReference || ""} onChange={set("jobReference")} placeholder="e.g. Vodafone Q3, PO#1234" />
               </Field>
               <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
                 <Input value={production.invoicingEmail || ""} onChange={set("invoicingEmail")} placeholder="e.g. accounts@minds-eye.tv" />
               </Field>
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="Mode">
+            <Disclosure label="Mode" summary={modeSummary}>
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Best Boy mode</span>
@@ -6210,9 +6234,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
               </div>
-            </SectionCard>
+            </Disclosure>
 
-            <SectionCard title="Weekend rate overrides">
+            <Disclosure label="Weekend rate overrides" summary={weekendSummary}>
               <p className="text-[11px] text-neutral-500 -mt-1">App applies APA standard rates by default. Toggle on to override.</p>
               <div>
                 <div className="flex items-center justify-between gap-3">
@@ -6254,15 +6278,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                 )}
               </div>
-            </SectionCard>
+            </Disclosure>
 
-            {!production.bestBoyMode && (production.crew ?? []).length > 0 && (() => {
-              const m = production.crew[0];
+            {soloMember && (() => {
+              const m = soloMember;
               const setSoloField = (k) => (e) => setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, [k]: e.target.value } : c) }));
               const setSoloNum   = (k) => (e) => setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, [k]: Number(e.target.value) } : c) }));
               const setSoloBool  = (k) => (v) => setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, [k]: v } : c) }));
               return (
-                <SectionCard title="Your role on this job">
+                <Disclosure label="Your role on this job" summary={roleSummary}>
                   <p className="text-[11px] text-neutral-500 -mt-1">Overrides your global defaults for this production only.</p>
                   <Field label="Role">
                     <Select value={m.role} onChange={(e) => {
@@ -6312,7 +6336,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                     <Toggle value={m.isDriver} onChange={setSoloBool("isDriver")} ariaLabel="Driver" />
                   </div>
-                </SectionCard>
+                </Disclosure>
               );
             })()}
 
