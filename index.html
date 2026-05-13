@@ -3433,8 +3433,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {production.prodCo && <div className="text-sm text-neutral-400 truncate">{production.prodCo}</div>}
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 {production.startDate && <span className="text-[11px] text-neutral-500 font-mono">{fmtDateShort(production.startDate)}</span>}
-                {hasCustomWeekend && <span className="px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-400 text-[10px] font-semibold">custom weekend</span>}
-                {production.isElevenHourDay && <span className="px-1.5 py-0.5 rounded-full bg-sky-900/40 text-sky-500 text-[10px] font-semibold">11h day</span>}
+                {hasCustomWeekend && <span className="px-1.5 py-0.5 rounded-full bg-tm-warn/10 border border-tm-warn/25 text-tm-warn text-[10px] font-semibold">custom weekend</span>}
+                {production.isElevenHourDay && <span className="px-1.5 py-0.5 rounded-full bg-tm-warn/10 border border-tm-warn/25 text-tm-warn text-[10px] font-semibold">11h day</span>}
               </div>
             </div>
             <Btn size="sm" variant="ghost" onClick={onOpenSettings}><IGear size={12}/>Settings</Btn>
@@ -3967,7 +3967,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <th key={col.id} className="px-2 py-1.5 border-r border-b border-neutral-700 bg-neutral-950 align-top" style={{ minWidth: 130 }}>
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-[9px] text-neutral-500 uppercase tracking-wider font-bold">Day {i+1}</span>
-                              <button onClick={() => removeColumn(col.id)} className="text-neutral-700 hover:text-red-400 text-[11px] flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} title="Remove column" aria-label="Remove column">✕</button>
+                              <button onClick={() => removeColumn(col.id)} className="text-neutral-700 hover:text-tm-pen text-[11px] flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} title="Remove column" aria-label="Remove column">✕</button>
                             </div>
                             <Input type="date" value={col.date} onChange={(e) => updateColumn(col.id, { date: e.target.value })} className="text-[10px] px-1.5 py-1 mb-1" />
                             <Select value={col.dayType} onChange={(e) => updateColumn(col.id, { dayType: e.target.value })} className="text-[10px] px-1.5 py-1">
@@ -3992,7 +3992,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               </div>
                               {setCrew && !member.isDefaultUser && (
                                 <button onClick={() => setCrew(prev => prev.filter(c => c.id !== member.id))}
-                                  className="text-neutral-700 hover:text-red-400 text-[11px] flex items-center justify-center flex-shrink-0"
+                                  className="text-neutral-700 hover:text-tm-pen text-[11px] flex items-center justify-center flex-shrink-0"
                                   style={{ minWidth: 44, minHeight: 44 }}
                                   title="Remove" aria-label="Remove crew member">✕</button>
                               )}
@@ -4224,7 +4224,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const result = lookupPostcodeMiles(day.mileagePostcode, day.mileageRoundTrip !== false);
                 if (!day.mileagePostcode) return null;
                 if (!result) return (
-                  <div className="text-xs text-amber-400 mt-1">
+                  <div className="text-xs text-tm-warn mt-1">
                     Couldn't find that postcode — try the first part only, like NW1.
                   </div>
                 );
@@ -4233,7 +4233,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div className="text-sm text-sky-300">→ {result.miles} mile{result.miles === 1 ? '' : 's'}</div>
                     <div className="text-[10px] text-neutral-500">Approximate — adjust manually if your route differs.</div>
                     {result.insideM25 && (
-                      <div className="text-xs text-amber-400">
+                      <div className="text-xs text-tm-warn">
                         ⚠ {result.outcode} is inside the M25 — APA mileage typically not paid for inside-M25 shoots. You can keep the value if your job pays anyway.
                       </div>
                     )}
@@ -4785,7 +4785,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <button
                           type="button"
                           onClick={() => set({ expenses: v.expenses.filter(x => x.id !== exp.id) })}
-                          className="text-neutral-600 hover:text-red-400 transition-colors flex-shrink-0 p-1"
+                          className="text-neutral-600 hover:text-tm-pen transition-colors flex-shrink-0 p-1"
                           aria-label="Remove expense"
                         ><IX size={14}/></button>
                       </div>
@@ -4807,7 +4807,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-[13px] text-neutral-100 placeholder:text-neutral-600 leading-snug resize-y outline-none focus:border-sky-500 transition-colors"
                 style={{ fontFamily: 'inherit' }}
               />
-              <div className={`text-xs mt-1 text-right ${(v.note || "").length > 1000 ? "text-red-400" : (v.note || "").length > 500 ? "text-amber-400" : "text-neutral-600"}`}>
+              <div className={`text-xs mt-1 text-right ${(v.note || "").length > 1000 ? "text-tm-pen" : (v.note || "").length > 500 ? "text-tm-warn" : "text-neutral-600"}`}>
                 {(v.note || "").length} / 500
               </div>
             </SectionCard>
@@ -4840,8 +4840,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return 'neutral';
       };
       const lineCls = (c) => ({
-        label: c === 'red' ? 'text-red-300' : c === 'amber' ? 'text-amber-300' : 'text-neutral-300',
-        amt:   c === 'red' ? 'text-red-200 font-semibold' : c === 'amber' ? 'text-amber-200 font-semibold' : 'text-neutral-100 font-semibold',
+        label: c === 'red' ? 'text-tm-pen' : c === 'amber' ? 'text-tm-warn' : 'text-neutral-300',
+        amt:   c === 'red' ? 'text-tm-pen font-semibold' : c === 'amber' ? 'text-tm-warn font-semibold' : 'text-neutral-100 font-semibold',
       });
 
       const resolvedDate = fixedDate || form.date;
@@ -4950,12 +4950,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     BDR {fmtGBP(Number(activeCrew.bdr) || 0)}
                   </span>
                   {activeCalc.meta.otHrs > 0 && (
-                    <span className="text-[10px] bg-amber-900 text-amber-200 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
+                    <span className="text-[10px] bg-tm-warn/10 text-tm-warn border border-tm-warn/25 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
                       OT {Number.isInteger(activeCalc.meta.otHrs) ? activeCalc.meta.otHrs : activeCalc.meta.otHrs.toFixed(1)}h
                     </span>
                   )}
                   {penaltyLines.length > 0 && (
-                    <span className="text-[10px] bg-red-900 text-red-200 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
+                    <span className="text-[10px] bg-tm-pen/10 text-tm-pen border border-tm-pen/25 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
                       {penaltyLines.length} {penaltyLines.length === 1 ? "penalty" : "penalties"}
                     </span>
                   )}
@@ -5019,11 +5019,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <div className="text-[11px] font-bold text-neutral-100 leading-tight">{hrsLabel}</div>
           {anyPenalty && (
             <div className="flex flex-wrap gap-0.5 mt-0.5">
-              {hasOT    && <span className="text-[8px] bg-amber-900 text-amber-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">OT</span>}
-              {hasCWD   && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">CWD</span>}
-              {hasLate1 && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">L1</span>}
-              {hasMSB   && <span className="text-[8px] bg-red-900 text-red-200 px-1 font-bold uppercase leading-tight py-px rounded-sm">MSB</span>}
-              {hasTOC   && <span className={`text-[8px] px-1 font-bold uppercase leading-tight py-px rounded-sm ${isTOCBreach ? 'bg-red-900 text-red-200' : 'bg-amber-900 text-amber-200'}`}>{isTOCBreach ? 'TOC!' : 'TOC'}</span>}
+              {hasOT    && <span className="text-[8px] bg-tm-warn/10 text-tm-warn border border-tm-warn/25 px-1 font-bold uppercase leading-tight py-px rounded-sm">OT</span>}
+              {hasCWD   && <span className="text-[8px] bg-tm-pen/10 text-tm-pen border border-tm-pen/25 px-1 font-bold uppercase leading-tight py-px rounded-sm">CWD</span>}
+              {hasLate1 && <span className="text-[8px] bg-tm-pen/10 text-tm-pen border border-tm-pen/25 px-1 font-bold uppercase leading-tight py-px rounded-sm">L1</span>}
+              {hasMSB   && <span className="text-[8px] bg-tm-pen/10 text-tm-pen border border-tm-pen/25 px-1 font-bold uppercase leading-tight py-px rounded-sm">MSB</span>}
+              {hasTOC   && <span className={`text-[8px] px-1 font-bold uppercase leading-tight py-px rounded-sm border ${isTOCBreach ? 'bg-tm-pen/10 text-tm-pen border-tm-pen/25' : 'bg-tm-warn/10 text-tm-warn border-tm-warn/25'}`}>{isTOCBreach ? 'TOC!' : 'TOC'}</span>}
             </div>
           )}
         </td>
@@ -5148,8 +5148,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {DOW_LABELS.map((label, i) => {
                     const isSat = i === 5;
                     const isSun = i === 6;
-                    const headerBg  = isSun ? "bg-red-950/60"   : isSat ? "bg-amber-950/60" : "bg-neutral-950";
-                    const textColor = isSun ? "text-red-400"    : isSat ? "text-amber-400"  : "text-neutral-500";
+                    const headerBg  = isSun ? "bg-tm-pen/10"  : isSat ? "bg-tm-warn/10" : "bg-neutral-950";
+                    const textColor = isSun ? "text-tm-pen"   : isSat ? "text-tm-warn"  : "text-neutral-500";
                     return (
                       <th key={label} className={`px-2 py-2 text-center font-bold text-[10px] uppercase tracking-wider border-r border-neutral-700 ${headerBg} ${textColor}`}
                         style={{ minWidth: 80 }}>{label}</th>
@@ -5185,7 +5185,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         </div>
                         <button
                           onClick={() => onRemoveWeek(weekDates[0])}
-                          className="text-[9px] text-red-700 hover:text-red-400 transition-colors font-bold leading-none px-0.5"
+                          className="text-[9px] text-tm-pen/40 hover:text-tm-pen transition-colors font-bold leading-none px-0.5"
                           title="Remove this week"
                           aria-label="Remove this week">✕</button>
                       </div>
@@ -5198,8 +5198,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const treatAsSunCol = isSun || isBH;
                       const isEditingThis = editingDate === date;
                       // Bank holidays reuse the Sunday red tint per APA §2.4.
-                      const cellBg    = treatAsSunCol ? "bg-red-950/40"   : isSat ? "bg-amber-950/40" : "bg-neutral-900";
-                      const numColor  = treatAsSunCol ? "text-red-300"    : isSat ? "text-amber-300"  : "text-neutral-300";
+                      const cellBg    = treatAsSunCol ? "bg-tm-pen/[0.04]" : isSat ? "bg-tm-warn/[0.04]" : "bg-neutral-900";
+                      const numColor  = treatAsSunCol ? "text-tm-pen"      : isSat ? "text-tm-warn"      : "text-neutral-300";
                       const hasEntries = days.some(d => d.date === date);
                       return (
                         <td key={date}
@@ -5216,7 +5216,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             {new Date(date + "T12:00:00").toLocaleDateString("en-GB", { month: "short" })}
                           </div>
                           {isBH && (
-                            <div className="text-[7px] font-bold text-red-400 leading-none mt-0.5 uppercase tracking-wider">BH</div>
+                            <div className="text-[7px] font-bold text-tm-pen leading-none mt-0.5 uppercase tracking-wider">BH</div>
                           )}
                           <div className="flex items-center justify-center gap-1.5 mt-0.5">
                             <button onClick={e => { e.stopPropagation(); onAssignAll(date, addDayType); }}
@@ -5467,7 +5467,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               <button
                                 type="button"
                                 onClick={() => setDateEdit(p => ({ ...p, expenses: p.expenses.filter(x => x.id !== exp.id) }))}
-                                className="text-neutral-600 hover:text-red-400 transition-colors flex-shrink-0 p-1"
+                                className="text-neutral-600 hover:text-tm-pen transition-colors flex-shrink-0 p-1"
                                 aria-label="Remove expense"
                               ><IX size={14}/></button>
                             </div>
@@ -5636,7 +5636,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       if (variant === "hero") {
         const heroCls = `inline-flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.14em] font-bold rounded-[10px] py-2.5 px-3 transition-colors border ${confirming
-          ? "bg-amber-500/10 border-amber-500 text-amber-300"
+          ? "bg-tm-warn/10 border-tm-warn text-tm-warn"
           : "bg-neutral-800 border-neutral-700 text-neutral-100 hover:bg-neutral-700"} ${className}`;
         return (
           <button onClick={handleClick} className={heroCls}
@@ -5646,7 +5646,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         );
       }
 
-      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-amber-500 text-amber-300 bg-amber-500/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-500"} ${className}`;
+      const cls = `inline-flex items-center justify-center text-[10px] uppercase tracking-wider font-bold rounded-lg px-3 transition-colors ${confirming ? "border border-tm-warn text-tm-warn bg-tm-warn/10" : "border border-sky-500/50 text-sky-300 hover:border-sky-500"} ${className}`;
 
       return (
         <button onClick={handleClick} className={cls}
@@ -5896,7 +5896,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     {entries.map((d) => {
                       const c = crew.find((cc) => cc.id === d.crewId);
                       if (!c) return (
-                        <div key={d.id} className="bg-red-950 border border-red-900 p-3 text-sm text-red-200 flex items-center justify-between rounded-xl">
+                        <div key={d.id} className="bg-tm-pen/[0.04] border border-tm-pen/25 p-3 text-sm text-tm-pen flex items-center justify-between rounded-xl">
                           <span>Unassigned crew (deleted)</span>
                           <Btn size="sm" variant="ghost" onClick={() => remove(d.id)}><ITrash/></Btn>
                         </div>
@@ -5904,10 +5904,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
                       const hasPenalty = calc.lines.some(l => l.rate === null);
                       const hasTocBreach = calc.lines.some(l => l.isTOC && l.isBreach);
-                      // In-app priority stripe: red = penalty/TOC breach, amber = OT/CWD/TOC, green = clean
-                      const stripeClass = (hasPenalty || hasTocBreach) ? 'border-red-500'
-                        : (calc.meta.otHrs > 0 || calc.meta.continuousDay || calc.lines.some(l => l.isTOC)) ? 'border-amber-500'
-                        : 'border-green-500';
+                      // In-app priority stripe: tm-pen = penalty/TOC breach, tm-warn = OT/CWD/TOC, tm-good = clean
+                      const stripeClass = (hasPenalty || hasTocBreach) ? 'border-tm-pen'
+                        : (calc.meta.otHrs > 0 || calc.meta.continuousDay || calc.lines.some(l => l.isTOC)) ? 'border-tm-warn'
+                        : 'border-tm-good';
                       return (
                         <div key={d.id}
                           className={`bg-neutral-900 border border-neutral-800 active:bg-neutral-800 transition-colors border-l-4 rounded-xl overflow-hidden cursor-pointer select-none touch-manipulation ${stripeClass}`}
@@ -5920,7 +5920,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                 <div className="font-semibold text-neutral-100">{c.name}</div>
                                 <span className="text-[10px] uppercase tracking-wider bg-neutral-800 text-neutral-400 px-1.5 py-0.5">{c.role}</span>
                                 <span className="text-[10px] uppercase tracking-wider bg-sky-500 text-black px-1.5 py-0.5 font-bold">{d.dayType}</span>
-                                {calc.meta.continuousDay && <span className="text-[10px] uppercase tracking-wider bg-red-900 text-red-200 px-1.5 py-0.5 font-bold">CWD</span>}
+                                {calc.meta.continuousDay && <span className="text-[10px] uppercase tracking-wider bg-tm-pen/10 text-tm-pen border border-tm-pen/25 px-1.5 py-0.5 font-bold rounded">CWD</span>}
                               </div>
                               <div className="text-[11px] text-neutral-400 font-mono mt-1">
                                 {d.callTime}–{d.wrapTime}{(parseHHMM(d.wrapTime) !== null && parseHHMM(d.callTime) !== null && parseHHMM(d.wrapTime) <= parseHHMM(d.callTime)) ? " (+1)" : ""} · {calc.meta.workedHrs.toFixed(1)}h · {calc.meta.dayLabel}
@@ -8124,9 +8124,9 @@ const setDays = (updater) =>
         );
       }
       return (
-        <div className={`bg-neutral-900 border ${isRed ? "border-red-900/60" : "border-neutral-800"} rounded-xl overflow-hidden mb-4`}>
-          <div className={`px-4 py-3 border-b ${isRed ? "border-red-900/60" : "border-neutral-800"}`}>
-            <div className={`text-[10px] uppercase tracking-[0.2em] ${isRed ? "text-red-400" : "text-sky-500"} font-bold`}>{title}</div>
+        <div className={`bg-neutral-900 border ${isRed ? "border-tm-pen/25" : "border-neutral-800"} rounded-xl overflow-hidden mb-4`}>
+          <div className={`px-4 py-3 border-b ${isRed ? "border-tm-pen/25" : "border-neutral-800"}`}>
+            <div className={`text-[10px] uppercase tracking-[0.2em] ${isRed ? "text-tm-pen" : "text-sky-500"} font-bold`}>{title}</div>
           </div>
           <div className="px-4 py-4 space-y-4">{children}</div>
         </div>
@@ -8991,15 +8991,15 @@ const setDays = (updater) =>
                 )}
 
                 {excludedCount > 0 && (
-                  <div className="mt-8 bg-amber-900/20 border border-amber-700/30 rounded-xl p-4">
-                    <div className="text-xs font-semibold text-amber-300 mb-1">
+                  <div className="mt-8 bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4">
+                    <div className="text-xs font-semibold text-sky-400 mb-1">
                       {excludedCount} production{excludedCount !== 1 ? 's' : ''} excluded
                     </div>
                     <p className="text-xs text-neutral-400 leading-relaxed">
                       {excludedCount} production{excludedCount !== 1 ? 's don\'t' : ' doesn\'t'} include a crew member matching '{displayName}'. {excludedCount !== 1 ? 'They are' : 'It is'} excluded from stats.
                       Check for typos in crew names.
                     </p>
-                    <button onClick={onClose} className="mt-3 text-xs text-amber-300 hover:text-amber-200 transition-colors underline underline-offset-2">
+                    <button onClick={onClose} className="mt-3 text-xs text-sky-400 hover:text-sky-300 transition-colors underline underline-offset-2">
                       Back to productions
                     </button>
                   </div>
@@ -9086,7 +9086,7 @@ const setDays = (updater) =>
               </div>
               {isFixed ? (
                 <div className="bg-neutral-800 rounded-xl p-3 text-sm text-neutral-300 leading-relaxed">
-                  This will remove the <span className="font-mono text-neutral-100">{fmtGBP(item.amount)}</span> charge from the invoice total. The line stays visible with a <span className="text-amber-400 font-semibold">Waived</span> badge.
+                  This will remove the <span className="font-mono text-neutral-100">{fmtGBP(item.amount)}</span> charge from the invoice total. The line stays visible with a <span className="text-tm-warn font-semibold">Waived</span> badge.
                 </div>
               ) : (
                 <>
@@ -9105,7 +9105,7 @@ const setDays = (updater) =>
                   {saving > 0.005 && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-neutral-500">Waived</span>
-                      <span className="font-mono text-amber-400">-{fmtGBP(saving)}</span>
+                      <span className="font-mono text-tm-warn">-{fmtGBP(saving)}</span>
                     </div>
                   )}
                 </>
@@ -9209,10 +9209,10 @@ const setDays = (updater) =>
                 className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 <ICalc size={15}/>{item.rate === null ? "Waive line" : "Waive portion"}
-                {item.discountedQty !== null && <span className="ml-auto text-[10px] text-amber-400 font-bold uppercase tracking-wide">Active</span>}
+                {item.discountedQty !== null && <span className="ml-auto text-[10px] text-tm-warn font-bold uppercase tracking-wide">Active</span>}
               </button>
               <button type="button" onClick={onDelete}
-                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-red-400 flex items-center gap-2"
+                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 <ITrash size={15}/>Delete line
               </button>
@@ -9350,11 +9350,11 @@ const setDays = (updater) =>
               {item.rate !== null && (
                 <div className="text-[10px] text-neutral-600 mt-0.5">
                   {isDisc
-                    ? <><span className="text-amber-400">{item.discountedQty}</span>/{item.qty} × {fmtGBP(item.rate)}</>
+                    ? <><span className="text-tm-warn">{item.discountedQty}</span>/{item.qty} × {fmtGBP(item.rate)}</>
                     : <>{item.qty} × {fmtGBP(item.rate)}</>}
                 </div>
               )}
-              {isWaived && <span className="text-[10px] font-bold uppercase tracking-wide text-amber-400">Waived</span>}
+              {isWaived && <span className="text-[10px] font-bold uppercase tracking-wide text-tm-warn">Waived</span>}
             </div>
             <div className={`text-sm font-mono font-bold flex-shrink-0 pt-0.5 ${isWaived ? "line-through text-neutral-600" : "text-neutral-100"}`}>
               {isWaived ? fmtGBP(item.amount) : fmtGBP(lineTotal)}
@@ -10086,7 +10086,7 @@ const setDays = (updater) =>
                 </button>
               )}
               <button type="button" onClick={() => setConfirmDelete(true)}
-                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-red-400 flex items-center gap-2"
+                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 <ITrash size={15}/>Delete
               </button>
@@ -10214,9 +10214,9 @@ const setDays = (updater) =>
                   <div className="text-lg font-bold text-neutral-100 mb-1">Bank details</div>
                   <div className="text-sm text-neutral-400">Shown in the Payment Details section of your invoices.</div>
                 </div>
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex gap-3">
-                  <IWarn size={16} className="text-amber-400 flex-shrink-0 mt-0.5"/>
-                  <div className="text-xs text-amber-300">Your bank details stay on this device only — they're never uploaded or transmitted anywhere.</div>
+                <div className="bg-sky-500/[0.04] border border-sky-500/25 rounded-xl px-4 py-3 flex gap-3">
+                  <IInfo size={16} className="text-sky-400 flex-shrink-0 mt-0.5"/>
+                  <div className="text-xs text-sky-400">Your bank details stay on this device only — they're never uploaded or transmitted anywhere.</div>
                 </div>
                 <Field label="Account name"><Input value={local.bankAccountName} onChange={set('bankAccountName')} placeholder="e.g. Jane Smith"/></Field>
                 <Field label="Sort code"><Input value={local.bankSortCode} onChange={set('bankSortCode')} placeholder="00-00-00" inputMode="numeric"/></Field>
@@ -11000,7 +11000,7 @@ const confirmDelete = (p) => setConfirmOpts({
                   </button>
                   <button type="button"
                     onClick={() => { const p = actionSheet; setActionSheet(null); confirmDelete(p); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-red-400 flex items-center gap-2"
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <ITrash size={15}/>Delete
                   </button>
