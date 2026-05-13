@@ -1240,6 +1240,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       ...p,
       crew: (p.crew || []).map(migrateCrew),
       bestBoyMode: p.bestBoyMode ?? ((p.crew?.length ?? 0) > 1),
+      viewMode: p.viewMode ?? 'grid',
       isElevenHourDay: p.isElevenHourDay ?? false,
       jobReference: p.jobReference ?? "",
       invoicingEmail: p.invoicingEmail ?? "",
@@ -6290,7 +6291,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         (production.jobReference || '').trim() ||
         '—';
 
-      const modeSummary = `${production.bestBoyMode ? 'Best Boy' : 'Solo'} · ${production.isElevenHourDay ? '11h' : '10h'}`;
+      const modeSummary = (() => {
+        const parts = [];
+        parts.push(production.bestBoyMode ? 'Best Boy' : 'Solo');
+        if (production.bestBoyMode) {
+          parts.push(production.viewMode === 'mobile' ? 'Mobile' : 'Grid');
+        }
+        parts.push(production.isElevenHourDay ? '11h' : '10h');
+        return parts.join(' · ');
+      })();
 
       const weekendSummary = (() => {
         const satCustom = (production.satRateMode || 'apa') === 'custom';
@@ -6386,6 +6395,61 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
               </div>
+              {production.bestBoyMode && (
+                <div className="mt-4 pt-4 border-t border-neutral-800">
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">View mode</div>
+
+                  <button
+                    type="button"
+                    onClick={() => setProduction(p => ({ ...p, viewMode: 'mobile' }))}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border mb-1.5 text-left transition-colors ${
+                      production.viewMode === 'mobile'
+                        ? 'border-sky-500 bg-sky-500/[0.04]'
+                        : 'border-neutral-800 hover:border-neutral-700'
+                    }`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    <div className={`w-[18px] h-[18px] rounded-full border-2 flex-shrink-0 relative ${
+                      production.viewMode === 'mobile' ? 'border-sky-500' : 'border-neutral-700'
+                    }`}>
+                      {production.viewMode === 'mobile' && (
+                        <div className="absolute inset-[3px] rounded-full bg-sky-500"/>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-neutral-100">Mobile · Day-first</div>
+                      <div className="text-[11px] text-neutral-400 leading-tight mt-0.5">One screen per day with crew listed. Tap to drill into per-person edits. Recommended for phone use.</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setProduction(p => ({ ...p, viewMode: 'grid' }))}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
+                      production.viewMode === 'grid'
+                        ? 'border-sky-500 bg-sky-500/[0.04]'
+                        : 'border-neutral-800 hover:border-neutral-700'
+                    }`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    <div className={`w-[18px] h-[18px] rounded-full border-2 flex-shrink-0 relative ${
+                      production.viewMode === 'grid' ? 'border-sky-500' : 'border-neutral-700'
+                    }`}>
+                      {production.viewMode === 'grid' && (
+                        <div className="absolute inset-[3px] rounded-full bg-sky-500"/>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-neutral-100">Grid · Spreadsheet</div>
+                      <div className="text-[11px] text-neutral-400 leading-tight mt-0.5">Crew as rows, days as columns. Bulk-edit cells across the whole production. Best on a laptop or tablet.</div>
+                    </div>
+                  </button>
+
+                  <div className="text-[10px] text-neutral-500 mt-2.5 leading-relaxed">
+                    Both modes read and write the same data — switch any time. Mobile mode arrives in V4-2; for now this preference is stored but the production still renders in grid view.
+                  </div>
+                </div>
+              )}
             </Disclosure>
 
             <Disclosure label="Weekend rate overrides" summary={weekendSummary}>
@@ -11157,6 +11221,7 @@ const confirmDelete = (p) => setConfirmOpts({
           days: [],
           defaultDay: DEFAULT_PRODUCTION_DAY,
           bestBoyMode,
+          viewMode: 'mobile',
           isElevenHourDay: false,
           favourableRounding: userPrefs.favourableRounding ?? false,
           apaRounding: userPrefs.apaRounding ?? false,
