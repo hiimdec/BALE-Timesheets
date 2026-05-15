@@ -6079,7 +6079,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return production.startDate || today;
     }
 
-    function BestBoyMobileDayView({ production, setProduction, userPrefs, onPushUndo, currentDate, setCurrentDate, onCrewTap }) {
+    function BestBoyMobileDayView({ production, setProduction, userPrefs, onPushUndo, currentDate, setCurrentDate, onCrewTap, showToast }) {
       const crew = production.crew || [];
       const days = production.days || [];
       const [showLunchSheet, setShowLunchSheet] = useState(false);
@@ -6175,7 +6175,64 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dayNumber = currentIdx >= 0 ? currentIdx + 1 : null;
       const totalDays = sortedDates.length;
       const hasPrev = currentIdx > 0;
-      const hasNext = currentIdx >= 0 && currentIdx < sortedDates.length - 1;
+      const isAtLastDate = sortedDates.length === 0 || currentIdx >= sortedDates.length - 1;
+
+      const addDenseDay = (date, dayType) => {
+        const type = dayType || production.defaultDay?.dayType || 'Shoot';
+        const existing = new Set(days.filter(d => d.date === date).map(d => d.crewId));
+        const toAdd = crew.filter(m => !existing.has(m.id));
+        if (toAdd.length === 0) return;
+        setProduction(p => ({
+          ...p,
+          days: [
+            ...(p.days || []),
+            ...toAdd.map(m => ({
+              ...DEFAULT_PRODUCTION_DAY,
+              ...(p.defaultDay || {}),
+              ...makeBlankDay(m.id),
+              date,
+              dayType: type,
+              wrapped: !!(date && date < todayISO()),
+            })),
+          ],
+        }));
+      };
+
+      const onNextDay = () => {
+        if (!isAtLastDate) {
+          setCurrentDate(sortedDates[currentIdx + 1]);
+          return;
+        }
+        if (crew.length === 0) {
+          showToast?.('Add crew members first');
+          return;
+        }
+        const baseDate = sortedDates.length > 0
+          ? sortedDates[sortedDates.length - 1]
+          : (production.startDate || todayISO());
+        const nextDate = sortedDates.length > 0 ? addDays(baseDate, 1) : baseDate;
+        if (sortedDates.includes(nextDate)) return;
+        addDenseDay(nextDate);
+        setCurrentDate(nextDate);
+      };
+
+      const handleReassignDate = (newDate) => {
+        if (!newDate || newDate === currentDate) return;
+        if (days.some(d => d.date === newDate)) {
+          showToast?.('Date already exists in this production');
+          return;
+        }
+        setProduction(p => {
+          const newDays = (p.days || []).map(d => d.date === currentDate ? { ...d, date: newDate } : d);
+          const newDayDefaults = { ...(p.dayDefaults || {}) };
+          if (newDayDefaults[currentDate]) {
+            newDayDefaults[newDate] = newDayDefaults[currentDate];
+            delete newDayDefaults[currentDate];
+          }
+          return { ...p, days: newDays, dayDefaults: newDayDefaults };
+        });
+        setCurrentDate(newDate);
+      };
 
       const recordsForDate = days.filter(d => d.date === currentDate);
       const dayType = getDayDefaults(production, currentDate)?.dayType
@@ -6227,17 +6284,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {currentDate && (
                 <>
                   <span className="text-neutral-700">·</span>
-                  <span className="text-neutral-200">{formattedDate}</span>
+                  <span className="relative inline-block">
+                    <span className="text-neutral-200 underline decoration-dotted decoration-neutral-700 underline-offset-2">{formattedDate}</span>
+                    <input
+                      type="date"
+                      value={currentDate}
+                      onChange={(e) => handleReassignDate(e.target.value)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      aria-label="Change date"
+                      style={{ WebkitAppearance: 'none' }}
+                    />
+                  </span>
                 </>
               )}
             </div>
             <button
-              onClick={() => hasNext && setCurrentDate(sortedDates[currentIdx + 1])}
-              disabled={!hasNext}
-              className="w-7 h-7 flex items-center justify-center text-neutral-500 disabled:text-neutral-800 hover:text-neutral-200 transition-colors"
-              aria-label="Next day"
+              onClick={onNextDay}
+              className="w-7 h-7 flex items-center justify-center text-neutral-500 hover:text-neutral-200 transition-colors"
+              aria-label={isAtLastDate ? 'Add new day' : 'Next day'}
+              title={isAtLastDate ? 'Add new day' : 'Next day'}
               style={{ WebkitTapHighlightColor: 'transparent' }}>
-              ›
+              {isAtLastDate ? '+' : '›'}
             </button>
           </div>
 
@@ -7393,12 +7460,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function BottomMoneyPill({ total, onBack, onViewCalc }) {
+    function BottomMoneyPill({ total, onBack, onViewCalc, hasPrev = null, onPrev = null, hidden = false }) {
+      if (hidden) return null;
+      const useNewLeft = hasPrev !== null;
+      const leftDisabled = useNewLeft && !hasPrev;
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
           <div style={{ height: 56, background: 'var(--tm-pill-paper)', borderRadius: 28, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', overflow: 'hidden', pointerEvents: 'auto' }}>
-            <button onClick={onBack} aria-label="Back to productions"
-              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
+            <button onClick={useNewLeft ? (hasPrev ? onPrev : undefined) : onBack}
+              disabled={leftDisabled}
+              aria-label={useNewLeft ? 'Previous day' : 'Back to productions'}
+              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: leftDisabled ? '#a3a3a3' : '#171717', opacity: leftDisabled ? 0.4 : 1, flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
               <IArrowLeft size={20}/>
             </button>
             <button onClick={onViewCalc} aria-label="View breakdown"
@@ -9075,6 +9147,7 @@ const setDays = (updater) =>
                         currentDate={currentDate}
                         setCurrentDate={setCurrentDate}
                         onCrewTap={setDrilldownCrewMember}
+                        showToast={showToast}
                       />)
                 : <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />
             )}
@@ -9085,7 +9158,21 @@ const setDays = (updater) =>
             Rates per APA Sept 2025
           </div>
 
-          <BottomMoneyPill total={totalShoot} onBack={onBack} onViewCalc={() => setShowCalcView(true)} />
+          {(() => {
+            const sortedDates = [...new Set((days || []).map(d => d.date))].sort();
+            const currentIdx = sortedDates.indexOf(currentDate);
+            const hasPrev = currentIdx > 0;
+            return (
+              <BottomMoneyPill
+                total={totalShoot}
+                onBack={onBack}
+                onViewCalc={() => setShowCalcView(true)}
+                hasPrev={hasPrev}
+                onPrev={() => { if (hasPrev) setCurrentDate(sortedDates[currentIdx - 1]); }}
+                hidden={!!drilldownCrewMember}
+              />
+            );
+          })()}
           <ConfirmDialog
             open={!!confirmOpts}
             title={confirmOpts?.title}
