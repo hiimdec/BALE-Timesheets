@@ -7417,7 +7417,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ CALC BREAKDOWN VIEW ═══════════════════════════ */
 
-    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSend }) {
+    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSave }) {
       const sortedDates = useMemo(
         () => [...new Set((days || []).map(d => d.date))].sort(),
         [days]
@@ -7538,7 +7538,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           <button
             type="button"
-            onClick={() => onOpenSend?.()}
+            onClick={() => onOpenSave?.()}
             className="fixed left-1/2 -translate-x-1/2 z-20 bg-sky-500 hover:bg-sky-400 text-black text-[12px] font-bold uppercase tracking-wider py-2.5 px-6 rounded-full transition-colors flex items-center gap-2"
             style={{
               boxShadow: '0 8px 24px rgba(14,165,233,0.4)',
@@ -7546,8 +7546,163 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               bottom: 'calc(env(safe-area-inset-bottom) + 24px)',
             }}
           >
-            <IMail size={14}/>Send Timesheets
+            <IMail size={14}/>Save Timesheets
           </button>
+        </div>
+      );
+    }
+
+    function SaveTimesheetsSheet({ production, days, crew, onClose, onSetCrewEmail, onTriggerExport, showToast }) {
+      const crewWithTotals = useMemo(() => {
+        return (crew || []).map(member => {
+          let total = 0;
+          let daysWorked = 0;
+          for (const day of days) {
+            if (day.crewId !== member.id) continue;
+            daysWorked += 1;
+            total += calcForDisplay(production, day, member, findPrevDay(days, day)).total;
+          }
+          return { member, total, daysWorked };
+        });
+      }, [production, days, crew]);
+
+      const [selectedIds, setSelectedIds] = useState(() => new Set((crew || []).map(c => c.id)));
+      const [editingEmail, setEditingEmail] = useState(null);
+
+      const selectedCount = selectedIds.size;
+
+      const toggleSelected = (id) => {
+        const next = new Set(selectedIds);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        setSelectedIds(next);
+      };
+
+      const handleSave = () => {
+        if (selectedCount === 0) return;
+        onClose();
+        // Defer the print dispatch so the sheet has time to unmount before the print dialog steals focus.
+        setTimeout(() => onTriggerExport(selectedIds), 50);
+      };
+
+      return (
+        <div
+          className="fixed inset-0 z-50 flex items-end"
+          onClick={onClose}
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl max-h-[85vh] overflow-y-auto"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+          >
+            <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-2 mb-1"/>
+
+            <div className="px-5 pt-3 pb-2">
+              <div className="text-base font-bold text-neutral-100">Save crew timesheets</div>
+              <div className="text-[11px] text-neutral-400 mt-0.5">
+                {selectedCount} of {crew.length} selected
+              </div>
+            </div>
+
+            <div className="border-t border-neutral-800/60 mt-1">
+              {crewWithTotals.map(({ member, total, daysWorked }) => {
+                const isSelected = selectedIds.has(member.id);
+                const isEditingThisEmail = editingEmail === member.id;
+                const hasEmail = !!member.email;
+
+                return (
+                  <div key={member.id} className="px-5 py-2.5 border-b border-neutral-800/60 last:border-b-0 flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleSelected(member.id)}
+                      className={`mt-0.5 w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                        isSelected ? 'bg-sky-500' : 'bg-transparent border-2 border-neutral-700 hover:border-neutral-500'
+                      }`}
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                      aria-label={isSelected ? `Deselect ${member.name}` : `Select ${member.name}`}
+                    >
+                      {isSelected && (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M2 6L5 9L10 3" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </button>
+
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-semibold ${isSelected ? 'text-neutral-100' : 'text-neutral-400'}`}>
+                        {member.name || 'Unnamed'}
+                      </div>
+
+                      {isEditingThisEmail ? (
+                        <input
+                          type="email"
+                          autoFocus
+                          defaultValue={member.email || ''}
+                          onBlur={(e) => { onSetCrewEmail(member.id, e.target.value.trim()); setEditingEmail(null); }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { onSetCrewEmail(member.id, e.target.value.trim()); setEditingEmail(null); }
+                            if (e.key === 'Escape') setEditingEmail(null);
+                          }}
+                          placeholder="email@example.com"
+                          className="w-full mt-1 bg-neutral-950 border border-sky-500 rounded px-2 py-1 text-[12px] font-mono text-neutral-100 focus:outline-none"
+                        />
+                      ) : hasEmail ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditingEmail(member.id)}
+                          className="text-[11px] font-mono text-neutral-400 hover:text-sky-400 mt-0.5 truncate block max-w-full text-left"
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
+                        >
+                          {member.email}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setEditingEmail(member.id)}
+                          className="text-[11px] text-neutral-500 hover:text-sky-400 mt-0.5 italic"
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
+                        >
+                          missing email · add
+                        </button>
+                      )}
+                    </div>
+
+                    <div className={`text-right flex-shrink-0 ${isSelected ? 'text-neutral-100' : 'text-neutral-500'}`}>
+                      <div className="font-mono text-sm font-bold tabular-nums">{fmtGBP(total)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="px-5 pt-4 pb-2">
+              <div className="text-[10px] text-neutral-500 leading-relaxed mb-3 px-1">
+                Opens your device's print dialog. Choose "Save as PDF" when prompted. Selected crew are combined into one PDF. Per-crew PDFs and server-side email sending coming in future updates.
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={selectedCount === 0}
+                className="w-full px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-neutral-800 disabled:text-neutral-500 text-black text-sm font-bold transition-colors flex items-center justify-center gap-2"
+                style={{
+                  boxShadow: selectedCount > 0 ? '0 4px 16px rgba(14,165,233,0.25)' : 'none',
+                  WebkitTapHighlightColor: 'transparent'
+                }}
+              >
+                Save combined PDF · {selectedCount} crew
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full mt-2 px-4 py-2 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
@@ -8640,6 +8795,36 @@ const setDays = (updater) =>
       const [showMobileNav, setShowMobileNav] = useState(false);
       const [currentDate, setCurrentDate] = useState(() => computeInitialDate(production));
       const [drilldownCrewMember, setDrilldownCrewMember] = useState(null);
+      const [showSaveSheet, setShowSaveSheet] = useState(false);
+      // Parallel print pipeline for the Save Timesheets flow (sibling of ExportTab's pipeline).
+      // Holds { crewIdsFilter: Set<string> } when a save-via-print is in flight; null otherwise.
+      const [savePrintState, setSavePrintState] = useState(null);
+
+      const weeksForSavePrint = useMemo(() => computeWeeks(production, production.days || []), [production]);
+
+      useEffect(() => {
+        if (!savePrintState) return;
+        const timer = setTimeout(() => {
+          const cleanup = () => setSavePrintState(null);
+          window.addEventListener('afterprint', cleanup, { once: true });
+          window.print();
+          const fallback = setTimeout(cleanup, 30000);
+          return () => clearTimeout(fallback);
+        }, 300);
+        return () => clearTimeout(timer);
+      }, [savePrintState]);
+
+      const triggerSavePrint = (crewIdsFilter) => {
+        if (!crewIdsFilter || crewIdsFilter.size === 0) return;
+        setSavePrintState({ crewIdsFilter });
+      };
+
+      const setCrewEmail = (crewId, email) => {
+        setProduction(p => ({
+          ...p,
+          crew: (p.crew || []).map(c => c.id === crewId ? { ...c, email } : c)
+        }));
+      };
       const [toastMsg, setToastMsg] = useState(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [openCrewForm, setOpenCrewForm] = useState(false);
@@ -8761,7 +8946,7 @@ const setDays = (updater) =>
                 crew={crew}
                 total={totalShoot}
                 onClose={() => setShowCalcView(false)}
-                onOpenSend={() => showToast('Send Timesheets sheet coming in V4-4b')}
+                onOpenSave={() => setShowSaveSheet(true)}
               />
             ) : (
               <CalcBreakdownView
@@ -8912,6 +9097,36 @@ const setDays = (updater) =>
             onCancel={() => setConfirmOpts(null)}
           />
 
+          {showSaveSheet && (
+            <SaveTimesheetsSheet
+              production={production}
+              days={days}
+              crew={crew}
+              onClose={() => setShowSaveSheet(false)}
+              onSetCrewEmail={setCrewEmail}
+              onTriggerExport={triggerSavePrint}
+              showToast={showToast}
+            />
+          )}
+
+          {savePrintState && (() => {
+            const filter = savePrintState.crewIdsFilter;
+            const filteredCrew = (crew || []).filter(c => filter.has(c.id));
+            const filteredDays = (days || []).filter(d => filter.has(d.crewId));
+            return (
+              <PrintView
+                mode="grid"
+                production={production}
+                crewMember={null}
+                crewList={filteredCrew}
+                days={filteredDays}
+                weeks={weeksForSavePrint}
+                exportWeekIndex={null}
+                userPrefs={userPrefs}
+              />
+            );
+          })()}
+
           {showMobileNav && (
             <div
               className="fixed inset-0 z-50 flex items-end"
@@ -8949,6 +9164,13 @@ const setDays = (updater) =>
                     className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IShare size={15}/>Export
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); setShowSaveSheet(true); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IMail size={15}/>Save timesheets
                   </button>
                   <button
                     type="button"
