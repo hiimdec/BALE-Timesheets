@@ -1300,6 +1300,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         .map(c => c.id);
     }
 
+    // Resolve which crew member is "you" on a given production.
+    // Manual override (production.iAmCrewId) wins; otherwise auto-match by userPrefs.displayName.
+    // Returns crew id or null.
+    function resolveUserCrewId(production, userPrefs) {
+      if (!production) return null;
+      const override = production.iAmCrewId;
+      if (override && (production.crew || []).some(c => c.id === override)) return override;
+      const target = (userPrefs?.displayName || '').toLowerCase().trim();
+      if (!target) return null;
+      const match = (production.crew || []).find(c => (c.name || '').toLowerCase().trim() === target);
+      return match?.id ?? null;
+    }
+
     function migrateInvoice(inv, p) {
       if (!inv) return inv;
       const allDates = (p.days || []).map(d => d.date).filter(Boolean).sort();
@@ -1356,6 +1369,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         crew: (p.crew || []).map(migrateCrew),
         bestBoyMode: p.bestBoyMode ?? ((p.crew?.length ?? 0) > 1),
         viewMode: p.viewMode ?? 'grid',
+        iAmCrewId: p.iAmCrewId ?? null,
         dayDefaults: backfilledDefaults,
         isElevenHourDay: p.isElevenHourDay ?? false,
         jobReference: p.jobReference ?? "",
@@ -6223,12 +6237,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         [days]
       );
 
+      const meCrewId = resolveUserCrewId(production, userPrefs);
+
       const crewWithCalcs = useMemo(() => {
         const idx = sortedDates.indexOf(currentDate);
         const prevDate = idx > 0 ? sortedDates[idx - 1] : null;
 
         return crew.map(member => {
-          const isMe = member.id === crew[0]?.id;
+          const isMe = member.id === meCrewId;
           const dayRecord = days.find(d => d.date === currentDate && d.crewId === member.id);
 
           if (!dayRecord) {
@@ -6592,6 +6608,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <span className="text-neutral-500 text-sm">Tap to set</span>
               )}
             </button>
+          </div>
+
+          <div className="px-4 mb-3 flex gap-2">
+            {(() => {
+              const nowHHMM = () => {
+                const d = new Date();
+                const mins = d.getHours() * 60 + d.getMinutes();
+                const rounded = Math.round(mins / 5) * 5;
+                const h = Math.floor(rounded / 60) % 24;
+                const m = rounded % 60;
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+              };
+              const handleLunchNow = () => {
+                const t = nowHHMM();
+                setProduction(p => setDayDefault(p, currentDate, 'lunchStartTime', t));
+                showToast?.(`Lunch set to ${t}`);
+              };
+              const handleWrapNow = () => {
+                const t = nowHHMM();
+                setProduction(p => setDayDefault(p, currentDate, 'wrapTime', t));
+                showToast?.(`Wrap set to ${t}`);
+              };
+              const btnCls = "flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 text-[10px] font-bold uppercase tracking-[0.14em] hover:bg-sky-500/15 transition-colors";
+              return (
+                <>
+                  <button type="button" onClick={handleLunchNow} className={btnCls} style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <ICheck size={11}/>Lunch now
+                  </button>
+                  <button type="button" onClick={handleWrapNow} className={btnCls} style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <ICheck size={11}/>Wrap now
+                  </button>
+                </>
+              );
+            })()}
           </div>
 
           {hasUnpropagatedDefaults ? (
@@ -7212,7 +7262,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onTriggerCrewTimesheet, showToast }) {
+    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onTriggerCrewTimesheet, showToast, userPrefs }) {
       const [showLunchEdit, setShowLunchEdit] = useState(false);
       const [editingExtra, setEditingExtra] = useState(null);
       const [editingNote, setEditingNote] = useState(false);
@@ -7279,7 +7329,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
 
       const dayNumber = sortedDates.indexOf(currentDate) + 1;
-      const isMe = crewMember.id === production.crew?.[0]?.id;
+      const isMe = crewMember.id === resolveUserCrewId(production, userPrefs);
 
       const formattedDate = currentDate
         ? new Date(currentDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()
@@ -8197,7 +8247,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION SETTINGS SHEET ═══════════════════════════ */
 
-    function ProductionSettingsSheet({ production, setProduction, crew, onClose }) {
+    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs }) {
       const set = (k) => (e) => setProduction(p => ({ ...p, [k]: e.target.value }));
       const setNum = (k) => (e) => setProduction(p => ({ ...p, [k]: Number(e.target.value) }));
 
@@ -8383,6 +8433,38 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                 </div>
               )}
+              {production.bestBoyMode && (() => {
+                const userName = (userPrefs?.displayName || '').trim();
+                const autoMatchId = userName
+                  ? (production.crew || []).find(c => (c.name || '').toLowerCase().trim() === userName.toLowerCase())?.id
+                  : null;
+                const effectiveId = production.iAmCrewId || autoMatchId || null;
+                const effectiveCrew = effectiveId ? (production.crew || []).find(c => c.id === effectiveId) : null;
+                const summaryLine = production.iAmCrewId
+                  ? `Manually set to ${effectiveCrew?.name || '—'}`
+                  : autoMatchId
+                  ? `Auto-matched to ${effectiveCrew?.name || '—'}${userName ? '' : ''}`
+                  : userName
+                  ? `No crew named "${userName}" on this production`
+                  : 'Set your name in Settings, or pick from the list.';
+                return (
+                  <div className="mt-4 pt-4 border-t border-neutral-800">
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">I am</div>
+                    <div className="text-[11px] text-neutral-500 mb-2">{summaryLine}</div>
+                    <select
+                      value={production.iAmCrewId || ''}
+                      onChange={(e) => setProduction(p => ({ ...p, iAmCrewId: e.target.value || null }))}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                      style={{ WebkitAppearance: 'none' }}
+                    >
+                      <option value="">— Auto-match by name —</option>
+                      {(production.crew || []).map(c => (
+                        <option key={c.id} value={c.id}>{c.name || 'Unnamed'}{c.role ? ` (${c.role})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })()}
             </Disclosure>
 
             <Disclosure label="Weekend rate overrides" summary={weekendSummary}>
@@ -8552,10 +8634,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function BottomMoneyPill({ total, onBack, onViewCalc, hasPrev = null, onPrev = null, hidden = false }) {
+    function BottomMoneyPill({ total, onBack, onViewCalc, hasPrev = null, onPrev = null, hasNext = null, onNext = null, isAtLastDate = false, hidden = false }) {
       if (hidden) return null;
       const useNewLeft = hasPrev !== null;
       const leftDisabled = useNewLeft && !hasPrev;
+      const useNewRight = hasNext !== null;
+      const rightDisabled = useNewRight && !hasNext;
       return (
         <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
           <div style={{ height: 56, background: 'var(--tm-pill-paper)', borderRadius: 28, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', overflow: 'hidden', pointerEvents: 'auto' }}>
@@ -8570,10 +8654,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(total)}</span>
               <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View breakdown</span>
             </button>
-            <button onClick={onBack} aria-label="Back to productions"
-              style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
-              <IHome size={20}/>
-            </button>
+            {useNewRight ? (
+              <button onClick={hasNext ? onNext : undefined}
+                disabled={rightDisabled}
+                aria-label={isAtLastDate ? 'Add new day' : 'Next day'}
+                title={isAtLastDate ? 'Add new day' : 'Next day'}
+                style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: rightDisabled ? '#a3a3a3' : '#171717', opacity: rightDisabled ? 0.4 : 1, flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
+                {isAtLastDate ? <IPlus size={20}/> : <IArrowRight size={20}/>}
+              </button>
+            ) : (
+              <button onClick={onBack} aria-label="Back to productions"
+                style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#171717', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>
+                <IHome size={20}/>
+              </button>
+            )}
           </div>
         </div>
       );
@@ -8603,13 +8697,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSave, setProduction, onTriggerCrewTimesheet, showToast }) {
+    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSave, setProduction, onTriggerCrewTimesheet, showToast, userPrefs }) {
       const [activeCrewSheet, setActiveCrewSheet] = useState(null);
       const [editingCrew, setEditingCrew] = useState(null);
       const sortedDates = useMemo(
         () => [...new Set((days || []).map(d => d.date))].sort(),
         [days]
       );
+
+      const meCrewId = resolveUserCrewId(production, userPrefs);
 
       const crewWithTotals = useMemo(() => {
         return (crew || []).map(member => {
@@ -8621,9 +8717,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             const prev = findPrevDay(days, day);
             t += calcForDisplay(production, day, member, prev).total;
           }
-          return { member, total: t, daysWorked, isMe: member.id === (crew[0]?.id) };
+          return { member, total: t, daysWorked, isMe: member.id === meCrewId };
         });
-      }, [production, days, crew]);
+      }, [production, days, crew, meCrewId]);
 
       const productionBuckets = useMemo(() => {
         const totals = { basic: 0, ot: 0, pen: 0 };
@@ -10089,6 +10185,27 @@ const setDays = (updater) =>
         setSavePrintState({ kind: 'timesheet', crewMember });
       };
 
+      const addDenseDay = (date, dayType) => {
+        const type = dayType || production.defaultDay?.dayType || 'Shoot';
+        const existing = new Set((production.days || []).filter(d => d.date === date).map(d => d.crewId));
+        const toAdd = (production.crew || []).filter(m => !existing.has(m.id));
+        if (toAdd.length === 0) return;
+        setProduction(p => ({
+          ...p,
+          days: [
+            ...(p.days || []),
+            ...toAdd.map(m => ({
+              ...DEFAULT_PRODUCTION_DAY,
+              ...(p.defaultDay || {}),
+              ...makeBlankDay(m.id),
+              date,
+              dayType: type,
+              wrapped: !!(date && date < todayISO()),
+            })),
+          ],
+        }));
+      };
+
       const setCrewEmail = (crewId, email) => {
         setProduction(p => ({
           ...p,
@@ -10167,6 +10284,7 @@ const setDays = (updater) =>
             setProduction={setProduction}
             crew={crew}
             onClose={() => setShowProdSettings(false)}
+            userPrefs={userPrefs}
           />
         );
       }
@@ -10220,6 +10338,7 @@ const setDays = (updater) =>
                 setProduction={setProduction}
                 onTriggerCrewTimesheet={triggerCrewTimesheetPrint}
                 showToast={showToast}
+                userPrefs={userPrefs}
               />
             ) : (
               <CalcBreakdownView
@@ -10337,6 +10456,7 @@ const setDays = (updater) =>
                         onBack={() => setDrilldownCrewMember(null)}
                         onTriggerCrewTimesheet={triggerCrewTimesheetPrint}
                         showToast={showToast}
+                        userPrefs={userPrefs}
                       />
                     : <BestBoyMobileDayView
                         production={production}
@@ -10361,13 +10481,32 @@ const setDays = (updater) =>
             const sortedDates = [...new Set((days || []).map(d => d.date))].sort();
             const currentIdx = sortedDates.indexOf(currentDate);
             const onDays = tab === 'days';
-            // When on Days tab, BottomMoneyPill navigates days (left) and exits production (home).
-            // On any other tab, left → previous tab, home → Days (production main). Exiting the
-            // production from non-Days tabs happens via the mobile chrome's "‹ SHOOTS" breadcrumb.
+            // When on Days tab, the pill navigates days (left = prev, right = next/add).
+            // On any other tab, left = previous tab, right is hidden (home falls back to default
+            // exit on legacy mounts, but we want this mount to be tab-aware: send home → Days tab).
             const hasPrev = onDays ? currentIdx > 0 : true;
             const onPrev = onDays
               ? () => { if (currentIdx > 0) setCurrentDate(sortedDates[currentIdx - 1]); }
               : () => setTab(prevTab || 'days');
+            const isAtLastDate = sortedDates.length === 0 || currentIdx >= sortedDates.length - 1;
+            const hasNext = onDays ? true : null;
+            const onNext = onDays ? (() => {
+              if (!isAtLastDate) {
+                setCurrentDate(sortedDates[currentIdx + 1]);
+                return;
+              }
+              if ((production.crew || []).length === 0) {
+                showToast?.('Add crew members first');
+                return;
+              }
+              const baseDate = sortedDates.length > 0
+                ? sortedDates[sortedDates.length - 1]
+                : (production.startDate || todayISO());
+              const nextDate = sortedDates.length > 0 ? addDays(baseDate, 1) : baseDate;
+              if (sortedDates.includes(nextDate)) return;
+              addDenseDay(nextDate);
+              setCurrentDate(nextDate);
+            }) : null;
             const onBackBtn = onDays ? onBack : () => setTab('days');
             return (
               <BottomMoneyPill
@@ -10376,6 +10515,9 @@ const setDays = (updater) =>
                 onViewCalc={() => setShowCalcView(true)}
                 hasPrev={hasPrev}
                 onPrev={onPrev}
+                hasNext={hasNext}
+                onNext={onNext}
+                isAtLastDate={isAtLastDate}
                 hidden={!!drilldownCrewMember}
               />
             );
@@ -13818,6 +13960,7 @@ const confirmDelete = (p) => setConfirmOpts({
           defaultDay: DEFAULT_PRODUCTION_DAY,
           bestBoyMode,
           viewMode: 'mobile',
+          iAmCrewId: null,
           dayDefaults: {},
           isElevenHourDay: false,
           favourableRounding: userPrefs.favourableRounding ?? false,
