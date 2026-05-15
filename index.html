@@ -869,8 +869,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function resolveDay(production, day, crew) {
       const defaultDay = production.defaultDay ?? {};
-      const dayOverride = day.defaultDayOverride ?? {};
-      return { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...dayOverride, ...day };
+      return { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...day };
     }
 
     const isPmpaRole = (crew) => ROLE_DEFAULTS[crew?.role]?.pmpa === true;
@@ -3819,6 +3818,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <option value={1.25}>Grade II — 1.25×</option>
                     <option value={1}>Grade III — 1.0×</option>
                   </Select>
+                </Field>
+                <Field label="Email" hint="Optional — used for Save Timesheets">
+                  <Input
+                    type="email"
+                    value={form.email || ''}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="email@example.com"
+                    className="font-mono"
+                  />
                 </Field>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT Registered</span>
@@ -7413,7 +7421,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         {!isTravelDay && <ExtraChip label="Travel" isSet={travelTimeActive} summary={travelTimeActive ? `${travelOut}+${travelBack}m` : null} onTap={() => setEditingExtra('travel')}/>}
                         <ExtraChip label="Per diem" isSet={perDiemActive} summary={perDiemActive ? fmtGBP(Number(dayRecord.perDiemAmount) || 0) : null} onTap={() => setEditingExtra('perDiem')}/>
                         <ExtraChip label="Expenses" isSet={expensesActive} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => setEditingExtra('expenses')}/>
-                        {show2ndBreakChip && <ExtraChip label="2nd break" isSet={Number(dayRecord.secondBreakDurationMins) > 0} summary={Number(dayRecord.secondBreakDurationMins) > 0 ? `${dayRecord.secondBreakDurationMins}m` : null} onTap={() => setEditingExtra('secondBreak')}/>}
+                        {show2ndBreakChip && (() => {
+                          const sbMins = Number(dayRecord.secondBreakDurationMins) || 0;
+                          const summary = sbMins > 0
+                            ? (sbMins >= 60 ? `${Math.floor(sbMins / 60)}h${sbMins % 60 ? ` ${sbMins % 60}m` : ''}` : `${sbMins}m`)
+                            : 'Missed';
+                          return <ExtraChip label="2nd break" isSet={true} summary={summary} onTap={() => setEditingExtra('secondBreak')}/>;
+                        })()}
                       </div>
                     </>
                   );
@@ -7514,17 +7528,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             );
 
-            const Toggle = ({ value, onChange, ariaLabel }) => (
-              <button
-                type="button"
-                onClick={() => onChange(!value)}
-                className={`w-11 h-6 rounded-full transition-colors relative ${value ? 'bg-sky-500' : 'bg-neutral-700'}`}
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-                aria-label={ariaLabel}
-              >
-                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${value ? 'left-[22px]' : 'left-0.5'}`}/>
-              </button>
-            );
             const ToggleRow = ({ label, value, onChange, ariaLabel }) => (
               <div className="flex items-center justify-between mb-3 px-1">
                 <span className="text-sm text-neutral-300">{label}</span>
