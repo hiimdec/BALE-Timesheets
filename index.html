@@ -1074,6 +1074,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // Late 1st Break (£10) — bs.lunchLate is already gated to cwdApplies
         // at source in deriveBreakState, so this only fires on Shoot/Pre-light.
         if (bs.lunchLate) lines.push({ label: "Late 1st Break", detail: "", rate: null, qty: 1, amount: 10 });
+        // Curtailed 1st Break — informational only. APA doesn't fine for this; basic hours
+        // are already reduced by (60 - lunchDuration)/60. We surface a £0 line so invoice
+        // and text-breakdown outputs show the curtailment instead of hiding it.
+        if (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
+          const shortMins = 60 - lunchDuration;
+          lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m short — basic hours reduced`, rate: null, qty: 1, amount: 0 });
+        }
         // Missed Meal (£7.50) — lunchMissed is the raw flag; gate to
         // cwdApplies so the allowance only applies on Shoot/Pre-light.
         if (bs.cwdApplies && (lunchMissed || bs.lunchVeryLate) && day.noMealProvided) {
@@ -6297,6 +6304,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const anyCrewLunchLate = crewWithCalcs.some(c =>
         !c.isOff && c.calc?.lines?.some(l => /late 1st|l1\b/i.test(l.label))
       );
+      const anyCrewLunchCurtailed = crewWithCalcs.some(c =>
+        !c.isOff && c.calc?.lines?.some(l => /curtailed 1st/i.test(l.label))
+      );
 
       const dayConditions = useMemo(() => {
         const map = new Map(); // label → { count, warn }
@@ -6543,7 +6553,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 style={{ WebkitAppearance: 'none' }}
               />
             </div>
-            <div className={`relative border rounded-xl px-3.5 py-3 ${anyCrewInOT ? 'bg-tm-warn/[0.04] border-tm-warn/30' : 'bg-neutral-900 border-neutral-800'}`}>
+            <div className={`relative border rounded-xl px-3.5 py-3 ${anyCrewInOT ? 'bg-tm-warn/[0.08] border-tm-warn/45' : 'bg-neutral-900 border-neutral-800'}`}>
               <div className={`text-[10px] uppercase tracking-wider font-bold ${anyCrewInOT ? 'text-tm-warn' : 'text-neutral-500'}`}>WRAP{anyCrewInOT ? ' · OT' : ''}</div>
               <div className="font-mono text-[26px] font-bold text-neutral-100 tabular-nums leading-none mt-1.5">
                 {deptWrap || <span className="text-neutral-500 text-base font-sans font-medium">Tap to set</span>}
@@ -6563,15 +6573,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <button
               type="button"
               onClick={() => setShowLunchSheet(true)}
-              className={`w-full border rounded-xl px-3.5 py-3 flex items-center gap-3 text-left transition-colors ${anyCrewLunchLate ? 'bg-tm-pen/[0.04] border-tm-pen/30 hover:border-tm-pen/50' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
+              className={`w-full border rounded-xl px-3.5 py-3 flex items-center gap-3 text-left transition-colors flex-wrap ${(anyCrewLunchLate || anyCrewLunchCurtailed) ? 'bg-tm-pen/[0.04] border-tm-pen/30 hover:border-tm-pen/50' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              <div className={`text-[10px] uppercase tracking-wider font-bold ${anyCrewLunchLate ? 'text-tm-pen' : 'text-neutral-500'}`}>LUNCH</div>
+              <div className={`text-[10px] uppercase tracking-wider font-bold ${(anyCrewLunchLate || anyCrewLunchCurtailed) ? 'text-tm-pen' : 'text-neutral-500'}`}>LUNCH</div>
               {deptLunchStart ? (
                 <>
                   <div className="font-mono text-sm text-neutral-100 tabular-nums">{deptLunchStart} → {deptLunchEnd || '—'}</div>
                   {anyCrewLunchLate && (
                     <span className="text-[9px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">LUNCH LATE</span>
+                  )}
+                  {anyCrewLunchCurtailed && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">CURTAILED</span>
                   )}
                   {deptLunchMins !== null && <div className="text-[11px] text-neutral-500 font-mono ml-auto">{deptLunchMins} mins</div>}
                 </>
@@ -6610,8 +6623,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           )}
 
           {dayConditions.length > 0 && (
-            <div className="px-4 mb-4">
-              <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 flex flex-wrap gap-1.5">
+            <>
+              <div className="px-4 mb-2 mt-2 flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-[0.22em] text-neutral-400 font-bold">PENALTIES</span>
+                <span className="flex-1 h-px bg-neutral-800/60"/>
+              </div>
+              <div className="px-4 mb-4">
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 flex flex-wrap gap-1.5">
                 {dayConditions.map(c => (
                   <span
                     key={c.label}
@@ -6624,8 +6642,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     {c.label}{c.count > 1 ? ` · ${c.count}` : ''}
                   </span>
                 ))}
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           {(() => {
@@ -6815,7 +6834,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function TimeCardWithOverride({ label, value, defaultValue, isOverInOT, onChange, onResetToDefault }) {
       const isOverridden = defaultValue !== undefined && defaultValue !== null && value !== defaultValue;
       const cardCls = isOverInOT
-        ? 'bg-tm-warn/[0.04] border-tm-warn/30'
+        ? 'bg-tm-warn/[0.08] border-tm-warn/45'
         : 'bg-neutral-900 border-neutral-800';
       return (
         <div className={`relative border rounded-xl px-3 py-3 ${cardCls}`}>
@@ -6848,7 +6867,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function LunchCardWithOverride({ startValue, durValue, defaultStart, defaultDur, onResetStart, onResetDur, onTapEdit, isLunchLate, lateMinutes }) {
+    function LunchCardWithOverride({ startValue, durValue, defaultStart, defaultDur, onResetStart, onResetDur, onTapEdit, isLunchLate, lateMinutes, isCurtailed, curtailedMinutes }) {
       const startOverridden = defaultStart != null && startValue !== defaultStart;
       const durOverridden = defaultDur != null && durValue !== defaultDur;
       const anyOverridden = startOverridden || durOverridden;
@@ -6858,12 +6877,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const wrapperProps = tappable
         ? { type: 'button', onClick: onTapEdit, style: { WebkitTapHighlightColor: 'transparent' } }
         : {};
+      const showRedTint = isLunchLate || isCurtailed;
       return (
         <Wrapper
           {...wrapperProps}
-          className={`w-full border rounded-xl px-3.5 py-3 mt-2 text-left ${isLunchLate ? 'bg-tm-pen/[0.04] border-tm-pen/30' : 'bg-neutral-900 border-neutral-800'} ${tappable ? 'hover:border-neutral-700 transition-colors block' : ''}`}
+          className={`w-full border rounded-xl px-3.5 py-3 mt-2 text-left ${showRedTint ? 'bg-tm-pen/[0.04] border-tm-pen/30' : 'bg-neutral-900 border-neutral-800'} ${tappable ? 'hover:border-neutral-700 transition-colors block' : ''}`}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">LUNCH</span>
             {startValue ? (
               <>
@@ -6873,6 +6893,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {isLunchLate && (
                   <span className="text-[10px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">
                     {lateMinutes > 0 ? `${lateMinutes}m LATE` : 'LATE'}
+                  </span>
+                )}
+                {isCurtailed && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">
+                    {curtailedMinutes > 0 ? `${curtailedMinutes}m SHORT` : 'CURT'}
                   </span>
                 )}
                 <span className="ml-auto text-[11px] font-mono text-neutral-400 tabular-nums">{durValue} mins</span>
@@ -7359,6 +7384,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   const lateMinutes = (isLunchLate && callMins !== null && lunchMins !== null)
                     ? Math.max(0, Math.round((lunchMins - callMins - 6) * 60))
                     : 0;
+                  const dur = Number(dayRecord.lunchDurationMins) || 0;
+                  const isCurtailed = dur > 0 && dur < 60;
+                  const curtailedMinutes = isCurtailed ? (60 - dur) : 0;
                   return (
                     <LunchCardWithOverride
                       startValue={dayRecord.lunchStartTime}
@@ -7370,6 +7398,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       onTapEdit={() => setShowLunchEdit(true)}
                       isLunchLate={isLunchLate}
                       lateMinutes={lateMinutes}
+                      isCurtailed={isCurtailed}
+                      curtailedMinutes={curtailedMinutes}
                     />
                   );
                 })()}
@@ -10001,6 +10031,14 @@ const setDays = (updater) =>
     return { ...prev, days: next.map(migrateDay) };
   });
       const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
+      const [prevTab, setPrevTab] = useState('days');
+      const prevTabRef = useRef(tab);
+      useEffect(() => {
+        if (prevTabRef.current !== tab) {
+          setPrevTab(prevTabRef.current);
+          prevTabRef.current = tab;
+        }
+      }, [tab]);
       const [pendingDeepLink] = useState(() => initialInvoiceId || null);
       const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
 
@@ -10322,14 +10360,22 @@ const setDays = (updater) =>
           {(() => {
             const sortedDates = [...new Set((days || []).map(d => d.date))].sort();
             const currentIdx = sortedDates.indexOf(currentDate);
-            const hasPrev = currentIdx > 0;
+            const onDays = tab === 'days';
+            // When on Days tab, BottomMoneyPill navigates days (left) and exits production (home).
+            // On any other tab, left → previous tab, home → Days (production main). Exiting the
+            // production from non-Days tabs happens via the mobile chrome's "‹ SHOOTS" breadcrumb.
+            const hasPrev = onDays ? currentIdx > 0 : true;
+            const onPrev = onDays
+              ? () => { if (currentIdx > 0) setCurrentDate(sortedDates[currentIdx - 1]); }
+              : () => setTab(prevTab || 'days');
+            const onBackBtn = onDays ? onBack : () => setTab('days');
             return (
               <BottomMoneyPill
                 total={totalShoot}
-                onBack={onBack}
+                onBack={onBackBtn}
                 onViewCalc={() => setShowCalcView(true)}
                 hasPrev={hasPrev}
-                onPrev={() => { if (hasPrev) setCurrentDate(sortedDates[currentIdx - 1]); }}
+                onPrev={onPrev}
                 hidden={!!drilldownCrewMember}
               />
             );
