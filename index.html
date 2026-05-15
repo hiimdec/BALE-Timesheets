@@ -6834,24 +6834,148 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function QuickAddCrewSheet({ onClose, onSubmit }) {
-      const [name, setName] = useState('');
-      const [role, setRole] = useState('Lighting Technician');
-      const [bdr, setBdr] = useState(String(ROLE_DEFAULTS['Lighting Technician'].bdr ?? ''));
-      const [email, setEmail] = useState('');
+    function ActionItem({ icon: Icon, label, onClick, tone = 'default' }) {
+      const isDanger = tone === 'danger';
+      const cls = isDanger
+        ? 'w-full text-left px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-2.5 transition-colors text-tm-pen hover:bg-tm-pen/[0.05]'
+        : 'w-full text-left px-4 py-3 rounded-xl border text-sm font-semibold flex items-center gap-2.5 transition-colors text-neutral-300 bg-tm-card-2 hover:bg-neutral-800 border-neutral-700';
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          className={cls}
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+        >
+          {Icon && <Icon size={15}/>}
+          {label}
+        </button>
+      );
+    }
+
+    function CrewActionSheet({ crewMember, mode, onClose, onSavePDF, onSendText, onSetEmail, onEditCrew, onRemoveFromDay, canRemove }) {
+      const [emailEditing, setEmailEditing] = useState(false);
+      const [emailDraft, setEmailDraft] = useState(crewMember?.email || '');
+      const hasEmail = !!crewMember?.email;
+
+      const handleSaveEmail = () => {
+        onSetEmail(emailDraft.trim());
+        setEmailEditing(false);
+      };
+
+      if (emailEditing) {
+        return (
+          <div className="fixed inset-0 z-50 flex items-end" onClick={() => setEmailEditing(false)} style={{ background: 'rgba(0,0,0,0.5)' }}>
+            <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+              <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
+              <div className="text-base font-bold text-neutral-100 mb-3">{crewMember.name || 'Crew'}'s email</div>
+              <input
+                type="email"
+                autoFocus
+                value={emailDraft}
+                onChange={(e) => setEmailDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEmail(); }}
+                placeholder="email@example.com"
+                className="w-full bg-neutral-950 border border-sky-500 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleSaveEmail}
+                className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+              >
+                Save email
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmailEditing(false)}
+                className="w-full mt-2 px-4 py-2 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-end" onClick={onClose} style={{ background: 'rgba(0,0,0,0.5)' }}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+            <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-2 mb-1"/>
+
+            <div className="px-5 pt-3 pb-3 border-b border-neutral-800/60">
+              <div className="text-base font-bold text-neutral-100 truncate">{crewMember.name || 'Crew'}</div>
+              <div className="text-[11px] text-neutral-400 mt-0.5">
+                {crewMember.role || '—'} · £{crewMember.bdr ?? 0} BDR
+              </div>
+              {hasEmail ? (
+                <div className="text-[10px] font-mono text-neutral-500 mt-0.5 truncate">{crewMember.email}</div>
+              ) : (
+                <div className="text-[10px] text-neutral-600 italic mt-0.5">no email set</div>
+              )}
+            </div>
+
+            <div className="px-4 pt-3 pb-4 flex flex-col gap-2">
+              <ActionItem icon={IDownload} label="Save PDF" onClick={() => { onSavePDF(); onClose(); }} />
+              <ActionItem icon={IMessage} label="Send text breakdown" onClick={() => { onSendText(); onClose(); }} />
+              <ActionItem icon={IMail} label={hasEmail ? 'Change email' : 'Set email'} onClick={() => setEmailEditing(true)} />
+              <ActionItem icon={IPencil} label="Edit name & role" onClick={() => { onEditCrew(); onClose(); }} />
+              {mode === 'drilldown' && canRemove && (
+                <div className="pt-1 mt-1 border-t border-neutral-800/60">
+                  <ActionItem
+                    icon={IReset}
+                    label="Remove from this day"
+                    tone="danger"
+                    onClick={() => { onRemoveFromDay(); onClose(); }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="px-4 pb-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function QuickAddCrewSheet({ onClose, onSubmit, crewMember = null }) {
+      const isEditMode = crewMember !== null;
+      const [name, setName] = useState(crewMember?.name || '');
+      const [role, setRole] = useState(crewMember?.role || 'Lighting Technician');
+      const [bdr, setBdr] = useState(String(crewMember?.bdr ?? ROLE_DEFAULTS['Lighting Technician'].bdr ?? ''));
+      const [email, setEmail] = useState(crewMember?.email || '');
 
       const canSave = name.trim().length > 0;
       const handleSubmit = () => {
         if (!canSave) return;
         const roleDefaults = ROLE_DEFAULTS[role] || {};
-        onSubmit({
-          name: name.trim(),
-          role: role.trim() || 'Lighting Technician',
-          bdr: Number(bdr) || 0,
-          otCoef: roleDefaults.otCoef ?? 1.5,
-          otRate: roleDefaults.otRate ?? null,
-          email: email.trim(),
-        });
+        if (isEditMode) {
+          onSubmit({
+            ...crewMember,
+            name: name.trim(),
+            role: role.trim() || 'Lighting Technician',
+            bdr: Number(bdr) || 0,
+            email: email.trim(),
+          });
+        } else {
+          onSubmit({
+            name: name.trim(),
+            role: role.trim() || 'Lighting Technician',
+            bdr: Number(bdr) || 0,
+            otCoef: roleDefaults.otCoef ?? 1.5,
+            otRate: roleDefaults.otRate ?? null,
+            email: email.trim(),
+          });
+        }
       };
 
       return (
@@ -6866,7 +6990,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
           >
             <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
-            <div className="text-base font-bold text-neutral-100 mb-3">Add to today's crew</div>
+            <div className="text-base font-bold text-neutral-100 mb-3">{isEditMode ? `Edit ${crewMember.name || 'crew'}` : "Add to today's crew"}</div>
 
             <div className="space-y-3">
               <div>
@@ -6923,7 +7047,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 WebkitTapHighlightColor: 'transparent',
               }}
             >
-              Add to crew
+              {isEditMode ? 'Save changes' : 'Add to crew'}
             </button>
             <button
               type="button"
@@ -6938,10 +7062,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack }) {
+    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onTriggerCrewTimesheet, showToast }) {
       const [showLunchEdit, setShowLunchEdit] = useState(false);
       const [editingExtra, setEditingExtra] = useState(null);
       const [editingNote, setEditingNote] = useState(false);
+      const [showCrewActions, setShowCrewActions] = useState(false);
+      const [showEditCrew, setShowEditCrew] = useState(false);
       const dayRecord = (production.days || []).find(d => d.date === currentDate && d.crewId === crewMember.id);
       const defaults = getDayDefaults(production, currentDate);
 
@@ -7030,7 +7156,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                 </div>
                 <button
-                  onClick={() => { /* TODO V4-3c-followup: per-person kebab actions */ }}
+                  onClick={() => setShowCrewActions(true)}
                   className="w-8 h-8 rounded-full bg-tm-card-2 hover:bg-neutral-800 flex items-center justify-center text-neutral-300 flex-shrink-0"
                   aria-label="More actions"
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
@@ -7551,6 +7677,48 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
             return null;
           })()}
+
+          {showCrewActions && (
+            <CrewActionSheet
+              crewMember={crewMember}
+              mode="drilldown"
+              canRemove={!!dayRecord && dayRecord.dayType !== 'Rest Day'}
+              onClose={() => setShowCrewActions(false)}
+              onSavePDF={() => onTriggerCrewTimesheet?.(crewMember)}
+              onSendText={async () => {
+                const memberDays = (production.days || []).filter(d => d.crewId === crewMember.id);
+                const text = generateCrewText(crewMember, memberDays, production);
+                const r = await shareTextOrCopy(text, `${crewMember.name || 'Crew'} Timesheet`);
+                if ((r === 'copied' || r === 'prompted') && typeof showToast === 'function') showToast('Copied to clipboard');
+              }}
+              onSetEmail={(email) => setProduction(p => ({
+                ...p,
+                crew: (p.crew || []).map(c => c.id === crewMember.id ? { ...c, email } : c)
+              }))}
+              onEditCrew={() => setShowEditCrew(true)}
+              onRemoveFromDay={() => {
+                if (!dayRecord) return;
+                setProduction(p => ({
+                  ...p,
+                  days: p.days.map(d => d.id === dayRecord.id ? { ...d, dayType: 'Rest Day' } : d)
+                }));
+              }}
+            />
+          )}
+
+          {showEditCrew && (
+            <QuickAddCrewSheet
+              crewMember={crewMember}
+              onClose={() => setShowEditCrew(false)}
+              onSubmit={(updated) => {
+                setProduction(p => ({
+                  ...p,
+                  crew: (p.crew || []).map(c => c.id === updated.id ? updated : c)
+                }));
+                setShowEditCrew(false);
+              }}
+            />
+          )}
 
           {editingNote && dayRecord && (
             <div
@@ -8285,7 +8453,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSave }) {
+    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSave, setProduction, onTriggerCrewTimesheet, showToast }) {
+      const [activeCrewSheet, setActiveCrewSheet] = useState(null);
+      const [editingCrew, setEditingCrew] = useState(null);
       const sortedDates = useMemo(
         () => [...new Set((days || []).map(d => d.date))].sort(),
         [days]
@@ -8382,11 +8552,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
 
             {sortedCrew.map(({ member, total: memberTotal, daysWorked, isMe }) => (
-              <div
+              <button
                 key={member.id}
-                className={`border rounded-xl px-3.5 py-3 mb-1.5 flex items-center gap-3 ${
-                  isMe ? 'border-sky-500/25 bg-sky-500/[0.03]' : 'border-neutral-800 bg-neutral-900'
+                type="button"
+                onClick={() => setActiveCrewSheet(member)}
+                className={`w-full text-left border rounded-xl px-3.5 py-3 mb-1.5 flex items-center gap-3 transition-colors ${
+                  isMe ? 'border-sky-500/25 bg-sky-500/[0.03] hover:bg-sky-500/[0.06]' : 'border-neutral-800 bg-neutral-900 hover:border-neutral-700'
                 }`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
               >
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px] flex-shrink-0 ${
                   isMe ? 'bg-sky-500/15 text-sky-400' : 'bg-tm-card-2 text-neutral-400'
@@ -8405,7 +8578,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="text-right flex-shrink-0">
                   <div className="font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(memberTotal)}</div>
                 </div>
-              </div>
+                <IKebab size={14} className="text-neutral-500 flex-shrink-0 ml-1"/>
+              </button>
             ))}
 
             <div className="flex items-center gap-2 mt-6 mb-3">
@@ -8445,6 +8619,42 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           >
             <IMail size={14}/>Save Timesheets
           </button>
+
+          {activeCrewSheet && (
+            <CrewActionSheet
+              crewMember={activeCrewSheet}
+              mode="overview"
+              canRemove={false}
+              onClose={() => setActiveCrewSheet(null)}
+              onSavePDF={() => onTriggerCrewTimesheet?.(activeCrewSheet)}
+              onSendText={async () => {
+                const memberDays = (days || []).filter(d => d.crewId === activeCrewSheet.id);
+                const text = generateCrewText(activeCrewSheet, memberDays, production);
+                const r = await shareTextOrCopy(text, `${activeCrewSheet.name || 'Crew'} Timesheet`);
+                if ((r === 'copied' || r === 'prompted') && typeof showToast === 'function') showToast('Copied to clipboard');
+              }}
+              onSetEmail={(email) => setProduction(p => ({
+                ...p,
+                crew: (p.crew || []).map(c => c.id === activeCrewSheet.id ? { ...c, email } : c)
+              }))}
+              onEditCrew={() => { setEditingCrew(activeCrewSheet); setActiveCrewSheet(null); }}
+              onRemoveFromDay={null}
+            />
+          )}
+
+          {editingCrew && (
+            <QuickAddCrewSheet
+              crewMember={editingCrew}
+              onClose={() => setEditingCrew(null)}
+              onSubmit={(updated) => {
+                setProduction(p => ({
+                  ...p,
+                  crew: (p.crew || []).map(c => c.id === updated.id ? updated : c)
+                }));
+                setEditingCrew(null);
+              }}
+            />
+          )}
         </div>
       );
     }
@@ -9713,7 +9923,12 @@ const setDays = (updater) =>
 
       const triggerSavePrint = (crewIdsFilter) => {
         if (!crewIdsFilter || crewIdsFilter.size === 0) return;
-        setSavePrintState({ crewIdsFilter });
+        setSavePrintState({ kind: 'grid', crewIdsFilter });
+      };
+
+      const triggerCrewTimesheetPrint = (crewMember) => {
+        if (!crewMember) return;
+        setSavePrintState({ kind: 'timesheet', crewMember });
       };
 
       const setCrewEmail = (crewId, email) => {
@@ -9844,6 +10059,9 @@ const setDays = (updater) =>
                 total={totalShoot}
                 onClose={() => setShowCalcView(false)}
                 onOpenSave={() => setShowSaveSheet(true)}
+                setProduction={setProduction}
+                onTriggerCrewTimesheet={triggerCrewTimesheetPrint}
+                showToast={showToast}
               />
             ) : (
               <CalcBreakdownView
@@ -9959,6 +10177,8 @@ const setDays = (updater) =>
                         production={production}
                         setProduction={setProduction}
                         onBack={() => setDrilldownCrewMember(null)}
+                        onTriggerCrewTimesheet={triggerCrewTimesheetPrint}
+                        showToast={showToast}
                       />
                     : <BestBoyMobileDayView
                         production={production}
@@ -10018,7 +10238,24 @@ const setDays = (updater) =>
           )}
 
           {savePrintState && (() => {
+            if (savePrintState.kind === 'timesheet' && savePrintState.crewMember) {
+              const member = savePrintState.crewMember;
+              const memberDays = (days || []).filter(d => d.crewId === member.id);
+              return (
+                <PrintView
+                  mode="timesheet"
+                  production={production}
+                  crewMember={member}
+                  crewList={crew}
+                  days={memberDays}
+                  weeks={weeksForSavePrint}
+                  exportWeekIndex={null}
+                  userPrefs={userPrefs}
+                />
+              );
+            }
             const filter = savePrintState.crewIdsFilter;
+            if (!filter) return null;
             const filteredCrew = (crew || []).filter(c => filter.has(c.id));
             const filteredDays = (days || []).filter(d => filter.has(d.crewId));
             return (
