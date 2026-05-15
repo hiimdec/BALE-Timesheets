@@ -6667,6 +6667,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    function ExtraChip({ label, summary, isSet, onTap }) {
+      return (
+        <button
+          type="button"
+          onClick={onTap}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+            isSet
+              ? 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]'
+              : 'bg-tm-card-2 border-neutral-800 text-neutral-500 hover:border-neutral-700 hover:text-neutral-400'
+          }`}
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+        >
+          <span className={isSet ? '' : 'uppercase tracking-wider'}>{label}</span>
+          {summary && (
+            <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{summary}</span>
+          )}
+        </button>
+      );
+    }
+
     function TimeCardWithOverride({ label, value, defaultValue, isOverInOT, onChange, onResetToDefault }) {
       const isOverridden = defaultValue !== undefined && defaultValue !== null && value !== defaultValue;
       const cardCls = isOverInOT
@@ -6918,8 +6938,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onOpenFullEditor }) {
+    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack }) {
       const [showLunchEdit, setShowLunchEdit] = useState(false);
+      const [editingExtra, setEditingExtra] = useState(null);
+      const [editingNote, setEditingNote] = useState(false);
       const dayRecord = (production.days || []).find(d => d.date === currentDate && d.crewId === crewMember.id);
       const defaults = getDayDefaults(production, currentDate);
 
@@ -7108,34 +7130,82 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   onResetToDefault={() => resetField('dayType')}
                 />
 
+                {(() => {
+                  const isTravelDay = dayRecord.dayType === 'Travel Day';
+                  const stepUpActive = !!dayRecord.stepUpEnabled;
+                  const kitMoneyActive = !!dayRecord.kitMoneyEnabled;
+                  const perDiemActive = !!dayRecord.perDiemEnabled;
+                  const preCallActive = dayRecord.preCallEnabled !== undefined
+                    ? !!dayRecord.preCallEnabled
+                    : !!(dayRecord.preCallTime || dayRecord.truckCallTime);
+                  const mileageActive = dayRecord.mileageEnabled !== undefined
+                    ? !!dayRecord.mileageEnabled
+                    : (Number(dayRecord.miles) > 0 || !!dayRecord.mileagePostcode);
+                  const travelTimeActive = dayRecord.travelTimeEnabled !== undefined
+                    ? !!dayRecord.travelTimeEnabled
+                    : (Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0);
+                  const expensesActive = dayRecord.expensesEnabled !== undefined
+                    ? !!dayRecord.expensesEnabled
+                    : ((dayRecord.expenses || []).length > 0);
+                  const show2ndBreakChip = !!calc?.meta?.secondBreakRequired
+                    && !calc?.meta?.continuousDay
+                    && !calc?.meta?.isPmpa
+                    && !isTravelDay;
+
+                  const expensesTotal = (dayRecord.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+                  const travelOut = Number(dayRecord.travelOutMins) || 0;
+                  const travelBack = Number(dayRecord.travelBackMins) || 0;
+
+                  return (
+                    <>
+                      <div className="flex items-center gap-2 mt-6 mb-3">
+                        <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">EXTRAS</span>
+                        <span className="flex-1 h-px bg-neutral-800/60"/>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <ExtraChip label="Step-up" isSet={stepUpActive} summary={stepUpActive ? (dayRecord.stepUpRole || '—') : null} onTap={() => setEditingExtra('stepUp')}/>
+                        {!isTravelDay && <ExtraChip label="Pre-call" isSet={preCallActive} summary={preCallActive ? (dayRecord.preCallTime || dayRecord.truckCallTime || '—') : null} onTap={() => setEditingExtra('preCall')}/>}
+                        <ExtraChip label="Mileage" isSet={mileageActive} summary={mileageActive ? `${Number(dayRecord.miles) || 0} mi` : null} onTap={() => setEditingExtra('mileage')}/>
+                        <ExtraChip label="Kit" isSet={kitMoneyActive} summary={kitMoneyActive ? fmtGBP(Number(dayRecord.kitMoneyAmount) || 0) : null} onTap={() => setEditingExtra('kit')}/>
+                        {!isTravelDay && <ExtraChip label="Travel" isSet={travelTimeActive} summary={travelTimeActive ? `${travelOut}+${travelBack}m` : null} onTap={() => setEditingExtra('travel')}/>}
+                        <ExtraChip label="Per diem" isSet={perDiemActive} summary={perDiemActive ? fmtGBP(Number(dayRecord.perDiemAmount) || 0) : null} onTap={() => setEditingExtra('perDiem')}/>
+                        <ExtraChip label="Expenses" isSet={expensesActive} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => setEditingExtra('expenses')}/>
+                        {show2ndBreakChip && <ExtraChip label="2nd break" isSet={Number(dayRecord.secondBreakDurationMins) > 0} summary={Number(dayRecord.secondBreakDurationMins) > 0 ? `${dayRecord.secondBreakDurationMins}m` : null} onTap={() => setEditingExtra('secondBreak')}/>}
+                      </div>
+                    </>
+                  );
+                })()}
+
                 <div className="flex items-center gap-2 mt-6 mb-3">
                   <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CONDITIONS</span>
                   <span className="flex-1 h-px bg-neutral-800/60"/>
                 </div>
                 <ConditionsDisplay dayRecord={dayRecord} calc={calc} />
 
-                {dayRecord.note && dayRecord.note.trim() && (
-                  <>
-                    <div className="flex items-center gap-2 mt-6 mb-3">
-                      <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">NOTES</span>
-                      <span className="flex-1 h-px bg-neutral-800/60"/>
-                    </div>
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 text-sm text-neutral-300 italic leading-relaxed">
-                      {dayRecord.note}
-                    </div>
-                  </>
-                )}
-
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={() => onOpenFullEditor?.(crewMember, currentDate)}
-                    className="w-full px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 text-sm font-semibold text-neutral-300 flex items-center justify-center gap-2 transition-colors"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    <IPencil size={13}/>Edit all fields for this day
-                  </button>
+                <div className="flex items-center gap-2 mt-6 mb-3">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">NOTES</span>
+                  <span className="flex-1 h-px bg-neutral-800/60"/>
+                  {!(dayRecord.note && dayRecord.note.trim()) && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingNote(true)}
+                      className="text-[10px] uppercase tracking-wider font-bold text-sky-500"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      ADD
+                    </button>
+                  )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingNote(true)}
+                  className="w-full text-left bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 text-sm leading-relaxed hover:border-neutral-700 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  {dayRecord.note && dayRecord.note.trim()
+                    ? <span className="text-neutral-300 italic">{dayRecord.note}</span>
+                    : <span className="text-neutral-500">Tap to add notes</span>}
+                </button>
               </>
             )}
           </div>
@@ -7179,6 +7249,333 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <button
                   type="button"
                   onClick={() => setShowLunchEdit(false)}
+                  className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+
+          {editingExtra && dayRecord && (() => {
+            const closeSheet = () => setEditingExtra(null);
+            const sheetShell = (title, body) => (
+              <div className="fixed inset-0 z-50 flex items-end" onClick={closeSheet} style={{ background: 'rgba(0,0,0,0.5)' }}>
+                <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5 max-h-[85vh] overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+                  <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
+                  <div className="text-base font-bold text-neutral-100 mb-3">{title}</div>
+                  {body}
+                  <button type="button" onClick={closeSheet} className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>Done</button>
+                </div>
+              </div>
+            );
+
+            const Toggle = ({ value, onChange, ariaLabel }) => (
+              <button
+                type="button"
+                onClick={() => onChange(!value)}
+                className={`w-11 h-6 rounded-full transition-colors relative ${value ? 'bg-sky-500' : 'bg-neutral-700'}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+                aria-label={ariaLabel}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${value ? 'left-[22px]' : 'left-0.5'}`}/>
+              </button>
+            );
+            const ToggleRow = ({ label, value, onChange, ariaLabel }) => (
+              <div className="flex items-center justify-between mb-3 px-1">
+                <span className="text-sm text-neutral-300">{label}</span>
+                <Toggle value={value} onChange={onChange} ariaLabel={ariaLabel}/>
+              </div>
+            );
+            const numInput = (val, onChange, opts = {}) => (
+              <input
+                type="number"
+                min={opts.min ?? "0"}
+                step={opts.step ?? "0.01"}
+                inputMode={opts.inputMode || 'decimal'}
+                value={val ?? 0}
+                onChange={onChange}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+              />
+            );
+
+            if (editingExtra === 'preCall') {
+              return sheetShell('Pre-call', (
+                <>
+                  <ToggleRow label="Pre-call active" value={!!dayRecord.preCallEnabled} onChange={(v) => updateField('preCallEnabled', v)} ariaLabel="Toggle pre-call"/>
+                  {dayRecord.preCallEnabled && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
+                      <input
+                        type="time"
+                        value={dayRecord.preCallTime || ''}
+                        onChange={(e) => updateField('preCallTime', e.target.value)}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                        style={{ WebkitAppearance: 'none' }}
+                      />
+                      <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Lunch and CWD still measured from main call time.</div>
+                    </div>
+                  )}
+                </>
+              ));
+            }
+
+            if (editingExtra === 'kit') {
+              return sheetShell('Kit money', (
+                <>
+                  <ToggleRow label="Kit money active" value={!!dayRecord.kitMoneyEnabled} onChange={(v) => updateField('kitMoneyEnabled', v)} ariaLabel="Toggle kit money"/>
+                  {dayRecord.kitMoneyEnabled && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                      {numInput(dayRecord.kitMoneyAmount, (e) => updateField('kitMoneyAmount', Number(e.target.value) || 0))}
+                    </div>
+                  )}
+                </>
+              ));
+            }
+
+            if (editingExtra === 'perDiem') {
+              return sheetShell('Per diem', (
+                <>
+                  <ToggleRow label="Per diem active" value={!!dayRecord.perDiemEnabled} onChange={(v) => updateField('perDiemEnabled', v)} ariaLabel="Toggle per diem"/>
+                  {dayRecord.perDiemEnabled && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                      {numInput(dayRecord.perDiemAmount, (e) => updateField('perDiemAmount', Number(e.target.value) || 0))}
+                    </div>
+                  )}
+                </>
+              ));
+            }
+
+            if (editingExtra === 'mileage') {
+              return sheetShell('Mileage', (
+                <>
+                  <ToggleRow label="Mileage active" value={dayRecord.mileageEnabled !== undefined ? !!dayRecord.mileageEnabled : Number(dayRecord.miles) > 0} onChange={(v) => {
+                    if (v) updateField('mileageEnabled', true);
+                    else setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, mileageEnabled: false, miles: 0, mileagePostcode: '' } : d) }));
+                  }} ariaLabel="Toggle mileage"/>
+                  {(dayRecord.mileageEnabled !== undefined ? !!dayRecord.mileageEnabled : Number(dayRecord.miles) > 0) && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Miles</div>
+                      {numInput(dayRecord.miles, (e) => updateField('miles', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
+                      <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Paid at 0.5×BHR per mile outside M25.</div>
+                    </div>
+                  )}
+                </>
+              ));
+            }
+
+            if (editingExtra === 'travel') {
+              const travelActive = dayRecord.travelTimeEnabled !== undefined
+                ? !!dayRecord.travelTimeEnabled
+                : (Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0);
+              return sheetShell('Travel time', (
+                <>
+                  <ToggleRow label="Travel time active" value={travelActive} onChange={(v) => {
+                    if (v) updateField('travelTimeEnabled', true);
+                    else setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 } : d) }));
+                  }} ariaLabel="Toggle travel time"/>
+                  {travelActive && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
+                        {numInput(dayRecord.travelOutMins, (e) => updateField('travelOutMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
+                        {numInput(dayRecord.travelBackMins, (e) => updateField('travelBackMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ));
+            }
+
+            if (editingExtra === 'stepUp') {
+              return sheetShell('Step-up', (
+                <>
+                  <ToggleRow label="Step-up active" value={!!dayRecord.stepUpEnabled} onChange={(v) => updateField('stepUpEnabled', v)} ariaLabel="Toggle step-up"/>
+                  {dayRecord.stepUpEnabled && (
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
+                        <select
+                          value={dayRecord.stepUpRole || ''}
+                          onChange={(e) => {
+                            const role = e.target.value;
+                            const d = ROLE_DEFAULTS[role] || {};
+                            setProduction(p => ({
+                              ...p,
+                              days: p.days.map(rec => rec.id === dayRecord.id ? {
+                                ...rec,
+                                stepUpRole: role,
+                                stepUpBDR: d.bdr ?? rec.stepUpBDR,
+                                stepUpOTCoef: d.otCoef ?? rec.stepUpOTCoef,
+                                stepUpOTRate: d.otRate ?? null,
+                              } : rec)
+                            }));
+                          }}
+                          className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                        >
+                          <option value="">— Select role —</option>
+                          {Object.entries(DEPARTMENTS).map(([dept, roles]) => (
+                            <optgroup key={dept} label={dept}>
+                              {Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up BDR (£)</div>
+                          {numInput(dayRecord.stepUpBDR, (e) => updateField('stepUpBDR', Number(e.target.value) || 0))}
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up OT</div>
+                          <select
+                            value={String(dayRecord.stepUpOTCoef ?? 1)}
+                            onChange={(e) => updateField('stepUpOTCoef', Number(e.target.value))}
+                            className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                          >
+                            <option value="1">1×</option>
+                            <option value="1.25">1.25×</option>
+                            <option value="1.5">1.5×</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ));
+            }
+
+            if (editingExtra === 'expenses') {
+              const expenses = dayRecord.expenses || [];
+              const addExpense = () => setProduction(p => ({
+                ...p,
+                days: p.days.map(d => d.id === dayRecord.id ? {
+                  ...d,
+                  expensesEnabled: true,
+                  expenses: [...(d.expenses || []), { id: uid(), amount: 0, category: 'Other', description: '' }],
+                } : d),
+              }));
+              const updateExp = (expId, patch) => setProduction(p => ({
+                ...p,
+                days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: (d.expenses || []).map(x => x.id === expId ? { ...x, ...patch } : x) } : d),
+              }));
+              const removeExp = (expId) => setProduction(p => ({
+                ...p,
+                days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: (d.expenses || []).filter(x => x.id !== expId) } : d),
+              }));
+              return sheetShell('Expenses', (
+                <>
+                  <button
+                    type="button"
+                    onClick={addExpense}
+                    className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  ><IPlus size={11}/>Add expense</button>
+                  {expenses.length === 0 ? (
+                    <div className="text-[11px] text-neutral-500 italic">No expenses yet — tap Add expense.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {expenses.map(exp => (
+                        <div key={exp.id} className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={exp.category}
+                            onChange={(e) => updateExp(exp.id, { category: e.target.value })}
+                            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"
+                            style={{ width: 116 }}
+                          >
+                            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <input
+                            type="number" min="0" step="0.01" inputMode="decimal"
+                            value={exp.amount}
+                            onChange={(e) => updateExp(exp.id, { amount: Number(e.target.value) || 0 })}
+                            placeholder="0.00"
+                            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                            style={{ width: 84 }}
+                          />
+                          <input
+                            type="text"
+                            value={exp.description}
+                            onChange={(e) => updateExp(exp.id, { description: e.target.value })}
+                            placeholder="Description"
+                            className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeExp(exp.id)}
+                            className="text-neutral-600 hover:text-tm-pen transition-colors p-1"
+                            aria-label="Remove expense"
+                            style={{ WebkitTapHighlightColor: 'transparent' }}
+                          ><IX size={14}/></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ));
+            }
+
+            if (editingExtra === 'secondBreak') {
+              return sheetShell('2nd break', (
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Start</div>
+                    <input
+                      type="time"
+                      value={dayRecord.secondBreakStartTime || ''}
+                      onChange={(e) => updateField('secondBreakStartTime', e.target.value)}
+                      disabled={Number(dayRecord.secondBreakDurationMins) === 0}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500 disabled:opacity-50"
+                      style={{ WebkitAppearance: 'none' }}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Duration</div>
+                    <select
+                      value={Number(dayRecord.secondBreakDurationMins ?? 30)}
+                      onChange={(e) => updateField('secondBreakDurationMins', Number(e.target.value))}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                    >
+                      {SECOND_BREAK_DURATIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+              ));
+            }
+
+            return null;
+          })()}
+
+          {editingNote && dayRecord && (
+            <div
+              className="fixed inset-0 z-50 flex items-end"
+              onClick={() => setEditingNote(false)}
+              style={{ background: 'rgba(0,0,0,0.5)' }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+              >
+                <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
+                <div className="text-base font-bold text-neutral-100 mb-3">{crewMember.name || 'Crew'}'s notes</div>
+                <textarea
+                  autoFocus
+                  value={dayRecord.note || ''}
+                  onChange={(e) => updateField('note', e.target.value)}
+                  placeholder="Anything worth recording for this day…"
+                  rows={4}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-500 leading-relaxed focus:outline-none focus:border-sky-500 resize-none font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setEditingNote(false)}
                   className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
                   style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
                 >
@@ -9562,10 +9959,6 @@ const setDays = (updater) =>
                         production={production}
                         setProduction={setProduction}
                         onBack={() => setDrilldownCrewMember(null)}
-                        onOpenFullEditor={(m, date) => {
-                          showToast?.('Full editor coming in next polish');
-                          console.log('TODO V4-3c-followup: open DayEditModal for', m.name, date);
-                        }}
                       />
                     : <BestBoyMobileDayView
                         production={production}
