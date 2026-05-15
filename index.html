@@ -692,6 +692,68 @@
       }
       return buckets;
     }
+
+    // Penalty line labels present in every active crew's calc. These are day-level
+    // conditions, not per-person variances. TOC lines are excluded — they're surfaced
+    // as their own variance kind regardless of how many crew have them.
+    function getSharedPenaltyLabels(activeCalcs) {
+      if (!activeCalcs || activeCalcs.length === 0) return new Set();
+      const perCrew = activeCalcs.map(calc =>
+        new Set((calc.lines || [])
+          .filter(l => !l.isTOC && categorizeBreakdownLine(l.label) === 'pen')
+          .map(l => l.label))
+      );
+      let shared = new Set(perCrew[0]);
+      for (let i = 1; i < perCrew.length; i++) {
+        shared = new Set([...shared].filter(label => perCrew[i].has(label)));
+      }
+      return shared;
+    }
+
+    function getCrewVariances({ dayRecord, calc, defaults, sharedPenaltyLabels }) {
+      if (!dayRecord || dayRecord.dayType === 'Rest Day') return [];
+      const variances = [];
+
+      if (defaults) {
+        if (dayRecord.callTime && dayRecord.callTime !== defaults.callTime) {
+          variances.push({ kind: 'override', label: 'CALL', detail: `${dayRecord.callTime} · default ${defaults.callTime}` });
+        }
+        if (dayRecord.wrapTime && dayRecord.wrapTime !== defaults.wrapTime) {
+          variances.push({ kind: 'override', label: 'WRAP', detail: `${dayRecord.wrapTime} · default ${defaults.wrapTime}` });
+        }
+        if (dayRecord.lunchStartTime && dayRecord.lunchStartTime !== defaults.lunchStartTime) {
+          variances.push({ kind: 'override', label: 'LUNCH', detail: `${dayRecord.lunchStartTime} · default ${defaults.lunchStartTime}` });
+        }
+        if (dayRecord.lunchDurationMins != null && defaults.lunchDurationMins != null && dayRecord.lunchDurationMins !== defaults.lunchDurationMins) {
+          variances.push({ kind: 'override', label: 'LUNCH', detail: `${dayRecord.lunchDurationMins}m · default ${defaults.lunchDurationMins}m` });
+        }
+        if (dayRecord.dayType && dayRecord.dayType !== defaults.dayType) {
+          variances.push({ kind: 'override', label: 'TYPE', detail: `${dayRecord.dayType} · default ${defaults.dayType}` });
+        }
+      }
+
+      if (calc?.lines) {
+        for (const line of calc.lines) {
+          if (line.isTOC) continue;
+          if (categorizeBreakdownLine(line.label) !== 'pen') continue;
+          if (sharedPenaltyLabels.has(line.label)) continue;
+          variances.push({ kind: 'penalty', label: 'PEN', detail: line.label });
+        }
+      }
+
+      const otHrs = Number(calc?.meta?.otHrs) || 0;
+      const OT_THRESHOLD_HRS = 2;
+      if (otHrs >= OT_THRESHOLD_HRS) {
+        variances.push({ kind: 'ot', label: 'OT', detail: `${otHrs % 1 ? otHrs.toFixed(1) : otHrs}h overtime` });
+      }
+
+      const tocLine = (calc?.lines || []).find(l => l.isTOC);
+      if (tocLine) {
+        variances.push({ kind: 'toc', label: tocLine.isBreach ? 'TOC!' : 'TOC', detail: tocLine.detail || 'short turnaround' });
+      }
+
+      return variances;
+    }
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
     const ceilHalf = (n) => Math.ceil(n * 2) / 2;
     const computeAPArate = (bdr, multiplier, apaRounding) => { const raw = (Number(bdr) || 0) * multiplier / 10; return apaRounding ? Math.round(raw) : raw; };
@@ -6155,11 +6217,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const dayRecord = days.find(d => d.date === currentDate && d.crewId === member.id);
 
           if (!dayRecord) {
-            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Not on this day' };
+            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Not on this day', dayRecord: null };
           }
 
           if (dayRecord.dayType === 'Rest Day') {
-            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Rest Day' };
+            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Rest Day', dayRecord };
           }
 
           const prevDayRecord = prevDate
@@ -6191,9 +6253,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             });
           }
 
-          return { member, isMe, isOff: false, dayTotal: calc.total, calc, chips, offReason: null };
+          return { member, isMe, isOff: false, dayTotal: calc.total, calc, chips, offReason: null, dayRecord };
         });
       }, [production, currentDate, sortedDates]);
+
+      const crewWithVariances = useMemo(() => {
+        const activeCalcs = crewWithCalcs.filter(c => !c.isOff && c.calc).map(c => c.calc);
+        const sharedPenaltyLabels = getSharedPenaltyLabels(activeCalcs);
+        const defaults = production.dayDefaults?.[currentDate];
+        return crewWithCalcs.map(entry => {
+          if (entry.isOff) return { ...entry, variances: [] };
+          const variances = getCrewVariances({
+            dayRecord: entry.dayRecord,
+            calc: entry.calc,
+            defaults,
+            sharedPenaltyLabels,
+          });
+          return { ...entry, variances };
+        });
+      }, [crewWithCalcs, production.dayDefaults, currentDate]);
 
       const dayBuckets = useMemo(() => {
         const totals = { basic: 0, ot: 0, pen: 0 };
@@ -6239,6 +6317,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (rec?.kitMoneyEnabled) bump('Kit', false);
           if (Number(rec?.miles) > 0) bump('Mileage', false);
           if (Number(rec?.travelOutMins) > 0 || Number(rec?.travelBackMins) > 0) bump('Travel', false);
+          if ((calc.lines || []).some(l => l.isTOC)) bump('TOC tight', true);
         }
         return [...map.entries()].map(([label, v]) => ({ label, count: v.count, warn: v.warn }));
       }, [crewWithCalcs, production.days, currentDate]);
@@ -6540,6 +6619,44 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             </div>
           )}
+
+          {(() => {
+            const crewWithAnyVariance = crewWithVariances.filter(c => c.variances && c.variances.length > 0);
+            if (crewWithAnyVariance.length === 0) return null;
+            return (
+              <>
+                <div className="px-4 mb-3 mt-2 flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-tm-warn font-bold">VARIANCES TODAY</span>
+                  <span className="flex-1 h-px bg-neutral-800/60"/>
+                  <span className="text-[10px] font-mono text-neutral-500 font-bold">{crewWithAnyVariance.length}</span>
+                </div>
+                <div className="px-4 mb-4 flex flex-col gap-1.5">
+                  {crewWithAnyVariance.map(entry => (
+                    <button
+                      key={entry.member.id}
+                      type="button"
+                      onClick={() => onCrewTap?.(entry.member)}
+                      className="w-full bg-tm-warn/[0.04] hover:bg-tm-warn/[0.07] border border-tm-warn/25 rounded-xl px-3.5 py-2.5 text-left transition-colors"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-semibold text-neutral-100 truncate">{entry.member.name || 'Unnamed'}</span>
+                        <span className="text-[10px] text-neutral-500 uppercase tracking-wider ml-auto">{entry.variances.length} {entry.variances.length === 1 ? 'change' : 'changes'}</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 mt-1.5">
+                        {entry.variances.map((v, i) => (
+                          <div key={i} className="flex items-baseline gap-2 text-[11px]">
+                            <span className={`font-bold uppercase tracking-wider text-[9px] w-10 flex-shrink-0 ${v.kind === 'toc' && v.label === 'TOC!' ? 'text-tm-pen' : 'text-tm-warn'}`}>{v.label}</span>
+                            <span className="text-neutral-400 font-mono">{v.detail}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
 
           <div className="px-4 mb-2.5 flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CREW</span>
