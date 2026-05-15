@@ -6083,6 +6083,45 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const crew = production.crew || [];
       const days = production.days || [];
       const [showLunchSheet, setShowLunchSheet] = useState(false);
+      const [showAddCrew, setShowAddCrew] = useState(false);
+
+      const handleAddNewCrew = (form) => {
+        setProduction(p => {
+          const newCrewId = uid();
+          const newCrewMember = {
+            id: newCrewId,
+            name: form.name,
+            role: form.role,
+            bdr: form.bdr,
+            otCoef: form.otCoef,
+            otRate: form.otRate,
+            vatRegistered: false,
+            vatRate: 20,
+            kitMoneyEnabled: false,
+            kitMoneyAmount: 0,
+            isDriver: false,
+            email: form.email,
+          };
+          const defs = getDayDefaults(p, currentDate);
+          const newDay = {
+            ...DEFAULT_PRODUCTION_DAY,
+            ...(p.defaultDay || {}),
+            ...makeBlankDay(newCrewId),
+            date: currentDate,
+            callTime: defs?.callTime ?? DEFAULT_PRODUCTION_DAY.callTime,
+            wrapTime: defs?.wrapTime ?? DEFAULT_PRODUCTION_DAY.wrapTime,
+            lunchStartTime: defs?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime,
+            lunchDurationMins: defs?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins,
+            dayType: defs?.dayType ?? DEFAULT_PRODUCTION_DAY.dayType,
+          };
+          return {
+            ...p,
+            crew: [...(p.crew || []), newCrewMember],
+            days: [...(p.days || []), newDay],
+          };
+        });
+        setShowAddCrew(false);
+      };
 
       const sortedDates = useMemo(
         () => [...new Set(days.map(d => d.date))].sort(),
@@ -6098,7 +6137,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const dayRecord = days.find(d => d.date === currentDate && d.crewId === member.id);
 
           if (!dayRecord) {
-            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: null };
+            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Not on this day' };
+          }
+
+          if (dayRecord.dayType === 'Rest Day') {
+            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Rest Day' };
           }
 
           const prevDayRecord = prevDate
@@ -6436,7 +6479,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                   <div className="text-[11px] text-neutral-400 mt-0.5">
                     {isOff
-                      ? <span className="text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-bold">{offReason || 'Not on today'}</span>
+                      ? <span className="text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-bold">{offReason || 'Not on this day'}</span>
                       : `${member.role || '—'} · £${member.bdr ?? 0} BDR`}
                   </div>
                   {!isOff && chips.length > 0 && (
@@ -6458,7 +6501,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
             <button
               type="button"
-              onClick={() => { /* TODO: V4-3 or polish — wire to add-crew-to-today action */ }}
+              onClick={() => setShowAddCrew(true)}
               className="w-full px-4 py-3.5 rounded-xl border border-dashed border-neutral-700 hover:border-sky-500 hover:bg-sky-500/[0.03] hover:text-sky-400 text-neutral-500 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors flex items-center justify-center gap-2 mt-2 mb-2"
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
@@ -6517,6 +6560,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             );
           })()}
+
+          {showAddCrew && (
+            <QuickAddCrewSheet
+              onClose={() => setShowAddCrew(false)}
+              onSubmit={handleAddNewCrew}
+            />
+          )}
         </div>
       );
     }
@@ -6554,13 +6604,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function LunchCardWithOverride({ startValue, durValue, defaultStart, defaultDur, onResetStart, onResetDur }) {
+    function LunchCardWithOverride({ startValue, durValue, defaultStart, defaultDur, onResetStart, onResetDur, onTapEdit }) {
       const startOverridden = defaultStart != null && startValue !== defaultStart;
       const durOverridden = defaultDur != null && durValue !== defaultDur;
       const anyOverridden = startOverridden || durOverridden;
       const lunchEnd = startValue ? addMinutesToTime(startValue, durValue || 60) : '';
+      const tappable = typeof onTapEdit === 'function';
+      const Wrapper = tappable ? 'button' : 'div';
+      const wrapperProps = tappable
+        ? { type: 'button', onClick: onTapEdit, style: { WebkitTapHighlightColor: 'transparent' } }
+        : {};
       return (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 mt-2">
+        <Wrapper
+          {...wrapperProps}
+          className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3 mt-2 text-left ${tappable ? 'hover:border-neutral-700 transition-colors block' : ''}`}
+        >
           <div className="flex items-center gap-3">
             <span className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">LUNCH</span>
             {startValue ? (
@@ -6571,29 +6629,45 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <span className="ml-auto text-[11px] font-mono text-neutral-400 tabular-nums">{durValue} mins</span>
               </>
             ) : (
-              <span className="text-neutral-500 text-sm">—</span>
+              <span className="text-neutral-500 text-sm">{tappable ? 'Tap to set' : '—'}</span>
             )}
           </div>
           {anyOverridden && (
             <div className="flex gap-1 mt-2">
               {startOverridden && (
-                <button type="button" onClick={onResetStart} className="text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset start to ${defaultStart}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · START</button>
+                <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onResetStart(); }} className="cursor-pointer text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset start to ${defaultStart}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · START</span>
               )}
               {durOverridden && (
-                <button type="button" onClick={onResetDur} className="text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset duration to ${defaultDur}m`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · DUR</button>
+                <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onResetDur(); }} className="cursor-pointer text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset duration to ${defaultDur}m`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · DUR</span>
               )}
             </div>
           )}
-        </div>
+        </Wrapper>
       );
     }
 
-    function DayTypeRow({ value, defaultValue, onResetToDefault }) {
+    function DayTypeRow({ value, defaultValue, onChange, onResetToDefault }) {
       const isOverridden = defaultValue != null && value !== defaultValue;
+      const editable = typeof onChange === 'function';
       return (
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 flex items-center gap-2 mt-2">
           <span className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">DAY TYPE</span>
-          <span className="font-mono text-[12px] text-neutral-100 uppercase tracking-wider ml-auto">{value || '—'}</span>
+          <span className="relative inline-block ml-auto">
+            <span className={`font-mono text-[12px] text-neutral-100 uppercase tracking-wider ${editable ? 'underline decoration-dotted decoration-neutral-600 underline-offset-2' : ''}`}>
+              {value || '—'}
+            </span>
+            {editable && (
+              <select
+                value={value || ''}
+                onChange={(e) => onChange(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                aria-label="Change day type"
+                style={{ WebkitAppearance: 'none' }}
+              >
+                {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+          </span>
           {isOverridden && (
             <button type="button" onClick={onResetToDefault} className="text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset to ${defaultValue}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR</button>
           )}
@@ -6636,9 +6710,132 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    function QuickAddCrewSheet({ onClose, onSubmit }) {
+      const [name, setName] = useState('');
+      const [role, setRole] = useState('Lighting Technician');
+      const [bdr, setBdr] = useState(String(ROLE_DEFAULTS['Lighting Technician'].bdr ?? ''));
+      const [email, setEmail] = useState('');
+
+      const canSave = name.trim().length > 0;
+      const handleSubmit = () => {
+        if (!canSave) return;
+        const roleDefaults = ROLE_DEFAULTS[role] || {};
+        onSubmit({
+          name: name.trim(),
+          role: role.trim() || 'Lighting Technician',
+          bdr: Number(bdr) || 0,
+          otCoef: roleDefaults.otCoef ?? 1.5,
+          otRate: roleDefaults.otRate ?? null,
+          email: email.trim(),
+        });
+      };
+
+      return (
+        <div
+          className="fixed inset-0 z-50 flex items-end"
+          onClick={onClose}
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5 max-h-[85vh] overflow-y-auto"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+          >
+            <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
+            <div className="text-base font-bold text-neutral-100 mb-3">Add to today's crew</div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Name</div>
+                <input
+                  type="text"
+                  autoFocus
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Crew name"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
+                <input
+                  type="text"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="Lighting Technician"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Base day rate (£)</div>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={bdr}
+                  onChange={(e) => setBdr(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">Email <span className="text-neutral-600 font-medium normal-case tracking-normal">(optional)</span></div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSave}
+              className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-neutral-800 disabled:text-neutral-500 text-black text-sm font-bold transition-colors"
+              style={{
+                boxShadow: canSave ? '0 4px 16px rgba(14,165,233,0.25)' : 'none',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              Add to crew
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full mt-2 px-4 py-2 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onOpenFullEditor }) {
+      const [showLunchEdit, setShowLunchEdit] = useState(false);
       const dayRecord = (production.days || []).find(d => d.date === currentDate && d.crewId === crewMember.id);
       const defaults = getDayDefaults(production, currentDate);
+
+      const handleAddToThisDay = () => {
+        const defs = getDayDefaults(production, currentDate);
+        setProduction(p => {
+          const newDay = {
+            ...DEFAULT_PRODUCTION_DAY,
+            ...(p.defaultDay || {}),
+            ...makeBlankDay(crewMember.id),
+            date: currentDate,
+            callTime: defs?.callTime ?? DEFAULT_PRODUCTION_DAY.callTime,
+            wrapTime: defs?.wrapTime ?? DEFAULT_PRODUCTION_DAY.wrapTime,
+            lunchStartTime: defs?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime,
+            lunchDurationMins: defs?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins,
+            dayType: defs?.dayType ?? DEFAULT_PRODUCTION_DAY.dayType,
+          };
+          return { ...p, days: [...(p.days || []), newDay] };
+        });
+      };
 
       const sortedDates = useMemo(
         () => [...new Set((production.days || []).map(d => d.date))].sort(),
@@ -6732,8 +6929,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
               </div>
             ) : (
-              <div className="bg-neutral-900 border border-dashed border-neutral-700 rounded-2xl px-4 py-6 mb-4 text-center text-neutral-500 text-sm">
-                {crewMember.name || 'This crew member'} is not on this day.
+              <div className="bg-neutral-900 border border-dashed border-neutral-700 rounded-2xl px-4 py-6 mb-4 text-center">
+                <div className="text-neutral-500 text-sm mb-3">{crewMember.name || 'This crew member'} is not on this day</div>
+                <button
+                  type="button"
+                  onClick={handleAddToThisDay}
+                  className="px-4 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-black text-[12px] font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                >
+                  <IPlus size={13}/>Add to this day
+                </button>
               </div>
             )}
 
@@ -6771,11 +6976,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   defaultDur={defaults?.lunchDurationMins}
                   onResetStart={() => resetField('lunchStartTime')}
                   onResetDur={() => resetField('lunchDurationMins')}
+                  onTapEdit={() => setShowLunchEdit(true)}
                 />
 
                 <DayTypeRow
                   value={dayRecord.dayType}
                   defaultValue={defaults?.dayType}
+                  onChange={(v) => updateField('dayType', v)}
                   onResetToDefault={() => resetField('dayType')}
                 />
 
@@ -6810,6 +7017,54 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </>
             )}
           </div>
+
+          {showLunchEdit && dayRecord && (
+            <div
+              className="fixed inset-0 z-50 flex items-end"
+              onClick={() => setShowLunchEdit(false)}
+              style={{ background: 'rgba(0,0,0,0.5)' }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+              >
+                <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
+                <div className="text-sm font-bold text-neutral-100 mb-3">{crewMember.name || 'Crew'}'s lunch</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Start</div>
+                    <input
+                      type="time"
+                      value={dayRecord.lunchStartTime || ''}
+                      onChange={(e) => updateField('lunchStartTime', e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                      style={{ WebkitAppearance: 'none' }}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Duration (mins)</div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="15"
+                      value={dayRecord.lunchDurationMins || 0}
+                      onChange={(e) => updateField('lunchDurationMins', Number(e.target.value) || 0)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLunchEdit(false)}
+                  className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
