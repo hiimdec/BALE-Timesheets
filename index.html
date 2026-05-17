@@ -6154,6 +6154,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const days = production.days || [];
       const [showLunchSheet, setShowLunchSheet] = useState(false);
       const [showAddCrew, setShowAddCrew] = useState(false);
+      const [expandedVarianceCrewIds, setExpandedVarianceCrewIds] = useState(() => new Set());
+
+      const toggleVarianceExpanded = (crewId) => {
+        setExpandedVarianceCrewIds(prev => {
+          const next = new Set(prev);
+          if (next.has(crewId)) next.delete(crewId); else next.add(crewId);
+          return next;
+        });
+      };
 
       const handleAddNewCrew = (form) => {
         setProduction(p => {
@@ -6332,6 +6341,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const deptLunchEnd = deptLunchStart && deptLunchMins != null
         ? addMinutesToTime(deptLunchStart, deptLunchMins)
         : '';
+
+      // Multi-crew WRAP card displays dept defaults; tint reflects what those displayed
+      // times imply, not the crew records that may not yet have the defaults applied.
+      const defaultsWrapImpliesOT = (() => {
+        const callH = parseHHMM(deptCall);
+        const wrapH = parseHHMM(deptWrap);
+        if (callH === null || wrapH === null) return false;
+        const wrapAbs = wrapH <= callH ? wrapH + 24 : wrapH;
+        const dayLenHrs = wrapAbs - callH;
+        const lunchHrs = (deptLunchMins ?? 60) / 60;
+        const workHrs = dayLenHrs - lunchHrs;
+        const otThreshold = production.isElevenHourDay ? 11 : 10;
+        return workHrs > otThreshold;
+      })();
 
       const hasUnpropagatedDefaults = useMemo(() => {
         const defs = getDayDefaults(production, currentDate);
@@ -6523,8 +6546,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 style={{ WebkitAppearance: 'none' }}
               />
             </div>
-            <div className={`relative border rounded-xl px-3.5 py-3 ${anyCrewInOT ? 'bg-tm-warn/[0.08] border-tm-warn/45' : 'bg-neutral-900 border-neutral-800'}`}>
-              <div className={`text-[10px] uppercase tracking-wider font-bold ${anyCrewInOT ? 'text-tm-warn' : 'text-neutral-500'}`}>WRAP{anyCrewInOT ? ' · OT' : ''}</div>
+            <div className={`relative border rounded-xl px-3.5 py-3 ${defaultsWrapImpliesOT ? 'bg-tm-warn/[0.08] border-tm-warn/45' : 'bg-neutral-900 border-neutral-800'}`}>
+              <div className={`text-[10px] uppercase tracking-wider font-bold ${defaultsWrapImpliesOT ? 'text-tm-warn' : 'text-neutral-500'}`}>WRAP{defaultsWrapImpliesOT ? ' · OT' : ''}</div>
               <div className="font-mono text-[26px] font-bold text-neutral-100 tabular-nums leading-none mt-1.5">
                 {deptWrap || <span className="text-neutral-500 text-base font-sans font-medium">Tap to set</span>}
               </div>
@@ -6650,6 +6673,57 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             </>
           )}
+
+          {(() => {
+            const withVar = crewWithVariances.filter(c => !c.isOff && c.variances.length > 0);
+            if (withVar.length === 0) return null;
+            return (
+              <>
+                <div className="px-4 mb-3 mt-2 flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-fuchsia-400 font-bold">VARIANCES</span>
+                  <span className="flex-1 h-px bg-neutral-800/60"/>
+                  <span className="text-[10px] font-mono text-neutral-500 font-bold">{withVar.length}</span>
+                </div>
+                <div className="px-4 mb-4 flex flex-col gap-1">
+                  {withVar.map(entry => {
+                    const isExpanded = expandedVarianceCrewIds.has(entry.member.id);
+                    return (
+                      <div key={entry.member.id}>
+                        <button
+                          type="button"
+                          onClick={() => toggleVarianceExpanded(entry.member.id)}
+                          className={`w-full px-3.5 py-2.5 flex items-center gap-3 transition-colors border border-fuchsia-400/25 ${
+                            isExpanded
+                              ? 'bg-fuchsia-400/[0.06] rounded-t-xl border-b-fuchsia-400/15'
+                              : 'bg-fuchsia-400/[0.04] hover:bg-fuchsia-400/[0.06] rounded-xl'
+                          }`}
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
+                          aria-expanded={isExpanded}
+                        >
+                          <span className="text-sm font-semibold text-fuchsia-400 truncate">{entry.member.name || 'Unnamed'}</span>
+                          <span className="ml-auto text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                            {entry.variances.length} {entry.variances.length === 1 ? 'change' : 'changes'}
+                          </span>
+                          <span className={`text-fuchsia-400 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>›</span>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-3.5 py-2.5 bg-fuchsia-400/[0.02] border border-t-0 border-fuchsia-400/25 rounded-b-xl flex flex-col gap-1">
+                            {entry.variances.map((v, i) => (
+                              <div key={i} className="flex items-baseline gap-2 text-[11px]">
+                                <span className="text-fuchsia-400 font-bold uppercase tracking-wider text-[9px] w-12 flex-shrink-0">{v.label}</span>
+                                <span className="text-neutral-300 font-mono">{v.detail}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
 
           <div className="px-4 mb-2.5 flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CREW</span>
