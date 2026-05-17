@@ -620,7 +620,7 @@
       { v: 15, label: "15 mins" },
       { v: 10, label: "10 mins" },
       { v: 5,  label: "5 mins" },
-      { v: 0,  label: "0 mins / missed" },
+      { v: 0,  label: "Missed" },
     ];
     const SECOND_BREAK_DURATIONS = [
       { v: 30, label: "30 mins" },
@@ -1099,12 +1099,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // Late 1st Break (£10) — bs.lunchLate is already gated to cwdApplies
         // at source in deriveBreakState, so this only fires on Shoot/Pre-light.
         if (bs.lunchLate) lines.push({ label: "Late 1st Break", detail: "", rate: null, qty: 1, amount: 10 });
-        // Curtailed 1st Break — informational only. APA doesn't fine for this; basic hours
-        // are already reduced by (60 - lunchDuration)/60. We surface a £0 line so invoice
-        // and text-breakdown outputs show the curtailment instead of hiding it.
+        // Curtailed 1st Break (APA §6.2): basic hours are reduced by the curtailed minutes
+        // (lines 998-999), which already shifts the OT threshold earlier. If wrap doesn't
+        // cross the adjusted threshold (no OT worked), pay the curtailed minutes at BHR
+        // single time — regardless of Sat/Sun/BH multiplier. If OT was crossed, the
+        // curtailed time is absorbed into the OT calc (informational line at £0).
         if (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
           const shortMins = 60 - lunchDuration;
-          lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m short — basic hours reduced`, rate: null, qty: 1, amount: 0 });
+          const curtailedHrs = shortMins / 60;
+          // On Sat/standard, "crossed OT" = effectiveHrs exceeded the (already-reduced) basicHrs.
+          // On Sun/BH (treatAsSun), there's no separate OT line — the flat sunRate covers all
+          // hours including the curtailed time, so we still emit the penalty per the spec.
+          const otCrossed = !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > 0;
+          if (otCrossed) {
+            lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m short — absorbed in OT`, rate: null, qty: 1, amount: 0 });
+          } else {
+            lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m × BHR single time`, rate: bhr, qty: curtailedHrs, amount: curtailedHrs * bhr });
+          }
         }
         // Missed Meal (£7.50) — lunchMissed is the raw flag; gate to
         // cwdApplies so the allowance only applies on Shoot/Pre-light.
