@@ -4613,15 +4613,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(v.dayType);
 
       const show2ndBreakSection = !isPmpa && !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
+      const showCwdBreaksChip   = !isPmpa && !isTravelDay && bs && bs.continuousDay;
 
       // Notes chip local state — spec keeps notes-active derived from text presence
       // (no schema flag), with a transient open state so tapping an empty-notes
       // chip can reveal the textarea before the user types. Reset on day switch.
       const [notesOpen, setNotesOpen] = useState(false);
       const [secondBreakExpanded, setSecondBreakExpanded] = useState(false);
+      const [cwdBreaksExpanded, setCwdBreaksExpanded] = useState(false);
       useEffect(() => {
         setNotesOpen(false);
         setSecondBreakExpanded(false);
+        setCwdBreaksExpanded(false);
       }, [v.id]);
       const noteHasText = !!(v.note && v.note.trim());
       // V4-5h-10b: tap toggles expansion only — never clears note text.
@@ -4878,30 +4881,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           {/* 2nd-Break SectionCard removed — now lives as a chip in the Conditions row. */}
 
-          {/* ── Section: CWD Breaks ── */}
-          {!isPmpa && !isTravelDay && bs && bs.continuousDay && (
-            <SectionCard title="CWD Breaks" accent="red">
-              <div className="space-y-3">
-                <div className="text-[11px] text-neutral-400 leading-tight">APA §6.4: CWD requires a 30m break by {toHHMM(bs.cwd1Deadline)} (9h after call){bs.cwd2Required ? `, and another by ${toHHMM(bs.cwd2Deadline)} (12.5h after call)` : ""}. Missed breaks = 30m × BHR penalty.</div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 1 — by {toHHMM(bs.cwd1Deadline)}</div>
-                    <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak1Given === false ? "Missed — +30m × BHR" : "Given"}</div>
-                  </div>
-                  <Toggle value={v.cwdBreak1Given !== false} onChange={(val) => set({ cwdBreak1Given: val })} ariaLabel="CWD break 1 given" />
-                </div>
-                {bs.cwd2Required && (
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 2 — by {toHHMM(bs.cwd2Deadline)}</div>
-                      <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak2Given === false ? "Missed — +30m × BHR" : "Given"}</div>
-                    </div>
-                    <Toggle value={v.cwdBreak2Given !== false} onChange={(val) => set({ cwdBreak2Given: val })} ariaLabel="CWD break 2 given" />
-                  </div>
-                )}
-              </div>
-            </SectionCard>
-          )}
+          {/* CWD Breaks SectionCard removed — now lives as a chip in the Conditions row. */}
 
           {/* ── Conditions chips ── */}
           <div className="space-y-2 mb-4">
@@ -4918,6 +4898,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <IChevronDown size={11} strokeWidth={2.5} className={`opacity-60 transition-transform ${secondBreakExpanded ? 'rotate-180' : ''}`} />
                 </button>
               )}
+              {showCwdBreaksChip && (() => {
+                const b1Missed = v.cwdBreak1Given === false;
+                const cwd2Req = !!bs.cwd2Required;
+                const b2Missed = cwd2Req && v.cwdBreak2Given === false;
+                const missedCount = (b1Missed ? 1 : 0) + (b2Missed ? 1 : 0);
+                const anyMissed = missedCount > 0;
+                const summary = anyMissed
+                  ? (cwd2Req ? `${missedCount}/2 missed` : 'Missed')
+                  : (cwd2Req ? 'Both given' : 'Given');
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setCwdBreaksExpanded(v2 => !v2)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                      anyMissed
+                        ? 'bg-tm-pen/[0.08] border-tm-pen/40 text-tm-pen hover:bg-tm-pen/[0.12]'
+                        : 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]'
+                    }`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                    aria-expanded={cwdBreaksExpanded}
+                  >
+                    <span>CWD breaks</span>
+                    <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{summary}</span>
+                  </button>
+                );
+              })()}
               {(() => {
                 const travelTotalMins = (Number(v.travelOutMins) || 0) + (Number(v.travelBackMins) || 0);
                 const fmtMins = (m) => {
@@ -4974,6 +4980,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed — treated as missed. 30m × BHR penalty.</StatusMsg>}
                 {bs.sbState === "curtailed" && <StatusMsg kind="warn">Curtailed by {30 - bs.sbDuration}m. {30 - bs.sbDuration}m × BHR penalty.</StatusMsg>}
                 {bs.sbState === "given" && <StatusMsg kind="ok">Given on time.</StatusMsg>}
+              </div>
+            </SectionCard>
+          )}
+
+          {/* ── CWD Breaks (chip-gated) ── */}
+          {showCwdBreaksChip && cwdBreaksExpanded && (
+            <SectionCard title="CWD Breaks" variant="condition" onClose={() => setCwdBreaksExpanded(false)}>
+              <div className="space-y-3">
+                <div className="text-[11px] text-neutral-400 leading-tight">APA §6.4: CWD requires a 30m break by {toHHMM(bs.cwd1Deadline)} (9h after call){bs.cwd2Required ? `, and another by ${toHHMM(bs.cwd2Deadline)} (12.5h after call)` : ""}. Missed breaks = 30m × BHR penalty.</div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 1 — by {toHHMM(bs.cwd1Deadline)}</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak1Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                  </div>
+                  <Toggle value={v.cwdBreak1Given !== false} onChange={(val) => set({ cwdBreak1Given: val })} ariaLabel="CWD break 1 given" />
+                </div>
+                {bs.cwd2Required && (
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 2 — by {toHHMM(bs.cwd2Deadline)}</div>
+                      <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak2Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                    </div>
+                    <Toggle value={v.cwdBreak2Given !== false} onChange={(val) => set({ cwdBreak2Given: val })} ariaLabel="CWD break 2 given" />
+                  </div>
+                )}
               </div>
             </SectionCard>
           )}
@@ -7849,6 +7880,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               : 'Missed';
                           return <ExtraChip label="2nd break" isSet={logged} summary={summary} onTap={() => toggleExtra('secondBreak')}/>;
                         })()}
+                        {calc?.meta?.continuousDay && !calc?.meta?.isPmpa && !isTravelDay && (() => {
+                          const b1Missed = dayRecord.cwdBreak1Given === false;
+                          const cwd2Req = !!calc?.meta?.cwd2Required;
+                          const b2Missed = cwd2Req && dayRecord.cwdBreak2Given === false;
+                          const missedCount = (b1Missed ? 1 : 0) + (b2Missed ? 1 : 0);
+                          const anyMissed = missedCount > 0;
+                          const summary = anyMissed
+                            ? (cwd2Req ? `${missedCount}/2 missed` : 'Missed')
+                            : (cwd2Req ? 'Both given' : 'Given');
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => toggleExtra('cwdBreaks')}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                                anyMissed
+                                  ? 'bg-tm-pen/[0.08] border-tm-pen/40 text-tm-pen hover:bg-tm-pen/[0.12]'
+                                  : 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]'
+                              }`}
+                              style={{ WebkitTapHighlightColor: 'transparent' }}
+                            >
+                              <span>CWD breaks</span>
+                              <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{summary}</span>
+                            </button>
+                          );
+                        })()}
                       </div>
 
                       {/* Inline expandable panels — one per expanded chip key. */}
@@ -8063,6 +8119,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                     {SECOND_BREAK_DURATIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                                   </select>
                                 </div>
+                              </div>
+                            );
+                          } else if (key === 'cwdBreaks') {
+                            const cwd2Req = !!calc?.meta?.cwd2Required;
+                            title = 'CWD breaks';
+                            body = (
+                              <div className="space-y-3">
+                                <div className="text-[11px] text-neutral-400 leading-tight">
+                                  APA §6.4: CWD requires a 30m break by {toHHMM(calc.meta.cwd1Deadline)} (9h after call){cwd2Req ? `, and another by ${toHHMM(calc.meta.cwd2Deadline)} (12.5h after call)` : ''}. Missed = 30m × BHR penalty.
+                                </div>
+                                <ToggleRow label={`Break 1 — by ${toHHMM(calc.meta.cwd1Deadline)}`} value={dayRecord.cwdBreak1Given !== false} onChange={(val) => updateField('cwdBreak1Given', val)} ariaLabel="CWD break 1 given"/>
+                                {cwd2Req && (
+                                  <ToggleRow label={`Break 2 — by ${toHHMM(calc.meta.cwd2Deadline)}`} value={dayRecord.cwdBreak2Given !== false} onChange={(val) => updateField('cwdBreak2Given', val)} ariaLabel="CWD break 2 given"/>
+                                )}
                               </div>
                             );
                           }
