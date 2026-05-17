@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TimeMachine — Mockup v3 · Best Boy (phone) + Invoicing</title>
+<style>
+  :root {
+    /* base neutrals — match app */
+    --bg: #0a0a0a;            /* neutral-950 */
+    --bg-soft: #0e0e0e;
+    --card: #171717;          /* neutral-900 */
+    --card-2: #1f1f1f;
+    --border: #262626;        /* neutral-800 */
+    --border-soft: #1f1f1f;
+    --text: #f5f5f5;          /* neutral-100 */
+    --text-2: #a3a3a3;        /* neutral-400 */
+    --text-3: #737373;        /* neutral-500 */
+    --text-4: #525252;        /* neutral-600 */
+
+    /* brand — sky-500 (locked) */
+    --accent: #0ea5e9;
+    --accent-2: #7dd3fc;      /* sky-300 — outlines/badges */
+    --accent-glow: rgba(14,165,233,0.15);
+
+    /* functional palette */
+    --warn: #ff8a3d;          /* tm-warn — OT / overrides / drafts */
+    --warn-soft: rgba(255,138,61,0.12);
+    --pen: #f43f5e;           /* tm-pen — penalties / overdue */
+    --pen-soft: rgba(244,63,94,0.12);
+    --good: #4ade80;          /* tm-good — paid / sent / ok */
+    --good-soft: rgba(74,222,128,0.12);
+
+    --pill-paper: #e6e9ed;
+    --pill-ink: #15171a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    background: #060708;
+    color: var(--text);
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 40px 16px 80px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* page header */
+  .page-header { max-width: 900px; margin: 0 auto 36px; padding: 0 8px; }
+  .page-header .tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(14,165,233,0.08); border: 1px solid rgba(14,165,233,0.2);
+    color: var(--accent); padding: 4px 10px; border-radius: 100px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .page-header h1 {
+    font-size: clamp(28px, 4.5vw, 40px);
+    letter-spacing: -0.02em; font-weight: 800;
+    color: var(--text); margin: 0 0 10px;
+  }
+  .page-header .sub { color: var(--text-3); font-size: 14px; max-width: 680px; line-height: 1.55; }
+  .page-header .sub strong { color: var(--text-2); font-weight: 600; }
+
+  /* two-column mockup grid */
+  .mockup-grid {
+    max-width: 900px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+    align-items: start;
+  }
+  @media (max-width: 880px) { .mockup-grid { grid-template-columns: 1fr; max-width: 420px; } }
+
+  .col-section { display: flex; flex-direction: column; gap: 28px; }
+  .col-head {
+    padding: 0 4px;
+  }
+  .col-head .label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+  }
+  .col-head .label::after { content: ''; flex: 1; height: 1px; background: var(--border-soft); }
+  .col-head .desc {
+    color: var(--text-3); font-size: 12px; line-height: 1.55;
+  }
+  .col-head .desc strong { color: var(--text-2); font-weight: 600; }
+
+  .phone-wrap { display: flex; flex-direction: column; gap: 10px; }
+  .phone-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-3); padding-left: 4px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .phone-label .num { color: var(--accent); font-weight: 700; }
+  .phone-label .name { color: var(--text-2); font-weight: 600; }
+
+  /* phone frame — same shell as v2 */
+  .phone {
+    background: var(--bg); border-radius: 36px; overflow: hidden;
+    box-shadow:
+      0 0 0 1px #2a2c30,
+      0 0 0 10px #0d0e10,
+      0 0 0 11px #2a2c30,
+      0 30px 60px -20px rgba(0,0,0,0.7);
+    width: 100%; aspect-ratio: 9 / 19.5;
+    position: relative; display: flex; flex-direction: column;
+    font-size: 14px;
+  }
+  .notch {
+    width: 110px; height: 28px;
+    background: #0d0e10; margin: 8px auto 0;
+    border-radius: 0 0 14px 14px; flex-shrink: 0;
+  }
+  .phone-scroll {
+    flex: 1; overflow-y: auto;
+    padding: 14px 16px 80px;
+    position: relative;
+  }
+  .phone-scroll::-webkit-scrollbar { display: none; }
+
+  /* ── shared atoms ───────────────────────────────────────────────── */
+
+  /* breadcrumb header (back / context) */
+  .breadcrumb {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  }
+  .breadcrumb .back {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-3); margin-left: -6px;
+  }
+  .breadcrumb .crumb { color: var(--text-4); font-weight: 700; }
+  .breadcrumb .sep { color: var(--text-4); opacity: 0.6; }
+  .breadcrumb .here { color: var(--text-2); font-weight: 700; }
+
+  /* prod head (title + badge) */
+  .prod-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 10px; margin-bottom: 4px;
+  }
+  .prod-head h2 {
+    margin: 0; font-size: 22px; line-height: 1.15;
+    letter-spacing: -0.015em; font-weight: 700; color: var(--text);
+  }
+  .badge {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 4px; font-weight: 700;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  .badge.bestboy {
+    background: transparent; color: var(--accent-2);
+    border: 1px solid rgba(125,211,252,0.4);
+  }
+  .badge.draft { background: var(--warn-soft); color: var(--warn); border: 1px solid rgba(255,138,61,0.3); }
+  .badge.sent  { background: var(--good-soft); color: var(--good); border: 1px solid rgba(74,222,128,0.3); }
+  .badge.paid  { background: var(--card-2); color: var(--text-3); border: 1px solid var(--border); }
+  .badge.overdue { background: var(--pen-soft); color: var(--pen); border: 1px solid rgba(244,63,94,0.35); }
+
+  /* prod summary line */
+  .prod-summary {
+    display: flex; align-items: baseline; gap: 6px;
+    color: var(--text-3); font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    margin-bottom: 14px;
+  }
+  .prod-summary .total { color: var(--text); font-weight: 700; font-size: 14px; }
+  .prod-summary .dim { color: var(--text-4); }
+
+  /* tabs */
+  .tabs {
+    display: flex; gap: 18px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 14px;
+  }
+  .tabs .tab {
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+    padding: 8px 0 10px; cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px; transition: all 0.15s;
+  }
+  .tabs .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tabs .tab .count {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-4); margin-left: 4px; font-weight: 500;
+  }
+
+  /* button atoms */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border-radius: 10px; padding: 10px 12px;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 700; cursor: pointer;
+    border: 1px solid var(--border); background: var(--card-2); color: var(--text);
+    transition: all 0.15s;
+  }
+  .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn.outline { background: transparent; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-3); }
+  .btn.full { width: 100%; }
+  .btn svg { width: 12px; height: 12px; flex-shrink: 0; }
+
+  /* "+ ADD" dashed button */
+  .add-btn {
+    width: 100%; padding: 12px; border-radius: 12px;
+    border: 1px dashed var(--border);
+    background: transparent; color: var(--text-3);
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-bottom: 12px;
+  }
+  .add-btn:hover { color: var(--accent); border-color: var(--accent); background: rgba(14,165,233,0.03); }
+  .add-btn svg { width: 13px; height: 13px; }
+
+  /* ════════════════════════════════════════════════════════════════
+     PHONE 1 — Best Boy date list
+     ════════════════════════════════════════════════════════════════ */
+
+  .date-card {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .date-card:hover { border-color: var(--border); }
+  .date-card.expanded {
+    border-color: var(--border);
+    background:
+      radial-gradient(120% 80% at 100% 0%, rgba(14,165,233,0.04) 0%, transparent 60%),
+      var(--card);
+  }
+  .date-card.bh {
+    border-color: rgba(244,63,94,0.18);
+    background:
+      radial-gradient(80% 50% at 0% 0%, rgba(244,63,94,0.05) 0%, transparent 60%),
+      var(--card);
+  }
+
+  .date-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; margin-bottom: 8px;
+  }
+  .date-line {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+    font-weight: 700;
+    display: flex; align-items: baseline; gap: 6px;
+  }
+  .date-line .dow { color: var(--text); }
+  .date-line .dot { color: var(--text-4); }
+  .date-line .date { color: var(--text-2); }
+  .date-line .bh-tag {
+    font-size: 9px; padding: 2px 5px;
+    background: var(--pen-soft); color: var(--pen);
+    border: 1px solid rgba(244,63,94,0.3); border-radius: 3px;
+    margin-left: 6px; letter-spacing: 0.12em;
+    font-weight: 700;
+  }
+  .date-amount {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 15px; font-weight: 700; color: var(--text);
+  }
+
+  .default-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; padding-top: 8px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .default-row .times {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: var(--text-2);
+  }
+  .default-row .right { display: flex; align-items: center; gap: 10px; }
+  .default-row .crew-tag {
+    font-size: 11px; color: var(--text-3); letter-spacing: 0.04em;
+  }
+  .default-row .crew-tag .overrides { color: var(--warn); font-weight: 700; }
+  .default-row .crew-tag .matched { color: var(--good); font-weight: 600; }
+  .default-row .chev svg { width: 13px; height: 13px; color: var(--text-4); display: block; transition: transform 0.2s; }
+  .date-card.expanded .default-row .chev svg { transform: rotate(180deg); }
+
+  .date-detail { padding-top: 14px; margin-top: 12px; border-top: 1px dashed var(--border-soft); }
+  .detail-section { margin-bottom: 14px; }
+  .detail-section:last-child { margin-bottom: 4px; }
+  .detail-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .detail-head .label {
+    font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+  }
+  .detail-head .label .count {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-4); margin-left: 5px; font-weight: 500;
+  }
+  .detail-section.warn .detail-head .label { color: var(--warn); }
+  .detail-head .action {
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .detail-head .action svg { width: 9px; height: 9px; }
+
+  .crew-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; gap: 10px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .crew-row:last-child { border-bottom: none; padding-bottom: 4px; }
+  .crew-row:first-child { padding-top: 4px; }
+  .crew-row .who { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .crew-row .name-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .crew-row .name { font-size: 13px; color: var(--text); font-weight: 500; }
+  .crew-row .role {
+    font-size: 9px; color: var(--text-3);
+    letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .crew-row .amt {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; font-weight: 700; color: var(--text);
+    flex-shrink: 0;
+  }
+  .override-chip {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: var(--warn-soft); color: var(--warn);
+    border: 1px solid rgba(255,138,61,0.3);
+    font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+    font-weight: 700; padding: 2px 5px; border-radius: 3px;
+  }
+
+  /* ════════════════════════════════════════════════════════════════
+     PHONE 2 — Bulk edit sheet
+     ════════════════════════════════════════════════════════════════ */
+
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .modal-head .crumbs {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+    display: flex; align-items: center; gap: 5px; min-width: 0;
+    flex-wrap: wrap;
+  }
+  .modal-head .crumbs .here { color: var(--text); }
+  .modal-head .crumbs .sep { color: var(--text-4); }
+  .modal-head .close {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-3); flex-shrink: 0;
+  }
+  .modal-head .close svg { width: 15px; height: 15px; }
+
+  .bulk-banner {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px;
+    background: var(--warn-soft);
+    border: 1px solid rgba(255,138,61,0.25);
+    border-radius: 12px; margin-bottom: 14px;
+  }
+  .bulk-banner .left .label {
+    font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--warn); font-weight: 700; display: block;
+  }
+  .bulk-banner .left .date {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text); font-size: 14px; letter-spacing: 0.05em;
+    margin-top: 3px; font-weight: 700;
+  }
+  .bulk-banner .right {
+    font-size: 10px; color: var(--text-2); letter-spacing: 0.04em;
+    text-align: right;
+  }
+  .bulk-banner .right .big {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text); font-size: 14px; font-weight: 700;
+    display: block; margin-bottom: 1px;
+  }
+
+  /* section card (form) */
+  .section-card {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .section-label {
+    font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border-soft); }
+
+  .time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .time-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .time-input .lbl {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700; margin-bottom: 4px;
+  }
+  .time-input .val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 17px; font-weight: 700; color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .lunch-compact {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .lunch-compact .lbl {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+  }
+  .lunch-compact .val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; color: var(--text); font-weight: 600;
+  }
+  .lunch-compact .dim { color: var(--text-3); }
+
+  .chips-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip {
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 100px; padding: 5px 9px;
+    font-size: 10px; letter-spacing: 0.1em;
+    color: var(--text-3); font-weight: 600;
+    cursor: pointer;
+  }
+  .chip.active {
+    background: rgba(14,165,233,0.08);
+    border-color: rgba(14,165,233,0.3);
+    color: var(--accent);
+  }
+
+  .apply-section {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .apply-section .label {
+    font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .radio-opt {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border-soft);
+    cursor: pointer;
+  }
+  .radio-opt:last-child { border-bottom: none; padding-bottom: 2px; }
+  .radio-opt:first-of-type { padding-top: 2px; }
+  .radio-opt .radio {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--text-4);
+    flex-shrink: 0; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .radio-opt.selected .radio { border-color: var(--accent); }
+  .radio-opt.selected .radio::before {
+    content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  }
+  .radio-opt .body { flex: 1; min-width: 0; }
+  .radio-opt .opt-name {
+    font-size: 13px; color: var(--text-2); font-weight: 600; margin-bottom: 2px;
+  }
+  .radio-opt.selected .opt-name { color: var(--text); }
+  .radio-opt .opt-desc {
+    font-size: 11px; color: var(--text-3); line-height: 1.4;
+  }
+  .radio-opt .opt-count {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: var(--text-3); font-weight: 600;
+    flex-shrink: 0; margin-top: 2px;
+  }
+
+  .bottom-bar {
+    display: flex; gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .bottom-bar .btn { flex: 1; padding: 12px; }
+
+  /* ════════════════════════════════════════════════════════════════
+     PHONE 3 — Invoice list
+     ════════════════════════════════════════════════════════════════ */
+
+  .page-title {
+    font-size: 24px; letter-spacing: -0.015em; font-weight: 800;
+    color: var(--text); margin-bottom: 6px; line-height: 1.1;
+  }
+
+  .invoice-summary {
+    display: flex; align-items: baseline; gap: 6px;
+    margin-bottom: 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-3);
+    flex-wrap: wrap;
+  }
+  .invoice-summary .total { color: var(--text); font-weight: 700; font-size: 13px; }
+  .invoice-summary .overdue-tag { color: var(--pen); font-weight: 700; }
+  .invoice-summary .dim { color: var(--text-4); }
+
+  .filter-row {
+    display: flex; gap: 5px;
+    margin-bottom: 14px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-pill {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 100px; padding: 5px 10px;
+    font-size: 10px; letter-spacing: 0.1em; font-weight: 700;
+    color: var(--text-3); cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+    display: inline-flex; align-items: baseline; gap: 4px;
+  }
+  .filter-pill.active {
+    background: rgba(14,165,233,0.1);
+    border-color: rgba(14,165,233,0.3);
+    color: var(--accent);
+  }
+  .filter-pill .num {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-4); font-weight: 500;
+  }
+  .filter-pill.active .num { color: var(--accent); opacity: 0.7; }
+
+  .invoice-card {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 13px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .invoice-card:hover { border-color: var(--border); }
+  .invoice-card.overdue {
+    border-color: rgba(244,63,94,0.25);
+    background:
+      radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%),
+      var(--card);
+  }
+
+  .inv-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 3px; }
+  .inv-num {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: 0.12em; color: var(--text-3); font-weight: 600;
+  }
+  .inv-card-client {
+    font-size: 15px; font-weight: 700; color: var(--text);
+    letter-spacing: -0.005em;
+    margin-bottom: 8px;
+  }
+  .inv-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
+  }
+  .inv-amount {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 17px; font-weight: 700; color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .inv-card-meta {
+    font-size: 11px; color: var(--text-3); margin-top: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.04em;
+  }
+  .inv-card-meta.over { color: var(--pen); font-weight: 700; }
+  .inv-card-meta .strong { color: var(--text-2); font-weight: 600; }
+  .inv-card-meta .dim { color: var(--text-4); }
+
+  /* ════════════════════════════════════════════════════════════════
+     PHONE 4 — Invoice editor
+     ════════════════════════════════════════════════════════════════ */
+
+  .editor-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .editor-head .left { display: flex; align-items: center; gap: 8px; }
+  .editor-head .back {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-3); margin-left: -6px;
+  }
+  .editor-head .back svg { width: 16px; height: 16px; }
+  .editor-head .crumb {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+  }
+  .editor-head .kebab {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-3);
+  }
+  .editor-head .kebab svg { width: 16px; height: 16px; }
+
+  .editor-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 16px;
+  }
+  .editor-title {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 18px; font-weight: 700; color: var(--text);
+    letter-spacing: 0.04em;
+  }
+
+  .meta-strip {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+  }
+  .meta-row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .meta-row:first-child { padding-top: 2px; }
+  .meta-row:last-child { border-bottom: none; padding-bottom: 2px; }
+  .meta-row .key {
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+    width: 56px; flex-shrink: 0;
+  }
+  .meta-row .val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: var(--text); font-weight: 600;
+    flex: 1;
+  }
+  .meta-row .val .sub { color: var(--text-3); font-weight: 500; }
+
+  .party-card {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .party-card .head {
+    font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700; margin-bottom: 6px;
+  }
+  .party-card .name { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .party-card .line { font-size: 12px; color: var(--text-2); }
+  .party-card .add-line {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 6px;
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+  }
+  .party-card .add-line svg { width: 9px; height: 9px; }
+
+  .lines-card {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .lines-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .lines-head .label {
+    font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+  }
+  .lines-head .label .count {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-4); margin-left: 5px; font-weight: 500;
+  }
+  .lines-head .auto-tag {
+    font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--good); font-weight: 700;
+    padding: 2px 5px; border-radius: 3px;
+    background: var(--good-soft); border: 1px solid rgba(74,222,128,0.25);
+  }
+
+  .line {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .line:last-of-type { border-bottom: none; padding-bottom: 4px; }
+  .line .label-col { flex: 1; min-width: 0; }
+  .line .lbl { font-size: 13px; color: var(--text); font-weight: 600; }
+  .line .detail {
+    font-size: 10px; color: var(--text-3);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    margin-top: 1px; letter-spacing: 0.02em;
+  }
+  .line .amt {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; font-weight: 700; color: var(--text);
+    flex-shrink: 0;
+  }
+
+  .totals { padding-top: 8px; border-top: 1px solid var(--border); margin-top: 4px; }
+  .tot-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 3px 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+  }
+  .tot-row .lbl { color: var(--text-3); letter-spacing: 0.06em; }
+  .tot-row .val { color: var(--text-2); font-weight: 600; }
+  .tot-row.grand { padding-top: 8px; margin-top: 4px; border-top: 1px solid var(--border-soft); }
+  .tot-row.grand .lbl { color: var(--text); font-weight: 700; font-size: 12px; }
+  .tot-row.grand .val { color: var(--text); font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+
+  .collapse {
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 11px 14px;
+    margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer;
+  }
+  .collapse .left {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 700;
+  }
+  .collapse .left svg { width: 9px; height: 9px; }
+  .collapse .right {
+    font-size: 11px; color: var(--text-4);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .action-bar {
+    display: flex; gap: 8px;
+    margin-top: 12px;
+  }
+  .action-bar .btn { flex: 1; padding: 13px; font-size: 11px; }
+  .action-bar .btn.primary {
+    flex: 1.4;
+    box-shadow: 0 4px 16px rgba(14,165,233,0.25);
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <span class="tag">Mockup v3 · 12 May 2026</span>
+  <h1>Best Boy (phone) &amp; Invoicing</h1>
+  <p class="sub">
+    Two areas the v2 redesign didn't touch. Best Boy keeps its <strong>iPad grid</strong> for tablet/desktop;
+    on phone it gets a <strong>date-first list</strong> matching how a Best Boy actually thinks at end-of-shoot.
+    Invoicing gets <strong>overdue surfacing</strong>, a <strong>one-tap SEND</strong> happy path, and a cleaner
+    editor — without crossing into saved-client territory (still browser-cache only).
+  </p>
+</div>
+
+<div class="mockup-grid">
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!--                       BEST BOY COLUMN                            -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <section class="col-section">
+    <div class="col-head">
+      <div class="label">Best Boy · phone</div>
+      <p class="desc">
+        Date-first instead of grid-first. A Best Boy records at the end of the shoot day —
+        the natural unit is "today, here's everyone's times" with a few per-person tweaks.
+        Tap a date to bulk-edit all crew; tap a crew row to override one.
+      </p>
+    </div>
+
+    <!-- PHONE 1: Best Boy home (date list, one expanded) -->
+    <div class="phone-wrap">
+      <div class="phone-label"><span class="num">1</span><span class="name">Best Boy home · date list</span></div>
+      <div class="phone" id="phone-1">
+        <div class="notch"></div>
+        <div class="phone-scroll">
+
+          <!-- breadcrumb -->
+          <div class="breadcrumb">
+            <div class="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="m15 18-6-6 6-6"/></svg></div>
+            <span class="crumb">SHOOTS</span>
+            <span class="sep">/</span>
+            <span class="here">FULL CIRCLE</span>
+          </div>
+
+          <!-- production head -->
+          <div class="prod-head">
+            <h2>Full Circle</h2>
+            <span class="badge bestboy">BEST BOY</span>
+          </div>
+
+          <div class="prod-summary">
+            <span class="total">£14,250</span>
+            <span class="dim">·</span>
+            <span>27 days</span>
+            <span class="dim">·</span>
+            <span>8 crew</span>
+          </div>
+
+          <!-- tabs -->
+          <div class="tabs">
+            <div class="tab active">Days <span class="count">27</span></div>
+            <div class="tab">Invoices <span class="count">5</span></div>
+            <div class="tab">Setup</div>
+          </div>
+
+          <!-- + add date -->
+          <button class="add-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add date
+          </button>
+
+          <!-- TUE 12 MAY — expanded -->
+          <div class="date-card expanded">
+            <div class="date-head">
+              <div class="date-line">
+                <span class="dow">TUE</span>
+                <span class="dot">·</span>
+                <span class="date">12 MAY</span>
+              </div>
+              <div class="date-amount">£820</div>
+            </div>
+            <div class="default-row">
+              <span class="times">08:00 → 19:00 · 1h lunch</span>
+              <div class="right">
+                <span class="crew-tag">8 crew · <span class="overrides">2 overrides</span></span>
+                <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+              </div>
+            </div>
+
+            <div class="date-detail">
+              <div class="detail-section">
+                <div class="detail-head">
+                  <span class="label">DEFAULT <span class="count">6</span></span>
+                  <span class="action">EDIT DEFAULT <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+                </div>
+                <div class="crew-row">
+                  <div class="who"><div class="name-line"><span class="name">Andy Smith</span></div><span class="role">Spark</span></div>
+                  <span class="amt">£100</span>
+                </div>
+                <div class="crew-row">
+                  <div class="who"><div class="name-line"><span class="name">Sam Jones</span></div><span class="role">Spark</span></div>
+                  <span class="amt">£100</span>
+                </div>
+                <div class="crew-row">
+                  <div class="who"><div class="name-line"><span class="name">Mark White</span></div><span class="role">Genny op</span></div>
+                  <span class="amt">£105</span>
+                </div>
+                <div class="crew-row">
+                  <div class="who"><div class="name-line"><span class="name">Tim Lee</span></div><span class="role">Spark</span></div>
+                  <span class="amt">£100</span>
+                </div>
+                <div class="crew-row">
+                  <div class="who"><div class="name-line"><span class="name">Carlos Hsu</span></div><span class="role">Trainee</span></div>
+                  <span class="amt">£75</span>
+                </div>
+                <div class="crew-row">
+                  <div class="who"><div class="name-line"><span class="name">Lia Park</span></div><span class="role">Spark</span></div>
+                  <span class="amt">£100</span>
+                </div>
+              </div>
+
+              <div class="detail-section warn">
+                <div class="detail-head">
+                  <span class="label">OVERRIDES <span class="count">2</span></span>
+                </div>
+                <div class="crew-row override">
+                  <div class="who">
+                    <div class="name-line">
+                      <span class="name">Jack Brown</span>
+                      <span class="override-chip">+1H OT</span>
+                    </div>
+                    <span class="role">Rigger</span>
+                  </div>
+                  <span class="amt">£135</span>
+                </div>
+                <div class="crew-row override">
+                  <div class="who">
+                    <div class="name-line">
+                      <span class="name">Lily Chen</span>
+                      <span class="override-chip">KIT £40</span>
+                    </div>
+                    <span class="role">Spark</span>
+                  </div>
+                  <span class="amt">£145</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MON 11 MAY — collapsed -->
+          <div class="date-card">
+            <div class="date-head">
+              <div class="date-line">
+                <span class="dow">MON</span>
+                <span class="dot">·</span>
+                <span class="date">11 MAY</span>
+              </div>
+              <div class="date-amount">£780</div>
+            </div>
+            <div class="default-row">
+              <span class="times">07:30 → 18:30 · 1h lunch</span>
+              <div class="right">
+                <span class="crew-tag">8 crew · <span class="matched">all matched</span></span>
+                <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- FRI 8 MAY — bank holiday -->
+          <div class="date-card bh">
+            <div class="date-head">
+              <div class="date-line">
+                <span class="dow">FRI</span>
+                <span class="dot">·</span>
+                <span class="date">8 MAY</span>
+                <span class="bh-tag">BH · VE DAY</span>
+              </div>
+              <div class="date-amount">£1,440</div>
+            </div>
+            <div class="default-row">
+              <span class="times">08:00 → 19:00 · 2× rate</span>
+              <div class="right">
+                <span class="crew-tag">8 crew · <span class="matched">all matched</span></span>
+                <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- THU 7 MAY -->
+          <div class="date-card">
+            <div class="date-head">
+              <div class="date-line">
+                <span class="dow">THU</span>
+                <span class="dot">·</span>
+                <span class="date">7 MAY</span>
+              </div>
+              <div class="date-amount">£780</div>
+            </div>
+            <div class="default-row">
+              <span class="times">08:00 → 19:00 · 1h lunch</span>
+              <div class="right">
+                <span class="crew-tag">8 crew · <span class="matched">all matched</span></span>
+                <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- PHONE 2: Bulk edit sheet -->
+    <div class="phone-wrap">
+      <div class="phone-label"><span class="num">2</span><span class="name">Bulk edit · all crew on one date</span></div>
+      <div class="phone" id="phone-2">
+        <div class="notch"></div>
+        <div class="phone-scroll">
+
+          <!-- modal-style header -->
+          <div class="modal-head">
+            <div class="crumbs">
+              <span>SHOOTS</span><span class="sep">/</span>
+              <span>FULL CIRCLE</span><span class="sep">/</span>
+              <span class="here">BULK EDIT</span>
+            </div>
+            <div class="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+          </div>
+
+          <!-- banner -->
+          <div class="bulk-banner">
+            <div class="left">
+              <span class="label">ALL CREW</span>
+              <span class="date">TUE · 12 MAY</span>
+            </div>
+            <div class="right">
+              <span class="big">8</span>
+              <span>crew on this date</span>
+            </div>
+          </div>
+
+          <!-- TIMES + LUNCH -->
+          <div class="section-card">
+            <div class="section-label">Times + Lunch</div>
+            <div class="time-row">
+              <div class="time-input">
+                <div class="lbl">CALL</div>
+                <div class="val">08:00</div>
+              </div>
+              <div class="time-input">
+                <div class="lbl">WRAP</div>
+                <div class="val">19:00</div>
+              </div>
+            </div>
+            <div class="lunch-compact">
+              <span class="lbl">LUNCH</span>
+              <span class="val">13:00</span>
+              <span class="dim">→</span>
+              <span class="val">14:00</span>
+              <span class="dim">(1h)</span>
+            </div>
+          </div>
+
+          <!-- CONDITIONS -->
+          <div class="section-card">
+            <div class="section-label">Conditions</div>
+            <div class="chips-row">
+              <span class="chip">Step-up</span>
+              <span class="chip">Pre-call</span>
+              <span class="chip">Mileage</span>
+              <span class="chip">Kit money</span>
+              <span class="chip">Travel time</span>
+              <span class="chip">Per diem</span>
+              <span class="chip">Expenses</span>
+            </div>
+          </div>
+
+          <!-- APPLY TO -->
+          <div class="apply-section">
+            <div class="label">Apply changes to</div>
+            <div class="radio-opt">
+              <div class="radio"></div>
+              <div class="body">
+                <div class="opt-name">All crew</div>
+                <div class="opt-desc">Resets the 2 existing overrides to match the default</div>
+              </div>
+              <span class="opt-count">8 of 8</span>
+            </div>
+            <div class="radio-opt selected">
+              <div class="radio"></div>
+              <div class="body">
+                <div class="opt-name">Matched only</div>
+                <div class="opt-desc">Keeps Jack &amp; Lily's overrides — applies to the other 6</div>
+              </div>
+              <span class="opt-count">6 of 8</span>
+            </div>
+          </div>
+
+          <!-- bottom action -->
+          <div class="bottom-bar">
+            <button class="btn">Cancel</button>
+            <button class="btn primary">
+              Apply
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!--                       INVOICING COLUMN                           -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <section class="col-section">
+    <div class="col-head">
+      <div class="label">Invoicing</div>
+      <p class="desc">
+        Same data model — invoices stay per-production, client info stays per-invoice (no
+        cross-production storage). Streamlining is in the <strong>surface</strong>: overdue
+        flagged in red on the list, one-tap SEND that emails + marks sent automatically, and
+        a cleaner editor with bank/notes collapsed by default.
+      </p>
+    </div>
+
+    <!-- PHONE 3: Invoice list -->
+    <div class="phone-wrap">
+      <div class="phone-label"><span class="num">3</span><span class="name">Invoice list · overdue surfacing</span></div>
+      <div class="phone" id="phone-3">
+        <div class="notch"></div>
+        <div class="phone-scroll">
+
+          <!-- breadcrumb -->
+          <div class="breadcrumb">
+            <div class="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="m15 18-6-6 6-6"/></svg></div>
+            <span class="crumb">SHOOTS</span>
+            <span class="sep">/</span>
+            <span class="crumb">FULL CIRCLE</span>
+          </div>
+
+          <!-- page title -->
+          <h1 class="page-title">Invoices</h1>
+
+          <div class="invoice-summary">
+            <span class="total">£8,920</span>
+            <span class="dim">outstanding</span>
+            <span class="dim">·</span>
+            <span class="overdue-tag">1 OVERDUE</span>
+          </div>
+
+          <!-- filter pills -->
+          <div class="filter-row">
+            <span class="filter-pill active">All <span class="num">5</span></span>
+            <span class="filter-pill">Draft <span class="num">1</span></span>
+            <span class="filter-pill">Sent <span class="num">3</span></span>
+            <span class="filter-pill">Paid <span class="num">1</span></span>
+          </div>
+
+          <!-- + new invoice -->
+          <button class="add-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New invoice
+          </button>
+
+          <!-- DRAFT -->
+          <div class="invoice-card">
+            <div class="inv-top">
+              <span class="inv-num">TM-INV-005</span>
+              <span class="badge draft">DRAFT</span>
+            </div>
+            <div class="inv-card-client">Pulse Films</div>
+            <div class="inv-row">
+              <span class="inv-amount">£2,840.00</span>
+            </div>
+            <div class="inv-card-meta">Created 10 MAY · <span class="dim">not sent</span></div>
+          </div>
+
+          <!-- OVERDUE -->
+          <div class="invoice-card overdue">
+            <div class="inv-top">
+              <span class="inv-num">TM-INV-004</span>
+              <span class="badge sent">SENT</span>
+            </div>
+            <div class="inv-card-client">Working Title Films</div>
+            <div class="inv-row">
+              <span class="inv-amount">£4,920.00</span>
+            </div>
+            <div class="inv-card-meta over">⚠ 7 DAYS OVERDUE <span class="dim">· due 5 MAY</span></div>
+          </div>
+
+          <!-- SENT (not overdue) -->
+          <div class="invoice-card">
+            <div class="inv-top">
+              <span class="inv-num">TM-INV-003</span>
+              <span class="badge sent">SENT</span>
+            </div>
+            <div class="inv-card-client">Skylark Productions</div>
+            <div class="inv-row">
+              <span class="inv-amount">£1,160.00</span>
+            </div>
+            <div class="inv-card-meta">Due 28 MAY · <span class="strong">in 16 days</span></div>
+          </div>
+
+          <!-- PAID -->
+          <div class="invoice-card">
+            <div class="inv-top">
+              <span class="inv-num">TM-INV-002</span>
+              <span class="badge paid">PAID</span>
+            </div>
+            <div class="inv-card-client">Pulse Films</div>
+            <div class="inv-row">
+              <span class="inv-amount">£2,400.00</span>
+            </div>
+            <div class="inv-card-meta">Paid 4 MAY <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="9" height="9" style="display:inline-block;vertical-align:baseline;color:var(--good)"><path d="M20 6 9 17l-5-5"/></svg></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- PHONE 4: Invoice editor -->
+    <div class="phone-wrap">
+      <div class="phone-label"><span class="num">4</span><span class="name">Invoice editor · DRAFT</span></div>
+      <div class="phone" id="phone-4">
+        <div class="notch"></div>
+        <div class="phone-scroll">
+
+          <!-- editor head -->
+          <div class="editor-head">
+            <div class="left">
+              <div class="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></div>
+              <span class="crumb">INVOICES</span>
+            </div>
+            <div class="kebab"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></div>
+          </div>
+
+          <!-- title + status -->
+          <div class="editor-title-row">
+            <span class="editor-title">TM-INV-005</span>
+            <span class="badge draft">DRAFT</span>
+          </div>
+
+          <!-- meta strip -->
+          <div class="meta-strip">
+            <div class="meta-row">
+              <span class="key">ISSUED</span>
+              <span class="val">12 MAY 2026</span>
+            </div>
+            <div class="meta-row">
+              <span class="key">DUE</span>
+              <span class="val">11 JUN 2026 <span class="sub">· 30 days</span></span>
+            </div>
+            <div class="meta-row">
+              <span class="key">SHOOT</span>
+              <span class="val">1 MAY <span class="sub">—</span> 6 MAY 2026</span>
+            </div>
+          </div>
+
+          <!-- FROM -->
+          <div class="party-card">
+            <div class="head">FROM</div>
+            <div class="name">Derrick Edwards</div>
+            <div class="line">derrick@example.com</div>
+            <div class="line">+44 7700 900xxx</div>
+          </div>
+
+          <!-- TO -->
+          <div class="party-card">
+            <div class="head">TO</div>
+            <div class="name">Pulse Films Ltd</div>
+            <div class="line">accounts@pulsefilms.co.uk</div>
+            <div class="add-line">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              ADD BILLING ADDRESS
+            </div>
+          </div>
+
+          <!-- LINE ITEMS -->
+          <div class="lines-card">
+            <div class="lines-head">
+              <span class="label">LINE ITEMS <span class="count">6</span></span>
+              <span class="auto-tag">AUTO</span>
+            </div>
+            <div class="line">
+              <div class="label-col">
+                <div class="lbl">Standard day × 5</div>
+                <div class="detail">£600/day · 1–5 MAY</div>
+              </div>
+              <span class="amt">£3,000.00</span>
+            </div>
+            <div class="line">
+              <div class="label-col">
+                <div class="lbl">Saturday × 1</div>
+                <div class="detail">£720/day · 6 MAY</div>
+              </div>
+              <span class="amt">£720.00</span>
+            </div>
+            <div class="line">
+              <div class="label-col">
+                <div class="lbl">Overtime · 4h</div>
+                <div class="detail">2 MAY (1h) · 4 MAY (3h)</div>
+              </div>
+              <span class="amt">£160.00</span>
+            </div>
+            <div class="line">
+              <div class="label-col">
+                <div class="lbl">Per diem × 6</div>
+                <div class="detail">£30/day</div>
+              </div>
+              <span class="amt">£180.00</span>
+            </div>
+            <div class="line">
+              <div class="label-col">
+                <div class="lbl">Kit money × 6</div>
+                <div class="detail">£30/day</div>
+              </div>
+              <span class="amt">£180.00</span>
+            </div>
+            <div class="line">
+              <div class="label-col">
+                <div class="lbl">Expenses</div>
+                <div class="detail">Petrol, parking</div>
+              </div>
+              <span class="amt">£45.00</span>
+            </div>
+
+            <div class="totals">
+              <div class="tot-row"><span class="lbl">SUBTOTAL</span><span class="val">£4,285.00</span></div>
+              <div class="tot-row"><span class="lbl">VAT 20%</span><span class="val">£857.00</span></div>
+              <div class="tot-row grand"><span class="lbl">TOTAL</span><span class="val">£5,142.00</span></div>
+            </div>
+          </div>
+
+          <!-- BANK DETAILS collapsed -->
+          <div class="collapse">
+            <div class="left">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              BANK DETAILS
+            </div>
+            <span class="right">Lloyds · ••••4421</span>
+          </div>
+
+          <!-- NOTES collapsed -->
+          <div class="collapse">
+            <div class="left">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              NOTES
+            </div>
+            <span class="right">empty</span>
+          </div>
+
+          <!-- bottom action: PREVIEW + SEND -->
+          <div class="action-bar">
+            <button class="btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+              Preview
+            </button>
+            <button class="btn primary">
+              Send via email
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><path d="m22 2-11 11"/><path d="m22 2-7 20-4-9-9-4z"/></svg>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+</body>
+</html>
