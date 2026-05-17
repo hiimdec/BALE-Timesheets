@@ -723,8 +723,15 @@
       }
       const drMiles = Number(dayRecord.miles) || 0;
       const ddMiles = Number(defaults.miles) || 0;
-      if (drMiles > 0 && drMiles !== ddMiles) {
-        variances.push({ kind: 'override', label: 'MILES', detail: `${drMiles}mi · default ${ddMiles}mi` });
+      const drPostcode = (dayRecord.mileagePostcode || '').trim();
+      const ddPostcode = (defaults.mileagePostcode || '').trim();
+      const milesDiffer = drMiles > 0 && drMiles !== ddMiles;
+      const postcodeDiffers = !!drPostcode && drPostcode !== ddPostcode;
+      if (milesDiffer || postcodeDiffers) {
+        const detail = postcodeDiffers && drPostcode
+          ? `${drPostcode} (${drMiles}mi) · default ${ddPostcode || ddMiles + 'mi'}`
+          : `${drMiles}mi · default ${ddMiles}mi`;
+        variances.push({ kind: 'override', label: 'MILES', detail });
       }
       if (!!dayRecord.travelTimeEnabled && (
         !!dayRecord.travelTimeEnabled !== !!defaults.travelTimeEnabled ||
@@ -881,6 +888,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       if ((Number(day.miles) || 0) === 0 && Number(dateDefaults.miles) > 0) {
         merged.miles = dateDefaults.miles;
+      }
+      if (!(day.mileagePostcode || '').trim() && (dateDefaults.mileagePostcode || '').trim()) {
+        merged.mileagePostcode = dateDefaults.mileagePostcode;
+        if (dateDefaults.mileageMethod) merged.mileageMethod = dateDefaults.mileageMethod;
+        if (dateDefaults.mileageRoundTrip !== undefined) merged.mileageRoundTrip = dateDefaults.mileageRoundTrip;
       }
       if (!day.travelTimeEnabled && dateDefaults.travelTimeEnabled) {
         merged.travelTimeEnabled = true;
@@ -1290,6 +1302,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function migrateDay(d) {
       d = { note: "", expenses: [], ...d };
+      // secondBreakLogged backfill: existing records with a duration > 0 are treated as
+      // "logged"; records sitting at 0 are treated as "not yet logged" (friendlier UX —
+      // chip reads as caps "2ND BREAK" prompting engagement, not "Missed").
+      if (typeof d.secondBreakLogged !== 'boolean') {
+        d = { ...d, secondBreakLogged: (Number(d.secondBreakDurationMins) || 0) > 0 };
+      }
       // Safety net for the v2 `wrapped` flag: any day still missing it
       // (e.g. imported backup predating schema v2) gets the same date-based
       // backfill the migration uses — past = wrapped, today/future = not.
@@ -1406,6 +1424,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         d.preCallEnabled    = d.preCallEnabled    ?? false;
         d.preCallTime       = d.preCallTime       ?? '';
         d.miles             = d.miles             ?? 0;
+        d.mileagePostcode   = d.mileagePostcode   ?? '';
+        d.mileageMethod     = d.mileageMethod     ?? 'manual';
+        d.mileageRoundTrip  = d.mileageRoundTrip  ?? true;
         d.travelTimeEnabled = d.travelTimeEnabled ?? false;
         d.travelOutMins     = d.travelOutMins     ?? 0;
         d.travelBackMins    = d.travelBackMins    ?? 0;
@@ -5807,7 +5828,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         wrapNextDay: false,
         wrapped: false,
         preCallTime: "",
-        noMealProvided: false, secondBreakDurationMins: 0,
+        noMealProvided: false, secondBreakDurationMins: 0, secondBreakLogged: false,
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
         perDiemEnabled: false, perDiemAmount: 0,
@@ -6782,14 +6803,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         </>
                       );
                     } else if (key === 'mileage') {
+                      const updateDeptMulti = (patch) => setProduction(p => {
+                        const ddNew = { ...(p.dayDefaults?.[currentDate] || {}), ...patch };
+                        return { ...p, dayDefaults: { ...(p.dayDefaults || {}), [currentDate]: ddNew } };
+                      });
+                      const ddActive = (Number(dd.miles) || 0) > 0 || !!dd.mileagePostcode;
                       title = 'Mileage · Dept default';
                       body = (
                         <>
-                          <DToggleRow label="Mileage applies" value={(Number(dd.miles) || 0) > 0} onChange={(v) => { if (!v) updateDeptDefault('miles', 0); }} ariaLabel="Toggle mileage default"/>
-                          <div>
-                            <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Miles</div>
-                            <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.miles) || 0} onChange={(e) => updateDeptDefault('miles', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                          </div>
+                          <DToggleRow label="Mileage applies" value={ddActive} onChange={(v) => {
+                            if (!v) updateDeptMulti({ miles: 0, mileagePostcode: '', mileageMethod: 'manual' });
+                          }} ariaLabel="Toggle mileage default"/>
+                          {ddActive && (
+                            <MileageInput day={{ ...dd, date: currentDate, crewId: 'dept-default' }} updateDay={updateDeptMulti} days={[]}/>
+                          )}
                         </>
                       );
                     } else if (key === 'travel') {
@@ -7517,8 +7544,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const toggleExtra = (key) => {
         setExpandedExtras(prev => {
           const next = new Set(prev);
-          if (next.has(key)) next.delete(key);
-          else {
+          if (next.has(key)) {
+            next.delete(key);
+            // Closing the 2nd break panel marks the field as "logged" — the chip
+            // then reflects the actual duration (incl. 0/Missed) instead of the
+            // dim-caps "not yet logged" state.
+            if (key === 'secondBreak') {
+              setProduction(p => ({
+                ...p,
+                days: (p.days || []).map(d =>
+                  d.date === currentDate && d.crewId === crewMember.id
+                    ? { ...d, secondBreakLogged: true }
+                    : d
+                ),
+              }));
+            }
+          } else {
             next.add(key);
             // smooth scroll into view after the panel mounts
             requestAnimationFrame(() => {
@@ -7756,7 +7797,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     !!dayRecord.preCallEnabled !== !!dd.preCallEnabled ||
                     (dayRecord.preCallTime && dayRecord.preCallTime !== dd.preCallTime)
                   );
-                  const mileageOverridden = !!dd && (Number(dayRecord.miles) || 0) > 0 && (Number(dayRecord.miles) || 0) !== (Number(dd.miles) || 0);
+                  const mileageOverridden = !!dd && (
+                    ((Number(dayRecord.miles) || 0) > 0 && (Number(dayRecord.miles) || 0) !== (Number(dd.miles) || 0)) ||
+                    (!!(dayRecord.mileagePostcode || '').trim() && (dayRecord.mileagePostcode || '').trim() !== (dd.mileagePostcode || '').trim())
+                  );
                   const travelOverridden = !!dd && !!dayRecord.travelTimeEnabled && (
                     !!dayRecord.travelTimeEnabled !== !!dd.travelTimeEnabled ||
                     travelOut !== (Number(dd.travelOutMins) || 0) ||
@@ -7786,11 +7830,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <ExtraChip label="Per diem" isSet={perDiemActive} isOverridden={perDiemOverridden} summary={perDiemActive ? fmtGBP(Number(dayRecord.perDiemAmount) || 0) : null} onTap={() => toggleExtra('perDiem')}/>
                         <ExtraChip label="Expenses" isSet={expensesActive} isOverridden={expensesOverridden} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => toggleExtra('expenses')}/>
                         {show2ndBreakChip && (() => {
+                          const logged = !!dayRecord.secondBreakLogged;
                           const sbMins = Number(dayRecord.secondBreakDurationMins) || 0;
-                          const summary = sbMins > 0
-                            ? (sbMins >= 60 ? `${Math.floor(sbMins / 60)}h${sbMins % 60 ? ` ${sbMins % 60}m` : ''}` : `${sbMins}m`)
-                            : 'Missed';
-                          return <ExtraChip label="2nd break" isSet={true} summary={summary} onTap={() => toggleExtra('secondBreak')}/>;
+                          const summary = !logged
+                            ? null
+                            : sbMins > 0
+                              ? (sbMins >= 60 ? `${Math.floor(sbMins / 60)}h${sbMins % 60 ? ` ${sbMins % 60}m` : ''}` : `${sbMins}m`)
+                              : 'Missed';
+                          return <ExtraChip label="2nd break" isSet={logged} summary={summary} onTap={() => toggleExtra('secondBreak')}/>;
                         })()}
                       </div>
 
@@ -7882,24 +7929,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             );
                             if (perDiemOverridden) resetEl = resetButton('Reset to default', () => resetFields('perDiem', 'perDiemEnabled', 'perDiemAmount'));
                           } else if (key === 'mileage') {
-                            const mlActive = dayRecord.mileageEnabled !== undefined ? !!dayRecord.mileageEnabled : Number(dayRecord.miles) > 0;
+                            const mlActive = dayRecord.mileageEnabled !== undefined
+                              ? !!dayRecord.mileageEnabled
+                              : (Number(dayRecord.miles) > 0 || !!dayRecord.mileagePostcode);
+                            const updateMulti = (patch) => setProduction(p => ({
+                              ...p,
+                              days: p.days.map(d => d.id === dayRecord.id ? { ...d, ...patch } : d),
+                            }));
                             title = 'Mileage';
                             body = (
                               <>
                                 <ToggleRow label="Mileage active" value={mlActive} onChange={(v) => {
                                   if (v) updateField('mileageEnabled', true);
-                                  else setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, mileageEnabled: false, miles: 0, mileagePostcode: '' } : d) }));
+                                  else updateMulti({ mileageEnabled: false, miles: 0, mileagePostcode: '' });
                                 }} ariaLabel="Toggle mileage"/>
                                 {mlActive && (
-                                  <div>
-                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Miles</div>
-                                    {numInput(dayRecord.miles, (e) => updateField('miles', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
-                                    <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Paid at 0.5×BHR per mile outside M25.</div>
-                                  </div>
+                                  <MileageInput day={dayRecord} updateDay={updateMulti} days={production.days || []}/>
                                 )}
                               </>
                             );
-                            if (mileageOverridden) resetEl = resetButton('Reset to default', () => resetFields('mileage', 'mileageEnabled', 'miles', 'mileagePostcode'));
+                            if (mileageOverridden) resetEl = resetButton('Reset to default', () => resetFields('mileage', 'mileageEnabled', 'miles', 'mileagePostcode', 'mileageMethod', 'mileageRoundTrip'));
                           } else if (key === 'travel') {
                             const tActive = dayRecord.travelTimeEnabled !== undefined ? !!dayRecord.travelTimeEnabled : (Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0);
                             title = 'Travel time';
