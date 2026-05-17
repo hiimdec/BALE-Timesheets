@@ -6249,7 +6249,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [showLunchSheet, setShowLunchSheet] = useState(false);
       const [showAddCrew, setShowAddCrew] = useState(false);
       const [expandedVarianceCrewIds, setExpandedVarianceCrewIds] = useState(() => new Set());
-      const [editingDeptExtra, setEditingDeptExtra] = useState(null);
+      const [expandedDeptExtras, setExpandedDeptExtras] = useState(() => new Set());
+      const deptExtraRefs = useRef({});
+      const toggleDeptExtra = (key) => {
+        setExpandedDeptExtras(prev => {
+          const next = new Set(prev);
+          if (next.has(key)) next.delete(key);
+          else {
+            next.add(key);
+            requestAnimationFrame(() => {
+              deptExtraRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+          }
+          return next;
+        });
+      };
 
       const updateDeptDefault = (field, value) => {
         setProduction(p => setDayDefault(p, currentDate, field, value));
@@ -6735,12 +6749,127 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <span className="flex-1 h-px bg-neutral-800/60"/>
                 </div>
                 <div className="flex flex-wrap gap-2 mb-4 px-4">
-                  <ExtraChip label="Pre-call" isSet={preCallSet} summary={preCallSet ? (dd.preCallTime || 'on') : null} onTap={() => setEditingDeptExtra('preCall')}/>
-                  <ExtraChip label="Mileage" isSet={mileageSet} summary={mileageSet ? `${Number(dd.miles) || 0} mi` : null} onTap={() => setEditingDeptExtra('mileage')}/>
-                  <ExtraChip label="Travel" isSet={travelSet} summary={travelSet ? `${Number(dd.travelOutMins) || 0}+${Number(dd.travelBackMins) || 0}m` : null} onTap={() => setEditingDeptExtra('travel')}/>
-                  <ExtraChip label="Per diem" isSet={perDiemSet} summary={perDiemSet ? fmtGBP(Number(dd.perDiemAmount) || 0) : null} onTap={() => setEditingDeptExtra('perDiem')}/>
-                  <ExtraChip label="Expenses" isSet={expensesSet} summary={expensesSet ? fmtGBP(expensesTotalDD) : null} onTap={() => setEditingDeptExtra('expenses')}/>
+                  <ExtraChip label="Pre-call" isSet={preCallSet} summary={preCallSet ? (dd.preCallTime || 'on') : null} onTap={() => toggleDeptExtra('preCall')}/>
+                  <ExtraChip label="Mileage" isSet={mileageSet} summary={mileageSet ? `${Number(dd.miles) || 0} mi` : null} onTap={() => toggleDeptExtra('mileage')}/>
+                  <ExtraChip label="Travel" isSet={travelSet} summary={travelSet ? `${Number(dd.travelOutMins) || 0}+${Number(dd.travelBackMins) || 0}m` : null} onTap={() => toggleDeptExtra('travel')}/>
+                  <ExtraChip label="Per diem" isSet={perDiemSet} summary={perDiemSet ? fmtGBP(Number(dd.perDiemAmount) || 0) : null} onTap={() => toggleDeptExtra('perDiem')}/>
+                  <ExtraChip label="Expenses" isSet={expensesSet} summary={expensesSet ? fmtGBP(expensesTotalDD) : null} onTap={() => toggleDeptExtra('expenses')}/>
                 </div>
+
+                {(() => {
+                  if (expandedDeptExtras.size === 0) return null;
+                  const close = (key) => setExpandedDeptExtras(prev => { const n = new Set(prev); n.delete(key); return n; });
+                  const setRef = (key) => (el) => { deptExtraRefs.current[key] = el; };
+                  const DToggleRow = ({ label, value, onChange, ariaLabel }) => (
+                    <div className="flex items-center justify-between mb-3 px-1">
+                      <span className="text-sm text-neutral-300">{label}</span>
+                      <Toggle value={value} onChange={onChange} ariaLabel={ariaLabel}/>
+                    </div>
+                  );
+                  const renderDept = (key) => {
+                    let title = '', body = null;
+                    if (key === 'preCall') {
+                      title = 'Pre-call · Dept default';
+                      body = (
+                        <>
+                          <DToggleRow label="Pre-call active" value={!!dd.preCallEnabled} onChange={(v) => updateDeptDefault('preCallEnabled', v)} ariaLabel="Toggle pre-call default"/>
+                          {dd.preCallEnabled && (
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
+                              <input type="time" value={dd.preCallTime || ''} onChange={(e) => updateDeptDefault('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
+                            </div>
+                          )}
+                        </>
+                      );
+                    } else if (key === 'mileage') {
+                      title = 'Mileage · Dept default';
+                      body = (
+                        <>
+                          <DToggleRow label="Mileage applies" value={(Number(dd.miles) || 0) > 0} onChange={(v) => { if (!v) updateDeptDefault('miles', 0); }} ariaLabel="Toggle mileage default"/>
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Miles</div>
+                            <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.miles) || 0} onChange={(e) => updateDeptDefault('miles', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                          </div>
+                        </>
+                      );
+                    } else if (key === 'travel') {
+                      title = 'Travel time · Dept default';
+                      body = (
+                        <>
+                          <DToggleRow label="Travel time active" value={!!dd.travelTimeEnabled} onChange={(v) => {
+                            if (v) updateDeptDefault('travelTimeEnabled', true);
+                            else setProduction(p => {
+                              const ddNew = { ...(p.dayDefaults?.[currentDate] || {}), travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 };
+                              return { ...p, dayDefaults: { ...(p.dayDefaults || {}), [currentDate]: ddNew } };
+                            });
+                          }} ariaLabel="Toggle travel time default"/>
+                          {!!dd.travelTimeEnabled && (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
+                                <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelOutMins) || 0} onChange={(e) => updateDeptDefault('travelOutMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
+                                <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelBackMins) || 0} onChange={(e) => updateDeptDefault('travelBackMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    } else if (key === 'perDiem') {
+                      title = 'Per diem · Dept default';
+                      body = (
+                        <>
+                          <DToggleRow label="Per diem active" value={!!dd.perDiemEnabled} onChange={(v) => updateDeptDefault('perDiemEnabled', v)} ariaLabel="Toggle per diem default"/>
+                          {!!dd.perDiemEnabled && (
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                              <input type="number" min="0" step="0.01" inputMode="decimal" value={Number(dd.perDiemAmount) || 0} onChange={(e) => updateDeptDefault('perDiemAmount', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                            </div>
+                          )}
+                        </>
+                      );
+                    } else if (key === 'expenses') {
+                      const expenses = dd.expenses || [];
+                      const addExp = () => updateDeptDefault('expenses', [...expenses, { id: uid(), amount: 0, category: 'Other', description: '' }]);
+                      const upExp = (id, patch) => updateDeptDefault('expenses', expenses.map(x => x.id === id ? { ...x, ...patch } : x));
+                      const rmExp = (id) => updateDeptDefault('expenses', expenses.filter(x => x.id !== id));
+                      title = 'Expenses · Dept default';
+                      body = (
+                        <>
+                          <button type="button" onClick={addExp} className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                            <IPlus size={11}/>Add expense
+                          </button>
+                          {expenses.length === 0 ? (
+                            <div className="text-[11px] text-neutral-500 italic">No expenses yet — tap Add expense.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {expenses.map(exp => (
+                                <div key={exp.id} className="flex flex-wrap items-center gap-2">
+                                  <select value={exp.category} onChange={(e) => upExp(exp.id, { category: e.target.value })} className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 116 }}>
+                                    {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                  <input type="number" min="0" step="0.01" inputMode="decimal" value={exp.amount} onChange={(e) => upExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
+                                  <input type="text" value={exp.description} onChange={(e) => upExp(exp.id, { description: e.target.value })} placeholder="Description" className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                                  <button type="button" onClick={() => rmExp(exp.id)} className="text-neutral-600 hover:text-tm-pen transition-colors p-1" aria-label="Remove expense" style={{ WebkitTapHighlightColor: 'transparent' }}><IX size={14}/></button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    }
+                    return (
+                      <div ref={setRef(key)} className="px-4">
+                        <SectionCard title={title} variant="condition" onClose={() => close(key)}>
+                          {body}
+                        </SectionCard>
+                      </div>
+                    );
+                  };
+                  return Array.from(expandedDeptExtras).map(key => <React.Fragment key={key}>{renderDept(key)}</React.Fragment>);
+                })()}
               </>
             );
           })()}
@@ -6974,121 +7103,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onSubmit={handleAddNewCrew}
             />
           )}
-
-          {editingDeptExtra && (() => {
-            const closeSheet = () => setEditingDeptExtra(null);
-            const dd = production.dayDefaults?.[currentDate] || {};
-            const sheetShell = (title, body) => (
-              <div className="fixed inset-0 z-50 flex items-end" onClick={closeSheet} style={{ background: 'rgba(0,0,0,0.5)' }}>
-                <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5 max-h-[85vh] overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-                  <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
-                  <div className="text-base font-bold text-neutral-100 mb-1">{title}</div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-3">Dept default</div>
-                  {body}
-                  <button type="button" onClick={closeSheet} className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>Done</button>
-                </div>
-              </div>
-            );
-            const ToggleRow = ({ label, value, onChange, ariaLabel }) => (
-              <div className="flex items-center justify-between mb-3 px-1">
-                <span className="text-sm text-neutral-300">{label}</span>
-                <Toggle value={value} onChange={onChange} ariaLabel={ariaLabel}/>
-              </div>
-            );
-
-            if (editingDeptExtra === 'preCall') {
-              return sheetShell('Pre-call', (
-                <>
-                  <ToggleRow label="Pre-call active" value={!!dd.preCallEnabled} onChange={(v) => updateDeptDefault('preCallEnabled', v)} ariaLabel="Toggle pre-call default"/>
-                  {dd.preCallEnabled && (
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
-                      <input type="time" value={dd.preCallTime || ''} onChange={(e) => updateDeptDefault('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
-                    </div>
-                  )}
-                </>
-              ));
-            }
-            if (editingDeptExtra === 'mileage') {
-              return sheetShell('Mileage', (
-                <>
-                  <ToggleRow label="Mileage applies" value={(Number(dd.miles) || 0) > 0} onChange={(v) => { if (!v) updateDeptDefault('miles', 0); }} ariaLabel="Toggle mileage default"/>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Miles</div>
-                    <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.miles) || 0} onChange={(e) => updateDeptDefault('miles', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                  </div>
-                </>
-              ));
-            }
-            if (editingDeptExtra === 'travel') {
-              return sheetShell('Travel time', (
-                <>
-                  <ToggleRow label="Travel time active" value={!!dd.travelTimeEnabled} onChange={(v) => {
-                    if (v) updateDeptDefault('travelTimeEnabled', true);
-                    else setProduction(p => {
-                      const ddNew = { ...(p.dayDefaults?.[currentDate] || {}), travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 };
-                      return { ...p, dayDefaults: { ...(p.dayDefaults || {}), [currentDate]: ddNew } };
-                    });
-                  }} ariaLabel="Toggle travel time default"/>
-                  {!!dd.travelTimeEnabled && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
-                        <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelOutMins) || 0} onChange={(e) => updateDeptDefault('travelOutMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
-                        <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelBackMins) || 0} onChange={(e) => updateDeptDefault('travelBackMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ));
-            }
-            if (editingDeptExtra === 'perDiem') {
-              return sheetShell('Per diem', (
-                <>
-                  <ToggleRow label="Per diem active" value={!!dd.perDiemEnabled} onChange={(v) => updateDeptDefault('perDiemEnabled', v)} ariaLabel="Toggle per diem default"/>
-                  {!!dd.perDiemEnabled && (
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                      <input type="number" min="0" step="0.01" inputMode="decimal" value={Number(dd.perDiemAmount) || 0} onChange={(e) => updateDeptDefault('perDiemAmount', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                    </div>
-                  )}
-                </>
-              ));
-            }
-            if (editingDeptExtra === 'expenses') {
-              const expenses = dd.expenses || [];
-              const addExp = () => updateDeptDefault('expenses', [...expenses, { id: uid(), amount: 0, category: 'Other', description: '' }]);
-              const upExp = (id, patch) => updateDeptDefault('expenses', expenses.map(x => x.id === id ? { ...x, ...patch } : x));
-              const rmExp = (id) => updateDeptDefault('expenses', expenses.filter(x => x.id !== id));
-              return sheetShell('Expenses', (
-                <>
-                  <button type="button" onClick={addExp} className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IPlus size={11}/>Add expense
-                  </button>
-                  {expenses.length === 0 ? (
-                    <div className="text-[11px] text-neutral-500 italic">No expenses yet — tap Add expense.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {expenses.map(exp => (
-                        <div key={exp.id} className="flex flex-wrap items-center gap-2">
-                          <select value={exp.category} onChange={(e) => upExp(exp.id, { category: e.target.value })} className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 116 }}>
-                            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                          <input type="number" min="0" step="0.01" inputMode="decimal" value={exp.amount} onChange={(e) => upExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
-                          <input type="text" value={exp.description} onChange={(e) => upExp(exp.id, { description: e.target.value })} placeholder="Description" className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                          <button type="button" onClick={() => rmExp(exp.id)} className="text-neutral-600 hover:text-tm-pen transition-colors p-1" aria-label="Remove expense" style={{ WebkitTapHighlightColor: 'transparent' }}><IX size={14}/></button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ));
-            }
-            return null;
-          })()}
         </div>
       );
     }
@@ -7498,7 +7512,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onTriggerCrewTimesheet, showToast, userPrefs }) {
       const [showLunchEdit, setShowLunchEdit] = useState(false);
-      const [editingExtra, setEditingExtra] = useState(null);
+      const [expandedExtras, setExpandedExtras] = useState(() => new Set());
+      const extraRefs = useRef({});
+      const toggleExtra = (key) => {
+        setExpandedExtras(prev => {
+          const next = new Set(prev);
+          if (next.has(key)) next.delete(key);
+          else {
+            next.add(key);
+            // smooth scroll into view after the panel mounts
+            requestAnimationFrame(() => {
+              extraRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+          }
+          return next;
+        });
+      };
       const [editingNote, setEditingNote] = useState(false);
       const [showCrewActions, setShowCrewActions] = useState(false);
       const [showEditCrew, setShowEditCrew] = useState(false);
@@ -7749,21 +7778,281 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <span className="flex-1 h-px bg-neutral-800/60"/>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <ExtraChip label="Step-up" isSet={stepUpActive} summary={stepUpActive ? (dayRecord.stepUpRole || '—') : null} onTap={() => setEditingExtra('stepUp')}/>
-                        {!isTravelDay && <ExtraChip label="Pre-call" isSet={preCallActive} isOverridden={preCallOverridden} summary={preCallActive ? (dayRecord.preCallTime || dayRecord.truckCallTime || '—') : null} onTap={() => setEditingExtra('preCall')}/>}
-                        <ExtraChip label="Mileage" isSet={mileageActive} isOverridden={mileageOverridden} summary={mileageActive ? `${Number(dayRecord.miles) || 0} mi` : null} onTap={() => setEditingExtra('mileage')}/>
-                        <ExtraChip label="Kit" isSet={kitMoneyActive} summary={kitMoneyActive ? fmtGBP(Number(dayRecord.kitMoneyAmount) || 0) : null} onTap={() => setEditingExtra('kit')}/>
-                        {!isTravelDay && <ExtraChip label="Travel" isSet={travelTimeActive} isOverridden={travelOverridden} summary={travelTimeActive ? `${travelOut}+${travelBack}m` : null} onTap={() => setEditingExtra('travel')}/>}
-                        <ExtraChip label="Per diem" isSet={perDiemActive} isOverridden={perDiemOverridden} summary={perDiemActive ? fmtGBP(Number(dayRecord.perDiemAmount) || 0) : null} onTap={() => setEditingExtra('perDiem')}/>
-                        <ExtraChip label="Expenses" isSet={expensesActive} isOverridden={expensesOverridden} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => setEditingExtra('expenses')}/>
+                        <ExtraChip label="Step-up" isSet={stepUpActive} summary={stepUpActive ? (dayRecord.stepUpRole || '—') : null} onTap={() => toggleExtra('stepUp')}/>
+                        {!isTravelDay && <ExtraChip label="Pre-call" isSet={preCallActive} isOverridden={preCallOverridden} summary={preCallActive ? (dayRecord.preCallTime || dayRecord.truckCallTime || '—') : null} onTap={() => toggleExtra('preCall')}/>}
+                        <ExtraChip label="Mileage" isSet={mileageActive} isOverridden={mileageOverridden} summary={mileageActive ? `${Number(dayRecord.miles) || 0} mi` : null} onTap={() => toggleExtra('mileage')}/>
+                        <ExtraChip label="Kit" isSet={kitMoneyActive} summary={kitMoneyActive ? fmtGBP(Number(dayRecord.kitMoneyAmount) || 0) : null} onTap={() => toggleExtra('kit')}/>
+                        {!isTravelDay && <ExtraChip label="Travel" isSet={travelTimeActive} isOverridden={travelOverridden} summary={travelTimeActive ? `${travelOut}+${travelBack}m` : null} onTap={() => toggleExtra('travel')}/>}
+                        <ExtraChip label="Per diem" isSet={perDiemActive} isOverridden={perDiemOverridden} summary={perDiemActive ? fmtGBP(Number(dayRecord.perDiemAmount) || 0) : null} onTap={() => toggleExtra('perDiem')}/>
+                        <ExtraChip label="Expenses" isSet={expensesActive} isOverridden={expensesOverridden} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => toggleExtra('expenses')}/>
                         {show2ndBreakChip && (() => {
                           const sbMins = Number(dayRecord.secondBreakDurationMins) || 0;
                           const summary = sbMins > 0
                             ? (sbMins >= 60 ? `${Math.floor(sbMins / 60)}h${sbMins % 60 ? ` ${sbMins % 60}m` : ''}` : `${sbMins}m`)
                             : 'Missed';
-                          return <ExtraChip label="2nd break" isSet={true} summary={summary} onTap={() => setEditingExtra('secondBreak')}/>;
+                          return <ExtraChip label="2nd break" isSet={true} summary={summary} onTap={() => toggleExtra('secondBreak')}/>;
                         })()}
                       </div>
+
+                      {/* Inline expandable panels — one per expanded chip key. */}
+                      {(() => {
+                        const close = (key) => setExpandedExtras(prev => { const n = new Set(prev); n.delete(key); return n; });
+                        const setRef = (key) => (el) => { extraRefs.current[key] = el; };
+                        const resetFields = (key, ...fields) => {
+                          setProduction(p => ({
+                            ...p,
+                            days: p.days.map(d => {
+                              if (d.id !== dayRecord.id) return d;
+                              const cleared = { ...d };
+                              for (const f of fields) {
+                                if (typeof cleared[f] === 'boolean') cleared[f] = false;
+                                else if (typeof cleared[f] === 'number') cleared[f] = 0;
+                                else if (Array.isArray(cleared[f])) cleared[f] = [];
+                                else cleared[f] = '';
+                              }
+                              return cleared;
+                            }),
+                          }));
+                        };
+                        const ToggleRow = ({ label, value, onChange, ariaLabel }) => (
+                          <div className="flex items-center justify-between mb-3 px-1">
+                            <span className="text-sm text-neutral-300">{label}</span>
+                            <Toggle value={value} onChange={onChange} ariaLabel={ariaLabel}/>
+                          </div>
+                        );
+                        const numInput = (val, onChange, opts = {}) => (
+                          <input
+                            type="number"
+                            min={opts.min ?? "0"}
+                            step={opts.step ?? "0.01"}
+                            inputMode={opts.inputMode || 'decimal'}
+                            value={val ?? 0}
+                            onChange={onChange}
+                            className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                          />
+                        );
+                        const resetButton = (label, onClick) => (
+                          <button type="button" onClick={onClick} className="w-full mt-3 px-4 py-2.5 rounded-xl bg-fuchsia-400/10 hover:bg-fuchsia-400/15 border border-fuchsia-400/30 text-fuchsia-400 text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                            {label}
+                          </button>
+                        );
+
+                        const renderPanel = (key) => {
+                          let title = '', body = null, resetEl = null;
+                          if (key === 'preCall') {
+                            title = 'Pre-call';
+                            body = (
+                              <>
+                                <ToggleRow label="Pre-call active" value={!!dayRecord.preCallEnabled} onChange={(v) => updateField('preCallEnabled', v)} ariaLabel="Toggle pre-call"/>
+                                {dayRecord.preCallEnabled && (
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
+                                    <input type="time" value={dayRecord.preCallTime || ''} onChange={(e) => updateField('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
+                                    <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Lunch and CWD still measured from main call time.</div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                            if (preCallOverridden) resetEl = resetButton('Reset to default', () => resetFields('preCall', 'preCallEnabled', 'preCallTime'));
+                          } else if (key === 'kit') {
+                            title = 'Kit money';
+                            body = (
+                              <>
+                                <ToggleRow label="Kit money active" value={!!dayRecord.kitMoneyEnabled} onChange={(v) => updateField('kitMoneyEnabled', v)} ariaLabel="Toggle kit money"/>
+                                {dayRecord.kitMoneyEnabled && (
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                                    {numInput(dayRecord.kitMoneyAmount, (e) => updateField('kitMoneyAmount', Number(e.target.value) || 0))}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          } else if (key === 'perDiem') {
+                            title = 'Per diem';
+                            body = (
+                              <>
+                                <ToggleRow label="Per diem active" value={!!dayRecord.perDiemEnabled} onChange={(v) => updateField('perDiemEnabled', v)} ariaLabel="Toggle per diem"/>
+                                {dayRecord.perDiemEnabled && (
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                                    {numInput(dayRecord.perDiemAmount, (e) => updateField('perDiemAmount', Number(e.target.value) || 0))}
+                                  </div>
+                                )}
+                              </>
+                            );
+                            if (perDiemOverridden) resetEl = resetButton('Reset to default', () => resetFields('perDiem', 'perDiemEnabled', 'perDiemAmount'));
+                          } else if (key === 'mileage') {
+                            const mlActive = dayRecord.mileageEnabled !== undefined ? !!dayRecord.mileageEnabled : Number(dayRecord.miles) > 0;
+                            title = 'Mileage';
+                            body = (
+                              <>
+                                <ToggleRow label="Mileage active" value={mlActive} onChange={(v) => {
+                                  if (v) updateField('mileageEnabled', true);
+                                  else setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, mileageEnabled: false, miles: 0, mileagePostcode: '' } : d) }));
+                                }} ariaLabel="Toggle mileage"/>
+                                {mlActive && (
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Miles</div>
+                                    {numInput(dayRecord.miles, (e) => updateField('miles', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
+                                    <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Paid at 0.5×BHR per mile outside M25.</div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                            if (mileageOverridden) resetEl = resetButton('Reset to default', () => resetFields('mileage', 'mileageEnabled', 'miles', 'mileagePostcode'));
+                          } else if (key === 'travel') {
+                            const tActive = dayRecord.travelTimeEnabled !== undefined ? !!dayRecord.travelTimeEnabled : (Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0);
+                            title = 'Travel time';
+                            body = (
+                              <>
+                                <ToggleRow label="Travel time active" value={tActive} onChange={(v) => {
+                                  if (v) updateField('travelTimeEnabled', true);
+                                  else setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 } : d) }));
+                                }} ariaLabel="Toggle travel time"/>
+                                {tActive && (
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
+                                      {numInput(dayRecord.travelOutMins, (e) => updateField('travelOutMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
+                                      {numInput(dayRecord.travelBackMins, (e) => updateField('travelBackMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                            if (travelOverridden) resetEl = resetButton('Reset to default', () => resetFields('travel', 'travelTimeEnabled', 'travelOutMins', 'travelBackMins'));
+                          } else if (key === 'stepUp') {
+                            title = 'Step-up';
+                            body = (
+                              <>
+                                <ToggleRow label="Step-up active" value={!!dayRecord.stepUpEnabled} onChange={(v) => updateField('stepUpEnabled', v)} ariaLabel="Toggle step-up"/>
+                                {dayRecord.stepUpEnabled && (
+                                  <div className="space-y-3">
+                                    <div>
+                                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
+                                      <select
+                                        value={dayRecord.stepUpRole || ''}
+                                        onChange={(e) => {
+                                          const role = e.target.value;
+                                          const d = ROLE_DEFAULTS[role] || {};
+                                          setProduction(p => ({
+                                            ...p,
+                                            days: p.days.map(rec => rec.id === dayRecord.id ? {
+                                              ...rec,
+                                              stepUpRole: role,
+                                              stepUpBDR: d.bdr ?? rec.stepUpBDR,
+                                              stepUpOTCoef: d.otCoef ?? rec.stepUpOTCoef,
+                                              stepUpOTRate: d.otRate ?? null,
+                                            } : rec)
+                                          }));
+                                        }}
+                                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                                      >
+                                        <option value="">— Select role —</option>
+                                        {Object.entries(DEPARTMENTS).map(([dept, roles]) => (
+                                          <optgroup key={dept} label={dept}>
+                                            {Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}
+                                          </optgroup>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div>
+                                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up BDR (£)</div>
+                                        {numInput(dayRecord.stepUpBDR, (e) => updateField('stepUpBDR', Number(e.target.value) || 0))}
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up OT</div>
+                                        <select
+                                          value={String(dayRecord.stepUpOTCoef ?? 1)}
+                                          onChange={(e) => updateField('stepUpOTCoef', Number(e.target.value))}
+                                          className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                                        >
+                                          <option value="1">1×</option>
+                                          <option value="1.25">1.25×</option>
+                                          <option value="1.5">1.5×</option>
+                                        </select>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          } else if (key === 'expenses') {
+                            const expenses = dayRecord.expenses || [];
+                            const addExpense = () => setProduction(p => ({
+                              ...p,
+                              days: p.days.map(d => d.id === dayRecord.id ? {
+                                ...d,
+                                expensesEnabled: true,
+                                expenses: [...(d.expenses || []), { id: uid(), amount: 0, category: 'Other', description: '' }],
+                              } : d),
+                            }));
+                            const updateExp = (expId, patch) => setProduction(p => ({
+                              ...p,
+                              days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: (d.expenses || []).map(x => x.id === expId ? { ...x, ...patch } : x) } : d),
+                            }));
+                            const removeExp = (expId) => setProduction(p => ({
+                              ...p,
+                              days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: (d.expenses || []).filter(x => x.id !== expId) } : d),
+                            }));
+                            title = 'Expenses';
+                            body = (
+                              <>
+                                <button type="button" onClick={addExpense} className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                                  <IPlus size={11}/>Add expense
+                                </button>
+                                {expenses.length === 0 ? (
+                                  <div className="text-[11px] text-neutral-500 italic">No expenses yet — tap Add expense.</div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {expenses.map(exp => (
+                                      <div key={exp.id} className="flex flex-wrap items-center gap-2">
+                                        <select value={exp.category} onChange={(e) => updateExp(exp.id, { category: e.target.value })} className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 116 }}>
+                                          {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                        <input type="number" min="0" step="0.01" inputMode="decimal" value={exp.amount} onChange={(e) => updateExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
+                                        <input type="text" value={exp.description} onChange={(e) => updateExp(exp.id, { description: e.target.value })} placeholder="Description" className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                                        <button type="button" onClick={() => removeExp(exp.id)} className="text-neutral-600 hover:text-tm-pen transition-colors p-1" aria-label="Remove expense" style={{ WebkitTapHighlightColor: 'transparent' }}><IX size={14}/></button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            );
+                            if (expensesOverridden) resetEl = resetButton('Reset to default', () => resetFields('expenses', 'expensesEnabled', 'expenses'));
+                          } else if (key === 'secondBreak') {
+                            title = '2nd break';
+                            body = (
+                              <div className="space-y-3">
+                                <div>
+                                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Start</div>
+                                  <input type="time" value={dayRecord.secondBreakStartTime || ''} onChange={(e) => updateField('secondBreakStartTime', e.target.value)} disabled={Number(dayRecord.secondBreakDurationMins) === 0} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500 disabled:opacity-50" style={{ WebkitAppearance: 'none' }}/>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Duration</div>
+                                  <select value={Number(dayRecord.secondBreakDurationMins ?? 30)} onChange={(e) => updateField('secondBreakDurationMins', Number(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500">
+                                    {SECOND_BREAK_DURATIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div ref={setRef(key)}>
+                              <SectionCard title={title} variant="condition" onClose={() => close(key)}>
+                                {body}
+                                {resetEl}
+                              </SectionCard>
+                            </div>
+                          );
+                        };
+
+                        return Array.from(expandedExtras).map(key => <React.Fragment key={key}>{renderPanel(key)}</React.Fragment>);
+                      })()}
                     </>
                   );
                 })()}
@@ -7849,333 +8138,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             </div>
           )}
-
-          {editingExtra && dayRecord && (() => {
-            const closeSheet = () => setEditingExtra(null);
-            // Override detection (cascade-aware) for the 5 extras with dept defaults.
-            const dd = defaults;
-            const preCallOver = !!dd && !!dayRecord.preCallEnabled && (
-              !!dayRecord.preCallEnabled !== !!dd.preCallEnabled ||
-              (dayRecord.preCallTime && dayRecord.preCallTime !== dd.preCallTime)
-            );
-            const mileageOver = !!dd && (Number(dayRecord.miles) || 0) > 0 &&
-              (Number(dayRecord.miles) || 0) !== (Number(dd.miles) || 0);
-            const travelOver = !!dd && !!dayRecord.travelTimeEnabled && (
-              !!dayRecord.travelTimeEnabled !== !!dd.travelTimeEnabled ||
-              (Number(dayRecord.travelOutMins) || 0) !== (Number(dd.travelOutMins) || 0) ||
-              (Number(dayRecord.travelBackMins) || 0) !== (Number(dd.travelBackMins) || 0)
-            );
-            const perDiemOver = !!dd && !!dayRecord.perDiemEnabled && (
-              !!dayRecord.perDiemEnabled !== !!dd.perDiemEnabled ||
-              (Number(dayRecord.perDiemAmount) || 0) !== (Number(dd.perDiemAmount) || 0)
-            );
-            const expensesOver = !!dd && (dayRecord.expenses?.length ?? 0) > 0 && (
-              (dayRecord.expenses?.length ?? 0) !== (dd.expenses?.length ?? 0) ||
-              (dayRecord.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0) !==
-                (dd.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0)
-            );
-            const resetFields = (...fields) => {
-              setProduction(p => ({
-                ...p,
-                days: p.days.map(d => {
-                  if (d.id !== dayRecord.id) return d;
-                  const cleared = { ...d };
-                  for (const f of fields) {
-                    if (typeof cleared[f] === 'boolean') cleared[f] = false;
-                    else if (typeof cleared[f] === 'number') cleared[f] = 0;
-                    else if (Array.isArray(cleared[f])) cleared[f] = [];
-                    else cleared[f] = '';
-                  }
-                  return cleared;
-                }),
-              }));
-              closeSheet();
-            };
-            const sheetShell = (title, body, opts = {}) => (
-              <div className="fixed inset-0 z-50 flex items-end" onClick={closeSheet} style={{ background: 'rgba(0,0,0,0.5)' }}>
-                <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5 max-h-[85vh] overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-                  <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
-                  <div className="text-base font-bold text-neutral-100 mb-3">{title}</div>
-                  {body}
-                  {opts.onReset && (
-                    <button type="button" onClick={opts.onReset} className="w-full mt-3 px-4 py-2.5 rounded-xl bg-fuchsia-400/10 hover:bg-fuchsia-400/15 border border-fuchsia-400/30 text-fuchsia-400 text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      Reset to default
-                    </button>
-                  )}
-                  <button type="button" onClick={closeSheet} className="w-full mt-2 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>Done</button>
-                </div>
-              </div>
-            );
-
-            const ToggleRow = ({ label, value, onChange, ariaLabel }) => (
-              <div className="flex items-center justify-between mb-3 px-1">
-                <span className="text-sm text-neutral-300">{label}</span>
-                <Toggle value={value} onChange={onChange} ariaLabel={ariaLabel}/>
-              </div>
-            );
-            const numInput = (val, onChange, opts = {}) => (
-              <input
-                type="number"
-                min={opts.min ?? "0"}
-                step={opts.step ?? "0.01"}
-                inputMode={opts.inputMode || 'decimal'}
-                value={val ?? 0}
-                onChange={onChange}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
-              />
-            );
-
-            if (editingExtra === 'preCall') {
-              return sheetShell('Pre-call', (
-                <>
-                  <ToggleRow label="Pre-call active" value={!!dayRecord.preCallEnabled} onChange={(v) => updateField('preCallEnabled', v)} ariaLabel="Toggle pre-call"/>
-                  {dayRecord.preCallEnabled && (
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
-                      <input
-                        type="time"
-                        value={dayRecord.preCallTime || ''}
-                        onChange={(e) => updateField('preCallTime', e.target.value)}
-                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
-                        style={{ WebkitAppearance: 'none' }}
-                      />
-                      <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Lunch and CWD still measured from main call time.</div>
-                    </div>
-                  )}
-                </>
-              ), preCallOver ? { onReset: () => resetFields('preCallEnabled', 'preCallTime') } : undefined);
-            }
-
-            if (editingExtra === 'kit') {
-              return sheetShell('Kit money', (
-                <>
-                  <ToggleRow label="Kit money active" value={!!dayRecord.kitMoneyEnabled} onChange={(v) => updateField('kitMoneyEnabled', v)} ariaLabel="Toggle kit money"/>
-                  {dayRecord.kitMoneyEnabled && (
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                      {numInput(dayRecord.kitMoneyAmount, (e) => updateField('kitMoneyAmount', Number(e.target.value) || 0))}
-                    </div>
-                  )}
-                </>
-              ));
-            }
-
-            if (editingExtra === 'perDiem') {
-              return sheetShell('Per diem', (
-                <>
-                  <ToggleRow label="Per diem active" value={!!dayRecord.perDiemEnabled} onChange={(v) => updateField('perDiemEnabled', v)} ariaLabel="Toggle per diem"/>
-                  {dayRecord.perDiemEnabled && (
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                      {numInput(dayRecord.perDiemAmount, (e) => updateField('perDiemAmount', Number(e.target.value) || 0))}
-                    </div>
-                  )}
-                </>
-              ), perDiemOver ? { onReset: () => resetFields('perDiemEnabled', 'perDiemAmount') } : undefined);
-            }
-
-            if (editingExtra === 'mileage') {
-              return sheetShell('Mileage', (
-                <>
-                  <ToggleRow label="Mileage active" value={dayRecord.mileageEnabled !== undefined ? !!dayRecord.mileageEnabled : Number(dayRecord.miles) > 0} onChange={(v) => {
-                    if (v) updateField('mileageEnabled', true);
-                    else setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, mileageEnabled: false, miles: 0, mileagePostcode: '' } : d) }));
-                  }} ariaLabel="Toggle mileage"/>
-                  {(dayRecord.mileageEnabled !== undefined ? !!dayRecord.mileageEnabled : Number(dayRecord.miles) > 0) && (
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Miles</div>
-                      {numInput(dayRecord.miles, (e) => updateField('miles', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
-                      <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Paid at 0.5×BHR per mile outside M25.</div>
-                    </div>
-                  )}
-                </>
-              ), mileageOver ? { onReset: () => resetFields('mileageEnabled', 'miles', 'mileagePostcode') } : undefined);
-            }
-
-            if (editingExtra === 'travel') {
-              const travelActive = dayRecord.travelTimeEnabled !== undefined
-                ? !!dayRecord.travelTimeEnabled
-                : (Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0);
-              return sheetShell('Travel time', (
-                <>
-                  <ToggleRow label="Travel time active" value={travelActive} onChange={(v) => {
-                    if (v) updateField('travelTimeEnabled', true);
-                    else setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 } : d) }));
-                  }} ariaLabel="Toggle travel time"/>
-                  {travelActive && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
-                        {numInput(dayRecord.travelOutMins, (e) => updateField('travelOutMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
-                        {numInput(dayRecord.travelBackMins, (e) => updateField('travelBackMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
-                      </div>
-                    </div>
-                  )}
-                </>
-              ), travelOver ? { onReset: () => resetFields('travelTimeEnabled', 'travelOutMins', 'travelBackMins') } : undefined);
-            }
-
-            if (editingExtra === 'stepUp') {
-              return sheetShell('Step-up', (
-                <>
-                  <ToggleRow label="Step-up active" value={!!dayRecord.stepUpEnabled} onChange={(v) => updateField('stepUpEnabled', v)} ariaLabel="Toggle step-up"/>
-                  {dayRecord.stepUpEnabled && (
-                    <div className="space-y-3">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
-                        <select
-                          value={dayRecord.stepUpRole || ''}
-                          onChange={(e) => {
-                            const role = e.target.value;
-                            const d = ROLE_DEFAULTS[role] || {};
-                            setProduction(p => ({
-                              ...p,
-                              days: p.days.map(rec => rec.id === dayRecord.id ? {
-                                ...rec,
-                                stepUpRole: role,
-                                stepUpBDR: d.bdr ?? rec.stepUpBDR,
-                                stepUpOTCoef: d.otCoef ?? rec.stepUpOTCoef,
-                                stepUpOTRate: d.otRate ?? null,
-                              } : rec)
-                            }));
-                          }}
-                          className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
-                        >
-                          <option value="">— Select role —</option>
-                          {Object.entries(DEPARTMENTS).map(([dept, roles]) => (
-                            <optgroup key={dept} label={dept}>
-                              {Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}
-                            </optgroup>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up BDR (£)</div>
-                          {numInput(dayRecord.stepUpBDR, (e) => updateField('stepUpBDR', Number(e.target.value) || 0))}
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up OT</div>
-                          <select
-                            value={String(dayRecord.stepUpOTCoef ?? 1)}
-                            onChange={(e) => updateField('stepUpOTCoef', Number(e.target.value))}
-                            className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
-                          >
-                            <option value="1">1×</option>
-                            <option value="1.25">1.25×</option>
-                            <option value="1.5">1.5×</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ));
-            }
-
-            if (editingExtra === 'expenses') {
-              const expenses = dayRecord.expenses || [];
-              const addExpense = () => setProduction(p => ({
-                ...p,
-                days: p.days.map(d => d.id === dayRecord.id ? {
-                  ...d,
-                  expensesEnabled: true,
-                  expenses: [...(d.expenses || []), { id: uid(), amount: 0, category: 'Other', description: '' }],
-                } : d),
-              }));
-              const updateExp = (expId, patch) => setProduction(p => ({
-                ...p,
-                days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: (d.expenses || []).map(x => x.id === expId ? { ...x, ...patch } : x) } : d),
-              }));
-              const removeExp = (expId) => setProduction(p => ({
-                ...p,
-                days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: (d.expenses || []).filter(x => x.id !== expId) } : d),
-              }));
-              return sheetShell('Expenses', (
-                <>
-                  <button
-                    type="button"
-                    onClick={addExpense}
-                    className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  ><IPlus size={11}/>Add expense</button>
-                  {expenses.length === 0 ? (
-                    <div className="text-[11px] text-neutral-500 italic">No expenses yet — tap Add expense.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {expenses.map(exp => (
-                        <div key={exp.id} className="flex flex-wrap items-center gap-2">
-                          <select
-                            value={exp.category}
-                            onChange={(e) => updateExp(exp.id, { category: e.target.value })}
-                            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"
-                            style={{ width: 116 }}
-                          >
-                            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                          <input
-                            type="number" min="0" step="0.01" inputMode="decimal"
-                            value={exp.amount}
-                            onChange={(e) => updateExp(exp.id, { amount: Number(e.target.value) || 0 })}
-                            placeholder="0.00"
-                            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
-                            style={{ width: 84 }}
-                          />
-                          <input
-                            type="text"
-                            value={exp.description}
-                            onChange={(e) => updateExp(exp.id, { description: e.target.value })}
-                            placeholder="Description"
-                            className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeExp(exp.id)}
-                            className="text-neutral-600 hover:text-tm-pen transition-colors p-1"
-                            aria-label="Remove expense"
-                            style={{ WebkitTapHighlightColor: 'transparent' }}
-                          ><IX size={14}/></button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ), expensesOver ? { onReset: () => resetFields('expensesEnabled', 'expenses') } : undefined);
-            }
-
-            if (editingExtra === 'secondBreak') {
-              return sheetShell('2nd break', (
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Start</div>
-                    <input
-                      type="time"
-                      value={dayRecord.secondBreakStartTime || ''}
-                      onChange={(e) => updateField('secondBreakStartTime', e.target.value)}
-                      disabled={Number(dayRecord.secondBreakDurationMins) === 0}
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500 disabled:opacity-50"
-                      style={{ WebkitAppearance: 'none' }}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Duration</div>
-                    <select
-                      value={Number(dayRecord.secondBreakDurationMins ?? 30)}
-                      onChange={(e) => updateField('secondBreakDurationMins', Number(e.target.value))}
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
-                    >
-                      {SECOND_BREAK_DURATIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-              ));
-            }
-
-            return null;
-          })()}
 
           {showCrewActions && (
             <CrewActionSheet
