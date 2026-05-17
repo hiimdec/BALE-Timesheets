@@ -4624,11 +4624,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         setSecondBreakExpanded(false);
       }, [v.id]);
       const noteHasText = !!(v.note && v.note.trim());
-      const notesActive = notesOpen || noteHasText;
-      const toggleNotes = () => {
-        if (notesActive) { setNotesOpen(false); set({ note: "" }); }
-        else { setNotesOpen(true); }
-      };
+      // V4-5h-10b: tap toggles expansion only — never clears note text.
+      const toggleNotes = () => setNotesOpen(o => !o);
 
       // 2nd-break chip status suffix — drives the chip's trailing " — STATE" text.
       const sbSuffix = !bs ? ""
@@ -4638,9 +4635,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : bs.sbState === "given"     ? " — ✓"
         : "";
 
-      // V4-5h-10: *Enabled flags dropped — value presence drives activation.
-      // Section visibility = `expandedChips.has(key) || *Set`. Chip click toggles
-      // expansion (transient UI state); SectionCard onClose clears values.
+      // V4-5h-10b: Value presence drives activation. Chip tap toggles panel
+      // expansion only — never clears values. To deactivate, clear values in
+      // the panel (0, empty, or "— None —"). Visual treatment mirrors BB's
+      // ExtraChip: solid border, sky tint when set, value summary inline.
       const stepUpSet     = !!v.stepUpRole;
       const kitMoneySet   = (Number(v.kitMoneyAmount) || 0) > 0;
       const perDiemSet    = (Number(v.perDiemAmount) || 0) > 0;
@@ -4649,49 +4647,39 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const travelTimeSet = Number(v.travelOutMins) > 0 || Number(v.travelBackMins) > 0;
       const expensesSet   = (v.expenses || []).length > 0;
       const [expandedChips, setExpandedChips] = useState(() => new Set());
-      // Active = visible/expanded for editing. True if value present OR user expanded.
-      const stepUpActive     = stepUpSet     || expandedChips.has("stepUp");
-      const kitMoneyActive   = kitMoneySet   || expandedChips.has("kitMoney");
-      const perDiemActive    = perDiemSet    || expandedChips.has("perDiem");
-      const preCallActive    = preCallSet    || expandedChips.has("preCall");
-      const mileageActive    = mileageSet    || expandedChips.has("mileage");
-      const travelTimeActive = travelTimeSet || expandedChips.has("travelTime");
-      const expensesActive   = expensesSet   || expandedChips.has("expenses");
+      // V4-5h-10b: panel visibility is pure expansion state (matches BB).
+      // Chip tint reflects value-presence (*Set); panel open/closed is independent.
+      const stepUpActive     = expandedChips.has("stepUp");
+      const kitMoneyActive   = expandedChips.has("kitMoney");
+      const perDiemActive    = expandedChips.has("perDiem");
+      const preCallActive    = expandedChips.has("preCall");
+      const mileageActive    = expandedChips.has("mileage");
+      const travelTimeActive = expandedChips.has("travelTime");
+      const expensesActive   = expandedChips.has("expenses");
 
       const toggleChip = (key) => {
-        const setMap = {
-          stepUp: stepUpSet, kitMoney: kitMoneySet, perDiem: perDiemSet,
-          preCall: preCallSet, mileage: mileageSet, travelTime: travelTimeSet, expenses: expensesSet,
-        };
-        const clearMap = {
-          stepUp: { stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1, stepUpOTRate: null },
-          kitMoney: { kitMoneyAmount: 0 },
-          perDiem: { perDiemAmount: 0 },
-          preCall: { preCallTime: "", truckCallTime: "" },
-          mileage: { miles: 0, mileagePostcode: "" },
-          travelTime: { travelOutMins: 0, travelBackMins: 0 },
-          expenses: { expenses: [] },
-        };
-        if (setMap[key]) {
-          // Active via value-presence → clear values (deactivates).
-          set(clearMap[key]);
-          setExpandedChips(prev => { const n = new Set(prev); n.delete(key); return n; });
-        } else {
-          // Empty → toggle expansion to reveal/hide editor.
-          setExpandedChips(prev => {
-            const n = new Set(prev);
-            if (n.has(key)) n.delete(key); else n.add(key);
-            return n;
-          });
-        }
+        setExpandedChips(prev => {
+          const n = new Set(prev);
+          if (n.has(key)) n.delete(key); else n.add(key);
+          return n;
+        });
       };
 
-      const chipCls = (active) => `rounded-full px-3 py-1.5 text-xs font-medium inline-flex items-center gap-1 transition-colors active:scale-95 ${active
-        ? "bg-sky-500/10 border border-solid border-sky-500 text-sky-500"
-        : "bg-neutral-900 border border-dashed border-neutral-600 text-neutral-400 hover:bg-neutral-800"}`;
-      const renderChip = (key, label, active) => (
-        <button type="button" onClick={() => toggleChip(key)} className={chipCls(active)}>
-          {label}{active && <span aria-hidden="true">×</span>}
+      const renderChip = (key, label, isSet, summary) => (
+        <button
+          type="button"
+          onClick={() => toggleChip(key)}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+            isSet
+              ? 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]'
+              : 'bg-tm-card-2 border-neutral-800 text-neutral-500 hover:border-neutral-700 hover:text-neutral-400'
+          }`}
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+        >
+          <span className={isSet ? '' : 'uppercase tracking-wider'}>{label}</span>
+          {isSet && summary && (
+            <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{summary}</span>
+          )}
         </button>
       );
 
@@ -4930,21 +4918,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <IChevronDown size={11} strokeWidth={2.5} className={`opacity-60 transition-transform ${secondBreakExpanded ? 'rotate-180' : ''}`} />
                 </button>
               )}
-              {renderChip("stepUp",     "Step-up",     stepUpActive)}
-              {!isTravelDay && renderChip("preCall", "Pre-call", preCallActive)}
-              {renderChip("mileage",    "Mileage",     mileageActive)}
-              {renderChip("kitMoney",   "Kit money",   kitMoneyActive)}
-              {!isTravelDay && renderChip("travelTime", "Travel time", travelTimeActive)}
-              {renderChip("perDiem",    "Per diem",    perDiemActive)}
-              {renderChip("expenses",   "Expenses",    expensesActive)}
+              {(() => {
+                const travelTotalMins = (Number(v.travelOutMins) || 0) + (Number(v.travelBackMins) || 0);
+                const fmtMins = (m) => {
+                  const h = Math.floor(m / 60), mm = m % 60;
+                  return h > 0 ? (mm > 0 ? `${h}h ${mm}m` : `${h}h`) : `${mm}m`;
+                };
+                const stepUpSummary     = stepUpSet     ? v.stepUpRole : null;
+                const preCallSummary    = preCallSet    ? (v.preCallTime || v.truckCallTime) : null;
+                const mileageSummary    = mileageSet    ? (Number(v.miles) > 0 ? `${Number(v.miles)} mi` : v.mileagePostcode) : null;
+                const kitMoneySummary   = kitMoneySet   ? fmtGBP(v.kitMoneyAmount) : null;
+                const travelTimeSummary = travelTimeSet ? fmtMins(travelTotalMins) : null;
+                const perDiemSummary    = perDiemSet    ? fmtGBP(v.perDiemAmount) : null;
+                const expensesSummary   = expensesSet   ? `${(v.expenses || []).length}` : null;
+                return (<>
+                  {renderChip("stepUp",     "Step-up",     stepUpSet,     stepUpSummary)}
+                  {!isTravelDay && renderChip("preCall", "Pre-call", preCallSet, preCallSummary)}
+                  {renderChip("mileage",    "Mileage",     mileageSet,    mileageSummary)}
+                  {renderChip("kitMoney",   "Kit money",   kitMoneySet,   kitMoneySummary)}
+                  {!isTravelDay && renderChip("travelTime", "Travel time", travelTimeSet, travelTimeSummary)}
+                  {renderChip("perDiem",    "Per diem",    perDiemSet,    perDiemSummary)}
+                  {renderChip("expenses",   "Expenses",    expensesSet,   expensesSummary)}
+                </>);
+              })()}
               <button
                 type="button"
                 onClick={toggleNotes}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium inline-flex items-center gap-1 transition-colors active:scale-95 ${notesActive
-                  ? "bg-sky-500/10 border border-solid border-sky-500 text-sky-500"
-                  : "bg-neutral-900 border border-dashed border-neutral-600 text-neutral-400 hover:bg-neutral-800"}`}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                  noteHasText
+                    ? 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]'
+                    : 'bg-tm-card-2 border-neutral-800 text-neutral-500 hover:border-neutral-700 hover:text-neutral-400'
+                }`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
               >
-                Notes{notesActive && <span aria-hidden="true">×</span>}
+                <span className={noteHasText ? '' : 'uppercase tracking-wider'}>Notes</span>
               </button>
             </div>
           </div>
@@ -5116,8 +5123,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           )}
 
           {/* ── Notes (chip-gated) ── */}
-          {notesActive && (
-            <SectionCard variant="condition" title="Notes" onClose={() => { setNotesOpen(false); set({ note: "" }); }}>
+          {notesOpen && (
+            <SectionCard variant="condition" title="Notes" onClose={() => setNotesOpen(false)}>
               <textarea
                 value={v.note || ""}
                 onChange={(e) => set({ note: e.target.value })}
