@@ -698,7 +698,10 @@
     // Extras use empty-ish cascade semantic (mirroring resolveDay): an "override" means
     // the day record has a non-empty value AND it differs from default.
     function getCrewVariances({ dayRecord, defaults }) {
-      if (!dayRecord || dayRecord.dayType === 'Rest Day' || !defaults) return [];
+      if (!dayRecord || !defaults) return [];
+      // V4-5h-11: respect cascade for Rest Day detection.
+      const effectiveDayType = dayRecord.dayType ?? defaults.dayType;
+      if (effectiveDayType === 'Rest Day') return [];
       const variances = [];
       if (dayRecord.callTime && dayRecord.callTime !== defaults.callTime) {
         variances.push({ kind: 'override', label: 'CALL', detail: `${dayRecord.callTime} · default ${defaults.callTime}` });
@@ -869,10 +872,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const defaultDay = production.defaultDay ?? {};
       const dateDefaults = production.dayDefaults?.[day.date] ?? {};
       const merged = { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...day };
-      // Per-date dayDefaults cascade for the 5 mobile-mode extras. Empty-ish day value
-      // (false/0/empty) falls back to the dept-default. Explicit non-empty day values
-      // are overrides and win. Time fields (callTime etc.) intentionally don't cascade
-      // here — they propagate only via the "Apply to N crew" UI in mobile mode.
+      // V4-5h-11: time fields (call/wrap/lunchStart/lunchDur/dayType) cascade from
+      // dayDefaults when the day record's field is undefined. Explicit values are
+      // overrides (variances). The "Apply to N crew" chip is gone — cascade is automatic.
+      if (day.callTime === undefined && dateDefaults.callTime !== undefined) merged.callTime = dateDefaults.callTime;
+      if (day.wrapTime === undefined && dateDefaults.wrapTime !== undefined) merged.wrapTime = dateDefaults.wrapTime;
+      if (day.lunchStartTime === undefined && dateDefaults.lunchStartTime !== undefined) merged.lunchStartTime = dateDefaults.lunchStartTime;
+      if (day.lunchDurationMins === undefined && dateDefaults.lunchDurationMins !== undefined) merged.lunchDurationMins = dateDefaults.lunchDurationMins;
+      if (day.dayType === undefined && dateDefaults.dayType !== undefined) merged.dayType = dateDefaults.dayType;
       // Value-presence cascade (V4-5h-10): empty day value falls back to dept default.
       if (!day.preCallTime && dateDefaults.preCallTime) {
         merged.preCallTime = dateDefaults.preCallTime;
@@ -1397,6 +1404,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // (when crew.kitMoneyEnabled with crew.kitMoneyAmount > 0). No backfill needed.
       const days = p.days || [];
 
+      // V4-5h-11: collapse explicit-matching time fields to undefined so cascade fires.
+      // Idempotent — records already at undefined stay undefined; records with a value
+      // differing from default keep that explicit value (variance).
+      const TIME_CASCADE_FIELDS = ['callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins', 'dayType'];
+      for (const day of days) {
+        const dd = p.dayDefaults?.[day.date];
+        if (!dd) continue;
+        for (const field of TIME_CASCADE_FIELDS) {
+          if (day[field] !== undefined && day[field] === dd[field]) {
+            delete day[field];
+          }
+        }
+      }
+
       // dayDefaults backfill: derive from existing crew records per date. Idempotent.
       const backfilledDefaults = { ...(p.dayDefaults || {}) };
       const uniqueDates = [...new Set(days.map(d => d.date))];
@@ -1868,22 +1889,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
-    function applyDayDefaultsToAllCrew(production, date) {
-      const defaults = getDayDefaults(production, date);
-      if (!defaults) return production;
-      const newDays = (production.days || []).map(d => {
-        if (d.date !== date) return d;
-        return {
-          ...d,
-          callTime: defaults.callTime,
-          wrapTime: defaults.wrapTime,
-          lunchStartTime: defaults.lunchStartTime,
-          lunchDurationMins: defaults.lunchDurationMins,
-          dayType: defaults.dayType,
-        };
-      });
-      return { ...production, days: newDays };
-    }
+    // V4-5h-11: applyDayDefaultsToAllCrew removed. Time-field cascade now happens
+    // automatically via resolveDay when day record field is undefined. Editing a
+    // dept-default time field flows through to non-overriding crew with no manual apply.
 
     function calcForDisplay(production, day, crewMember, prevDay = null) {
       const resolved = resolveDay(production, day, crewMember);
@@ -6367,7 +6375,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Not on this day', dayRecord: null };
           }
 
-          if (dayRecord.dayType === 'Rest Day') {
+          // V4-5h-11: respect cascade — explicit override wins, else inherit dept default.
+          const effectiveDayType = dayRecord.dayType ?? production.dayDefaults?.[currentDate]?.dayType;
+          if (effectiveDayType === 'Rest Day') {
             return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Rest Day', dayRecord };
           }
 
@@ -6501,20 +6511,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const otThreshold = production.isElevenHourDay ? 11 : 10;
         return workHrs > otThreshold;
       })();
-
-      const hasUnpropagatedDefaults = useMemo(() => {
-        const defs = getDayDefaults(production, currentDate);
-        if (!defs) return false;
-        const records = (production.days || []).filter(d => d.date === currentDate);
-        if (records.length === 0) return false;
-        return records.some(r =>
-          r.callTime !== defs.callTime ||
-          r.wrapTime !== defs.wrapTime ||
-          r.lunchStartTime !== defs.lunchStartTime ||
-          r.lunchDurationMins !== defs.lunchDurationMins ||
-          r.dayType !== defs.dayType
-        );
-      }, [production.dayDefaults, production.days, currentDate]);
 
       const currentIdx = sortedDates.indexOf(currentDate);
       const dayNumber = currentIdx >= 0 ? currentIdx + 1 : null;
@@ -6914,33 +6910,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             );
           })()}
 
-          {hasUnpropagatedDefaults ? (
-            <div className="px-4 -mt-1 mb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  if (typeof onPushUndo === 'function') onPushUndo('Apply defaults');
-                  setProduction(p => applyDayDefaultsToAllCrew(p, currentDate));
-                }}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-sky-500/40 bg-sky-500/[0.06] hover:bg-sky-500/[0.1] transition-colors flex items-center justify-between gap-3 text-left"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgba(14,165,233,0.6)' }}/>
-                  <span className="text-[11px] uppercase tracking-[0.14em] font-bold text-sky-400 truncate">Defaults changed</span>
-                </div>
-                <span className="text-[11px] uppercase tracking-wider font-bold text-sky-400 flex-shrink-0 flex items-center gap-1">
-                  Apply to {recordsForDate.length} crew
-                  <span>→</span>
-                </span>
-              </button>
-            </div>
-          ) : (
-            <div className="px-4 -mt-0.5 mb-4 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgba(14,165,233,0.6)' }}/>
-              APPLIES TO ALL UNLESS OVERRIDDEN BELOW
-            </div>
-          )}
+          <div className="px-4 -mt-0.5 mb-4 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgba(14,165,233,0.6)' }}/>
+            APPLIES TO ALL UNLESS OVERRIDDEN BELOW
+          </div>
 
           {dayConditions.length > 0 && (
             <>
@@ -7169,8 +7142,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function TimeCardWithOverride({ label, value, defaultValue, isOverInOT, onChange, onResetToDefault }) {
-      const isOverridden = defaultValue !== undefined && defaultValue !== null && value !== defaultValue;
+    function TimeCardWithOverride({ label, value, defaultValue, isOverridden: isOverriddenProp, isOverInOT, onChange, onResetToDefault }) {
+      // Backward-compat: when isOverridden prop not passed, derive from value vs default.
+      const isOverridden = isOverriddenProp !== undefined
+        ? isOverriddenProp
+        : (defaultValue !== undefined && defaultValue !== null && value !== defaultValue);
       const cardCls = isOverInOT
         ? 'bg-tm-warn/[0.08] border-tm-warn/45'
         : 'bg-neutral-900 border-neutral-800';
@@ -7205,9 +7181,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function LunchCardWithOverride({ startValue, durValue, defaultStart, defaultDur, onResetStart, onResetDur, onTapEdit, isLunchLate, lateMinutes, isCurtailed, curtailedMinutes }) {
-      const startOverridden = defaultStart != null && startValue !== defaultStart;
-      const durOverridden = defaultDur != null && durValue !== defaultDur;
+    function LunchCardWithOverride({ startValue, durValue, defaultStart, defaultDur, startOverridden: startOverProp, durOverridden: durOverProp, onResetStart, onResetDur, onTapEdit, isLunchLate, lateMinutes, isCurtailed, curtailedMinutes }) {
+      const startOverridden = startOverProp !== undefined ? startOverProp : (defaultStart != null && startValue !== defaultStart);
+      const durOverridden = durOverProp !== undefined ? durOverProp : (defaultDur != null && durValue !== defaultDur);
       const anyOverridden = startOverridden || durOverridden;
       const lunchEnd = startValue ? addMinutesToTime(startValue, durValue || 60) : '';
       const tappable = typeof onTapEdit === 'function';
@@ -7258,8 +7234,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function DayTypeRow({ value, defaultValue, onChange, onResetToDefault }) {
-      const isOverridden = defaultValue != null && value !== defaultValue;
+    function DayTypeRow({ value, defaultValue, isOverridden: isOverProp, onChange, onResetToDefault }) {
+      const isOverridden = isOverProp !== undefined ? isOverProp : (defaultValue != null && value !== defaultValue);
       const editable = typeof onChange === 'function';
       return (
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 flex items-center gap-2 mt-2">
@@ -7626,12 +7602,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const anyTimeOverridden = ['callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins', 'dayType'].some(isOverridden);
 
       const resetField = (field) => {
-        if (!defaults || !dayRecord) return;
+        if (!dayRecord) return;
+        // V4-5h-11: reset to undefined → cascade from dayDefaults resumes via resolveDay.
         setProduction(p => ({
           ...p,
-          days: p.days.map(d =>
-            d.id === dayRecord.id ? { ...d, [field]: defaults[field] } : d
-          )
+          days: p.days.map(d => {
+            if (d.id !== dayRecord.id) return d;
+            const next = { ...d };
+            delete next[field];
+            return next;
+          })
+        }));
+      };
+
+      // V4-5h-11: time-field writes auto-collapse to undefined when matching dept default.
+      const updateTimeField = (field, value) => {
+        if (!dayRecord) return;
+        const matchesDefault = defaults && value === defaults[field];
+        setProduction(p => ({
+          ...p,
+          days: p.days.map(d => {
+            if (d.id !== dayRecord.id) return d;
+            if (matchesDefault) {
+              const next = { ...d };
+              delete next[field];
+              return next;
+            }
+            return { ...d, [field]: value };
+          })
         }));
       };
 
@@ -7728,17 +7726,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="grid grid-cols-2 gap-2">
                   <TimeCardWithOverride
                     label="CALL"
-                    value={dayRecord.callTime}
+                    value={dayRecord.callTime ?? defaults?.callTime ?? ''}
                     defaultValue={defaults?.callTime}
-                    onChange={(v) => updateField('callTime', v)}
+                    isOverridden={dayRecord.callTime !== undefined && dayRecord.callTime !== defaults?.callTime}
+                    onChange={(v) => updateTimeField('callTime', v)}
                     onResetToDefault={() => resetField('callTime')}
                   />
                   <TimeCardWithOverride
                     label="WRAP"
-                    value={dayRecord.wrapTime}
+                    value={dayRecord.wrapTime ?? defaults?.wrapTime ?? ''}
                     defaultValue={defaults?.wrapTime}
+                    isOverridden={dayRecord.wrapTime !== undefined && dayRecord.wrapTime !== defaults?.wrapTime}
                     isOverInOT={(calc?.meta?.otHrs || 0) > 0}
-                    onChange={(v) => updateField('wrapTime', v)}
+                    onChange={(v) => updateTimeField('wrapTime', v)}
                     onResetToDefault={() => resetField('wrapTime')}
                   />
                 </div>
@@ -7756,10 +7756,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   const curtailedMinutes = isCurtailed ? (60 - dur) : 0;
                   return (
                     <LunchCardWithOverride
-                      startValue={dayRecord.lunchStartTime}
-                      durValue={dayRecord.lunchDurationMins}
+                      startValue={dayRecord.lunchStartTime ?? defaults?.lunchStartTime ?? ''}
+                      durValue={dayRecord.lunchDurationMins ?? defaults?.lunchDurationMins ?? 0}
                       defaultStart={defaults?.lunchStartTime}
                       defaultDur={defaults?.lunchDurationMins}
+                      startOverridden={dayRecord.lunchStartTime !== undefined && dayRecord.lunchStartTime !== defaults?.lunchStartTime}
+                      durOverridden={dayRecord.lunchDurationMins !== undefined && dayRecord.lunchDurationMins !== defaults?.lunchDurationMins}
                       onResetStart={() => resetField('lunchStartTime')}
                       onResetDur={() => resetField('lunchDurationMins')}
                       onTapEdit={() => setShowLunchEdit(true)}
@@ -7772,9 +7774,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 })()}
 
                 <DayTypeRow
-                  value={dayRecord.dayType}
+                  value={dayRecord.dayType ?? defaults?.dayType ?? ''}
                   defaultValue={defaults?.dayType}
-                  onChange={(v) => updateField('dayType', v)}
+                  isOverridden={dayRecord.dayType !== undefined && dayRecord.dayType !== defaults?.dayType}
+                  onChange={(v) => updateTimeField('dayType', v)}
                   onResetToDefault={() => resetField('dayType')}
                 />
 
@@ -8124,8 +8127,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Start</div>
                     <input
                       type="time"
-                      value={dayRecord.lunchStartTime || ''}
-                      onChange={(e) => updateField('lunchStartTime', e.target.value)}
+                      value={dayRecord.lunchStartTime ?? defaults?.lunchStartTime ?? ''}
+                      onChange={(e) => updateTimeField('lunchStartTime', e.target.value)}
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
                       style={{ WebkitAppearance: 'none' }}
                     />
@@ -8136,8 +8139,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       type="number"
                       min="0"
                       step="15"
-                      value={dayRecord.lunchDurationMins || 0}
-                      onChange={(e) => updateField('lunchDurationMins', Number(e.target.value) || 0)}
+                      value={dayRecord.lunchDurationMins ?? defaults?.lunchDurationMins ?? 0}
+                      onChange={(e) => updateTimeField('lunchDurationMins', Number(e.target.value) || 0)}
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
                     />
                   </div>
