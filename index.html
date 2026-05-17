@@ -695,6 +695,8 @@
 
     // Per-crew variances against the day's defaults. Field-value overrides only —
     // OT, penalties, and TOC surface through the dayConditions pill row (V4-5c/d).
+    // Extras use empty-ish cascade semantic (mirroring resolveDay): an "override" means
+    // the day record has a non-empty value AND it differs from default.
     function getCrewVariances({ dayRecord, defaults }) {
       if (!dayRecord || dayRecord.dayType === 'Rest Day' || !defaults) return [];
       const variances = [];
@@ -712,6 +714,43 @@
       }
       if (dayRecord.dayType && dayRecord.dayType !== defaults.dayType) {
         variances.push({ kind: 'override', label: 'TYPE', detail: `${dayRecord.dayType} · default ${defaults.dayType}` });
+      }
+      // Extras overrides (cascade-aware: only fire when day has explicit value AND differs)
+      if (!!dayRecord.preCallEnabled && (!!dayRecord.preCallEnabled !== !!defaults.preCallEnabled || (dayRecord.preCallTime && dayRecord.preCallTime !== defaults.preCallTime))) {
+        const dv = dayRecord.preCallTime || 'on';
+        const xv = defaults.preCallEnabled ? (defaults.preCallTime || 'on') : 'off';
+        variances.push({ kind: 'override', label: 'PRE-CALL', detail: `${dv} · default ${xv}` });
+      }
+      const drMiles = Number(dayRecord.miles) || 0;
+      const ddMiles = Number(defaults.miles) || 0;
+      if (drMiles > 0 && drMiles !== ddMiles) {
+        variances.push({ kind: 'override', label: 'MILES', detail: `${drMiles}mi · default ${ddMiles}mi` });
+      }
+      if (!!dayRecord.travelTimeEnabled && (
+        !!dayRecord.travelTimeEnabled !== !!defaults.travelTimeEnabled ||
+        ((Number(dayRecord.travelOutMins) || 0) !== (Number(defaults.travelOutMins) || 0)) ||
+        ((Number(dayRecord.travelBackMins) || 0) !== (Number(defaults.travelBackMins) || 0))
+      )) {
+        const dv = `${Number(dayRecord.travelOutMins) || 0}+${Number(dayRecord.travelBackMins) || 0}m`;
+        const xv = defaults.travelTimeEnabled ? `${Number(defaults.travelOutMins) || 0}+${Number(defaults.travelBackMins) || 0}m` : 'off';
+        variances.push({ kind: 'override', label: 'TRAVEL', detail: `${dv} · default ${xv}` });
+      }
+      const drPerDiem = Number(dayRecord.perDiemAmount) || 0;
+      const ddPerDiem = Number(defaults.perDiemAmount) || 0;
+      if (!!dayRecord.perDiemEnabled && (
+        !!dayRecord.perDiemEnabled !== !!defaults.perDiemEnabled ||
+        drPerDiem !== ddPerDiem
+      )) {
+        const dv = `£${drPerDiem}`;
+        const xv = defaults.perDiemEnabled ? `£${ddPerDiem}` : 'off';
+        variances.push({ kind: 'override', label: 'PER DIEM', detail: `${dv} · default ${xv}` });
+      }
+      const drExpTotal = (dayRecord.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const ddExpTotal = (defaults.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const drExpCount = (dayRecord.expenses || []).length;
+      const ddExpCount = (defaults.expenses || []).length;
+      if (drExpCount > 0 && (drExpCount !== ddExpCount || drExpTotal !== ddExpTotal)) {
+        variances.push({ kind: 'override', label: 'EXPENSES', detail: `£${drExpTotal} · default £${ddExpTotal}` });
       }
       return variances;
     }
@@ -830,7 +869,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function resolveDay(production, day, crew) {
       const defaultDay = production.defaultDay ?? {};
-      return { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...day };
+      const dateDefaults = production.dayDefaults?.[day.date] ?? {};
+      const merged = { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...day };
+      // Per-date dayDefaults cascade for the 5 mobile-mode extras. Empty-ish day value
+      // (false/0/empty) falls back to the dept-default. Explicit non-empty day values
+      // are overrides and win. Time fields (callTime etc.) intentionally don't cascade
+      // here — they propagate only via the "Apply to N crew" UI in mobile mode.
+      if (!day.preCallEnabled && dateDefaults.preCallEnabled) {
+        merged.preCallEnabled = true;
+        if (dateDefaults.preCallTime) merged.preCallTime = dateDefaults.preCallTime;
+      }
+      if ((Number(day.miles) || 0) === 0 && Number(dateDefaults.miles) > 0) {
+        merged.miles = dateDefaults.miles;
+      }
+      if (!day.travelTimeEnabled && dateDefaults.travelTimeEnabled) {
+        merged.travelTimeEnabled = true;
+        if ((Number(day.travelOutMins) || 0) === 0) merged.travelOutMins = dateDefaults.travelOutMins ?? 0;
+        if ((Number(day.travelBackMins) || 0) === 0) merged.travelBackMins = dateDefaults.travelBackMins ?? 0;
+      }
+      if (!day.perDiemEnabled && dateDefaults.perDiemEnabled) {
+        merged.perDiemEnabled = true;
+        if ((Number(day.perDiemAmount) || 0) === 0) merged.perDiemAmount = dateDefaults.perDiemAmount ?? 0;
+      }
+      if ((day.expenses?.length ?? 0) === 0 && (dateDefaults.expenses?.length ?? 0) > 0) {
+        merged.expenses = dateDefaults.expenses;
+      }
+      return merged;
     }
 
     const isPmpaRole = (crew) => ROLE_DEFAULTS[crew?.role]?.pmpa === true;
@@ -1324,6 +1388,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           dayType:           mostCommon('dayType') ?? DEFAULT_PRODUCTION_DAY.dayType,
         };
       }
+      // Round-5 extras backfill on dayDefaults — idempotent. Every dayDefaults entry
+      // gets the 5 mobile-mode extras fields (defaulted to off/empty).
+      for (const dateKey of Object.keys(backfilledDefaults)) {
+        const d = backfilledDefaults[dateKey];
+        d.preCallEnabled    = d.preCallEnabled    ?? false;
+        d.preCallTime       = d.preCallTime       ?? '';
+        d.miles             = d.miles             ?? 0;
+        d.travelTimeEnabled = d.travelTimeEnabled ?? false;
+        d.travelOutMins     = d.travelOutMins     ?? 0;
+        d.travelBackMins    = d.travelBackMins    ?? 0;
+        d.perDiemEnabled    = d.perDiemEnabled    ?? false;
+        d.perDiemAmount     = d.perDiemAmount     ?? 0;
+        d.expenses          = d.expenses          ?? [];
+      }
 
       return {
         ...p,
@@ -1709,6 +1787,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lunchStartTime: DEFAULT_PRODUCTION_DAY.lunchStartTime,
         lunchDurationMins: DEFAULT_PRODUCTION_DAY.lunchDurationMins,
         dayType: DEFAULT_PRODUCTION_DAY.dayType,
+        preCallEnabled: false, preCallTime: '',
+        miles: 0,
+        travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0,
+        perDiemEnabled: false, perDiemAmount: 0,
+        expenses: [],
       };
       const newDefaults = { ...existingDefaults, [field]: value };
 
@@ -6155,6 +6238,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [showLunchSheet, setShowLunchSheet] = useState(false);
       const [showAddCrew, setShowAddCrew] = useState(false);
       const [expandedVarianceCrewIds, setExpandedVarianceCrewIds] = useState(() => new Set());
+      const [editingDeptExtra, setEditingDeptExtra] = useState(null);
+
+      const updateDeptDefault = (field, value) => {
+        setProduction(p => setDayDefault(p, currentDate, field, value));
+      };
 
       const toggleVarianceExpanded = (crewId) => {
         setExpandedVarianceCrewIds(prev => {
@@ -6621,6 +6709,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             })()}
           </div>
 
+          {(() => {
+            const dd = production.dayDefaults?.[currentDate] || {};
+            const preCallSet = !!dd.preCallEnabled;
+            const mileageSet = (Number(dd.miles) || 0) > 0;
+            const travelSet = !!dd.travelTimeEnabled;
+            const perDiemSet = !!dd.perDiemEnabled;
+            const expensesSet = (dd.expenses?.length ?? 0) > 0;
+            const expensesTotalDD = (dd.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+            return (
+              <>
+                <div className="flex items-center gap-2 mt-2 mb-3 px-4">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">EXTRAS</span>
+                  <span className="flex-1 h-px bg-neutral-800/60"/>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-4 px-4">
+                  <ExtraChip label="Pre-call" isSet={preCallSet} summary={preCallSet ? (dd.preCallTime || 'on') : null} onTap={() => setEditingDeptExtra('preCall')}/>
+                  <ExtraChip label="Mileage" isSet={mileageSet} summary={mileageSet ? `${Number(dd.miles) || 0} mi` : null} onTap={() => setEditingDeptExtra('mileage')}/>
+                  <ExtraChip label="Travel" isSet={travelSet} summary={travelSet ? `${Number(dd.travelOutMins) || 0}+${Number(dd.travelBackMins) || 0}m` : null} onTap={() => setEditingDeptExtra('travel')}/>
+                  <ExtraChip label="Per diem" isSet={perDiemSet} summary={perDiemSet ? fmtGBP(Number(dd.perDiemAmount) || 0) : null} onTap={() => setEditingDeptExtra('perDiem')}/>
+                  <ExtraChip label="Expenses" isSet={expensesSet} summary={expensesSet ? fmtGBP(expensesTotalDD) : null} onTap={() => setEditingDeptExtra('expenses')}/>
+                </div>
+              </>
+            );
+          })()}
+
           {hasUnpropagatedDefaults ? (
             <div className="px-4 -mt-1 mb-4">
               <button
@@ -6850,23 +6963,140 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onSubmit={handleAddNewCrew}
             />
           )}
+
+          {editingDeptExtra && (() => {
+            const closeSheet = () => setEditingDeptExtra(null);
+            const dd = production.dayDefaults?.[currentDate] || {};
+            const sheetShell = (title, body) => (
+              <div className="fixed inset-0 z-50 flex items-end" onClick={closeSheet} style={{ background: 'rgba(0,0,0,0.5)' }}>
+                <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5 max-h-[85vh] overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+                  <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
+                  <div className="text-base font-bold text-neutral-100 mb-1">{title}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-3">Dept default</div>
+                  {body}
+                  <button type="button" onClick={closeSheet} className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>Done</button>
+                </div>
+              </div>
+            );
+            const ToggleRow = ({ label, value, onChange, ariaLabel }) => (
+              <div className="flex items-center justify-between mb-3 px-1">
+                <span className="text-sm text-neutral-300">{label}</span>
+                <Toggle value={value} onChange={onChange} ariaLabel={ariaLabel}/>
+              </div>
+            );
+
+            if (editingDeptExtra === 'preCall') {
+              return sheetShell('Pre-call', (
+                <>
+                  <ToggleRow label="Pre-call active" value={!!dd.preCallEnabled} onChange={(v) => updateDeptDefault('preCallEnabled', v)} ariaLabel="Toggle pre-call default"/>
+                  {dd.preCallEnabled && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
+                      <input type="time" value={dd.preCallTime || ''} onChange={(e) => updateDeptDefault('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
+                    </div>
+                  )}
+                </>
+              ));
+            }
+            if (editingDeptExtra === 'mileage') {
+              return sheetShell('Mileage', (
+                <>
+                  <ToggleRow label="Mileage applies" value={(Number(dd.miles) || 0) > 0} onChange={(v) => { if (!v) updateDeptDefault('miles', 0); }} ariaLabel="Toggle mileage default"/>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Miles</div>
+                    <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.miles) || 0} onChange={(e) => updateDeptDefault('miles', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                  </div>
+                </>
+              ));
+            }
+            if (editingDeptExtra === 'travel') {
+              return sheetShell('Travel time', (
+                <>
+                  <ToggleRow label="Travel time active" value={!!dd.travelTimeEnabled} onChange={(v) => {
+                    if (v) updateDeptDefault('travelTimeEnabled', true);
+                    else setProduction(p => {
+                      const ddNew = { ...(p.dayDefaults?.[currentDate] || {}), travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 };
+                      return { ...p, dayDefaults: { ...(p.dayDefaults || {}), [currentDate]: ddNew } };
+                    });
+                  }} ariaLabel="Toggle travel time default"/>
+                  {!!dd.travelTimeEnabled && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
+                        <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelOutMins) || 0} onChange={(e) => updateDeptDefault('travelOutMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
+                        <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelBackMins) || 0} onChange={(e) => updateDeptDefault('travelBackMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ));
+            }
+            if (editingDeptExtra === 'perDiem') {
+              return sheetShell('Per diem', (
+                <>
+                  <ToggleRow label="Per diem active" value={!!dd.perDiemEnabled} onChange={(v) => updateDeptDefault('perDiemEnabled', v)} ariaLabel="Toggle per diem default"/>
+                  {!!dd.perDiemEnabled && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                      <input type="number" min="0" step="0.01" inputMode="decimal" value={Number(dd.perDiemAmount) || 0} onChange={(e) => updateDeptDefault('perDiemAmount', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                    </div>
+                  )}
+                </>
+              ));
+            }
+            if (editingDeptExtra === 'expenses') {
+              const expenses = dd.expenses || [];
+              const addExp = () => updateDeptDefault('expenses', [...expenses, { id: uid(), amount: 0, category: 'Other', description: '' }]);
+              const upExp = (id, patch) => updateDeptDefault('expenses', expenses.map(x => x.id === id ? { ...x, ...patch } : x));
+              const rmExp = (id) => updateDeptDefault('expenses', expenses.filter(x => x.id !== id));
+              return sheetShell('Expenses', (
+                <>
+                  <button type="button" onClick={addExp} className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IPlus size={11}/>Add expense
+                  </button>
+                  {expenses.length === 0 ? (
+                    <div className="text-[11px] text-neutral-500 italic">No expenses yet — tap Add expense.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {expenses.map(exp => (
+                        <div key={exp.id} className="flex flex-wrap items-center gap-2">
+                          <select value={exp.category} onChange={(e) => upExp(exp.id, { category: e.target.value })} className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 116 }}>
+                            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <input type="number" min="0" step="0.01" inputMode="decimal" value={exp.amount} onChange={(e) => upExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
+                          <input type="text" value={exp.description} onChange={(e) => upExp(exp.id, { description: e.target.value })} placeholder="Description" className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                          <button type="button" onClick={() => rmExp(exp.id)} className="text-neutral-600 hover:text-tm-pen transition-colors p-1" aria-label="Remove expense" style={{ WebkitTapHighlightColor: 'transparent' }}><IX size={14}/></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ));
+            }
+            return null;
+          })()}
         </div>
       );
     }
 
-    function ExtraChip({ label, summary, isSet, onTap }) {
+    function ExtraChip({ label, summary, isSet, isOverridden, onTap }) {
       return (
         <button
           type="button"
           onClick={onTap}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
-            isSet
+            isOverridden
+              ? 'bg-fuchsia-400/[0.06] border-fuchsia-400/30 text-fuchsia-400 hover:bg-fuchsia-400/[0.1]'
+              : isSet
               ? 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]'
               : 'bg-tm-card-2 border-neutral-800 text-neutral-500 hover:border-neutral-700 hover:text-neutral-400'
           }`}
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
-          <span className={isSet ? '' : 'uppercase tracking-wider'}>{label}</span>
+          <span className={isSet || isOverridden ? '' : 'uppercase tracking-wider'}>{label}</span>
           {summary && (
             <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{summary}</span>
           )}
@@ -7480,6 +7710,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   const travelOut = Number(dayRecord.travelOutMins) || 0;
                   const travelBack = Number(dayRecord.travelBackMins) || 0;
 
+                  // Override detection vs dept defaults — empty-ish cascade (mirror resolveDay).
+                  const dd = defaults;
+                  const preCallOverridden = !!dd && !!dayRecord.preCallEnabled && (
+                    !!dayRecord.preCallEnabled !== !!dd.preCallEnabled ||
+                    (dayRecord.preCallTime && dayRecord.preCallTime !== dd.preCallTime)
+                  );
+                  const mileageOverridden = !!dd && (Number(dayRecord.miles) || 0) > 0 && (Number(dayRecord.miles) || 0) !== (Number(dd.miles) || 0);
+                  const travelOverridden = !!dd && !!dayRecord.travelTimeEnabled && (
+                    !!dayRecord.travelTimeEnabled !== !!dd.travelTimeEnabled ||
+                    travelOut !== (Number(dd.travelOutMins) || 0) ||
+                    travelBack !== (Number(dd.travelBackMins) || 0)
+                  );
+                  const perDiemOverridden = !!dd && !!dayRecord.perDiemEnabled && (
+                    !!dayRecord.perDiemEnabled !== !!dd.perDiemEnabled ||
+                    (Number(dayRecord.perDiemAmount) || 0) !== (Number(dd.perDiemAmount) || 0)
+                  );
+                  const expensesOverridden = !!dd && (dayRecord.expenses?.length ?? 0) > 0 && (
+                    (dayRecord.expenses?.length ?? 0) !== (dd.expenses?.length ?? 0) ||
+                    expensesTotal !== (dd.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0)
+                  );
+
                   return (
                     <>
                       <div className="flex items-center gap-2 mt-6 mb-3">
@@ -7488,12 +7739,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <ExtraChip label="Step-up" isSet={stepUpActive} summary={stepUpActive ? (dayRecord.stepUpRole || '—') : null} onTap={() => setEditingExtra('stepUp')}/>
-                        {!isTravelDay && <ExtraChip label="Pre-call" isSet={preCallActive} summary={preCallActive ? (dayRecord.preCallTime || dayRecord.truckCallTime || '—') : null} onTap={() => setEditingExtra('preCall')}/>}
-                        <ExtraChip label="Mileage" isSet={mileageActive} summary={mileageActive ? `${Number(dayRecord.miles) || 0} mi` : null} onTap={() => setEditingExtra('mileage')}/>
+                        {!isTravelDay && <ExtraChip label="Pre-call" isSet={preCallActive} isOverridden={preCallOverridden} summary={preCallActive ? (dayRecord.preCallTime || dayRecord.truckCallTime || '—') : null} onTap={() => setEditingExtra('preCall')}/>}
+                        <ExtraChip label="Mileage" isSet={mileageActive} isOverridden={mileageOverridden} summary={mileageActive ? `${Number(dayRecord.miles) || 0} mi` : null} onTap={() => setEditingExtra('mileage')}/>
                         <ExtraChip label="Kit" isSet={kitMoneyActive} summary={kitMoneyActive ? fmtGBP(Number(dayRecord.kitMoneyAmount) || 0) : null} onTap={() => setEditingExtra('kit')}/>
-                        {!isTravelDay && <ExtraChip label="Travel" isSet={travelTimeActive} summary={travelTimeActive ? `${travelOut}+${travelBack}m` : null} onTap={() => setEditingExtra('travel')}/>}
-                        <ExtraChip label="Per diem" isSet={perDiemActive} summary={perDiemActive ? fmtGBP(Number(dayRecord.perDiemAmount) || 0) : null} onTap={() => setEditingExtra('perDiem')}/>
-                        <ExtraChip label="Expenses" isSet={expensesActive} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => setEditingExtra('expenses')}/>
+                        {!isTravelDay && <ExtraChip label="Travel" isSet={travelTimeActive} isOverridden={travelOverridden} summary={travelTimeActive ? `${travelOut}+${travelBack}m` : null} onTap={() => setEditingExtra('travel')}/>}
+                        <ExtraChip label="Per diem" isSet={perDiemActive} isOverridden={perDiemOverridden} summary={perDiemActive ? fmtGBP(Number(dayRecord.perDiemAmount) || 0) : null} onTap={() => setEditingExtra('perDiem')}/>
+                        <ExtraChip label="Expenses" isSet={expensesActive} isOverridden={expensesOverridden} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => setEditingExtra('expenses')}/>
                         {show2ndBreakChip && (() => {
                           const sbMins = Number(dayRecord.secondBreakDurationMins) || 0;
                           const summary = sbMins > 0
@@ -7590,13 +7841,57 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           {editingExtra && dayRecord && (() => {
             const closeSheet = () => setEditingExtra(null);
-            const sheetShell = (title, body) => (
+            // Override detection (cascade-aware) for the 5 extras with dept defaults.
+            const dd = defaults;
+            const preCallOver = !!dd && !!dayRecord.preCallEnabled && (
+              !!dayRecord.preCallEnabled !== !!dd.preCallEnabled ||
+              (dayRecord.preCallTime && dayRecord.preCallTime !== dd.preCallTime)
+            );
+            const mileageOver = !!dd && (Number(dayRecord.miles) || 0) > 0 &&
+              (Number(dayRecord.miles) || 0) !== (Number(dd.miles) || 0);
+            const travelOver = !!dd && !!dayRecord.travelTimeEnabled && (
+              !!dayRecord.travelTimeEnabled !== !!dd.travelTimeEnabled ||
+              (Number(dayRecord.travelOutMins) || 0) !== (Number(dd.travelOutMins) || 0) ||
+              (Number(dayRecord.travelBackMins) || 0) !== (Number(dd.travelBackMins) || 0)
+            );
+            const perDiemOver = !!dd && !!dayRecord.perDiemEnabled && (
+              !!dayRecord.perDiemEnabled !== !!dd.perDiemEnabled ||
+              (Number(dayRecord.perDiemAmount) || 0) !== (Number(dd.perDiemAmount) || 0)
+            );
+            const expensesOver = !!dd && (dayRecord.expenses?.length ?? 0) > 0 && (
+              (dayRecord.expenses?.length ?? 0) !== (dd.expenses?.length ?? 0) ||
+              (dayRecord.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0) !==
+                (dd.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0)
+            );
+            const resetFields = (...fields) => {
+              setProduction(p => ({
+                ...p,
+                days: p.days.map(d => {
+                  if (d.id !== dayRecord.id) return d;
+                  const cleared = { ...d };
+                  for (const f of fields) {
+                    if (typeof cleared[f] === 'boolean') cleared[f] = false;
+                    else if (typeof cleared[f] === 'number') cleared[f] = 0;
+                    else if (Array.isArray(cleared[f])) cleared[f] = [];
+                    else cleared[f] = '';
+                  }
+                  return cleared;
+                }),
+              }));
+              closeSheet();
+            };
+            const sheetShell = (title, body, opts = {}) => (
               <div className="fixed inset-0 z-50 flex items-end" onClick={closeSheet} style={{ background: 'rgba(0,0,0,0.5)' }}>
                 <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5 max-h-[85vh] overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
                   <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
                   <div className="text-base font-bold text-neutral-100 mb-3">{title}</div>
                   {body}
-                  <button type="button" onClick={closeSheet} className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>Done</button>
+                  {opts.onReset && (
+                    <button type="button" onClick={opts.onReset} className="w-full mt-3 px-4 py-2.5 rounded-xl bg-fuchsia-400/10 hover:bg-fuchsia-400/15 border border-fuchsia-400/30 text-fuchsia-400 text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      Reset to default
+                    </button>
+                  )}
+                  <button type="button" onClick={closeSheet} className="w-full mt-2 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors" style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>Done</button>
                 </div>
               </div>
             );
@@ -7637,7 +7932,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                   )}
                 </>
-              ));
+              ), preCallOver ? { onReset: () => resetFields('preCallEnabled', 'preCallTime') } : undefined);
             }
 
             if (editingExtra === 'kit') {
@@ -7665,7 +7960,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                   )}
                 </>
-              ));
+              ), perDiemOver ? { onReset: () => resetFields('perDiemEnabled', 'perDiemAmount') } : undefined);
             }
 
             if (editingExtra === 'mileage') {
@@ -7683,7 +7978,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                   )}
                 </>
-              ));
+              ), mileageOver ? { onReset: () => resetFields('mileageEnabled', 'miles', 'mileagePostcode') } : undefined);
             }
 
             if (editingExtra === 'travel') {
@@ -7709,7 +8004,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                   )}
                 </>
-              ));
+              ), travelOver ? { onReset: () => resetFields('travelTimeEnabled', 'travelOutMins', 'travelBackMins') } : undefined);
             }
 
             if (editingExtra === 'stepUp') {
@@ -7837,7 +8132,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                   )}
                 </>
-              ));
+              ), expensesOver ? { onReset: () => resetFields('expensesEnabled', 'expenses') } : undefined);
             }
 
             if (editingExtra === 'secondBreak') {
