@@ -8996,7 +8996,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSave, setProduction, onTriggerCrewTimesheet, showToast, userPrefs }) {
+    function MultiCrewOverviewView({ production, days, crew, total, onClose, onOpenSave, setProduction, onTriggerCrewTimesheet, showToast, userPrefs, onOpenCrewBreakdown, onOpenDayBreakdown }) {
       const [activeCrewSheet, setActiveCrewSheet] = useState(null);
       const [editingCrew, setEditingCrew] = useState(null);
       const sortedDates = useMemo(
@@ -9097,34 +9097,47 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
 
             {sortedCrew.map(({ member, total: memberTotal, daysWorked, isMe }) => (
-              <button
+              <div
                 key={member.id}
-                type="button"
-                onClick={() => setActiveCrewSheet(member)}
-                className={`w-full text-left border rounded-xl px-3.5 py-3 mb-1.5 flex items-center gap-3 transition-colors ${
+                className={`flex items-center border rounded-xl mb-1.5 transition-colors ${
                   isMe ? 'border-sky-500/25 bg-sky-500/[0.03] hover:bg-sky-500/[0.06]' : 'border-neutral-800 bg-neutral-900 hover:border-neutral-700'
                 }`}
-                style={{ WebkitTapHighlightColor: 'transparent' }}
               >
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px] flex-shrink-0 ${
-                  isMe ? 'bg-sky-500/15 text-sky-400' : 'bg-tm-card-2 text-neutral-400'
-                }`}>
-                  {((member.name || '?').trim()[0] || '?').toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-neutral-100 leading-tight truncate">
-                    {member.name || 'Unnamed'}
-                    {isMe && <span className="ml-1.5 text-[9px] font-semibold text-neutral-500 lowercase">(you)</span>}
+                <button
+                  type="button"
+                  onClick={() => onOpenCrewBreakdown?.(member)}
+                  className="flex-1 min-w-0 flex items-center gap-3 px-3.5 py-3 text-left"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                  aria-label={`${member.name || 'Unnamed'} breakdown`}
+                >
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px] flex-shrink-0 ${
+                    isMe ? 'bg-sky-500/15 text-sky-400' : 'bg-tm-card-2 text-neutral-400'
+                  }`}>
+                    {((member.name || '?').trim()[0] || '?').toUpperCase()}
                   </div>
-                  <div className="text-[11px] text-neutral-400 mt-0.5 font-mono">
-                    {daysWorked} {daysWorked === 1 ? 'day' : 'days'} · {member.role || '—'}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-neutral-100 leading-tight truncate">
+                      {member.name || 'Unnamed'}
+                      {isMe && <span className="ml-1.5 text-[9px] font-semibold text-neutral-500 lowercase">(you)</span>}
+                    </div>
+                    <div className="text-[11px] text-neutral-400 mt-0.5 font-mono">
+                      {daysWorked} {daysWorked === 1 ? 'day' : 'days'} · {member.role || '—'}
+                    </div>
                   </div>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(memberTotal)}</div>
-                </div>
-                <IKebab size={14} className="text-neutral-500 flex-shrink-0 ml-1"/>
-              </button>
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(memberTotal)}</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setActiveCrewSheet(member); }}
+                  className="px-3 py-3 text-neutral-500 hover:text-neutral-300 flex-shrink-0"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                  aria-label={`${member.name || 'Unnamed'} more actions`}
+                >
+                  <IKebab size={14}/>
+                </button>
+              </div>
             ))}
 
             <div className="flex items-center gap-2 mt-6 mb-3">
@@ -9138,10 +9151,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {daysWithTotals.map(({ date, dayNumber, total: dayTotal }) => {
                   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
                   return (
-                    <div key={date} className="px-3.5 py-2.5 flex items-center justify-between gap-3">
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => onOpenDayBreakdown?.(date)}
+                      className="w-full px-3.5 py-2.5 flex items-center gap-3 hover:bg-neutral-800/40 transition-colors text-left first:rounded-t-xl last:rounded-b-xl"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                      aria-label={`Day ${dayNumber} ${formattedDate} breakdown`}
+                    >
                       <span className="text-[12px] text-neutral-300 font-mono">D{dayNumber} · {formattedDate}</span>
-                      <span className="font-mono text-[13px] font-bold text-neutral-100 tabular-nums">{fmtGBP(dayTotal)}</span>
-                    </div>
+                      <span className="ml-auto font-mono text-[13px] font-bold text-neutral-100 tabular-nums">{fmtGBP(dayTotal)}</span>
+                      <span className="text-neutral-600 text-xs flex-shrink-0">›</span>
+                    </button>
                   );
                 })}
               </div>
@@ -9200,6 +9221,184 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               }}
             />
           )}
+        </div>
+      );
+    }
+
+    function BreakdownLineRow({ line }) {
+      const isPenalty = line.rate === null || categorizeBreakdownLine(line.label) === 'pen';
+      const isOT = !isPenalty && categorizeBreakdownLine(line.label) === 'ot';
+      const amountCls = isPenalty ? 'text-tm-pen' : isOT ? 'text-tm-warn' : 'text-neutral-100';
+      const qtyRate = (line.qty != null && line.rate != null)
+        ? `${Number(line.qty).toFixed(typeof line.qty === 'number' && line.qty % 1 ? 1 : 0)} × ${fmtGBP(line.rate)}`
+        : '';
+      return (
+        <div className="flex items-baseline gap-2 text-[11px]">
+          <span className={`flex-1 truncate ${isPenalty ? 'text-tm-pen' : 'text-neutral-300'}`}>{line.label}</span>
+          <span className="font-mono text-neutral-500 tabular-nums hidden sm:inline">{qtyRate}</span>
+          <span className={`font-mono tabular-nums w-[68px] text-right ${amountCls}`}>{fmtGBP(line.amount)}</span>
+        </div>
+      );
+    }
+
+    function CrewProductionBreakdownView({ crewMember, production, onBack }) {
+      const sortedDays = useMemo(() => {
+        return (production.days || [])
+          .filter(d => d.crewId === crewMember.id)
+          .sort((a, b) => a.date.localeCompare(b.date));
+      }, [production.days, crewMember.id]);
+
+      const perDayBreakdowns = useMemo(() => {
+        return sortedDays.map((day, idx) => {
+          const prev = findPrevDay(production.days, day);
+          const calc = calcForDisplay(production, day, crewMember, prev);
+          return { day, idx, calc, buckets: bucketCalcTotals(calc), total: calc.total };
+        });
+      }, [sortedDays, production, crewMember]);
+
+      const totalBuckets = useMemo(() => perDayBreakdowns.reduce((acc, { buckets }) => ({
+        basic: acc.basic + buckets.basic,
+        ot: acc.ot + buckets.ot,
+        pen: acc.pen + buckets.pen,
+      }), { basic: 0, ot: 0, pen: 0 }), [perDayBreakdowns]);
+
+      const productionTotal = perDayBreakdowns.reduce((s, b) => s + b.total, 0);
+
+      return (
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
+              <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to overview">
+                <span className="text-neutral-600">‹</span>{(production.title || 'PRODUCTION').toUpperCase()}
+              </button>
+              <div className="text-[20px] font-extrabold tracking-tight text-neutral-100 truncate">{crewMember.name || 'Unnamed'}</div>
+              <div className="text-[11px] text-neutral-400 mt-0.5">{crewMember.role || '—'} · £{crewMember.bdr ?? 0} BDR</div>
+            </div>
+          </div>
+
+          <div className="max-w-6xl mx-auto px-4 py-4">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5 mb-4">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-1.5">
+                {sortedDays.length}-DAY TOTAL
+              </div>
+              <div className="font-mono text-[36px] font-bold leading-none text-neutral-100 tabular-nums tracking-tight">
+                {fmtGBP(productionTotal)}
+              </div>
+              <HeroBreakdownRow basic={totalBuckets.basic} ot={totalBuckets.ot} pen={totalBuckets.pen}/>
+            </div>
+
+            {sortedDays.length === 0 ? (
+              <div className="bg-neutral-900 border border-dashed border-neutral-700 rounded-xl px-3.5 py-6 text-center text-[12px] text-neutral-500">
+                No days for {crewMember.name || 'this crew member'}.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">BY DAY</span>
+                  <span className="flex-1 h-px bg-neutral-800/60"/>
+                  <span className="text-[10px] font-mono text-neutral-500 font-bold">{sortedDays.length}</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {perDayBreakdowns.map(({ day, idx, calc, total }) => {
+                    const fdate = new Date(day.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                    return (
+                      <div key={day.id} className="bg-neutral-900 border border-neutral-800 rounded-xl">
+                        <div className="px-3.5 py-2.5 border-b border-neutral-800/60 flex items-center gap-2.5 flex-wrap">
+                          <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">D{idx + 1}</span>
+                          <span className="text-[11px] font-mono text-neutral-300">{fdate}</span>
+                          <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{day.dayType || 'Shoot'}</span>
+                          <span className="ml-auto font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(total)}</span>
+                        </div>
+                        <div className="px-3.5 py-2 flex flex-col gap-1">
+                          {calc.lines.map((line, i) => <BreakdownLineRow key={i} line={line}/>)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function DayBreakdownView({ date, production, onBack }) {
+      const crewOnDate = useMemo(() => {
+        return (production.crew || []).filter(c =>
+          (production.days || []).some(d => d.date === date && d.crewId === c.id && d.dayType !== 'Rest Day')
+        );
+      }, [production, date]);
+
+      const perCrewBreakdowns = useMemo(() => {
+        return crewOnDate.map(member => {
+          const day = (production.days || []).find(d => d.date === date && d.crewId === member.id);
+          const prev = day ? findPrevDay(production.days, day) : null;
+          const calc = day ? calcForDisplay(production, day, member, prev) : null;
+          return { member, day, calc, buckets: calc ? bucketCalcTotals(calc) : { basic: 0, ot: 0, pen: 0 }, total: calc?.total ?? 0 };
+        });
+      }, [crewOnDate, production, date]);
+
+      const dayBuckets = useMemo(() => perCrewBreakdowns.reduce((acc, { buckets }) => ({
+        basic: acc.basic + buckets.basic,
+        ot: acc.ot + buckets.ot,
+        pen: acc.pen + buckets.pen,
+      }), { basic: 0, ot: 0, pen: 0 }), [perCrewBreakdowns]);
+
+      const dayTotal = perCrewBreakdowns.reduce((s, b) => s + b.total, 0);
+      const fdate = date
+        ? new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+        : '—';
+
+      return (
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
+              <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to overview">
+                <span className="text-neutral-600">‹</span>{(production.title || 'PRODUCTION').toUpperCase()}
+              </button>
+              <div className="text-[20px] font-extrabold tracking-tight text-neutral-100 truncate">{fdate}</div>
+              <div className="text-[11px] text-neutral-400 mt-0.5">{crewOnDate.length} {crewOnDate.length === 1 ? 'crew' : 'crew'} · day total</div>
+            </div>
+          </div>
+
+          <div className="max-w-6xl mx-auto px-4 py-4">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5 mb-4">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-1.5">DAY TOTAL</div>
+              <div className="font-mono text-[36px] font-bold leading-none text-neutral-100 tabular-nums tracking-tight">
+                {fmtGBP(dayTotal)}
+              </div>
+              <HeroBreakdownRow basic={dayBuckets.basic} ot={dayBuckets.ot} pen={dayBuckets.pen}/>
+            </div>
+
+            {perCrewBreakdowns.length === 0 ? (
+              <div className="bg-neutral-900 border border-dashed border-neutral-700 rounded-xl px-3.5 py-6 text-center text-[12px] text-neutral-500">
+                No crew worked on this day.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">BY CREW</span>
+                  <span className="flex-1 h-px bg-neutral-800/60"/>
+                  <span className="text-[10px] font-mono text-neutral-500 font-bold">{perCrewBreakdowns.length}</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {perCrewBreakdowns.map(({ member, calc, total }) => (
+                    <div key={member.id} className="bg-neutral-900 border border-neutral-800 rounded-xl">
+                      <div className="px-3.5 py-2.5 border-b border-neutral-800/60 flex items-center gap-2.5 flex-wrap">
+                        <span className="text-sm font-semibold text-neutral-100 truncate">{member.name || 'Unnamed'}</span>
+                        <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{member.role || '—'}</span>
+                        <span className="ml-auto font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(total)}</span>
+                      </div>
+                      <div className="px-3.5 py-2 flex flex-col gap-1">
+                        {calc && calc.lines.map((line, i) => <BreakdownLineRow key={i} line={line}/>)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       );
     }
@@ -10455,6 +10654,8 @@ const setDays = (updater) =>
       const [showMobileNav, setShowMobileNav] = useState(false);
       const [currentDate, setCurrentDate] = useState(() => computeInitialDate(production));
       const [drilldownCrewMember, setDrilldownCrewMember] = useState(null);
+      const [breakdownCrewMember, setBreakdownCrewMember] = useState(null);
+      const [breakdownDate, setBreakdownDate] = useState(null);
       const [showSaveSheet, setShowSaveSheet] = useState(false);
       // Parallel print pipeline for the Save Timesheets flow (sibling of ExportTab's pipeline).
       // Holds { crewIdsFilter: Set<string> } when a save-via-print is in flight; null otherwise.
@@ -10627,18 +10828,34 @@ const setDays = (updater) =>
 
           {showCalcView && (
             production.viewMode === 'mobile' && production.bestBoyMode ? (
-              <MultiCrewOverviewView
-                production={production}
-                days={days}
-                crew={crew}
-                total={totalShoot}
-                onClose={() => setShowCalcView(false)}
-                onOpenSave={() => setShowSaveSheet(true)}
-                setProduction={setProduction}
-                onTriggerCrewTimesheet={triggerCrewTimesheetPrint}
-                showToast={showToast}
-                userPrefs={userPrefs}
-              />
+              breakdownCrewMember ? (
+                <CrewProductionBreakdownView
+                  crewMember={breakdownCrewMember}
+                  production={production}
+                  onBack={() => setBreakdownCrewMember(null)}
+                />
+              ) : breakdownDate ? (
+                <DayBreakdownView
+                  date={breakdownDate}
+                  production={production}
+                  onBack={() => setBreakdownDate(null)}
+                />
+              ) : (
+                <MultiCrewOverviewView
+                  production={production}
+                  days={days}
+                  crew={crew}
+                  total={totalShoot}
+                  onClose={() => { setShowCalcView(false); setBreakdownCrewMember(null); setBreakdownDate(null); }}
+                  onOpenSave={() => setShowSaveSheet(true)}
+                  setProduction={setProduction}
+                  onTriggerCrewTimesheet={triggerCrewTimesheetPrint}
+                  showToast={showToast}
+                  userPrefs={userPrefs}
+                  onOpenCrewBreakdown={setBreakdownCrewMember}
+                  onOpenDayBreakdown={setBreakdownDate}
+                />
+              )
             ) : (
               <CalcBreakdownView
                 production={production}
