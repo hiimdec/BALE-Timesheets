@@ -539,6 +539,11 @@
       "Rest Day": 0,
     };
     const ROLES_WITH_BWD_OVERRIDE = ["DoP", "Art Director", "Location Manager"];
+    // DEFAULT_USER_PREFS — user-level defaults that seed new productions and crew.
+    // Distinct from day-record fields: V4-5h-10 dropped *Enabled flags from day records
+    // (preCallEnabled, kitMoneyEnabled, perDiemEnabled, etc.) and uses value-presence
+    // for activation. User-pref-level `defaultKitMoneyEnabled` / `defaultPerDiemEnabled`
+    // are retained — they control whether new crew get those features seeded at all.
     const DEFAULT_USER_PREFS = {
       displayName: "",
       defaultDepartment: "",
@@ -697,7 +702,7 @@
     // OT, penalties, and TOC surface through the dayConditions pill row (V4-5c/d).
     // Extras use empty-ish cascade semantic (mirroring resolveDay): an "override" means
     // the day record has a non-empty value AND it differs from default.
-    function getCrewVariances({ dayRecord, defaults }) {
+    function getCrewVariances({ dayRecord, defaults, crewMember = null }) {
       if (!dayRecord || !defaults) return [];
       // V4-5h-11: respect cascade for Rest Day detection.
       const effectiveDayType = dayRecord.dayType ?? defaults.dayType;
@@ -752,6 +757,15 @@
       const ddExpCount = (defaults.expenses || []).length;
       if (drExpCount > 0 && (drExpCount !== ddExpCount || drExpTotal !== ddExpTotal)) {
         variances.push({ kind: 'override', label: 'EXPENSES', detail: `£${drExpTotal} · default £${ddExpTotal}` });
+      }
+      // V4-5h-14 (F3.2): kit money lives at crew-level (no dept default). A day-level
+      // override differs from the crew's enabled-default amount.
+      if (crewMember) {
+        const crewKit = crewMember.kitMoneyEnabled ? (Number(crewMember.kitMoneyAmount) || 0) : 0;
+        const dayKit = Number(dayRecord.kitMoneyAmount) || 0;
+        if (dayKit > 0 && dayKit !== crewKit) {
+          variances.push({ kind: 'override', label: 'KIT', detail: `£${dayKit} · default £${crewKit}` });
+        }
       }
       return variances;
     }
@@ -868,6 +882,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ CALC ENGINE ═══════════════════════════ */
 
+    /**
+     * resolveDay — merges dayDefaults into dayRecord for read-time cascade.
+     *
+     * Two cascade patterns coexist intentionally:
+     *
+     * 1. TIME FIELDS (callTime, wrapTime, lunchStartTime, lunchDurationMins, dayType):
+     *    Use `=== undefined` to determine inheritance. Allows explicit-0 / empty
+     *    string as a valid override (e.g. lunchDurationMins=0 for missed lunch).
+     *
+     * 2. EXTRAS (preCallTime, miles, postcode, perDiemAmount, travelOutMins,
+     *    travelBackMins, expenses):
+     *    Use value-presence (truthy / >0 / length>0) to determine inheritance.
+     *    Setting an extra to 0 / empty re-inherits from defaults — there's no
+     *    "explicit zero override" concept for extras.
+     *
+     * Rationale: time fields can have meaningful 0/empty values (missed lunch is
+     * "explicitly 0 mins"). Extras are additive features; 0/empty means "feature
+     * not in use" which is the same as "inherit default" semantically.
+     */
     function resolveDay(production, day, crew) {
       const defaultDay = production.defaultDay ?? {};
       const dateDefaults = production.dayDefaults?.[day.date] ?? {};
@@ -1110,9 +1143,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (bs.lunchLate) lines.push({ label: "Late 1st Break", detail: "", rate: null, qty: 1, amount: 10 });
         // Curtailed 1st Break (APA §6.2): basic hours are reduced by the curtailed minutes
         // (lines 998-999), which already shifts the OT threshold earlier. If wrap doesn't
-        // cross the adjusted threshold (no OT worked), pay the curtailed minutes at BHR
-        // single time — regardless of Sat/Sun/BH multiplier. If OT was crossed, the
-        // curtailed time is absorbed into the OT calc (informational line at £0).
+        // cross the adjusted threshold (no OT worked), pay the curtailed minutes at the
+        // applicable day rate. If OT was crossed, the curtailed time is absorbed into the
+        // OT calc (informational line at £0).
+        // V4-5h-14 (F8.1): Sun/BH pay at 2× BHR, Sat at Sat multiplier × BHR — all hours
+        // on those days carry the multiplier, including penalty time.
         if (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
           const shortMins = 60 - lunchDuration;
           const curtailedHrs = shortMins / 60;
@@ -1123,7 +1158,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (otCrossed) {
             lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m short — absorbed in OT`, rate: null, qty: 1, amount: 0 });
           } else {
-            lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m × BHR single time`, rate: bhr, qty: curtailedHrs, amount: curtailedHrs * bhr });
+            const penaltyRate = treatAsSun ? computeAPArate(bdr, sunMult, weekendOpts.apaRounding)
+                              : treatAsSat ? computeAPArate(bdr, satMult, weekendOpts.apaRounding)
+                              : bhr;
+            const rateLabel = treatAsSun ? `${sunMult}× BHR`
+                            : treatAsSat ? `${satMult}× BHR`
+                            : 'BHR single time';
+            lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m × ${rateLabel}`, rate: penaltyRate, qty: curtailedHrs, amount: curtailedHrs * penaltyRate });
           }
         }
         // Missed Meal (£7.50) — lunchMissed is the raw flag; gate to
@@ -1867,16 +1908,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (userCrewId) {
         const hasUserRecord = newDays.some(d => d.date === date && d.crewId === userCrewId);
         if (!hasUserRecord) {
+          // V4-5h-14 (F4.3): omit time fields so resolveDay cascades from dayDefaults.
+          // Explicit copies here would freeze the new record against later dept-default edits.
           const seed = {
-            ...DEFAULT_PRODUCTION_DAY,
-            ...(production.defaultDay || {}),
             ...makeBlankDay(userCrewId),
             date,
-            callTime: newDefaults.callTime,
-            wrapTime: newDefaults.wrapTime,
-            lunchStartTime: newDefaults.lunchStartTime,
-            lunchDurationMins: newDefaults.lunchDurationMins,
-            dayType: newDefaults.dayType,
           };
           newDays = [...newDays, seed];
         }
@@ -4562,7 +4598,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ DAY ENTRY FORM ═══════════════════════════ */
 
-    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false }) {
+    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false }) {
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
       const bs = deriveBreakState(v);
@@ -4750,14 +4786,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const wrapHint = autoNextDay ? "Wrap is next day (auto-detected)" : "";
                 const tileInputCls = "!text-2xl !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 w-full";
                 // V4-5h-13: WRAP tint when day crosses OT threshold. Mirrors
-                // BB dept-default's defaultsWrapImpliesOT predicate. Standard
-                // 10h work threshold (production-level isElevenHourDay isn't
-                // plumbed into DayEntryForm — close-enough approximation).
+                // BB dept-default's defaultsWrapImpliesOT predicate.
+                // V4-5h-14: isElevenHourDay now plumbed through — 11h productions use
+                // 11h threshold; standard productions stay at 10h.
                 const wrapInOT = (() => {
                   if (!bs || isTravelDay || isPmpa) return false;
                   const lunchHrs = bs.lunchMissed ? 0 : (bs.lunchDuration / 60);
                   const workHrs = bs.workedHrs - lunchHrs;
-                  return workHrs > 10;
+                  const otThreshold = isElevenHourDay ? 11 : 10;
+                  return workHrs > otThreshold;
                 })();
                 return (
                   <div className="grid grid-cols-2 gap-3">
@@ -4897,17 +4934,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <div className="space-y-2 mb-4">
             <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold px-1">Conditions</div>
             <div className="flex flex-wrap gap-2">
-              {show2ndBreakSection && (
-                <button
-                  type="button"
-                  onClick={() => setSecondBreakExpanded(v2 => !v2)}
-                  className="text-xs font-medium px-3 py-[7px] rounded-full inline-flex items-center gap-1.5 transition-colors active:scale-95 bg-tm-warn/10 border border-tm-warn/40 text-tm-warn"
-                  aria-expanded={secondBreakExpanded}
-                >
-                  <span>2ND BREAK{sbSuffix}</span>
-                  <IChevronDown size={11} strokeWidth={2.5} className={`opacity-60 transition-transform ${secondBreakExpanded ? 'rotate-180' : ''}`} />
-                </button>
-              )}
+              {show2ndBreakSection && (() => {
+                // V4-5h-14 (F5.1): normalize to ExtraChip pattern — rounded-lg + state-driven palette.
+                // Given on time → sky; curtailed/late → tm-warn; missed → tm-pen.
+                const sbState = bs?.sbState;
+                const sbCls = sbState === 'missed'
+                  ? 'bg-tm-pen/[0.08] border-tm-pen/40 text-tm-pen hover:bg-tm-pen/[0.12]'
+                  : (sbState === 'late' || sbState === 'curtailed')
+                    ? 'bg-tm-warn/[0.08] border-tm-warn/40 text-tm-warn hover:bg-tm-warn/[0.12]'
+                    : 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]';
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setSecondBreakExpanded(v2 => !v2)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${sbCls}`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                    aria-expanded={secondBreakExpanded}
+                  >
+                    <span>2nd break</span>
+                    {sbSuffix && <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{sbSuffix.replace(/^ — /, '')}</span>}
+                    <IChevronDown size={11} strokeWidth={2.5} className={`opacity-60 transition-transform ${secondBreakExpanded ? 'rotate-180' : ''}`} />
+                  </button>
+                );
+              })()}
               {showCwdBreaksChip && (() => {
                 const b1Missed = v.cwdBreak1Given === false;
                 const cwd2Req = !!bs.cwd2Required;
@@ -5273,6 +5322,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 fixedCrewId={fixedCrewId}
                 fixedDate={fixedDate}
                 days={days}
+                isElevenHourDay={!!production?.isElevenHourDay}
               />
               {isNewAll && (
                 <div className="mt-3 bg-black border border-sky-500 p-3 text-xs text-neutral-300 rounded-xl">
@@ -6383,17 +6433,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             isDriver: false,
             email: form.email,
           };
-          const defs = getDayDefaults(p, currentDate);
+          // V4-5h-14 (F4.3): omit time fields so resolveDay cascades from dayDefaults.
           const newDay = {
-            ...DEFAULT_PRODUCTION_DAY,
-            ...(p.defaultDay || {}),
             ...makeBlankDay(newCrewId),
             date: currentDate,
-            callTime: defs?.callTime ?? DEFAULT_PRODUCTION_DAY.callTime,
-            wrapTime: defs?.wrapTime ?? DEFAULT_PRODUCTION_DAY.wrapTime,
-            lunchStartTime: defs?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime,
-            lunchDurationMins: defs?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins,
-            dayType: defs?.dayType ?? DEFAULT_PRODUCTION_DAY.dayType,
           };
           return {
             ...p,
@@ -6466,7 +6509,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const defaults = production.dayDefaults?.[currentDate];
         return crewWithCalcs.map(entry => {
           if (entry.isOff) return { ...entry, variances: [] };
-          const variances = getCrewVariances({ dayRecord: entry.dayRecord, defaults });
+          const variances = getCrewVariances({ dayRecord: entry.dayRecord, defaults, crewMember: entry.member });
           return { ...entry, variances };
         });
       }, [crewWithCalcs, production.dayDefaults, currentDate]);
@@ -6492,11 +6535,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
 
       const dayConditions = useMemo(() => {
-        const map = new Map(); // label → { count, warn }
-        const bump = (label, warn) => {
-          const cur = map.get(label) || { count: 0, warn };
+        // V4-5h-14 (F6.2): split warn vs penalty. Penalty = money owed (tm-pen).
+        // Warn = informational state (tm-warn). Neither = neutral.
+        const map = new Map(); // label → { count, warn, penalty }
+        const bump = (label, warn, penalty = false) => {
+          const cur = map.get(label) || { count: 0, warn, penalty };
           cur.count += 1;
           cur.warn = cur.warn || warn;
+          cur.penalty = cur.penalty || penalty;
           map.set(label, cur);
         };
         for (const c of crewWithCalcs) {
@@ -6509,18 +6555,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             .filter(l => /\bot\b|overtime|triple/i.test(l.label))
             .reduce((s, l) => s + (Number(l.qty) || 0), 0);
           if (otHrs > 0) bump('OT', true);
-          if ((calc.lines || []).some(l => /late 1st|l1\b/i.test(l.label))) bump('L1', true);
-          if ((calc.lines || []).some(l => /missed 2nd|late 2nd/i.test(l.label))) bump('2nd brk', true);
-          if ((calc.lines || []).some(l => /curtailed/i.test(l.label))) bump('Curtailed', true);
-          if ((calc.lines || []).some(l => /missed cwd|missed meal/i.test(l.label))) bump('Missed', true);
+          if ((calc.lines || []).some(l => /late 1st|l1\b/i.test(l.label))) bump('L1', true, true);
+          if ((calc.lines || []).some(l => /missed 2nd|late 2nd/i.test(l.label))) bump('2nd brk', true, true);
+          if ((calc.lines || []).some(l => /curtailed/i.test(l.label))) bump('Curtailed', true, true);
+          if ((calc.lines || []).some(l => /missed cwd|missed meal/i.test(l.label))) bump('Missed', true, true);
           if (rec?.stepUpRole) bump('Step-up', false);
           if ((Number(rec?.perDiemAmount) || 0) > 0) bump('Per diem', false);
           if ((Number(rec?.kitMoneyAmount) || 0) > 0) bump('Kit', false);
           if (Number(rec?.miles) > 0) bump('Mileage', false);
           if (Number(rec?.travelOutMins) > 0 || Number(rec?.travelBackMins) > 0) bump('Travel', false);
-          if ((calc.lines || []).some(l => l.isTOC)) bump('TOC tight', true);
+          if ((calc.lines || []).some(l => l.isTOC)) bump('TOC tight', true, true);
         }
-        return [...map.entries()].map(([label, v]) => ({ label, count: v.count, warn: v.warn }));
+        return [...map.entries()].map(([label, v]) => ({ label, count: v.count, warn: v.warn, penalty: v.penalty }));
       }, [crewWithCalcs, production.days, currentDate]);
 
       const sortedCrew = useMemo(() => {
@@ -6718,7 +6764,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <div className="px-4 mb-2.5 flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">DEPT DEFAULTS</span>
             <span className="flex-1 h-px bg-neutral-800/60"/>
-            <button onClick={() => { /* TODO: V4-2-followup — wire to a defaults editor */ }} className="text-[10px] uppercase tracking-wider text-sky-500 font-bold">EDIT</button>
           </div>
 
           <div className="px-4 grid grid-cols-2 gap-2 mb-2">
@@ -6977,9 +7022,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <span
                     key={c.label}
                     className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      c.warn
-                        ? 'bg-tm-warn/10 text-tm-warn border border-tm-warn/25'
-                        : 'bg-tm-card-2 text-neutral-400 border border-neutral-700'
+                      c.penalty
+                        ? 'bg-tm-pen/10 text-tm-pen border border-tm-pen/25'
+                        : c.warn
+                          ? 'bg-tm-warn/10 text-tm-warn border border-tm-warn/25'
+                          : 'bg-tm-card-2 text-neutral-400 border border-neutral-700'
                     }`}
                   >
                     {c.label}{c.count > 1 ? ` · ${c.count}` : ''}
@@ -7616,18 +7663,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const defaults = getDayDefaults(production, currentDate);
 
       const handleAddToThisDay = () => {
-        const defs = getDayDefaults(production, currentDate);
         setProduction(p => {
+          // V4-5h-14 (F4.3): omit time fields so resolveDay cascades from dayDefaults.
           const newDay = {
-            ...DEFAULT_PRODUCTION_DAY,
-            ...(p.defaultDay || {}),
             ...makeBlankDay(crewMember.id),
             date: currentDate,
-            callTime: defs?.callTime ?? DEFAULT_PRODUCTION_DAY.callTime,
-            wrapTime: defs?.wrapTime ?? DEFAULT_PRODUCTION_DAY.wrapTime,
-            lunchStartTime: defs?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime,
-            lunchDurationMins: defs?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins,
-            dayType: defs?.dayType ?? DEFAULT_PRODUCTION_DAY.dayType,
           };
           return { ...p, days: [...(p.days || []), newDay] };
         });
@@ -7648,7 +7688,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const isOverridden = (field) => {
         if (!dayRecord || !defaults) return false;
-        return dayRecord[field] !== defaults[field];
+        // V4-5h-14 (F9.3): require explicit value before flagging as override.
+        // Undefined means cascade-from-default, not override.
+        return dayRecord[field] !== undefined && dayRecord[field] !== defaults[field];
       };
       const anyTimeOverridden = ['callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins', 'dayType'].some(isOverridden);
 
@@ -10534,6 +10576,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 showToast={showToast}
                 days={days}
                 hideDayCard={true}
+                isElevenHourDay={!!production?.isElevenHourDay}
               />
             </div>
           </div>
