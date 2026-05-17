@@ -693,65 +693,26 @@
       return buckets;
     }
 
-    // Penalty line labels present in every active crew's calc. These are day-level
-    // conditions, not per-person variances. TOC lines are excluded — they're surfaced
-    // as their own variance kind regardless of how many crew have them.
-    function getSharedPenaltyLabels(activeCalcs) {
-      if (!activeCalcs || activeCalcs.length === 0) return new Set();
-      const perCrew = activeCalcs.map(calc =>
-        new Set((calc.lines || [])
-          .filter(l => !l.isTOC && categorizeBreakdownLine(l.label) === 'pen')
-          .map(l => l.label))
-      );
-      let shared = new Set(perCrew[0]);
-      for (let i = 1; i < perCrew.length; i++) {
-        shared = new Set([...shared].filter(label => perCrew[i].has(label)));
-      }
-      return shared;
-    }
-
-    function getCrewVariances({ dayRecord, calc, defaults, sharedPenaltyLabels }) {
-      if (!dayRecord || dayRecord.dayType === 'Rest Day') return [];
+    // Per-crew variances against the day's defaults. Field-value overrides only —
+    // OT, penalties, and TOC surface through the dayConditions pill row (V4-5c/d).
+    function getCrewVariances({ dayRecord, defaults }) {
+      if (!dayRecord || dayRecord.dayType === 'Rest Day' || !defaults) return [];
       const variances = [];
-
-      if (defaults) {
-        if (dayRecord.callTime && dayRecord.callTime !== defaults.callTime) {
-          variances.push({ kind: 'override', label: 'CALL', detail: `${dayRecord.callTime} · default ${defaults.callTime}` });
-        }
-        if (dayRecord.wrapTime && dayRecord.wrapTime !== defaults.wrapTime) {
-          variances.push({ kind: 'override', label: 'WRAP', detail: `${dayRecord.wrapTime} · default ${defaults.wrapTime}` });
-        }
-        if (dayRecord.lunchStartTime && dayRecord.lunchStartTime !== defaults.lunchStartTime) {
-          variances.push({ kind: 'override', label: 'LUNCH', detail: `${dayRecord.lunchStartTime} · default ${defaults.lunchStartTime}` });
-        }
-        if (dayRecord.lunchDurationMins != null && defaults.lunchDurationMins != null && dayRecord.lunchDurationMins !== defaults.lunchDurationMins) {
-          variances.push({ kind: 'override', label: 'LUNCH', detail: `${dayRecord.lunchDurationMins}m · default ${defaults.lunchDurationMins}m` });
-        }
-        if (dayRecord.dayType && dayRecord.dayType !== defaults.dayType) {
-          variances.push({ kind: 'override', label: 'TYPE', detail: `${dayRecord.dayType} · default ${defaults.dayType}` });
-        }
+      if (dayRecord.callTime && dayRecord.callTime !== defaults.callTime) {
+        variances.push({ kind: 'override', label: 'CALL', detail: `${dayRecord.callTime} · default ${defaults.callTime}` });
       }
-
-      if (calc?.lines) {
-        for (const line of calc.lines) {
-          if (line.isTOC) continue;
-          if (categorizeBreakdownLine(line.label) !== 'pen') continue;
-          if (sharedPenaltyLabels.has(line.label)) continue;
-          variances.push({ kind: 'penalty', label: 'PEN', detail: line.label });
-        }
+      if (dayRecord.wrapTime && dayRecord.wrapTime !== defaults.wrapTime) {
+        variances.push({ kind: 'override', label: 'WRAP', detail: `${dayRecord.wrapTime} · default ${defaults.wrapTime}` });
       }
-
-      const otHrs = Number(calc?.meta?.otHrs) || 0;
-      const OT_THRESHOLD_HRS = 2;
-      if (otHrs >= OT_THRESHOLD_HRS) {
-        variances.push({ kind: 'ot', label: 'OT', detail: `${otHrs % 1 ? otHrs.toFixed(1) : otHrs}h overtime` });
+      if (dayRecord.lunchStartTime && dayRecord.lunchStartTime !== defaults.lunchStartTime) {
+        variances.push({ kind: 'override', label: 'LUNCH', detail: `${dayRecord.lunchStartTime} · default ${defaults.lunchStartTime}` });
       }
-
-      const tocLine = (calc?.lines || []).find(l => l.isTOC);
-      if (tocLine) {
-        variances.push({ kind: 'toc', label: tocLine.isBreach ? 'TOC!' : 'TOC', detail: tocLine.detail || 'short turnaround' });
+      if (dayRecord.lunchDurationMins != null && defaults.lunchDurationMins != null && dayRecord.lunchDurationMins !== defaults.lunchDurationMins) {
+        variances.push({ kind: 'override', label: 'LUNCH', detail: `${dayRecord.lunchDurationMins}m · default ${defaults.lunchDurationMins}m` });
       }
-
+      if (dayRecord.dayType && dayRecord.dayType !== defaults.dayType) {
+        variances.push({ kind: 'override', label: 'TYPE', detail: `${dayRecord.dayType} · default ${defaults.dayType}` });
+      }
       return variances;
     }
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
@@ -6289,17 +6250,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [production, currentDate, sortedDates]);
 
       const crewWithVariances = useMemo(() => {
-        const activeCalcs = crewWithCalcs.filter(c => !c.isOff && c.calc).map(c => c.calc);
-        const sharedPenaltyLabels = getSharedPenaltyLabels(activeCalcs);
         const defaults = production.dayDefaults?.[currentDate];
         return crewWithCalcs.map(entry => {
           if (entry.isOff) return { ...entry, variances: [] };
-          const variances = getCrewVariances({
-            dayRecord: entry.dayRecord,
-            calc: entry.calc,
-            defaults,
-            sharedPenaltyLabels,
-          });
+          const variances = getCrewVariances({ dayRecord: entry.dayRecord, defaults });
           return { ...entry, variances };
         });
       }, [crewWithCalcs, production.dayDefaults, currentDate]);
@@ -6357,11 +6311,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [crewWithCalcs, production.days, currentDate]);
 
       const sortedCrew = useMemo(() => {
-        const me = crewWithCalcs.filter(c => c.isMe);
-        const active = crewWithCalcs.filter(c => !c.isMe && !c.isOff);
-        const off = crewWithCalcs.filter(c => !c.isMe && c.isOff);
+        const me = crewWithVariances.filter(c => c.isMe);
+        const active = crewWithVariances.filter(c => !c.isMe && !c.isOff);
+        const off = crewWithVariances.filter(c => !c.isMe && c.isOff);
         return [...me, ...active, ...off];
-      }, [crewWithCalcs]);
+      }, [crewWithVariances]);
 
       const activeCrew = crewWithCalcs.filter(c => !c.isOff);
       const grandTotal = activeCrew.reduce((s, c) => s + c.dayTotal, 0);
@@ -6697,44 +6651,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </>
           )}
 
-          {(() => {
-            const crewWithAnyVariance = crewWithVariances.filter(c => c.variances && c.variances.length > 0);
-            if (crewWithAnyVariance.length === 0) return null;
-            return (
-              <>
-                <div className="px-4 mb-3 mt-2 flex items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-[0.22em] text-tm-warn font-bold">VARIANCES TODAY</span>
-                  <span className="flex-1 h-px bg-neutral-800/60"/>
-                  <span className="text-[10px] font-mono text-neutral-500 font-bold">{crewWithAnyVariance.length}</span>
-                </div>
-                <div className="px-4 mb-4 flex flex-col gap-1.5">
-                  {crewWithAnyVariance.map(entry => (
-                    <button
-                      key={entry.member.id}
-                      type="button"
-                      onClick={() => onCrewTap?.(entry.member)}
-                      className="w-full bg-tm-warn/[0.04] hover:bg-tm-warn/[0.07] border border-tm-warn/25 rounded-xl px-3.5 py-2.5 text-left transition-colors"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-sm font-semibold text-neutral-100 truncate">{entry.member.name || 'Unnamed'}</span>
-                        <span className="text-[10px] text-neutral-500 uppercase tracking-wider ml-auto">{entry.variances.length} {entry.variances.length === 1 ? 'change' : 'changes'}</span>
-                      </div>
-                      <div className="flex flex-col gap-0.5 mt-1.5">
-                        {entry.variances.map((v, i) => (
-                          <div key={i} className="flex items-baseline gap-2 text-[11px]">
-                            <span className={`font-bold uppercase tracking-wider text-[9px] w-10 flex-shrink-0 ${v.kind === 'toc' && v.label === 'TOC!' ? 'text-tm-pen' : 'text-tm-warn'}`}>{v.label}</span>
-                            <span className="text-neutral-400 font-mono">{v.detail}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </>
-            );
-          })()}
-
           <div className="px-4 mb-2.5 flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CREW</span>
             <span className="flex-1 h-px bg-neutral-800/60"/>
@@ -6742,7 +6658,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           </div>
 
           <div className="px-4">
-            {sortedCrew.map(({ member, isMe, isOff, dayTotal, chips, offReason }) => (
+            {sortedCrew.map(({ member, isMe, isOff, dayTotal, chips, offReason, variances }) => {
+              const hasVariance = !isOff && (variances?.length || 0) > 0;
+              return (
               <button
                 key={member.id}
                 type="button"
@@ -6763,7 +6681,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-semibold leading-tight ${isOff ? 'text-neutral-400' : 'text-neutral-100'}`}>
+                  <div className={`text-sm font-semibold leading-tight ${isOff ? 'text-neutral-400' : hasVariance ? 'text-fuchsia-400' : 'text-neutral-100'}`}>
                     {member.name || 'Unnamed'}
                     {isMe && <span className="ml-1.5 text-[9px] font-semibold text-neutral-500 lowercase">(you)</span>}
                   </div>
@@ -6787,7 +6705,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                 )}
               </button>
-            ))}
+              );
+            })}
 
             <button
               type="button"
@@ -6894,7 +6813,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onResetToDefault(); }}
-                className="relative z-10 text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors"
+                className="relative z-10 text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-fuchsia-400/10 text-fuchsia-400 border-fuchsia-400/30 hover:bg-fuchsia-400/15 transition-colors"
                 aria-label={`Reset ${label} to department default`}
                 title={`Reset to default (${defaultValue})`}
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
@@ -6902,7 +6821,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </button>
             )}
           </div>
-          <div className="text-[26px] font-mono font-bold text-neutral-100 leading-none tabular-nums">
+          <div className={`text-[26px] font-mono font-bold leading-none tabular-nums ${isOverridden ? 'text-fuchsia-400' : 'text-neutral-100'}`}>
             {value || <span className="text-neutral-500 text-base font-sans font-medium">—</span>}
           </div>
           <input
@@ -6937,9 +6856,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <span className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">LUNCH</span>
             {startValue ? (
               <>
-                <span className="font-mono text-[14px] text-neutral-100 tabular-nums">{startValue}</span>
+                <span className={`font-mono text-[14px] tabular-nums ${startOverridden ? 'text-fuchsia-400' : 'text-neutral-100'}`}>{startValue}</span>
                 <span className="text-neutral-600">→</span>
-                <span className="font-mono text-[14px] text-neutral-100 tabular-nums">{lunchEnd || '—'}</span>
+                <span className={`font-mono text-[14px] tabular-nums ${startOverridden ? 'text-fuchsia-400' : 'text-neutral-100'}`}>{lunchEnd || '—'}</span>
                 {isLunchLate && (
                   <span className="text-[10px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">
                     {lateMinutes > 0 ? `${lateMinutes}m LATE` : 'LATE'}
@@ -6950,7 +6869,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     {curtailedMinutes > 0 ? `${curtailedMinutes}m SHORT` : 'CURT'}
                   </span>
                 )}
-                <span className="ml-auto text-[11px] font-mono text-neutral-400 tabular-nums">{durValue} mins</span>
+                <span className={`ml-auto text-[11px] font-mono tabular-nums ${durOverridden ? 'text-fuchsia-400' : 'text-neutral-400'}`}>{durValue} mins</span>
               </>
             ) : (
               <span className="text-neutral-500 text-sm">{tappable ? 'Tap to set' : '—'}</span>
@@ -6959,10 +6878,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {anyOverridden && (
             <div className="flex gap-1 mt-2">
               {startOverridden && (
-                <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onResetStart(); }} className="cursor-pointer text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset start to ${defaultStart}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · START</span>
+                <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onResetStart(); }} className="cursor-pointer text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-fuchsia-400/10 text-fuchsia-400 border-fuchsia-400/30 hover:bg-fuchsia-400/15 transition-colors" title={`Reset start to ${defaultStart}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · START</span>
               )}
               {durOverridden && (
-                <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onResetDur(); }} className="cursor-pointer text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset duration to ${defaultDur}m`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · DUR</span>
+                <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onResetDur(); }} className="cursor-pointer text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-fuchsia-400/10 text-fuchsia-400 border-fuchsia-400/30 hover:bg-fuchsia-400/15 transition-colors" title={`Reset duration to ${defaultDur}m`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR · DUR</span>
               )}
             </div>
           )}
@@ -6977,7 +6896,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 flex items-center gap-2 mt-2">
           <span className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">DAY TYPE</span>
           <span className="relative inline-block ml-auto">
-            <span className={`font-mono text-[12px] text-neutral-100 uppercase tracking-wider ${editable ? 'underline decoration-dotted decoration-neutral-600 underline-offset-2' : ''}`}>
+            <span className={`font-mono text-[12px] uppercase tracking-wider ${isOverridden ? 'text-fuchsia-400' : 'text-neutral-100'} ${editable ? 'underline decoration-dotted decoration-neutral-600 underline-offset-2' : ''}`}>
               {value || '—'}
             </span>
             {editable && (
@@ -6993,7 +6912,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             )}
           </span>
           {isOverridden && (
-            <button type="button" onClick={onResetToDefault} className="text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-tm-warn/10 text-tm-warn border-tm-warn/25 hover:bg-tm-warn/15 transition-colors" title={`Reset to ${defaultValue}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR</button>
+            <button type="button" onClick={onResetToDefault} className="text-[8px] tracking-wider font-bold uppercase border rounded px-1 py-0.5 bg-fuchsia-400/10 text-fuchsia-400 border-fuchsia-400/30 hover:bg-fuchsia-400/15 transition-colors" title={`Reset to ${defaultValue}`} style={{ WebkitTapHighlightColor: 'transparent' }}>VAR</button>
           )}
         </div>
       );
@@ -7404,7 +7323,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">TIMES</span>
                   <span className="flex-1 h-px bg-neutral-800/60"/>
                   {anyTimeOverridden && (
-                    <span className="text-[10px] uppercase tracking-[0.18em] text-tm-warn font-bold">OVERRIDDEN</span>
+                    <span className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-400 font-bold">OVERRIDDEN</span>
                   )}
                 </div>
 
