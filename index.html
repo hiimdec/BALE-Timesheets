@@ -4749,6 +4749,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   : "";
                 const wrapHint = autoNextDay ? "Wrap is next day (auto-detected)" : "";
                 const tileInputCls = "!text-2xl !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 w-full";
+                // V4-5h-13: WRAP tint when day crosses OT threshold. Mirrors
+                // BB dept-default's defaultsWrapImpliesOT predicate. Standard
+                // 10h work threshold (production-level isElevenHourDay isn't
+                // plumbed into DayEntryForm — close-enough approximation).
+                const wrapInOT = (() => {
+                  if (!bs || isTravelDay || isPmpa) return false;
+                  const lunchHrs = bs.lunchMissed ? 0 : (bs.lunchDuration / 60);
+                  const workHrs = bs.workedHrs - lunchHrs;
+                  return workHrs > 10;
+                })();
                 return (
                   <div className="grid grid-cols-2 gap-3">
                     {/* CALL tile */}
@@ -4774,9 +4784,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                     {/* WRAP tile */}
                     <div>
-                      <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
+                      <div className={`border rounded-xl px-3 py-2.5 ${wrapInOT ? 'bg-tm-warn/[0.08] border-tm-warn/45' : 'bg-neutral-950 border-neutral-800'}`}>
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold">WRAP</span>
+                          <span className={`text-[10px] uppercase tracking-[0.16em] font-bold ${wrapInOT ? 'text-tm-warn' : 'text-sky-500'}`}>WRAP{wrapInOT ? ' · OT' : ''}</span>
                           {isToday && (
                             <button
                               type="button"
@@ -6721,6 +6731,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 type="time"
                 value={deptCall || ''}
                 onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'callTime', e.target.value))}
+                onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 aria-label="Edit call time"
                 style={{ WebkitAppearance: 'none' }}
@@ -6735,6 +6746,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 type="time"
                 value={deptWrap || ''}
                 onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'wrapTime', e.target.value))}
+                onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 aria-label="Edit wrap time"
                 style={{ WebkitAppearance: 'none' }}
@@ -7211,6 +7223,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             type="time"
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
+            onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             aria-label={`Edit ${label.toLowerCase()}`}
             style={{ WebkitAppearance: 'none' }}
