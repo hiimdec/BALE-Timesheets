@@ -715,11 +715,9 @@
       if (dayRecord.dayType && dayRecord.dayType !== defaults.dayType) {
         variances.push({ kind: 'override', label: 'TYPE', detail: `${dayRecord.dayType} · default ${defaults.dayType}` });
       }
-      // Extras overrides (cascade-aware: only fire when day has explicit value AND differs)
-      if (!!dayRecord.preCallEnabled && (!!dayRecord.preCallEnabled !== !!defaults.preCallEnabled || (dayRecord.preCallTime && dayRecord.preCallTime !== defaults.preCallTime))) {
-        const dv = dayRecord.preCallTime || 'on';
-        const xv = defaults.preCallEnabled ? (defaults.preCallTime || 'on') : 'off';
-        variances.push({ kind: 'override', label: 'PRE-CALL', detail: `${dv} · default ${xv}` });
+      // Extras overrides (value-presence: V4-5h-10 dropped *Enabled flags).
+      if (dayRecord.preCallTime && dayRecord.preCallTime !== (defaults.preCallTime || '')) {
+        variances.push({ kind: 'override', label: 'PRE-CALL', detail: `${dayRecord.preCallTime} · default ${defaults.preCallTime || '(none)'}` });
       }
       const drMiles = Number(dayRecord.miles) || 0;
       const ddMiles = Number(defaults.miles) || 0;
@@ -733,24 +731,17 @@
           : `${drMiles}mi · default ${ddMiles}mi`;
         variances.push({ kind: 'override', label: 'MILES', detail });
       }
-      if (!!dayRecord.travelTimeEnabled && (
-        !!dayRecord.travelTimeEnabled !== !!defaults.travelTimeEnabled ||
-        ((Number(dayRecord.travelOutMins) || 0) !== (Number(defaults.travelOutMins) || 0)) ||
-        ((Number(dayRecord.travelBackMins) || 0) !== (Number(defaults.travelBackMins) || 0))
-      )) {
-        const dv = `${Number(dayRecord.travelOutMins) || 0}+${Number(dayRecord.travelBackMins) || 0}m`;
-        const xv = defaults.travelTimeEnabled ? `${Number(defaults.travelOutMins) || 0}+${Number(defaults.travelBackMins) || 0}m` : 'off';
-        variances.push({ kind: 'override', label: 'TRAVEL', detail: `${dv} · default ${xv}` });
+      const drTOut = Number(dayRecord.travelOutMins) || 0;
+      const drTBack = Number(dayRecord.travelBackMins) || 0;
+      const ddTOut = Number(defaults.travelOutMins) || 0;
+      const ddTBack = Number(defaults.travelBackMins) || 0;
+      if ((drTOut > 0 || drTBack > 0) && (drTOut !== ddTOut || drTBack !== ddTBack)) {
+        variances.push({ kind: 'override', label: 'TRAVEL', detail: `${drTOut}+${drTBack}m · default ${ddTOut}+${ddTBack}m` });
       }
       const drPerDiem = Number(dayRecord.perDiemAmount) || 0;
       const ddPerDiem = Number(defaults.perDiemAmount) || 0;
-      if (!!dayRecord.perDiemEnabled && (
-        !!dayRecord.perDiemEnabled !== !!defaults.perDiemEnabled ||
-        drPerDiem !== ddPerDiem
-      )) {
-        const dv = `£${drPerDiem}`;
-        const xv = defaults.perDiemEnabled ? `£${ddPerDiem}` : 'off';
-        variances.push({ kind: 'override', label: 'PER DIEM', detail: `${dv} · default ${xv}` });
+      if (drPerDiem > 0 && drPerDiem !== ddPerDiem) {
+        variances.push({ kind: 'override', label: 'PER DIEM', detail: `£${drPerDiem} · default £${ddPerDiem}` });
       }
       const drExpTotal = (dayRecord.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
       const ddExpTotal = (defaults.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
@@ -882,9 +873,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // (false/0/empty) falls back to the dept-default. Explicit non-empty day values
       // are overrides and win. Time fields (callTime etc.) intentionally don't cascade
       // here — they propagate only via the "Apply to N crew" UI in mobile mode.
-      if (!day.preCallEnabled && dateDefaults.preCallEnabled) {
-        merged.preCallEnabled = true;
-        if (dateDefaults.preCallTime) merged.preCallTime = dateDefaults.preCallTime;
+      // Value-presence cascade (V4-5h-10): empty day value falls back to dept default.
+      if (!day.preCallTime && dateDefaults.preCallTime) {
+        merged.preCallTime = dateDefaults.preCallTime;
       }
       if ((Number(day.miles) || 0) === 0 && Number(dateDefaults.miles) > 0) {
         merged.miles = dateDefaults.miles;
@@ -894,14 +885,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (dateDefaults.mileageMethod) merged.mileageMethod = dateDefaults.mileageMethod;
         if (dateDefaults.mileageRoundTrip !== undefined) merged.mileageRoundTrip = dateDefaults.mileageRoundTrip;
       }
-      if (!day.travelTimeEnabled && dateDefaults.travelTimeEnabled) {
-        merged.travelTimeEnabled = true;
-        if ((Number(day.travelOutMins) || 0) === 0) merged.travelOutMins = dateDefaults.travelOutMins ?? 0;
-        if ((Number(day.travelBackMins) || 0) === 0) merged.travelBackMins = dateDefaults.travelBackMins ?? 0;
+      if ((Number(day.travelOutMins) || 0) === 0 && (Number(day.travelBackMins) || 0) === 0 &&
+          ((Number(dateDefaults.travelOutMins) || 0) > 0 || (Number(dateDefaults.travelBackMins) || 0) > 0)) {
+        merged.travelOutMins = dateDefaults.travelOutMins ?? 0;
+        merged.travelBackMins = dateDefaults.travelBackMins ?? 0;
       }
-      if (!day.perDiemEnabled && dateDefaults.perDiemEnabled) {
-        merged.perDiemEnabled = true;
-        if ((Number(day.perDiemAmount) || 0) === 0) merged.perDiemAmount = dateDefaults.perDiemAmount ?? 0;
+      if ((Number(day.perDiemAmount) || 0) === 0 && Number(dateDefaults.perDiemAmount) > 0) {
+        merged.perDiemAmount = dateDefaults.perDiemAmount;
       }
       if ((day.expenses?.length ?? 0) === 0 && (dateDefaults.expenses?.length ?? 0) > 0) {
         merged.expenses = dateDefaults.expenses;
@@ -1302,6 +1292,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function migrateDay(d) {
       d = { note: "", expenses: [], ...d };
+      // V4-5h-10: *Enabled flags dropped; value presence drives activation.
+      // Existing records with the flags get them removed (idempotent). Values preserved —
+      // records previously saved as enabled:false with a value will now show as ACTIVE.
+      if (d.preCallEnabled !== undefined || d.kitMoneyEnabled !== undefined ||
+          d.perDiemEnabled !== undefined || d.travelTimeEnabled !== undefined ||
+          d.stepUpEnabled !== undefined || d.mileageEnabled !== undefined ||
+          d.expensesEnabled !== undefined) {
+        d = { ...d };
+        delete d.preCallEnabled;
+        delete d.kitMoneyEnabled;
+        delete d.perDiemEnabled;
+        delete d.travelTimeEnabled;
+        delete d.stepUpEnabled;
+        delete d.mileageEnabled;
+        delete d.expensesEnabled;
+      }
       // secondBreakLogged backfill: existing records with a duration > 0 are treated as
       // "logged"; records sitting at 0 are treated as "not yet logged" (friendlier UX —
       // chip reads as caps "2ND BREAK" prompting engagement, not "Missed").
@@ -1386,11 +1392,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     const migrateProduction = (p) => {
-      const days = (p.days || []).map(day => {
-        if (day.kitMoneyEnabled !== undefined) return day;
-        const crewMember = (p.crew || []).find(c => c.id === day.crewId);
-        return { ...day, kitMoneyEnabled: crewMember?.kitMoneyEnabled ?? false, kitMoneyAmount: crewMember?.kitMoneyAmount ?? 0 };
-      });
+      // V4-5h-10: legacy v1→v2 kitMoneyEnabled backfill removed. Day records that lack
+      // kitMoneyAmount now silently inherit kit money via augmentCalc's crew fallback
+      // (when crew.kitMoneyEnabled with crew.kitMoneyAmount > 0). No backfill needed.
+      const days = p.days || [];
 
       // dayDefaults backfill: derive from existing crew records per date. Idempotent.
       const backfilledDefaults = { ...(p.dayDefaults || {}) };
@@ -1419,18 +1424,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       // Round-5 extras backfill on dayDefaults — idempotent. Every dayDefaults entry
       // gets the 5 mobile-mode extras fields (defaulted to off/empty).
+      // V4-5h-10: *Enabled flags dropped; value presence drives activation. Existing
+      // entries with stale flag fields get them deleted here (idempotent).
       for (const dateKey of Object.keys(backfilledDefaults)) {
         const d = backfilledDefaults[dateKey];
-        d.preCallEnabled    = d.preCallEnabled    ?? false;
+        delete d.preCallEnabled;
+        delete d.travelTimeEnabled;
+        delete d.perDiemEnabled;
+        delete d.kitMoneyEnabled;
+        delete d.stepUpEnabled;
         d.preCallTime       = d.preCallTime       ?? '';
         d.miles             = d.miles             ?? 0;
         d.mileagePostcode   = d.mileagePostcode   ?? '';
         d.mileageMethod     = d.mileageMethod     ?? 'manual';
         d.mileageRoundTrip  = d.mileageRoundTrip  ?? true;
-        d.travelTimeEnabled = d.travelTimeEnabled ?? false;
         d.travelOutMins     = d.travelOutMins     ?? 0;
         d.travelBackMins    = d.travelBackMins    ?? 0;
-        d.perDiemEnabled    = d.perDiemEnabled    ?? false;
         d.perDiemAmount     = d.perDiemAmount     ?? 0;
         d.expenses          = d.expenses          ?? [];
       }
@@ -1616,11 +1625,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function augmentCalc(calc, resolvedDay, crewMember) {
       const extra = [];
-      const kmEnabled = resolvedDay?.kitMoneyEnabled ?? crewMember?.kitMoneyEnabled;
-      const kmAmount  = resolvedDay?.kitMoneyAmount  ?? crewMember?.kitMoneyAmount;
-      if (kmEnabled && Number(kmAmount) > 0)
-        extra.push({ label: "Kit Money", detail: "", rate: null, qty: 1, amount: Number(kmAmount) });
-      if (resolvedDay?.perDiemEnabled && Number(resolvedDay.perDiemAmount) > 0)
+      // Kit money: day's amount wins if set; otherwise fall back to crew's default amount
+      // (crew.kitMoneyEnabled still gates the crew-level default; this is a per-crew UI
+      // toggle, distinct from the day-level flag that was dropped in V4-5h-10).
+      const dayKmAmount = Number(resolvedDay?.kitMoneyAmount) || 0;
+      const crewKmAmount = (crewMember?.kitMoneyEnabled && Number(crewMember?.kitMoneyAmount) > 0)
+        ? Number(crewMember.kitMoneyAmount) : 0;
+      const kmAmount = dayKmAmount > 0 ? dayKmAmount : crewKmAmount;
+      if (kmAmount > 0)
+        extra.push({ label: "Kit Money", detail: "", rate: null, qty: 1, amount: kmAmount });
+      if (Number(resolvedDay?.perDiemAmount) > 0)
         extra.push({ label: "Per Diem", detail: "", rate: null, qty: 1, amount: Number(resolvedDay.perDiemAmount) });
       (resolvedDay?.expenses || []).forEach(exp => {
         const amt = Number(exp.amount) || 0;
@@ -1748,7 +1762,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function resolveCrewForDay(resolvedDay, crewMember) {
-      if (!resolvedDay?.stepUpEnabled) return crewMember;
+      if (!resolvedDay?.stepUpRole) return crewMember;
       return {
         ...crewMember,
         role: resolvedDay.stepUpRole || crewMember.role,
@@ -1819,10 +1833,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lunchStartTime: DEFAULT_PRODUCTION_DAY.lunchStartTime,
         lunchDurationMins: DEFAULT_PRODUCTION_DAY.lunchDurationMins,
         dayType: DEFAULT_PRODUCTION_DAY.dayType,
-        preCallEnabled: false, preCallTime: '',
+        preCallTime: '',
         miles: 0,
-        travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0,
-        perDiemEnabled: false, perDiemAmount: 0,
+        travelOutMins: 0, travelBackMins: 0,
+        perDiemAmount: 0,
         expenses: [],
       };
       const newDefaults = { ...existingDefaults, [field]: value };
@@ -1909,7 +1923,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       sorted.forEach((d) => {
         const calc = calcForDisplay(production, d, crewMember, prevEntry);
         grandTotal += calc.total;
-        const stepUpNote = d.stepUpEnabled && d.stepUpRole ? ` — Stepped up: ${d.stepUpRole}` : '';
+        const stepUpNote = d.stepUpRole ? ` — Stepped up: ${d.stepUpRole}` : '';
         lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
         calc.lines.forEach((l) => lines.push(formatLineText(l)));
         lines.push(`Day total: ${fmtGBP(calc.total)}`);
@@ -1935,7 +1949,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const calc = calcForDisplay(production, day, crewMember, prevDay);
       const lines = [];
       lines.push(`${crewMember.name} — ${crewMember.role}`);
-      const stepUpNote = day.stepUpEnabled && day.stepUpRole ? ` — Stepped up: ${day.stepUpRole}` : '';
+      const stepUpNote = day.stepUpRole ? ` — Stepped up: ${day.stepUpRole}` : '';
       lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
       lines.push('');
       calc.lines.forEach((l) => lines.push(formatLineText(l)));
@@ -4584,7 +4598,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const isTravelDay = v.dayType === "Travel Day";
       const activeCrew = fixedCrewId ? crew.find(c => c.id === fixedCrewId) : crew.find(c => c.id === v.crewId);
       // Step-up role wins over base role for both BWD-override and PMPA classification.
-      const effectiveRole = (v.stepUpEnabled && v.stepUpRole) ? v.stepUpRole : (activeCrew?.role || "");
+      const effectiveRole = v.stepUpRole ? v.stepUpRole : (activeCrew?.role || "");
       const isPmpa = ROLE_DEFAULTS[effectiveRole]?.pmpa === true;
       const role = effectiveRole;
       const bwdOverrideApplies = !isPmpa && ROLES_WITH_BWD_OVERRIDE.includes(role) &&
@@ -4616,38 +4630,51 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : bs.sbState === "given"     ? " — ✓"
         : "";
 
-      // Conditions-chip activation. stepUp/kitMoney use their existing *Enabled flags
-      // (calc already honours them — persist + ignore). preCall and mileage have no
-      // calc-honoured flag, so chip-active falls back to value-presence; the new
-      // *Enabled flag keeps the chip stable before any value is entered, and
-      // deactivation clears the value fields so calc drops them.
-      const stepUpActive     = !!v.stepUpEnabled;
-      const kitMoneyActive   = !!v.kitMoneyEnabled;
-      const perDiemActive    = !!v.perDiemEnabled;
-      const preCallActive    = v.preCallEnabled    !== undefined ? !!v.preCallEnabled    : !!(v.preCallTime || v.truckCallTime);
-      const mileageActive    = v.mileageEnabled    !== undefined ? !!v.mileageEnabled    : (Number(v.miles) > 0 || !!v.mileagePostcode);
-      const travelTimeActive = v.travelTimeEnabled !== undefined ? !!v.travelTimeEnabled : (Number(v.travelOutMins) > 0 || Number(v.travelBackMins) > 0);
-      const expensesActive   = v.expensesEnabled   !== undefined ? !!v.expensesEnabled   : ((v.expenses || []).length > 0);
+      // V4-5h-10: *Enabled flags dropped — value presence drives activation.
+      // Section visibility = `expandedChips.has(key) || *Set`. Chip click toggles
+      // expansion (transient UI state); SectionCard onClose clears values.
+      const stepUpSet     = !!v.stepUpRole;
+      const kitMoneySet   = (Number(v.kitMoneyAmount) || 0) > 0;
+      const perDiemSet    = (Number(v.perDiemAmount) || 0) > 0;
+      const preCallSet    = !!(v.preCallTime || v.truckCallTime);
+      const mileageSet    = Number(v.miles) > 0 || !!v.mileagePostcode;
+      const travelTimeSet = Number(v.travelOutMins) > 0 || Number(v.travelBackMins) > 0;
+      const expensesSet   = (v.expenses || []).length > 0;
+      const [expandedChips, setExpandedChips] = useState(() => new Set());
+      // Active = visible/expanded for editing. True if value present OR user expanded.
+      const stepUpActive     = stepUpSet     || expandedChips.has("stepUp");
+      const kitMoneyActive   = kitMoneySet   || expandedChips.has("kitMoney");
+      const perDiemActive    = perDiemSet    || expandedChips.has("perDiem");
+      const preCallActive    = preCallSet    || expandedChips.has("preCall");
+      const mileageActive    = mileageSet    || expandedChips.has("mileage");
+      const travelTimeActive = travelTimeSet || expandedChips.has("travelTime");
+      const expensesActive   = expensesSet   || expandedChips.has("expenses");
 
       const toggleChip = (key) => {
-        if (key === "stepUp")    set({ stepUpEnabled:    !stepUpActive });
-        if (key === "kitMoney")  set({ kitMoneyEnabled:  !kitMoneyActive });
-        if (key === "perDiem")   set({ perDiemEnabled:   !perDiemActive });
-        if (key === "preCall") {
-          if (preCallActive) set({ preCallEnabled: false, preCallTime: "", truckCallTime: "" });
-          else               set({ preCallEnabled: true });
-        }
-        if (key === "mileage") {
-          if (mileageActive) set({ mileageEnabled: false, miles: 0, mileagePostcode: "" });
-          else               set({ mileageEnabled: true });
-        }
-        if (key === "travelTime") {
-          if (travelTimeActive) set({ travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 });
-          else                  set({ travelTimeEnabled: true });
-        }
-        if (key === "expenses") {
-          if (expensesActive) set({ expensesEnabled: false, expenses: [] });
-          else                set({ expensesEnabled: true });
+        const setMap = {
+          stepUp: stepUpSet, kitMoney: kitMoneySet, perDiem: perDiemSet,
+          preCall: preCallSet, mileage: mileageSet, travelTime: travelTimeSet, expenses: expensesSet,
+        };
+        const clearMap = {
+          stepUp: { stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1, stepUpOTRate: null },
+          kitMoney: { kitMoneyAmount: 0 },
+          perDiem: { perDiemAmount: 0 },
+          preCall: { preCallTime: "", truckCallTime: "" },
+          mileage: { miles: 0, mileagePostcode: "" },
+          travelTime: { travelOutMins: 0, travelBackMins: 0 },
+          expenses: { expenses: [] },
+        };
+        if (setMap[key]) {
+          // Active via value-presence → clear values (deactivates).
+          set(clearMap[key]);
+          setExpandedChips(prev => { const n = new Set(prev); n.delete(key); return n; });
+        } else {
+          // Empty → toggle expansion to reveal/hide editor.
+          setExpandedChips(prev => {
+            const n = new Set(prev);
+            if (n.has(key)) n.delete(key); else n.add(key);
+            return n;
+          });
         }
       };
 
@@ -5348,12 +5375,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           miles: firstEntry?.miles ?? 0,
           travelOutMins: firstEntry?.travelOutMins ?? 0,
           travelBackMins: firstEntry?.travelBackMins ?? 0,
-          perDiemEnabled: firstEntry?.perDiemEnabled ?? false,
           perDiemAmount: firstEntry?.perDiemAmount ?? 0,
-          kitMoneyEnabled: firstEntry?.kitMoneyEnabled ?? false,
           kitMoneyAmount: firstEntry?.kitMoneyAmount ?? 0,
           expenses: firstEntry?.expenses ?? [],
-          stepUpEnabled: firstEntry?.stepUpEnabled ?? false,
           stepUpRole: firstEntry?.stepUpRole ?? "",
           stepUpBDR: firstEntry?.stepUpBDR ?? 0,
           stepUpOTCoef: firstEntry?.stepUpOTCoef ?? 1,
@@ -5695,26 +5719,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       </div>
                     )}
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Per Diem</span>
-                        <Toggle value={!!dateEdit.perDiemEnabled} onChange={val => setDateEdit(p => ({...p, perDiemEnabled: val}))} ariaLabel="Per diem" />
-                      </div>
-                      {dateEdit.perDiemEnabled && (
-                        <Field label="Per Diem Amount (£)" hint="Added to day total">
-                          <Input type="number" min="0" step="0.01" value={dateEdit.perDiemAmount ?? 0} onChange={e => setDateEdit(p => ({...p, perDiemAmount: Number(e.target.value)}))} />
-                        </Field>
-                      )}
+                      <Field label="Per Diem Amount (£)" hint="Set 0 to deactivate. Added to day total.">
+                        <Input type="number" min="0" step="0.01" value={dateEdit.perDiemAmount ?? 0} onChange={e => setDateEdit(p => ({...p, perDiemAmount: Number(e.target.value)}))} />
+                      </Field>
                     </div>
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit Money</span>
-                        <Toggle value={!!dateEdit.kitMoneyEnabled} onChange={val => setDateEdit(p => ({...p, kitMoneyEnabled: val}))} ariaLabel="Kit money" />
-                      </div>
-                      {dateEdit.kitMoneyEnabled && (
-                        <Field label="Kit Money Amount (£)" hint="Added to day total">
-                          <Input type="number" min="0" step="0.01" value={dateEdit.kitMoneyAmount ?? 0} onChange={e => setDateEdit(p => ({...p, kitMoneyAmount: Number(e.target.value)}))} />
-                        </Field>
-                      )}
+                      <Field label="Kit Money Amount (£)" hint="Set 0 to deactivate. Added to day total.">
+                        <Input type="number" min="0" step="0.01" value={dateEdit.kitMoneyAmount ?? 0} onChange={e => setDateEdit(p => ({...p, kitMoneyAmount: Number(e.target.value)}))} />
+                      </Field>
                     </div>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
@@ -5760,35 +5772,35 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       )}
                     </div>
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Step-Up for all crew</span>
-                        <Toggle value={!!dateEdit.stepUpEnabled} onChange={val => setDateEdit(p => ({...p, stepUpEnabled: val}))} ariaLabel="Step-up" />
-                      </div>
-                      {dateEdit.stepUpEnabled && (
-                        <>
-                          <Field label="Step-Up Role">
-                            <Select value={dateEdit.stepUpRole || ""} onChange={e => {
-                              const role = e.target.value;
-                              const d = ROLE_DEFAULTS[role] || {};
-                              setDateEdit(p => ({...p, stepUpRole: role, stepUpBDR: d.bdr ?? p.stepUpBDR, stepUpOTCoef: d.otCoef ?? 1, stepUpOTRate: d.otRate ?? null}));
-                            }}>
-                              <option value="">— Select Role —</option>
-                              {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}</optgroup>)}
+                      <Field label="Step-Up Role for all crew" hint="Select — None — to disable.">
+                        <Select value={dateEdit.stepUpRole || ""} onChange={e => {
+                          const role = e.target.value;
+                          const d = ROLE_DEFAULTS[role] || {};
+                          setDateEdit(p => ({
+                            ...p,
+                            stepUpRole: role,
+                            stepUpBDR: role ? (d.bdr ?? p.stepUpBDR) : 0,
+                            stepUpOTCoef: role ? (d.otCoef ?? 1) : 1,
+                            stepUpOTRate: role ? (d.otRate ?? null) : null,
+                          }));
+                        }}>
+                          <option value="">— None (not stepped up) —</option>
+                          {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}</optgroup>)}
+                        </Select>
+                      </Field>
+                      {dateEdit.stepUpRole && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="Step-Up BDR (£)" hint="Override for this day only">
+                            <Input type="number" min="0" step="0.01" value={dateEdit.stepUpBDR ?? 0} onChange={e => setDateEdit(p => ({...p, stepUpBDR: Number(e.target.value)}))} />
+                          </Field>
+                          <Field label="Step-Up OT Coef">
+                            <Select value={String(dateEdit.stepUpOTCoef ?? 1)} onChange={e => setDateEdit(p => ({...p, stepUpOTCoef: Number(e.target.value)}))}>
+                              <option value="1">1×</option>
+                              <option value="1.25">1.25×</option>
+                              <option value="1.5">1.5×</option>
                             </Select>
                           </Field>
-                          <div className="grid grid-cols-2 gap-3">
-                            <Field label="Step-Up BDR (£)" hint="Override for this day only">
-                              <Input type="number" min="0" step="0.01" value={dateEdit.stepUpBDR ?? 0} onChange={e => setDateEdit(p => ({...p, stepUpBDR: Number(e.target.value)}))} />
-                            </Field>
-                            <Field label="Step-Up OT Coef">
-                              <Select value={String(dateEdit.stepUpOTCoef ?? 1)} onChange={e => setDateEdit(p => ({...p, stepUpOTCoef: Number(e.target.value)}))}>
-                                <option value="1">1×</option>
-                                <option value="1.25">1.25×</option>
-                                <option value="1.5">1.5×</option>
-                              </Select>
-                            </Field>
-                          </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   </Disclosure>
@@ -5831,10 +5843,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         noMealProvided: false, secondBreakDurationMins: 0, secondBreakLogged: false,
         cwdBreak1Given: true, cwdBreak2Given: true,
         travelOutMins: 0, travelBackMins: 0, miles: 0,
-        perDiemEnabled: false, perDiemAmount: 0,
-        kitMoneyEnabled: false, kitMoneyAmount: 0,
+        perDiemAmount: 0,
+        kitMoneyAmount: 0,
         expenses: [],
-        stepUpEnabled: false, stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
+        stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
         note: "",
       };
     }
@@ -6004,9 +6016,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           secondBreakStartTime, secondBreakDurationMins,
           preCallTime,
           miles, travelOutMins, travelBackMins,
-          perDiemEnabled, perDiemAmount,
-          kitMoneyEnabled, kitMoneyAmount,
-          stepUpEnabled, stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
+          perDiemAmount,
+          kitMoneyAmount,
+          stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
           mileageMethod, mileagePostcode, mileageRoundTrip,
         } = overrides;
         setDays(prev => prev.map(d =>
@@ -6016,9 +6028,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             secondBreakStartTime, secondBreakDurationMins,
             preCallTime,
             miles, travelOutMins, travelBackMins,
-            perDiemEnabled, perDiemAmount,
-            kitMoneyEnabled, kitMoneyAmount,
-            stepUpEnabled, stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
+            perDiemAmount,
+            kitMoneyAmount,
+            stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
             mileageMethod, mileagePostcode, mileageRoundTrip,
           }
         ));
@@ -6443,9 +6455,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if ((calc.lines || []).some(l => /missed 2nd|late 2nd/i.test(l.label))) bump('2nd brk', true);
           if ((calc.lines || []).some(l => /curtailed/i.test(l.label))) bump('Curtailed', true);
           if ((calc.lines || []).some(l => /missed cwd|missed meal/i.test(l.label))) bump('Missed', true);
-          if (rec?.stepUpEnabled && rec?.stepUpRole) bump('Step-up', false);
-          if (rec?.perDiemEnabled) bump('Per diem', false);
-          if (rec?.kitMoneyEnabled) bump('Kit', false);
+          if (rec?.stepUpRole) bump('Step-up', false);
+          if ((Number(rec?.perDiemAmount) || 0) > 0) bump('Per diem', false);
+          if ((Number(rec?.kitMoneyAmount) || 0) > 0) bump('Kit', false);
           if (Number(rec?.miles) > 0) bump('Mileage', false);
           if (Number(rec?.travelOutMins) > 0 || Number(rec?.travelBackMins) > 0) bump('Travel', false);
           if ((calc.lines || []).some(l => l.isTOC)) bump('TOC tight', true);
@@ -6757,10 +6769,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           {(() => {
             const dd = production.dayDefaults?.[currentDate] || {};
-            const preCallSet = !!dd.preCallEnabled;
-            const mileageSet = (Number(dd.miles) || 0) > 0;
-            const travelSet = !!dd.travelTimeEnabled;
-            const perDiemSet = !!dd.perDiemEnabled;
+            const preCallSet = !!dd.preCallTime;
+            const mileageSet = (Number(dd.miles) || 0) > 0 || !!(dd.mileagePostcode || '').trim();
+            const travelSet = (Number(dd.travelOutMins) || 0) > 0 || (Number(dd.travelBackMins) || 0) > 0;
+            const perDiemSet = (Number(dd.perDiemAmount) || 0) > 0;
             const expensesSet = (dd.expenses?.length ?? 0) > 0;
             const expensesTotalDD = (dd.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
             return (
@@ -6788,18 +6800,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </div>
                   );
                   const renderDept = (key) => {
-                    let title = '', body = null;
+                    let title = '', body = null, isSet = false, onClear = null;
                     if (key === 'preCall') {
                       title = 'Pre-call · Dept default';
+                      isSet = !!dd.preCallTime;
+                      onClear = () => updateDeptDefault('preCallTime', '');
                       body = (
                         <>
-                          <DToggleRow label="Pre-call active" value={!!dd.preCallEnabled} onChange={(v) => updateDeptDefault('preCallEnabled', v)} ariaLabel="Toggle pre-call default"/>
-                          {dd.preCallEnabled && (
-                            <div>
-                              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
-                              <input type="time" value={dd.preCallTime || ''} onChange={(e) => updateDeptDefault('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
-                            </div>
-                          )}
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
+                            <input type="time" value={dd.preCallTime || ''} onChange={(e) => updateDeptDefault('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
+                          </div>
                         </>
                       );
                     } else if (key === 'mileage') {
@@ -6807,53 +6818,43 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         const ddNew = { ...(p.dayDefaults?.[currentDate] || {}), ...patch };
                         return { ...p, dayDefaults: { ...(p.dayDefaults || {}), [currentDate]: ddNew } };
                       });
-                      const ddActive = (Number(dd.miles) || 0) > 0 || !!dd.mileagePostcode;
                       title = 'Mileage · Dept default';
+                      isSet = (Number(dd.miles) || 0) > 0 || !!(dd.mileagePostcode || '').trim();
+                      onClear = () => updateDeptMulti({ miles: 0, mileagePostcode: '', mileageMethod: 'manual' });
                       body = (
-                        <>
-                          <DToggleRow label="Mileage applies" value={ddActive} onChange={(v) => {
-                            if (!v) updateDeptMulti({ miles: 0, mileagePostcode: '', mileageMethod: 'manual' });
-                          }} ariaLabel="Toggle mileage default"/>
-                          {ddActive && (
-                            <MileageInput day={{ ...dd, date: currentDate, crewId: 'dept-default' }} updateDay={updateDeptMulti} days={[]}/>
-                          )}
-                        </>
+                        <MileageInput day={{ ...dd, date: currentDate, crewId: 'dept-default' }} updateDay={updateDeptMulti} days={[]}/>
                       );
                     } else if (key === 'travel') {
                       title = 'Travel time · Dept default';
+                      isSet = (Number(dd.travelOutMins) || 0) > 0 || (Number(dd.travelBackMins) || 0) > 0;
+                      onClear = () => setProduction(p => {
+                        const ddNew = { ...(p.dayDefaults?.[currentDate] || {}), travelOutMins: 0, travelBackMins: 0 };
+                        return { ...p, dayDefaults: { ...(p.dayDefaults || {}), [currentDate]: ddNew } };
+                      });
                       body = (
                         <>
-                          <DToggleRow label="Travel time active" value={!!dd.travelTimeEnabled} onChange={(v) => {
-                            if (v) updateDeptDefault('travelTimeEnabled', true);
-                            else setProduction(p => {
-                              const ddNew = { ...(p.dayDefaults?.[currentDate] || {}), travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 };
-                              return { ...p, dayDefaults: { ...(p.dayDefaults || {}), [currentDate]: ddNew } };
-                            });
-                          }} ariaLabel="Toggle travel time default"/>
-                          {!!dd.travelTimeEnabled && (
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
-                                <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelOutMins) || 0} onChange={(e) => updateDeptDefault('travelOutMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                              </div>
-                              <div>
-                                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
-                                <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelBackMins) || 0} onChange={(e) => updateDeptDefault('travelBackMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                              </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
+                              <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelOutMins) || 0} onChange={(e) => updateDeptDefault('travelOutMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
                             </div>
-                          )}
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
+                              <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelBackMins) || 0} onChange={(e) => updateDeptDefault('travelBackMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                            </div>
+                          </div>
                         </>
                       );
                     } else if (key === 'perDiem') {
                       title = 'Per diem · Dept default';
+                      isSet = (Number(dd.perDiemAmount) || 0) > 0;
+                      onClear = () => updateDeptDefault('perDiemAmount', 0);
                       body = (
                         <>
-                          <DToggleRow label="Per diem active" value={!!dd.perDiemEnabled} onChange={(v) => updateDeptDefault('perDiemEnabled', v)} ariaLabel="Toggle per diem default"/>
-                          {!!dd.perDiemEnabled && (
-                            <div>
-                              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                              <input type="number" min="0" step="0.01" inputMode="decimal" value={Number(dd.perDiemAmount) || 0} onChange={(e) => updateDeptDefault('perDiemAmount', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                            </div>
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                            <input type="number" min="0" step="0.01" inputMode="decimal" value={Number(dd.perDiemAmount) || 0} onChange={(e) => updateDeptDefault('perDiemAmount', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                          </div>
                           )}
                         </>
                       );
@@ -6863,6 +6864,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const upExp = (id, patch) => updateDeptDefault('expenses', expenses.map(x => x.id === id ? { ...x, ...patch } : x));
                       const rmExp = (id) => updateDeptDefault('expenses', expenses.filter(x => x.id !== id));
                       title = 'Expenses · Dept default';
+                      isSet = expenses.length > 0;
+                      onClear = () => updateDeptDefault('expenses', []);
                       body = (
                         <>
                           <button type="button" onClick={addExp} className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3" style={{ WebkitTapHighlightColor: 'transparent' }}>
@@ -6891,6 +6894,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <div ref={setRef(key)} className="px-4">
                         <SectionCard title={title} variant="condition" onClose={() => close(key)}>
                           {body}
+                          {isSet && onClear && (
+                            <button
+                              type="button"
+                              onClick={onClear}
+                              className="w-full mt-3 px-4 py-2.5 rounded-xl bg-tm-warn/10 hover:bg-tm-warn/15 border border-tm-warn/30 text-tm-warn text-sm font-bold transition-colors"
+                              style={{ WebkitTapHighlightColor: 'transparent' }}
+                            >
+                              Clear default
+                            </button>
+                          )}
                         </SectionCard>
                       </div>
                     );
@@ -7286,9 +7299,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if ((calc?.lines || []).some(l => /missed 2nd|late 2nd/i.test(l.label))) pills.push({ label: '2nd break issue', warn: true });
       if ((calc?.lines || []).some(l => /curtailed/i.test(l.label))) pills.push({ label: 'Curtailed break', warn: true });
       if ((calc?.lines || []).some(l => /missed cwd|missed meal/i.test(l.label))) pills.push({ label: 'Missed break', warn: true });
-      if (dayRecord?.stepUpEnabled && dayRecord?.stepUpRole) pills.push({ label: `Step-up: ${dayRecord.stepUpRole}`, warn: false });
-      if (dayRecord?.perDiemEnabled) pills.push({ label: `Per diem £${dayRecord.perDiemAmount || 0}`, warn: false });
-      if (dayRecord?.kitMoneyEnabled) pills.push({ label: `Kit £${dayRecord.kitMoneyAmount || 0}`, warn: false });
+      if (dayRecord?.stepUpRole) pills.push({ label: `Step-up: ${dayRecord.stepUpRole}`, warn: false });
+      if ((Number(dayRecord?.perDiemAmount) || 0) > 0) pills.push({ label: `Per diem £${dayRecord.perDiemAmount}`, warn: false });
+      if ((Number(dayRecord?.kitMoneyAmount) || 0) > 0) pills.push({ label: `Kit £${dayRecord.kitMoneyAmount}`, warn: false });
       if (Number(dayRecord?.miles) > 0) pills.push({ label: `${dayRecord.miles} mi`, warn: false });
       if (Number(dayRecord?.travelOutMins) > 0 || Number(dayRecord?.travelBackMins) > 0) pills.push({ label: 'Travel time', warn: false });
 
@@ -7767,21 +7780,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
                 {(() => {
                   const isTravelDay = dayRecord.dayType === 'Travel Day';
-                  const stepUpActive = !!dayRecord.stepUpEnabled;
-                  const kitMoneyActive = !!dayRecord.kitMoneyEnabled;
-                  const perDiemActive = !!dayRecord.perDiemEnabled;
-                  const preCallActive = dayRecord.preCallEnabled !== undefined
-                    ? !!dayRecord.preCallEnabled
-                    : !!(dayRecord.preCallTime || dayRecord.truckCallTime);
-                  const mileageActive = dayRecord.mileageEnabled !== undefined
-                    ? !!dayRecord.mileageEnabled
-                    : (Number(dayRecord.miles) > 0 || !!dayRecord.mileagePostcode);
-                  const travelTimeActive = dayRecord.travelTimeEnabled !== undefined
-                    ? !!dayRecord.travelTimeEnabled
-                    : (Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0);
-                  const expensesActive = dayRecord.expensesEnabled !== undefined
-                    ? !!dayRecord.expensesEnabled
-                    : ((dayRecord.expenses || []).length > 0);
+                  // V4-5h-10: value-presence drives activation (no *Enabled flags).
+                  const stepUpActive = !!dayRecord.stepUpRole;
+                  const kitMoneyActive = (Number(dayRecord.kitMoneyAmount) || 0) > 0;
+                  const perDiemActive = (Number(dayRecord.perDiemAmount) || 0) > 0;
+                  const preCallActive = !!(dayRecord.preCallTime || dayRecord.truckCallTime);
+                  const mileageActive = Number(dayRecord.miles) > 0 || !!dayRecord.mileagePostcode;
+                  const travelTimeActive = Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0;
+                  const expensesActive = (dayRecord.expenses || []).length > 0;
                   const show2ndBreakChip = !!calc?.meta?.secondBreakRequired
                     && !calc?.meta?.continuousDay
                     && !calc?.meta?.isPmpa
@@ -7793,23 +7799,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
                   // Override detection vs dept defaults — empty-ish cascade (mirror resolveDay).
                   const dd = defaults;
-                  const preCallOverridden = !!dd && !!dayRecord.preCallEnabled && (
-                    !!dayRecord.preCallEnabled !== !!dd.preCallEnabled ||
-                    (dayRecord.preCallTime && dayRecord.preCallTime !== dd.preCallTime)
-                  );
+                  const preCallOverridden = !!dd && !!dayRecord.preCallTime && dayRecord.preCallTime !== (dd.preCallTime || '');
                   const mileageOverridden = !!dd && (
                     ((Number(dayRecord.miles) || 0) > 0 && (Number(dayRecord.miles) || 0) !== (Number(dd.miles) || 0)) ||
                     (!!(dayRecord.mileagePostcode || '').trim() && (dayRecord.mileagePostcode || '').trim() !== (dd.mileagePostcode || '').trim())
                   );
-                  const travelOverridden = !!dd && !!dayRecord.travelTimeEnabled && (
-                    !!dayRecord.travelTimeEnabled !== !!dd.travelTimeEnabled ||
+                  const travelOverridden = !!dd && (travelOut > 0 || travelBack > 0) && (
                     travelOut !== (Number(dd.travelOutMins) || 0) ||
                     travelBack !== (Number(dd.travelBackMins) || 0)
                   );
-                  const perDiemOverridden = !!dd && !!dayRecord.perDiemEnabled && (
-                    !!dayRecord.perDiemEnabled !== !!dd.perDiemEnabled ||
-                    (Number(dayRecord.perDiemAmount) || 0) !== (Number(dd.perDiemAmount) || 0)
-                  );
+                  const perDiemOverridden = !!dd && (Number(dayRecord.perDiemAmount) || 0) > 0 &&
+                    (Number(dayRecord.perDiemAmount) || 0) !== (Number(dd.perDiemAmount) || 0);
                   const expensesOverridden = !!dd && (dayRecord.expenses?.length ?? 0) > 0 && (
                     (dayRecord.expenses?.length ?? 0) !== (dd.expenses?.length ?? 0) ||
                     expensesTotal !== (dd.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0)
@@ -7889,146 +7889,113 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           if (key === 'preCall') {
                             title = 'Pre-call';
                             body = (
-                              <>
-                                <ToggleRow label="Pre-call active" value={!!dayRecord.preCallEnabled} onChange={(v) => updateField('preCallEnabled', v)} ariaLabel="Toggle pre-call"/>
-                                {dayRecord.preCallEnabled && (
-                                  <div>
-                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
-                                    <input type="time" value={dayRecord.preCallTime || ''} onChange={(e) => updateField('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
-                                    <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Lunch and CWD still measured from main call time.</div>
-                                  </div>
-                                )}
-                              </>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
+                                <input type="time" value={dayRecord.preCallTime || ''} onChange={(e) => updateField('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
+                                <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Clear the time to deactivate.</div>
+                              </div>
                             );
-                            if (preCallOverridden) resetEl = resetButton('Reset to default', () => resetFields('preCall', 'preCallEnabled', 'preCallTime'));
+                            if (preCallOverridden) resetEl = resetButton('Reset to default', () => resetFields('preCall', 'preCallTime'));
                           } else if (key === 'kit') {
                             title = 'Kit money';
                             body = (
-                              <>
-                                <ToggleRow label="Kit money active" value={!!dayRecord.kitMoneyEnabled} onChange={(v) => updateField('kitMoneyEnabled', v)} ariaLabel="Toggle kit money"/>
-                                {dayRecord.kitMoneyEnabled && (
-                                  <div>
-                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                                    {numInput(dayRecord.kitMoneyAmount, (e) => updateField('kitMoneyAmount', Number(e.target.value) || 0))}
-                                  </div>
-                                )}
-                              </>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                                {numInput(dayRecord.kitMoneyAmount, (e) => updateField('kitMoneyAmount', Number(e.target.value) || 0))}
+                                <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Set 0 to deactivate. Crew-level default applies when day amount is 0.</div>
+                              </div>
                             );
                           } else if (key === 'perDiem') {
                             title = 'Per diem';
                             body = (
-                              <>
-                                <ToggleRow label="Per diem active" value={!!dayRecord.perDiemEnabled} onChange={(v) => updateField('perDiemEnabled', v)} ariaLabel="Toggle per diem"/>
-                                {dayRecord.perDiemEnabled && (
-                                  <div>
-                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                                    {numInput(dayRecord.perDiemAmount, (e) => updateField('perDiemAmount', Number(e.target.value) || 0))}
-                                  </div>
-                                )}
-                              </>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
+                                {numInput(dayRecord.perDiemAmount, (e) => updateField('perDiemAmount', Number(e.target.value) || 0))}
+                                <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Set 0 to deactivate.</div>
+                              </div>
                             );
-                            if (perDiemOverridden) resetEl = resetButton('Reset to default', () => resetFields('perDiem', 'perDiemEnabled', 'perDiemAmount'));
+                            if (perDiemOverridden) resetEl = resetButton('Reset to default', () => resetFields('perDiem', 'perDiemAmount'));
                           } else if (key === 'mileage') {
-                            const mlActive = dayRecord.mileageEnabled !== undefined
-                              ? !!dayRecord.mileageEnabled
-                              : (Number(dayRecord.miles) > 0 || !!dayRecord.mileagePostcode);
                             const updateMulti = (patch) => setProduction(p => ({
                               ...p,
                               days: p.days.map(d => d.id === dayRecord.id ? { ...d, ...patch } : d),
                             }));
                             title = 'Mileage';
                             body = (
-                              <>
-                                <ToggleRow label="Mileage active" value={mlActive} onChange={(v) => {
-                                  if (v) updateField('mileageEnabled', true);
-                                  else updateMulti({ mileageEnabled: false, miles: 0, mileagePostcode: '' });
-                                }} ariaLabel="Toggle mileage"/>
-                                {mlActive && (
-                                  <MileageInput day={dayRecord} updateDay={updateMulti} days={production.days || []}/>
-                                )}
-                              </>
+                              <MileageInput day={dayRecord} updateDay={updateMulti} days={production.days || []}/>
                             );
-                            if (mileageOverridden) resetEl = resetButton('Reset to default', () => resetFields('mileage', 'mileageEnabled', 'miles', 'mileagePostcode', 'mileageMethod', 'mileageRoundTrip'));
+                            if (mileageOverridden) resetEl = resetButton('Reset to default', () => resetFields('mileage', 'miles', 'mileagePostcode', 'mileageMethod', 'mileageRoundTrip'));
                           } else if (key === 'travel') {
-                            const tActive = dayRecord.travelTimeEnabled !== undefined ? !!dayRecord.travelTimeEnabled : (Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0);
                             title = 'Travel time';
                             body = (
                               <>
-                                <ToggleRow label="Travel time active" value={tActive} onChange={(v) => {
-                                  if (v) updateField('travelTimeEnabled', true);
-                                  else setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, travelTimeEnabled: false, travelOutMins: 0, travelBackMins: 0 } : d) }));
-                                }} ariaLabel="Toggle travel time"/>
-                                {tActive && (
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
-                                      {numInput(dayRecord.travelOutMins, (e) => updateField('travelOutMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
-                                    </div>
-                                    <div>
-                                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
-                                      {numInput(dayRecord.travelBackMins, (e) => updateField('travelBackMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
-                                    </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
+                                    {numInput(dayRecord.travelOutMins, (e) => updateField('travelOutMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
                                   </div>
-                                )}
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
+                                    {numInput(dayRecord.travelBackMins, (e) => updateField('travelBackMins', Number(e.target.value) || 0), { step: '1', inputMode: 'numeric' })}
+                                  </div>
+                                </div>
+                                <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Set both to 0 to deactivate.</div>
                               </>
                             );
-                            if (travelOverridden) resetEl = resetButton('Reset to default', () => resetFields('travel', 'travelTimeEnabled', 'travelOutMins', 'travelBackMins'));
+                            if (travelOverridden) resetEl = resetButton('Reset to default', () => resetFields('travel', 'travelOutMins', 'travelBackMins'));
                           } else if (key === 'stepUp') {
                             title = 'Step-up';
                             body = (
-                              <>
-                                <ToggleRow label="Step-up active" value={!!dayRecord.stepUpEnabled} onChange={(v) => updateField('stepUpEnabled', v)} ariaLabel="Toggle step-up"/>
-                                {dayRecord.stepUpEnabled && (
-                                  <div className="space-y-3">
+                              <div className="space-y-3">
+                                <div>
+                                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
+                                  <select
+                                    value={dayRecord.stepUpRole || ''}
+                                    onChange={(e) => {
+                                      const role = e.target.value;
+                                      const d = ROLE_DEFAULTS[role] || {};
+                                      setProduction(p => ({
+                                        ...p,
+                                        days: p.days.map(rec => rec.id === dayRecord.id ? {
+                                          ...rec,
+                                          stepUpRole: role,
+                                          stepUpBDR: role ? (d.bdr ?? rec.stepUpBDR) : 0,
+                                          stepUpOTCoef: role ? (d.otCoef ?? rec.stepUpOTCoef) : 1,
+                                          stepUpOTRate: role ? (d.otRate ?? null) : null,
+                                        } : rec)
+                                      }));
+                                    }}
+                                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                                  >
+                                    <option value="">— None (not stepped up) —</option>
+                                    {Object.entries(DEPARTMENTS).map(([dept, roles]) => (
+                                      <optgroup key={dept} label={dept}>
+                                        {Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}
+                                      </optgroup>
+                                    ))}
+                                  </select>
+                                </div>
+                                {dayRecord.stepUpRole && (
+                                  <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
-                                      <select
-                                        value={dayRecord.stepUpRole || ''}
-                                        onChange={(e) => {
-                                          const role = e.target.value;
-                                          const d = ROLE_DEFAULTS[role] || {};
-                                          setProduction(p => ({
-                                            ...p,
-                                            days: p.days.map(rec => rec.id === dayRecord.id ? {
-                                              ...rec,
-                                              stepUpRole: role,
-                                              stepUpBDR: d.bdr ?? rec.stepUpBDR,
-                                              stepUpOTCoef: d.otCoef ?? rec.stepUpOTCoef,
-                                              stepUpOTRate: d.otRate ?? null,
-                                            } : rec)
-                                          }));
-                                        }}
-                                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
-                                      >
-                                        <option value="">— Select role —</option>
-                                        {Object.entries(DEPARTMENTS).map(([dept, roles]) => (
-                                          <optgroup key={dept} label={dept}>
-                                            {Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}
-                                          </optgroup>
-                                        ))}
-                                      </select>
+                                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up BDR (£)</div>
+                                      {numInput(dayRecord.stepUpBDR, (e) => updateField('stepUpBDR', Number(e.target.value) || 0))}
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                      <div>
-                                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up BDR (£)</div>
-                                        {numInput(dayRecord.stepUpBDR, (e) => updateField('stepUpBDR', Number(e.target.value) || 0))}
-                                      </div>
-                                      <div>
-                                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up OT</div>
-                                        <select
-                                          value={String(dayRecord.stepUpOTCoef ?? 1)}
-                                          onChange={(e) => updateField('stepUpOTCoef', Number(e.target.value))}
-                                          className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
-                                        >
-                                          <option value="1">1×</option>
-                                          <option value="1.25">1.25×</option>
-                                          <option value="1.5">1.5×</option>
-                                        </select>
-                                      </div>
+                                    <div>
+                                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Step-up OT</div>
+                                      <select
+                                        value={String(dayRecord.stepUpOTCoef ?? 1)}
+                                        onChange={(e) => updateField('stepUpOTCoef', Number(e.target.value))}
+                                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                                      >
+                                        <option value="1">1×</option>
+                                        <option value="1.25">1.25×</option>
+                                        <option value="1.5">1.5×</option>
+                                      </select>
                                     </div>
                                   </div>
                                 )}
-                              </>
+                              </div>
                             );
                           } else if (key === 'expenses') {
                             const expenses = dayRecord.expenses || [];
@@ -8036,7 +8003,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               ...p,
                               days: p.days.map(d => d.id === dayRecord.id ? {
                                 ...d,
-                                expensesEnabled: true,
                                 expenses: [...(d.expenses || []), { id: uid(), amount: 0, category: 'Other', description: '' }],
                               } : d),
                             }));
@@ -8072,7 +8038,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                 )}
                               </>
                             );
-                            if (expensesOverridden) resetEl = resetButton('Reset to default', () => resetFields('expenses', 'expensesEnabled', 'expenses'));
+                            if (expensesOverridden) resetEl = resetButton('Reset to default', () => resetFields('expenses', 'expenses'));
                           } else if (key === 'secondBreak') {
                             title = '2nd break';
                             body = (
