@@ -213,7 +213,7 @@
 
 </head>
 <body>
-  <div id="root"><div class="app-loading">Loading TimeMachine v0.1.0…</div></div>
+  <div id="root"><div class="app-loading">Loading TimeMachine v4.7.0…</div></div>
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
@@ -243,23 +243,40 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "0.1.0";
+    const APP_VERSION = "4.7.0";
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-05-12",
+      date: "2026-05-17",
       added: [
-        "APA-compliant time tracking — call, wrap, lunch deadlines, CWD",
-        "Itemised day breakdown: BDR, overtime, penalties, extras",
-        "Solo mode and Best Boy mode (multi-crew)",
-        "Invoice generation with PDF export",
-        "Postcode → mileage auto-calc with M25 warning",
-        "Pre-call time support for truck driving, pre-light & prep",
-        "Bank holiday detection through 2035",
-        "Cancellation fee calculator (APA agreed-fee rules)",
-        "Local-only storage — your data never leaves your device",
+        "Auto-apply cascade — editing dept-default times propagates to all crew automatically; field-specific variances stay shielded",
+        "Drill-in breakdowns — tap a crew row for their full multi-day breakdown, or a day row for per-crew detail on that date",
+        "CWD breaks in Best Boy mode — mark given/missed in BB (was solo-only); chip turns red when any break is missed",
+        "Inline editing replaces bottom sheets — extras chips expand inline, multiple can be open at once, mirrors solo mode",
+        "Variances accordion — per-person field overrides surface in a collapsible VARIANCES section; affected crew names highlighted fuchsia",
+        "Money pill navigation — bottom pill steps left/right between days with a + to add a new dense day",
+        "Wrap Now / Lunch Now buttons on BB dept-default cards capture current time (rounded to 5 min)",
+        "\"I am\" picker — tell the app which crew member is you; calc and money pill respect it for the running total",
+        "Value-presence activation — toggles dropped from extras; setting a value activates, clearing deactivates",
+        "Chip parity solo ↔ BB — same styling and behaviour both modes; tapping a chip never loses data",
+        "Cascade for time fields — call, wrap, lunch start, lunch duration, day type cascade from dept defaults using inheritance",
+        "Solo OT highlight — wrap card tints orange when entering OT, matching BB; respects 11-hour-day production setting",
+        "Desktop chrome time inputs — time fields in BB mobile now editable on desktop Chrome",
+        "Color discipline locked — sky for active, fuchsia for variance, red for penalty, orange for OT/edited, green for sent/paid",
+        "Conditions row clarified — penalty conditions render red; state indicators render orange",
+        "Curtailed lunch indicator visible in invoice + breakdown export",
+        "Fix: Sun/BH curtailed lunch now pays double rate (was paying single BHR)",
+        "Fix: OT visibility in summary rows reflects calc state across multi-crew view",
+        "Fix: curtailed 1st break calc per APA §6.2",
+        "Fix: setup navigation back/home behaviour",
+        "Fix: solo lunch duration overflow",
+        "Fix: spurious \"OVERRIDDEN\" badge no longer fires for inheriting crew",
+        "Fix: newly added crew now correctly cascade from dept defaults",
+        "Fix: stub EDIT button removed from dept defaults",
+        "Schema cleanup — 7 boolean activation flags dropped from day records; value presence drives activation now",
+        "Migrations idempotent and one-shot — no user action needed",
       ],
-      notes: "Initial pre-release. Your feedback shapes the next version.",
+      notes: "Best Boy mobile refinement sweep — 14 fix-ups across 4 weeks of refinement informed by real-shoot use. Same calc engine, cleaner data model, smarter UX. See CHANGELOG.md for full categorised release notes.",
     };
 
     /* ─── Schema version & storage-safety helpers ─── */
