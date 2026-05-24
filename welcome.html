@@ -5,214 +5,924 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>TimeMachine — APA timesheet calculator</title>
   <meta name="description" content="The APA timesheet calculator for UK commercial crew. Free during beta.">
-  <meta name="theme-color" content="#0e1729">
+  <meta name="theme-color" content="#0a0a0a">
 
   <meta property="og:title" content="TimeMachine — APA timesheet calculator">
   <meta property="og:description" content="The APA timesheet calculator for UK commercial crew. Free during beta.">
   <meta property="og:url" content="https://timemachineapp.co.uk/welcome">
   <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-
   <style>
+    /* ─────────────────────────────────────────────────────
+       TimeMachine v2 — design tokens
+       Chrome cool, data hot. Sky is brand only.
+       ───────────────────────────────────────────────────── */
     :root {
-      --bg: #0a0a0a;
-      --navy: #0e1729;
-      --ink: #f5f5f5;
-      --muted: #a3a3a3;
-      --muted-2: #737373;
-      --line: #1f1f1f;
-      --line-2: #262626;
-      --sky: #38bdf8;
-      --sky-2: #7dd3fc;
+      /* chrome — neutrals */
+      --bg:        #0a0a0a;   /* neutral-950 */
+      --bg-soft:   #0e0e0e;
+      --card:      #171717;   /* neutral-900 */
+      --card-2:    #1f1f1f;
+      --border:    #262626;   /* neutral-800 */
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #737373;
+      --text-4:    #525252;
+
+      /* brand — sky */
+      --tm-accent:    #0ea5e9;   /* sky-500 */
+      --tm-accent-2:  #7dd3fc;   /* sky-300 */
+
+      /* functional palette — data, never chrome */
+      --tm-warn: #ff8a3d;        /* warm orange — OT, warnings */
+      --tm-pen:  #f43f5e;        /* hot pink — penalties */
+      --tm-good: #4ade80;        /* vibrant green — kit, ok states */
+
+      /* pill — cool grey paper, was warm cream */
+      --tm-pill-paper: #e6e9ed;
+      --tm-pill-ink:   #15171a;
     }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
     html, body {
       background: var(--bg);
-      color: var(--ink);
-      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
-      -webkit-tap-highlight-color: transparent;
+      line-height: 1.45;
     }
-    .display { font-family: 'Inter', sans-serif; font-weight: 900; letter-spacing: -0.025em; }
-    .mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-    .label   { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; color: var(--sky); }
+    body { min-height: 100vh; }
 
-    /* Lightweight backdrop — no mask, no fixed positioning */
+    /* subtle radial — sky tint at the top */
     body::before {
-      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 80vh;
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 80vh;
       z-index: -1; pointer-events: none;
-      background: radial-gradient(80% 60% at 50% 0%, #0b1a33 0%, transparent 70%);
+      background:
+        radial-gradient(70% 55% at 50% -10%, rgba(14,165,233,0.16) 0%, transparent 65%),
+        radial-gradient(40% 30% at 80% 15%, rgba(125,211,252,0.06) 0%, transparent 70%);
     }
 
-    .cta {
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-      background: var(--sky);
-      color: #0a0a0a;
-      font-family: 'Inter', sans-serif;
-      font-weight: 900;
-      letter-spacing: 0.04em;
+    /* ─────────────────────────────────────────────────────
+       Type utilities
+       ───────────────────────────────────────────────────── */
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
+                   "Cascadia Code", "Roboto Mono", monospace;
+    }
+    .label {
+      font-size: 10px;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
-      padding: 18px 24px;
-      border-radius: 14px;
+      font-weight: 700;
+      color: var(--tm-accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .label::after {
+      content: ""; flex: 1; height: 1px; min-width: 24px;
+      background: var(--border-soft);
+    }
+    .label-bare {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--tm-accent);
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Layout
+       ───────────────────────────────────────────────────── */
+    .container {
+      max-width: 460px;
+      margin: 0 auto;
+      padding: 0 20px;
+      position: relative;
+    }
+
+    /* Desktop only: wrap the mobile-width content in a soft
+       phone-frame so the narrow column reads as intentional
+       rather than empty. */
+    @media (min-width: 900px) {
+      body {
+        background: radial-gradient(circle at 50% 30%, #0e0e0e 0%, var(--bg) 60%);
+      }
+      .container {
+        margin-top: 56px;
+        margin-bottom: 56px;
+        padding-left: 28px;
+        padding-right: 28px;
+      }
+      .container::before {
+        content: "";
+        position: absolute;
+        top: -32px; left: -20px; right: -20px; bottom: -32px;
+        border: 1px solid var(--border);
+        border-radius: 48px;
+        background:
+          linear-gradient(180deg, rgba(14,165,233,0.04) 0%, transparent 25%),
+          var(--bg-soft);
+        pointer-events: none;
+        z-index: -1;
+        box-shadow:
+          0 40px 120px -40px rgba(14,165,233,0.18),
+          0 0 0 1px rgba(255,255,255,0.02);
+      }
+      /* Subtle notch at top */
+      .container::after {
+        content: "";
+        position: absolute;
+        top: -32px; left: 50%;
+        transform: translateX(-50%);
+        width: 92px; height: 18px;
+        background: var(--bg-soft);
+        border: 1px solid var(--border);
+        border-top: 1px solid transparent;
+        border-radius: 0 0 14px 14px;
+        z-index: -1;
+      }
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Top bar — owner prefix + wordmark (matches in-app)
+       ───────────────────────────────────────────────────── */
+    .top-bar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 20px);
+      padding-bottom: 8px;
+    }
+    .brand-stack { display: flex; flex-direction: column; gap: 4px; }
+    .brand-owner {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      font-weight: 700;
+      min-height: 12px;
+    }
+    .brand-mark {
       font-size: 15px;
-      box-shadow: 0 0 0 1px #38bdf8, 0 12px 40px -10px rgba(56,189,248,0.5);
+      letter-spacing: -0.02em;
+      color: var(--tm-accent);
+      text-transform: uppercase;
+      line-height: 1;
+      font-weight: 900;
+    }
+    .beta-tag {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--tm-accent-2);
+      background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.25);
+      padding: 5px 9px;
+      border-radius: 6px;
+      margin-top: 2px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Rotation fade utility — for personalised demo states
+       ───────────────────────────────────────────────────── */
+    .rot { transition: opacity 320ms ease; }
+    .is-fading { opacity: 0; }
+    @media (prefers-reduced-motion: reduce) {
+      .rot { transition: none; }
+      .is-fading { opacity: 1; }
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Hero
+       ───────────────────────────────────────────────────── */
+    .hero { padding: 38px 0 28px; }
+    .hero .scan-line {
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--tm-accent);
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .hero .scan-line::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--tm-good);
+      box-shadow: 0 0 10px var(--tm-good);
+      animation: pulse 2.4s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.55; transform: scale(1.35); }
+    }
+
+    .hero h1 {
+      font-weight: 900;
+      letter-spacing: -0.035em;
+      margin: 0;
+      line-height: 0.88;
+    }
+    .hero h1 .time {
+      display: block;
+      font-size: clamp(52px, 14vw, 64px);
+      color: var(--tm-accent);
+      /* subtle layered depth */
+      text-shadow:
+        0 1px 0 rgba(125,211,252,0.10),
+        0 8px 32px rgba(14,165,233,0.15);
+    }
+    .hero h1 .machine {
+      display: block;
+      font-size: clamp(36px, 10vw, 44px);
+      color: var(--tm-accent-2);
+      letter-spacing: 0.02em;
+      font-weight: 800;
+      margin-top: 2px;
+    }
+
+    .hero .rule {
+      height: 1px;
+      background: linear-gradient(90deg, var(--tm-accent), transparent);
+      margin: 28px 0;
+    }
+
+    .hero .lede {
+      font-size: 18px;
+      color: var(--text-2);
+      line-height: 1.35;
+      margin: 0;
+      font-weight: 500;
+    }
+    .hero .lede strong { color: var(--text); font-weight: 700; }
+
+    .hero .sub {
+      font-size: 14px;
+      color: var(--text-3);
+      line-height: 1.5;
+      margin-top: 12px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       CTAs
+       ───────────────────────────────────────────────────── */
+    .ctas {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 32px;
+    }
+    .cta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 17px 22px;
+      border-radius: 14px;
+      font-weight: 900;
+      font-size: 14px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+      transition: transform 100ms ease, box-shadow 150ms ease, background 150ms ease;
     }
     .cta:active { transform: translateY(1px); }
-    .cta-ghost {
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      border: 1px solid #262626;
-      color: #d4d4d4;
+
+    .cta.primary {
+      background: var(--tm-accent);
+      color: #050505;
+      box-shadow:
+        0 0 0 1px var(--tm-accent),
+        0 12px 36px -10px rgba(14,165,233,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.18);
+    }
+    .cta.primary:hover { background: #38bdf8; }
+
+    .cta.ghost {
+      background: transparent;
+      color: var(--text-2);
+      border: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.14em;
       padding: 14px 20px;
-      border-radius: 12px;
-      font-size: 13px;
-      letter-spacing: 0.08em;
+    }
+    .cta.ghost:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
+
+    .cta svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    /* ─────────────────────────────────────────────────────
+       Platform notice
+       ───────────────────────────────────────────────────── */
+    .platform-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 22px;
+      min-width: 0;
+    }
+    .platform-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
-      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 6px;
+      flex-shrink: 0;
     }
-    .cta-ghost:hover { border-color: var(--sky); color: var(--sky); }
-
-    .chip {
-      display: inline-flex; align-items: center; justify-content: center;
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
-      padding: 3px 7px; border-radius: 5px; line-height: 1; white-space: nowrap;
+    .platform-pill.live {
+      background: rgba(14,165,233,0.12);
+      border: 1px solid rgba(14,165,233,0.30);
+      color: var(--tm-accent-2);
     }
-    .chip.ot   { border: 1px solid #dc2626; color: #f87171; background: transparent; }
-    .chip.msb  { border: 1px solid #d97706; color: #fbbf24; background: transparent; }
-    .chip.cwd  { background: #d97706; color: #0a0a0a; }
-    .chip.shoot { background: #082f49; color: #7dd3fc; }
+    .platform-pill.live::before {
+      content: "";
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--tm-good);
+      box-shadow: 0 0 6px var(--tm-good);
+    }
+    .platform-pill.soon {
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      color: var(--text-3);
+    }
 
-    .platform-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(56,189,248,0.08);
-      border: 1px solid rgba(56,189,248,0.25);
-      color: var(--sky-2);
+    /* ─────────────────────────────────────────────────────
+       Stat card — borrowed from in-app hero card
+       ───────────────────────────────────────────────────── */
+    .stat-card {
+      margin-top: 36px;
+      background:
+        radial-gradient(120% 100% at 100% 0%, rgba(14,165,233,0.08) 0%, transparent 50%),
+        var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--tm-accent), transparent);
+    }
+    .stat-card .row1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .stat-card .row1 .live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--tm-good);
+      box-shadow: 0 0 8px var(--tm-good);
+      animation: pulse 2s infinite;
+    }
+    .stat-card .row1 .live-label {
       font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--tm-good);
       font-weight: 700;
+    }
+    .stat-card h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 0 0 4px;
+      letter-spacing: -0.01em;
+    }
+    .stat-card .meta {
+      font-size: 12px;
+      color: var(--text-3);
+      margin-bottom: 14px;
+    }
+    .stat-card .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      border-top: 1px solid var(--border-soft);
+      padding-top: 12px;
+    }
+    .stat-card .stat .l {
+      font-size: 9px;
       letter-spacing: 0.16em;
       text-transform: uppercase;
-      padding: 5px 10px;
-      border-radius: 6px;
+      color: var(--text-4);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .stat-card .stat .v {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .stat-card .stat .v.accent { color: var(--tm-accent); }
+    .stat-card .stat .v.warn   { color: var(--tm-warn); }
+    .stat-card .stat .sub {
+      font-size: 10px;
+      color: var(--text-3);
+      margin-top: 2px;
+    }
+    .stat-card .caption {
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--text-4);
+      text-align: center;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       What you get — feature list
+       ───────────────────────────────────────────────────── */
+    .features {
+      margin-top: 44px;
+    }
+    .features h2 { margin: 0 0 18px; }
+    .features ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .features li {
+      display: flex;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--text-2);
+      line-height: 1.45;
+    }
+    .features li .tick {
+      flex-shrink: 0;
+      width: 18px; height: 18px; margin-top: 1px;
+      border-radius: 5px;
+      background: rgba(14,165,233,0.10);
+      border: 1px solid rgba(14,165,233,0.30);
+      color: var(--tm-accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .features li strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Chip rail — functional palette demo
+       ───────────────────────────────────────────────────── */
+    .chip-rail {
+      margin-top: 30px;
+      padding: 16px;
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+    }
+    .chip-rail .head {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .chip-rail .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .chip-rail .chips .caption-wrap {
+      width: 100%;
+      margin-top: 4px;
+    }
+    .chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 5px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+    }
+    .chip.shoot {
+      background: rgba(14,165,233,0.10);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(14,165,233,0.30);
+    }
+    .chip.ot {
+      background: rgba(255,138,61,0.10);
+      color: var(--tm-warn);
+      border: 1px solid rgba(255,138,61,0.30);
+    }
+    .chip.pen {
+      background: rgba(244,63,94,0.10);
+      color: var(--tm-pen);
+      border: 1px solid rgba(244,63,94,0.30);
+    }
+    .chip.kit {
+      background: rgba(74,222,128,0.10);
+      color: var(--tm-good);
+      border: 1px solid rgba(74,222,128,0.30);
+    }
+    .chip.cwd {
+      background: var(--tm-warn);
+      color: #15171a;
+      border: 1px solid var(--tm-warn);
+    }
+    .chip-rail .caption {
+      margin-left: 6px;
+      font-size: 11px;
+      color: var(--text-3);
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Pro tip — cool grey paper, echoes the in-app pill
+       ───────────────────────────────────────────────────── */
+    .tip {
+      margin-top: 30px;
+      background: var(--tm-pill-paper);
+      color: var(--tm-pill-ink);
+      border-radius: 14px;
+      padding: 16px 18px;
+      position: relative;
+      box-shadow:
+        0 10px 32px -8px rgba(0,0,0,0.5),
+        inset 0 -1px 0 rgba(0,0,0,0.06);
+      background-image:
+        linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px),
+        linear-gradient(var(--tm-pill-paper), var(--tm-pill-paper));
+      background-size: 12px 12px, 12px 12px, 100% 100%;
+    }
+    .tip .tip-label {
+      font-size: 9px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--tm-accent);
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .tip p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--tm-pill-ink);
+    }
+    .tip strong { font-weight: 700; }
+
+    /* ─────────────────────────────────────────────────────
+       Footer
+       ───────────────────────────────────────────────────── */
+    .signoff {
+      margin-top: 36px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-3);
+      letter-spacing: 0.04em;
+      line-height: 1.5;
+    }
+    .signoff .brand-tint { color: var(--tm-accent); }
+
+    /* ─────────────────────────────────────────────────────
+       Accessibility — skip link (visually hidden until focus)
+       ───────────────────────────────────────────────────── */
+    .skip-link {
+      position: absolute;
+      top: -100px;
+      left: 16px;
+      background: var(--tm-accent);
+      color: #050505;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+      z-index: 100;
+      transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .foot {
+      margin-top: 24px;
+      padding-bottom: calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft);
+      padding-top: 18px;
+    }
+    .foot-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 10px;
+      color: var(--text-4);
+      letter-spacing: 0.06em;
+    }
+    .foot-inner a {
+      color: var(--text-3);
+      text-decoration: none;
+      transition: color 150ms;
+    }
+    .foot-inner a:hover { color: var(--tm-accent); }
+    .foot-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      justify-content: flex-end;
     }
   </style>
 </head>
 <body>
 
-  <!-- Top bar — wordmark only -->
-  <header class="max-w-md mx-auto px-5 pt-5 flex items-center justify-between" style="padding-top: calc(env(safe-area-inset-top) + 18px);">
-    <span class="display text-[14px] tracking-tight">TIMEMACHINE</span>
-    <span class="platform-badge">Beta</span>
-  </header>
+  <a href="#main" class="skip-link">Skip to content</a>
 
-  <!-- HERO -->
-  <main class="max-w-md mx-auto px-5 pt-12 pb-10">
+  <div class="container">
 
-    <p class="label">You scanned. Welcome.</p>
+    <!-- ─────────────── Top bar ─────────────── -->
+    <header class="top-bar">
+      <div class="brand-stack">
+        <span class="brand-owner rot" data-rot="owner">YOUR</span>
+        <span class="brand-mark">TIMEMACHINE</span>
+      </div>
+      <span class="beta-tag">Beta</span>
+    </header>
 
-    <h1 class="display text-[44px] leading-[0.92] mt-3">
-      <span style="color: var(--sky);">TIME</span><br>
-      <span style="color: var(--sky-2); letter-spacing: 0.04em; font-size: 32px;">MACHINE</span>
-    </h1>
+    <!-- ─────────────── Hero ─────────────── -->
+    <main id="main" class="hero">
+      <h1>
+        <span class="time">TIME</span>
+        <span class="machine">MACHINE</span>
+      </h1>
 
-    <div class="h-px bg-neutral-800 my-6"></div>
+      <div class="rule"></div>
 
-    <p class="text-[18px] text-neutral-300 leading-snug">
-      The APA timesheet calculator<br>for UK commercial crew.
-    </p>
+      <p class="lede">
+        The <strong>APA timesheet calculator</strong> for UK commercial crew.
+      </p>
+      <p class="sub">
+        From call sheet to invoice, all in one app. APA rules baked in &mdash; penalties caught before you even spot them.
+      </p>
 
-    <p class="mt-3 text-[14px] text-neutral-500 leading-snug">
-      Tracks the day, calculates the pay, generates the invoice. Built around APA rules.
-    </p>
+      <!-- CTAs -->
+      <div class="ctas">
+        <a href="https://timemachineapp.co.uk/" class="cta primary">
+          Open the App
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+        <a href="how-it-works.html" class="cta ghost">See how it works</a>
+      </div>
 
-    <!-- CTAs -->
-    <div class="mt-9 flex flex-col gap-3">
-      <a href="https://timemachineapp.co.uk/" class="cta">
-        Open the App
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </a>
-      <a href="how-it-works.html" class="cta-ghost">
-        See how it works
-      </a>
-    </div>
+      <!-- Platform notice -->
+      <div class="platform-row">
+        <span class="platform-pill live">Web app · live now</span>
+        <span class="platform-pill soon">iOS · coming soon</span>
+      </div>
 
-    <!-- Platform notice -->
-    <div class="mt-6 flex flex-wrap items-center gap-2">
-      <span class="platform-badge" style="background: rgba(56,189,248,0.12);">Web app · live now</span>
-      <span class="platform-badge" style="opacity: 0.7;">iOS · coming soon</span>
-    </div>
+      <!-- Glimpse of the in-app hero card — rotates through real-feeling examples -->
+      <div class="stat-card" aria-label="Sample day from the app">
+        <div class="row1">
+          <span class="live-dot"></span>
+          <span class="live-label rot" data-rot="liveLabel">ON CALL · DAY 4 OF 7</span>
+        </div>
+        <h3 class="rot" data-rot="productionTitle">Tesco Christmas &mdash; Day 4</h3>
+        <div class="meta rot" data-rot="productionMeta">Plover Films &middot; Tue 14 Oct &middot; Stage 6</div>
+        <div class="stats-grid">
+          <div class="stat">
+            <div class="l">CLOCKED</div>
+            <div class="v mono rot" data-rot="clockedValue">11h 30m</div>
+            <div class="sub rot" data-rot="clockedSince">since 07:00</div>
+          </div>
+          <div class="stat">
+            <div class="l">TODAY</div>
+            <div class="v mono accent rot" data-rot="todayValue">£215.00</div>
+            <div class="sub mono rot" data-rot="todayOt" style="color: var(--tm-warn);">+£15.00 OT</div>
+          </div>
+          <div class="stat">
+            <div class="l">SHOOT</div>
+            <div class="v mono rot" data-rot="shootValue">£940.00</div>
+            <div class="sub rot" data-rot="shootDays">3 days</div>
+          </div>
+        </div>
+        <div class="caption">↑ a day, on your rates, totalled.</div>
+      </div>
+    </main>
 
-    <!-- What you get -->
-    <section class="mt-12">
-      <p class="label mb-4">What you get</p>
-      <ul class="space-y-3 text-[14px] text-neutral-300 leading-snug">
-        <li class="flex gap-3">
-          <span class="text-sky-400 mt-[2px]">▸</span>
-          <span><span class="text-neutral-100 font-semibold">APA rates, baked in.</span> Every common role. Penalties caught without you thinking about it.</span>
+    <!-- ─────────────── What you get ─────────────── -->
+    <section class="features">
+      <h2 class="label-bare">What you get</h2>
+      <ul>
+        <li>
+          <span class="tick">▸</span>
+          <span><strong>APA rates, baked in.</strong> Every common role. Penalties caught automatically.</span>
         </li>
-        <li class="flex gap-3">
-          <span class="text-sky-400 mt-[2px]">▸</span>
-          <span><span class="text-neutral-100 font-semibold">Solo or Best Boy mode.</span> Run your own day or a whole department.</span>
+        <li>
+          <span class="tick">▸</span>
+          <span><strong>Invoicing &amp; tracking.</strong> One tap from timesheet to invoice. VAT-aware, bank details pre-filled, auto-numbering. Draft &rarr; Sent &rarr; Paid.</span>
         </li>
-        <li class="flex gap-3">
-          <span class="text-sky-400 mt-[2px]">▸</span>
-          <span><span class="text-neutral-100 font-semibold">Postcode → mileage.</span> Paste the unit base, get the miles from W1F. 3,000+ UK postcodes baked in. M25 rule applied.</span>
+        <li>
+          <span class="tick">▸</span>
+          <span><strong>Yours by name.</strong> Your role, your BDR, your kit money, your bank details. Set once. On every timesheet and invoice you send.</span>
         </li>
-        <li class="flex gap-3">
-          <span class="text-sky-400 mt-[2px]">▸</span>
-          <span><span class="text-neutral-100 font-semibold">Bank holidays through 2035.</span> Sunday rate applied without you remembering.</span>
+        <li>
+          <span class="tick">▸</span>
+          <span><strong>Solo or Best Boy.</strong> Run your own day or a whole department.</span>
         </li>
-        <li class="flex gap-3">
-          <span class="text-sky-400 mt-[2px]">▸</span>
-          <span><span class="text-neutral-100 font-semibold">Invoicing &amp; tracking.</span> One tap to invoice. VAT, bank details, auto-numbering. Draft → Sent → Paid.</span>
+        <li>
+          <span class="tick">▸</span>
+          <span><strong>Postcode &rarr; mileage.</strong> Paste the unit base &mdash; distance from W1F is worked out from every UK postcode district. M25 rule applied.</span>
         </li>
-        <li class="flex gap-3">
-          <span class="text-sky-400 mt-[2px]">▸</span>
-          <span><span class="text-neutral-100 font-semibold">PDF timesheets.</span> A clean A4 for production. No more scribbled call sheets.</span>
+        <li>
+          <span class="tick">▸</span>
+          <span><strong>Bank holidays handled for the next decade.</strong> Sunday rate applied without you remembering.</span>
         </li>
-        <li class="flex gap-3">
-          <span class="text-sky-400 mt-[2px]">▸</span>
-          <span><span class="text-neutral-100 font-semibold">Yours alone.</span> No login, no cloud, no tracking. Lives on your phone.</span>
+        <li>
+          <span class="tick">▸</span>
+          <span><strong>PDF timesheets.</strong> A clean A4 for production. No more biro scribbled on the back of a call sheet.</span>
+        </li>
+        <li>
+          <span class="tick">▸</span>
+          <span><strong>Yours alone.</strong> No login. No cloud. No tracking. Lives on your phone.</span>
         </li>
       </ul>
     </section>
 
-    <!-- Chip rail -->
-    <div class="mt-8 flex flex-wrap gap-2">
-      <span class="chip shoot">SHOOT</span>
-      <span class="chip ot">OT</span>
-      <span class="chip msb">L1</span>
-      <span class="chip cwd">CWD</span>
-      <span class="text-[11px] text-neutral-500 self-center ml-1">…all caught, all costed.</span>
+    <!-- ─────────────── Chip rail ─────────────── -->
+    <div class="chip-rail">
+      <div class="head">The day, decoded</div>
+      <div class="chips">
+        <span class="chip shoot">SHOOT</span>
+        <span class="chip ot">OT</span>
+        <span class="chip pen">L1</span>
+        <span class="chip cwd">CWD</span>
+        <span class="chip kit">KIT</span>
+        <span class="caption-wrap"><span class="caption">&hellip;all caught, all costed.</span></span>
+      </div>
     </div>
 
-    <!-- Pro tip -->
-    <section class="mt-12 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-      <p class="label mb-2" style="color: var(--sky-2);">Pro tip</p>
-      <p class="text-[13px] text-neutral-300 leading-snug">
-        Open the app in your browser, then tap <span class="text-neutral-100 font-semibold">Share → Add to Home Screen</span>. Lives on your phone like a real app — proper iOS version coming soon.
+    <!-- ─────────────── Pro tip — pill-style ─────────────── -->
+    <div class="tip">
+      <div class="tip-label">◇ Pro tip</div>
+      <p>
+        Open the app in your browser, then tap <strong>Share &rarr; Add to Home Screen</strong>. Behaves like a real app already &mdash; proper iOS version following on.
       </p>
-    </section>
+    </div>
 
-    <p class="mt-10 text-[12px] text-neutral-500 text-center">
-      Built by a spark, for the crew. Free during beta.
+    <!-- ─────────────── Signoff ─────────────── -->
+    <p class="signoff">
+      By a spark, for the crew. <span class="brand-tint">Free during beta.</span>
     </p>
 
-  </main>
+    <!-- ─────────────── Footer ─────────────── -->
+    <footer class="foot">
+      <div class="foot-inner">
+        <span>v0.1 &middot; APA Sept 2025</span>
+        <div class="foot-links">
+          <a href="how-it-works.html">How it works</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="mailto:feedback@timemachineapp.co.uk">feedback@</a>
+        </div>
+      </div>
+    </footer>
 
-  <footer class="max-w-md mx-auto px-5 pb-10 mt-4" style="padding-bottom: calc(env(safe-area-inset-bottom) + 32px);">
-    <div class="h-px bg-neutral-900 mb-5"></div>
-    <div class="flex items-center justify-between text-[11px] text-neutral-600 mono">
-      <span>v4.7 · APA Sept 2025</span>
-      <a href="mailto:feedback@timemachineapp.co.uk" class="text-neutral-500 hover:text-sky-400 transition-colors">feedback@</a>
-    </div>
-  </footer>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────
+       Personalisation demo — rotates the brand-owner row +
+       the stat card through real-feeling crew examples.
+       Maths verified against the APA Recommended Terms.
+       ───────────────────────────────────────────────────── -->
+  <script>
+    (function () {
+      var states = [
+        {
+          owner:           "POPPY'S",
+          liveLabel:       "ON CALL · DAY 4 OF 7",
+          productionTitle: "Tesco Christmas — Day 4",
+          productionMeta:  "Plover Films · Tue 14 Oct · Stage 6",
+          clockedValue:    "11h 30m",
+          clockedSince:    "since 07:00",
+          todayValue:      "£215.00",
+          todayOt:         "+£15.00 OT",
+          shootValue:      "£940.00",
+          shootDays:       "3 days"
+        },
+        {
+          owner:           "JAMES'S",
+          liveLabel:       "ON CALL · DAY 4 OF 7",
+          productionTitle: "Volvo EX90 — Spot 2",
+          productionMeta:  "Northbank Pictures · Tue 14 Oct · Stage 4",
+          clockedValue:    "12h 00m",
+          clockedSince:    "since 06:30",
+          todayValue:      "£510.60",
+          todayOt:         "+£66.60 OT",
+          shootValue:      "£2,074.60",
+          shootDays:       "3 days"
+        },
+        {
+          owner:           "LOUIS'S",
+          liveLabel:       "ON CALL · DAY 3 OF 5",
+          productionTitle: "Heinz Tomato — Spot 2",
+          productionMeta:  "Halyard Studios · Tue 14 Oct · Stage 4",
+          clockedValue:    "12h 30m",
+          clockedSince:    "since 07:00",
+          todayValue:      "£593.75",
+          todayOt:         "+£93.75 OT",
+          shootValue:      "£1,322.50",
+          shootDays:       "2 days"
+        },
+        {
+          owner:           "AL'S",
+          liveLabel:       "ON CALL · DAY 5 OF 7",
+          productionTitle: "Land Rover Defender — Block 2",
+          productionMeta:  "Tin Roof Films · Tue 14 Oct · Stage 5",
+          clockedValue:    "12h 30m",
+          clockedSince:    "since 06:30",
+          todayValue:      "£828.00",
+          todayOt:         "+£108.00 OT",
+          shootValue:      "£2,962.00",
+          shootDays:       "4 days"
+        }
+      ];
+
+      var rotEls = document.querySelectorAll("[data-rot]");
+      if (!rotEls.length) return;
+
+      function render(state) {
+        for (var j = 0; j < rotEls.length; j++) {
+          var key = rotEls[j].getAttribute("data-rot");
+          if (state[key] !== undefined) rotEls[j].textContent = state[key];
+        }
+      }
+
+      var i = 0;
+      render(states[0]);
+
+      // Respect prefers-reduced-motion — show state 0 statically and don't tick.
+      var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduce) return;
+
+      var INTERVAL = 5500;
+      var FADE     = 320;
+      var timer = null;
+
+      function tick() {
+        i = (i + 1) % states.length;
+        for (var j = 0; j < rotEls.length; j++) rotEls[j].classList.add("is-fading");
+        setTimeout(function () {
+          render(states[i]);
+          for (var k = 0; k < rotEls.length; k++) rotEls[k].classList.remove("is-fading");
+        }, FADE);
+      }
+
+      function start() { if (!timer) timer = setInterval(tick, INTERVAL); }
+      function stop()  { if (timer) { clearInterval(timer); timer = null; } }
+
+      start();
+
+      // Pause when the visitor is reading the stat card or has tab unfocused.
+      var card = document.querySelector(".stat-card");
+      if (card) {
+        card.addEventListener("mouseenter", stop);
+        card.addEventListener("mouseleave", start);
+        card.addEventListener("focusin",  stop);
+        card.addEventListener("focusout", start);
+      }
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) stop(); else start();
+      });
+    })();
+  </script>
+
 </body>
 </html>

@@ -5,598 +5,2092 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>How it works · TimeMachine</title>
   <meta name="description" content="TimeMachine — the APA timesheet calculator for UK commercial crew. See what it does and how it costs your day.">
-  <meta name="theme-color" content="#0e1729">
+  <meta name="theme-color" content="#0a0a0a">
 
   <meta property="og:title" content="How TimeMachine works">
   <meta property="og:description" content="The APA timesheet calculator for UK commercial crew. OT, late breaks, CWDs, weekends, mileage, invoicing — all in one place.">
   <meta property="og:url" content="https://timemachineapp.co.uk/how-it-works">
   <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-
   <style>
+    /* ─────────────────────────────────────────────────────
+       TimeMachine v2 — tokens
+       ───────────────────────────────────────────────────── */
     :root {
-      --bg: #0a0a0a;
-      --navy: #0e1729;
-      --ink: #f5f5f5;
-      --muted: #a3a3a3;
-      --muted-2: #737373;
-      --line: #1f1f1f;
-      --line-2: #262626;
-      --sky: #38bdf8;
-      --sky-2: #7dd3fc;
-      --sky-dim: #082f49;
-      --sky-deep: #075985;
+      --bg:        #0a0a0a;
+      --bg-soft:   #0e0e0e;
+      --card:      #171717;
+      --card-2:    #1f1f1f;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #737373;
+      --text-4:    #525252;
+
+      --tm-accent:    #0ea5e9;   /* sky-500 — brand only */
+      --tm-accent-2:  #7dd3fc;   /* sky-300 */
+
+      --tm-warn: #ff8a3d;
+      --tm-pen:  #f43f5e;
+      --tm-good: #4ade80;
+
+      --tm-pill-paper: #e6e9ed;
+      --tm-pill-ink:   #15171a;
     }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
     html, body {
       background: var(--bg);
-      color: var(--ink);
-      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
-      -webkit-tap-highlight-color: transparent;
+      line-height: 1.5;
     }
-    .display { font-family: 'Inter', sans-serif; font-weight: 900; letter-spacing: -0.025em; }
-    .mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-    .label   { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; color: var(--sky); }
-    .label-muted { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; color: var(--muted-2); }
 
-    /* Lightweight backdrop — no fixed positioning, no mask */
     body::before {
-      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 80vh;
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 90vh;
       z-index: -1; pointer-events: none;
-      background: radial-gradient(80% 50% at 50% 0%, #0b1a33 0%, transparent 70%);
+      background:
+        radial-gradient(60% 50% at 50% -5%, rgba(14,165,233,0.14) 0%, transparent 60%),
+        radial-gradient(40% 30% at 85% 12%, rgba(125,211,252,0.05) 0%, transparent 70%);
     }
 
-    /* Sticky nav — solid bg, no backdrop-filter (cheaper) */
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
+                   "Cascadia Code", "Roboto Mono", monospace;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img, svg { display: block; max-width: 100%; }
+
+    /* ─────────────────────────────────────────────────────
+       Accessibility — skip link
+       ───────────────────────────────────────────────────── */
+    .skip-link {
+      position: absolute;
+      top: -100px;
+      left: 16px;
+      background: var(--tm-accent);
+      color: #050505;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+      z-index: 100;
+      transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    /* ─────────────────────────────────────────────────────
+       Rotation fade utility — fades only inner content so
+       the paper card itself never goes transparent.
+       Stops the "flash to black" between rotation states.
+       ───────────────────────────────────────────────────── */
+    .rot { transition: opacity 320ms ease; }
+    .mock-name, .mock-sub, .mock-total,
+    .mock-row .times, .mock-row .right {
+      transition: opacity 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .mock.is-fading .mock-name,
+    .mock.is-fading .mock-sub,
+    .mock.is-fading .mock-total,
+    .mock.is-fading .mock-row .times,
+    .mock.is-fading .mock-row .right {
+      opacity: 0;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .rot,
+      .mock-name, .mock-sub, .mock-total,
+      .mock-row .times, .mock-row .right { transition: none; }
+      .mock.is-fading .mock-name,
+      .mock.is-fading .mock-sub,
+      .mock.is-fading .mock-total,
+      .mock.is-fading .mock-row .times,
+      .mock.is-fading .mock-row .right { opacity: 1; }
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Containers & spacing
+       ───────────────────────────────────────────────────── */
+    .container {
+      width: 100%;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+    section { padding: 56px 0; border-top: 1px solid var(--border-soft); }
+    section:first-of-type { border-top: none; }
+    @media (min-width: 768px) { section { padding: 80px 0; } }
+
+    /* ─────────────────────────────────────────────────────
+       Type
+       ───────────────────────────────────────────────────── */
+    .label {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--tm-accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+    }
+    .label::after {
+      content: ""; flex: 1; height: 1px; min-width: 40px;
+      background: var(--border-soft);
+    }
+    .label.muted { color: var(--text-3); }
+
+    h1, h2, h3, h4 {
+      margin: 0;
+      letter-spacing: -0.02em;
+      font-weight: 800;
+      line-height: 1.05;
+      color: var(--text);
+    }
+    h2 {
+      font-size: clamp(30px, 5vw, 44px);
+      letter-spacing: -0.025em;
+    }
+    h3 { font-size: 16px; font-weight: 700; letter-spacing: -0.005em; }
+
+    p { margin: 0; color: var(--text-2); }
+
+    /* ─────────────────────────────────────────────────────
+       Top nav
+       ───────────────────────────────────────────────────── */
     .top-nav {
       position: sticky; top: 0; z-index: 40;
-      background: rgba(10,10,10,0.95);
-      border-bottom: 1px solid var(--line);
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
     }
-
-    .btn-primary {
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      background: var(--sky);
-      color: #0a0a0a;
-      font-family: 'Inter', sans-serif;
-      font-weight: 900;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      padding: 14px 22px;
-      border-radius: 12px;
+    .top-nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
       font-size: 14px;
-      box-shadow: 0 0 0 1px #38bdf8, 0 10px 30px -10px rgba(56,189,248,0.4);
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: var(--tm-accent);
+      text-transform: uppercase;
     }
-    .btn-primary:active { transform: translateY(1px); }
-    .btn-secondary {
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      border: 1px solid var(--line-2);
-      color: var(--ink);
-      padding: 13px 20px;
-      border-radius: 12px;
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-    }
-    .btn-secondary:hover { border-color: var(--sky); color: var(--sky); }
-
-    .chip {
-      display: inline-flex; align-items: center; justify-content: center;
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
-      padding: 3px 7px; border-radius: 5px; line-height: 1; white-space: nowrap;
-    }
-    .chip.shoot    { background: #082f49; color: #7dd3fc; }
-    .chip.prelight { background: #075985; color: #fff; }
-    .chip.recce    { background: #0284c7; color: #fff; }
-    .chip.prep     { background: #38bdf8; color: #082f49; }
-    .chip.derig    { background: #7dd3fc; color: #082f49; }
-    .chip.travel   { background: transparent; color: #7dd3fc; border: 1px solid #075985; }
-    .chip.ot       { border: 1px solid #dc2626; color: #f87171; background: transparent; }
-    .chip.msb      { border: 1px solid #d97706; color: #fbbf24; background: transparent; }
-    .chip.cwd      { background: #d97706; color: #0a0a0a; }
-    .chip.toc      { background: #1f2937; color: #fbbf24; border: 1px solid #d97706; }
-    .chip.ns       { background: #1e3a8a; color: #93c5fd; }
-
-    .card {
-      background: rgba(23,23,23,0.6);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 22px;
-    }
-
-    .mock {
-      background: #fafaf7;
-      color: #15171A;
-      border-radius: 12px;
-      padding: 24px 22px;
-      font-family: 'Inter', sans-serif;
-      box-shadow: 0 30px 80px -30px rgba(0,0,0,0.7), 0 0 0 1px #1f2937;
-    }
-    .mock .mock-rule { border-color: #D9D4C7; }
-    .mock-chip {
-      display: inline-flex; align-items: center; justify-content: center;
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
-      padding: 2.5px 7px; border-radius: 5px; line-height: 1;
-    }
-    .mock-chip.shoot { background: #082f49; color: white; }
-    .mock-chip.ot    { border: 1px solid #dc2626; color: #dc2626; background: white; }
-    .mock-chip.msb   { border: 1px solid #d97706; color: #d97706; background: white; }
-    .mock-chip.cwd   { background: #d97706; color: white; }
-
-    .platform-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(56,189,248,0.08);
-      border: 1px solid rgba(56,189,248,0.25);
-      color: var(--sky-2);
+    .nav-cta {
       font-size: 10px;
       font-weight: 700;
-      letter-spacing: 0.16em;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
-      padding: 5px 10px;
+      color: var(--tm-accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 150ms;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+
+    /* ─────────────────────────────────────────────────────
+       Hero
+       ───────────────────────────────────────────────────── */
+    .hero {
+      padding-top: 64px !important;
+      padding-bottom: 64px;
+      border-top: none;
+    }
+    @media (min-width: 768px) {
+      .hero { padding-top: 80px !important; padding-bottom: 80px; }
+    }
+    @media (min-width: 980px) {
+      .hero { padding-top: 100px !important; padding-bottom: 100px; }
+    }
+
+    /* Split layout: content left, phone mockup right (desktop only) */
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    @media (min-width: 980px) {
+      .hero-grid {
+        grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr);
+        gap: 48px;
+      }
+    }
+    .hero-content { min-width: 0; }
+    .hero-visual {
+      display: none; /* hide on mobile — user is holding their phone */
+    }
+    @media (min-width: 980px) {
+      .hero-visual {
+        display: flex;
+        justify-content: flex-end;
+        position: relative;
+      }
+    }
+
+    /* Phone mockup */
+    .phone {
+      width: 100%;
+      max-width: 340px;
+      aspect-ratio: 280 / 580;
+      position: relative;
+      filter: drop-shadow(0 30px 60px rgba(14,165,233,0.10));
+    }
+    .phone svg { width: 100%; height: 100%; display: block; }
+    .phone-placeholder-tag {
+      position: absolute;
+      top: -8px; right: -8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--tm-accent-2);
+      background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.30);
+      padding: 4px 8px;
+      border-radius: 6px;
+      transform: rotate(3deg);
+    }
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 28px;
+    }
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 6px 10px;
       border-radius: 6px;
     }
+    .tag-pill.live {
+      background: rgba(14,165,233,0.10);
+      border: 1px solid rgba(14,165,233,0.30);
+      color: var(--tm-accent-2);
+    }
+    .tag-pill.live::before {
+      content: ""; width: 5px; height: 5px; border-radius: 50%;
+      background: var(--tm-good);
+      box-shadow: 0 0 6px var(--tm-good);
+    }
+    .tag-pill.soon {
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      color: var(--text-3);
+    }
+    .tag-pill.beta {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text-2);
+    }
+
+    .hero h1 {
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+    }
+    .hero h1 .line1 {
+      display: block;
+      font-size: clamp(48px, 9vw, 96px);
+      color: var(--tm-accent);
+      padding-bottom: 0.08em;
+      text-shadow:
+        0 1px 0 rgba(125,211,252,0.10),
+        0 12px 50px rgba(14,165,233,0.18);
+    }
+    .hero h1 .line2 {
+      display: block;
+      font-size: clamp(34px, 6.5vw, 68px);
+      color: var(--tm-accent-2);
+      letter-spacing: 0.005em;
+      font-weight: 800;
+    }
+    .hero .lede {
+      font-size: clamp(17px, 2vw, 21px);
+      color: var(--text-2);
+      max-width: 600px;
+      line-height: 1.45;
+      margin: 32px 0 0;
+      font-weight: 500;
+    }
+    .hero .lede a {
+      color: var(--tm-accent);
+      text-decoration: underline;
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px;
+    }
+    .hero .lede a:hover { color: var(--tm-accent-2); }
+    .hero .lede strong { color: var(--text); font-weight: 700; }
+
+    .hero-ctas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 36px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 14px 22px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: transform 100ms ease, background 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary {
+      background: var(--tm-accent);
+      color: #050505;
+      box-shadow:
+        0 0 0 1px var(--tm-accent),
+        0 10px 30px -10px rgba(14,165,233,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.16);
+    }
+    .btn.primary:hover { background: #38bdf8; }
+    .btn.ghost {
+      border: 1px solid var(--border);
+      color: var(--text-2);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      padding: 13px 20px;
+    }
+    .btn.ghost:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
+    .btn svg { width: 13px; height: 13px; }
+
+    /* ─────────────────────────────────────────────────────
+       Chip rail — now sits with the heading, not at the foot
+       ───────────────────────────────────────────────────── */
+    .chip-rail-wrap { margin-top: 32px; }
+    .chip-rail-wrap .head {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 5px 9px;
+      border-radius: 5px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+    .chip.shoot {
+      background: rgba(14,165,233,0.10);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(14,165,233,0.30);
+    }
+    .chip.prelight {
+      background: rgba(14,165,233,0.18);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(14,165,233,0.40);
+    }
+    .chip.recce {
+      background: var(--tm-accent);
+      color: #050505;
+    }
+    .chip.prep {
+      background: transparent;
+      color: var(--tm-accent);
+      border: 1px solid var(--tm-accent);
+    }
+    .chip.derig {
+      background: transparent;
+      color: var(--tm-accent-2);
+      border: 1px solid var(--tm-accent-2);
+    }
+    .chip.travel {
+      background: transparent;
+      color: var(--tm-accent-2);
+      border: 1px dashed rgba(125,211,252,0.4);
+    }
+    .chip.ot {
+      background: rgba(255,138,61,0.10);
+      color: var(--tm-warn);
+      border: 1px solid rgba(255,138,61,0.30);
+    }
+    .chip.msb {
+      background: rgba(244,63,94,0.10);
+      color: var(--tm-pen);
+      border: 1px solid rgba(244,63,94,0.30);
+    }
+    .chip.cwd {
+      background: var(--tm-warn);
+      color: #15171a;
+      border: 1px solid var(--tm-warn);
+    }
+    .chip.toc {
+      background: var(--card-2);
+      color: var(--tm-warn);
+      border: 1px solid rgba(255,138,61,0.40);
+    }
+    .chip.ns {
+      background: rgba(125,211,252,0.10);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(125,211,252,0.30);
+    }
+    .chip-divider {
+      width: 1px; height: 18px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Two-col split
+       ───────────────────────────────────────────────────── */
+    .split {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+    @media (min-width: 768px) {
+      .split { grid-template-columns: 5fr 7fr; gap: 48px; }
+      .split.flip { grid-template-columns: 7fr 5fr; }
+    }
+    .split > .col p { color: var(--text-2); font-size: 16px; line-height: 1.6; }
+    .split > .col p + p { margin-top: 14px; }
+    .split > .col strong { color: var(--text); font-weight: 600; }
+
+    /* ─────────────────────────────────────────────────────
+       "A real day" — mock invoice in cool grey paper
+       ───────────────────────────────────────────────────── */
+    .mock {
+      background: var(--tm-pill-paper);
+      color: var(--tm-pill-ink);
+      border-radius: 14px;
+      padding: 26px 24px;
+      box-shadow:
+        0 30px 80px -30px rgba(0,0,0,0.7),
+        0 0 0 1px var(--border);
+      background-image:
+        linear-gradient(rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(var(--tm-pill-paper), var(--tm-pill-paper));
+      background-size: 16px 16px, 16px 16px, 100% 100%;
+    }
+    .mock-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid rgba(21,23,26,0.12);
+      gap: 12px;
+    }
+    .mock-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+    .mock-sub {
+      font-size: 11px;
+      color: rgba(21,23,26,0.55);
+      margin-top: 6px;
+    }
+    .mock-total-label {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(21,23,26,0.5);
+    }
+    .mock-total {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 22px;
+      font-weight: 800;
+      margin-top: 3px;
+      letter-spacing: -0.01em;
+      text-align: right;
+    }
+    .mock-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+    .mock-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+    .mock-row .left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+    .mock-row .date { font-weight: 700; }
+    .mock-row .times {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      color: rgba(21,23,26,0.55);
+      font-size: 12px;
+    }
+    .mock-row .right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .mock-row .amount {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .mock-chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 700;
+      font-size: 9.5px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      padding: 3px 7px;
+      border-radius: 4px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .mock-chip.shoot {
+      background: rgba(14,165,233,0.16);
+      color: #075985;
+      border: 1px solid rgba(14,165,233,0.3);
+    }
+    .mock-chip.ot {
+      background: rgba(255,138,61,0.14);
+      color: #b04714;
+      border: 1px solid rgba(255,138,61,0.4);
+    }
+    .mock-chip.msb {
+      background: rgba(244,63,94,0.14);
+      color: #b91c3a;
+      border: 1px solid rgba(244,63,94,0.4);
+    }
+    .mock-chip.cwd {
+      background: var(--tm-warn);
+      color: #050505;
+    }
+    .mock-foot {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(21,23,26,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: rgba(21,23,26,0.5);
+    }
+    .mock-foot .made { font-weight: 600; }
+    .mock-foot .ver { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; }
+
+    /* legend list on the right of the mock */
+    .legend-list {
+      list-style: none;
+      padding: 0;
+      margin: 16px 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .legend-list li {
+      display: flex;
+      gap: 12px;
+      font-size: 13.5px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+    .legend-list .chip { margin-top: 1px; }
+
+    /* ─────────────────────────────────────────────────────
+       Features grid
+       ───────────────────────────────────────────────────── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    @media (min-width: 600px) {
+      .features-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (min-width: 900px) {
+      .features-grid { grid-template-columns: 1fr 1fr 1fr; }
+    }
+
+    .feature-card {
+      background: rgba(23,23,23,0.7);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      padding: 20px;
+      transition: border-color 200ms, background 200ms;
+    }
+    .feature-card:hover {
+      border-color: var(--border);
+      background: var(--card);
+    }
+    .feature-card .ic {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.22);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .feature-card .ic svg {
+      width: 18px; height: 18px;
+      stroke: var(--tm-accent);
+    }
+    .feature-card h3 {
+      font-size: 14.5px;
+      font-weight: 700;
+      margin: 0 0 6px;
+      color: var(--text);
+      letter-spacing: -0.005em;
+    }
+    .feature-card p {
+      font-size: 13px;
+      color: var(--text-3);
+      line-height: 1.55;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Details that matter
+       ───────────────────────────────────────────────────── */
+    .details-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 28px;
+      max-width: 760px;
+    }
+    @media (min-width: 600px) {
+      .details-grid { grid-template-columns: 1fr 1fr; gap: 32px 56px; }
+    }
+    .details-grid h3 {
+      color: var(--text);
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+    .details-grid p {
+      font-size: 13.5px;
+      color: var(--text-3);
+      line-height: 1.55;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       How a day flows — 3 steps
+       ───────────────────────────────────────────────────── */
+    .steps {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+    @media (min-width: 700px) {
+      .steps { grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+    }
+    .step .num {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 56px;
+      font-weight: 800;
+      color: var(--tm-accent);
+      line-height: 1;
+      letter-spacing: -0.02em;
+      margin-bottom: 14px;
+    }
+    .step h3 {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -0.015em;
+      margin: 0 0 8px;
+    }
+    .step p {
+      font-size: 14px;
+      color: var(--text-3);
+      line-height: 1.55;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Trust block
+       ───────────────────────────────────────────────────── */
+    .trust-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+    .trust-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .trust-row .ic {
+      width: 38px; height: 38px;
+      border-radius: 9px;
+      background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.25);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      color: var(--tm-accent);
+      font-weight: 800;
+      font-size: 15px;
+    }
+    .trust-row .ic svg { width: 16px; height: 16px; stroke: var(--tm-accent); }
+    .trust-row h3 {
+      font-size: 14.5px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 1px 0 4px;
+    }
+    .trust-row p {
+      font-size: 13px;
+      color: var(--text-3);
+      line-height: 1.55;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       FAQ
+       ───────────────────────────────────────────────────── */
+    .faq-list {
+      max-width: 760px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .faq-item {
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      padding: 16px 18px;
+      transition: border-color 200ms;
+    }
+    .faq-item[open] { border-color: var(--border); }
+    .faq-item summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14.5px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item .plus {
+      width: 18px; height: 18px;
+      color: var(--tm-accent);
+      font-size: 18px;
+      font-weight: 400;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 200ms ease;
+      flex-shrink: 0;
+    }
+    .faq-item[open] .plus { transform: rotate(45deg); }
+    .faq-item p {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-3);
+      line-height: 1.6;
+    }
+    .faq-item a {
+      color: var(--tm-accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .faq-item strong { color: var(--text); font-weight: 700; }
+
+    /* ─────────────────────────────────────────────────────
+       Built by
+       ───────────────────────────────────────────────────── */
+    .built-by {
+      max-width: 720px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      padding: 26px;
+      position: relative;
+      overflow: hidden;
+    }
+    .built-by::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--tm-accent), transparent);
+    }
+    .built-by h3 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 8px 0 10px;
+    }
+    .built-by p {
+      font-size: 14.5px;
+      color: var(--text-2);
+      line-height: 1.55;
+    }
+    .built-by a {
+      color: var(--tm-accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Final CTA
+       ───────────────────────────────────────────────────── */
+    .final-cta { text-align: center; }
+    .final-cta h2 {
+      font-size: clamp(38px, 8vw, 72px);
+      letter-spacing: -0.03em;
+      margin-bottom: 32px;
+    }
+    .final-cta h2 .em { color: var(--tm-accent); }
+    .final-cta .btn {
+      padding: 18px 28px;
+      font-size: 14px;
+    }
+    .final-cta .sub {
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--text-3);
+      letter-spacing: 0.06em;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Built-by — wrapped in the paper-pill style for warmth
+       ───────────────────────────────────────────────────── */
+    .built-by-pill {
+      background: var(--tm-pill-paper);
+      color: var(--tm-pill-ink);
+      border-radius: 18px;
+      padding: 32px 28px;
+      max-width: 720px;
+      margin: 0 auto;
+      box-shadow:
+        0 30px 80px -30px rgba(0,0,0,0.7),
+        0 0 0 1px var(--border);
+      background-image:
+        linear-gradient(rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(var(--tm-pill-paper), var(--tm-pill-paper));
+      background-size: 16px 16px, 16px 16px, 100% 100%;
+      position: relative;
+    }
+    @media (min-width: 768px) {
+      .built-by-pill { padding: 40px 36px; }
+    }
+    .built-by-pill .label {
+      color: var(--tm-accent);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      margin: 0 0 14px;
+      display: block;
+    }
+    .built-by-pill .label::after { display: none; }
+    .built-by-pill h3 {
+      color: var(--tm-pill-ink);
+      font-size: clamp(22px, 3vw, 30px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin: 0 0 18px;
+    }
+    .built-by-pill p {
+      color: rgba(21,23,26,0.78);
+      font-size: 15px;
+      line-height: 1.65;
+      margin: 0;
+    }
+    .built-by-pill p + p { margin-top: 12px; }
+    .built-by-pill a {
+      color: #075985;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .built-by-pill .signature {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-style: italic;
+      color: rgba(21,23,26,0.55);
+      font-size: 14px;
+      margin-top: 22px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Workflow strip — Day → Total → PDF → Invoice
+       ───────────────────────────────────────────────────── */
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 28px;
+    }
+    @media (min-width: 720px) {
+      .workflow { grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: stretch; }
+    }
+    .workflow-step {
+      position: relative;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .workflow-step .ic {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: rgba(14,165,233,0.10);
+      border: 1px solid rgba(14,165,233,0.30);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--tm-accent);
+    }
+    .workflow-step .ic svg { width: 18px; height: 18px; }
+    .workflow-step .ord {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 10px;
+      color: var(--text-4);
+      letter-spacing: 0.18em;
+      font-weight: 700;
+    }
+    .workflow-step h4 {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      margin: 0;
+    }
+    .workflow-step p {
+      font-size: 12px;
+      color: var(--text-3);
+      line-height: 1.5;
+      margin: 0;
+    }
+    /* connector arrows between steps on desktop */
+    @media (min-width: 720px) {
+      .workflow-step:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        right: -14px;
+        top: 32px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+        font-size: 16px;
+        color: var(--tm-accent);
+        font-weight: 700;
+        z-index: 1;
+      }
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Supported roles — collapsed chip cloud
+       ───────────────────────────────────────────────────── */
+    .roles-expand {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0;
+      overflow: hidden;
+    }
+    .roles-expand summary {
+      padding: 18px 20px;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .roles-expand summary::-webkit-details-marker { display: none; }
+    .roles-expand summary .plus {
+      width: 18px; height: 18px;
+      color: var(--tm-accent);
+      font-size: 18px;
+      transition: transform 200ms ease;
+      flex-shrink: 0;
+    }
+    .roles-expand[open] .plus { transform: rotate(45deg); }
+    .roles-expand .roles-body {
+      padding: 0 20px 22px;
+    }
+    .roles-group {
+      margin-top: 16px;
+    }
+    .roles-group h5 {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+    .roles-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .role-chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      padding: 5px 9px;
+      border-radius: 5px;
+      background: rgba(14,165,233,0.06);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(14,165,233,0.20);
+    }
+    .roles-note {
+      font-size: 12px;
+      color: var(--text-3);
+      margin-top: 14px;
+      line-height: 1.5;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Testimonial placeholders — waiting for real voices
+       ───────────────────────────────────────────────────── */
+    .testimonials {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 28px;
+    }
+    @media (min-width: 720px) {
+      .testimonials { grid-template-columns: repeat(3, 1fr); }
+    }
+    .testimonial {
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      padding: 22px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 160px;
+      transition: border-color 200ms ease;
+    }
+    .testimonial:hover { border-color: rgba(14,165,233,0.40); }
+    .testimonial .quote {
+      font-size: 14px;
+      color: var(--text-3);
+      line-height: 1.5;
+      font-style: italic;
+      margin: 0;
+    }
+    .testimonial .quote::before {
+      content: "“";
+      color: var(--tm-accent);
+      font-size: 24px;
+      font-weight: 800;
+      margin-right: 4px;
+      line-height: 0;
+      vertical-align: -10px;
+    }
+    .testimonial .who {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-soft);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 10px;
+      color: var(--text-4);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .testimonial .who a {
+      color: var(--tm-accent);
+      text-decoration: none;
+    }
+    .testimonial .who a:hover { text-decoration: underline; }
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft);
+    }
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px;
+      color: var(--text-4);
+      letter-spacing: 0.04em;
+    }
+    .footer-links {
+      display: flex;
+      gap: 18px;
+    }
+    .footer-links a {
+      color: var(--text-3);
+      transition: color 150ms;
+    }
+    .footer-links a:hover { color: var(--tm-accent); }
   </style>
 </head>
 <body>
 
-  <!-- TOP NAV — wordmark only -->
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <!-- ─────────────── Top nav ─────────────── -->
   <nav class="top-nav">
-    <div class="max-w-5xl mx-auto px-5 py-3 flex items-center justify-between" style="padding-top: calc(env(safe-area-inset-top) + 12px);">
-      <a href="/" class="display text-[14px]">TIMEMACHINE</a>
-      <a href="https://timemachineapp.co.uk/" class="text-[11px] uppercase tracking-[0.2em] font-bold text-sky-400 hover:text-sky-300">
-        Open the App →
+    <div class="container top-nav-inner">
+      <a href="welcome.html" class="nav-brand">TIMEMACHINE</a>
+      <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        Open the App
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/>
+          <polyline points="12 5 19 12 12 19"/>
+        </svg>
       </a>
     </div>
   </nav>
 
-  <!-- HERO -->
-  <section class="max-w-5xl mx-auto px-5 pt-14 md:pt-24 pb-16">
-    <div class="flex flex-wrap gap-2 mb-5">
-      <span class="platform-badge">Web app · live now</span>
-      <span class="platform-badge" style="opacity: 0.7;">iOS · coming soon</span>
-      <span class="platform-badge" style="background: rgba(255,255,255,0.04); border-color: var(--line-2); color: var(--muted);">Beta</span>
-    </div>
-
-    <h1 class="display text-[56px] md:text-[96px] leading-[0.9] mt-2">
-      <span style="color: var(--sky);">YOUR APA DAY,</span><br>
-      <span style="color: var(--sky-2); font-size: 0.7em; letter-spacing: 0.04em;">TOTALLED.</span>
-    </h1>
-
-    <p class="mt-7 text-[19px] md:text-[22px] text-neutral-300 max-w-2xl leading-snug">
-      TimeMachine tracks the day, calculates the pay, and generates the invoice. Built around the
-      <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener" class="text-sky-400 hover:text-sky-300 underline-offset-4 hover:underline">APA Recommended Terms</a>.
-      Penalties caught, mileage worked out from a postcode, bank details pre-filled on every invoice.
-    </p>
-
-    <div class="mt-9 flex flex-wrap gap-3">
-      <a href="https://timemachineapp.co.uk/" class="btn-primary">
-        Open the App
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </a>
-      <a href="#features" class="btn-secondary">See what it does</a>
-    </div>
-
-    <!-- Chip rail -->
-    <div class="mt-12">
-      <p class="label-muted mb-3">It speaks your language</p>
-      <div class="flex flex-wrap gap-2">
-        <span class="chip shoot">SHOOT</span>
-        <span class="chip prelight">PRELIGHT</span>
-        <span class="chip recce">RECCE</span>
-        <span class="chip prep">PREP</span>
-        <span class="chip derig">DERIG</span>
-        <span class="chip travel">TRAVEL</span>
-        <span class="w-px h-5 bg-neutral-800 self-center mx-2"></span>
-        <span class="chip ot">OT</span>
-        <span class="chip msb">L1 LATE LUNCH</span>
-        <span class="chip msb">L2 LATE 2ND</span>
-        <span class="chip cwd">CWD</span>
-        <span class="chip toc">TOC</span>
-        <span class="chip ns">NIGHT</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- WHO IT'S FOR -->
-  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
-    <div class="grid md:grid-cols-12 gap-10">
-      <div class="md:col-span-5">
-        <p class="label">Who it's for</p>
-        <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3">Crew who do the maths in the truck.</h2>
-      </div>
-      <div class="md:col-span-7 space-y-5">
-        <p class="text-[17px] text-neutral-300 leading-relaxed">
-          You're on APA terms. You know your BDR. You know what an L1 costs. You've worked enough CWDs to spot one coming. TimeMachine takes the running calculator off your phone and replaces it with a tool that already knows the rules.
-        </p>
-        <p class="text-[17px] text-neutral-300 leading-relaxed">
-          Role-aware: pick <span class="text-neutral-100 font-semibold">Spark</span>, <span class="text-neutral-100 font-semibold">Grip</span>, <span class="text-neutral-100 font-semibold">Construction Manager</span>, <span class="text-neutral-100 font-semibold">PA / PM / Runner</span>, or whatever you actually do — the right rate card loads, and the right §s of the APA terms apply.
-        </p>
-      </div>
-    </div>
-  </section>
-
-  <!-- A REAL DAY -->
-  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
-    <p class="label">A real day, totalled</p>
-    <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3 mb-10">What it gives you back.</h2>
-
-    <div class="grid md:grid-cols-12 gap-10 items-start">
-      <div class="md:col-span-7 mock">
-        <div class="flex items-start justify-between border-b mock-rule pb-3 mb-4">
-          <div>
-            <div class="display text-[22px] leading-none">Jane Smith</div>
-            <div class="text-[12px] text-neutral-600 mt-1">Best Boy · Acme Brand Film 2026</div>
+  <!-- ─────────────── Hero ─────────────── -->
+  <section id="main" class="hero">
+    <div class="container">
+      <div class="hero-grid">
+        <div class="hero-content">
+          <div class="hero-tags">
+            <span class="tag-pill live">Web app · live now</span>
+            <span class="tag-pill soon">iOS · coming soon</span>
+            <span class="tag-pill beta">Beta</span>
           </div>
-          <div class="text-right">
-            <div class="label-muted" style="color: #6B7079;">Total</div>
-            <div class="mono text-[22px] font-bold mt-0.5">£3,247.50</div>
-          </div>
-        </div>
 
-        <div class="space-y-3">
-          <div class="flex items-center justify-between gap-3 text-[13px]">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="mock-chip shoot">SHOOT</span>
-              <span class="font-semibold">Tue 14 Oct</span>
-              <span class="text-neutral-500 mono">07:00 → 19:30</span>
-            </div>
-            <div class="flex items-center gap-1.5 flex-shrink-0">
-              <span class="mock-chip ot">OT 1.5</span>
-              <span class="mono font-semibold">£697.50</span>
+          <h1>
+            <span class="line1">YOUR APA DAY,</span>
+            <span class="line2">TOTALLED.</span>
+          </h1>
+
+          <p class="lede">
+            TimeMachine tracks the day, calculates the pay, generates the invoice. Built around the
+            <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA Recommended Terms</a> &mdash; penalties caught, mileage worked out from a postcode, bank details pre-filled on every send.
+          </p>
+
+          <!-- Chip rail — moved up so it sits with the heading -->
+          <div class="chip-rail-wrap">
+            <p class="head">It speaks your language</p>
+            <div class="chip-row">
+              <span class="chip shoot">SHOOT</span>
+              <span class="chip prelight">PRELIGHT</span>
+              <span class="chip recce">RECCE</span>
+              <span class="chip prep">PREP</span>
+              <span class="chip derig">DERIG</span>
+              <span class="chip travel">TRAVEL</span>
+              <span class="chip-divider"></span>
+              <span class="chip ot">OT</span>
+              <span class="chip msb">L1</span>
+              <span class="chip msb">L2</span>
+              <span class="chip cwd">CWD</span>
+              <span class="chip toc">TOC</span>
+              <span class="chip ns">NIGHT</span>
             </div>
           </div>
-          <div class="flex items-center justify-between gap-3 text-[13px]">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="mock-chip shoot">SHOOT</span>
-              <span class="font-semibold">Wed 15 Oct</span>
-              <span class="text-neutral-500 mono">06:30 → 21:00</span>
-            </div>
-            <div class="flex items-center gap-1.5 flex-shrink-0">
-              <span class="mock-chip msb">L1</span>
-              <span class="mock-chip ot">OT 3.5</span>
-              <span class="mono font-semibold">£867.00</span>
-            </div>
-          </div>
-          <div class="flex items-center justify-between gap-3 text-[13px]">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="mock-chip shoot">SHOOT</span>
-              <span class="font-semibold">Thu 16 Oct</span>
-              <span class="text-neutral-500 mono">08:00 → 23:00</span>
-            </div>
-            <div class="flex items-center gap-1.5 flex-shrink-0">
-              <span class="mock-chip cwd">CWD</span>
-              <span class="mono font-semibold">£980.00</span>
-            </div>
-          </div>
-          <div class="flex items-center justify-between gap-3 text-[13px]">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="mock-chip shoot">SHOOT</span>
-              <span class="font-semibold">Fri 17 Oct</span>
-              <span class="text-neutral-500 mono">07:00 → 19:00</span>
-            </div>
-            <div class="flex items-center gap-1.5 flex-shrink-0">
-              <span class="mono font-semibold">£703.00</span>
-            </div>
+
+          <div class="hero-ctas">
+            <a href="https://timemachineapp.co.uk/" class="btn primary">
+              Open the App
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </a>
+            <a href="#features" class="btn ghost">See what it does</a>
           </div>
         </div>
 
-        <div class="mt-5 pt-4 border-t mock-rule text-[11px] text-neutral-600 flex items-center justify-between">
-          <span>Made with TimeMachine</span>
-          <span class="mono">APA Sept 2025</span>
-        </div>
-      </div>
+        <!-- ─── Phone mockup placeholder ─── -->
+        <div class="hero-visual" aria-hidden="true">
+          <div class="phone">
+            <span class="phone-placeholder-tag">Preview</span>
+            <svg viewBox="0 0 280 580" xmlns="http://www.w3.org/2000/svg">
+              <!-- Phone outer shell -->
+              <rect x="2" y="2" width="276" height="576" rx="38" ry="38"
+                    fill="#1a1a1a" stroke="#262626" stroke-width="2"/>
+              <!-- Screen -->
+              <rect x="14" y="14" width="252" height="552" rx="26" ry="26"
+                    fill="#0a0a0a"/>
+              <!-- Dynamic island / notch -->
+              <rect x="108" y="28" width="64" height="20" rx="10" ry="10"
+                    fill="#1a1a1a"/>
 
-      <div class="md:col-span-5 space-y-5">
-        <p class="text-[16px] text-neutral-300 leading-relaxed">
-          Every row is a day. Every chip is a penalty caught. Every number ties back to the APA rate card for your role.
-        </p>
-        <ul class="space-y-3 text-[14px] text-neutral-400">
-          <li class="flex gap-3"><span class="chip ot self-start mt-0.5">OT</span> Overtime past the 10th hour (or 11th, on 11-hour days)</li>
-          <li class="flex gap-3"><span class="chip msb self-start mt-0.5">L1</span> First break started late — auto-penalty applied</li>
-          <li class="flex gap-3"><span class="chip cwd self-start mt-0.5">CWD</span> Continuous working day, with the extra break check</li>
-        </ul>
-        <p class="text-[13px] text-neutral-500 leading-relaxed">
-          Export as a PDF (looks like the one above) or plain text for WhatsApp / email. Your name on top, "Made with TimeMachine" on the bottom — that's it.
-        </p>
-      </div>
-    </div>
-  </section>
+              <!-- App header: brand stack -->
+              <text x="30" y="80" fill="#737373" font-family="ui-monospace, monospace"
+                    font-size="9" font-weight="700" letter-spacing="2">JAMES&#39;S</text>
+              <text x="30" y="102" fill="#0ea5e9" font-family="ui-sans-serif, sans-serif"
+                    font-size="18" font-weight="900" letter-spacing="-0.5">TIMEMACHINE</text>
 
-  <!-- FEATURES GRID -->
-  <section id="features" class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
-    <p class="label">Features</p>
-    <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3 mb-10">What's in the box.</h2>
+              <!-- Settings icons row (decorative) -->
+              <circle cx="232" cy="92" r="3.5" fill="#525252"/>
+              <circle cx="244" cy="92" r="3.5" fill="#525252"/>
+              <circle cx="256" cy="92" r="3.5" fill="#525252"/>
 
-    <div class="grid md:grid-cols-3 gap-4">
+              <!-- Divider -->
+              <line x1="30" y1="125" x2="250" y2="125" stroke="#1f1f1f" stroke-width="1"/>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          <h3 class="font-semibold text-[15px]">APA rates, baked in</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">BDR and OT for Spark, Gaffer, Grip, Camera, Sound, AD, Production and more. Override if you've got a custom rate.</p>
-      </div>
+              <!-- Stat card -->
+              <rect x="22" y="145" width="236" height="220" rx="16" ry="16"
+                    fill="#171717" stroke="#262626" stroke-width="1"/>
+              <!-- Top sky accent line -->
+              <rect x="22" y="145" width="236" height="1" fill="url(#skyGrad)"/>
+              <defs>
+                <linearGradient id="skyGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#0ea5e9" stop-opacity="0"/>
+                  <stop offset="50%" stop-color="#0ea5e9" stop-opacity="1"/>
+                  <stop offset="100%" stop-color="#0ea5e9" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <h3 class="font-semibold text-[15px]">Solo or Best Boy</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Run your own day, or manage a department — per-crew rates, weekly grid, bulk-edit by date.</p>
-      </div>
+              <!-- Live indicator -->
+              <circle cx="40" cy="170" r="3.5" fill="#4ade80"/>
+              <circle cx="40" cy="170" r="6" fill="#4ade80" opacity="0.3"/>
+              <text x="51" y="174" fill="#4ade80" font-family="ui-monospace, monospace"
+                    font-size="8" font-weight="700" letter-spacing="1.5">ON CALL &middot; DAY 4 OF 7</text>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <h3 class="font-semibold text-[15px]">Penalties, auto</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Missed lunches, short turnarounds, post-wrap travel, OT, CWD, TOC, night premiums — flagged and costed without you thinking about it.</p>
-      </div>
+              <!-- Production title -->
+              <text x="34" y="200" fill="#f5f5f5" font-family="ui-sans-serif, sans-serif"
+                    font-size="14" font-weight="700">Volvo EX90 — Spot 2</text>
+              <text x="34" y="220" fill="#737373" font-family="ui-sans-serif, sans-serif"
+                    font-size="10">Northbank Pictures · Tue 14 Oct · Stage 4</text>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <h3 class="font-semibold text-[15px]">Weekends, bank hols, 11-hr days</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Sat 1.5×, Sun 2× by default. UK bank holidays through 2035 already loaded — they get the Sunday rate without you remembering.</p>
-      </div>
+              <!-- Divider -->
+              <line x1="34" y1="240" x2="246" y2="240" stroke="#1f1f1f" stroke-width="1"/>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="3"/><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-          <h3 class="font-semibold text-[15px]">Postcode → mileage</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Paste the unit base postcode — distance from W1F is figured out from 3,000+ UK postcodes baked in. M25 warning. "Same as yesterday" in one tap.</p>
-      </div>
+              <!-- Stats grid -->
+              <text x="34" y="262" fill="#525252" font-family="ui-monospace, monospace"
+                    font-size="7" font-weight="700" letter-spacing="1.5">CLOCKED</text>
+              <text x="34" y="286" fill="#f5f5f5" font-family="ui-monospace, monospace"
+                    font-size="15" font-weight="700">12h 00m</text>
+              <text x="34" y="302" fill="#737373" font-family="ui-sans-serif, sans-serif"
+                    font-size="8">since 06:30</text>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          <h3 class="font-semibold text-[15px]">Travel, per diem, kit money</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Travel time both ways at BHR. Per diem, kit money, expenses — all line-itemed on the timesheet and invoice.</p>
-      </div>
+              <text x="110" y="262" fill="#525252" font-family="ui-monospace, monospace"
+                    font-size="7" font-weight="700" letter-spacing="1.5">TODAY</text>
+              <text x="110" y="286" fill="#0ea5e9" font-family="ui-monospace, monospace"
+                    font-size="15" font-weight="700">£510.60</text>
+              <text x="110" y="302" fill="#ff8a3d" font-family="ui-monospace, monospace"
+                    font-size="8">+£66.60 OT</text>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          <h3 class="font-semibold text-[15px]">Cancellation calculator</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Job binned with 48h notice? Calculate what you're owed straight from the §7 block rules. Per-crew breakdown if you're running a team.</p>
-      </div>
+              <text x="186" y="262" fill="#525252" font-family="ui-monospace, monospace"
+                    font-size="7" font-weight="700" letter-spacing="1.5">SHOOT</text>
+              <text x="186" y="286" fill="#f5f5f5" font-family="ui-monospace, monospace"
+                    font-size="15" font-weight="700">£2,074</text>
+              <text x="186" y="302" fill="#737373" font-family="ui-sans-serif, sans-serif"
+                    font-size="8">3 days</text>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          <h3 class="font-semibold text-[15px]">Invoicing</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">One tap from production to invoice. VAT-aware, your bank details pre-filled, auto-incrementing invoice numbers, PDF export. Email opens with the file attached.</p>
-      </div>
+              <!-- Caption -->
+              <text x="140" y="345" text-anchor="middle" fill="#525252"
+                    font-family="ui-monospace, monospace" font-size="8" letter-spacing="1.5">↑ A DAY, TOTALLED</text>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <h3 class="font-semibold text-[15px]">Invoice tracking</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Draft → Sent → Paid. Overdue auto-flagged from the due date. See every invoice across every job in one list.</p>
-      </div>
+              <!-- Bottom action pills -->
+              <rect x="22" y="395" width="111" height="44" rx="10" ry="10"
+                    fill="#0ea5e9"/>
+              <text x="78" y="421" text-anchor="middle" fill="#050505"
+                    font-family="ui-sans-serif, sans-serif" font-size="11" font-weight="800" letter-spacing="1">OPEN DAY</text>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 12l4-4 4 4 6-6"/></svg>
-          <h3 class="font-semibold text-[15px]">Stats &amp; sausage rolls</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Total earnings, day counts, role breakdown, year-on-year. And yes — how many Greggs that's worth.</p>
-      </div>
+              <rect x="147" y="395" width="111" height="44" rx="10" ry="10"
+                    fill="transparent" stroke="#262626" stroke-width="1"/>
+              <text x="203" y="421" text-anchor="middle" fill="#a3a3a3"
+                    font-family="ui-sans-serif, sans-serif" font-size="11" font-weight="700" letter-spacing="1">EXPORT</text>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <h3 class="font-semibold text-[15px]">PDF &amp; text export</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Clean A4 timesheet PDF. Formal A4 invoice. Plain text for WhatsApp / Slack. Landscape crew-grid PDF when you're running a team.</p>
-      </div>
+              <!-- Bottom nav indication -->
+              <rect x="22" y="465" width="236" height="56" rx="14" ry="14"
+                    fill="#0e0e0e" stroke="#1f1f1f" stroke-width="1"/>
+              <circle cx="50" cy="493" r="4" fill="#0ea5e9"/>
+              <circle cx="100" cy="493" r="4" fill="#525252"/>
+              <circle cx="150" cy="493" r="4" fill="#525252"/>
+              <circle cx="200" cy="493" r="4" fill="#525252"/>
+              <circle cx="250" cy="493" r="4" fill="#525252"/>
 
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <h3 class="font-semibold text-[15px]">Yours alone</h3>
-        </div>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">No login. No cloud. No tracking. Bank details never leave your device. Export a backup any time, wipe it all in one tap.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- DETAILS THAT MATTER — the little touches that signal "built by crew" -->
-  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
-    <p class="label">The details that matter</p>
-    <h2 class="display text-[32px] md:text-[40px] leading-[0.95] mt-3 mb-10">The little stuff most apps miss.</h2>
-
-    <div class="grid md:grid-cols-2 gap-x-10 gap-y-7 max-w-3xl">
-      <div>
-        <h3 class="font-semibold text-[15px] mb-1.5 text-neutral-100">Pre-call at BHR</h3>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Truck drivers, pre-light shifts, anyone with an early start — pre-call hours paid at base hourly without breaking the lunch deadline.</p>
-      </div>
-      <div>
-        <h3 class="font-semibold text-[15px] mb-1.5 text-neutral-100">Step-up rates</h3>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Asked to cover the Gaffer for the day? Flag the step-up — the higher rate applies for that day, automatically.</p>
-      </div>
-      <div>
-        <h3 class="font-semibold text-[15px] mb-1.5 text-neutral-100">Auto CWD detection</h3>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Turnaround drops below APA minimums and the app flags a Continuous Working Day before you do, with the right rate.</p>
-      </div>
-      <div>
-        <h3 class="font-semibold text-[15px] mb-1.5 text-neutral-100">Favourable rounding</h3>
-        <p class="text-[13px] text-neutral-400 leading-relaxed">Where the APA terms allow benefit-of-the-doubt rounding, you get it. Toggle off if you prefer the strict reading.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- HOW A DAY FLOWS -->
-  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
-    <p class="label">How a day flows</p>
-    <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3 mb-12">Three taps from wrap to total.</h2>
-
-    <div class="grid md:grid-cols-3 gap-6">
-      <div>
-        <div class="mono text-[60px] font-bold text-sky-400 leading-none">01</div>
-        <h3 class="display text-[20px] mt-3 mb-2">New production</h3>
-        <p class="text-[14px] text-neutral-400 leading-relaxed">Name the job, pick Solo or Best Boy mode. Role, BDR and VAT carry over from your settings.</p>
-      </div>
-      <div>
-        <div class="mono text-[60px] font-bold text-sky-400 leading-none">02</div>
-        <h3 class="display text-[20px] mt-3 mb-2">Tap in the day</h3>
-        <p class="text-[14px] text-neutral-400 leading-relaxed">Call time, wrap, breaks. Tap "Now" when wraps run late. Add travel, mileage or per diem in Extras.</p>
-      </div>
-      <div>
-        <div class="mono text-[60px] font-bold text-sky-400 leading-none">03</div>
-        <h3 class="display text-[20px] mt-3 mb-2">Get the total</h3>
-        <p class="text-[14px] text-neutral-400 leading-relaxed">Tap the money pill for a full breakdown. Export PDF, send to production, generate the invoice. Done.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- TRUST -->
-  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
-    <div class="grid md:grid-cols-2 gap-10">
-      <div>
-        <p class="label">The fine print, plainly</p>
-        <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3">Free during beta. Local. No login. No catch.</h2>
-      </div>
-      <div class="space-y-5">
-        <div class="flex gap-4">
-          <div class="w-10 h-10 rounded-lg bg-sky-950/60 border border-sky-900 flex items-center justify-center flex-shrink-0">
-            <span class="text-sky-400 text-[18px]">£</span>
-          </div>
-          <div>
-            <h3 class="font-semibold text-[15px] mb-1">Free during the beta</h3>
-            <p class="text-[13px] text-neutral-400 leading-relaxed">Pricing isn't worked out yet — when it is, you'll get plenty of notice. No surprises.</p>
-          </div>
-        </div>
-        <div class="flex gap-4">
-          <div class="w-10 h-10 rounded-lg bg-sky-950/60 border border-sky-900 flex items-center justify-center flex-shrink-0">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          </div>
-          <div>
-            <h3 class="font-semibold text-[15px] mb-1">Your data, your phone</h3>
-            <p class="text-[13px] text-neutral-400 leading-relaxed">No account. No cloud. Everything lives in your browser, on your device. Export a backup whenever you want.</p>
-          </div>
-        </div>
-        <div class="flex gap-4">
-          <div class="w-10 h-10 rounded-lg bg-sky-950/60 border border-sky-900 flex items-center justify-center flex-shrink-0">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </div>
-          <div>
-            <h3 class="font-semibold text-[15px] mb-1">It's beta — and honest about it</h3>
-            <p class="text-[13px] text-neutral-400 leading-relaxed">Built around the published APA terms, but always sense-check your final number before sending. Spotted a bug? <a href="mailto:feedback@timemachineapp.co.uk" class="text-sky-400 hover:underline">Tell me.</a></p>
+              <!-- Home indicator -->
+              <rect x="100" y="552" width="80" height="4" rx="2" fill="#525252"/>
+            </svg>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- FAQ -->
-  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
-    <p class="label">Questions you might have</p>
-    <h2 class="display text-[36px] md:text-[44px] leading-[0.95] mt-3 mb-10">FAQ.</h2>
-
-    <div class="space-y-4 max-w-3xl">
-      <details class="group card cursor-pointer">
-        <summary class="list-none flex justify-between items-center gap-4">
-          <h3 class="font-semibold text-[15px]">Does it cover my role?</h3>
-          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
-        </summary>
-        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">If you work on commercials under APA terms, yes — Sparks, Grips, Construction, Art Dept, Camera, PMs, PAs, Runners. The app applies the right §s of the rate card to each role (e.g. §5 TOC and §6 breaks don't apply to PMs/PAs/Runners — the app knows). Custom BDR for anything bespoke.</p>
-      </details>
-
-      <details class="group card cursor-pointer">
-        <summary class="list-none flex justify-between items-center gap-4">
-          <h3 class="font-semibold text-[15px]">Where can I run it?</h3>
-          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
-        </summary>
-        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">Any modern browser, right now. iPhone, Android, laptop, all of it. Tap <span class="text-neutral-100 font-semibold">Share → Add to Home Screen</span> and it behaves like a native app. A proper iOS App Store version is in the pipeline.</p>
-      </details>
-
-      <details class="group card cursor-pointer">
-        <summary class="list-none flex justify-between items-center gap-4">
-          <h3 class="font-semibold text-[15px]">Does it work offline?</h3>
-          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
-        </summary>
-        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">Right now it's a web app, so it needs an internet connection to load. Your data lives locally once you're in, but you'll need signal to open it fresh. Proper offline support is on the list for the iOS version — useful when you're rigging in a barn with two bars.</p>
-      </details>
-
-      <details class="group card cursor-pointer">
-        <summary class="list-none flex justify-between items-center gap-4">
-          <h3 class="font-semibold text-[15px]">What if production disputes my total?</h3>
-          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
-        </summary>
-        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">Every PDF and text export shows the full breakdown — base day rate, every penalty applied, every multiplier, every extra. If they want to argue a number, they can argue the APA terms. The PDF also shows which rate version was used (currently APA Sept 2025).</p>
-      </details>
-
-      <details class="group card cursor-pointer">
-        <summary class="list-none flex justify-between items-center gap-4">
-          <h3 class="font-semibold text-[15px]">Will the rates stay up to date?</h3>
-          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
-        </summary>
-        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">When the APA publishes a new rate card, the app updates and the new version shows in Settings → About. Old productions keep the rates they were costed under.</p>
-      </details>
-
-      <details class="group card cursor-pointer">
-        <summary class="list-none flex justify-between items-center gap-4">
-          <h3 class="font-semibold text-[15px]">What's coming next?</h3>
-          <span class="text-sky-400 group-open:rotate-45 transition-transform text-[18px]">+</span>
-        </summary>
-        <p class="mt-3 text-[13px] text-neutral-400 leading-relaxed">iOS native app via TestFlight, then App Store. Proper offline mode. More invoice templates. Anything you ask for that more than three people also want.</p>
-      </details>
-    </div>
-  </section>
-
-  <!-- BUILT BY -->
-  <section class="max-w-5xl mx-auto px-5 py-14 border-t border-neutral-900">
-    <div class="card max-w-3xl mx-auto">
-      <p class="label">Built by</p>
-      <h3 class="display text-[26px] mt-2 mb-3">A spark, on his off-days.</h3>
-      <p class="text-[15px] text-neutral-300 leading-relaxed">
-        TimeMachine started as a phone calculator full of half-remembered APA clauses and OT formulas. It got out of hand. Now it's this. If you find a bug, want a feature, or just want to say hi —
-        <a href="mailto:feedback@timemachineapp.co.uk" class="text-sky-400 hover:underline">feedback@timemachineapp.co.uk</a>.
+  <!-- ─────────────── Workflow strip ─────────────── -->
+  <section>
+    <div class="container">
+      <p class="label">In one app</p>
+      <h2 style="margin-bottom: 12px;">Day to paid, end to end.</h2>
+      <p style="color: var(--text-3); max-width: 600px; font-size: 15px;">
+        No spreadsheet handoffs. No second app for invoicing. No copy-pasting to your bookkeeping software. The whole pipeline lives on the phone in your pocket.
       </p>
+      <div class="workflow">
+        <div class="workflow-step">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="ord">01</div>
+          <h4>Track the day</h4>
+          <p>Call time, breaks, wrap. Travel, mileage, kit money.</p>
+        </div>
+        <div class="workflow-step">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>
+            </svg>
+          </div>
+          <div class="ord">02</div>
+          <h4>Total the pay</h4>
+          <p>APA rules applied: penalties, OT grades, CWD, TOC.</p>
+        </div>
+        <div class="workflow-step">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <div class="ord">03</div>
+          <h4>Send the timesheet</h4>
+          <p>Clean A4 PDF or plain text for WhatsApp / email.</p>
+        </div>
+        <div class="workflow-step">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 6.5a4 4 0 0 0-7.5 2v3.5"/>
+              <line x1="6" y1="12" x2="14" y2="12"/>
+              <path d="M8.5 12v3a3 3 0 0 1-1.5 2.6"/>
+              <line x1="6" y1="18" x2="17" y2="18"/>
+            </svg>
+          </div>
+          <div class="ord">04</div>
+          <h4>Invoice &amp; track</h4>
+          <p>One tap to invoice. Mark sent. Watch for paid.</p>
+        </div>
+      </div>
     </div>
   </section>
 
-  <!-- FINAL CTA -->
-  <section class="max-w-5xl mx-auto px-5 py-20 text-center border-t border-neutral-900">
-    <p class="label mb-4">Stop doing maths in your phone calculator</p>
-    <h2 class="display text-[40px] md:text-[64px] leading-[0.95] mb-8">
-      <span style="color: var(--sky);">Open the app.</span>
-    </h2>
-    <a href="https://timemachineapp.co.uk/" class="btn-primary text-[16px] px-8 py-4">
-      Open TimeMachine
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-    </a>
-    <p class="mt-6 text-[12px] text-neutral-500">No login. Free during beta. Just the app.</p>
+  <!-- ─────────────── Who it's for ─────────────── -->
+  <section>
+    <div class="container">
+      <div class="split">
+        <div class="col">
+          <p class="label">Who it's for</p>
+          <h2>Crew who do the maths in the truck.</h2>
+        </div>
+        <div class="col">
+          <p>
+            You're on APA terms. You know your BDR. You know what an L1 costs. You've worked enough CWDs to spot one coming. TimeMachine takes the running calculator off your phone and replaces it with a tool that already knows the rules.
+          </p>
+          <p>
+            Role-aware: pick <strong>Spark</strong>, <strong>Grip</strong>, <strong>Construction Manager</strong>, <strong>PA / PM / Runner</strong>, or whatever you actually do. The right rate card loads, and the right &sect;s of the APA terms apply &mdash; &sect;5 and &sect;6 don&rsquo;t follow Runners around, for instance.
+          </p>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <footer class="max-w-5xl mx-auto px-5 pb-12 pt-6 border-t border-neutral-900">
-    <div class="flex flex-wrap items-center justify-between gap-3 text-[11px] text-neutral-600 mono">
-      <span>TimeMachine v4.7 · APA Sept 2025</span>
-      <div class="flex gap-5">
-        <a href="https://timemachineapp.co.uk/" class="hover:text-sky-400 transition-colors">App</a>
-        <a href="welcome.html" class="hover:text-sky-400 transition-colors">Welcome</a>
-        <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener" class="hover:text-sky-400 transition-colors">APA Terms ↗</a>
-        <a href="mailto:feedback@timemachineapp.co.uk" class="hover:text-sky-400 transition-colors">feedback@</a>
+  <!-- ─────────────── A real day, totalled ─────────────── -->
+  <section>
+    <div class="container">
+      <p class="label">A real day, totalled</p>
+      <h2 style="margin-bottom: 40px;">What it gives you back.</h2>
+
+      <div class="split flip">
+        <div class="col">
+          <div class="mock">
+            <div class="mock-head">
+              <div>
+                <div class="mock-name" data-rot-mock="name">James Brooker</div>
+                <div class="mock-sub"  data-rot-mock="sub">Lighting Technician &middot; BDR &pound;444 &middot; Northbank Pictures</div>
+              </div>
+              <div>
+                <div class="mock-total-label">Total</div>
+                <div class="mock-total" data-rot-mock="total">£2,585.20</div>
+              </div>
+            </div>
+
+            <div class="mock-rows" data-rot-mock-rows>
+              <div class="mock-row">
+                <div class="left">
+                  <span class="mock-chip shoot">SHOOT</span>
+                  <span class="date">Tue 14 Oct</span>
+                  <span class="times" data-row="0-times">06:30 &rarr; 19:00</span>
+                </div>
+                <div class="right" data-row="0-right">
+                  <span class="mock-chip ot">OT 1h 30m</span>
+                  <span class="amount">£543.90</span>
+                </div>
+              </div>
+
+              <div class="mock-row">
+                <div class="left">
+                  <span class="mock-chip shoot">SHOOT</span>
+                  <span class="date">Wed 15 Oct</span>
+                  <span class="times" data-row="1-times">06:00 &rarr; 20:30</span>
+                </div>
+                <div class="right" data-row="1-right">
+                  <span class="mock-chip msb">L1</span>
+                  <span class="mock-chip ot">OT 3h 30m</span>
+                  <span class="amount">£687.10</span>
+                </div>
+              </div>
+
+              <div class="mock-row">
+                <div class="left">
+                  <span class="mock-chip shoot">SHOOT</span>
+                  <span class="date">Thu 16 Oct</span>
+                  <span class="times" data-row="2-times">07:30 &rarr; 22:30</span>
+                </div>
+                <div class="right" data-row="2-right">
+                  <span class="mock-chip cwd">CWD</span>
+                  <span class="amount">£843.60</span>
+                </div>
+              </div>
+
+              <div class="mock-row">
+                <div class="left">
+                  <span class="mock-chip shoot">SHOOT</span>
+                  <span class="date">Fri 17 Oct</span>
+                  <span class="times" data-row="3-times">06:30 &rarr; 18:30</span>
+                </div>
+                <div class="right" data-row="3-right">
+                  <span class="mock-chip ot">OT 1h</span>
+                  <span class="amount">£510.60</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mock-foot">
+              <span class="made">Made with TimeMachine</span>
+              <span class="ver">APA Sept 2025</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <p>
+            Every row is a day. Every chip is a penalty caught. Every number ties back to the APA rate card for your role.
+          </p>
+          <ul class="legend-list">
+            <li><span class="chip ot">OT</span> Overtime past the 10th hour (or 11th, on 11-hour days)</li>
+            <li><span class="chip msb">L1</span> First break started late — auto-penalty applied</li>
+            <li><span class="chip cwd">CWD</span> Continuous working day, with the extra break check</li>
+          </ul>
+          <p style="font-size: 13px; color: var(--text-3); margin-top: 18px;">
+            Export as a PDF (looks like the one shown) or plain text for WhatsApp / email. Your name on top, "Made with TimeMachine" on the bottom — that's it.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── Features ─────────────── -->
+  <section id="features">
+    <div class="container">
+      <p class="label">Features</p>
+      <h2 style="margin-bottom: 40px;">What's in the box.</h2>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <h3>APA rates, baked in</h3>
+          <p>BDR and OT for Spark, Gaffer, Grip, Camera, Sound, AD, Production and more. Override if you've got a custom rate.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h3>Solo or Best Boy</h3>
+          <p>Run your own day, or manage a department — per-crew rates, weekly grid, bulk-edit by date.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3>Penalties, auto</h3>
+          <p>Missed lunches, short turnarounds, post-wrap travel, OT, CWD, TOC, night premiums — flagged and costed without you thinking about it.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <h3>Weekends, bank hols, 11-hr days</h3>
+          <p>Sat 1.5&times;, Sun 2&times; by default. UK bank holidays loaded through the next decade &mdash; Sunday rate applied automatically.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="3"/><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+          </div>
+          <h3>Postcode &rarr; mileage</h3>
+          <p>Paste the unit base postcode &mdash; distance from W1F is worked out from every UK postcode district. M25 warning. &ldquo;Same as yesterday&rdquo; in one tap.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+          <h3>Travel, per diem, kit money</h3>
+          <p>Travel time both ways at BHR. Per diem, kit money, expenses — all line-itemed on the timesheet and invoice.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+          <h3>Cancellation calculator</h3>
+          <p>Job binned with 48h notice? Work out the cancellation fee straight from the &sect;7 block rules. Per-crew breakdown if you&rsquo;re running a team.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <h3>Invoicing</h3>
+          <p>One tap from production to invoice. VAT-aware, your bank details pre-filled, auto-incrementing invoice numbers, PDF export. Email opens with the file attached.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <h3>Invoice tracking</h3>
+          <p>Draft → Sent → Paid. Overdue auto-flagged from the due date. See every invoice across every job in one list.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 12l4-4 4 4 6-6"/></svg>
+          </div>
+          <h3>Stats &amp; sausage rolls</h3>
+          <p>Total earnings, day counts, role breakdown, year-on-year. And yes — how many Greggs that's worth.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <h3>PDF &amp; text export</h3>
+          <p>Clean A4 timesheet PDF. Formal A4 invoice. Plain text for WhatsApp / Slack. Landscape crew-grid PDF when you're running a team.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h3>Yours alone</h3>
+          <p>No login. No cloud. No tracking. Bank details never leave your device. Export a backup any time, wipe it all in one tap.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── Supported roles ─────────────── -->
+  <section>
+    <div class="container">
+      <p class="label">Supported roles</p>
+      <h2 style="margin-bottom: 16px;">If you&rsquo;re on the call sheet, you&rsquo;re probably in here.</h2>
+      <p style="color: var(--text-2); max-width: 640px; font-size: 16px; line-height: 1.6;">
+        TimeMachine ships with rate cards and APA rule subsets for the roles most commonly on a UK commercial. Don&rsquo;t see yours? <strong>Custom BDR</strong> covers anything bespoke &mdash; the rules apply, the rate is whatever you negotiate.
+      </p>
+
+      <details class="roles-expand" style="margin-top: 28px;">
+        <summary>
+          <span>Show every role TimeMachine knows by name</span>
+          <span class="plus">+</span>
+        </summary>
+        <div class="roles-body">
+          <div class="roles-group">
+            <h5>Lighting</h5>
+            <div class="roles-chips">
+              <span class="role-chip">Gaffer</span>
+              <span class="role-chip">Best Boy</span>
+              <span class="role-chip">Lighting Technician (Spark)</span>
+              <span class="role-chip">Lighting Trainee</span>
+              <span class="role-chip">Genny Op</span>
+              <span class="role-chip">Rigging Gaffer</span>
+              <span class="role-chip">Rigger</span>
+            </div>
+          </div>
+          <div class="roles-group">
+            <h5>Camera</h5>
+            <div class="roles-chips">
+              <span class="role-chip">DOP</span>
+              <span class="role-chip">Focus Puller (1st AC)</span>
+              <span class="role-chip">2nd AC / Clapper Loader</span>
+              <span class="role-chip">Camera Trainee</span>
+              <span class="role-chip">Steadicam Op</span>
+              <span class="role-chip">DIT</span>
+              <span class="role-chip">Video Operator</span>
+            </div>
+          </div>
+          <div class="roles-group">
+            <h5>Grip</h5>
+            <div class="roles-chips">
+              <span class="role-chip">Key Grip</span>
+              <span class="role-chip">Best Boy Grip</span>
+              <span class="role-chip">Grip</span>
+              <span class="role-chip">Grip Trainee</span>
+              <span class="role-chip">Crane Op</span>
+              <span class="role-chip">Dolly Grip</span>
+            </div>
+          </div>
+          <div class="roles-group">
+            <h5>Sound</h5>
+            <div class="roles-chips">
+              <span class="role-chip">Sound Mixer</span>
+              <span class="role-chip">Boom Op</span>
+              <span class="role-chip">Sound Trainee</span>
+            </div>
+          </div>
+          <div class="roles-group">
+            <h5>Art &amp; Construction</h5>
+            <div class="roles-chips">
+              <span class="role-chip">Art Director</span>
+              <span class="role-chip">Set Decorator</span>
+              <span class="role-chip">Prop Master</span>
+              <span class="role-chip">Standby Props</span>
+              <span class="role-chip">Construction Manager</span>
+              <span class="role-chip">Standby Carpenter</span>
+              <span class="role-chip">Standby Painter</span>
+            </div>
+          </div>
+          <div class="roles-group">
+            <h5>Costume, HMU, Locations</h5>
+            <div class="roles-chips">
+              <span class="role-chip">Costume Supervisor</span>
+              <span class="role-chip">Costume Standby</span>
+              <span class="role-chip">HMU</span>
+              <span class="role-chip">Makeup Artist</span>
+              <span class="role-chip">Hair Stylist</span>
+              <span class="role-chip">Location Manager</span>
+              <span class="role-chip">Unit Manager</span>
+            </div>
+          </div>
+          <div class="roles-group">
+            <h5>Production &amp; Direction</h5>
+            <div class="roles-chips">
+              <span class="role-chip">1st AD</span>
+              <span class="role-chip">2nd AD</span>
+              <span class="role-chip">3rd AD</span>
+              <span class="role-chip">Floor Runner</span>
+              <span class="role-chip">Producer</span>
+              <span class="role-chip">Production Manager</span>
+              <span class="role-chip">Production Coordinator</span>
+              <span class="role-chip">PA / Runner</span>
+            </div>
+          </div>
+          <p class="roles-note">
+            <strong>Heads-up on production roles:</strong> the APA terms specifically exclude PMs, PAs and Runners from &sect;2&ndash;&sect;6 (day types, travel, OT, TOC, breaks) &mdash; these roles have their own rules under Appendix 1. TimeMachine applies the right rules to the right roles automatically.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ─────────────── The details that matter ─────────────── -->
+  <section>
+    <div class="container">
+      <p class="label">The details that matter</p>
+      <h2 style="margin-bottom: 40px;">The little stuff most apps miss.</h2>
+
+      <div class="details-grid">
+        <div>
+          <h3>Pre-call at BHR</h3>
+          <p>Truck drivers, pre-light shifts, anyone with an early start &mdash; pre-call hours paid at base hourly, lunch deadline left intact.</p>
+        </div>
+        <div>
+          <h3>Step-up rates</h3>
+          <p>Asked to cover the Gaffer for the day? Flag the step-up — the higher rate applies for that day, automatically.</p>
+        </div>
+        <div>
+          <h3>Auto CWD detection</h3>
+          <p>Turnaround drops below APA minimums and the app flags a Continuous Working Day before you do, with the right rate.</p>
+        </div>
+        <div>
+          <h3>Favourable rounding</h3>
+          <p>Where the APA terms allow benefit-of-the-doubt rounding, you get it. Toggle off if you prefer the strict reading.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── How a day flows ─────────────── -->
+  <section>
+    <div class="container">
+      <p class="label">How a day flows</p>
+      <h2 style="margin-bottom: 48px;">From wrap to total, in three taps.</h2>
+
+      <div class="steps">
+        <div class="step">
+          <div class="num mono">01</div>
+          <h3>New production</h3>
+          <p>Name the job, pick Solo or Best Boy mode. Role, BDR and VAT carry over from your settings.</p>
+        </div>
+        <div class="step">
+          <div class="num mono">02</div>
+          <h3>Tap in the day</h3>
+          <p>Call time, wrap, breaks. Tap &ldquo;Now&rdquo; when wraps run late. Add travel, mileage or per diem in Extras.</p>
+        </div>
+        <div class="step">
+          <div class="num mono">03</div>
+          <h3>Total, send, invoice</h3>
+          <p>Tap the money pill for the full breakdown. Export the timesheet PDF, generate the invoice, mark it sent &mdash; all from one screen. Done.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── Trust ─────────────── -->
+  <section>
+    <div class="container">
+      <div class="split">
+        <div class="col">
+          <p class="label">The fine print, plainly</p>
+          <h2>Free during beta. Local. No login. No catch.</h2>
+        </div>
+        <div class="col">
+          <div class="trust-rows">
+            <div class="trust-row">
+              <div class="ic">£</div>
+              <div>
+                <h3>Free during the beta</h3>
+                <p>Pricing isn&rsquo;t worked out yet. When it is, you&rsquo;ll get plenty of notice.</p>
+              </div>
+            </div>
+            <div class="trust-row">
+              <div class="ic">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <div>
+                <h3>Your data, your phone</h3>
+                <p>No account. No cloud. Everything lives in your browser, on your device. Export a backup whenever you want.</p>
+              </div>
+            </div>
+            <div class="trust-row">
+              <div class="ic">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div>
+                <h3>It's beta — and honest about it</h3>
+                <p>Built around the published APA terms, but always sense-check your final number before sending. Spotted a bug? <a href="mailto:feedback@timemachineapp.co.uk" style="color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px;">Tell me.</a></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── FAQ ─────────────── -->
+  <section>
+    <div class="container">
+      <p class="label">Questions you might have</p>
+      <h2 style="margin-bottom: 40px;">FAQ.</h2>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>
+            Does it cover my role?
+            <span class="plus">+</span>
+          </summary>
+          <p>If you work on commercials under APA terms, yes — Sparks, Grips, Construction, Art Dept, Camera, PMs, PAs, Runners. The app applies the right §s of the rate card to each role (e.g. §5 TOC and §6 breaks don't apply to PMs/PAs/Runners — the app knows). Custom BDR for anything bespoke.</p>
+        </details>
+        <details class="faq-item">
+          <summary>
+            Where can I run it?
+            <span class="plus">+</span>
+          </summary>
+          <p>Any modern browser, right now. iPhone, Android, laptop, all of it. Tap <strong>Share → Add to Home Screen</strong> and it behaves like a native app. A proper iOS App Store version is in the pipeline.</p>
+        </details>
+        <details class="faq-item">
+          <summary>
+            Does it work offline?
+            <span class="plus">+</span>
+          </summary>
+          <p>Right now it's a web app, so it needs an internet connection to load. Your data lives locally once you're in, but you'll need signal to open it fresh. Proper offline support is on the list for the iOS version — useful when you're rigging in a barn with two bars.</p>
+        </details>
+        <details class="faq-item">
+          <summary>
+            What if production disputes my total?
+            <span class="plus">+</span>
+          </summary>
+          <p>Every PDF and text export shows the full breakdown — base day rate, every penalty applied, every multiplier, every extra. If they want to argue a number, they can argue the APA terms. The PDF also shows which rate version was used (currently APA Sept 2025).</p>
+        </details>
+        <details class="faq-item">
+          <summary>
+            Will the rates stay up to date?
+            <span class="plus">+</span>
+          </summary>
+          <p>When the APA publishes a new rate card, the app updates and the new version shows in Settings → About. Old productions keep the rates they were costed under.</p>
+        </details>
+        <details class="faq-item">
+          <summary>
+            What's coming next?
+            <span class="plus">+</span>
+          </summary>
+          <p>iOS native app via TestFlight, then App Store. Proper offline mode. More invoice templates. Anything you ask for that more than three people also want.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── Testimonial placeholders ─────────────── -->
+  <section>
+    <div class="container">
+      <p class="label">Crew using it</p>
+      <h2 style="margin-bottom: 12px;">Real quotes coming.</h2>
+      <p style="color: var(--text-3); max-width: 600px; font-size: 15px;">
+        TimeMachine is in beta and these slots are waiting for crew who&rsquo;ve actually used it on a shoot. If that&rsquo;s you and you&rsquo;ve got 30 seconds &mdash; <a href="mailto:feedback@timemachineapp.co.uk" style="color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px;">send a line</a>.
+      </p>
+      <div class="testimonials">
+        <div class="testimonial">
+          <p class="quote">Your testimonial here? It can be as short as one sentence.</p>
+          <div class="who"><a href="mailto:feedback@timemachineapp.co.uk?subject=TimeMachine testimonial">— get in touch</a></div>
+        </div>
+        <div class="testimonial">
+          <p class="quote">Best for sparks and gaffers who can spot a missed L1 from across the truck.</p>
+          <div class="who"><a href="mailto:feedback@timemachineapp.co.uk?subject=TimeMachine testimonial">— get in touch</a></div>
+        </div>
+        <div class="testimonial">
+          <p class="quote">For trainees still learning what TOC means. We&rsquo;d love a quote.</p>
+          <div class="who"><a href="mailto:feedback@timemachineapp.co.uk?subject=TimeMachine testimonial">— get in touch</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── Built by ─────────────── -->
+  <section>
+    <div class="container">
+      <div class="built-by-pill">
+        <span class="label">Built by</span>
+        <h3>A spark, on his off-days.</h3>
+        <p>
+          TimeMachine started as a phone calculator full of half-remembered APA clauses and OT formulas. It got out of hand. Now it&rsquo;s this.
+        </p>
+        <p>
+          If you find a bug, want a feature, or just want to say hi &mdash; <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>.
+        </p>
+        <p class="signature">&mdash; D.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── Final CTA ─────────────── -->
+  <section class="final-cta">
+    <div class="container">
+      <p class="label" style="display: flex; justify-content: center;">Stop doing the maths in your phone calculator</p>
+      <h2><span class="em">Open the app.</span></h2>
+      <a href="https://timemachineapp.co.uk/" class="btn primary">
+        Open TimeMachine
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/>
+          <polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </a>
+      <p class="sub">No login. Free during beta. Just the app.</p>
+    </div>
+  </section>
+
+  <!-- ─────────────── Footer ─────────────── -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>v0.1 &middot; APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="welcome.html">Welcome</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA Terms ↗</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
       </div>
     </div>
   </footer>
+
+  <!-- ─────────────────────────────────────────────────────
+       Mock invoice rotation — cycles through real-feeling
+       crew examples to show the breadth of roles supported.
+       Every figure is APA-correct (Sept 2025 rules).
+       ───────────────────────────────────────────────────── -->
+  <script>
+    (function () {
+      var states = [
+        {
+          name:  "Poppy Langley",
+          sub:   "Lighting Trainee · BDR £200 · Plover Films",
+          total: "£1,140.00",
+          rows: [
+            { times: "07:00 → 19:00", chips: [{ cls: "ot", label: "OT 1h" }],                                   amount: "£230.00" },
+            { times: "06:30 → 21:30", chips: [{ cls: "msb", label: "L1" }, { cls: "ot", label: "OT 4h" }],      amount: "£330.00" },
+            { times: "07:00 → 22:00", chips: [{ cls: "cwd", label: "CWD" }],                                    amount: "£380.00" },
+            { times: "08:00 → 19:00", chips: [],                                                                amount: "£200.00" }
+          ]
+        },
+        {
+          name:  "James Brooker",
+          sub:   "Lighting Technician · BDR £444 · Northbank Pictures",
+          total: "£2,585.20",
+          rows: [
+            { times: "06:30 → 19:00", chips: [{ cls: "ot", label: "OT 1h 30m" }],                               amount: "£543.90" },
+            { times: "06:00 → 20:30", chips: [{ cls: "msb", label: "L1" }, { cls: "ot", label: "OT 3h 30m" }],  amount: "£687.10" },
+            { times: "07:30 → 22:30", chips: [{ cls: "cwd", label: "CWD" }],                                    amount: "£843.60" },
+            { times: "06:30 → 18:30", chips: [{ cls: "ot", label: "OT 1h" }],                                   amount: "£510.60" }
+          ]
+        },
+        {
+          name:  "Louis Lindsay",
+          sub:   "Video Operator · BDR £500 · Halyard Studios",
+          total: "£2,728.75",
+          rows: [
+            { times: "07:00 → 19:30", chips: [{ cls: "ot", label: "OT 1h 30m" }],                               amount: "£593.75" },
+            { times: "06:30 → 21:00", chips: [{ cls: "msb", label: "L1" }, { cls: "ot", label: "OT 3h 30m" }],  amount: "£728.75" },
+            { times: "08:00 → 22:30", chips: [{ cls: "cwd", label: "CWD" }],                                    amount: "£843.75" },
+            { times: "07:00 → 19:00", chips: [{ cls: "ot", label: "OT 1h" }],                                   amount: "£562.50" }
+          ]
+        },
+        {
+          name:  "Al Rice",
+          sub:   "Gaffer · BDR £720 · Tin Roof Films",
+          total: "£3,754.00",
+          rows: [
+            { times: "06:30 → 19:00", chips: [{ cls: "ot", label: "OT 1h 30m" }],                               amount: "£828.00" },
+            { times: "06:00 → 20:30", chips: [{ cls: "msb", label: "L1" }, { cls: "ot", label: "OT 3h 30m" }],  amount: "£982.00" },
+            { times: "07:30 → 22:30", chips: [{ cls: "cwd", label: "CWD" }],                                    amount: "£1,152.00" },
+            { times: "06:30 → 18:30", chips: [{ cls: "ot", label: "OT 1h" }],                                   amount: "£792.00" }
+          ]
+        }
+      ];
+
+      var mock = document.querySelector(".mock");
+      if (!mock) return;
+
+      function escapeText(s) {
+        var d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      function renderChips(chips) {
+        var html = "";
+        for (var i = 0; i < chips.length; i++) {
+          html += '<span class="mock-chip ' + chips[i].cls + '">' + escapeText(chips[i].label) + '</span>';
+        }
+        return html;
+      }
+
+      function render(state) {
+        var nameEl  = mock.querySelector('[data-rot-mock="name"]');
+        var subEl   = mock.querySelector('[data-rot-mock="sub"]');
+        var totalEl = mock.querySelector('[data-rot-mock="total"]');
+        if (nameEl)  nameEl.textContent  = state.name;
+        if (subEl)   subEl.textContent   = state.sub;
+        if (totalEl) totalEl.textContent = state.total;
+
+        for (var r = 0; r < state.rows.length; r++) {
+          var timesEl = mock.querySelector('[data-row="' + r + '-times"]');
+          var rightEl = mock.querySelector('[data-row="' + r + '-right"]');
+          if (timesEl) timesEl.textContent = state.rows[r].times;
+          if (rightEl) {
+            rightEl.innerHTML = renderChips(state.rows[r].chips) +
+              '<span class="amount">' + escapeText(state.rows[r].amount) + '</span>';
+          }
+        }
+      }
+
+      var i = 0;
+      render(states[0]);
+
+      var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduce) return;
+
+      var INTERVAL = 6500;
+      var FADE     = 240;
+      var timer = null;
+
+      function tick() {
+        i = (i + 1) % states.length;
+        mock.classList.add("is-fading");
+        setTimeout(function () {
+          render(states[i]);
+          mock.classList.remove("is-fading");
+        }, FADE);
+      }
+
+      function start() { if (!timer) timer = setInterval(tick, INTERVAL); }
+      function stop()  { if (timer) { clearInterval(timer); timer = null; } }
+
+      start();
+
+      mock.addEventListener("mouseenter", stop);
+      mock.addEventListener("mouseleave", start);
+      mock.addEventListener("focusin",  stop);
+      mock.addEventListener("focusout", start);
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) stop(); else start();
+      });
+    })();
+  </script>
+
 </body>
 </html>

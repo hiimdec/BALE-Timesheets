@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Privacy · TimeMachine</title>
+  <meta name="description" content="TimeMachine's privacy policy. No accounts, no tracking, no cloud — your data lives on your device.">
+  <meta name="theme-color" content="#0a0a0a">
+
+  <meta property="og:title" content="TimeMachine — Privacy">
+  <meta property="og:description" content="No accounts, no tracking, no cloud. Your data lives on your device.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/privacy">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #737373;
+      --text-4:    #525252;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%, rgba(14,165,233,0.10) 0%, transparent 65%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100;
+      transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: var(--tm-accent);
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--tm-accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+
+    main { padding: 56px 0 72px; }
+    @media (min-width: 768px) { main { padding: 80px 0 96px; } }
+
+    .label {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--tm-accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+    }
+    .label::after {
+      content: ""; flex: 1; height: 1px; min-width: 40px;
+      background: var(--border-soft);
+    }
+
+    h1 {
+      font-size: clamp(34px, 5vw, 52px);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin: 0 0 24px;
+    }
+    h2 {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      margin: 36px 0 10px;
+      color: var(--text);
+    }
+    p, li {
+      color: var(--text-2);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+    p + p { margin-top: 14px; }
+    ul { padding-left: 18px; margin: 8px 0 14px; }
+    li { margin: 6px 0; }
+    li::marker { color: var(--tm-accent); }
+    strong { color: var(--text); font-weight: 600; }
+
+    .effective {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px;
+      color: var(--text-3);
+      letter-spacing: 0.06em;
+      margin-bottom: 32px;
+    }
+
+    .summary-pill {
+      background: rgba(14,165,233,0.06);
+      border: 1px solid rgba(14,165,233,0.20);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin: 24px 0 12px;
+    }
+    .summary-pill p {
+      margin: 0;
+      color: var(--text);
+      font-size: 15px;
+    }
+    .summary-pill .head {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: var(--tm-accent);
+      margin-bottom: 6px;
+    }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft);
+      margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap;
+      align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px;
+      color: var(--text-4);
+      letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a {
+      color: var(--text-3);
+      text-decoration: none;
+      transition: color 150ms;
+    }
+    .footer-links a:hover { color: var(--tm-accent); }
+  </style>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="welcome.html" class="nav-brand">TIMEMACHINE</a>
+      <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        Open the App
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/>
+          <polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+      <p class="label">The fine print</p>
+      <h1>Privacy.</h1>
+      <p class="effective">Effective 15 May 2026 &middot; TimeMachine v0.1</p>
+
+      <div class="summary-pill">
+        <div class="head">In one line</div>
+        <p>TimeMachine doesn&rsquo;t collect anything about you. Your data lives on your device. No accounts, no cloud, no tracking.</p>
+      </div>
+
+      <h2>Who this policy is from</h2>
+      <p>
+        TimeMachine is an APA timesheet calculator for UK commercial crew, currently in beta, built and run by a single developer in the UK. If you need to get hold of a real person about anything below, the email is <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>.
+      </p>
+
+      <h2>What TimeMachine collects from you</h2>
+      <p>
+        Nothing. There is no account to create, no sign-up form, no &ldquo;tell us about yourself&rdquo; flow. When you open the app you can start using it immediately, and nothing about who you are travels to any server.
+      </p>
+
+      <h2>What you put into TimeMachine</h2>
+      <p>
+        As you use the app you&rsquo;ll enter things like your name, role, day rate, bank details, productions you&rsquo;ve worked on, the hours you logged, and notes you wrote. <strong>All of this is stored locally in your browser&rsquo;s storage, on your device.</strong> It never leaves your phone or laptop. There is no copy on any server controlled by TimeMachine because there are no servers controlled by TimeMachine.
+      </p>
+      <p>
+        Practically, this means:
+      </p>
+      <ul>
+        <li>If you clear your browser storage, the data is gone, with no way to recover it. Use the in-app backup export if you want a safety copy.</li>
+        <li>If you use TimeMachine on a different device, you start fresh on that device, or you can import a backup file you exported earlier.</li>
+        <li>If someone else uses your unlocked phone or laptop, they can see your TimeMachine data the same way they can see anything else open in your browser. Lock your devices.</li>
+      </ul>
+
+      <h2>Cookies, analytics, trackers</h2>
+      <p>
+        TimeMachine sets no cookies. There is no Google Analytics, no Mixpanel, no Plausible, no Sentry, no Meta Pixel, no anything. The site has no third-party tracking scripts. You can confirm this in your browser&rsquo;s developer tools &mdash; nothing called outbound on first load.
+      </p>
+      <p>
+        The site itself is served from a static host (GitHub Pages) which may keep server logs of incoming requests (IP address, user agent, timestamp) according to GitHub&rsquo;s own policy. TimeMachine has no access to those logs.
+      </p>
+
+      <h2>If you email us</h2>
+      <p>
+        If you contact <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>, the email itself is held by the email provider that powers that address. The email is kept long enough to reply and resolve whatever you wrote about, and then either retained for ongoing context or deleted on request.
+      </p>
+
+      <h2>Sharing</h2>
+      <p>
+        Because TimeMachine doesn&rsquo;t hold any data about you on its servers, there&rsquo;s nothing to share with anyone. Your data isn&rsquo;t sold, isn&rsquo;t passed to advertisers, isn&rsquo;t used to train models, isn&rsquo;t given to law enforcement on request &mdash; it cannot be, because TimeMachine doesn&rsquo;t have it. Only you do.
+      </p>
+
+      <h2>Your rights under UK GDPR</h2>
+      <p>
+        UK data protection law gives you a set of rights over personal data held about you (access, rectification, erasure, portability, restriction, objection). Because TimeMachine doesn&rsquo;t hold any personal data about you on a server, most of these rights have no work to do.
+      </p>
+      <p>
+        If you&rsquo;ve emailed us and want to know what we hold from that exchange, or want it deleted, write back to the same address and we&rsquo;ll handle it within 30 days.
+      </p>
+
+      <h2>Children</h2>
+      <p>
+        TimeMachine is a professional tool for working crew. It&rsquo;s not designed for or directed at anyone under 16, and we don&rsquo;t expect under-16s to be using it.
+      </p>
+
+      <h2>Changes to this policy</h2>
+      <p>
+        If this policy changes materially &mdash; for example, if TimeMachine ever moves to a cloud-sync model (it has no plans to) &mdash; the change will be announced in-app and the effective date at the top of this page will update. The current version stays available in the project&rsquo;s git history.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Real person, real inbox: <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>.
+      </p>
+      <p>
+        If you&rsquo;re ever unhappy with how a question got answered, you can also complain to the UK&rsquo;s data protection regulator, the Information Commissioner&rsquo;s Office, at <a href="https://ico.org.uk" target="_blank" rel="noopener">ico.org.uk</a>.
+      </p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>v0.1 &middot; APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="welcome.html">Welcome</a>
+        <a href="how-it-works.html">How it works</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA Terms ↗</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
