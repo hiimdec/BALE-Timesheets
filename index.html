@@ -4876,45 +4876,60 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       : (bs.lunchDuration ?? 60) < 60 ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
                       : { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/25' };
                     return (
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
-                        <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold flex-shrink-0">LUNCH</span>
-                        {!isDiscretionary && (
-                          <>
-                            <TimeInput
-                              value={v.lunchStartTime || ""}
-                              onChange={(e) => set({ lunchStartTime: e.target.value })}
-                              disabled={dur === 0}
-                              className="!text-base !bg-transparent !border-0 !rounded-none !outline-none !ring-0 !py-0 !px-0 font-mono font-bold"
-                              style={{ width: '64px', minWidth: '64px' }}
-                            />
-                            {bs?.lunchEndAbs != null && dur > 0 && (
-                              <>
-                                <span className="text-neutral-500 text-sm">→</span>
-                                <span className="text-base font-mono font-bold text-neutral-100">{toHHMM(bs.lunchEndAbs)}</span>
-                              </>
-                            )}
-                            <span className="text-neutral-600 text-sm">·</span>
-                          </>
-                        )}
-                        <select
-                          value={dur}
-                          onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
-                          className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
-                        >
-                          {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
-                        </select>
-                        {isToday && dur !== 0 && !isDiscretionary && (
-                          <button
-                            type="button"
-                            onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
-                            className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded ml-1 flex-shrink-0"
-                          >NOW</button>
-                        )}
-                        {chipKind && (
-                          <span className={`ml-auto text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${chipKind.cls}`}>
-                            {chipKind.label}
-                          </span>
-                        )}
+                      <div className="flex flex-col gap-1.5 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
+                        {/* Row 1: LUNCH + start→end (or select alongside LUNCH on discretionary days) */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold flex-shrink-0">LUNCH</span>
+                          {!isDiscretionary ? (
+                            <>
+                              <TimeInput
+                                value={v.lunchStartTime || ""}
+                                onChange={(e) => set({ lunchStartTime: e.target.value })}
+                                disabled={dur === 0}
+                                className="!text-base !bg-transparent !border-0 !rounded-none !outline-none !ring-0 !py-0 !px-0 font-mono font-bold"
+                                style={{ width: '64px', minWidth: '64px' }}
+                              />
+                              {bs?.lunchEndAbs != null && dur > 0 && (
+                                <>
+                                  <span className="text-neutral-500 text-sm">→</span>
+                                  <span className="text-base font-mono font-bold text-neutral-100">{toHHMM(bs.lunchEndAbs)}</span>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <select
+                              value={dur}
+                              onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
+                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
+                            >
+                              {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
+                            </select>
+                          )}
+                        </div>
+                        {/* Row 2: NOW (left) · duration (centre) · status chip (right) */}
+                        <div className="flex items-center justify-between gap-2">
+                          {isToday && dur !== 0 && !isDiscretionary && (
+                            <button
+                              type="button"
+                              onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
+                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded ml-1 flex-shrink-0"
+                            >NOW</button>
+                          )}
+                          {!isDiscretionary && (
+                            <select
+                              value={dur}
+                              onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
+                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
+                            >
+                              {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
+                            </select>
+                          )}
+                          {chipKind && (
+                            <span className={`text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${chipKind.cls}`}>
+                              {chipKind.label}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}
