@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="TimeMachine">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#0e1729">
+  <meta name="theme-color" content="#0a0a0a">
   <!-- App icons — served as static files -->
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -28,6 +28,7 @@
             'tm-warn': '#ff8a3d',    // warm orange — warnings, OT segment
             'tm-pen':  '#f43f5e',    // hot pink-red — penalties
             'tm-good': '#4ade80',    // vibrant green — kit money, "ok" states
+            'tm-mileage': '#a78bfa', // violet — mileage segment
             'tm-card-2': '#1f1f1f',  // one step lighter than card — for chips/pills that need to lift
           }
         }
@@ -45,6 +46,7 @@
       --tm-warn: #ff8a3d;
       --tm-pen: #f43f5e;
       --tm-good: #4ade80;
+      --tm-mileage: #a78bfa;
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
       --tm-pill-ink: #15171a;
       --tm-card-2: #1f1f1f;
@@ -66,8 +68,30 @@
     input, select, textarea { font-size: 16px !important; }
     /* Hide native select arrow tint */
     select { -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230ea5e9' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
+    /* Invisible time/date inputs overlaid on a styled value display. On
+       Chrome the onClick={showPicker()} handler opens the native picker
+       directly, but Safari/Firefox desktop don't support showPicker for
+       time/date — the overlay was invisible AND inert. On focus we reveal
+       the native control with an opaque background so it masks the
+       underlying display and the field becomes directly editable. iOS keeps
+       working because focusing the input pops the native wheel regardless. */
+    .tm-picker-overlay:focus,
+    .tm-picker-overlay:focus-visible {
+      opacity: 1 !important;
+      -webkit-appearance: auto !important;
+      appearance: auto !important;
+      background: #171717;
+      color: #f5f5f5;
+      outline: 2px solid #0ea5e9;
+      outline-offset: -2px;
+      border-radius: inherit;
+      padding: 0 8px;
+      z-index: 5;
+      cursor: text;
+    }
     /* Loading indicator */
     .app-loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh; font-family: ui-sans-serif, system-ui; }
+    @keyframes tm-splash-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
     /* Smooth momentum scrolling on iOS for all overflow containers */
     .overflow-y-auto, .overflow-y-scroll, .overflow-auto, .overflow-scroll {
       -webkit-overflow-scrolling: touch;
@@ -213,7 +237,18 @@
 
 </head>
 <body>
-  <div id="root"><div class="app-loading">Loading TimeMachine v4.7.0…</div></div>
+  <div id="root">
+    <div class="app-loading" style="flex-direction:column; gap:18px; background:#0a0a0a;">
+      <svg width="132" viewBox="83.5 202 857 620" xmlns="http://www.w3.org/2000/svg"
+           aria-hidden="true" style="animation:tm-splash-pulse 1.6s ease-in-out infinite;">
+        <rect x="83.5" y="202" width="857" height="148" rx="74" fill="#0ea5e9"></rect>
+        <rect x="83.5" y="438" width="553" height="148" rx="74" fill="#ff8a3d"></rect>
+        <rect x="83.5" y="674" width="268" height="148" rx="74" fill="#f43f5e"></rect>
+      </svg>
+      <div style="font-weight:600; font-size:18px; color:#f5f5f5; letter-spacing:-0.01em;">TimeMachine</div>
+      <div style="font-size:13px; color:#737373;">Loading…</div>
+    </div>
+  </div>
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
@@ -697,6 +732,7 @@
       const s = label || '';
       if (/late|missed|curtailed|off the clock|breach|penalty/i.test(s)) return 'pen';
       if (/\bOT\b|overtime|triple time|double time|time and a half/i.test(s)) return 'ot';
+      if (/mileage/i.test(s)) return 'mileage';
       if (/\bkit\b|per diem|travel time|expense|mileage|allowance/i.test(s)) return 'kit';
       return 'basic';
     }
@@ -4188,7 +4224,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       type="date"
                       value={noticeDate}
                       onChange={(e) => setNotice(e.target.value)}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       aria-label="Notice given on"
                       style={{ WebkitAppearance: 'none' }}
                     />
@@ -4873,45 +4909,60 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       : (bs.lunchDuration ?? 60) < 60 ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
                       : { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/25' };
                     return (
-                      <div className="flex items-center gap-2 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
-                        <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold flex-shrink-0">LUNCH</span>
-                        {!isDiscretionary && (
-                          <>
-                            <TimeInput
-                              value={v.lunchStartTime || ""}
-                              onChange={(e) => set({ lunchStartTime: e.target.value })}
-                              disabled={dur === 0}
-                              className="!text-base !bg-transparent !border-0 !rounded-none !outline-none !ring-0 !py-0 !px-0 font-mono font-bold"
-                              style={{ width: '64px', minWidth: '64px' }}
-                            />
-                            {bs?.lunchEndAbs != null && dur > 0 && (
-                              <>
-                                <span className="text-neutral-500 text-sm">→</span>
-                                <span className="text-base font-mono font-bold text-neutral-100">{toHHMM(bs.lunchEndAbs)}</span>
-                              </>
-                            )}
-                            <span className="text-neutral-600 text-sm">·</span>
-                          </>
-                        )}
-                        <select
-                          value={dur}
-                          onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
-                          className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
-                        >
-                          {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
-                        </select>
-                        {isToday && dur !== 0 && !isDiscretionary && (
-                          <button
-                            type="button"
-                            onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
-                            className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded ml-1 flex-shrink-0"
-                          >NOW</button>
-                        )}
-                        {chipKind && (
-                          <span className={`ml-auto text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${chipKind.cls}`}>
-                            {chipKind.label}
-                          </span>
-                        )}
+                      <div className="flex flex-col gap-1.5 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
+                        {/* Row 1: LUNCH + start→end (or select alongside LUNCH on discretionary days) */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold flex-shrink-0">LUNCH</span>
+                          {!isDiscretionary ? (
+                            <>
+                              <TimeInput
+                                value={v.lunchStartTime || ""}
+                                onChange={(e) => set({ lunchStartTime: e.target.value })}
+                                disabled={dur === 0}
+                                className="!text-base !bg-transparent !border-0 !rounded-none !outline-none !ring-0 !py-0 !px-0 font-mono font-bold"
+                                style={{ width: '64px', minWidth: '64px' }}
+                              />
+                              {bs?.lunchEndAbs != null && dur > 0 && (
+                                <>
+                                  <span className="text-neutral-500 text-sm">→</span>
+                                  <span className="text-base font-mono font-bold text-neutral-100">{toHHMM(bs.lunchEndAbs)}</span>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <select
+                              value={dur}
+                              onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
+                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
+                            >
+                              {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
+                            </select>
+                          )}
+                        </div>
+                        {/* Row 2: NOW (left) · duration (centre) · status chip (right) */}
+                        <div className="flex items-center justify-between gap-2">
+                          {isToday && dur !== 0 && !isDiscretionary && (
+                            <button
+                              type="button"
+                              onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
+                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded ml-1 flex-shrink-0"
+                            >NOW</button>
+                          )}
+                          {!isDiscretionary && (
+                            <select
+                              value={dur}
+                              onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
+                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
+                            >
+                              {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
+                            </select>
+                          )}
+                          {chipKind && (
+                            <span className={`text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${chipKind.cls}`}>
+                              {chipKind.label}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}
@@ -6639,8 +6690,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           days: [
             ...(p.days || []),
             ...toAdd.map(m => ({
-              ...DEFAULT_PRODUCTION_DAY,
-              ...(p.defaultDay || {}),
               ...makeBlankDay(m.id),
               date,
               dayType: type,
@@ -6741,13 +6790,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {currentDate && (
                 <>
                   <span className="text-neutral-700">·</span>
-                  <span className="relative inline-block">
-                    <span className={`${dateColorCls} underline decoration-dotted decoration-neutral-700 underline-offset-2`}>{formattedDate}</span>
+                  <span className={`relative inline-flex items-center gap-1 ${dateColorCls}`}>
+                    <ICal size={11} />
+                    <span className="underline decoration-dotted decoration-neutral-700 underline-offset-2">{formattedDate}</span>
                     <input
                       type="date"
                       value={currentDate}
                       onChange={(e) => handleReassignDate(e.target.value)}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       aria-label="Change date"
                       style={{ WebkitAppearance: 'none' }}
                     />
@@ -6794,7 +6844,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 value={deptCall || ''}
                 onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'callTime', e.target.value))}
                 onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 aria-label="Edit call time"
                 style={{ WebkitAppearance: 'none' }}
               />
@@ -6809,7 +6859,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 value={deptWrap || ''}
                 onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'wrapTime', e.target.value))}
                 onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 aria-label="Edit wrap time"
                 style={{ WebkitAppearance: 'none' }}
               />
@@ -7288,7 +7338,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
             onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             aria-label={`Edit ${label.toLowerCase()}`}
             style={{ WebkitAppearance: 'none' }}
           />
@@ -8757,7 +8807,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     type="date"
                     value={production.startDate || ""}
                     onChange={handleStartDateChange}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     aria-label="Start date"
                     style={{ WebkitAppearance: 'none' }}
                   />
@@ -9694,7 +9744,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }), [days]);
 
       const buckets = useMemo(() => {
-        const b = { basic: 0, ot: 0, pen: 0, kit: 0 };
+        const b = { basic: 0, ot: 0, pen: 0, kit: 0, mileage: 0 };
         sorted.forEach(d => {
           const c = crew.find(cc => cc.id === d.crewId);
           if (!c) return;
@@ -9703,7 +9753,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             b[categorizeBreakdownLine(line.label || '')] += Number(line.amount) || 0;
           });
         });
-        const sum = b.basic + b.ot + b.pen + b.kit;
+        const sum = b.basic + b.ot + b.pen + b.kit + b.mileage;
         const want = Number(total) || 0;
         if (Math.abs(sum - want) > 0.01) {
           console.warn(`[earnings meter] bucket sum ${sum.toFixed(2)} does not match total ${want.toFixed(2)} — unmapped line?`);
@@ -9767,10 +9817,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
               {total > 0 && (
                 <div className="flex h-1.5 rounded-full overflow-hidden bg-neutral-900 mb-2.5">
-                  {buckets.basic > 0 && <div className="bg-sky-500" style={{ width: `${(buckets.basic / total) * 100}%` }} />}
-                  {buckets.ot    > 0 && <div className="bg-tm-warn" style={{ width: `${(buckets.ot    / total) * 100}%` }} />}
-                  {buckets.pen   > 0 && <div className="bg-tm-pen"  style={{ width: `${(buckets.pen   / total) * 100}%` }} />}
-                  {buckets.kit   > 0 && <div className="bg-tm-good" style={{ width: `${(buckets.kit   / total) * 100}%` }} />}
+                  {buckets.basic   > 0 && <div className="bg-sky-500"    style={{ width: `${(buckets.basic   / total) * 100}%` }} />}
+                  {buckets.ot      > 0 && <div className="bg-tm-warn"    style={{ width: `${(buckets.ot      / total) * 100}%` }} />}
+                  {buckets.pen     > 0 && <div className="bg-tm-pen"     style={{ width: `${(buckets.pen     / total) * 100}%` }} />}
+                  {buckets.kit     > 0 && <div className="bg-tm-good"    style={{ width: `${(buckets.kit     / total) * 100}%` }} />}
+                  {buckets.mileage > 0 && <div className="bg-tm-mileage" style={{ width: `${(buckets.mileage / total) * 100}%` }} />}
                 </div>
               )}
               {total > 0 && (
@@ -9801,6 +9852,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <div className="w-2 h-2 rounded-sm bg-tm-good" />
                       <span>KIT</span>
                       <span className="text-neutral-100">{fmtGBP(buckets.kit)}</span>
+                    </div>
+                  )}
+                  {buckets.mileage > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-sm bg-tm-mileage" />
+                      <span>MILEAGE</span>
+                      <span className="text-neutral-100">{fmtGBP(buckets.mileage)}</span>
                     </div>
                   )}
                 </div>
@@ -10552,7 +10610,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     type="date"
                     value={currentDay?.date || ""}
                     onChange={(e) => handleDayChange({ ...currentDay, date: e.target.value })}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     aria-label="Day date"
                     style={{ WebkitTapHighlightColor: 'transparent' }}
                   />
@@ -10825,8 +10883,6 @@ const setDays = (updater) =>
           days: [
             ...(p.days || []),
             ...toAdd.map(m => ({
-              ...DEFAULT_PRODUCTION_DAY,
-              ...(p.defaultDay || {}),
               ...makeBlankDay(m.id),
               date,
               dayType: type,
@@ -12871,7 +12927,7 @@ const setDays = (updater) =>
                     type="date"
                     value={invoice.invoiceDate}
                     onChange={(e) => { const d = e.target.value; updateInvoice({ invoiceDate: d, dueDate: d ? addDays(d, daysFromIssue) : invoice.dueDate }); }}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    className="tm-picker-overlay absolute inset-0 opacity-0 cursor-pointer"
                     style={{ WebkitAppearance: 'none' }}
                     aria-label="Invoice issue date"
                   />
