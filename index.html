@@ -6778,8 +6778,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {currentDate && (
                 <>
                   <span className="text-neutral-700">·</span>
-                  <span className="relative inline-block">
-                    <span className={`${dateColorCls} underline decoration-dotted decoration-neutral-700 underline-offset-2`}>{formattedDate}</span>
+                  <span className={`relative inline-flex items-center gap-1 ${dateColorCls}`}>
+                    <ICal size={11} />
+                    <span className="underline decoration-dotted decoration-neutral-700 underline-offset-2">{formattedDate}</span>
                     <input
                       type="date"
                       value={currentDate}
