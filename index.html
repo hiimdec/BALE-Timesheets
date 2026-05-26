@@ -6657,8 +6657,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           days: [
             ...(p.days || []),
             ...toAdd.map(m => ({
-              ...DEFAULT_PRODUCTION_DAY,
-              ...(p.defaultDay || {}),
               ...makeBlankDay(m.id),
               date,
               dayType: type,
@@ -10851,8 +10849,6 @@ const setDays = (updater) =>
           days: [
             ...(p.days || []),
             ...toAdd.map(m => ({
-              ...DEFAULT_PRODUCTION_DAY,
-              ...(p.defaultDay || {}),
               ...makeBlankDay(m.id),
               date,
               dayType: type,
