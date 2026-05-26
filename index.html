@@ -68,6 +68,27 @@
     input, select, textarea { font-size: 16px !important; }
     /* Hide native select arrow tint */
     select { -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230ea5e9' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
+    /* Invisible time/date inputs overlaid on a styled value display. On
+       Chrome the onClick={showPicker()} handler opens the native picker
+       directly, but Safari/Firefox desktop don't support showPicker for
+       time/date — the overlay was invisible AND inert. On focus we reveal
+       the native control with an opaque background so it masks the
+       underlying display and the field becomes directly editable. iOS keeps
+       working because focusing the input pops the native wheel regardless. */
+    .tm-picker-overlay:focus,
+    .tm-picker-overlay:focus-visible {
+      opacity: 1 !important;
+      -webkit-appearance: auto !important;
+      appearance: auto !important;
+      background: #171717;
+      color: #f5f5f5;
+      outline: 2px solid #0ea5e9;
+      outline-offset: -2px;
+      border-radius: inherit;
+      padding: 0 8px;
+      z-index: 5;
+      cursor: text;
+    }
     /* Loading indicator */
     .app-loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh; font-family: ui-sans-serif, system-ui; }
     /* Smooth momentum scrolling on iOS for all overflow containers */
@@ -4191,7 +4212,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       type="date"
                       value={noticeDate}
                       onChange={(e) => setNotice(e.target.value)}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       aria-label="Notice given on"
                       style={{ WebkitAppearance: 'none' }}
                     />
@@ -6763,7 +6784,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       type="date"
                       value={currentDate}
                       onChange={(e) => handleReassignDate(e.target.value)}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       aria-label="Change date"
                       style={{ WebkitAppearance: 'none' }}
                     />
@@ -6810,7 +6831,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 value={deptCall || ''}
                 onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'callTime', e.target.value))}
                 onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 aria-label="Edit call time"
                 style={{ WebkitAppearance: 'none' }}
               />
@@ -6825,7 +6846,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 value={deptWrap || ''}
                 onChange={(e) => setProduction(p => setDayDefault(p, currentDate, 'wrapTime', e.target.value))}
                 onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 aria-label="Edit wrap time"
                 style={{ WebkitAppearance: 'none' }}
               />
@@ -7304,7 +7325,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
             onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             aria-label={`Edit ${label.toLowerCase()}`}
             style={{ WebkitAppearance: 'none' }}
           />
@@ -8773,7 +8794,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     type="date"
                     value={production.startDate || ""}
                     onChange={handleStartDateChange}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     aria-label="Start date"
                     style={{ WebkitAppearance: 'none' }}
                   />
@@ -10576,7 +10597,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     type="date"
                     value={currentDay?.date || ""}
                     onChange={(e) => handleDayChange({ ...currentDay, date: e.target.value })}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     aria-label="Day date"
                     style={{ WebkitTapHighlightColor: 'transparent' }}
                   />
@@ -12893,7 +12914,7 @@ const setDays = (updater) =>
                     type="date"
                     value={invoice.invoiceDate}
                     onChange={(e) => { const d = e.target.value; updateInvoice({ invoiceDate: d, dueDate: d ? addDays(d, daysFromIssue) : invoice.dueDate }); }}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    className="tm-picker-overlay absolute inset-0 opacity-0 cursor-pointer"
                     style={{ WebkitAppearance: 'none' }}
                     aria-label="Invoice issue date"
                   />
