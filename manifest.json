@@ -1,15 +1,16 @@
 {
   "name": "TimeMachine",
   "short_name": "TimeMachine",
+  "description": "Film & TV production timecard and rate calculator.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "theme_color": "#0e1729",
+  "orientation": "portrait",
   "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
   "icons": [
-    { "src": "icon-192.png",  "sizes": "192x192",   "type": "image/png" },
-    { "src": "icon-512.png",  "sizes": "512x512",   "type": "image/png" },
-    { "src": "icon-1024.png", "sizes": "1024x1024", "type": "image/png" },
-    { "src": "icon.svg",      "sizes": "any",       "type": "image/svg+xml" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
