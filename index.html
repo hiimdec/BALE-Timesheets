@@ -28,6 +28,7 @@
             'tm-warn': '#ff8a3d',    // warm orange — warnings, OT segment
             'tm-pen':  '#f43f5e',    // hot pink-red — penalties
             'tm-good': '#4ade80',    // vibrant green — kit money, "ok" states
+            'tm-mileage': '#a78bfa', // violet — mileage segment
             'tm-card-2': '#1f1f1f',  // one step lighter than card — for chips/pills that need to lift
           }
         }
@@ -45,6 +46,7 @@
       --tm-warn: #ff8a3d;
       --tm-pen: #f43f5e;
       --tm-good: #4ade80;
+      --tm-mileage: #a78bfa;
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
       --tm-pill-ink: #15171a;
       --tm-card-2: #1f1f1f;
@@ -697,6 +699,7 @@
       const s = label || '';
       if (/late|missed|curtailed|off the clock|breach|penalty/i.test(s)) return 'pen';
       if (/\bOT\b|overtime|triple time|double time|time and a half/i.test(s)) return 'ot';
+      if (/mileage/i.test(s)) return 'mileage';
       if (/\bkit\b|per diem|travel time|expense|mileage|allowance/i.test(s)) return 'kit';
       return 'basic';
     }
@@ -4873,7 +4876,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       : (bs.lunchDuration ?? 60) < 60 ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
                       : { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/25' };
                     return (
-                      <div className="flex items-center gap-2 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
                         <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold flex-shrink-0">LUNCH</span>
                         {!isDiscretionary && (
                           <>
@@ -9694,7 +9697,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }), [days]);
 
       const buckets = useMemo(() => {
-        const b = { basic: 0, ot: 0, pen: 0, kit: 0 };
+        const b = { basic: 0, ot: 0, pen: 0, kit: 0, mileage: 0 };
         sorted.forEach(d => {
           const c = crew.find(cc => cc.id === d.crewId);
           if (!c) return;
@@ -9703,7 +9706,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             b[categorizeBreakdownLine(line.label || '')] += Number(line.amount) || 0;
           });
         });
-        const sum = b.basic + b.ot + b.pen + b.kit;
+        const sum = b.basic + b.ot + b.pen + b.kit + b.mileage;
         const want = Number(total) || 0;
         if (Math.abs(sum - want) > 0.01) {
           console.warn(`[earnings meter] bucket sum ${sum.toFixed(2)} does not match total ${want.toFixed(2)} — unmapped line?`);
@@ -9767,10 +9770,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
               {total > 0 && (
                 <div className="flex h-1.5 rounded-full overflow-hidden bg-neutral-900 mb-2.5">
-                  {buckets.basic > 0 && <div className="bg-sky-500" style={{ width: `${(buckets.basic / total) * 100}%` }} />}
-                  {buckets.ot    > 0 && <div className="bg-tm-warn" style={{ width: `${(buckets.ot    / total) * 100}%` }} />}
-                  {buckets.pen   > 0 && <div className="bg-tm-pen"  style={{ width: `${(buckets.pen   / total) * 100}%` }} />}
-                  {buckets.kit   > 0 && <div className="bg-tm-good" style={{ width: `${(buckets.kit   / total) * 100}%` }} />}
+                  {buckets.basic   > 0 && <div className="bg-sky-500"    style={{ width: `${(buckets.basic   / total) * 100}%` }} />}
+                  {buckets.ot      > 0 && <div className="bg-tm-warn"    style={{ width: `${(buckets.ot      / total) * 100}%` }} />}
+                  {buckets.pen     > 0 && <div className="bg-tm-pen"     style={{ width: `${(buckets.pen     / total) * 100}%` }} />}
+                  {buckets.kit     > 0 && <div className="bg-tm-good"    style={{ width: `${(buckets.kit     / total) * 100}%` }} />}
+                  {buckets.mileage > 0 && <div className="bg-tm-mileage" style={{ width: `${(buckets.mileage / total) * 100}%` }} />}
                 </div>
               )}
               {total > 0 && (
@@ -9801,6 +9805,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <div className="w-2 h-2 rounded-sm bg-tm-good" />
                       <span>KIT</span>
                       <span className="text-neutral-100">{fmtGBP(buckets.kit)}</span>
+                    </div>
+                  )}
+                  {buckets.mileage > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-sm bg-tm-mileage" />
+                      <span>MILEAGE</span>
+                      <span className="text-neutral-100">{fmtGBP(buckets.mileage)}</span>
                     </div>
                   )}
                 </div>
