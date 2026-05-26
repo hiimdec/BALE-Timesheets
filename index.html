@@ -91,7 +91,7 @@
     }
     /* Loading indicator */
     .app-loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh; font-family: ui-sans-serif, system-ui; }
-    @keyframes tm-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+    @keyframes tm-splash-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
     /* Smooth momentum scrolling on iOS for all overflow containers */
     .overflow-y-auto, .overflow-y-scroll, .overflow-auto, .overflow-scroll {
       -webkit-overflow-scrolling: touch;
@@ -240,7 +240,7 @@
   <div id="root">
     <div class="app-loading" style="flex-direction:column; gap:18px; background:#0a0a0a;">
       <svg width="132" viewBox="83.5 202 857 620" xmlns="http://www.w3.org/2000/svg"
-           aria-hidden="true" style="animation:tm-pulse 1.6s ease-in-out infinite;">
+           aria-hidden="true" style="animation:tm-splash-pulse 1.6s ease-in-out infinite;">
         <rect x="83.5" y="202" width="857" height="148" rx="74" fill="#0ea5e9"></rect>
         <rect x="83.5" y="438" width="553" height="148" rx="74" fill="#ff8a3d"></rect>
         <rect x="83.5" y="674" width="268" height="148" rx="74" fill="#f43f5e"></rect>
