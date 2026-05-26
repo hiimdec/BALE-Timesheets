@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="TimeMachine">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#0e1729">
+  <meta name="theme-color" content="#0a0a0a">
   <!-- App icons — served as static files -->
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -91,6 +91,7 @@
     }
     /* Loading indicator */
     .app-loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh; font-family: ui-sans-serif, system-ui; }
+    @keyframes tm-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
     /* Smooth momentum scrolling on iOS for all overflow containers */
     .overflow-y-auto, .overflow-y-scroll, .overflow-auto, .overflow-scroll {
       -webkit-overflow-scrolling: touch;
@@ -236,7 +237,18 @@
 
 </head>
 <body>
-  <div id="root"><div class="app-loading">Loading TimeMachine v4.7.0…</div></div>
+  <div id="root">
+    <div class="app-loading" style="flex-direction:column; gap:18px; background:#0a0a0a;">
+      <svg width="132" viewBox="83.5 202 857 620" xmlns="http://www.w3.org/2000/svg"
+           aria-hidden="true" style="animation:tm-pulse 1.6s ease-in-out infinite;">
+        <rect x="83.5" y="202" width="857" height="148" rx="74" fill="#0ea5e9"></rect>
+        <rect x="83.5" y="438" width="553" height="148" rx="74" fill="#ff8a3d"></rect>
+        <rect x="83.5" y="674" width="268" height="148" rx="74" fill="#f43f5e"></rect>
+      </svg>
+      <div style="font-weight:600; font-size:18px; color:#f5f5f5; letter-spacing:-0.01em;">TimeMachine</div>
+      <div style="font-size:13px; color:#737373;">Loading…</div>
+    </div>
+  </div>
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
