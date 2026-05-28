@@ -300,6 +300,8 @@
         "Color discipline locked — sky for active, fuchsia for variance, red for penalty, orange for OT/edited, green for sent/paid",
         "Conditions row clarified — penalty conditions render red; state indicators render orange",
         "Curtailed lunch indicator visible in invoice + breakdown export",
+        "Fix: BWD-override roles (DoP, Art Director, Location Manager) now see a day-detail UI that matches their pay. On Prep / Recce / Build / De-rig / Pre-light days, the lunch chip shows start→end times and the NOW button, the meal-provided toggle appears when lunch is missed, and the late / missed lunch StatusMsg fires — mirroring the Basic Working Day treatment calculateDay applies",
+        "Regression fix: Sun / BH Pre-light and Discretionary day pay was clipped to 8h after the flat-8 discretionary fix landed. Restored Math.max(workedHrs - lunchDeduct, 8) so a Sun Pre-light call 08:00 wrap 21:00 1h lunch now correctly pays 12h × 2× BHR (was 8h × 2× BHR). Min-8 floor and \"min 8h applied\" note preserved",
         "Fix: TOC penalty is now capped at 1h × OT rate per APA §5. A 7h rest used to bill 4h of TOC; now correctly bills 1h plus the existing BREACH warning when rest < 10h",
         "Fix: curtailed 1st break when OT was crossed no longer renders a misleading £0 line. The curtailment minutes now surface in the OT line's detail (\"…incl. 20m curtailed lunch\") so it's clear the time was absorbed into OT pay",
         "Fix: bank holiday lookup table now covers 2025 (was 2026 onwards) so backdated invoices for 2025-12-25 etc. get the correct Sun/BH treatment",
@@ -1178,11 +1180,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           });
           if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
         } else {
-          // APA §2.3: discretionary days pay flat 8h × sunRate (lunch unpaid).
-          // Pre-light keeps the "min 8h / pay workedHrs" formula.
-          const isPreLight = effectiveDayType === "Pre-light";
-          const sunPaidHrs = isPreLight ? Math.max(workedHrs, 8) : 8;
-          const sunMinApplied = isPreLight && sunPaidHrs > workedHrs;
+          // Sun/BH non-Shoot pays a single flat-rate line covering basic +
+          // OT (rates are equal at 2× BHR on Sunday per APA §2.4(viii)/(x)).
+          // Lunch is unpaid filler on both Pre-light and Discretionary days,
+          // so deduct lunchDuration. Min 8h floor stays per the cheat sheet.
+          const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
+          const sunPaidHrs = Math.max(workedHrs - lunchDeduct, 8);
+          const sunMinApplied = sunPaidHrs > (workedHrs - lunchDeduct);
           lines.push({ label: `${sunBranchPrefix} ${effectiveDayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: sunRate, qty: sunPaidHrs, amount: sunPaidHrs * sunRate });
         }
       } else {
@@ -4716,7 +4720,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false }) {
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
-      const bs = deriveBreakState(v);
       const [showTravelInfo, setShowTravelInfo] = useState(false);
       const [showPreCallInfo, setShowPreCallInfo] = useState(false);
 
@@ -4762,6 +4765,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const role = effectiveRole;
       const bwdOverrideApplies = !isPmpa && ROLES_WITH_BWD_OVERRIDE.includes(role) &&
         ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(v.dayType);
+      // Mirror calculateDay's BWD override (APA §2.3): a DoP / AD / LM on a
+      // Pre-light / Prep / Recce / Build / De-rig is paid as a Basic Working
+      // Day, which means the break-state UI (lunch chip, status messages,
+      // meal-provided toggle, 2nd-break section) must use the effective type
+      // too — otherwise the form would contradict the calc.
+      const effDayType = bwdOverrideApplies ? "Shoot" : v.dayType;
+      const bs = deriveBreakState(v, effDayType);
 
       const show2ndBreakSection = !isPmpa && !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
       const showCwdBreaksChip   = !isPmpa && !isTravelDay && bs && bs.continuousDay;
@@ -4962,7 +4972,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {!isPmpa && !isTravelDay && (
                 <div className="border-t border-neutral-800 pt-3 mt-1 space-y-3">
                   {(() => {
-                    const isDiscretionary = DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
+                    const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
                     const dur = Number(v.lunchDurationMins ?? 60);
                     const chipKind = !bs ? null
                       : bs.lunchMissed ? { label: 'MISSED', cls: 'bg-tm-pen/10 text-tm-pen border-tm-pen/25' }
