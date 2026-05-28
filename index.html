@@ -300,6 +300,7 @@
         "Color discipline locked — sky for active, fuchsia for variance, red for penalty, orange for OT/edited, green for sent/paid",
         "Conditions row clarified — penalty conditions render red; state indicators render orange",
         "Curtailed lunch indicator visible in invoice + breakdown export",
+        "Polish: pre-call and step-up extras now have an explicit Remove button inside their inline edit panels — fixes the mobile-only inability to clear a non-numeric extra. Pre-call clears both preCallTime and the legacy truckCallTime; step-up clears role + BDR + OT-coef + OT-rate together. Both surfaces (solo day-detail panels and BB per-day panels) get the affordance; BB dept-defaults already had a Clear default button covering the same case",
         "Fix: pre-call hours now paid correctly per APA §2.1.3 — hours before 05:00 charge 3× BHR (triple time), hours from 05:00 to main call charge OT rate. Pre-call also absorbs into unused basic-day hours (industry practice, mirrors travel-time absorption), with absorption eating from the call-time end so the triple-time premium is preserved as long as possible. Night shoots keep flat 2× BHR with no split per APA §2.1.5",
         "Polish: ON TIME chip returns to the LUNCH card top-right (green, matching LATE / CWD / CURTAILED corner-chip pattern). The green status banner stays suppressed — the chip is the only on-time affordance",
         "Cleanup: LUNCH card on the day-detail page now mirrors the CALL / WRAP card structure — LUNCH label top-left, conditional status chip top-right (CWD / LATE / CURTAILED only), centred 13:00 → 14:00 time pair, NOW button + duration select in a hairline-separated footer. On-time confirmation states (chip and the green \"On time. Lunch ends X.\" banner) are silenced — no chip when nothing's wrong. Discretionary days keep the label-only header + footer treatment. Calc behaviour, lunchEndAbs computation, BWD-override plumbing, and the real-world-clock gate untouched",
@@ -5281,6 +5282,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </Select>
                   </Field>
                 </div>
+                {v.stepUpRole && (
+                  <button
+                    type="button"
+                    onClick={() => set({ stepUpRole: '', stepUpBDR: 0, stepUpOTCoef: 1, stepUpOTRate: null })}
+                    className="text-[10px] uppercase tracking-[0.14em] font-bold text-neutral-500 hover:text-neutral-300 transition-colors self-start"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    Remove step-up
+                  </button>
+                )}
               </div>
             </SectionCard>
           )}
@@ -5302,6 +5313,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Field label="Pre-call time" hint="Early arrival — paid at BHR. Lunch and CWD still measured from main call time.">
                   <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} />
                 </Field>
+                {(v.preCallTime || v.truckCallTime) && (
+                  <button
+                    type="button"
+                    onClick={() => set({ preCallTime: '', truckCallTime: '' })}
+                    className="text-[10px] uppercase tracking-[0.14em] font-bold text-neutral-500 hover:text-neutral-300 transition-colors self-start"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    Remove pre-call
+                  </button>
+                )}
               </div>
             </SectionCard>
           )}
@@ -8200,6 +8221,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
                                 <input type="time" value={dayRecord.preCallTime || ''} onChange={(e) => updateField('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
                                 <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Clear the time to deactivate.</div>
+                                {(dayRecord.preCallTime || dayRecord.truckCallTime) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, preCallTime: '', truckCallTime: '' } : d) }))}
+                                    className="w-full mt-3 px-4 py-2.5 rounded-xl bg-tm-warn/10 hover:bg-tm-warn/15 border border-tm-warn/30 text-tm-warn text-sm font-bold transition-colors"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                                  >
+                                    Remove pre-call
+                                  </button>
+                                )}
                               </div>
                             );
                             if (preCallOverridden) resetEl = resetButton('Reset to default', () => resetFields('preCall', 'preCallTime'));
@@ -8301,6 +8332,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                       </select>
                                     </div>
                                   </div>
+                                )}
+                                {dayRecord.stepUpRole && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, stepUpRole: '', stepUpBDR: 0, stepUpOTCoef: 1, stepUpOTRate: null } : d) }))}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-tm-warn/10 hover:bg-tm-warn/15 border border-tm-warn/30 text-tm-warn text-sm font-bold transition-colors"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                                  >
+                                    Remove step-up
+                                  </button>
                                 )}
                               </div>
                             );
