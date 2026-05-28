@@ -705,8 +705,8 @@
       if (callH == null) return null;
       const callMins = Math.round(callH * 60);
       const nowMins = now.getHours() * 60 + now.getMinutes();
-      let diff = nowMins - callMins;
-      if (diff < 0) diff += 24 * 60;
+      const diff = nowMins - callMins;
+      if (diff < 0) return 0;
       return diff;
     }
     function formatElapsed(minutes) {
@@ -1955,6 +1955,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         expenses: [],
       };
       const newDefaults = { ...existingDefaults, [field]: value };
+      // If callTime is being set and no explicit wrapTime exists yet for this
+      // date, derive wrap = call + 11h so future-dated days don't render with
+      // an empty wrap. Writing wrapTime alone never touches callTime.
+      if (field === 'callTime' && !production.dayDefaults?.[date]?.wrapTime) {
+        const derivedWrap = addMinutesToTime(value, 660);
+        if (derivedWrap) newDefaults.wrapTime = derivedWrap;
+      }
 
       let newDays = production.days || [];
       const userCrewId = production.crew?.[0]?.id;
@@ -4933,7 +4940,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             <select
                               value={dur}
                               onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
-                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
+                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-8"
                             >
                               {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
                             </select>
@@ -4952,7 +4959,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             <select
                               value={dur}
                               onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
-                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
+                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-8"
                             >
                               {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
                             </select>
@@ -4967,18 +4974,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     );
                   })()}
 
-                  {bs && (
+                  {bs && (() => {
+                    // Today + before lunch start: don't claim "on time / lunch given"
+                    // since lunch hasn't actually happened yet. Show a neutral
+                    // "Scheduled" message instead.
+                    const lunchStartH = parseHHMM(v.lunchStartTime);
+                    const nowH = (() => { const d = new Date(); return d.getHours() + d.getMinutes() / 60; })();
+                    const realNowPastLunchStart = !isToday || lunchStartH == null || nowH >= lunchStartH;
+                    return (
                     <>
                       {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of 11h.</StatusMsg>}
                       {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
                       {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
                       {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
+                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && bs.lunchEndAbs != null && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
                       {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && !bs.cwdApplies && <StatusMsg kind="info">Partial lunch ({bs.lunchDuration}m). Counts toward basic: {(8 + bs.lunchDuration / 60).toFixed(1)}h × BHR.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && bs.cwdApplies && <StatusMsg kind="ok">On time. Lunch ends {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && !bs.cwdApplies && <StatusMsg kind="ok">Lunch given (1h). Counts toward basic: 9h × BHR.</StatusMsg>}
+                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && bs.cwdApplies && realNowPastLunchStart && <StatusMsg kind="ok">On time. Lunch ends {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
+                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && !bs.cwdApplies && realNowPastLunchStart && <StatusMsg kind="ok">Lunch given (1h). Counts toward basic: 9h × BHR.</StatusMsg>}
+                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && !realNowPastLunchStart && <StatusMsg kind="info">Scheduled: {v.lunchStartTime} → {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
                     </>
-                  )}
+                    );
+                  })()}
 
                   {bs && bs.cwdApplies && (bs.lunchMissed || bs.lunchVeryLate) && (
                     <div className="flex items-center justify-between gap-3">
@@ -14135,8 +14151,14 @@ const confirmDelete = (p) => setConfirmOpts({
             clockedValue = formatElapsed(Math.round(totalMins));
             if (earliestCallStr) clockedSub = `since ${earliestCallStr}`;
           } else if (earliestCallMins != null) {
-            clockedValue = formatElapsed(timeSinceCall(earliestCallStr, tickNow));
-            clockedSub = `since ${earliestCallStr}`;
+            const nowMinsTick = tickNow.getHours() * 60 + tickNow.getMinutes();
+            if (nowMinsTick < earliestCallMins) {
+              clockedValue = "0m";
+              clockedSub = `call at ${earliestCallStr}`;
+            } else {
+              clockedValue = formatElapsed(timeSinceCall(earliestCallStr, tickNow));
+              clockedSub = `since ${earliestCallStr}`;
+            }
           }
 
           const todayTotal = todayRecords.reduce((sum, d) => {
