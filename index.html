@@ -300,6 +300,7 @@
         "Color discipline locked — sky for active, fuchsia for variance, red for penalty, orange for OT/edited, green for sent/paid",
         "Conditions row clarified — penalty conditions render red; state indicators render orange",
         "Curtailed lunch indicator visible in invoice + breakdown export",
+        "Polish: ON TIME chip returns to the LUNCH card top-right (green, matching LATE / CWD / CURTAILED corner-chip pattern). The green status banner stays suppressed — the chip is the only on-time affordance",
         "Cleanup: LUNCH card on the day-detail page now mirrors the CALL / WRAP card structure — LUNCH label top-left, conditional status chip top-right (CWD / LATE / CURTAILED only), centred 13:00 → 14:00 time pair, NOW button + duration select in a hairline-separated footer. On-time confirmation states (chip and the green \"On time. Lunch ends X.\" banner) are silenced — no chip when nothing's wrong. Discretionary days keep the label-only header + footer treatment. Calc behaviour, lunchEndAbs computation, BWD-override plumbing, and the real-world-clock gate untouched",
         "Cleanup: breakdown bucket restructure — the meter and legend now show five buckets (BASIC / OT / PEN / KIT / EXTRAS) with kit narrowed to kit money only and a new EXTRAS bucket holding per diem, mileage, travel time, and expenses. Kit and the former Mileage bucket swap colours: KIT is now purple, EXTRAS is green. Line totals and calc engine unchanged — only categorisation and colour assignments",
         "Fix: BWD-override roles (DoP, Art Director, Location Manager) now see a day-detail UI that matches their pay. On Prep / Recce / Build / De-rig / Pre-light days, the lunch chip shows start→end times and the NOW button, the meal-provided toggle appears when lunch is missed, and the late / missed lunch StatusMsg fires — mirroring the Basic Working Day treatment calculateDay applies",
@@ -4982,10 +4983,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {(() => {
                     const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
                     const dur = Number(v.lunchDurationMins ?? 60);
-                    // Status chip only fires on a real condition: CWD (missed
-                    // on Shoot/Pre-light or very-late), LATE (5.5-6.5h after
-                    // call), or CURTAILED. No chip on the on-time state, and
-                    // no chip on discretionary days (lunch optional there).
+                    // Status chip surfaces the scheduled lunch state: CWD,
+                    // LATE, CURTAILED, or ON TIME. Discretionary days get no
+                    // chip (lunch optional). The green ON TIME chip is a
+                    // visual anchor only — the green banner stays suppressed.
                     const chipKind = !bs || isDiscretionary ? null
                       : ((bs.lunchMissed && bs.cwdApplies) || bs.lunchVeryLate)
                         ? { label: 'CWD', cls: 'bg-tm-pen/10 text-tm-pen border-tm-pen/35' }
@@ -4993,6 +4994,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/35' }
                       : (bs.lunchDuration > 0 && bs.lunchDuration < 60)
                         ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/35' }
+                      : (!bs.lunchMissed && bs.lunchDuration === 60 && bs.lunchEndAbs != null)
+                        ? { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/35' }
                       : null;
                     const showBody = !isDiscretionary && dur > 0;
                     const endText = (bs?.lunchEndAbs != null && dur > 0) ? toHHMM(bs.lunchEndAbs) : '—';
