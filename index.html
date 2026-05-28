@@ -300,6 +300,7 @@
         "Color discipline locked — sky for active, fuchsia for variance, red for penalty, orange for OT/edited, green for sent/paid",
         "Conditions row clarified — penalty conditions render red; state indicators render orange",
         "Curtailed lunch indicator visible in invoice + breakdown export",
+        "Fix: pre-call hours now paid correctly per APA §2.1.3 — hours before 05:00 charge 3× BHR (triple time), hours from 05:00 to main call charge OT rate. Pre-call also absorbs into unused basic-day hours (industry practice, mirrors travel-time absorption), with absorption eating from the call-time end so the triple-time premium is preserved as long as possible. Night shoots keep flat 2× BHR with no split per APA §2.1.5",
         "Polish: ON TIME chip returns to the LUNCH card top-right (green, matching LATE / CWD / CURTAILED corner-chip pattern). The green status banner stays suppressed — the chip is the only on-time affordance",
         "Cleanup: LUNCH card on the day-detail page now mirrors the CALL / WRAP card structure — LUNCH label top-left, conditional status chip top-right (CWD / LATE / CURTAILED only), centred 13:00 → 14:00 time pair, NOW button + duration select in a hairline-separated footer. On-time confirmation states (chip and the green \"On time. Lunch ends X.\" banner) are silenced — no chip when nothing's wrong. Discretionary days keep the label-only header + footer treatment. Calc behaviour, lunchEndAbs computation, BWD-override plumbing, and the real-world-clock gate untouched",
         "Cleanup: breakdown bucket restructure — the meter and legend now show five buckets (BASIC / OT / PEN / KIT / EXTRAS) with kit narrowed to kit money only and a new EXTRAS bucket holding per diem, mileage, travel time, and expenses. Kit and the former Mileage bucket swap colours: KIT is now purple, EXTRAS is green. Line totals and calc engine unchanged — only categorisation and colour assignments",
@@ -1065,25 +1066,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
       const preCallTime = day.preCallTime || day.truckCallTime; // back-compat with legacy truckCallTime
       const preCallH = preCallTime ? parseHHMM(preCallTime) : null;
-      const preUnitHrsRaw = (() => {
-        if (preCallH === null) return 0;
-        if (preCallH < callH) return callH - preCallH;           // same day: pre-call → main call
-        if (preCallH > callH) {
-          const overnight = (24 - preCallH) + callH;             // pre-call before midnight, main call after
-          // Guard: >12h overnight is almost certainly a user error (e.g. 09:00 pre-call vs 08:00 call).
-          // Legitimate overnight pre-calls (e.g. 22:00 → 06:00 = 8h) are well under this threshold.
+      // Split the pre-call window into (a) hours before 05:00 paid at 3× BHR
+      // (APA §2.1.3 triple time) and (b) hours from 05:00 to main call paid
+      // at OT rate. Window can wrap past midnight, e.g. preCall 22:00 → call
+      // 06:00 = 7h triple (22:00→05:00) + 1h OT (05:00→06:00).
+      const preCallSplit = (() => {
+        if (preCallH === null) return { triple: 0, ot: 0, total: 0 };
+        let triple = 0, ot = 0;
+        if (preCallH < callH) {
+          if (preCallH < 5) {
+            triple = Math.min(5, callH) - preCallH;
+            ot = Math.max(0, callH - 5);
+          } else {
+            ot = callH - preCallH;
+          }
+        } else if (preCallH > callH) {
+          const overnight = (24 - preCallH) + callH;
+          // Guard: >12h overnight is almost certainly a user error.
           if (overnight > 12) {
             notes.push("Pre-call appears to be after main call — ignored. If this is an overnight pre-call, enter it as the previous day's clock time.");
-            return 0;
+            return { triple: 0, ot: 0, total: 0 };
           }
-          return overnight;
+          triple = (24 - preCallH) + Math.min(5, callH);
+          ot = Math.max(0, callH - 5);
         }
-        return 0;
+        return { triple, ot, total: triple + ot };
       })();
-      const preUnitHrs = ceilHalf(preUnitHrsRaw);
-      if (preUnitHrs > 0) {
-        lines.push({ label: "Pre-call", detail: `${preCallTime} – ${day.callTime}`, rate: bhr, qty: preUnitHrs, amount: preUnitHrs * bhr });
-      }
       const dow = dayOfWeek(day.date);
       const isSunday = dow === 0;
       const isSaturday = dow === 6;
@@ -1136,6 +1144,43 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const effectiveStart = isLate ? 11 : callH;
       const effectiveHrs = wrapAbs - effectiveStart;
+
+      // Pre-call lines (computed up top, emitted now that basicHrs / isNightShoot
+      // are in scope). Absorbs into unused basic-day hours (industry practice,
+      // mirrors the existing travel-time absorption pattern). Absorb from the
+      // call-time end backwards — OT-rate portion first, then triple — so the
+      // unsocial early-hours triple-time premium is preserved as long as possible.
+      const preCallGap = Math.max(0, basicHrs - workedHrs);
+      const preCallAbsorbed = Math.min(preCallSplit.total, preCallGap);
+      const preCallOtAbsorbed = Math.min(preCallSplit.ot, preCallAbsorbed);
+      const preCallTripleAbsorbed = preCallAbsorbed - preCallOtAbsorbed;
+      const preCallTripleChargeable = ceilHalf(Math.max(0, preCallSplit.triple - preCallTripleAbsorbed));
+      const preCallOtChargeable = ceilHalf(Math.max(0, preCallSplit.ot - preCallOtAbsorbed));
+      // preUnitHrs is the basic-day-filling portion — used by the travelGap
+      // formula downstream so travel can't also claim absorption hours
+      // pre-call already filled.
+      const preUnitHrs = preCallAbsorbed;
+      if (preCallSplit.total > 0) {
+        if (isNightShoot) {
+          // APA §2.1.5: night shoots pay flat 2× BHR call-to-wrap, no
+          // triple-time-after-midnight rule. Pre-call inherits the same
+          // 2× BHR rate, no split. Not absorbed into basic (night shoot
+          // pay structure is min-10h flat, not a basic-day model).
+          const nightPreCallHrs = ceilHalf(preCallSplit.total);
+          const nightRate = bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding);
+          lines.push({ label: "Pre-call", detail: `${preCallTime} – ${day.callTime} · 2× BHR (night)`, rate: nightRate, qty: nightPreCallHrs, amount: nightPreCallHrs * nightRate });
+        } else if (preCallTripleChargeable === 0 && preCallOtChargeable === 0) {
+          notes.push(`Pre-call absorbed (worked ${workedHrs.toFixed(1)}h + pre-call ${preCallSplit.total.toFixed(1)}h ≤ ${basicHrs}h threshold)`);
+        } else {
+          if (preCallTripleChargeable > 0) {
+            const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+            lines.push({ label: "Pre-call", detail: "before 05:00 · 3× BHR", rate: tripleRate, qty: preCallTripleChargeable, amount: preCallTripleChargeable * tripleRate });
+          }
+          if (preCallOtChargeable > 0) {
+            lines.push({ label: "Pre-call", detail: `05:00 – ${day.callTime} · OT rate`, rate: otRate, qty: preCallOtChargeable, amount: preCallOtChargeable * otRate });
+          }
+        }
+      }
 
       // When lunch is curtailed AND OT is crossed AND the day has a real OT
       // line (weekday or Sat Shoot/Pre-light — not Sun/BH, not night shoot,
