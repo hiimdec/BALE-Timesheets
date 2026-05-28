@@ -300,6 +300,11 @@
         "Color discipline locked — sky for active, fuchsia for variance, red for penalty, orange for OT/edited, green for sent/paid",
         "Conditions row clarified — penalty conditions render red; state indicators render orange",
         "Curtailed lunch indicator visible in invoice + breakdown export",
+        "Fix: TOC penalty is now capped at 1h × OT rate per APA §5. A 7h rest used to bill 4h of TOC; now correctly bills 1h plus the existing BREACH warning when rest < 10h",
+        "Fix: curtailed 1st break when OT was crossed no longer renders a misleading £0 line. The curtailment minutes now surface in the OT line's detail (\"…incl. 20m curtailed lunch\") so it's clear the time was absorbed into OT pay",
+        "Fix: bank holiday lookup table now covers 2025 (was 2026 onwards) so backdated invoices for 2025-12-25 etc. get the correct Sun/BH treatment",
+        "Fix: CWD lunch-missed status message no longer hardcodes \"instead of 11h\" — uses 12h on 11-hour-day productions so the comparison is accurate",
+        "Cleanup: dropped the unused notApa flag from Best Boy and Trainee roles — it was never consumed by the calc engine. Per-crew BDR / OT rate still configurable as before",
         "Fix: night shoots no longer suppress break penalties — £10 late 1st, curtailed 1st, missed meal £7.50, missed/late 2nd break, and CWD breaks all fire on night-call Shoot / Pre-light days. Time-based penalties charge at 2× BHR on night shoots to match the flat night-shoot rate per APA §2.1.5",
         "Fix: Floor Runner / AD Trainee now correctly treated as PMPA per APA Appendix 1 §(a) — no break penalties, no travel time, no triple time, OT at flat BHR on shoot days only. Matches Production Runner",
         "Fix: discretionary days (Prep / Recce / Build / De-rig) now pay flat 8h × rate on weekday, Sat and Sun/BH per APA §2.3 — taking lunch no longer inflates pay from 8h to 9h. OT threshold still shifts with lunch as expected",
@@ -410,10 +415,10 @@
       },
       "Lighting": {
         "Gaffer":              { bdr: 568, otCoef: 1.25 },
-        "Best Boy":            { bdr: 512, otCoef: 1.25, notApa: true },
+        "Best Boy":            { bdr: 512, otCoef: 1.25 },
         "Desk Op":             { bdr: 512, otCoef: 1.25 },
         "Lighting Technician": { bdr: 444, otCoef: 1.5  },
-        "Trainee":             { bdr: 250, otCoef: 1.5,  notApa: true },
+        "Trainee":             { bdr: 250, otCoef: 1.5 },
       },
       "Rigging": {
         "Master Rigger":   { bdr: 675, otCoef: 1.5, otRate: 102, bectu: true },
@@ -501,7 +506,18 @@
     // Data starts at 2026. Production days dated in 2025 or earlier will not
     // receive bank-holiday tinting or the 2× multiplier.
     // Sourced from gov.uk/bank-holidays — extend before 2035 expires.
+    // UK England & Wales bank holidays. Lower bound: 2025-01-01 — earlier
+    // dates fall through to a null lookup and skip BH treatment. Source:
+    // gov.uk/bank-holidays. Refresh after each year-end.
     const UK_BANK_HOLIDAYS = {
+      "2025-01-01": "New Year's Day",
+      "2025-04-18": "Good Friday",
+      "2025-04-21": "Easter Monday",
+      "2025-05-05": "Early May bank holiday",
+      "2025-05-26": "Spring bank holiday",
+      "2025-08-25": "Summer bank holiday",
+      "2025-12-25": "Christmas Day",
+      "2025-12-26": "Boxing Day",
       "2026-01-01": "New Year's Day",
       "2026-04-03": "Good Friday",
       "2026-04-06": "Easter Monday",
@@ -1110,6 +1126,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const effectiveStart = isLate ? 11 : callH;
       const effectiveHrs = wrapAbs - effectiveStart;
 
+      // When lunch is curtailed AND OT is crossed AND the day has a real OT
+      // line (weekday or Sat Shoot/Pre-light — not Sun/BH, not night shoot,
+      // not noOT crew), the curtailment minutes already shifted basicHrs
+      // earlier and surface in the OT pay. Append "incl. Nm curtailed lunch"
+      // to the OT line's detail and skip the separate Curtailed 1st Break
+      // line entirely.
+      const curtailedMinsAbsorbedInOT = (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60 &&
+        !isNightShoot && !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > 0)
+        ? (60 - lunchDuration)
+        : 0;
+      const otCurtailedSuffix = curtailedMinsAbsorbedInOT > 0 ? ` · incl. ${curtailedMinsAbsorbedInOT}m curtailed lunch` : '';
+
       if (isNightShoot) {
         const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
         const paidHrs = ceilHalf(Math.max(workedHrs - lunchDeduct, 10));
@@ -1126,7 +1154,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (effectiveDayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
-          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
+          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic" + otCurtailedSuffix, rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
           // APA §2.3: discretionary days pay flat 8h × satRate (lunch unpaid).
           // Pre-light keeps the workedHrs-capped formula (floor 8, ceiling basicHrs=9).
@@ -1136,7 +1164,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const satMinApplied = baseHrs > workedHrs;
           lines.push({ label: `Saturday ${effectiveDayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: satRate, qty: baseHrs, amount: baseHrs * satRate });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
-          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
+          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic" + otCurtailedSuffix, rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         }
       } else if (treatAsSun) {
         const sunRate = computeAPArate(bdr, sunMult, weekendOpts.apaRounding);
@@ -1193,7 +1221,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             if (standardOtHrs > 0) {
               lines.push({
                 label: "OT",
-                detail: tripleHrs > 0 ? `${toHHMM(otStartAbs)} – 00:00` : `${toHHMM(otStartAbs)} – ${toHHMM(otEndAbs)}`,
+                detail: (tripleHrs > 0 ? `${toHHMM(otStartAbs)} – 00:00` : `${toHHMM(otStartAbs)} – ${toHHMM(otEndAbs)}`) + otCurtailedSuffix,
                 rate: otRate, qty: standardOtHrs, amount: standardOtHrs * otRate,
               });
             }
@@ -1221,10 +1249,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
         const shortMins = 60 - lunchDuration;
         const curtailedHrs = shortMins / 60;
-        const otCrossed = !isNightShoot && !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > 0;
-        if (otCrossed) {
-          lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m short — absorbed in OT`, rate: null, qty: 1, amount: 0 });
-        } else {
+        // When OT was crossed the curtailment is already absorbed into the
+        // OT line (its detail string carries "incl. Nm curtailed lunch") —
+        // emit nothing here. Otherwise pay the curtailment time at the
+        // applicable day rate.
+        const otCrossed = curtailedMinsAbsorbedInOT > 0;
+        if (!otCrossed) {
           const penaltyRate = isNightShoot ? (bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding))
                             : treatAsSun ? computeAPArate(bdr, sunMult, weekendOpts.apaRounding)
                             : treatAsSat ? computeAPArate(bdr, satMult, weekendOpts.apaRounding)
@@ -1945,7 +1975,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (rest === null || rest >= 11) return null;
       const bhr = computeAPArate(effectiveCrew.bdr, 1, apaRounding);
       const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : computeAPArate(effectiveCrew.bdr, Number(effectiveCrew.otCoef) || 1, apaRounding);
-      const tocHours = ceilHalf(11 - rest);
+      // APA §5: crew may be engaged for up to 1 hour of TOC per break. The
+      // penalty pay is therefore capped at 1h × OT rate regardless of how
+      // far below the 11h floor the rest dropped. isBreach (rest < 10h)
+      // continues to surface as a separate contractual-floor warning.
+      const tocHours = Math.min(1, ceilHalf(11 - rest));
       return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
     }
 
@@ -5004,7 +5038,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     const realNowPastLunchStart = !isToday || lunchStartH == null || nowH >= lunchStartH;
                     return (
                     <>
-                      {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of 11h.</StatusMsg>}
+                      {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of {isElevenHourDay ? 12 : 11}h.</StatusMsg>}
                       {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
                       {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
                       {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
