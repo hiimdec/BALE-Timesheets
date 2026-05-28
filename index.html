@@ -300,6 +300,7 @@
         "Color discipline locked — sky for active, fuchsia for variance, red for penalty, orange for OT/edited, green for sent/paid",
         "Conditions row clarified — penalty conditions render red; state indicators render orange",
         "Curtailed lunch indicator visible in invoice + breakdown export",
+        "Cleanup: LUNCH card on the day-detail page now mirrors the CALL / WRAP card structure — LUNCH label top-left, conditional status chip top-right (CWD / LATE / CURTAILED only), centred 13:00 → 14:00 time pair, NOW button + duration select in a hairline-separated footer. On-time confirmation states (chip and the green \"On time. Lunch ends X.\" banner) are silenced — no chip when nothing's wrong. Discretionary days keep the label-only header + footer treatment. Calc behaviour, lunchEndAbs computation, BWD-override plumbing, and the real-world-clock gate untouched",
         "Cleanup: breakdown bucket restructure — the meter and legend now show five buckets (BASIC / OT / PEN / KIT / EXTRAS) with kit narrowed to kit money only and a new EXTRAS bucket holding per diem, mileage, travel time, and expenses. Kit and the former Mileage bucket swap colours: KIT is now purple, EXTRAS is green. Line totals and calc engine unchanged — only categorisation and colour assignments",
         "Fix: BWD-override roles (DoP, Art Director, Location Manager) now see a day-detail UI that matches their pay. On Prep / Recce / Build / De-rig / Pre-light days, the lunch chip shows start→end times and the NOW button, the meal-provided toggle appears when lunch is missed, and the late / missed lunch StatusMsg fires — mirroring the Basic Working Day treatment calculateDay applies",
         "Regression fix: Sun / BH Pre-light and Discretionary day pay was clipped to 8h after the flat-8 discretionary fix landed. Restored Math.max(workedHrs - lunchDeduct, 8) so a Sun Pre-light call 08:00 wrap 21:00 1h lunch now correctly pays 12h × 2× BHR (was 8h × 2× BHR). Min-8 floor and \"min 8h applied\" note preserved",
@@ -4981,90 +4982,74 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {(() => {
                     const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
                     const dur = Number(v.lunchDurationMins ?? 60);
-                    const chipKind = !bs ? null
-                      : bs.lunchMissed ? { label: 'MISSED', cls: 'bg-tm-pen/10 text-tm-pen border-tm-pen/25' }
-                      : bs.lunchVeryLate ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
-                      : bs.lunchLate ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
-                      : (bs.lunchDuration ?? 60) < 60 ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
-                      : { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/25' };
+                    // Status chip only fires on a real condition: CWD (missed
+                    // on Shoot/Pre-light or very-late), LATE (5.5-6.5h after
+                    // call), or CURTAILED. No chip on the on-time state, and
+                    // no chip on discretionary days (lunch optional there).
+                    const chipKind = !bs || isDiscretionary ? null
+                      : ((bs.lunchMissed && bs.cwdApplies) || bs.lunchVeryLate)
+                        ? { label: 'CWD', cls: 'bg-tm-pen/10 text-tm-pen border-tm-pen/35' }
+                      : bs.lunchLate
+                        ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/35' }
+                      : (bs.lunchDuration > 0 && bs.lunchDuration < 60)
+                        ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/35' }
+                      : null;
+                    const showBody = !isDiscretionary && dur > 0;
+                    const endText = (bs?.lunchEndAbs != null && dur > 0) ? toHHMM(bs.lunchEndAbs) : '—';
                     return (
-                      <div className="flex flex-col gap-1.5 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
-                        {/* Row 1: LUNCH + start→end (or select alongside LUNCH on discretionary days) */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold flex-shrink-0">LUNCH</span>
-                          {!isDiscretionary ? (
-                            <>
-                              <TimeInput
-                                value={v.lunchStartTime || ""}
-                                onChange={(e) => set({ lunchStartTime: e.target.value })}
-                                disabled={dur === 0}
-                                className="!text-base !bg-transparent !border-0 !rounded-none !outline-none !ring-0 !py-0 !px-0 font-mono font-bold"
-                                style={{ width: '64px', minWidth: '64px' }}
-                              />
-                              {bs?.lunchEndAbs != null && dur > 0 && (
-                                <>
-                                  <span className="text-neutral-500 text-sm">→</span>
-                                  <span className="text-base font-mono font-bold text-neutral-100">{toHHMM(bs.lunchEndAbs)}</span>
-                                </>
-                              )}
-                            </>
-                          ) : (
-                            <select
-                              value={dur}
-                              onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
-                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-8"
-                            >
-                              {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
-                            </select>
-                          )}
-                        </div>
-                        {/* Row 2: NOW (left) · duration (centre) · status chip (right) */}
-                        <div className="flex items-center justify-between gap-2">
-                          {isToday && dur !== 0 && !isDiscretionary && (
-                            <button
-                              type="button"
-                              onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
-                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded ml-1 flex-shrink-0"
-                            >NOW</button>
-                          )}
-                          {!isDiscretionary && (
-                            <select
-                              value={dur}
-                              onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
-                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-8"
-                            >
-                              {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
-                            </select>
-                          )}
+                      <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
+                        {/* Row 1 — header: LUNCH label TL, conditional chip TR */}
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold">LUNCH</span>
                           {chipKind && (
-                            <span className={`text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${chipKind.cls}`}>
+                            <span className={`text-[9px] tracking-[0.12em] font-bold uppercase px-1.5 py-0.5 rounded border ${chipKind.cls}`}>
                               {chipKind.label}
                             </span>
                           )}
+                        </div>
+                        {/* Row 2 — body: centred start → end pair (only when there's a lunch to show) */}
+                        {showBody && (
+                          <div className="flex items-center justify-center gap-3.5 pt-1 pb-3">
+                            <TimeInput
+                              value={v.lunchStartTime || ""}
+                              onChange={(e) => set({ lunchStartTime: e.target.value })}
+                              className="!text-[26px] !leading-none !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 font-mono font-bold text-center"
+                              style={{ width: '92px' }}
+                            />
+                            <span className="text-neutral-500" style={{ fontSize: '18px', lineHeight: 1 }}>→</span>
+                            <span className="text-[26px] leading-none font-mono font-bold text-neutral-100" style={{ width: '92px', textAlign: 'center' }}>{endText}</span>
+                          </div>
+                        )}
+                        {/* Row 3 — footer: NOW left, duration select right */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-900">
+                          {isToday && dur !== 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
+                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded"
+                            >NOW</button>
+                          ) : <span />}
+                          <select
+                            value={dur}
+                            onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
+                            className="bg-transparent border-0 text-[13px] font-mono text-neutral-300 outline-none p-0 pr-7 text-right"
+                          >
+                            {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
+                          </select>
                         </div>
                       </div>
                     );
                   })()}
 
-                  {bs && (() => {
-                    // Today + before lunch start: don't claim "on time / lunch given"
-                    // since lunch hasn't actually happened yet. Show a neutral
-                    // "Scheduled" message instead.
-                    const lunchStartH = parseHHMM(v.lunchStartTime);
-                    const nowH = (() => { const d = new Date(); return d.getHours() + d.getMinutes() / 60; })();
-                    const realNowPastLunchStart = !isToday || lunchStartH == null || nowH >= lunchStartH;
-                    return (
+                  {bs && (
                     <>
                       {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of {isElevenHourDay ? 12 : 11}h.</StatusMsg>}
                       {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
                       {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
                       {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
                       {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && bs.lunchEndAbs != null && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && bs.cwdApplies && realNowPastLunchStart && <StatusMsg kind="ok">On time. Lunch ends {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && bs.cwdApplies && !realNowPastLunchStart && <StatusMsg kind="info">Scheduled: {v.lunchStartTime} → {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
                     </>
-                    );
-                  })()}
+                  )}
 
                   {bs && bs.cwdApplies && (bs.lunchMissed || bs.lunchVeryLate) && (
                     <div className="flex items-center justify-between gap-3">
