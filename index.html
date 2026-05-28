@@ -27,8 +27,8 @@
           colors: {
             'tm-warn': '#ff8a3d',    // warm orange — warnings, OT segment
             'tm-pen':  '#f43f5e',    // hot pink-red — penalties
-            'tm-good': '#4ade80',    // vibrant green — kit money, "ok" states
-            'tm-mileage': '#a78bfa', // violet — mileage segment
+            'tm-good': '#4ade80',    // vibrant green — extras bucket, "ok / sent / paid" states
+            'tm-kit':  '#a78bfa',    // violet — kit money segment in breakdown buckets
             'tm-card-2': '#1f1f1f',  // one step lighter than card — for chips/pills that need to lift
           }
         }
@@ -46,7 +46,7 @@
       --tm-warn: #ff8a3d;
       --tm-pen: #f43f5e;
       --tm-good: #4ade80;
-      --tm-mileage: #a78bfa;
+      --tm-kit: #a78bfa;
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
       --tm-pill-ink: #15171a;
       --tm-card-2: #1f1f1f;
@@ -282,7 +282,7 @@
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-05-17",
+      date: "2026-05-28",
       added: [
         "Auto-apply cascade — editing dept-default times propagates to all crew automatically; field-specific variances stay shielded",
         "Drill-in breakdowns — tap a crew row for their full multi-day breakdown, or a day row for per-crew detail on that date",
@@ -300,6 +300,22 @@
         "Color discipline locked — sky for active, fuchsia for variance, red for penalty, orange for OT/edited, green for sent/paid",
         "Conditions row clarified — penalty conditions render red; state indicators render orange",
         "Curtailed lunch indicator visible in invoice + breakdown export",
+        "Polish: pre-call and step-up extras now have an explicit Remove button inside their inline edit panels — fixes the mobile-only inability to clear a non-numeric extra. Pre-call clears both preCallTime and the legacy truckCallTime; step-up clears role + BDR + OT-coef + OT-rate together. Both surfaces (solo day-detail panels and BB per-day panels) get the affordance; BB dept-defaults already had a Clear default button covering the same case",
+        "Fix: pre-call hours now paid correctly per APA §2.1.3 — hours before 05:00 charge 3× BHR (triple time), hours from 05:00 to main call charge OT rate. Pre-call also absorbs into unused basic-day hours (industry practice, mirrors travel-time absorption), with absorption eating from the call-time end so the triple-time premium is preserved as long as possible. Night shoots keep flat 2× BHR with no split per APA §2.1.5",
+        "Polish: ON TIME chip returns to the LUNCH card top-right (green, matching LATE / CWD / CURTAILED corner-chip pattern). The green status banner stays suppressed — the chip is the only on-time affordance",
+        "Cleanup: LUNCH card on the day-detail page now mirrors the CALL / WRAP card structure — LUNCH label top-left, conditional status chip top-right (CWD / LATE / CURTAILED only), centred 13:00 → 14:00 time pair, NOW button + duration select in a hairline-separated footer. On-time confirmation states (chip and the green \"On time. Lunch ends X.\" banner) are silenced — no chip when nothing's wrong. Discretionary days keep the label-only header + footer treatment. Calc behaviour, lunchEndAbs computation, BWD-override plumbing, and the real-world-clock gate untouched",
+        "Cleanup: breakdown bucket restructure — the meter and legend now show five buckets (BASIC / OT / PEN / KIT / EXTRAS) with kit narrowed to kit money only and a new EXTRAS bucket holding per diem, mileage, travel time, and expenses. Kit and the former Mileage bucket swap colours: KIT is now purple, EXTRAS is green. Line totals and calc engine unchanged — only categorisation and colour assignments",
+        "Fix: BWD-override roles (DoP, Art Director, Location Manager) now see a day-detail UI that matches their pay. On Prep / Recce / Build / De-rig / Pre-light days, the lunch chip shows start→end times and the NOW button, the meal-provided toggle appears when lunch is missed, and the late / missed lunch StatusMsg fires — mirroring the Basic Working Day treatment calculateDay applies",
+        "Regression fix: Sun / BH Pre-light and Discretionary day pay was clipped to 8h after the flat-8 discretionary fix landed. Restored Math.max(workedHrs - lunchDeduct, 8) so a Sun Pre-light call 08:00 wrap 21:00 1h lunch now correctly pays 12h × 2× BHR (was 8h × 2× BHR). Min-8 floor and \"min 8h applied\" note preserved",
+        "Fix: TOC penalty is now capped at 1h × OT rate per APA §5. A 7h rest used to bill 4h of TOC; now correctly bills 1h plus the existing BREACH warning when rest < 10h",
+        "Fix: curtailed 1st break when OT was crossed no longer renders a misleading £0 line. The curtailment minutes now surface in the OT line's detail (\"…incl. 20m curtailed lunch\") so it's clear the time was absorbed into OT pay",
+        "Fix: bank holiday lookup table now covers 2025 (was 2026 onwards) so backdated invoices for 2025-12-25 etc. get the correct Sun/BH treatment",
+        "Fix: CWD lunch-missed status message no longer hardcodes \"instead of 11h\" — uses 12h on 11-hour-day productions so the comparison is accurate",
+        "Cleanup: dropped the unused notApa flag from Best Boy and Trainee roles — it was never consumed by the calc engine. Per-crew BDR / OT rate still configurable as before",
+        "Fix: night shoots no longer suppress break penalties — £10 late 1st, curtailed 1st, missed meal £7.50, missed/late 2nd break, and CWD breaks all fire on night-call Shoot / Pre-light days. Time-based penalties charge at 2× BHR on night shoots to match the flat night-shoot rate per APA §2.1.5",
+        "Fix: Floor Runner / AD Trainee now correctly treated as PMPA per APA Appendix 1 §(a) — no break penalties, no travel time, no triple time, OT at flat BHR on shoot days only. Matches Production Runner",
+        "Fix: discretionary days (Prep / Recce / Build / De-rig) now pay flat 8h × rate on weekday, Sat and Sun/BH per APA §2.3 — taking lunch no longer inflates pay from 8h to 9h. OT threshold still shifts with lunch as expected",
+        "Fix: lunch status under the day card no longer claims \"Counts toward basic\" on discretionary days — lunch is unpaid filler time there, and the message was asserting an incorrect calc",
         "Fix: Sun/BH curtailed lunch now pays double rate (was paying single BHR)",
         "Fix: OT visibility in summary rows reflects calc state across multi-crew view",
         "Fix: curtailed 1st break calc per APA §6.2",
@@ -383,7 +399,7 @@
         "1st AD":                    { bdr: 785, otCoef: 1.0 },
         "2nd AD":                    { bdr: 435, otCoef: 1.5 },
         "3rd AD":                    { bdr: 326, otCoef: 1.5 },
-        "Floor Runner / AD Trainee": { bdr: 238, otCoef: 1.5 },
+        "Floor Runner / AD Trainee": { bdr: 238, otCoef: 1.0, pmpa: true },
       },
       "Script Supervisor": {
         "Script Supervisor": { bdr: 558, otCoef: 1.25 },
@@ -406,10 +422,10 @@
       },
       "Lighting": {
         "Gaffer":              { bdr: 568, otCoef: 1.25 },
-        "Best Boy":            { bdr: 512, otCoef: 1.25, notApa: true },
+        "Best Boy":            { bdr: 512, otCoef: 1.25 },
         "Desk Op":             { bdr: 512, otCoef: 1.25 },
         "Lighting Technician": { bdr: 444, otCoef: 1.5  },
-        "Trainee":             { bdr: 250, otCoef: 1.5,  notApa: true },
+        "Trainee":             { bdr: 250, otCoef: 1.5 },
       },
       "Rigging": {
         "Master Rigger":   { bdr: 675, otCoef: 1.5, otRate: 102, bectu: true },
@@ -497,7 +513,18 @@
     // Data starts at 2026. Production days dated in 2025 or earlier will not
     // receive bank-holiday tinting or the 2× multiplier.
     // Sourced from gov.uk/bank-holidays — extend before 2035 expires.
+    // UK England & Wales bank holidays. Lower bound: 2025-01-01 — earlier
+    // dates fall through to a null lookup and skip BH treatment. Source:
+    // gov.uk/bank-holidays. Refresh after each year-end.
     const UK_BANK_HOLIDAYS = {
+      "2025-01-01": "New Year's Day",
+      "2025-04-18": "Good Friday",
+      "2025-04-21": "Easter Monday",
+      "2025-05-05": "Early May bank holiday",
+      "2025-05-26": "Spring bank holiday",
+      "2025-08-25": "Summer bank holiday",
+      "2025-12-25": "Christmas Day",
+      "2025-12-26": "Boxing Day",
       "2026-01-01": "New Year's Day",
       "2026-04-03": "Good Friday",
       "2026-04-06": "Easter Monday",
@@ -705,8 +732,8 @@
       if (callH == null) return null;
       const callMins = Math.round(callH * 60);
       const nowMins = now.getHours() * 60 + now.getMinutes();
-      let diff = nowMins - callMins;
-      if (diff < 0) diff += 24 * 60;
+      const diff = nowMins - callMins;
+      if (diff < 0) return 0;
       return diff;
     }
     function formatElapsed(minutes) {
@@ -723,21 +750,27 @@
       if (n >= 1) return n.toFixed(1);
       return n.toFixed(2);
     }
-    // Bucket a calc line into 'basic' | 'ot' | 'pen' | 'kit' for the earnings meter.
-    // Order matters: penalty patterns check first so "Missed Meal Allowance" buckets
-    // as pen (not as kit via "allowance"). OT uses \bOT\b so "OT Triple Time" /
-    // "Early Call (OT rate)" / "Saturday OT" all match. Kit covers extras +
-    // allowances. Anything else (BDR / BHR day pay, Pre-call, Night Shoot) is basic.
+    // Bucket a calc line into 'basic' | 'ot' | 'pen' | 'kit' | 'extras' for
+    // the earnings meter. Order matters: penalty patterns check first so
+    // "Missed Meal Allowance" buckets as pen (not as extras via "allowance").
+    // OT uses \bOT\b so "OT Triple Time" / "Early Call (OT rate)" /
+    // "Saturday OT" all match. KIT now narrowed to kit money only (was a
+    // catch-all that also held per diem / travel time / mileage); EXTRAS
+    // owns per diem / mileage / travel time / any "Expense: …" line so
+    // they live in one place in the breakdown meter. Anything else
+    // (BDR / BHR day pay, Pre-call, Night Shoot) is basic.
     function categorizeBreakdownLine(label) {
       const s = label || '';
       if (/late|missed|curtailed|off the clock|breach|penalty/i.test(s)) return 'pen';
       if (/\bOT\b|overtime|triple time|double time|time and a half/i.test(s)) return 'ot';
-      if (/mileage/i.test(s)) return 'mileage';
-      if (/\bkit\b|per diem|travel time|expense|mileage|allowance/i.test(s)) return 'kit';
+      if (/\bkit\s*money\b/i.test(s)) return 'kit';
+      if (/per diem|travel time|mileage|\bexpense\b/i.test(s)) return 'extras';
       return 'basic';
     }
 
-    // 3-bucket sum for the hero breakdown row (kit folds into basic).
+    // 3-bucket sum for the hero breakdown row (kit + extras both fold into
+    // basic — the hero row is space-constrained and only surfaces OT/PEN
+    // separately).
     function bucketCalcTotals(calc) {
       const buckets = { basic: 0, ot: 0, pen: 0 };
       if (!calc?.lines) return buckets;
@@ -1034,25 +1067,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
       const preCallTime = day.preCallTime || day.truckCallTime; // back-compat with legacy truckCallTime
       const preCallH = preCallTime ? parseHHMM(preCallTime) : null;
-      const preUnitHrsRaw = (() => {
-        if (preCallH === null) return 0;
-        if (preCallH < callH) return callH - preCallH;           // same day: pre-call → main call
-        if (preCallH > callH) {
-          const overnight = (24 - preCallH) + callH;             // pre-call before midnight, main call after
-          // Guard: >12h overnight is almost certainly a user error (e.g. 09:00 pre-call vs 08:00 call).
-          // Legitimate overnight pre-calls (e.g. 22:00 → 06:00 = 8h) are well under this threshold.
+      // Split the pre-call window into (a) hours before 05:00 paid at 3× BHR
+      // (APA §2.1.3 triple time) and (b) hours from 05:00 to main call paid
+      // at OT rate. Window can wrap past midnight, e.g. preCall 22:00 → call
+      // 06:00 = 7h triple (22:00→05:00) + 1h OT (05:00→06:00).
+      const preCallSplit = (() => {
+        if (preCallH === null) return { triple: 0, ot: 0, total: 0 };
+        let triple = 0, ot = 0;
+        if (preCallH < callH) {
+          if (preCallH < 5) {
+            triple = Math.min(5, callH) - preCallH;
+            ot = Math.max(0, callH - 5);
+          } else {
+            ot = callH - preCallH;
+          }
+        } else if (preCallH > callH) {
+          const overnight = (24 - preCallH) + callH;
+          // Guard: >12h overnight is almost certainly a user error.
           if (overnight > 12) {
             notes.push("Pre-call appears to be after main call — ignored. If this is an overnight pre-call, enter it as the previous day's clock time.");
-            return 0;
+            return { triple: 0, ot: 0, total: 0 };
           }
-          return overnight;
+          triple = (24 - preCallH) + Math.min(5, callH);
+          ot = Math.max(0, callH - 5);
         }
-        return 0;
+        return { triple, ot, total: triple + ot };
       })();
-      const preUnitHrs = ceilHalf(preUnitHrsRaw);
-      if (preUnitHrs > 0) {
-        lines.push({ label: "Pre-call", detail: `${preCallTime} – ${day.callTime}`, rate: bhr, qty: preUnitHrs, amount: preUnitHrs * bhr });
-      }
       const dow = dayOfWeek(day.date);
       const isSunday = dow === 0;
       const isSaturday = dow === 6;
@@ -1106,6 +1146,55 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const effectiveStart = isLate ? 11 : callH;
       const effectiveHrs = wrapAbs - effectiveStart;
 
+      // Pre-call lines (computed up top, emitted now that basicHrs / isNightShoot
+      // are in scope). Absorbs into unused basic-day hours (industry practice,
+      // mirrors the existing travel-time absorption pattern). Absorb from the
+      // call-time end backwards — OT-rate portion first, then triple — so the
+      // unsocial early-hours triple-time premium is preserved as long as possible.
+      const preCallGap = Math.max(0, basicHrs - workedHrs);
+      const preCallAbsorbed = Math.min(preCallSplit.total, preCallGap);
+      const preCallOtAbsorbed = Math.min(preCallSplit.ot, preCallAbsorbed);
+      const preCallTripleAbsorbed = preCallAbsorbed - preCallOtAbsorbed;
+      const preCallTripleChargeable = ceilHalf(Math.max(0, preCallSplit.triple - preCallTripleAbsorbed));
+      const preCallOtChargeable = ceilHalf(Math.max(0, preCallSplit.ot - preCallOtAbsorbed));
+      // preUnitHrs is the basic-day-filling portion — used by the travelGap
+      // formula downstream so travel can't also claim absorption hours
+      // pre-call already filled.
+      const preUnitHrs = preCallAbsorbed;
+      if (preCallSplit.total > 0) {
+        if (isNightShoot) {
+          // APA §2.1.5: night shoots pay flat 2× BHR call-to-wrap, no
+          // triple-time-after-midnight rule. Pre-call inherits the same
+          // 2× BHR rate, no split. Not absorbed into basic (night shoot
+          // pay structure is min-10h flat, not a basic-day model).
+          const nightPreCallHrs = ceilHalf(preCallSplit.total);
+          const nightRate = bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding);
+          lines.push({ label: "Pre-call", detail: `${preCallTime} – ${day.callTime} · 2× BHR (night)`, rate: nightRate, qty: nightPreCallHrs, amount: nightPreCallHrs * nightRate });
+        } else if (preCallTripleChargeable === 0 && preCallOtChargeable === 0) {
+          notes.push(`Pre-call absorbed (worked ${workedHrs.toFixed(1)}h + pre-call ${preCallSplit.total.toFixed(1)}h ≤ ${basicHrs}h threshold)`);
+        } else {
+          if (preCallTripleChargeable > 0) {
+            const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+            lines.push({ label: "Pre-call", detail: "before 05:00 · 3× BHR", rate: tripleRate, qty: preCallTripleChargeable, amount: preCallTripleChargeable * tripleRate });
+          }
+          if (preCallOtChargeable > 0) {
+            lines.push({ label: "Pre-call", detail: `05:00 – ${day.callTime} · OT rate`, rate: otRate, qty: preCallOtChargeable, amount: preCallOtChargeable * otRate });
+          }
+        }
+      }
+
+      // When lunch is curtailed AND OT is crossed AND the day has a real OT
+      // line (weekday or Sat Shoot/Pre-light — not Sun/BH, not night shoot,
+      // not noOT crew), the curtailment minutes already shifted basicHrs
+      // earlier and surface in the OT pay. Append "incl. Nm curtailed lunch"
+      // to the OT line's detail and skip the separate Curtailed 1st Break
+      // line entirely.
+      const curtailedMinsAbsorbedInOT = (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60 &&
+        !isNightShoot && !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > 0)
+        ? (60 - lunchDuration)
+        : 0;
+      const otCurtailedSuffix = curtailedMinsAbsorbedInOT > 0 ? ` · incl. ${curtailedMinsAbsorbedInOT}m curtailed lunch` : '';
+
       if (isNightShoot) {
         const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
         const paidHrs = ceilHalf(Math.max(workedHrs - lunchDeduct, 10));
@@ -1122,13 +1211,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (effectiveDayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
-          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
+          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic" + otCurtailedSuffix, rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
-          const baseHrs = Math.max(Math.min(workedHrs, basicHrs), 8);
+          // APA §2.3: discretionary days pay flat 8h × satRate (lunch unpaid).
+          // Pre-light keeps the workedHrs-capped formula (floor 8, ceiling basicHrs=9).
+          const baseHrs = effectiveDayType === "Pre-light"
+            ? Math.max(Math.min(workedHrs, basicHrs), 8)
+            : 8;
           const satMinApplied = baseHrs > workedHrs;
           lines.push({ label: `Saturday ${effectiveDayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: satRate, qty: baseHrs, amount: baseHrs * satRate });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
-          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic", rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
+          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic" + otCurtailedSuffix, rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         }
       } else if (treatAsSun) {
         const sunRate = computeAPArate(bdr, sunMult, weekendOpts.apaRounding);
@@ -1142,8 +1235,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           });
           if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
         } else {
-          const sunPaidHrs = Math.max(workedHrs, 8);
-          const sunMinApplied = sunPaidHrs > workedHrs;
+          // Sun/BH non-Shoot pays a single flat-rate line covering basic +
+          // OT (rates are equal at 2× BHR on Sunday per APA §2.4(viii)/(x)).
+          // Lunch is unpaid filler on both Pre-light and Discretionary days,
+          // so deduct lunchDuration. Min 8h floor stays per the cheat sheet.
+          const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
+          const sunPaidHrs = Math.max(workedHrs - lunchDeduct, 8);
+          const sunMinApplied = sunPaidHrs > (workedHrs - lunchDeduct);
           lines.push({ label: `${sunBranchPrefix} ${effectiveDayType} (${sunMult}× BHR, flat)`, detail: sunMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: sunRate, qty: sunPaidHrs, amount: sunPaidHrs * sunRate });
         }
       } else {
@@ -1153,8 +1251,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const baseHrs = continuousDay ? 9 : 8;
           lines.push({ label: continuousDay ? "Pre-light Day (CWD 9h × BHR)" : "Pre-light Day (8h × BHR + 1h lunch)", detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
         } else if (DISCRETIONARY_LUNCH_DAY_TYPES.includes(effectiveDayType)) {
-          const lunchPart = (lunchMissed || lunchDuration === 0) ? "no lunch" : (lunchDuration >= 60 ? "+ 1h lunch" : `+ ${lunchDuration}m lunch`);
-          lines.push({ label: `${effectiveDayType} (${basicHrs}h × BHR, ${lunchPart})`, detail: callWrapLabel, rate: bhr, qty: basicHrs, amount: basicHrs * bhr });
+          // APA §2.3: 8h × BHR. Lunch is at producer's discretion and unpaid.
+          // basicHrs (above) is the OT threshold and shifts with lunch; the paid
+          // qty stays a flat 8 regardless. Mirrors the Pre-light pattern.
+          const baseHrs = 8;
+          const lunchPart = (lunchMissed || lunchDuration === 0) ? "no lunch" : (lunchDuration >= 60 ? "+1h lunch" : `+${lunchDuration}m lunch`);
+          lines.push({ label: `${effectiveDayType} (${baseHrs}h × BHR, ${lunchPart})`, detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
         } else {
           throw new Error('Unhandled day type in calculateDay: ' + effectiveDayType);
         }
@@ -1178,7 +1280,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             if (standardOtHrs > 0) {
               lines.push({
                 label: "OT",
-                detail: tripleHrs > 0 ? `${toHHMM(otStartAbs)} – 00:00` : `${toHHMM(otStartAbs)} – ${toHHMM(otEndAbs)}`,
+                detail: (tripleHrs > 0 ? `${toHHMM(otStartAbs)} – 00:00` : `${toHHMM(otStartAbs)} – ${toHHMM(otEndAbs)}`) + otCurtailedSuffix,
                 rate: otRate, qty: standardOtHrs, amount: standardOtHrs * otRate,
               });
             }
@@ -1190,53 +1292,61 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
       }
 
-      if (!isNightShoot) {
-        // Late 1st Break (£10) — bs.lunchLate is already gated to cwdApplies
-        // at source in deriveBreakState, so this only fires on Shoot/Pre-light.
-        if (bs.lunchLate) lines.push({ label: "Late 1st Break", detail: "", rate: null, qty: 1, amount: 10 });
-        // Curtailed 1st Break (APA §6.2): basic hours are reduced by the curtailed minutes
-        // (lines 998-999), which already shifts the OT threshold earlier. If wrap doesn't
-        // cross the adjusted threshold (no OT worked), pay the curtailed minutes at the
-        // applicable day rate. If OT was crossed, the curtailed time is absorbed into the
-        // OT calc (informational line at £0).
-        // V4-5h-14 (F8.1): Sun/BH pay at 2× BHR, Sat at Sat multiplier × BHR — all hours
-        // on those days carry the multiplier, including penalty time.
-        if (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
-          const shortMins = 60 - lunchDuration;
-          const curtailedHrs = shortMins / 60;
-          // On Sat/standard, "crossed OT" = effectiveHrs exceeded the (already-reduced) basicHrs.
-          // On Sun/BH (treatAsSun), there's no separate OT line — the flat sunRate covers all
-          // hours including the curtailed time, so we still emit the penalty per the spec.
-          const otCrossed = !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > 0;
-          if (otCrossed) {
-            lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m short — absorbed in OT`, rate: null, qty: 1, amount: 0 });
-          } else {
-            const penaltyRate = treatAsSun ? computeAPArate(bdr, sunMult, weekendOpts.apaRounding)
-                              : treatAsSat ? computeAPArate(bdr, satMult, weekendOpts.apaRounding)
-                              : bhr;
-            const rateLabel = treatAsSun ? `${sunMult}× BHR`
-                            : treatAsSat ? `${satMult}× BHR`
-                            : 'BHR single time';
-            lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m × ${rateLabel}`, rate: penaltyRate, qty: curtailedHrs, amount: curtailedHrs * penaltyRate });
-          }
+      // Late 1st Break (£10) — bs.lunchLate is already gated to cwdApplies
+      // at source in deriveBreakState, so this only fires on Shoot/Pre-light.
+      // Flat £10 on all day types including night shoots (APA §6.2).
+      if (bs.lunchLate) lines.push({ label: "Late 1st Break", detail: "", rate: null, qty: 1, amount: 10 });
+      // Curtailed 1st Break (APA §6.2): basic hours are reduced by the curtailed minutes
+      // (lines 998-999), which already shifts the OT threshold earlier. If wrap doesn't
+      // cross the adjusted threshold (no OT worked), pay the curtailed minutes at the
+      // applicable day rate. If OT was crossed, the curtailed time is absorbed into the
+      // OT calc (informational line at £0).
+      // V4-5h-14 (F8.1): Sun/BH pay at 2× BHR, Sat at Sat multiplier × BHR.
+      // V4-7-1: night shoots have no OT (flat 2× BHR call-to-wrap), so the
+      // "absorbed in OT" branch is suppressed and curtailment always pays
+      // the curtailment minutes at 2× BHR.
+      if (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
+        const shortMins = 60 - lunchDuration;
+        const curtailedHrs = shortMins / 60;
+        // When OT was crossed the curtailment is already absorbed into the
+        // OT line (its detail string carries "incl. Nm curtailed lunch") —
+        // emit nothing here. Otherwise pay the curtailment time at the
+        // applicable day rate.
+        const otCrossed = curtailedMinsAbsorbedInOT > 0;
+        if (!otCrossed) {
+          const penaltyRate = isNightShoot ? (bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding))
+                            : treatAsSun ? computeAPArate(bdr, sunMult, weekendOpts.apaRounding)
+                            : treatAsSat ? computeAPArate(bdr, satMult, weekendOpts.apaRounding)
+                            : bhr;
+          const rateLabel = isNightShoot ? '2× BHR · night shoot'
+                          : treatAsSun ? `${sunMult}× BHR`
+                          : treatAsSat ? `${satMult}× BHR`
+                          : 'BHR single time';
+          lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m × ${rateLabel}`, rate: penaltyRate, qty: curtailedHrs, amount: curtailedHrs * penaltyRate });
         }
-        // Missed Meal (£7.50) — lunchMissed is the raw flag; gate to
-        // cwdApplies so the allowance only applies on Shoot/Pre-light.
-        if (bs.cwdApplies && (lunchMissed || bs.lunchVeryLate) && day.noMealProvided) {
-          lines.push({ label: "Missed Meal Allowance", detail: "", rate: null, qty: 1, amount: 7.5 });
+      }
+      // Missed Meal (£7.50) — lunchMissed is the raw flag; gate to
+      // cwdApplies so the allowance only applies on Shoot/Pre-light.
+      // Flat £7.50 on all day types including night shoots.
+      if (bs.cwdApplies && (lunchMissed || bs.lunchVeryLate) && day.noMealProvided) {
+        lines.push({ label: "Missed Meal Allowance", detail: "", rate: null, qty: 1, amount: 7.5 });
+      }
+      // 2nd Break + CWD Break penalties: night shoots use 2× BHR (matching the
+      // flat night-shoot rate per APA §2.1.5); all other day types stay at
+      // single BHR per §6.3 / §6.4.
+      const breakPenaltyRate = isNightShoot ? (bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding)) : bhr;
+      const breakPenaltyLabel = isNightShoot ? '2× BHR' : 'BHR';
+      if (secondBreakRequired) {
+        if (sbState === "missed" || sbState === "late") {
+          lines.push({ label: sbState === "late" ? "Late 2nd Break (treated as missed)" : "Missed 2nd Break", detail: `30m × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate * 0.5 });
+        } else if (sbState === "curtailed") {
+          const curtailedBy = 30 - bs.sbDuration;
+          lines.push({ label: "Curtailed 2nd Break", detail: `${curtailedBy}m × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: (curtailedBy / 60) * breakPenaltyRate });
         }
-        if (secondBreakRequired) {
-          if (sbState === "missed" || sbState === "late") {
-            lines.push({ label: sbState === "late" ? "Late 2nd Break (treated as missed)" : "Missed 2nd Break", detail: "30m × BHR", rate: null, qty: 1, amount: bhr * 0.5 });
-          } else if (sbState === "curtailed") {
-            const curtailedBy = 30 - bs.sbDuration;
-            lines.push({ label: "Curtailed 2nd Break", detail: `${curtailedBy}m × BHR`, rate: null, qty: 1, amount: (curtailedBy / 60) * bhr });
-          }
-        }
-        if (continuousDay) {
-          if (day.cwdBreak1Given === false) lines.push({ label: "Missed CWD Break (9h)", detail: "30m × BHR", rate: null, qty: 1, amount: bhr * 0.5 });
-          if (cwd2Required && day.cwdBreak2Given === false) lines.push({ label: "Missed CWD Break (12.5h)", detail: "30m × BHR", rate: null, qty: 1, amount: bhr * 0.5 });
-        }
+      }
+      if (continuousDay) {
+        if (day.cwdBreak1Given === false) lines.push({ label: "Missed CWD Break (9h)", detail: `30m × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate * 0.5 });
+        if (cwd2Required && day.cwdBreak2Given === false) lines.push({ label: "Missed CWD Break (12.5h)", detail: `30m × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate * 0.5 });
       }
 
       const travelOutRaw = Math.max(0, (Number(day.travelOutMins) || 0) - 60) / 60;
@@ -1924,7 +2034,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (rest === null || rest >= 11) return null;
       const bhr = computeAPArate(effectiveCrew.bdr, 1, apaRounding);
       const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : computeAPArate(effectiveCrew.bdr, Number(effectiveCrew.otCoef) || 1, apaRounding);
-      const tocHours = ceilHalf(11 - rest);
+      // APA §5: crew may be engaged for up to 1 hour of TOC per break. The
+      // penalty pay is therefore capped at 1h × OT rate regardless of how
+      // far below the 11h floor the rest dropped. isBreach (rest < 10h)
+      // continues to surface as a separate contractual-floor warning.
+      const tocHours = Math.min(1, ceilHalf(11 - rest));
       return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
     }
 
@@ -1955,6 +2069,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         expenses: [],
       };
       const newDefaults = { ...existingDefaults, [field]: value };
+      // If callTime is being set and no explicit wrapTime exists yet for this
+      // date, derive wrap = call + 11h so future-dated days don't render with
+      // an empty wrap. Writing wrapTime alone never touches callTime.
+      if (field === 'callTime' && !production.dayDefaults?.[date]?.wrapTime) {
+        const derivedWrap = addMinutesToTime(value, 660);
+        if (derivedWrap) newDefaults.wrapTime = derivedWrap;
+      }
 
       let newDays = production.days || [];
       const userCrewId = production.crew?.[0]?.id;
@@ -4654,7 +4775,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false }) {
       const v = value;
       const set = (patch) => onChange({ ...v, ...patch });
-      const bs = deriveBreakState(v);
       const [showTravelInfo, setShowTravelInfo] = useState(false);
       const [showPreCallInfo, setShowPreCallInfo] = useState(false);
 
@@ -4700,6 +4820,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const role = effectiveRole;
       const bwdOverrideApplies = !isPmpa && ROLES_WITH_BWD_OVERRIDE.includes(role) &&
         ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(v.dayType);
+      // Mirror calculateDay's BWD override (APA §2.3): a DoP / AD / LM on a
+      // Pre-light / Prep / Recce / Build / De-rig is paid as a Basic Working
+      // Day, which means the break-state UI (lunch chip, status messages,
+      // meal-provided toggle, 2nd-break section) must use the effective type
+      // too — otherwise the form would contradict the calc.
+      const effDayType = bwdOverrideApplies ? "Shoot" : v.dayType;
+      const bs = deriveBreakState(v, effDayType);
 
       const show2ndBreakSection = !isPmpa && !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
       const showCwdBreaksChip   = !isPmpa && !isTravelDay && bs && bs.continuousDay;
@@ -4900,68 +5027,64 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {!isPmpa && !isTravelDay && (
                 <div className="border-t border-neutral-800 pt-3 mt-1 space-y-3">
                   {(() => {
-                    const isDiscretionary = DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
+                    const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
                     const dur = Number(v.lunchDurationMins ?? 60);
-                    const chipKind = !bs ? null
-                      : bs.lunchMissed ? { label: 'MISSED', cls: 'bg-tm-pen/10 text-tm-pen border-tm-pen/25' }
-                      : bs.lunchVeryLate ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
-                      : bs.lunchLate ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
-                      : (bs.lunchDuration ?? 60) < 60 ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/25' }
-                      : { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/25' };
+                    // Status chip surfaces the scheduled lunch state: CWD,
+                    // LATE, CURTAILED, or ON TIME. Discretionary days get no
+                    // chip (lunch optional). The green ON TIME chip is a
+                    // visual anchor only — the green banner stays suppressed.
+                    const chipKind = !bs || isDiscretionary ? null
+                      : ((bs.lunchMissed && bs.cwdApplies) || bs.lunchVeryLate)
+                        ? { label: 'CWD', cls: 'bg-tm-pen/10 text-tm-pen border-tm-pen/35' }
+                      : bs.lunchLate
+                        ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/35' }
+                      : (bs.lunchDuration > 0 && bs.lunchDuration < 60)
+                        ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/35' }
+                      : (!bs.lunchMissed && bs.lunchDuration === 60 && bs.lunchEndAbs != null)
+                        ? { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/35' }
+                      : null;
+                    const showBody = !isDiscretionary && dur > 0;
+                    const endText = (bs?.lunchEndAbs != null && dur > 0) ? toHHMM(bs.lunchEndAbs) : '—';
                     return (
-                      <div className="flex flex-col gap-1.5 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl">
-                        {/* Row 1: LUNCH + start→end (or select alongside LUNCH on discretionary days) */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold flex-shrink-0">LUNCH</span>
-                          {!isDiscretionary ? (
-                            <>
-                              <TimeInput
-                                value={v.lunchStartTime || ""}
-                                onChange={(e) => set({ lunchStartTime: e.target.value })}
-                                disabled={dur === 0}
-                                className="!text-base !bg-transparent !border-0 !rounded-none !outline-none !ring-0 !py-0 !px-0 font-mono font-bold"
-                                style={{ width: '64px', minWidth: '64px' }}
-                              />
-                              {bs?.lunchEndAbs != null && dur > 0 && (
-                                <>
-                                  <span className="text-neutral-500 text-sm">→</span>
-                                  <span className="text-base font-mono font-bold text-neutral-100">{toHHMM(bs.lunchEndAbs)}</span>
-                                </>
-                              )}
-                            </>
-                          ) : (
-                            <select
-                              value={dur}
-                              onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
-                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
-                            >
-                              {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
-                            </select>
-                          )}
-                        </div>
-                        {/* Row 2: NOW (left) · duration (centre) · status chip (right) */}
-                        <div className="flex items-center justify-between gap-2">
-                          {isToday && dur !== 0 && !isDiscretionary && (
-                            <button
-                              type="button"
-                              onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
-                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded ml-1 flex-shrink-0"
-                            >NOW</button>
-                          )}
-                          {!isDiscretionary && (
-                            <select
-                              value={dur}
-                              onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
-                              className="bg-transparent border-0 text-sm font-mono text-neutral-300 outline-none p-0 pr-4"
-                            >
-                              {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
-                            </select>
-                          )}
+                      <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
+                        {/* Row 1 — header: LUNCH label TL, conditional chip TR */}
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold">LUNCH</span>
                           {chipKind && (
-                            <span className={`text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${chipKind.cls}`}>
+                            <span className={`text-[9px] tracking-[0.12em] font-bold uppercase px-1.5 py-0.5 rounded border ${chipKind.cls}`}>
                               {chipKind.label}
                             </span>
                           )}
+                        </div>
+                        {/* Row 2 — body: centred start → end pair (only when there's a lunch to show) */}
+                        {showBody && (
+                          <div className="flex items-center justify-center gap-3.5 pt-1 pb-3">
+                            <TimeInput
+                              value={v.lunchStartTime || ""}
+                              onChange={(e) => set({ lunchStartTime: e.target.value })}
+                              className="!text-[26px] !leading-none !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 font-mono font-bold text-center"
+                              style={{ width: '92px' }}
+                            />
+                            <span className="text-neutral-500" style={{ fontSize: '18px', lineHeight: 1 }}>→</span>
+                            <span className="text-[26px] leading-none font-mono font-bold text-neutral-100" style={{ width: '92px', textAlign: 'center' }}>{endText}</span>
+                          </div>
+                        )}
+                        {/* Row 3 — footer: NOW left, duration select right */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-900">
+                          {isToday && dur !== 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
+                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded"
+                            >NOW</button>
+                          ) : <span />}
+                          <select
+                            value={dur}
+                            onChange={(e) => set({ lunchDurationMins: Number(e.target.value) })}
+                            className="bg-transparent border-0 text-[13px] font-mono text-neutral-300 outline-none p-0 pr-7 text-right"
+                          >
+                            {LUNCH_DURATIONS.map((s) => <option key={s.v} value={s.v} className="bg-neutral-900">{s.label}</option>)}
+                          </select>
                         </div>
                       </div>
                     );
@@ -4969,14 +5092,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
                   {bs && (
                     <>
-                      {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of 11h.</StatusMsg>}
+                      {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of {isElevenHourDay ? 12 : 11}h.</StatusMsg>}
                       {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
                       {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
                       {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && !bs.cwdApplies && <StatusMsg kind="info">Partial lunch ({bs.lunchDuration}m). Counts toward basic: {(8 + bs.lunchDuration / 60).toFixed(1)}h × BHR.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && bs.cwdApplies && <StatusMsg kind="ok">On time. Lunch ends {toHHMM(bs.lunchEndAbs)}.</StatusMsg>}
-                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration === 60 && bs.lunchEndAbs && !bs.cwdApplies && <StatusMsg kind="ok">Lunch given (1h). Counts toward basic: 9h × BHR.</StatusMsg>}
+                      {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && bs.lunchEndAbs != null && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
                     </>
                   )}
 
@@ -5162,6 +5282,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </Select>
                   </Field>
                 </div>
+                {v.stepUpRole && (
+                  <button
+                    type="button"
+                    onClick={() => set({ stepUpRole: '', stepUpBDR: 0, stepUpOTCoef: 1, stepUpOTRate: null })}
+                    className="text-[10px] uppercase tracking-[0.14em] font-bold text-neutral-500 hover:text-neutral-300 transition-colors self-start"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    Remove step-up
+                  </button>
+                )}
               </div>
             </SectionCard>
           )}
@@ -5183,6 +5313,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Field label="Pre-call time" hint="Early arrival — paid at BHR. Lunch and CWD still measured from main call time.">
                   <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} />
                 </Field>
+                {(v.preCallTime || v.truckCallTime) && (
+                  <button
+                    type="button"
+                    onClick={() => set({ preCallTime: '', truckCallTime: '' })}
+                    className="text-[10px] uppercase tracking-[0.14em] font-bold text-neutral-500 hover:text-neutral-300 transition-colors self-start"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    Remove pre-call
+                  </button>
+                )}
               </div>
             </SectionCard>
           )}
@@ -8081,6 +8221,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
                                 <input type="time" value={dayRecord.preCallTime || ''} onChange={(e) => updateField('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
                                 <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Clear the time to deactivate.</div>
+                                {(dayRecord.preCallTime || dayRecord.truckCallTime) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, preCallTime: '', truckCallTime: '' } : d) }))}
+                                    className="w-full mt-3 px-4 py-2.5 rounded-xl bg-tm-warn/10 hover:bg-tm-warn/15 border border-tm-warn/30 text-tm-warn text-sm font-bold transition-colors"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                                  >
+                                    Remove pre-call
+                                  </button>
+                                )}
                               </div>
                             );
                             if (preCallOverridden) resetEl = resetButton('Reset to default', () => resetFields('preCall', 'preCallTime'));
@@ -8182,6 +8332,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                       </select>
                                     </div>
                                   </div>
+                                )}
+                                {dayRecord.stepUpRole && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setProduction(p => ({ ...p, days: p.days.map(d => d.id === dayRecord.id ? { ...d, stepUpRole: '', stepUpBDR: 0, stepUpOTCoef: 1, stepUpOTRate: null } : d) }))}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-tm-warn/10 hover:bg-tm-warn/15 border border-tm-warn/30 text-tm-warn text-sm font-bold transition-colors"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                                  >
+                                    Remove step-up
+                                  </button>
                                 )}
                               </div>
                             );
@@ -9405,9 +9565,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function BreakdownLineRow({ line }) {
-      const isPenalty = line.rate === null || categorizeBreakdownLine(line.label) === 'pen';
-      const isOT = !isPenalty && categorizeBreakdownLine(line.label) === 'ot';
-      const amountCls = isPenalty ? 'text-tm-pen' : isOT ? 'text-tm-warn' : 'text-neutral-100';
+      const bucket = categorizeBreakdownLine(line.label);
+      const isPenalty = line.rate === null || bucket === 'pen';
+      const isOT = !isPenalty && bucket === 'ot';
+      const amountCls = isPenalty ? 'text-tm-pen'
+                      : isOT ? 'text-tm-warn'
+                      : bucket === 'kit' ? 'text-tm-kit'
+                      : bucket === 'extras' ? 'text-tm-good'
+                      : 'text-neutral-100';
       const qtyRate = (line.qty != null && line.rate != null)
         ? `${Number(line.qty).toFixed(typeof line.qty === 'number' && line.qty % 1 ? 1 : 0)} × ${fmtGBP(line.rate)}`
         : '';
@@ -9744,7 +9909,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }), [days]);
 
       const buckets = useMemo(() => {
-        const b = { basic: 0, ot: 0, pen: 0, kit: 0, mileage: 0 };
+        const b = { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 };
         sorted.forEach(d => {
           const c = crew.find(cc => cc.id === d.crewId);
           if (!c) return;
@@ -9753,7 +9918,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             b[categorizeBreakdownLine(line.label || '')] += Number(line.amount) || 0;
           });
         });
-        const sum = b.basic + b.ot + b.pen + b.kit + b.mileage;
+        const sum = b.basic + b.ot + b.pen + b.kit + b.extras;
         const want = Number(total) || 0;
         if (Math.abs(sum - want) > 0.01) {
           console.warn(`[earnings meter] bucket sum ${sum.toFixed(2)} does not match total ${want.toFixed(2)} — unmapped line?`);
@@ -9817,11 +9982,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
               {total > 0 && (
                 <div className="flex h-1.5 rounded-full overflow-hidden bg-neutral-900 mb-2.5">
-                  {buckets.basic   > 0 && <div className="bg-sky-500"    style={{ width: `${(buckets.basic   / total) * 100}%` }} />}
-                  {buckets.ot      > 0 && <div className="bg-tm-warn"    style={{ width: `${(buckets.ot      / total) * 100}%` }} />}
-                  {buckets.pen     > 0 && <div className="bg-tm-pen"     style={{ width: `${(buckets.pen     / total) * 100}%` }} />}
-                  {buckets.kit     > 0 && <div className="bg-tm-good"    style={{ width: `${(buckets.kit     / total) * 100}%` }} />}
-                  {buckets.mileage > 0 && <div className="bg-tm-mileage" style={{ width: `${(buckets.mileage / total) * 100}%` }} />}
+                  {buckets.basic  > 0 && <div className="bg-sky-500" style={{ width: `${(buckets.basic  / total) * 100}%` }} />}
+                  {buckets.ot     > 0 && <div className="bg-tm-warn" style={{ width: `${(buckets.ot     / total) * 100}%` }} />}
+                  {buckets.pen    > 0 && <div className="bg-tm-pen"  style={{ width: `${(buckets.pen    / total) * 100}%` }} />}
+                  {buckets.kit    > 0 && <div className="bg-tm-kit"  style={{ width: `${(buckets.kit    / total) * 100}%` }} />}
+                  {buckets.extras > 0 && <div className="bg-tm-good" style={{ width: `${(buckets.extras / total) * 100}%` }} />}
                 </div>
               )}
               {total > 0 && (
@@ -9849,16 +10014,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   )}
                   {buckets.kit > 0 && (
                     <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-sm bg-tm-good" />
+                      <div className="w-2 h-2 rounded-sm bg-tm-kit" />
                       <span>KIT</span>
                       <span className="text-neutral-100">{fmtGBP(buckets.kit)}</span>
                     </div>
                   )}
-                  {buckets.mileage > 0 && (
+                  {buckets.extras > 0 && (
                     <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-sm bg-tm-mileage" />
-                      <span>MILEAGE</span>
-                      <span className="text-neutral-100">{fmtGBP(buckets.mileage)}</span>
+                      <div className="w-2 h-2 rounded-sm bg-tm-good" />
+                      <span>EXTRAS</span>
+                      <span className="text-neutral-100">{fmtGBP(buckets.extras)}</span>
                     </div>
                   )}
                 </div>
@@ -9969,10 +10134,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               {calc.lines.map((line, i) => {
                                 const bucket = categorizeBreakdownLine(line.label);
                                 const colorClass =
-                                  bucket === 'ot'  ? 'text-tm-warn' :
-                                  bucket === 'pen' ? 'text-tm-pen'  :
-                                  bucket === 'kit' ? 'text-tm-good' :
-                                                     'text-neutral-200';
+                                  bucket === 'ot'     ? 'text-tm-warn' :
+                                  bucket === 'pen'    ? 'text-tm-pen'  :
+                                  bucket === 'kit'    ? 'text-tm-kit'  :
+                                  bucket === 'extras' ? 'text-tm-good' :
+                                                        'text-neutral-200';
                                 return (
                                   <div key={i} className="flex items-baseline justify-between gap-3 text-[11px] font-mono">
                                     <span className="text-neutral-400 flex-1 min-w-0 truncate">{line.label}</span>
@@ -14135,8 +14301,14 @@ const confirmDelete = (p) => setConfirmOpts({
             clockedValue = formatElapsed(Math.round(totalMins));
             if (earliestCallStr) clockedSub = `since ${earliestCallStr}`;
           } else if (earliestCallMins != null) {
-            clockedValue = formatElapsed(timeSinceCall(earliestCallStr, tickNow));
-            clockedSub = `since ${earliestCallStr}`;
+            const nowMinsTick = tickNow.getHours() * 60 + tickNow.getMinutes();
+            if (nowMinsTick < earliestCallMins) {
+              clockedValue = "0m";
+              clockedSub = `call at ${earliestCallStr}`;
+            } else {
+              clockedValue = formatElapsed(timeSinceCall(earliestCallStr, tickNow));
+              clockedSub = `since ${earliestCallStr}`;
+            }
           }
 
           const todayTotal = todayRecords.reduce((sum, d) => {
