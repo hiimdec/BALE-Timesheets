@@ -41,15 +41,7 @@
 
   <style>
     :root {
-      --tm-accent: #0ea5e9;        /* sky-500 */
-      --tm-accent-2: #7dd3fc;      /* sky-300 — soft */
-      --tm-warn: #ff8a3d;
-      --tm-pen: #f43f5e;
-      --tm-good: #4ade80;
-      --tm-kit: #a78bfa;
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
-      --tm-pill-ink: #15171a;
-      --tm-card-2: #1f1f1f;
       --pill-paper: #e6e9ed;
       --pill-ink: #15171a;
     }
@@ -284,6 +276,7 @@
       version: APP_VERSION,
       date: "2026-05-28",
       added: [
+        "Cleanup: repo hygiene — removed four orphan mockup HTML files (Al Timesheet.html, Grid Overview.html, mockup-1-single-timesheet-v5.html, mockup-2-multiweek-grid-v5.html), an orphan favicon-48.png, and 8 redundant --tm-* :root CSS variables that duplicated values already defined in the Tailwind config. No runtime change — the Tailwind colour classes (bg-tm-warn, text-tm-pen, etc.) come from the config block, not the :root vars, so removing the duplicates has zero visual effect",
         "Fix: Saturday Pre-light overpaid by one hour when a full lunch was taken — the basic line used a sliding workedHrs-up-to-basicHrs formula instead of a flat 8h, so a 9h Sat Pre-light billed 9h × satRate. Now mirrors the weekday Pre-light branch exactly (flat 8h, 9h when CWD). Discretionary Sat days unaffected. Closes the last known Saturday Pre-light calc divergence",
         "Fix: stats days-by-type now resolves the cascaded day type — days that inherit their type (rather than setting it explicitly) were all bucketing as \"Unknown\" and never counting as Shoot days, so shoot-day count and avg shoot length read zero. Day type is now read from calc.meta (booked type, not the BWD-override effective type)",
         "New: Highest earning day card now shows a colour-coded Basic / OT / Penalties / Kit / Extras breakdown (non-zero buckets only) above the comparison",
