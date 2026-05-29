@@ -41,15 +41,7 @@
 
   <style>
     :root {
-      --tm-accent: #0ea5e9;        /* sky-500 */
-      --tm-accent-2: #7dd3fc;      /* sky-300 — soft */
-      --tm-warn: #ff8a3d;
-      --tm-pen: #f43f5e;
-      --tm-good: #4ade80;
-      --tm-kit: #a78bfa;
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
-      --tm-pill-ink: #15171a;
-      --tm-card-2: #1f1f1f;
       --pill-paper: #e6e9ed;
       --pill-ink: #15171a;
     }
@@ -284,6 +276,14 @@
       version: APP_VERSION,
       date: "2026-05-28",
       added: [
+        "Cleanup: repo hygiene — removed four orphan mockup HTML files (Al Timesheet.html, Grid Overview.html, mockup-1-single-timesheet-v5.html, mockup-2-multiweek-grid-v5.html), an orphan favicon-48.png, and 8 redundant --tm-* :root CSS variables that duplicated values already defined in the Tailwind config. No runtime change — the Tailwind colour classes (bg-tm-warn, text-tm-pen, etc.) come from the config block, not the :root vars, so removing the duplicates has zero visual effect",
+        "Fix: Saturday Pre-light overpaid by one hour when a full lunch was taken — the basic line used a sliding workedHrs-up-to-basicHrs formula instead of a flat 8h, so a 9h Sat Pre-light billed 9h × satRate. Now mirrors the weekday Pre-light branch exactly (flat 8h, 9h when CWD). Discretionary Sat days unaffected. Closes the last known Saturday Pre-light calc divergence",
+        "Fix: stats days-by-type now resolves the cascaded day type — days that inherit their type (rather than setting it explicitly) were all bucketing as \"Unknown\" and never counting as Shoot days, so shoot-day count and avg shoot length read zero. Day type is now read from calc.meta (booked type, not the BWD-override effective type)",
+        "New: Highest earning day card now shows a colour-coded Basic / OT / Penalties / Kit / Extras breakdown (non-zero buckets only) above the comparison",
+        "New: live CLOCKED timer on the hero card freezes 4h past the planned wrap with a \"Still on the clock? Wrap now\" nudge — no more absurd 30h+ figures when someone forgets to hit Wrap Now. Hitting Wrap Now locks the real figure as before",
+        "New: pre-call before 05:00 shows an informational note explaining it's outside standard APA territory (a pre-5am unit call would normally be a night shoot) and that triple time has been applied to the pre-05:00 portion",
+        "New: separate legal name for invoices (Settings → Invoicing — Your details). The formal name on generated invoices is now distinct from the casual display name used in the app header and stats. Falls back to display name when blank, so existing setups are unaffected",
+        "New: optional CC field when sending an invoice by email. Entered per-send (not saved) — type a CC recipient at send time and it's added to the mailto cc; the next invoice starts with an empty CC",
         "Auto-apply cascade — editing dept-default times propagates to all crew automatically; field-specific variances stay shielded",
         "Drill-in breakdowns — tap a crew row for their full multi-day breakdown, or a day row for per-crew detail on that date",
         "CWD breaks in Best Boy mode — mark given/missed in BB (was solo-only); chip turns red when any break is missed",
@@ -632,7 +632,9 @@
       vatRegistered: false,
       vatRate: 20,
       vatNumber: "",
-      // Invoicing — From info (displayName is the "From" name)
+      // Invoicing — From info (legalName is the formal "From" name on
+      // invoices; falls back to displayName when empty)
+      legalName: "",
       fromCompanyName: "",
       fromAddress: "",
       fromEmail: "",
@@ -917,6 +919,8 @@ You don't need to subtract anything yourself.`;
 The hours between your pre-call and the main call time are paid at BHR (basic hourly rate).
 
 Lunch deadlines, continuous workday (CWD), and overtime are still measured from your main call time — not from the pre-call. So an 07:00 pre-call followed by an 08:00 main call gets you 1 hour of pre-call pay, but lunch is still expected by 13:00 (5h from main call).`;
+
+    const PRE_CALL_PRE5_DISCLAIMER = `Pre-call before 05:00 is outside standard APA territory — a pre-5am unit call would normally trigger night-shoot rates. With a pre-call this is usually agreed with production. The app has applied triple time (3× BHR) for the pre-05:00 portion.`;
 
     const EXPENSE_CATEGORIES = ["Transport", "Food", "Equipment", "Accommodation", "Other"];
 
@@ -1213,11 +1217,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
           if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic" + otCurtailedSuffix, rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
-          // APA §2.3: discretionary days pay flat 8h × satRate (lunch unpaid).
-          // Pre-light keeps the workedHrs-capped formula (floor 8, ceiling basicHrs=9).
-          const baseHrs = effectiveDayType === "Pre-light"
-            ? Math.max(Math.min(workedHrs, basicHrs), 8)
-            : 8;
+          // APA §2.3 / §2.4(ix): flat 8h × satRate for both Pre-light and
+          // discretionary days. Lunch is unpaid filler — it only shifts the
+          // OT threshold (basicHrs computed upstream), never the paid qty.
+          // 9h when continuousDay (Pre-light CWD: full continuous block
+          // worked and paid). Mirrors the weekday Pre-light branch below.
+          const baseHrs = continuousDay ? 9 : 8;
           const satMinApplied = baseHrs > workedHrs;
           lines.push({ label: `Saturday ${effectiveDayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: satRate, qty: baseHrs, amount: baseHrs * satRate });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
@@ -1959,7 +1964,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const dates = (production.days || []).map(d => d.date).filter(Boolean).sort();
           return dates[dates.length - 1] ?? "";
         })(),
-        fromName: userPrefs.displayName || "",
+        fromName: userPrefs.legalName || userPrefs.displayName || "",
         fromCompanyName: userPrefs.fromCompanyName || "",
         fromAddress: userPrefs.fromAddress || "",
         fromEmail: userPrefs.fromEmail || "",
@@ -2125,7 +2130,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const finalCalc = useFavourableRounding ? applyRateRounding(calc) : calc;
       return {
         ...finalCalc,
-        meta: { ...finalCalc.meta, isElevenHourDay: !!production?.isElevenHourDay },
+        // dayType is the BOOKED type (resolved via the cascade), NOT the
+        // calc engine's effectiveDayType — a DoP's Prep day stays "Prep Day"
+        // in stats even though it's paid as a Shoot under the BWD override.
+        meta: { ...finalCalc.meta, isElevenHourDay: !!production?.isElevenHourDay, dayType: resolved.dayType },
       };
     }
 
@@ -3679,7 +3687,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     /* ── mailto: email opener ── */
-    function openInvoiceMailto(invoice) {
+    // cc is entered per-send in the invoice editor and never persisted.
+    function openInvoiceMailto(invoice, cc = '') {
       const recipient = (invoice.toEmail || '').trim();
       const subjectBase = `Invoice ${invoice.invoiceNumber}`;
       const subject = invoice.jobTitle ? `${subjectBase} — ${invoice.jobTitle}` : subjectBase;
@@ -3692,6 +3701,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const body = `Hi,\n\nPlease find attached invoice ${invoice.invoiceNumber}${jobBit}, total ${totalStr}.\n\nPlease quote ${invoice.invoiceNumber} when making payment.\n\nMany thanks,\n${fromName}`;
 
       const params = new URLSearchParams();
+      const ccTrimmed = (cc || '').trim();
+      if (ccTrimmed) params.set('cc', ccTrimmed);
       if (subject) params.set('subject', subject);
       if (body) params.set('body', body);
       const queryString = params.toString().replace(/\+/g, '%20');
@@ -5313,6 +5324,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Field label="Pre-call time" hint="Early arrival — paid at BHR. Lunch and CWD still measured from main call time.">
                   <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} />
                 </Field>
+                {(() => { const pc = parseHHMM(v.preCallTime || v.truckCallTime); return pc != null && pc < 5; })() && (
+                  <StatusMsg kind="warn"><span className="whitespace-pre-line">{PRE_CALL_PRE5_DISCLAIMER}</span></StatusMsg>
+                )}
                 {(v.preCallTime || v.truckCallTime) && (
                   <button
                     type="button"
@@ -8221,6 +8235,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
                                 <input type="time" value={dayRecord.preCallTime || ''} onChange={(e) => updateField('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
                                 <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Clear the time to deactivate.</div>
+                                {(() => { const pc = parseHHMM(dayRecord.preCallTime || dayRecord.truckCallTime); return pc != null && pc < 5; })() && (
+                                  <div className="mt-2"><StatusMsg kind="warn"><span className="whitespace-pre-line">{PRE_CALL_PRE5_DISCLAIMER}</span></StatusMsg></div>
+                                )}
                                 {(dayRecord.preCallTime || dayRecord.truckCallTime) && (
                                   <button
                                     type="button"
@@ -11903,6 +11920,7 @@ const setDays = (updater) =>
         : 'Not registered';
 
       const yourDetailsSummary =
+        (userPrefs.legalName || '').trim() ||
         (userPrefs.fromCompanyName || '').trim() ||
         (userPrefs.fromEmail || '').trim() ||
         '—';
@@ -12021,7 +12039,10 @@ const setDays = (updater) =>
             </Disclosure>
 
             <Disclosure label="Invoicing — Your details" summary={yourDetailsSummary}>
-              <div className="text-[10px] text-neutral-500 mb-3">Your display name (from My Setup) appears as the invoice's "From" name.</div>
+              <div className="text-[10px] text-neutral-500 mb-3">The legal name below appears as the invoice's "From" name. Leave it blank to use your display name (from My Setup).</div>
+              <Field label="Legal name (for invoices)" hint="Formal name on generated invoices — distinct from the casual display name shown in the app. Falls back to display name if blank.">
+                <Input type="text" value={userPrefs.legalName} onChange={(e) => set({ legalName: e.target.value })} placeholder="e.g. Mr Declan Duffy" />
+              </Field>
               <Field label="Company name" hint="Optional — if you trade as a limited company">
                 <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
               </Field>
@@ -12368,12 +12389,12 @@ const setDays = (updater) =>
         if (enrichedDays.length === 0) return null;
         const totalEarnings = enrichedDays.reduce((s, e) => s + e.calc.total, 0);
         const workingDaysSet = new Set(enrichedDays.filter(e => e.day.callTime || e.day.wrapTime).map(e => `${e.production.id}:${e.day.date}`));
-        const shootDaysSet = new Set(enrichedDays.filter(e => e.day.dayType === 'Shoot').map(e => `${e.production.id}:${e.day.date}`));
+        const shootDaysSet = new Set(enrichedDays.filter(e => e.calc.meta.dayType === 'Shoot').map(e => `${e.production.id}:${e.day.date}`));
         const totalHours = enrichedDays.reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
         const productionsWorkedCount = new Set(enrichedDays.map(e => e.production.id)).size;
 
         const workingDates = [...new Set(
-          enrichedDays.filter(e => e.day.dayType !== 'Rest Day' && (e.day.callTime || e.day.wrapTime)).map(e => e.day.date)
+          enrichedDays.filter(e => e.calc.meta.dayType !== 'Rest Day' && (e.day.callTime || e.day.wrapTime)).map(e => e.day.date)
         )].sort();
         let longestStreak = workingDates.length > 0 ? 1 : 0, curStreak = longestStreak;
         for (let i = 1; i < workingDates.length; i++) {
@@ -12384,7 +12405,7 @@ const setDays = (updater) =>
         const wdc = workingDaysSet.size, sdc = shootDaysSet.size;
         const avgDayEarnings = wdc > 0 ? totalEarnings / wdc : 0;
         const avgPerShoot = productionsWorkedCount > 0 ? totalEarnings / productionsWorkedCount : 0;
-        const shootHours = enrichedDays.filter(e => e.day.dayType === 'Shoot').reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
+        const shootHours = enrichedDays.filter(e => e.calc.meta.dayType === 'Shoot').reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
         const avgShootLen = sdc > 0 ? shootHours / sdc : 0;
 
         const earningsByDay = {}, earningsByMonth = {}, uniqueDaysByMonth = {}, earningsByProdCo = {}, dayTypeMap = {};
@@ -12395,8 +12416,10 @@ const setDays = (updater) =>
           const pKey = `${e.production.id}:${e.day.date}`;
           const mo = e.day.date.slice(0, 7);
           const co = e.production.prodCo?.trim() || '(Unknown)';
-          const type = e.day.dayType || 'Unknown';
-          earningsByDay[pKey] = { date: e.day.date, amount: (earningsByDay[pKey]?.amount || 0) + e.calc.total };
+          const type = e.calc.meta.dayType || 'Unknown';
+          const dayEntry = earningsByDay[pKey] || { date: e.day.date, amount: 0, buckets: { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 } };
+          dayEntry.amount += e.calc.total;
+          earningsByDay[pKey] = dayEntry;
           earningsByMonth[mo] = (earningsByMonth[mo] || 0) + e.calc.total;
           if (!uniqueDaysByMonth[mo]) uniqueDaysByMonth[mo] = new Set();
           uniqueDaysByMonth[mo].add(pKey);
@@ -12406,6 +12429,7 @@ const setDays = (updater) =>
           for (const l of e.calc.lines) {
             if ((l.label || '').includes(' OT')) otEarnings += l.amount;
             if ((l.label || '').toLowerCase().startsWith('late')) lateLunchEarnings += l.amount;
+            dayEntry.buckets[categorizeBreakdownLine(l.label || '')] += Number(l.amount) || 0;
           }
           const flags = penaltyFlags(e.calc);
           if (flags.hasL1) lateLunchSet.add(pKey);
@@ -12447,6 +12471,34 @@ const setDays = (updater) =>
       }, [enrichedDays, filter]);
 
       const heroLabel = filter === 'all' ? 'All-time earnings' : filter === 'taxyear' ? 'Tax year earnings' : 'Year to date';
+
+      // Highest-earning-day bucket breakdown — same colours as the Shoot Total
+      // meter. Only renders non-zero buckets.
+      const HighestDayBreakdown = ({ buckets }) => {
+        if (!buckets) return null;
+        const rows = [
+          { key: 'basic',  label: 'Basic',     dot: 'bg-sky-500', text: 'text-sky-400' },
+          { key: 'ot',     label: 'OT',        dot: 'bg-tm-warn', text: 'text-tm-warn' },
+          { key: 'pen',    label: 'Penalties', dot: 'bg-tm-pen',  text: 'text-tm-pen' },
+          { key: 'kit',    label: 'Kit',       dot: 'bg-tm-kit',  text: 'text-tm-kit' },
+          { key: 'extras', label: 'Extras',    dot: 'bg-tm-good', text: 'text-tm-good' },
+        ].filter(r => (buckets[r.key] || 0) > 0.005);
+        if (rows.length === 0) return null;
+        return (
+          <div className="mt-3 pt-3 border-t border-neutral-800">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-2.5">Breakdown</div>
+            <div className="space-y-1.5">
+              {rows.map(r => (
+                <div key={r.key} className="flex items-center gap-2 text-sm">
+                  <span className={`w-2 h-2 rounded-sm flex-shrink-0 ${r.dot}`} />
+                  <span className="text-neutral-300 flex-1">{r.label}</span>
+                  <span className={`font-mono font-semibold tabular-nums ${r.text}`}>{fmtGBP(buckets[r.key])}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      };
 
       const ComparisonContent = ({ amount }) => (
         <div className="mt-4 pt-3 border-t border-neutral-800">
@@ -12633,6 +12685,7 @@ const setDays = (updater) =>
                 <div className="space-y-3">
                   {stats.highestDay && (
                     <TappableCard label="Highest earning day" value={fmtGBP(stats.highestDay.amount)} sub={stats.highestDay.date} statKey="highest">
+                      <HighestDayBreakdown buckets={stats.highestDay.buckets}/>
                       <ComparisonContent amount={stats.highestDay.amount}/>
                     </TappableCard>
                   )}
@@ -12920,6 +12973,8 @@ const setDays = (updater) =>
       const [printTarget, setPrintTarget] = React.useState(null);
       const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
       const [notesOpen, setNotesOpen] = React.useState(!!invoice?.notes);
+      // CC is entered per-send and never persisted — resets to empty each visit.
+      const [ccEmail, setCcEmail] = React.useState('');
       const [bankOpen, setBankOpen] = React.useState(false);
       const [fromOpen, setFromOpen] = React.useState(false);
       const [toastMsg, setToastMsg] = React.useState(null);
@@ -12996,7 +13051,7 @@ const setDays = (updater) =>
 
       const handleEmail = () => {
         const wasDraft = invoice.status === 'draft';
-        openInvoiceMailto(invoice);
+        openInvoiceMailto(invoice, ccEmail);
         if (wasDraft) {
           // Auto-mark sent. The mailto opens the user's mail client; we optimistically
           // assume they'll send. If they cancel, the header kebab has "Revert to draft".
@@ -13176,6 +13231,14 @@ const setDays = (updater) =>
                 onChange={(e) => updateInvoice({ toEmail: e.target.value })}
                 placeholder="billing@example.com"
                 className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
+              />
+              <input
+                type="email"
+                value={ccEmail}
+                onChange={(e) => setCcEmail(e.target.value)}
+                placeholder="CC (optional) — accounts@prodco.com"
+                className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
+                aria-label="CC recipients for this send"
               />
               {invoice.toAddress !== '' && invoice.toAddress != null ? (
                 <textarea
@@ -14306,8 +14369,32 @@ const confirmDelete = (p) => setConfirmOpts({
               clockedValue = "0m";
               clockedSub = `call at ${earliestCallStr}`;
             } else {
-              clockedValue = formatElapsed(timeSinceCall(earliestCallStr, tickNow));
-              clockedSub = `since ${earliestCallStr}`;
+              const liveMins = timeSinceCall(earliestCallStr, tickNow);
+              // Planned day length = latest resolved wrap measured from the
+              // earliest call (cross-midnight aware, multi-crew aware). The
+              // live timer ticks past the planned wrap (OT is real) but freezes
+              // once it exceeds planned + 4h buffer — so forgetting to hit Wrap
+              // Now doesn't show absurd 30h+ figures.
+              let plannedElapsedMins = null;
+              todayRecords.forEach(d => {
+                const crew = (p.crew ?? []).find(cc => cc.id === d.crewId);
+                const resolved = crew ? resolveDay(p, d, crew) : d;
+                const c = parseHHMM(resolved.callTime);
+                const w = parseHHMM(resolved.wrapTime);
+                if (c == null || w == null) return;
+                let dayLen = (w - c) * 60;
+                if (dayLen < 0) dayLen += 24 * 60;
+                const wrapFromEarliest = Math.round(c * 60) - earliestCallMins + dayLen;
+                if (plannedElapsedMins == null || wrapFromEarliest > plannedElapsedMins) plannedElapsedMins = wrapFromEarliest;
+              });
+              const BUFFER = 240;
+              if (plannedElapsedMins != null && liveMins > plannedElapsedMins + BUFFER) {
+                clockedValue = formatElapsed(plannedElapsedMins + BUFFER);
+                clockedSub = "Still on the clock? Wrap now";
+              } else {
+                clockedValue = formatElapsed(liveMins);
+                clockedSub = `since ${earliestCallStr}`;
+              }
             }
           }
 
