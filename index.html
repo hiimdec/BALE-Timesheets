@@ -284,6 +284,7 @@
       version: APP_VERSION,
       date: "2026-05-28",
       added: [
+        "Fix: Saturday Pre-light overpaid by one hour when a full lunch was taken — the basic line used a sliding workedHrs-up-to-basicHrs formula instead of a flat 8h, so a 9h Sat Pre-light billed 9h × satRate. Now mirrors the weekday Pre-light branch exactly (flat 8h, 9h when CWD). Discretionary Sat days unaffected. Closes the last known Saturday Pre-light calc divergence",
         "Fix: stats days-by-type now resolves the cascaded day type — days that inherit their type (rather than setting it explicitly) were all bucketing as \"Unknown\" and never counting as Shoot days, so shoot-day count and avg shoot length read zero. Day type is now read from calc.meta (booked type, not the BWD-override effective type)",
         "New: Highest earning day card now shows a colour-coded Basic / OT / Penalties / Kit / Extras breakdown (non-zero buckets only) above the comparison",
         "New: live CLOCKED timer on the hero card freezes 4h past the planned wrap with a \"Still on the clock? Wrap now\" nudge — no more absurd 30h+ figures when someone forgets to hit Wrap Now. Hitting Wrap Now locks the real figure as before",
@@ -1223,11 +1224,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
           if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic" + otCurtailedSuffix, rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
         } else {
-          // APA §2.3: discretionary days pay flat 8h × satRate (lunch unpaid).
-          // Pre-light keeps the workedHrs-capped formula (floor 8, ceiling basicHrs=9).
-          const baseHrs = effectiveDayType === "Pre-light"
-            ? Math.max(Math.min(workedHrs, basicHrs), 8)
-            : 8;
+          // APA §2.3 / §2.4(ix): flat 8h × satRate for both Pre-light and
+          // discretionary days. Lunch is unpaid filler — it only shifts the
+          // OT threshold (basicHrs computed upstream), never the paid qty.
+          // 9h when continuousDay (Pre-light CWD: full continuous block
+          // worked and paid). Mirrors the weekday Pre-light branch below.
+          const baseHrs = continuousDay ? 9 : 8;
           const satMinApplied = baseHrs > workedHrs;
           lines.push({ label: `Saturday ${effectiveDayType} (${satMult}× BHR)`, detail: satMinApplied ? `${callWrapLabel} · min 8h applied` : callWrapLabel, rate: satRate, qty: baseHrs, amount: baseHrs * satRate });
           const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
