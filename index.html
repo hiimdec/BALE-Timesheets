@@ -245,6 +245,122 @@
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useMemo, useRef } = React;
 
+    /* ═══════════════════════════ STORAGE ADAPTER ═══════════════════════════
+     * One synchronous-looking get/set/remove interface over two backends:
+     *
+     *   • WEB  (GitHub Pages): delegates straight to localStorage — byte-for-byte
+     *     the original behaviour. No Capacitor, no Preferences, no async.
+     *
+     *   • NATIVE (Capacitor iOS): reads come from a warm in-memory cache that is
+     *     preloaded once at boot from @capacitor/preferences (durable
+     *     NSUserDefaults, not the purgeable WebKit cache iOS can evict). Writes
+     *     update the cache synchronously and persist to Preferences in the
+     *     background (fire-and-forget, ordered per key, last-write-wins), with a
+     *     flush() on app-background so the last edit can't be lost.
+     *
+     * The rest of the app (useStoredState, runMigrations, the snapshot helpers
+     * and importBackup) keeps its existing synchronous logic and just calls
+     * storage.get / storage.set / storage.remove. On web those are transparent
+     * pass-throughs to localStorage, so the web build is unchanged.
+     */
+    const storage = (() => {
+      const cap = (typeof window !== 'undefined') ? window.Capacitor : undefined;
+      const Preferences = cap && cap.Plugins && cap.Plugins.Preferences;
+      const AppPlugin   = cap && cap.Plugins && cap.Plugins.App;
+      const isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform() && Preferences);
+
+      // ---- WEB backend: transparent pass-through to localStorage ----
+      // Intentionally NOT wrapped in try/catch — callers already handle thrown
+      // storage errors exactly as they did before this adapter existed.
+      if (!isNative) {
+        return {
+          isNative: false,
+          get: (key) => localStorage.getItem(key),
+          set: (key, value) => localStorage.setItem(key, value),
+          remove: (key) => localStorage.removeItem(key),
+          preload: () => Promise.resolve(),
+          flush: () => Promise.resolve(),
+          installBackgroundFlush: () => {},
+        };
+      }
+
+      // ---- NATIVE backend: in-memory cache + async Preferences ----
+      const KEYS = [
+        'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',
+        'bigals_pre_migration_backup',
+        // legacy keys absorbed (then removed) by the one-time in-app migration:
+        'bigals_production', 'bigals_crew', 'bigals_days',
+      ];
+      const MIGRATED_FLAG = 'bigals_native_migrated';
+
+      const cache = Object.create(null);
+      const writeChains = Object.create(null); // key -> Promise (ordered, last-write-wins)
+      let lastError = null;
+
+      const get = (key) => (key in cache ? cache[key] : null);
+
+      const set = (key, value) => {
+        cache[key] = value;                              // synchronous: callers see it immediately
+        const prev = writeChains[key] || Promise.resolve();
+        writeChains[key] = prev
+          .then(() => Preferences.set({ key, value }))   // persist in the background, in order
+          .catch((e) => { lastError = e; try { console.warn('Preferences.set failed', key, e); } catch (_) {} });
+      };
+
+      const remove = (key) => {
+        delete cache[key];
+        const prev = writeChains[key] || Promise.resolve();
+        writeChains[key] = prev
+          .then(() => Preferences.remove({ key }))
+          .catch((e) => { lastError = e; try { console.warn('Preferences.remove failed', key, e); } catch (_) {} });
+      };
+
+      // Await every in-flight write. Called before any reload and on background.
+      const flush = () => Promise.allSettled(Object.keys(writeChains).map((k) => writeChains[k]));
+
+      const preload = async () => {
+        // 1. Pull whatever is already durable in Preferences into the cache.
+        for (const key of KEYS) {
+          try {
+            const res = await Preferences.get({ key });
+            if (res && res.value != null) cache[key] = res.value;
+          } catch (e) { lastError = e; }
+        }
+        // 2. One-time copy: if this install has never migrated, lift any existing
+        //    WebView-localStorage data into Preferences. Protects users upgrading
+        //    from an earlier (localStorage-only) build. Runs exactly once, gated
+        //    by a sentinel flag so it never re-imports stale data after a reset.
+        let migrated = null;
+        try { const r = await Preferences.get({ key: MIGRATED_FLAG }); migrated = r && r.value; } catch (e) { lastError = e; }
+        if (!migrated) {
+          for (const key of KEYS) {
+            let lsVal = null;
+            try { lsVal = localStorage.getItem(key); } catch (_) {}
+            if (lsVal != null) {
+              cache[key] = lsVal;
+              try { await Preferences.set({ key, value: lsVal }); } catch (e) { lastError = e; }
+            }
+          }
+          // localStorage is left intact as a fallback; Preferences is now the
+          // authoritative store and native reads never touch localStorage again.
+          try { await Preferences.set({ key: MIGRATED_FLAG, value: '1' }); } catch (e) { lastError = e; }
+        }
+      };
+
+      const installBackgroundFlush = () => {
+        try {
+          if (AppPlugin && AppPlugin.addListener) {
+            AppPlugin.addListener('appStateChange', (state) => { if (state && !state.isActive) flush(); });
+          }
+        } catch (_) {}
+        try {
+          document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+        } catch (_) {}
+      };
+
+      return { isNative: true, get, set, remove, preload, flush, installBackgroundFlush, lastError: () => lastError };
+    })();
+
     /*
      * TimeMachine — single-file React app (React + Babel + Tailwind, no build step).
      *
@@ -337,29 +453,29 @@
     const PRE_MIGRATION_BACKUP_KEY = 'bigals_pre_migration_backup';
 
     function getStoredSchemaVersion() {
-      try { return Number(localStorage.getItem(SCHEMA_VERSION_KEY)) || 0; } catch { return 0; }
+      try { return Number(storage.get(SCHEMA_VERSION_KEY)) || 0; } catch { return 0; }
     }
     function setStoredSchemaVersion(v) {
-      try { localStorage.setItem(SCHEMA_VERSION_KEY, String(v)); } catch {}
+      try { storage.set(SCHEMA_VERSION_KEY, String(v)); } catch {}
     }
     function takePreMigrationSnapshot() {
       try {
         const snap = {
-          productions: localStorage.getItem('bigals_productions'),
-          schemaVersion: localStorage.getItem(SCHEMA_VERSION_KEY),
+          productions: storage.get('bigals_productions'),
+          schemaVersion: storage.get(SCHEMA_VERSION_KEY),
         };
-        localStorage.setItem(PRE_MIGRATION_BACKUP_KEY, JSON.stringify(snap));
+        storage.set(PRE_MIGRATION_BACKUP_KEY, JSON.stringify(snap));
       } catch {}
     }
     function restoreFromPreMigrationSnapshot() {
       try {
-        const raw = localStorage.getItem(PRE_MIGRATION_BACKUP_KEY);
+        const raw = storage.get(PRE_MIGRATION_BACKUP_KEY);
         if (!raw) return false;
         const snap = JSON.parse(raw);
-        if (snap.productions != null) localStorage.setItem('bigals_productions', snap.productions);
-        else localStorage.removeItem('bigals_productions');
-        if (snap.schemaVersion != null) localStorage.setItem(SCHEMA_VERSION_KEY, snap.schemaVersion);
-        else localStorage.removeItem(SCHEMA_VERSION_KEY);
+        if (snap.productions != null) storage.set('bigals_productions', snap.productions);
+        else storage.remove('bigals_productions');
+        if (snap.schemaVersion != null) storage.set(SCHEMA_VERSION_KEY, snap.schemaVersion);
+        else storage.remove(SCHEMA_VERSION_KEY);
         return true;
       } catch { return false; }
     }
@@ -1698,21 +1814,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ─── Migration runner ─── */
 
-    // MIGRATIONS[v] brings bigals_productions from schema v-1 → v (operates on raw localStorage).
+    // MIGRATIONS[v] brings bigals_productions from schema v-1 → v (operates on raw stored data).
     const MIGRATIONS = {
       1: () => {
-        const raw = localStorage.getItem('bigals_productions');
+        const raw = storage.get('bigals_productions');
         if (!raw) return;
         const arr = JSON.parse(raw);
         if (!Array.isArray(arr)) return;
-        localStorage.setItem('bigals_productions', JSON.stringify(arr.map(migrateProduction)));
+        storage.set('bigals_productions', JSON.stringify(arr.map(migrateProduction)));
       },
       // v2: introduce explicit `wrapped` flag on each day. Backfill from date:
       // strictly-past dates are treated as wrapped (already-completed work),
       // today + future as not-yet-wrapped. The auto-filled wrapTime no longer
       // implies WRAPPED state — the live ON CALL UI now becomes reachable.
       2: () => {
-        const raw = localStorage.getItem('bigals_productions');
+        const raw = storage.get('bigals_productions');
         if (!raw) return;
         const arr = JSON.parse(raw);
         if (!Array.isArray(arr)) return;
@@ -1724,14 +1840,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             wrapped: typeof d.wrapped === 'boolean' ? d.wrapped : !!(d.date && d.date < today),
           })) : p.days,
         }));
-        localStorage.setItem('bigals_productions', JSON.stringify(updated));
+        storage.set('bigals_productions', JSON.stringify(updated));
       },
     };
 
     function runMigrations() {
       const stored = getStoredSchemaVersion();
       if (stored >= SCHEMA_VERSION) return { ran: false };
-      const hadData = !!localStorage.getItem('bigals_productions');
+      const hadData = !!storage.get('bigals_productions');
       takePreMigrationSnapshot();
       try {
         for (let v = stored + 1; v <= SCHEMA_VERSION; v++) {
@@ -1761,17 +1877,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Snapshot the ORIGINAL user data before overwriting — runMigrations() takes its own snapshot
       // after the overwrite, so without this, a migration failure would restore the imported (bad)
       // data rather than the original.
-      const originalProductions = localStorage.getItem('bigals_productions');
-      const originalSchemaVersion = localStorage.getItem(SCHEMA_VERSION_KEY);
+      const originalProductions = storage.get('bigals_productions');
+      const originalSchemaVersion = storage.get(SCHEMA_VERSION_KEY);
       try {
-        localStorage.setItem('bigals_productions', JSON.stringify(arr));
+        storage.set('bigals_productions', JSON.stringify(arr));
         setStoredSchemaVersion(fileSchemaVersion);
         const result = runMigrations();
         if (result.error) {
-          if (originalProductions != null) localStorage.setItem('bigals_productions', originalProductions);
-          else localStorage.removeItem('bigals_productions');
-          if (originalSchemaVersion != null) localStorage.setItem(SCHEMA_VERSION_KEY, originalSchemaVersion);
-          else localStorage.removeItem(SCHEMA_VERSION_KEY);
+          if (originalProductions != null) storage.set('bigals_productions', originalProductions);
+          else storage.remove('bigals_productions');
+          if (originalSchemaVersion != null) storage.set(SCHEMA_VERSION_KEY, originalSchemaVersion);
+          else storage.remove(SCHEMA_VERSION_KEY);
           return { ok: false, error: `Migration failed: ${result.error}` };
         }
         return { ok: true };
@@ -1784,7 +1900,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [storageError, setStorageError] = useState(null);
       const [value, setValue] = useState(() => {
         try {
-          const raw = localStorage.getItem(key);
+          const raw = storage.get(key);
           if (raw) {
             let v = JSON.parse(raw);
             if (migrate && Array.isArray(v)) v = v.map(migrate);
@@ -1802,7 +1918,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return initial;
       });
       useEffect(() => {
-        try { localStorage.setItem(key, JSON.stringify(value)); } catch (err) {
+        try { storage.set(key, JSON.stringify(value)); } catch (err) {
           setStorageError(`Write error on "${key}": ${err.message}`);
         }
       }, [key, value]);
@@ -11899,9 +12015,14 @@ const setDays = (updater) =>
             message: msg,
             confirmLabel: "Restore",
             confirmTone: "danger",
-            onConfirm: () => {
+            onConfirm: async () => {
               const result = importBackup(rawText);
-              if (result.ok) { window.location.reload(); }
+              if (result.ok) {
+                // Native: flush the imported data to durable storage before the
+                // WebView reloads. Web: no await runs, reload is synchronous.
+                if (storage.isNative) await storage.flush();
+                window.location.reload();
+              }
               else { showToast(result.error); }
             },
           });
@@ -14831,18 +14952,18 @@ const confirmDelete = (p) => setConfirmOpts({
       useEffect(() => {
         try {
           if (productions.length > 0) return;
-          const oldProd = localStorage.getItem("bigals_production");
-          const oldCrew = localStorage.getItem("bigals_crew");
-          const oldDays = localStorage.getItem("bigals_days");
+          const oldProd = storage.get("bigals_production");
+          const oldCrew = storage.get("bigals_crew");
+          const oldDays = storage.get("bigals_days");
           if (oldProd || oldCrew || oldDays) {
             let p = oldProd ? JSON.parse(oldProd) : { title: "", prodCo: "", crew: [], days: [] };
             if (!p.crew?.length && oldCrew) p.crew = JSON.parse(oldCrew).map(migrateCrew);
             if (!p.days?.length && oldDays) p.days = JSON.parse(oldDays).map(migrateDay);
             if (!p.defaultDay) p.defaultDay = DEFAULT_PRODUCTION_DAY;
             setProductions([{ id: uid(), ...p }]);
-            localStorage.removeItem("bigals_production");
-            localStorage.removeItem("bigals_crew");
-            localStorage.removeItem("bigals_days");
+            storage.remove("bigals_production");
+            storage.remove("bigals_crew");
+            storage.remove("bigals_days");
           }
         } catch {}
       }, []); // runs once on mount only
@@ -14965,12 +15086,17 @@ const confirmDelete = (p) => setConfirmOpts({
         ));
       };
 
-      const handleResetAll = () => {
+      const handleResetAll = async () => {
         try {
-          localStorage.removeItem("bigals_productions");
-          localStorage.removeItem("bigals_user_prefs");
-          localStorage.removeItem(SCHEMA_VERSION_KEY);
-          localStorage.removeItem(PRE_MIGRATION_BACKUP_KEY);
+          storage.remove("bigals_productions");
+          storage.remove("bigals_user_prefs");
+          storage.remove(SCHEMA_VERSION_KEY);
+          storage.remove(PRE_MIGRATION_BACKUP_KEY);
+          // Native: ensure the deletes hit durable storage before the WebView
+          // reloads (fire-and-forget writes would otherwise race the reload).
+          // Web: storage.isNative is false, so no await runs — reload is
+          // synchronous exactly as before.
+          if (storage.isNative) await storage.flush();
           window.location.reload();
         } catch (err) {
           alert("Couldn't reset data — try closing and reopening the app, or clearing your browser storage manually.");
@@ -15051,10 +15177,38 @@ const confirmDelete = (p) => setConfirmOpts({
       );
     }
 
-    const migrationResult = runMigrations();
+    // migrationResult is read by Root() at render time (Root closes over it),
+    // so a module-level `let` assigned before render works for both boot paths.
+    let migrationResult = { ran: false };
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<Root />);
+    function startRender() {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<Root />);
+    }
+
+    if (storage.isNative) {
+      // NATIVE: load durable Preferences into the in-memory cache (and run the
+      // one-time localStorage→Preferences copy) BEFORE migrations and the first
+      // render, so the synchronous code below sees warm data. Then wire up the
+      // flush-on-background safety net.
+      storage.preload()
+        .then(() => {
+          migrationResult = runMigrations();
+          storage.installBackgroundFlush();
+          startRender();
+        })
+        .catch((err) => {
+          try { console.error('Storage preload failed; starting with empty/best-effort data', err); } catch (_) {}
+          migrationResult = runMigrations();
+          storage.installBackgroundFlush();
+          startRender();
+        });
+    } else {
+      // WEB: unchanged synchronous path — migrations then render, exactly as
+      // before this adapter existed (storage.* are localStorage pass-throughs).
+      migrationResult = runMigrations();
+      startRender();
+    }
   </script>
 </body>
 </html>

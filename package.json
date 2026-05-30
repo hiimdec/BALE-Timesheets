@@ -9,6 +9,7 @@
     "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js",
     "audit:build:exec": "node scripts/build-vs-source-audit/compare.js",
     "audit:build:textual": "node scripts/build-vs-source-audit/textual-diff.js",
+    "audit:storage": "node scripts/storage-audit/storage-test.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -19,6 +20,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/ios": "^8.3.4",
+    "@capacitor/preferences": "^8.0.1",
     "canvas": "^3.2.3",
     "sharp": "^0.34.5"
   },
