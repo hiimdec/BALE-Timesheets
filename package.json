@@ -10,6 +10,7 @@
     "audit:build:exec": "node scripts/build-vs-source-audit/compare.js",
     "audit:build:textual": "node scripts/build-vs-source-audit/textual-diff.js",
     "audit:storage": "node scripts/storage-audit/storage-test.js",
+    "audit:web": "node scripts/native-audit/web-regression.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -21,11 +22,18 @@
   "license": "ISC",
   "dependencies": {
     "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
+    "@capacitor/filesystem": "^8.1.2",
     "@capacitor/ios": "^8.3.4",
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "canvas": "^3.2.3",
+    "capacitor-email-composer": "^8.0.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

@@ -8,7 +8,6 @@
   <!-- PWA / iOS Home Screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="TimeMachine">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0a0a0a">
   <!-- App icons — served as static files -->
@@ -360,6 +359,90 @@
 
       return { isNative: true, get, set, remove, preload, flush, installBackgroundFlush, lastError: () => lastError };
     })();
+
+    /* ═══════════════════════════ NATIVE BRIDGE HELPERS ═══════════════════════════
+     * Capacitor-iOS-only helpers. Every caller is branched behind IS_NATIVE; on the
+     * web (GitHub Pages) build IS_NATIVE is false and none of this runs — the
+     * existing browser behaviour (window.print, mailto, <a download>, target=_blank)
+     * is preserved byte-for-byte. The vendored PDF libraries are injected lazily and
+     * ONLY on native, so the web build never even downloads them.
+     */
+    const IS_NATIVE = storage.isNative;
+    const _capPlugins = () => (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins) || {};
+
+    // Lazy-load a vendored script exactly once. Used for the PDF libraries on native.
+    const _scriptPromises = {};
+    function loadVendorScript(src) {
+      if (_scriptPromises[src]) return _scriptPromises[src];
+      _scriptPromises[src] = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src; s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Failed to load ' + src));
+        document.head.appendChild(s);
+      });
+      return _scriptPromises[src];
+    }
+    async function ensurePdfLibs() {
+      if (!window.html2canvas) await loadVendorScript('./vendor/html2canvas.min.js');
+      if (!(window.jspdf && window.jspdf.jsPDF)) await loadVendorScript('./vendor/jspdf.umd.min.js');
+      return { html2canvas: window.html2canvas, jsPDF: window.jspdf.jsPDF };
+    }
+
+    // Write a file to the app's Cache dir and open the iOS share sheet.
+    //   data: base64 string for binary (PDF), or utf8 text when opts.encoding === 'utf8'.
+    async function nativeSaveAndShare(filename, data, opts = {}) {
+      const { Filesystem, Share } = _capPlugins();
+      const writeOpts = { path: filename, data, directory: 'CACHE', recursive: true };
+      if (opts.encoding === 'utf8') writeOpts.encoding = 'utf8';   // text; omit → binary (base64)
+      await Filesystem.writeFile(writeOpts);
+      const { uri } = await Filesystem.getUri({ path: filename, directory: 'CACHE' });
+      await Share.share({ title: opts.title || filename, text: opts.text, url: uri, files: [uri] });
+      return 'shared';
+    }
+
+    // Open a URL in the in-app Safari view (SFSafariViewController). Returns to the app.
+    async function nativeOpenInBrowser(url) {
+      const { Browser } = _capPlugins();
+      await Browser.open({ url });
+    }
+
+    // Hand a URL (e.g. mailto:) to iOS to open in the appropriate app.
+    async function nativeOpenUrl(url) {
+      const { App } = _capPlugins();
+      await App.openUrl({ url });
+    }
+
+    // Match the iOS status bar to the app's dark theme (light text on dark).
+    async function nativeSetupStatusBar() {
+      const { StatusBar } = _capPlugins();
+      if (!StatusBar) return;
+      try { await StatusBar.setStyle({ style: 'DARK' }); } catch (_) {}
+    }
+
+    // Render an already-mounted print container to a multi-page A4 PDF and share it.
+    // Each existing per-page DOM node (the app pre-paginates) becomes one PDF page,
+    // so rows are never sliced mid-line. Uses PNG for crisp text fidelity.
+    async function nativeExportPrintViewPdf(containerId, pageSelector, filename) {
+      const { html2canvas, jsPDF } = await ensurePdfLibs();
+      const container = document.getElementById(containerId);
+      if (!container) throw new Error('Print container not found: ' + containerId);
+      const found = container.querySelectorAll(pageSelector);
+      const pages = found.length ? Array.from(found) : [container];
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const A4W = 210, A4H = 297;
+      for (let i = 0; i < pages.length; i++) {
+        const canvas = await html2canvas(pages[i], {
+          scale: 3, backgroundColor: '#ffffff', useCORS: true, logging: false,
+        });
+        const img = canvas.toDataURL('image/png');
+        if (i > 0) pdf.addPage();
+        pdf.addImage(img, 'PNG', 0, 0, A4W, A4H);
+      }
+      const base64 = pdf.output('datauristring').split(',')[1];
+      await nativeSaveAndShare(filename, base64, { title: filename });
+      return 'shared';
+    }
 
     /*
      * TimeMachine — single-file React app (React + Babel + Tailwind, no build step).
@@ -3506,7 +3589,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
 
       return ReactDOM.createPortal(
-        <div id="print-view">
+        <div id="print-view" style={IS_NATIVE ? { position: 'fixed', left: '-10000px', top: 0, zIndex: -1 } : undefined}>
           <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
           {pages}
         </div>,
@@ -3609,7 +3692,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       ].filter(f => f.val && String(f.val).trim());
 
       return (
-        <div id="invoice-print-view" className="invoice-print-root">
+        <div id="invoice-print-view" className="invoice-print-root" style={IS_NATIVE ? { position: 'fixed', left: '-10000px', top: 0, zIndex: -1 } : undefined}>
           <style dangerouslySetInnerHTML={{ __html: INVOICE_PRINT_STYLES }} />
           <div className="invoice-page">
             <div className="invoice-content">
@@ -3822,7 +3905,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (subject) params.set('subject', subject);
       if (body) params.set('body', body);
       const queryString = params.toString().replace(/\+/g, '%20');
-      window.location.href = `mailto:${encodeURIComponent(recipient)}?${queryString}`;
+      const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?${queryString}`;
+      if (IS_NATIVE) {
+        // WKWebView blocks mailto: via location.href; hand it to iOS instead.
+        nativeOpenUrl(mailtoUrl).catch((e) => { try { console.error('openUrl mailto failed', e); } catch (_) {} });
+      } else {
+        window.location.href = mailtoUrl;
+      }
     }
 
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
@@ -8851,11 +8940,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!exportState) return;
         const timer = setTimeout(() => {
           const cleanup = () => setExportState(null);
-          window.addEventListener('afterprint', cleanup, { once: true });
-          window.print();
-          // Fallback clear after 30s if afterprint doesn't fire
-          const fallback = setTimeout(cleanup, 30000);
-          return () => clearTimeout(fallback);
+          if (IS_NATIVE) {
+            nativeExportPrintViewPdf('print-view', '.page', 'TimeMachine timesheet.pdf')
+              .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
+              .finally(cleanup);
+          } else {
+            window.addEventListener('afterprint', cleanup, { once: true });
+            window.print();
+            // Fallback clear after 30s if afterprint doesn't fire
+            const fallback = setTimeout(cleanup, 30000);
+            return () => clearTimeout(fallback);
+          }
         }, 300);
         return () => clearTimeout(timer);
       }, [exportState]);
@@ -10721,10 +10816,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!soloExportState) return;
         const timer = setTimeout(() => {
           const cleanup = () => setSoloExportState(null);
-          window.addEventListener('afterprint', cleanup, { once: true });
-          window.print();
-          const fallback = setTimeout(cleanup, 30000);
-          return () => clearTimeout(fallback);
+          if (IS_NATIVE) {
+            nativeExportPrintViewPdf('print-view', '.page', `${(soloCrew && soloCrew.name) || 'Crew'} timesheet.pdf`)
+              .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
+              .finally(cleanup);
+          } else {
+            window.addEventListener('afterprint', cleanup, { once: true });
+            window.print();
+            const fallback = setTimeout(cleanup, 30000);
+            return () => clearTimeout(fallback);
+          }
         }, 300);
         return () => clearTimeout(timer);
       }, [soloExportState]);
@@ -11154,10 +11255,16 @@ const setDays = (updater) =>
         if (!savePrintState) return;
         const timer = setTimeout(() => {
           const cleanup = () => setSavePrintState(null);
-          window.addEventListener('afterprint', cleanup, { once: true });
-          window.print();
-          const fallback = setTimeout(cleanup, 30000);
-          return () => clearTimeout(fallback);
+          if (IS_NATIVE) {
+            nativeExportPrintViewPdf('print-view', '.page', 'TimeMachine timesheets.pdf')
+              .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
+              .finally(cleanup);
+          } else {
+            window.addEventListener('afterprint', cleanup, { once: true });
+            window.print();
+            const fallback = setTimeout(cleanup, 30000);
+            return () => clearTimeout(fallback);
+          }
         }, 300);
         return () => clearTimeout(timer);
       }, [savePrintState]);
@@ -12378,6 +12485,7 @@ const setDays = (updater) =>
             <Disclosure label="Reference">
               <a
                 href="https://www.a-p-a.net/apa-crew-terms/"
+                onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenInBrowser('https://www.a-p-a.net/apa-crew-terms/').catch(() => {}); } : undefined}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-between gap-3 text-sm text-neutral-300 hover:text-sky-500 transition-colors py-1 group"
@@ -12416,7 +12524,7 @@ const setDays = (updater) =>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-neutral-500">Feedback</span>
-                  <a href="mailto:feedback@timemachineapp.co.uk" className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
+                  <a href="mailto:feedback@timemachineapp.co.uk" onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenUrl('mailto:feedback@timemachineapp.co.uk').catch(() => {}); } : undefined} className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
                 </div>
               </div>
             </Disclosure>
@@ -13111,10 +13219,16 @@ const setDays = (updater) =>
             setPrintTarget(null);
             document.title = originalTitle;
           };
-          window.addEventListener('afterprint', cleanup, { once: true });
-          window.print();
-          const fallback = setTimeout(cleanup, 30000);
-          return () => clearTimeout(fallback);
+          if (IS_NATIVE) {
+            nativeExportPrintViewPdf('invoice-print-view', '.invoice-page', `Invoice ${printTarget.invoiceNumber || ''}.pdf`)
+              .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
+              .finally(cleanup);
+          } else {
+            window.addEventListener('afterprint', cleanup, { once: true });
+            window.print();
+            const fallback = setTimeout(cleanup, 30000);
+            return () => clearTimeout(fallback);
+          }
         }, 300);
         return () => clearTimeout(timer);
       }, [printTarget]);
@@ -15070,12 +15184,20 @@ const confirmDelete = (p) => setConfirmOpts({
           exportedAt: now.toISOString(),
           productions,
         }, null, 2);
-        const blob = new Blob([payload], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `timemachine-backup-${date}.json`;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        const filename = `timemachine-backup-${date}.json`;
+        if (IS_NATIVE) {
+          // Write the JSON to the app's Cache dir and open the iOS share sheet
+          // (Save to Files, AirDrop, Mail, etc.) — same pattern as the PDFs.
+          nativeSaveAndShare(filename, payload, { encoding: 'utf8', title: filename })
+            .catch((e) => { try { console.error('Backup export failed', e); } catch (_) {} });
+        } else {
+          const blob = new Blob([payload], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
       };
 
       const handleUpdateDays = (id, updater) => {
@@ -15187,6 +15309,7 @@ const confirmDelete = (p) => setConfirmOpts({
     }
 
     if (storage.isNative) {
+      nativeSetupStatusBar();
       // NATIVE: load durable Preferences into the in-memory cache (and run the
       // one-time localStorage→Preferences copy) BEFORE migrations and the first
       // render, so the synchronous code below sees warm data. Then wire up the
