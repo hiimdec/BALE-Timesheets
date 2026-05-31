@@ -420,10 +420,10 @@
       try { await StatusBar.setStyle({ style: 'DARK' }); } catch (_) {}
     }
 
-    // Render an already-mounted print container to a multi-page A4 PDF and share it.
-    // Each existing per-page DOM node (the app pre-paginates) becomes one PDF page,
-    // so rows are never sliced mid-line. Uses PNG for crisp text fidelity.
-    async function nativeExportPrintViewPdf(containerId, pageSelector, filename) {
+    // Render an already-mounted print container to a multi-page A4 PDF and return
+    // the file as base64. Each existing per-page DOM node (the app pre-paginates)
+    // becomes one PDF page, so rows are never sliced mid-line. PNG for crisp text.
+    async function nativeRenderPrintViewPdfBase64(containerId, pageSelector) {
       const { html2canvas, jsPDF } = await ensurePdfLibs();
       const container = document.getElementById(containerId);
       if (!container) throw new Error('Print container not found: ' + containerId);
@@ -439,8 +439,40 @@
         if (i > 0) pdf.addPage();
         pdf.addImage(img, 'PNG', 0, 0, A4W, A4H);
       }
-      const base64 = pdf.output('datauristring').split(',')[1];
+      return pdf.output('datauristring').split(',')[1];
+    }
+
+    // Render the print container to PDF and hand it to the iOS share sheet.
+    async function nativeExportPrintViewPdf(containerId, pageSelector, filename) {
+      const base64 = await nativeRenderPrintViewPdfBase64(containerId, pageSelector);
       await nativeSaveAndShare(filename, base64, { title: filename });
+      return 'shared';
+    }
+
+    // Open the iOS Mail composer pre-filled with the invoice details and the PDF
+    // attached as base64. If no mail account is configured (hasAccount === false)
+    // or the plugin is unavailable, fall back to the share sheet with the PDF
+    // attached so the user can still send it via Gmail / Outlook / Messages / etc.
+    // Returns 'composer' on Mail-app delivery, 'shared' on fallback.
+    async function nativeSendInvoiceEmail({ to, cc, subject, body, base64, filename }) {
+      const { EmailComposer } = _capPlugins();
+      const toList = (to || '').trim() ? [(to || '').trim()] : [];
+      const ccList = (cc || '').trim() ? [(cc || '').trim()] : [];
+      let hasAccount = false;
+      try {
+        if (EmailComposer && EmailComposer.hasAccount) {
+          const r = await EmailComposer.hasAccount();
+          hasAccount = !!(r && r.hasAccount);
+        }
+      } catch (_) { hasAccount = false; }
+      if (hasAccount) {
+        await EmailComposer.open({
+          to: toList, cc: ccList, subject, body,
+          attachments: [{ type: 'base64', path: base64, name: filename }],
+        });
+        return 'composer';
+      }
+      await nativeSaveAndShare(filename, base64, { title: filename, text: body });
       return 'shared';
     }
 
@@ -13200,6 +13232,13 @@ const setDays = (updater) =>
       const [confirmDel, setConfirmDel] = React.useState(false);
       const [confirmRefresh, setConfirmRefresh] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
+      // Native-only: tells the post-mount effect which delivery to run.
+      //   'share'  → render PDF + iOS share sheet (existing print/share button)
+      //   'email'  → render PDF + EmailComposer (new Send-on-native flow)
+      // Captured at click time and cleared on cleanup. Web is unaffected (the
+      // effect's IS_NATIVE branch never runs there).
+      const printIntentRef = React.useRef('share');
+      const emailCcRef = React.useRef('');
       const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
       const [notesOpen, setNotesOpen] = React.useState(!!invoice?.notes);
       // CC is entered per-send and never persisted — resets to empty each visit.
@@ -13220,9 +13259,37 @@ const setDays = (updater) =>
             document.title = originalTitle;
           };
           if (IS_NATIVE) {
-            nativeExportPrintViewPdf('invoice-print-view', '.invoice-page', `Invoice ${printTarget.invoiceNumber || ''}.pdf`)
-              .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
-              .finally(cleanup);
+            const filename = `Invoice ${printTarget.invoiceNumber || ''}.pdf`;
+            const intent = printIntentRef.current;
+            if (intent === 'email') {
+              const inv = printTarget;
+              const subjectBase = `Invoice ${inv.invoiceNumber}`;
+              const subject = inv.jobTitle ? `${subjectBase} — ${inv.jobTitle}` : subjectBase;
+              const subtotal = invoiceSubtotal(inv.lineItems);
+              const vatAmount = inv.vatRegistered ? subtotal * (Number(inv.vatRate) || 20) / 100 : 0;
+              const totalStr = fmtGBP(subtotal + vatAmount);
+              const fromName = inv.fromName || inv.fromCompanyName || '';
+              const jobBit = inv.jobTitle ? ` for ${inv.jobTitle}` : '';
+              const body = `Hi,\n\nPlease find attached invoice ${inv.invoiceNumber}${jobBit}, total ${totalStr}.\n\nPlease quote ${inv.invoiceNumber} when making payment.\n\nMany thanks,\n${fromName}`;
+              const wasDraft = inv.status === 'draft';
+              nativeRenderPrintViewPdfBase64('invoice-print-view', '.invoice-page')
+                .then((base64) => nativeSendInvoiceEmail({
+                  to: inv.toEmail || '', cc: emailCcRef.current || '',
+                  subject, body, base64, filename,
+                }))
+                .then((mode) => {
+                  if (wasDraft) {
+                    updateInvoice({ status: 'sent', dateSent: todayISO() });
+                    showToast(mode === 'composer' ? 'Email composer opened — marked as sent' : 'Share sheet opened — marked as sent');
+                  }
+                })
+                .catch((e) => { try { console.error('Invoice email failed', e); } catch (_) {} })
+                .finally(() => { printIntentRef.current = 'share'; emailCcRef.current = ''; cleanup(); });
+            } else {
+              nativeExportPrintViewPdf('invoice-print-view', '.invoice-page', filename)
+                .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
+                .finally(cleanup);
+            }
           } else {
             window.addEventListener('afterprint', cleanup, { once: true });
             window.print();
@@ -13285,6 +13352,16 @@ const setDays = (updater) =>
       };
 
       const handleEmail = () => {
+        if (IS_NATIVE) {
+          // Mount the hidden invoice print view; the post-mount effect reads
+          // printIntentRef === 'email' and routes to nativeSendInvoiceEmail
+          // (renders PDF + opens iOS Mail composer with the PDF attached, or
+          // falls back to the share sheet). Auto-mark-as-sent fires there.
+          printIntentRef.current = 'email';
+          emailCcRef.current = ccEmail;
+          setPrintTarget(invoice);
+          return;
+        }
         const wasDraft = invoice.status === 'draft';
         openInvoiceMailto(invoice, ccEmail);
         if (wasDraft) {
