@@ -2238,8 +2238,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const detail = n === 1 ? fmtDateShort(e.dates[0])
           : n === 2 ? `${fmtDateShort(e.dates[0])} – ${fmtDateShort(e.dates[n - 1])}`
           : n > 2 ? `${n} days` : "";
-        const amount = e.rate !== null ? e.qty * e.rate : e.amount;
-        return { id: uid(), label: e.label, detail, qty: e.qty, rate: e.rate, amount, discountedQty: null, isExpense: e.isExpense };
+        // Use the accumulated per-day amounts (e.amount), which already honour
+        // this shoot's rounding mode via calcForDisplay (favourable = each line
+        // ceil'd up per day). Recomputing qty×rate here would discard that
+        // rounding, so the invoice total would disagree with the notes / day
+        // totals. In Exact mode e.amount === qty×rate, so this is a no-op there.
+        return { id: uid(), label: e.label, detail, qty: e.qty, rate: e.rate, amount: e.amount, discountedQty: null, isExpense: e.isExpense };
       });
     }
 
@@ -3760,7 +3764,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </td>
               <td className="num">{isFixed ? "" : item.qty}</td>
               <td className="num">{isFixed ? "" : fmtGBP(item.rate)}</td>
-              <td className="num">{isFixed ? fmtGBP(item.amount) : fmtGBP(item.qty * item.rate)}</td>
+              <td className="num">{fmtGBP(item.amount)}</td>
             </tr>
           );
         } else {
@@ -3776,7 +3780,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <td className="num">
                 {isFixed
                   ? fmtGBP(item.amount)
-                  : fmtGBP((partiallyWaived ? billedQty : item.qty) * item.rate)}
+                  : fmtGBP(partiallyWaived ? billedQty * item.rate : item.amount)}
               </td>
             </tr>
           );
@@ -9375,6 +9379,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
               </div>
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Favourable rounding</span>
+                  <Toggle value={!!production.favourableRounding} onChange={(v) => setProduction(p => ({ ...p, favourableRounding: v }))} ariaLabel="Favourable rounding" />
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-1">Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used. Applies to this shoot only.</p>
+              </div>
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">APA rounding</span>
+                  <Toggle value={!!production.apaRounding} onChange={(v) => setProduction(p => ({ ...p, apaRounding: v }))} ariaLabel="APA rounding" />
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-1">Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40). Applies to this shoot only.</p>
+              </div>
               {production.bestBoyMode && (
                 <div className="mt-4 pt-4 border-t border-neutral-800">
                   <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">View mode</div>
@@ -12549,14 +12567,14 @@ const setDays = (updater) =>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Favourable rounding</div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used.</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Default for new shoots. Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used. Change a specific shoot in its own settings — this never alters existing shoots.</div>
                 </div>
                 <Toggle value={userPrefs.favourableRounding} onChange={(v) => set({ favourableRounding: v })} ariaLabel="Favourable rounding" />
               </div>
               <div className="flex items-center justify-between gap-3 mt-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">APA rounding</div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40).</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Default for new shoots. Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40). Change a specific shoot in its own settings — this never alters existing shoots.</div>
                 </div>
                 <Toggle value={userPrefs.apaRounding} onChange={(v) => set({ apaRounding: v })} ariaLabel="APA rounding" />
               </div>
@@ -13127,7 +13145,12 @@ const setDays = (updater) =>
         if (item.rate !== null) return item.discountedQty * item.rate;
         return 0; // null-rate line with any discountedQty = fully waived
       }
-      return item.rate !== null ? item.qty * item.rate : item.amount;
+      // item.amount carries the line's total honouring the shoot's rounding
+      // mode: per-day summed for auto-generated lines (buildInvoiceLineItems),
+      // and qty×rate for manually-edited lines (kept in sync by LineEditModal).
+      // Recomputing qty×rate here would drop favourable rounding and split the
+      // total from the notes/day totals, so use the stored amount.
+      return item.amount;
     }
 
     function invoiceSubtotal(lineItems) {
@@ -13429,6 +13452,10 @@ const setDays = (updater) =>
           shootDateEnd: sortedDates[sortedDates.length - 1] || "",
         };
         if (userCrewId) updates.lineItems = buildInvoiceLineItems(production, userPrefs, userCrewId);
+        // Regenerate the notes snapshot so it tracks current figures and this
+        // shoot's rounding mode — but only if the user hasn't hand-edited them
+        // (notesEdited guards manual edits from being clobbered).
+        if (userCrewId && !inv.notesEdited) updates.notes = buildDefaultNotes(production, userPrefs, userCrewId);
         setProduction(p => ({
           ...p,
           invoices: (p.invoices || []).map(i => i.id === invoiceId ? { ...i, ...updates } : i),
@@ -13815,7 +13842,7 @@ const setDays = (updater) =>
                 <div className="px-4 pb-3">
                   <textarea
                     value={invoice.notes || ''}
-                    onChange={(e) => updateInvoice({ notes: e.target.value })}
+                    onChange={(e) => updateInvoice({ notes: e.target.value, notesEdited: true })}
                     rows={5}
                     placeholder="Timesheet breakdown, payment terms, or any other notes…"
                     className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
