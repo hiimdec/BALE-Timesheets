@@ -1679,7 +1679,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
 
       const total = lines.reduce((s, l) => s + l.amount, 0);
-      const otHrsForMeta = lines.filter((l) => /ot|triple/i.test(l.label)).reduce((s, l) => s + (Number(l.qty) || 0), 0);
+      const otHrsForMeta = lines.filter((l) => categorizeBreakdownLine(l.label) === 'ot').reduce((s, l) => s + (Number(l.qty) || 0), 0);
 
       return {
         meta: {
@@ -7183,7 +7183,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           const chips = [];
           const otHrs = calc.lines
-            .filter(l => /\bot\b|overtime|triple/i.test(l.label))
+            .filter(l => categorizeBreakdownLine(l.label) === 'ot')
             .reduce((s, l) => s + (Number(l.qty) || 0), 0);
           if (otHrs > 0) {
             chips.push({
@@ -7255,7 +7255,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (calc.meta?.continuousDay) bump('CWD', true);
           if (calc.meta?.isElevenHourDay) bump('11h day', false);
           const otHrs = (calc.lines || [])
-            .filter(l => /\bot\b|overtime|triple/i.test(l.label))
+            .filter(l => categorizeBreakdownLine(l.label) === 'ot')
             .reduce((s, l) => s + (Number(l.qty) || 0), 0);
           if (otHrs > 0) bump('OT', true);
           if ((calc.lines || []).some(l => /late 1st|l1\b/i.test(l.label))) bump('L1', true, true);
@@ -8072,7 +8072,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (calc?.meta?.continuousDay) pills.push({ label: 'CWD', warn: true });
       if (calc?.meta?.isElevenHourDay) pills.push({ label: '11h day', warn: false });
       const otHrs = (calc?.lines || [])
-        .filter(l => /\bot\b|overtime|triple/i.test(l.label))
+        .filter(l => categorizeBreakdownLine(l.label) === 'ot')
         .reduce((s, l) => s + (Number(l.qty) || 0), 0);
       if (otHrs > 0) pills.push({ label: `OT ${otHrs % 1 ? otHrs.toFixed(1) : otHrs}h`, warn: true });
       if ((calc?.lines || []).some(l => /late 1st|l1/i.test(l.label))) pills.push({ label: 'Late 1st break', warn: true });
