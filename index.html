@@ -13400,7 +13400,10 @@ const setDays = (updater) =>
         !isFixed && item.discountedQty !== null ? String(item.discountedQty) : String(item.qty)
       );
       const parsedQty = parseFloat(dqty) || 0;
-      const originalAmount = isFixed ? item.amount : item.qty * item.rate;
+      // Use the stored line amount (what the invoice actually bills, incl.
+      // Favourable rounding) so "Full amt"/"saving" match the invoiced line.
+      // Recomputing qty×rate here would disagree with the line's Amount column.
+      const originalAmount = Number(item.amount) || 0;
       const discountedAmount = isFixed ? 0 : parsedQty * item.rate;
       const saving = originalAmount - discountedAmount;
       const isAlreadyWaived = isFixed && item.discountedQty !== null;
