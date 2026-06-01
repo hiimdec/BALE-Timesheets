@@ -1490,8 +1490,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const satOtRate = bectuOtRate ?? satRate;
         if (effectiveDayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
-          const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
-          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic" + otCurtailedSuffix, rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
+          // APA §4.6: Saturday OT is 1.5× BHR, but OT after 00:00 is 3× BHR and
+          // continues at triple to wrap.
+          const otTotal = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
+          if (otTotal > 0) {
+            const otStartAbs = effectiveStart + basicHrs;
+            const tripleHrs = ceilHalf(Math.max(0, wrapAbs - Math.max(otStartAbs, 24)));
+            const satOtHrs = Math.max(0, otTotal - tripleHrs);
+            if (satOtHrs > 0) lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: (tripleHrs > 0 ? `${toHHMM(otStartAbs)} – 00:00` : "After basic") + otCurtailedSuffix, rate: satOtRate, qty: satOtHrs, amount: satOtHrs * satOtRate });
+            if (tripleHrs > 0) {
+              const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+              lines.push({ label: "OT Triple Time (after 00:00)", detail: `00:00 – ${toHHMM(wrapAbs)}`, rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
+            }
+          }
         } else {
           // APA §2.3 / §2.4(ix): flat 8h × satRate for both Pre-light and
           // discretionary days. Lunch is unpaid filler — it only shifts the
@@ -1509,11 +1520,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (effectiveDayType === "Shoot") {
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
+          // APA §4.7: Sun/BH is 2× BHR for all hours, but hours after 00:00 are
+          // 3× BHR and continue at triple to wrap. Split the flat day at
+          // midnight; the min-10h floor tops up the pre-midnight (2× BHR) part.
+          const tripleHrs = ceilHalf(Math.max(0, wrapAbs - 24));
+          const flatHrs = Math.max(0, paidHrs - tripleHrs);
           lines.push({
             label: `${sunBranchPrefix} Shoot (${sunMult}× BHR, flat)`,
-            detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
-            rate: sunRate, qty: paidHrs, amount: paidHrs * sunRate,
+            detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}${tripleHrs > 0 ? " · to 00:00" : ""}`,
+            rate: sunRate, qty: flatHrs, amount: flatHrs * sunRate,
           });
+          if (tripleHrs > 0) {
+            const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+            lines.push({ label: "OT Triple Time (after 00:00)", detail: `00:00 – ${toHHMM(wrapAbs)}`, rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
+          }
           if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
         } else {
           // Sun/BH non-Shoot pays a single flat-rate line covering basic +
@@ -1553,9 +1573,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (otTotal > 0) {
             const otStartAbs = effectiveStart + basicHrs;
             const otEndAbs = wrapAbs;
+            // APA §4.4: once OT crosses 00:00 it's 3× BHR and CONTINUES at
+            // triple to wrap (not just to 05:00).
             const tripleStart = Math.max(otStartAbs, 24);
-            const tripleEnd = Math.min(otEndAbs, 29);
-            const tripleRaw = Math.max(0, tripleEnd - tripleStart);
+            const tripleRaw = Math.max(0, otEndAbs - tripleStart);
             const tripleHrs = ceilHalf(tripleRaw);
             const standardOtHrs = Math.max(0, otTotal - tripleHrs);
             if (standardOtHrs > 0) {
@@ -1567,7 +1588,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             }
             if (tripleHrs > 0) {
               const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
-              lines.push({ label: "OT Triple Time (00:00–05:00)", detail: "After midnight", rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
+              lines.push({ label: "OT Triple Time (after 00:00)", detail: `00:00 – ${toHHMM(otEndAbs)}`, rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
             }
           }
         }
