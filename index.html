@@ -3342,8 +3342,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 );
               }
 
+              // Resolve cascaded fields — call/wrap/dayType can live in
+              // dayDefaults with the raw day record leaving them undefined, so
+              // display must read the resolved values (the calc already does).
+              const resolved = resolveDay(production, day, crewMember);
               // Day with data — but check if it's a Rest Day type
-              if (day.dayType === "Rest Day") {
+              if (resolved.dayType === "Rest Day") {
                 return (
                   <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
                     <div className="date">
@@ -3365,11 +3369,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               const isBH = flags.isBankHoliday;
               const rowTint = isBH || isSun ? 'sun' : isSat ? 'sat' : '';
 
-              const callTime = day.callTime || '';
-              const wrapTime = day.wrapTime || '';
+              const callTime = resolved.callTime || '';
+              const wrapTime = resolved.wrapTime || '';
               const workedHrs = calc.meta?.workedHrs || 0;
               const otHrs = calc.meta?.otHrs || 0;
-              const chipClass = dayTypeChipClass(day.dayType);
+              const chipClass = dayTypeChipClass(resolved.dayType);
 
               return (
                 <div key={dateISO} className={`day${rowTint ? ' ' + rowTint : ''}`}>
@@ -3380,7 +3384,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                   <div className="body">
                     <div className="head-line">
-                      <span className={`chip-day ${chipClass}`}>{day.dayType}</span>
+                      <span className={`chip-day ${chipClass}`}>{resolved.dayType}</span>
                       <PenChips flags={flags} />
                       {callTime && wrapTime && (
                         <span className="times tnum">{callTime} → {wrapTime} <span className="hrs">{workedHrs.toFixed(1)}h</span></span>
@@ -3540,7 +3544,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const dn = new Date(dateISO + "T12:00:00").getDay();
                       const colCls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
                       const day = (byCA[c.id] || {})[dateISO];
-                      if (!day || day.dayType === "Rest Day") {
+                      const resolved = day ? resolveDay(production, day, c) : null;
+                      if (!day || resolved.dayType === "Rest Day") {
                         return (
                           <div key={dateISO} className={`grid-cell${colCls ? ' ' + colCls : ''}`}>
                             <span className="rest-label">Rest</span>
@@ -3553,7 +3558,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const isBH = flags.isBankHoliday;
                       const cellCls = (isBH || dn === 0) ? 'sun' : dn === 6 ? 'sat' : '';
                       const hrs = calc.meta?.workedHrs || 0;
-                      const chipCls = dayTypeChipClass(day.dayType);
+                      const chipCls = dayTypeChipClass(resolved.dayType);
                       const penNodes = [];
                       if (flags.hasOT)        penNodes.push(<span key="ot"  className="chip-ot">OT</span>);
                       if (flags.hasL1)        penNodes.push(<span key="l1"  className="chip-msb">L1</span>);
@@ -3566,7 +3571,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <div key={dateISO} className={`grid-cell${cellCls ? ' ' + cellCls : ''}`}>
                           <div className="cell-stack">
                             <div className="top">
-                              <span className={`chip-day ${chipCls}`}>{day.dayType}</span>
+                              <span className={`chip-day ${chipCls}`}>{resolved.dayType}</span>
                               <span className="hrs-line tnum">{hrs.toFixed(1)}h</span>
                               {penNodes.length > 0 && <div className="pens">{penNodes}</div>}
                             </div>
@@ -5101,8 +5106,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ DAY ENTRY FORM ═══════════════════════════ */
 
-    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false }) {
+    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null }) {
       const v = value;
+      // DISPLAY-ONLY resolved view: call/wrap/lunch/dayType can cascade from
+      // dayDefaults, so the raw `v` may leave those fields undefined. Resolve
+      // them for display + break-state derivation (matching the calc engine).
+      // Edits still write to the raw `v` via set()/onChange — the resolved value
+      // is never persisted on render; only an actual edit creates an override.
+      const vr = production ? resolveDay(production, v, (crew || []).find(c => c.id === v.crewId)) : v;
       const set = (patch) => onChange({ ...v, ...patch });
       const [showTravelInfo, setShowTravelInfo] = useState(false);
       const [showPreCallInfo, setShowPreCallInfo] = useState(false);
@@ -5133,29 +5144,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         set(patch);
       };
 
-      const callH = parseHHMM(v.callTime);
-      const wrapH = parseHHMM(v.wrapTime);
+      const callH = parseHHMM(vr.callTime);
+      const wrapH = parseHHMM(vr.wrapTime);
       const autoNextDay = callH !== null && wrapH !== null && wrapH <= callH;
       const dow = dayOfWeek(v.date);
       const dayLabel = v.date ? weekday(v.date) : "";
       const isWeekend = dow === 0 || dow === 6;
       const bhName = getBankHolidayName(v.date);
       const isBH = !!bhName;
-      const isTravelDay = v.dayType === "Travel Day";
+      const isTravelDay = vr.dayType === "Travel Day";
       const activeCrew = fixedCrewId ? crew.find(c => c.id === fixedCrewId) : crew.find(c => c.id === v.crewId);
       // Step-up role wins over base role for both BWD-override and PMPA classification.
       const effectiveRole = v.stepUpRole ? v.stepUpRole : (activeCrew?.role || "");
       const isPmpa = ROLE_DEFAULTS[effectiveRole]?.pmpa === true;
       const role = effectiveRole;
       const bwdOverrideApplies = !isPmpa && ROLES_WITH_BWD_OVERRIDE.includes(role) &&
-        ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(v.dayType);
+        ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(vr.dayType);
       // Mirror calculateDay's BWD override (APA §2.3): a DoP / AD / LM on a
       // Pre-light / Prep / Recce / Build / De-rig is paid as a Basic Working
       // Day, which means the break-state UI (lunch chip, status messages,
       // meal-provided toggle, 2nd-break section) must use the effective type
       // too — otherwise the form would contradict the calc.
-      const effDayType = bwdOverrideApplies ? "Shoot" : v.dayType;
-      const bs = deriveBreakState(v, effDayType);
+      const effDayType = bwdOverrideApplies ? "Shoot" : vr.dayType;
+      const bs = deriveBreakState(vr, effDayType);
 
       const show2ndBreakSection = !isPmpa && !isTravelDay && bs && !bs.continuousDay && bs.secondBreakRequired;
       const showCwdBreaksChip   = !isPmpa && !isTravelDay && bs && bs.continuousDay;
@@ -5259,7 +5270,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </Field>
                   )}
                   <Field label="Day Type">
-                    <Select value={v.dayType} onChange={(e) => onDayTypeChange(e.target.value)}>{DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
+                    <Select value={vr.dayType ?? ''} onChange={(e) => onDayTypeChange(e.target.value)}>{DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
                   </Field>
                 </div>
               </div>
@@ -5321,7 +5332,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           )}
                         </div>
                         <TimeInput
-                          value={v.callTime}
+                          value={vr.callTime ?? ''}
                           onChange={(e) => onCallChange(e.target.value)}
                           className={tileInputCls}
                         />
@@ -5342,7 +5353,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           )}
                         </div>
                         <TimeInput
-                          value={v.wrapTime}
+                          value={vr.wrapTime ?? ''}
                           onChange={(e) => set({ wrapTime: e.target.value })}
                           className={tileInputCls}
                         />
@@ -5357,7 +5368,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="border-t border-neutral-800 pt-3 mt-1 space-y-3">
                   {(() => {
                     const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
-                    const dur = Number(v.lunchDurationMins ?? 60);
+                    const dur = Number(vr.lunchDurationMins ?? 60);
                     // Status chip surfaces the scheduled lunch state: CWD,
                     // LATE, CURTAILED, or ON TIME. Discretionary days get no
                     // chip (lunch optional). The green ON TIME chip is a
@@ -5389,7 +5400,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         {showBody && (
                           <div className="flex items-center justify-center gap-3.5 pt-1 pb-3">
                             <TimeInput
-                              value={v.lunchStartTime || ""}
+                              value={vr.lunchStartTime ?? ""}
                               onChange={(e) => set({ lunchStartTime: e.target.value })}
                               className="!text-[26px] !leading-none !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 font-mono font-bold text-center"
                               style={{ width: '92px' }}
@@ -5863,6 +5874,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 fixedDate={fixedDate}
                 days={days}
                 isElevenHourDay={!!production?.isElevenHourDay}
+                production={production}
               />
               {isNewAll && (
                 <div className="mt-3 bg-black border border-sky-500 p-3 text-xs text-neutral-300 rounded-xl">
@@ -8200,6 +8212,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [showEditCrew, setShowEditCrew] = useState(false);
       const dayRecord = (production.days || []).find(d => d.date === currentDate && d.crewId === crewMember.id);
       const defaults = getDayDefaults(production, currentDate);
+      // Fully resolved day (the canonical cascade the calc engine uses). Display
+      // the resolved call/wrap/lunch/dayType so cascade-inherited values show
+      // instead of blanks — the raw dayRecord fields are undefined when a day
+      // inherits from dayDefaults / production defaults. `defaults`/`dayRecord`
+      // are still used below for override badges and edit writes.
+      const resolvedDay = dayRecord ? resolveDay(production, dayRecord, crewMember) : null;
 
       const handleAddToThisDay = () => {
         setProduction(p => {
@@ -8358,7 +8376,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="grid grid-cols-2 gap-2">
                   <TimeCardWithOverride
                     label="CALL"
-                    value={dayRecord.callTime ?? defaults?.callTime ?? ''}
+                    value={resolvedDay?.callTime ?? ''}
                     defaultValue={defaults?.callTime}
                     isOverridden={dayRecord.callTime !== undefined && dayRecord.callTime !== defaults?.callTime}
                     onChange={(v) => updateTimeField('callTime', v)}
@@ -8366,7 +8384,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   />
                   <TimeCardWithOverride
                     label="WRAP"
-                    value={dayRecord.wrapTime ?? defaults?.wrapTime ?? ''}
+                    value={resolvedDay?.wrapTime ?? ''}
                     defaultValue={defaults?.wrapTime}
                     isOverridden={dayRecord.wrapTime !== undefined && dayRecord.wrapTime !== defaults?.wrapTime}
                     isOverInOT={(calc?.meta?.otHrs || 0) > 0}
@@ -8378,8 +8396,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {(() => {
                   const lateLine = (calc?.lines || []).find(l => /late 1st|l1\b/i.test(l.label));
                   const isLunchLate = !!lateLine;
-                  const callMins = parseHHMM(dayRecord.callTime);
-                  const lunchMins = parseHHMM(dayRecord.lunchStartTime);
+                  const callMins = parseHHMM(resolvedDay?.callTime);
+                  const lunchMins = parseHHMM(resolvedDay?.lunchStartTime);
                   const lateMinutes = (isLunchLate && callMins !== null && lunchMins !== null)
                     ? Math.max(0, Math.round((lunchMins - callMins - 6) * 60))
                     : 0;
@@ -8388,8 +8406,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   const curtailedMinutes = isCurtailed ? (60 - dur) : 0;
                   return (
                     <LunchCardWithOverride
-                      startValue={dayRecord.lunchStartTime ?? defaults?.lunchStartTime ?? ''}
-                      durValue={dayRecord.lunchDurationMins ?? defaults?.lunchDurationMins ?? 0}
+                      startValue={resolvedDay?.lunchStartTime ?? ''}
+                      durValue={resolvedDay?.lunchDurationMins ?? 0}
                       defaultStart={defaults?.lunchStartTime}
                       defaultDur={defaults?.lunchDurationMins}
                       startOverridden={dayRecord.lunchStartTime !== undefined && dayRecord.lunchStartTime !== defaults?.lunchStartTime}
@@ -8406,7 +8424,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 })()}
 
                 <DayTypeRow
-                  value={dayRecord.dayType ?? defaults?.dayType ?? ''}
+                  value={resolvedDay?.dayType ?? ''}
                   defaultValue={defaults?.dayType}
                   isOverridden={dayRecord.dayType !== undefined && dayRecord.dayType !== defaults?.dayType}
                   onChange={(v) => updateTimeField('dayType', v)}
@@ -10424,8 +10442,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   if (!member) return null;
                   const calc = calcForDisplay(production, d, member, findPrevDay(days, d));
                   const dateLabel = new Date(d.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: 'short', day: 'numeric' }).toUpperCase();
-                  const callT = d.callTime || "—";
-                  const wrapT = d.wrapTime || "—";
+                  // Resolved times (cascade from dayDefaults) so inherited days
+                  // show their call/wrap instead of "—".
+                  const resolvedD = resolveDay(production, d, member);
+                  const callT = resolvedD.callTime || "—";
+                  const wrapT = resolvedD.wrapTime || "—";
 
                   const dayBuckets = { ot: 0, pen: 0 };
                   for (const line of calc.lines || []) {
@@ -11165,6 +11186,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 days={days}
                 hideDayCard={true}
                 isElevenHourDay={!!production?.isElevenHourDay}
+                production={production}
               />
             </div>
           </div>
@@ -12719,8 +12741,9 @@ const setDays = (updater) =>
             const crew = (p.crew || []).find(c => c.id === day.crewId);
             if (!crew) continue;
             try {
+              const resolved = resolveDay(p, day, crew);
               const calc = calcForDisplay(p, day, crew, findPrevDay(p.days || [], day));
-              days.push({ day, production: p, crew, calc });
+              days.push({ day, resolved, production: p, crew, calc });
             } catch {}
           }
         }
@@ -12730,13 +12753,16 @@ const setDays = (updater) =>
       const stats = useMemo(() => {
         if (enrichedDays.length === 0) return null;
         const totalEarnings = enrichedDays.reduce((s, e) => s + e.calc.total, 0);
-        const workingDaysSet = new Set(enrichedDays.filter(e => e.day.callTime || e.day.wrapTime).map(e => `${e.production.id}:${e.day.date}`));
+        // Use RESOLVED times (call/wrap can cascade from dayDefaults — the raw
+        // day record may have them undefined), so cascade-inheriting days still
+        // count as worked and avgDayEarnings isn't divided by too few days.
+        const workingDaysSet = new Set(enrichedDays.filter(e => e.resolved.callTime || e.resolved.wrapTime).map(e => `${e.production.id}:${e.day.date}`));
         const shootDaysSet = new Set(enrichedDays.filter(e => e.calc.meta.dayType === 'Shoot').map(e => `${e.production.id}:${e.day.date}`));
         const totalHours = enrichedDays.reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
         const productionsWorkedCount = new Set(enrichedDays.map(e => e.production.id)).size;
 
         const workingDates = [...new Set(
-          enrichedDays.filter(e => e.calc.meta.dayType !== 'Rest Day' && (e.day.callTime || e.day.wrapTime)).map(e => e.day.date)
+          enrichedDays.filter(e => e.calc.meta.dayType !== 'Rest Day' && (e.resolved.callTime || e.resolved.wrapTime)).map(e => e.day.date)
         )].sort();
         let longestStreak = workingDates.length > 0 ? 1 : 0, curStreak = longestStreak;
         for (let i = 1; i < workingDates.length; i++) {
