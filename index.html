@@ -975,6 +975,13 @@
       lastSeenAppVersion: "",
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off' to hide.
       comparisonUnit: "Greggs sausage rolls",
+      // Mark-as-paid celebration (full-screen emoji shower). Kept in userPrefs
+      // so they ride along with the backup. emoji: cash|bag|mix,
+      // intensity: light|medium|heavy, speed: chill|normal|fast.
+      celebrationEnabled: true,
+      celebrationEmoji: 'cash',
+      celebrationIntensity: 'medium',
+      celebrationSpeed: 'normal',
     };
 
     // One-way road-miles approximation from W1F 9SE (APA standard origin) per UK outcode district.
@@ -4232,6 +4239,128 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         />
       </button>
     );
+
+    /* ═══════════════════════════ MARK-AS-PAID CELEBRATION ═══════════════════════════ */
+    // Full-screen emoji shower played when an invoice flips to paid. Settings
+    // (count / fall speed / emoji set) live in userPrefs. A module-scoped handle
+    // is registered by <CelebrationLayer/> (mounted once at the root, holding
+    // userPrefs) so any caller can trigger it without threading prefs through —
+    // the layer gates on celebrationEnabled itself.
+    const CELEBRATION_EMOJI = { cash: ['💵'], bag: ['💰'], mix: ['💵', '💰', '🤑', '💸', '🪙'] };
+    const CELEBRATION_COUNT = { light: 30, medium: 60, heavy: 110 };
+    const CELEBRATION_SPEED = { chill: 2.4, normal: 3.8, fast: 5.6 };
+    let _celebrationApi = null;
+    // opts.force = play regardless of the celebrationEnabled toggle (used by the
+    // Settings Preview button). Real triggers call fireCelebration() with no args.
+    function fireCelebration(opts) { if (_celebrationApi) _celebrationApi(opts || {}); }
+
+    function CelebrationLayer({ prefs }) {
+      const prefsRef = React.useRef(prefs);
+      prefsRef.current = prefs;
+      const [active, setActive] = React.useState(false);
+      const canvasRef = React.useRef(null);
+      const heldRef = React.useRef(false);
+
+      React.useEffect(() => {
+        _celebrationApi = (opts) => {
+          const p = prefsRef.current || {};
+          if (!opts.force && !p.celebrationEnabled) return;
+          // Respect reduced-motion — skip the animation entirely.
+          try {
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+          } catch (_) {}
+          setActive(true);
+        };
+        return () => { _celebrationApi = null; };
+      }, []);
+
+      React.useEffect(() => {
+        if (!active) return;
+        const canvas = canvasRef.current;
+        if (!canvas) { setActive(false); return; }
+        const p = prefsRef.current || {};
+        const emojis = CELEBRATION_EMOJI[p.celebrationEmoji] || CELEBRATION_EMOJI.cash;
+        const count = CELEBRATION_COUNT[p.celebrationIntensity] || CELEBRATION_COUNT.medium;
+        const base = CELEBRATION_SPEED[p.celebrationSpeed] || CELEBRATION_SPEED.normal;
+
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        const W = window.innerWidth, H = window.innerHeight;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        // Deterministic-ish PRNG seeded off the canvas dims so we don't need
+        // Math.random's identity — but variety per spawn is fine, so plain
+        // Math.random is acceptable here (not in the calc engine).
+        const rnd = () => Math.random();
+        const fadeTop = H * 0.72;        // start fading over the bottom ~28%
+        const G = 0.05;                  // gentle gravity acceleration
+        const parts = Array.from({ length: count }, () => {
+          const size = 16 + rnd() * 18;  // 16–34px
+          return {
+            x: rnd() * W,
+            y: -(rnd() * H * 0.6) - size,        // start above the top, staggered
+            size,
+            vy: base * (0.55 + rnd() * 0.9),     // base × 0.55–1.45
+            vx: (rnd() - 0.5) * 1.2,             // slight horizontal drift
+            rot: rnd() * Math.PI * 2,
+            vrot: (rnd() - 0.5) * 0.22,          // random spin
+            emoji: emojis[(rnd() * emojis.length) | 0],
+          };
+        });
+
+        let raf = 0, frames = 0;
+        const MAX_FRAMES = 60 * 12; // hard safety stop (~12s)
+        const step = () => {
+          frames++;
+          const mul = heldRef.current ? 5 : 1;   // hold anywhere → 5× while held
+          ctx.clearRect(0, 0, W, H);
+          let live = 0;
+          for (const o of parts) {
+            o.vy += G * mul;
+            o.y += o.vy * mul;
+            o.x += o.vx * mul;
+            o.rot += o.vrot * mul;
+            if (o.y - o.size > H) continue; // fallen off the bottom
+            live++;
+            let alpha = 1;
+            if (o.y > fadeTop) alpha = Math.max(0, 1 - (o.y - fadeTop) / (H - fadeTop));
+            ctx.globalAlpha = alpha;
+            ctx.save();
+            ctx.translate(o.x, o.y);
+            ctx.rotate(o.rot);
+            ctx.font = o.size + 'px system-ui, "Apple Color Emoji", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(o.emoji, 0, 0);
+            ctx.restore();
+          }
+          ctx.globalAlpha = 1;
+          if (live > 0 && frames < MAX_FRAMES) {
+            raf = requestAnimationFrame(step);
+          } else {
+            setActive(false);
+          }
+        };
+        raf = requestAnimationFrame(step);
+        return () => cancelAnimationFrame(raf);
+      }, [active]);
+
+      if (!active) return null;
+      const hold = (v) => () => { heldRef.current = v; };
+      return (
+        <canvas
+          ref={canvasRef}
+          onPointerDown={hold(true)}
+          onPointerUp={hold(false)}
+          onPointerLeave={hold(false)}
+          onPointerCancel={hold(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10000, pointerEvents: 'auto', touchAction: 'none' }}
+          aria-hidden="true"
+        />
+      );
+    }
 
     const Toast = ({ show, children }) => (
       <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-black px-5 py-2 text-xs uppercase tracking-wide font-bold border border-green-600 rounded-full shadow-lg transition-all ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
@@ -12598,6 +12727,38 @@ const setDays = (updater) =>
               </div>
             </Disclosure>
 
+            <Disclosure label="Celebration" summary={userPrefs.celebrationEnabled ? 'On' : 'Off'}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Mark-as-paid celebration</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">A shower of emoji when you mark an invoice paid.</div>
+                </div>
+                <Toggle value={userPrefs.celebrationEnabled} onChange={(v) => set({ celebrationEnabled: v })} ariaLabel="Mark-as-paid celebration" />
+              </div>
+              {userPrefs.celebrationEnabled && (
+                <div className="mt-4 space-y-3">
+                  {[
+                    { key: 'celebrationEmoji', label: 'Emoji', opts: [{ v: 'cash', l: '💵 Cash' }, { v: 'bag', l: '💰 Bag' }, { v: 'mix', l: 'Mix' }] },
+                    { key: 'celebrationIntensity', label: 'Intensity', opts: [{ v: 'light', l: 'Light' }, { v: 'medium', l: 'Medium' }, { v: 'heavy', l: 'Heavy' }] },
+                    { key: 'celebrationSpeed', label: 'Fall speed', opts: [{ v: 'chill', l: 'Chill' }, { v: 'normal', l: 'Normal' }, { v: 'fast', l: 'Fast' }] },
+                  ].map(row => (
+                    <div key={row.key}>
+                      <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">{row.label}</div>
+                      <div className="flex gap-1.5">
+                        {row.opts.map(o => (
+                          <button key={o.v} type="button" onClick={() => set({ [row.key]: o.v })}
+                            className={`flex-1 px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${userPrefs[row.key] === o.v ? 'border-sky-500 bg-sky-500/15 text-sky-300' : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700'}`}>
+                            {o.l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <Btn variant="ghost" onClick={() => fireCelebration({ force: true })} className="w-full justify-center">Preview</Btn>
+                </div>
+              )}
+            </Disclosure>
+
             <Disclosure label="Data">
               <div className="flex flex-col gap-3">
                 <div>
@@ -13915,6 +14076,7 @@ const setDays = (updater) =>
                     onClick={() => {
                       updateInvoice({ status: 'paid', datePaid: todayISO() });
                       showToast('Marked as paid');
+                      fireCelebration();
                     }}
                     className="flex-[1.4] justify-center"
                   >
@@ -14235,7 +14397,7 @@ const setDays = (updater) =>
       useEscape(onClose);
       const [confirmDelete, setConfirmDelete] = useState(false);
       const markSent = () => { onUpdate({ status: 'sent', dateSent: todayISO() }); showToast('Marked as sent'); onClose(); };
-      const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); onClose(); };
+      const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); fireCelebration(); onClose(); };
       const revertToDraft = () => { onUpdate({ status: 'draft', dateSent: null }); showToast('Marked as draft'); onClose(); };
       const revertToSent = () => { onUpdate({ status: 'sent', datePaid: null }); showToast('Marked as unpaid'); onClose(); };
       const doDelete = () => { onDelete(); showToast('Invoice deleted'); onClose(); };
@@ -15511,6 +15673,7 @@ const confirmDelete = (p) => setConfirmOpts({
               Updated to TimeMachine v{APP_VERSION} ✓
             </div>
           )}
+          <CelebrationLayer prefs={userPrefs} />
         </>
       );
     }
