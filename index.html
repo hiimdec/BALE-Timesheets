@@ -5428,7 +5428,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {/* Contextual APA-rule notices — render whether or not the DAY card is shown. */}
           {bwdOverrideApplies && (
             <StatusMsg kind="info">
-              APA §2.3: {role} always works to Basic Working Day rules, even on non-shoot days. This {v.dayType} is calculated as a Shoot Day (10+1, OT after 11h).
+              APA §2.3: {role} always works to Basic Working Day rules, even on non-shoot days. This {vr.dayType} is calculated as a Shoot Day (10+1, OT after 11h).
             </StatusMsg>
           )}
           {isPmpa && (
@@ -5515,7 +5515,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {!isPmpa && !isTravelDay && (
                 <div className="border-t border-neutral-800 pt-3 mt-1 space-y-3">
                   {(() => {
-                    const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
+                    const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(vr.dayType);
                     const dur = Number(vr.lunchDurationMins ?? 60);
                     // Status chip surfaces the scheduled lunch state: CWD,
                     // LATE, CURTAILED, or ON TIME. Discretionary days get no
@@ -5581,7 +5581,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {bs && (
                     <>
                       {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of {isElevenHourDay ? 12 : 11}h.</StatusMsg>}
-                      {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
+                      {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {vr.dayType} days. Paid as 8h × BHR.</StatusMsg>}
                       {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
                       {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
                       {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && bs.lunchEndAbs != null && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
@@ -7004,6 +7004,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         </div>
                       );
                       const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
+                      const resolved = resolveDay(production, d, c);
                       const hasPenalty = calc.lines.some(l => l.rate === null);
                       const hasTocBreach = calc.lines.some(l => l.isTOC && l.isBreach);
                       // In-app priority stripe: tm-pen = penalty/TOC breach, tm-warn = OT/CWD/TOC, tm-good = clean
@@ -7021,11 +7022,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               <div className="flex items-center gap-2 flex-wrap">
                                 <div className="font-semibold text-neutral-100">{c.name}</div>
                                 <span className="text-[10px] uppercase tracking-wider bg-neutral-800 text-neutral-400 px-1.5 py-0.5">{c.role}</span>
-                                <span className="text-[10px] uppercase tracking-wider bg-sky-500 text-black px-1.5 py-0.5 font-bold">{d.dayType}</span>
+                                <span className="text-[10px] uppercase tracking-wider bg-sky-500 text-black px-1.5 py-0.5 font-bold">{calc.meta.dayType}</span>
                                 {calc.meta.continuousDay && <span className="text-[10px] uppercase tracking-wider bg-tm-pen/10 text-tm-pen border border-tm-pen/25 px-1.5 py-0.5 font-bold rounded">CWD</span>}
                               </div>
                               <div className="text-[11px] text-neutral-400 font-mono mt-1">
-                                {d.callTime}–{d.wrapTime}{(parseHHMM(d.wrapTime) !== null && parseHHMM(d.callTime) !== null && parseHHMM(d.wrapTime) <= parseHHMM(d.callTime)) ? " (+1)" : ""} · {calc.meta.workedHrs.toFixed(1)}h · {calc.meta.dayLabel}
+                                {resolved.callTime}–{resolved.wrapTime}{(parseHHMM(resolved.wrapTime) !== null && parseHHMM(resolved.callTime) !== null && parseHHMM(resolved.wrapTime) <= parseHHMM(resolved.callTime)) ? " (+1)" : ""} · {calc.meta.workedHrs.toFixed(1)}h · {calc.meta.dayLabel}
                               </div>
                               {d.note?.trim() && <div className="flex items-center gap-1 mt-1"><INote size={11} className="text-neutral-600 flex-shrink-0"/><span className="text-[10px] text-neutral-600">Note</span></div>}
                             </div>
@@ -7166,8 +7167,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Not on this day', dayRecord: null };
           }
 
-          // V4-5h-11: respect cascade — explicit override wins, else inherit dept default.
-          const effectiveDayType = dayRecord.dayType ?? production.dayDefaults?.[currentDate]?.dayType;
+          // V4-5h-11: respect cascade — explicit override wins, else inherit dept
+          // default. Use the full resolveDay cascade (dayDefaults ← defaultDay ←
+          // DEFAULT_PRODUCTION_DAY) so an inherited Rest Day is recognised too.
+          const effectiveDayType = resolveDay(production, dayRecord, member).dayType;
           if (effectiveDayType === 'Rest Day') {
             return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Rest Day', dayRecord };
           }
@@ -7284,10 +7287,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const firstActiveDay = activeCrew[0]
         ? days.find(d => d.date === currentDate && d.crewId === activeCrew[0].member.id)
         : null;
-      const deptCall = dayDefaults?.callTime ?? firstActiveDay?.callTime ?? '';
-      const deptWrap = dayDefaults?.wrapTime ?? firstActiveDay?.wrapTime ?? '';
-      const deptLunchStart = dayDefaults?.lunchStartTime ?? firstActiveDay?.lunchStartTime ?? '';
-      const deptLunchMins = dayDefaults?.lunchDurationMins ?? firstActiveDay?.lunchDurationMins ?? null;
+      // Resolve through the full cascade (DEFAULT_PRODUCTION_DAY ← production.defaultDay
+      // ← dayDefaults[date]) so the dept card shows the effective call/wrap/lunch the
+      // crew are calc'd with, not just the date-level override (which blanks otherwise).
+      const deptBase = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}), ...(dayDefaults ?? {}) };
+      const deptCall = deptBase.callTime ?? firstActiveDay?.callTime ?? '';
+      const deptWrap = deptBase.wrapTime ?? firstActiveDay?.wrapTime ?? '';
+      const deptLunchStart = deptBase.lunchStartTime ?? firstActiveDay?.lunchStartTime ?? '';
+      const deptLunchMins = deptBase.lunchDurationMins ?? firstActiveDay?.lunchDurationMins ?? null;
       const deptLunchEnd = deptLunchStart && deptLunchMins != null
         ? addMinutesToTime(deptLunchStart, deptLunchMins)
         : '';
@@ -7856,8 +7863,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           {showLunchSheet && (() => {
             const defs = getDayDefaults(production, currentDate);
-            const startVal = defs?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime;
-            const durVal = defs?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins;
+            const startVal = defs?.lunchStartTime ?? production.defaultDay?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime;
+            const durVal = defs?.lunchDurationMins ?? production.defaultDay?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins;
             return (
               <div
                 className="fixed inset-0 z-50 flex items-end"
@@ -8987,7 +8994,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Start</div>
                     <input
                       type="time"
-                      value={dayRecord.lunchStartTime ?? defaults?.lunchStartTime ?? ''}
+                      value={resolvedDay?.lunchStartTime ?? ''}
                       onChange={(e) => updateTimeField('lunchStartTime', e.target.value)}
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
                       style={{ WebkitAppearance: 'none' }}
@@ -8999,7 +9006,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       type="number"
                       min="0"
                       step="15"
-                      value={dayRecord.lunchDurationMins ?? defaults?.lunchDurationMins ?? 0}
+                      value={resolvedDay?.lunchDurationMins ?? 0}
                       onChange={(e) => updateTimeField('lunchDurationMins', Number(e.target.value) || 0)}
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
                     />
@@ -10171,7 +10178,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <div className="px-3.5 py-2.5 border-b border-neutral-800/60 flex items-center gap-2.5 flex-wrap">
                           <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">D{idx + 1}</span>
                           <span className="text-[11px] font-mono text-neutral-300">{fdate}</span>
-                          <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{day.dayType || 'Shoot'}</span>
+                          <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{calc.meta.dayType}</span>
                           <span className="ml-auto font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(total)}</span>
                         </div>
                         <div className="px-3.5 py-2 flex flex-col gap-1">
@@ -10899,9 +10906,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {sorted.map((day, idx) => {
                 const c = crew.find(cc => cc.id === day.crewId);
                 const calc = c ? calcForDisplay(production, day, c, findPrevDay(days, day)) : null;
+                const resolved = c ? resolveDay(production, day, c) : day;
                 const isCurrent = day.id === currentDayId;
                 const dateStr = day.date ? new Date(day.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "—";
-                const times = (day.callTime && day.wrapTime) ? `${day.callTime} – ${day.wrapTime}` : "";
+                const times = (resolved.callTime && resolved.wrapTime) ? `${resolved.callTime} – ${resolved.wrapTime}` : "";
                 return (
                   <button
                     key={day.id}
@@ -10913,7 +10921,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div className="text-xs font-bold text-neutral-400 w-8 flex-shrink-0">D{idx + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-500" : "text-neutral-200"}`}>{dateStr}</div>
-                      {(times || day.dayType) && <div className="text-[11px] text-neutral-500">{[times, day.dayType || "Shoot Day"].filter(Boolean).join(" · ")}</div>}
+                      {(times || resolved.dayType) && <div className="text-[11px] text-neutral-500">{[times, resolved.dayType].filter(Boolean).join(" · ")}</div>}
                     </div>
                     {day.note?.trim() && <INote size={13} className="text-neutral-600 flex-shrink-0"/>}
                     {calc && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(calc.total)}</div>}
@@ -14962,8 +14970,17 @@ const confirmDelete = (p) => setConfirmOpts({
           // State now derives from the explicit `wrapped` flag, not wrapTime
           // presence — wrapTime is auto-filled on day creation and is no
           // longer a reliable WRAPPED signal.
-          const someOnCall = todayRecords.some(d => d.callTime && d.wrapped !== true);
-          const allWrapped = todayRecords.length > 0 && todayRecords.every(d => d.callTime && d.wrapped === true);
+          // Resolve each record's call/wrap through the cascade (matching the
+          // engine) so cascade-inherited days still register as on-call/wrapped
+          // and feed the live timers — raw d.callTime is undefined when a day
+          // inherits its time fields from dept/production defaults.
+          const resolvedToday = todayRecords.map(d => {
+            const cr = (p.crew ?? []).find(cc => cc.id === d.crewId);
+            const r = cr ? resolveDay(p, d, cr) : d;
+            return { d, callTime: r.callTime, wrapTime: r.wrapTime };
+          });
+          const someOnCall = resolvedToday.some(({ d, callTime }) => callTime && d.wrapped !== true);
+          const allWrapped = resolvedToday.length > 0 && resolvedToday.every(({ d, callTime }) => callTime && d.wrapped === true);
 
           // ON CALL drops its text prefix — the pulsing green dot is the live signal.
           // WRAPPED and CURRENT SHOOT keep their prefixes (no dot accompanying).
@@ -14972,7 +14989,7 @@ const confirmDelete = (p) => setConfirmOpts({
           else if (allWrapped) { stateLabel = `WRAPPED · DAY ${dayIndex} OF ${dayCount}`;       stateClass = "text-neutral-400"; showDot = false; }
           else                 { stateLabel = `CURRENT SHOOT · DAY ${dayIndex} OF ${dayCount}`; stateClass = "text-sky-500";     showDot = false; }
 
-          const callMinsList = todayRecords.map(d => parseHHMM(d.callTime)).filter(v => v != null).map(h => Math.round(h * 60));
+          const callMinsList = resolvedToday.map(({ callTime }) => parseHHMM(callTime)).filter(v => v != null).map(h => Math.round(h * 60));
           const earliestCallMins = callMinsList.length ? Math.min(...callMinsList) : null;
           const earliestCallStr = earliestCallMins != null ? toHHMM(earliestCallMins / 60) : null;
 
@@ -14980,9 +14997,9 @@ const confirmDelete = (p) => setConfirmOpts({
           let clockedSub = "";
           if (allWrapped) {
             let totalMins = 0;
-            todayRecords.forEach(d => {
-              const c = parseHHMM(d.callTime);
-              const w = parseHHMM(d.wrapTime);
+            resolvedToday.forEach(({ callTime, wrapTime }) => {
+              const c = parseHHMM(callTime);
+              const w = parseHHMM(wrapTime);
               if (c != null && w != null) {
                 let diff = (w - c) * 60;
                 if (diff < 0) diff += 24 * 60;
