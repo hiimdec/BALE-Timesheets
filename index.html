@@ -397,7 +397,12 @@
       if (opts.encoding === 'utf8') writeOpts.encoding = 'utf8';   // text; omit → binary (base64)
       await Filesystem.writeFile(writeOpts);
       const { uri } = await Filesystem.getUri({ path: filename, directory: 'CACHE' });
-      await Share.share({ title: opts.title || filename, text: opts.text, url: uri, files: [uri] });
+      // Pass the file via `files` only — NOT also `url`. Capacitor's Share
+      // plugin appends `url` and each `files` entry as separate activity items,
+      // so sending the same uri as both added the file twice (two identical
+      // PDFs in the share sheet). `files` is the correct field for a file;
+      // `url` is for sharing a web link.
+      await Share.share({ title: opts.title || filename, text: opts.text, files: [uri] });
       return 'shared';
     }
 
