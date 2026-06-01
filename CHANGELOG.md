@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-06-01
+
+The first iPhone (TestFlight) release, plus new invoicing and stats touches for everyone.
+
+### Added
+
+- **Mark-as-paid celebration** — a little emoji shower plays when you mark an invoice paid. Make it your own (or switch it off) in **Settings → Celebration**: choose the emoji (💵 Cash / 💰 Bag / Mix), how much falls (Light / Medium / Heavy), and how fast (Chill / Normal / Fast), with a Preview button to try it.
+- **Per-shoot rounding** — set Favourable or APA rounding for each shoot in its own Shoot Settings. The global setting now only chooses the default for *new* shoots and never changes existing ones. Invoice line items, notes, and day totals all reconcile to a single figure under either mode.
+
+### Changed
+
+- **Crisper invoice PDFs on iPhone** — invoices export as sharp, selectable, correctly-paginated PDFs (matching the web/print layout) instead of a single flattened image.
+- Under-the-hood improvements for App Store readiness and tidier example text.
+
+### Fixed
+
+- **Overtime Earned** now shows the correct total in Stats — it had been reading £0 for shoots with weekday overtime.
+- **Imported shoots** now show their call/wrap times on the day and shoot views, and Stats averages count those days correctly.
+- Sharing or emailing an invoice no longer attaches the PDF twice.
+
 ## [4.7.0] - 2026-05-28
 
 Best Boy Mobile Refinement Sweep — a substantial rebuild of BB mobile mode plus architectural cleanup, followed by a post-ship calc-correctness sweep that closed every known APA divergence. The in-app `RELEASE_NOTES` block in `index.html` is the source of truth; this entry mirrors it.
