@@ -12769,7 +12769,12 @@ const setDays = (updater) =>
           if (!dayTypeMap[type]) dayTypeMap[type] = new Set();
           dayTypeMap[type].add(pKey);
           for (const l of e.calc.lines) {
-            if ((l.label || '').includes(' OT')) otEarnings += l.amount;
+            // Sum OT with the same categorizer the day breakdown uses (\bOT\b,
+            // overtime, triple/double time, etc.) — the old `includes(' OT')`
+            // needed a leading space and silently missed the primary "OT" /
+            // "OT (2× BHR)" / "OT Triple Time" / "Early Call (OT rate)" labels,
+            // zeroing Overtime Earned for every shoot with weekday OT.
+            if (categorizeBreakdownLine(l.label || '') === 'ot') otEarnings += l.amount;
             if ((l.label || '').toLowerCase().startsWith('late')) lateLunchEarnings += l.amount;
             dayEntry.buckets[categorizeBreakdownLine(l.label || '')] += Number(l.amount) || 0;
           }
