@@ -1427,20 +1427,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const effectiveHrs = wrapAbs - effectiveStart;
 
       // Pre-call lines (computed up top, emitted now that basicHrs / isNightShoot
-      // are in scope). Absorbs into unused basic-day hours (industry practice,
-      // mirrors the existing travel-time absorption pattern). Absorb from the
-      // call-time end backwards — OT-rate portion first, then triple — so the
-      // unsocial early-hours triple-time premium is preserved as long as possible.
-      const preCallGap = Math.max(0, basicHrs - workedHrs);
-      const preCallAbsorbed = Math.min(preCallSplit.total, preCallGap);
-      const preCallOtAbsorbed = Math.min(preCallSplit.ot, preCallAbsorbed);
-      const preCallTripleAbsorbed = preCallAbsorbed - preCallOtAbsorbed;
-      const preCallTripleChargeable = ceilHalf(Math.max(0, preCallSplit.triple - preCallTripleAbsorbed));
-      const preCallOtChargeable = ceilHalf(Math.max(0, preCallSplit.ot - preCallOtAbsorbed));
-      // preUnitHrs is the basic-day-filling portion — used by the travelGap
-      // formula downstream so travel can't also claim absorption hours
-      // pre-call already filled.
-      const preUnitHrs = preCallAbsorbed;
+      // are in scope). APA §2.1.3: pre-call premiums are defined by clock time,
+      // not day length — pre-05:00 (3× BHR) and 05:00→call (OT rate) pay in full
+      // even on a short day. They are NOT basic-rate hours, so nothing absorbs
+      // them (only basic-rate travel time absorbs into unused basic-day hours).
+      const preCallTripleChargeable = ceilHalf(preCallSplit.triple);
+      const preCallOtChargeable = ceilHalf(preCallSplit.ot);
+      // Pre-call sits outside the basic day, so it never fills basic hours for
+      // the downstream travel-absorption gap.
+      const preUnitHrs = 0;
       if (preCallSplit.total > 0) {
         if (isNightShoot) {
           // APA §2.1.5: night shoots pay flat 2× BHR call-to-wrap, no
@@ -1450,8 +1445,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const nightPreCallHrs = ceilHalf(preCallSplit.total);
           const nightRate = bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding);
           lines.push({ label: "Pre-call", detail: `${preCallTime} – ${day.callTime} · 2× BHR (night)`, rate: nightRate, qty: nightPreCallHrs, amount: nightPreCallHrs * nightRate });
-        } else if (preCallTripleChargeable === 0 && preCallOtChargeable === 0) {
-          notes.push(`Pre-call absorbed (worked ${workedHrs.toFixed(1)}h + pre-call ${preCallSplit.total.toFixed(1)}h ≤ ${basicHrs}h threshold)`);
         } else {
           if (preCallTripleChargeable > 0) {
             const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
