@@ -470,6 +470,61 @@
       return 'shared';
     }
 
+    // Vector PDF path. Sends a self-contained HTML document (the print view's
+    // outerHTML + the print stylesheet + Tailwind utility CSS) to the bespoke
+    // NativePdf plugin, which renders it through iOS's WebKit print pipeline.
+    // Output is a multi-page A4 vector PDF whose layout matches the web
+    // window.print() result: text is crisp and selectable, page breaks follow
+    // CSS page-break-* rules, file size is small.
+    //
+    // iOS's UIPrintPageRenderer ignores CSS @page margins, so the per-page
+    // margins must be passed explicitly (millimetres) and the plugin applies
+    // them as a printableRect inset — matching this screen's @page rule on web.
+    // `margins` = { top, right, bottom, left } in mm (defaults 0 = full bleed).
+    async function nativeRenderPrintViewPdfBase64Vector(containerId, printStyles, margins) {
+      const m = margins || {};
+      const container = document.getElementById(containerId);
+      if (!container) throw new Error('Print container not found: ' + containerId);
+      // Clone and drop the off-screen positioning we use to hide the live
+      // print view in the app DOM — inside the plugin's hidden WebView we
+      // want it positioned normally so the print pipeline can paginate it.
+      const clone = container.cloneNode(true);
+      clone.removeAttribute('style');
+      // Inline the Tailwind utility CSS the print view depends on. The plugin
+      // loads the HTML with baseURL=nil, so the document must be self-contained;
+      // any failure to fetch the stylesheet just produces a styles-lite PDF
+      // rather than a hard error (acceptable degradation for offline cases).
+      let tailwindCss = '';
+      try { tailwindCss = await fetch('./assets/tailwind.css').then(r => r.text()); } catch (_) {}
+      const html =
+        '<!DOCTYPE html>' +
+        '<html><head>' +
+        '<meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width">' +
+        '<style>' + tailwindCss + '</style>' +
+        '<style>' + (printStyles || '') + '</style>' +
+        '</head><body>' +
+        clone.outerHTML +
+        '</body></html>';
+      const { NativePdf } = _capPlugins();
+      if (!NativePdf || !NativePdf.renderHtmlToPdf) throw new Error('NativePdf plugin not registered');
+      const { base64 } = await NativePdf.renderHtmlToPdf({
+        html,
+        marginTopMm: m.top || 0,
+        marginRightMm: m.right || 0,
+        marginBottomMm: m.bottom || 0,
+        marginLeftMm: m.left || 0,
+      });
+      return base64;
+    }
+
+    // Vector equivalent of nativeExportPrintViewPdf — renders + share sheet.
+    async function nativeExportPrintViewPdfVector(containerId, printStyles, margins, filename) {
+      const base64 = await nativeRenderPrintViewPdfBase64Vector(containerId, printStyles, margins);
+      await nativeSaveAndShare(filename, base64, { title: filename });
+      return 'shared';
+    }
+
     // Open the iOS Mail composer pre-filled with the invoice details and the PDF
     // attached as base64. If no mail account is configured (hasAccount === false)
     // or the plugin is unavailable, fall back to the share sheet with the PDF
@@ -13293,7 +13348,7 @@ const setDays = (updater) =>
               const jobBit = inv.jobTitle ? ` for ${inv.jobTitle}` : '';
               const body = `Hi,\n\nPlease find attached invoice ${inv.invoiceNumber}${jobBit}, total ${totalStr}.\n\nPlease quote ${inv.invoiceNumber} when making payment.\n\nMany thanks,\n${fromName}`;
               const wasDraft = inv.status === 'draft';
-              nativeRenderPrintViewPdfBase64('invoice-print-view', '.invoice-page')
+              nativeRenderPrintViewPdfBase64Vector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 })
                 .then((base64) => nativeSendInvoiceEmail({
                   to: inv.toEmail || '', cc: emailCcRef.current || '',
                   subject, body, base64, filename,
@@ -13307,7 +13362,7 @@ const setDays = (updater) =>
                 .catch((e) => { try { console.error('Invoice email failed', e); } catch (_) {} })
                 .finally(() => { printIntentRef.current = 'share'; emailCcRef.current = ''; cleanup(); });
             } else {
-              nativeExportPrintViewPdf('invoice-print-view', '.invoice-page', filename)
+              nativeExportPrintViewPdfVector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 }, filename)
                 .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
                 .finally(cleanup);
             }
