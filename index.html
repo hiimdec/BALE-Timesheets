@@ -2288,6 +2288,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const newId = uid();
       const invoice = {
         id: newId,
+        userCrewId,
         invoiceNumber,
         invoiceDate: today,
         dueDate,
@@ -2501,9 +2502,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return lines.join('\n');
     }
 
-    function crewVAT(crewMember, subtotal) {
-      if (!crewMember?.vatRegistered) return { vatAmount: 0, totalIncVAT: subtotal };
-      const rate = Number(crewMember.vatRate) || 20;
+    // When an invoice has been created for this crew member, prefer its snapshot
+    // VAT settings over the live crew record so day-text VAT matches the invoice
+    // even after the crew's VAT settings are edited later. Returns null if there
+    // is no matching invoice (new invoices link by userCrewId; older invoices —
+    // created before the link existed — fall back to a jobRole match).
+    function invoiceVATSnapshot(production, crewMember) {
+      if (!crewMember) return null;
+      const invs = production?.invoices || [];
+      const match = [...invs].reverse().find(i => i.userCrewId === crewMember.id)
+        || [...invs].reverse().find(i => i.userCrewId == null && i.jobRole === crewMember.role);
+      return match ? { vatRegistered: match.vatRegistered, vatRate: match.vatRate } : null;
+    }
+
+    function crewVAT(crewMember, subtotal, vatSource) {
+      const src = vatSource || crewMember;
+      if (!src?.vatRegistered) return { vatAmount: 0, totalIncVAT: subtotal };
+      const rate = Number(src.vatRate) || 20;
       const vatAmount = subtotal * rate / 100;
       return { vatAmount, totalIncVAT: subtotal + vatAmount };
     }
@@ -2518,9 +2533,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       lines.push('');
       calc.lines.forEach((l) => lines.push(formatLineText(l)));
       lines.push('');
-      const { vatAmount, totalIncVAT } = crewVAT(crewMember, calc.total);
-      if (crewMember.vatRegistered) {
-        const rate = Number(crewMember.vatRate) || 20;
+      const vatSource = invoiceVATSnapshot(production, crewMember) || crewMember;
+      const { vatAmount, totalIncVAT } = crewVAT(crewMember, calc.total, vatSource);
+      if (vatSource.vatRegistered) {
+        const rate = Number(vatSource.vatRate) || 20;
         lines.push(`SUBTOTAL: ${fmtGBP(calc.total)}`);
         lines.push(`VAT (${rate}%): ${fmtGBP(vatAmount)}`);
         lines.push(`TOTAL INC. VAT: ${fmtGBP(totalIncVAT)}`);
