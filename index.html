@@ -3775,9 +3775,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const expenseLines = allLines.filter(l => isExpenseLine(l));
       const showInd = invoice.showIndividualExpenses === true;
 
-      const subtotal = allLines.reduce((s, l) => s + getLineTotal(l), 0);
-      const vatAmount = invoice.vatRegistered ? subtotal * (invoice.vatRate || 20) / 100 : 0;
-      const total = subtotal + vatAmount;
+      const subtotal = invoiceSubtotal(allLines);
+      const { vatAmount, total } = invoiceVAT(invoice, subtotal);
 
       const renderLineRows = (item, labelOverride) => {
         const label = labelOverride ?? item.label ?? "";
@@ -3816,9 +3815,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <td className="num">{isFixed ? "" : (partiallyWaived ? billedQty : item.qty)}</td>
               <td className="num">{isFixed ? "" : fmtGBP(item.rate)}</td>
               <td className="num">
-                {isFixed
-                  ? fmtGBP(item.amount)
-                  : fmtGBP(partiallyWaived ? billedQty * item.rate : item.amount)}
+                {fmtGBP(getLineTotal(item))}
               </td>
             </tr>
           );
@@ -4053,7 +4050,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const subject = invoice.jobTitle ? `${subjectBase} — ${invoice.jobTitle}` : subjectBase;
 
       const subtotal = invoiceSubtotal(invoice.lineItems);
-      const vatAmount = invoice.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
+      const { vatAmount } = invoiceVAT(invoice, subtotal);
       const totalStr = fmtGBP(subtotal + vatAmount);
       const fromName = invoice.fromName || invoice.fromCompanyName || '';
       const jobBit = invoice.jobTitle ? ` for ${invoice.jobTitle}` : '';
@@ -13357,6 +13354,14 @@ const setDays = (updater) =>
       return (lineItems || []).reduce((sum, item) => sum + getLineTotal(item), 0);
     }
 
+    // Single VAT definition for every invoice surface (PDF, screen, email, list
+    // cards). Number() normalises a stringy vatRate; numerically identical to the
+    // inline `subtotal * (vatRate || 20) / 100` forms it replaces.
+    function invoiceVAT(invoice, subtotal) {
+      const vatAmount = invoice?.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
+      return { vatAmount, total: subtotal + vatAmount };
+    }
+
     function getDisplayStatus(invoice) {
       if (invoice.status === "paid") return { label: "PAID", variant: "paid" };
       if (invoice.status === "sent") {
@@ -13604,7 +13609,7 @@ const setDays = (updater) =>
               const subjectBase = `Invoice ${inv.invoiceNumber}`;
               const subject = inv.jobTitle ? `${subjectBase} — ${inv.jobTitle}` : subjectBase;
               const subtotal = invoiceSubtotal(inv.lineItems);
-              const vatAmount = inv.vatRegistered ? subtotal * (Number(inv.vatRate) || 20) / 100 : 0;
+              const { vatAmount } = invoiceVAT(inv, subtotal);
               const totalStr = fmtGBP(subtotal + vatAmount);
               const fromName = inv.fromName || inv.fromCompanyName || '';
               const jobBit = inv.jobTitle ? ` for ${inv.jobTitle}` : '';
@@ -13715,8 +13720,7 @@ const setDays = (updater) =>
       };
 
       const subtotal = invoiceSubtotal(invoice.lineItems);
-      const vatAmount = invoice.vatRegistered ? subtotal * (invoice.vatRate || 20) / 100 : 0;
-      const total = subtotal + vatAmount;
+      const { vatAmount, total } = invoiceVAT(invoice, subtotal);
 
       // Due-in-days: derived from invoiceDate + dueDate
       const issueMs = invoice.invoiceDate ? new Date(invoice.invoiceDate + "T12:00:00").getTime() : null;
@@ -14290,8 +14294,7 @@ const setDays = (updater) =>
         let draft = 0, sent = 0, paid = 0, overdue = 0, outstanding = 0;
         for (const inv of invoices) {
           const sub = invoiceSubtotal(inv.lineItems);
-          const vat = inv.vatRegistered ? sub * (inv.vatRate || 20) / 100 : 0;
-          const tot = sub + vat;
+          const { vatAmount: vat, total: tot } = invoiceVAT(inv, sub);
           if (inv.status === 'paid') paid++;
           else if (inv.status === 'sent') {
             sent++;
@@ -14369,8 +14372,7 @@ const setDays = (updater) =>
                 <div className="space-y-2">
                   {filteredInvoices.map((inv) => {
                     const subtotal = invoiceSubtotal(inv.lineItems);
-                    const vatAmount = inv.vatRegistered ? subtotal * (inv.vatRate || 20) / 100 : 0;
-                    const total = subtotal + vatAmount;
+                    const { vatAmount, total } = invoiceVAT(inv, subtotal);
                     const dueMs = inv.dueDate ? new Date(inv.dueDate + 'T12:00:00').getTime() : null;
                     const isOverdue = inv.status === 'sent' && dueMs && dueMs < todayMs;
                     const daysOverdue = isOverdue ? Math.floor((todayMs - dueMs) / 86400000) : 0;
@@ -14670,8 +14672,7 @@ const setDays = (updater) =>
         let draft = 0, sent = 0, paid = 0, overdue = 0, outstanding = 0;
         for (const { invoice: inv } of allInvoices) {
           const sub = invoiceSubtotal(inv.lineItems);
-          const vat = inv.vatRegistered ? sub * (inv.vatRate || 20) / 100 : 0;
-          const tot = sub + vat;
+          const { vatAmount: vat, total: tot } = invoiceVAT(inv, sub);
           if (inv.status === 'paid') paid++;
           else if (inv.status === 'sent') {
             sent++;
@@ -14767,8 +14768,7 @@ const setDays = (updater) =>
             {visible.map(({ invoice, production }) => {
               const s = getDisplayStatus(invoice);
               const subtotal = invoiceSubtotal(invoice.lineItems);
-              const vatAmount = invoice.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
-              const total = subtotal + vatAmount;
+              const { vatAmount, total } = invoiceVAT(invoice, subtotal);
               const dueMs = invoice.dueDate ? new Date(invoice.dueDate + 'T12:00:00').getTime() : null;
               const isOverdue = invoice.status === 'sent' && dueMs && dueMs < todayMs;
               const daysOverdue = isOverdue ? Math.floor((todayMs - dueMs) / 86400000) : 0;
