@@ -4457,7 +4457,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             {/* ── Scrollable body ── */}
             <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Declan Duffy" /></Field>
+                <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your name" /></Field>
                 <Field label="Department">
                   <Select value={selectedDept} onChange={(e) => onDeptChange(e.target.value)}>
                     <option value="All">All departments</option>
@@ -9317,7 +9317,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" />
               </Field>
               <Field label="Production company">
-                <Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="e.g. Minds Eye" />
+                <Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="Production company" />
               </Field>
               <Field label="Start date">
                 <div className="relative w-full">
@@ -9353,7 +9353,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Input value={production.jobReference || ""} onChange={set("jobReference")} placeholder="e.g. Vodafone Q3, PO#1234" />
               </Field>
               <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
-                <Input value={production.invoicingEmail || ""} onChange={set("invoicingEmail")} placeholder="e.g. accounts@minds-eye.tv" />
+                <Input value={production.invoicingEmail || ""} onChange={set("invoicingEmail")} placeholder="e.g. accounts@example.com" />
               </Field>
             </Disclosure>
 
@@ -12422,7 +12422,7 @@ const setDays = (updater) =>
             <Disclosure label="Invoicing — Your details" summary={yourDetailsSummary}>
               <div className="text-[10px] text-neutral-500 mb-3">The legal name below appears as the invoice's "From" name. Leave it blank to use your display name (from My Setup).</div>
               <Field label="Legal name (for invoices)" hint="Formal name on generated invoices — distinct from the casual display name shown in the app. Falls back to display name if blank.">
-                <Input type="text" value={userPrefs.legalName} onChange={(e) => set({ legalName: e.target.value })} placeholder="e.g. Mr Declan Duffy" />
+                <Input type="text" value={userPrefs.legalName} onChange={(e) => set({ legalName: e.target.value })} placeholder="Your full legal name" />
               </Field>
               <Field label="Company name" hint="Optional — if you trade as a limited company">
                 <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
@@ -13687,7 +13687,7 @@ const setDays = (updater) =>
                 type="email"
                 value={ccEmail}
                 onChange={(e) => setCcEmail(e.target.value)}
-                placeholder="CC (optional) — accounts@prodco.com"
+                placeholder="CC (optional) — accounts@example.com"
                 className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
                 aria-label="CC recipients for this send"
               />
