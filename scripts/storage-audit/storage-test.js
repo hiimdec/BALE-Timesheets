@@ -194,7 +194,7 @@ async function main() {
     const localStorage = makeLocalStorage({
       bigals_productions: seededProductions,
       bigals_user_prefs: seededPrefs,
-      bigals_schema_version: '2',
+      bigals_schema_version: '3',
     });
     const Preferences = makePreferences(); // empty — simulates first launch of new build
     const App = makeAppPlugin();
@@ -205,7 +205,7 @@ async function main() {
     check('C1 upgrade: productions copied to Preferences', Preferences._store.get('bigals_productions') === seededProductions,
       `prefs=${Preferences._store.get('bigals_productions')}`);
     check('C2 upgrade: prefs copied to Preferences', Preferences._store.get('bigals_user_prefs') === seededPrefs);
-    check('C3 upgrade: schema version copied', Preferences._store.get('bigals_schema_version') === '2');
+    check('C3 upgrade: schema version copied', Preferences._store.get('bigals_schema_version') === '3');
     check('C4 upgrade: synchronous read returns copied data', storage.get('bigals_productions') === seededProductions);
     check('C5 upgrade: migrated flag set', Preferences._store.get('bigals_native_migrated') === '1');
     check('C6 upgrade: localStorage left intact as fallback', localStorage._store.get('bigals_productions') === seededProductions);
@@ -222,7 +222,7 @@ async function main() {
       // leaves the value byte-identical — otherwise migrations legitimately
       // rewrite it (which would be the correct behaviour, just not what this
       // particular "stale localStorage is ignored" assertion is checking).
-      bigals_schema_version: '2',
+      bigals_schema_version: '3',
       bigals_native_migrated: '1',
     });
     const App = makeAppPlugin();

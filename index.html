@@ -601,7 +601,7 @@
 
     /* ─── Schema version & storage-safety helpers ─── */
 
-    const SCHEMA_VERSION = 2;
+    const SCHEMA_VERSION = 3;
     const SCHEMA_VERSION_KEY = 'bigals_schema_version';
     const PRE_MIGRATION_BACKUP_KEY = 'bigals_pre_migration_backup';
 
@@ -697,9 +697,9 @@
         "Trainee":             { bdr: 250, otCoef: 1.5 },
       },
       "Rigging": {
-        "Master Rigger":   { bdr: 675, otCoef: 1.5, otRate: 102, bectu: true },
-        "Advanced Rigger": { bdr: 515, otCoef: 1.5, otRate: 78,  bectu: true },
-        "Standby Rigger":  { bdr: 515, otCoef: 1.5, otRate: 78,  bectu: true },
+        "Master Rigger":   { bdr: 675, otCoef: 1.5 },
+        "Advanced Rigger": { bdr: 515, otCoef: 1.5 },
+        "Standby Rigger":  { bdr: 515, otCoef: 1.5 },
       },
       "SFX": {
         "SFX Supervisor":      { bdr: 1516, otCoef: 1.0  },
@@ -2033,6 +2033,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             wrapped: typeof d.wrapped === 'boolean' ? d.wrapped : !!(d.date && d.date < today),
           })) : p.days,
         }));
+        storage.set('bigals_productions', JSON.stringify(updated));
+      },
+      // v3: riggers now compute OT/night/triple via APA from BHR (S5). Older
+      // role defaults stamped a flat BECTU otRate onto rigger crew (Master £102,
+      // Advanced/Standby £78). Clear it so the APA path applies — but only when
+      // it still equals that default, preserving any genuine custom per-crew rate.
+      3: () => {
+        const raw = storage.get('bigals_productions');
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return;
+        const RIGGER_OT = { "Master Rigger": 102, "Advanced Rigger": 78, "Standby Rigger": 78 };
+        const updated = arr.map(p => {
+          if (!p || !Array.isArray(p.crew)) return p;
+          return {
+            ...p,
+            crew: p.crew.map(c => {
+              if (c && RIGGER_OT[c.role] != null && Number(c.otRate) === RIGGER_OT[c.role]) {
+                const { otRate, ...rest } = c;
+                return rest;
+              }
+              return c;
+            }),
+          };
+        });
         storage.set('bigals_productions', JSON.stringify(updated));
       },
     };
