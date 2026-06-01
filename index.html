@@ -1307,6 +1307,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     const isPmpaRole = (crew) => ROLE_DEFAULTS[crew?.role]?.pmpa === true;
 
+    // Mileage line detail — reflects the entry method and (for postcode) the
+    // actual M25 status, instead of a hardcoded "outside M25". Payment is
+    // unchanged: inside-M25 miles are still charged (enforcement is held as a
+    // separate question) but no longer mislabelled on the breakdown/invoice.
+    function buildMileageDetail(day) {
+      const miles = Number(day.miles) || 0;
+      const method = day.mileageMethod || 'manual';
+      const pc = (day.mileagePostcode || '').trim();
+      if (method === 'postcode' && pc) {
+        const trip = day.mileageRoundTrip !== false ? 'round trip' : 'one way';
+        const res = lookupPostcodeMiles(pc, day.mileageRoundTrip !== false);
+        if (res && res.insideM25) return `${pc.toUpperCase()} · within M25 · ${trip}`;
+        return `${pc.toUpperCase()} · from W1F 9SE · ${trip}`;
+      }
+      return `${miles} mi`;
+    }
+
     function calculateDay(day, crew, weekendOpts = {}) {
       const bdr = Number(crew.bdr) || 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
@@ -1403,7 +1420,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lines.push({ label: "Travel Day (BHR)", detail: `${callWrapLabel} · min 5h`, rate: bhr, qty: paidHrs, amount: paidHrs * bhr });
         if (workedHrs < 5) notes.push("Min 5h applied");
         const miles = Number(day.miles) || 0;
-        if (miles > 0) lines.push({ label: "Mileage", detail: `${miles} mi outside M25`, rate: 0.5, qty: miles, amount: miles * 0.5 });
+        if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
         const total = lines.reduce((s, l) => s + l.amount, 0);
         return { meta: { workedHrs, otHrs: 0, bhr, otRate, dayLabel: "Travel Day", notes, secondBreakRequired: false, continuousDay: false }, lines, total };
       }
@@ -1659,7 +1676,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
       }
       const miles = Number(day.miles) || 0;
-      if (miles > 0) lines.push({ label: "Mileage", detail: `${miles} mi outside M25`, rate: 0.5, qty: miles, amount: miles * 0.5 });
+      if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
 
       const total = lines.reduce((s, l) => s + l.amount, 0);
       const otHrsForMeta = lines.filter((l) => /ot|triple/i.test(l.label)).reduce((s, l) => s + (Number(l.qty) || 0), 0);
@@ -1776,7 +1793,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // Mileage stays functional even though §3 doesn't apply — defaults to 0.
       const miles = Number(day.miles) || 0;
-      if (miles > 0) lines.push({ label: "Mileage", detail: `${miles} mi outside M25`, rate: 0.5, qty: miles, amount: miles * 0.5 });
+      if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
 
       const total = lines.reduce((s, l) => s + l.amount, 0);
 
@@ -5190,7 +5207,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div className="text-[10px] text-neutral-500">Approximate — adjust manually if your route differs.</div>
                     {result.insideM25 && (
                       <div className="text-xs text-tm-warn">
-                        ⚠ {result.outcode} is inside the M25 — APA mileage typically not paid for inside-M25 shoots. You can keep the value if your job pays anyway.
+                        ⚠ {result.outcode} is inside the M25 — APA mileage usually isn't charged for inside-M25 shoots, so you can clear this. Only keep it if your job pays mileage anyway.
                       </div>
                     )}
                   </div>
