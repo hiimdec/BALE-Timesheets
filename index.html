@@ -1648,12 +1648,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const travelBackRaw = Math.max(0, (Number(day.travelBackMins) || 0) - 60) / 60;
       const travelHrs = travelOutRaw + travelBackRaw;
       if (travelHrs > 0) {
-        const travelGap = Math.max(0, basicHrs - (workedHrs + preUnitHrs));
+        // APA §3.1: travel is payable only once travel + work exceeds 11h,
+        // regardless of day type (a flat 11h threshold, not the day's basic hours).
+        const travelGap = Math.max(0, 11 - (workedHrs + preUnitHrs));
         const chargeableTravel = ceilHalf(Math.max(0, travelHrs - travelGap));
         if (chargeableTravel > 0) {
           lines.push({ label: "Travel Time", detail: "1hr each way deducted", rate: bhr, qty: chargeableTravel, amount: chargeableTravel * bhr });
         } else {
-          notes.push(`Travel not paid (work ${workedHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ ${basicHrs}h threshold)`);
+          notes.push(`Travel not paid (work ${workedHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ 11h threshold)`);
         }
       }
       const miles = Number(day.miles) || 0;
