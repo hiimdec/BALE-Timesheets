@@ -929,8 +929,6 @@
       defaultKitMoneyAmount: 0,
       defaultPerDiemEnabled: false,
       defaultPerDiemAmount: 0,
-      favourableRounding: false,
-      apaRounding: false,
       onboardingComplete: false,
       lastSeenAppVersion: "",
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off' to hide.
@@ -1140,6 +1138,16 @@
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
     const ceilHalf = (n) => Math.ceil(n * 2) / 2;
     const computeAPArate = (bdr, multiplier, apaRounding) => { const raw = (Number(bdr) || 0) * multiplier / 10; return apaRounding ? Math.round(raw) : raw; };
+
+    // Rounding: a single mode ('exact' | 'favourable' | 'apa') is the source of
+    // truth on a production / invoice / userPrefs. These derive the two underlying
+    // behaviours from it, falling back to the legacy favourableRounding/apaRounding
+    // booleans for un-migrated data — and the invalid legacy both-on combo collapses
+    // to 'favourable' (the approved, crew-safe migration; APA-down-rounds are dropped).
+    const ROUNDING_MODES = ['exact', 'favourable', 'apa'];
+    const roundingModeOf = (o) => o?.roundingMode ?? (o?.favourableRounding ? 'favourable' : o?.apaRounding ? 'apa' : 'exact');
+    const roundingApa = (o) => roundingModeOf(o) === 'apa';
+    const roundingFav = (o) => roundingModeOf(o) === 'favourable';
     const todayISO = () => new Date().toISOString().slice(0, 10);
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
     const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
@@ -1956,6 +1964,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         ...inv,
         linesEdited: inv.linesEdited ?? false,
         ccEmail: inv.ccEmail ?? "",
+        roundingMode: roundingModeOf(inv),
         jobTitle: inv.jobTitle ?? p.title ?? "",
         jobReference: inv.jobReference ?? p.jobReference ?? "",
         jobRole: inv.jobRole ?? "",
@@ -2049,6 +2058,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         jobReference:   (p.jobReference ?? "") || _latestInv("jobReference"),
         ccEmail:        p.ccEmail ?? "",
       };
+      const _rmode = roundingModeOf(p);
 
       return {
         ...p,
@@ -2062,8 +2072,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         jobReference: _client.jobReference,
         invoicingEmail: _client.invoicingEmail,
         ccEmail: _client.ccEmail,
-        favourableRounding: p.favourableRounding ?? false,
-        apaRounding: p.apaRounding ?? false,
+        roundingMode: _rmode,
+        favourableRounding: _rmode === 'favourable',
+        apaRounding: _rmode === 'apa',
         startDate: p.startDate ?? todayISO(),
         weekStarts: p.weekStarts ?? [],
         gridDates: p.gridDates ?? [],
@@ -2424,7 +2435,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         vatNumber: userPrefs.vatNumber || "",
         // Snapshot the shoot's rounding mode so the invoice's display matches the
         // amounts baked into its line items (Favourable = clean Description + Amount).
-        favourableRounding: !!production.favourableRounding,
+        roundingMode: roundingModeOf(production),
+        favourableRounding: roundingFav(production),
         // Logo is NOT snapshotted per-invoice — read from userPrefs at render time to avoid
         // duplicating ~500KB of base64 data into every invoice (iOS Safari 5MB localStorage cap).
         lineItems,
@@ -2561,7 +2573,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const effectiveCrew = resolveCrewForDay(resolved, crewMember);
       let calc;
       try {
-        calc = augmentCalc(calculateDay(resolved, effectiveCrew, production), resolved, crewMember);
+        calc = augmentCalc(calculateDay(resolved, effectiveCrew, { ...production, apaRounding: roundingApa(production) }), resolved, crewMember);
       } catch (err) {
         // Fail safe: a corrupt/legacy day (e.g. an unknown dayType) must not crash
         // the many render sites that call calcForDisplay. Return a zero day + note.
@@ -2572,7 +2584,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       if (prevDay) {
         const prevResolved = resolveDay(production, prevDay, crewMember);
-        const toc = calcTOC(prevResolved, resolved, effectiveCrew, production?.apaRounding ?? false);
+        const toc = calcTOC(prevResolved, resolved, effectiveCrew, roundingApa(production));
         if (toc) {
           const isBreach = toc.isBreach;
           const tocLine = {
@@ -2584,7 +2596,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           calc = { ...calc, lines: [...calc.lines, tocLine], total: calc.total + toc.amount };
         }
       }
-      const useFavourableRounding = production?.favourableRounding ?? false;
+      const useFavourableRounding = roundingFav(production);
       const finalCalc = useFavourableRounding ? applyRateRounding(calc) : calc;
       return {
         ...finalCalc,
@@ -3422,10 +3434,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // BDR / OT rate display
       const bdr = Number(crewMember.bdr) || 0;
-      const bhr = computeAPArate(bdr, 1, production.apaRounding);
+      const bhr = computeAPArate(bdr, 1, roundingApa(production));
       const otRate = (crewMember.otRate != null && crewMember.otRate > 0)
         ? Number(crewMember.otRate)
-        : computeAPArate(bdr, Number(crewMember.otCoef) || 1.5, production.apaRounding);
+        : computeAPArate(bdr, Number(crewMember.otCoef) || 1.5, roundingApa(production));
 
       return (
         <div className="page ts-page">
@@ -3899,7 +3911,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Favourable rounding rounds each line's Amount up, so Qty × Rate wouldn't
       // equal it — render a clean Description + Amount table (no numeric columns
       // to "not add up"). Exact mode keeps the full Qty × Rate × Amount breakdown.
-      const fav = !!invoice.favourableRounding;
+      const fav = roundingFav(invoice);
 
       const renderLineRows = (item, labelOverride) => {
         const label = labelOverride ?? item.label ?? "";
@@ -4326,6 +4338,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         {...p} />;
     };
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
+
+    const ROUNDING_OPTIONS = [
+      { value: 'exact',      label: 'Exact',      desc: 'Exact decimals — no rounding.' },
+      { value: 'favourable', label: 'Favourable', desc: 'Round each line amount up to the next whole pound, in your favour.' },
+      { value: 'apa',        label: 'APA',        desc: "Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR)." },
+    ];
+    const RoundingModeSelect = ({ value, onChange }) => {
+      const cur = ROUNDING_MODES.includes(value) ? value : 'exact';
+      return (
+        <div className="space-y-1.5">
+          {ROUNDING_OPTIONS.map((opt) => {
+            const active = cur === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onChange(opt.value)}
+                aria-pressed={active}
+                className={`w-full text-left rounded-xl border px-3.5 py-2.5 transition-colors ${active ? 'bg-sky-500/10 border-sky-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`w-3.5 h-3.5 rounded-full border flex-shrink-0 flex items-center justify-center ${active ? 'border-sky-400' : 'border-neutral-600'}`}>
+                    {active && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+                  </span>
+                  <span className={`text-[13px] font-bold ${active ? 'text-sky-300' : 'text-neutral-200'}`}>{opt.label}</span>
+                </div>
+                <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight pl-[22px]">{opt.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+      );
+    };
 
     const StatusMsg = ({ kind = "info", children }) => {
       const colors  = { ok: "text-tm-good",       info: "text-neutral-400",     warn: "text-tm-warn",        bad: "text-tm-pen" };
@@ -6379,7 +6425,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             if (i > 0) {
               const prevR = resolveDay(production, memberDays[i - 1], member);
               const currR = resolveDay(production, memberDays[i], member);
-              const toc = calcTOC(prevR, currR, member, production?.apaRounding ?? false);
+              const toc = calcTOC(prevR, currR, member, roundingApa(production));
               if (toc) { entry.hasTOC = true; entry.isTOCBreach = toc.isBreach; }
             }
             map[memberDays[i].id] = entry;
@@ -9704,18 +9750,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
               </div>
               <div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Favourable rounding</span>
-                  <Toggle value={!!production.favourableRounding} onChange={(v) => setProduction(p => ({ ...p, favourableRounding: v }))} ariaLabel="Favourable rounding" />
-                </div>
-                <p className="text-[11px] text-neutral-500 mt-1">Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used. Applies to this shoot only.</p>
-              </div>
-              <div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">APA rounding</span>
-                  <Toggle value={!!production.apaRounding} onChange={(v) => setProduction(p => ({ ...p, apaRounding: v }))} ariaLabel="APA rounding" />
-                </div>
-                <p className="text-[11px] text-neutral-500 mt-1">Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40). Applies to this shoot only.</p>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Rounding</div>
+                <RoundingModeSelect value={roundingModeOf(production)} onChange={(m) => setProduction(p => ({ ...p, roundingMode: m }))} />
+                <p className="text-[11px] text-neutral-500 mt-2">Applies to this shoot only.</p>
               </div>
               {production.bestBoyMode && (
                 <div className="mt-4 pt-4 border-t border-neutral-800">
@@ -12650,10 +12687,8 @@ const setDays = (updater) =>
       })();
 
       const calcSummary = (() => {
-        const bits = [];
-        if (userPrefs.favourableRounding) bits.push('Favourable');
-        if (userPrefs.apaRounding) bits.push('APA');
-        return bits.length ? `${bits.join(' + ')} rounding` : 'Exact';
+        const m = roundingModeOf(userPrefs);
+        return m === 'favourable' ? 'Favourable rounding' : m === 'apa' ? 'APA rounding' : 'Exact';
       })();
 
       const displaySummary = userPrefs.comparisonUnit === 'off'
@@ -12889,20 +12924,9 @@ const setDays = (updater) =>
             </Disclosure>
 
             <Disclosure label="Calculation" summary={calcSummary}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Favourable rounding</div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Default for new shoots. Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used. Change a specific shoot in its own settings — this never alters existing shoots.</div>
-                </div>
-                <Toggle value={userPrefs.favourableRounding} onChange={(v) => set({ favourableRounding: v })} ariaLabel="Favourable rounding" />
-              </div>
-              <div className="flex items-center justify-between gap-3 mt-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">APA rounding</div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Default for new shoots. Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40). Change a specific shoot in its own settings — this never alters existing shoots.</div>
-                </div>
-                <Toggle value={userPrefs.apaRounding} onChange={(v) => set({ apaRounding: v })} ariaLabel="APA rounding" />
-              </div>
+              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Rounding</div>
+              <RoundingModeSelect value={roundingModeOf(userPrefs)} onChange={(m) => set({ roundingMode: m })} />
+              <p className="text-[11px] text-neutral-500 mt-2.5 leading-tight">This sets the default for new shoots. To change a shoot you've already created, open that shoot's settings.</p>
             </Disclosure>
 
             <Disclosure label="Display" summary={displaySummary}>
@@ -13935,7 +13959,7 @@ const setDays = (updater) =>
             <div className="flex-1 min-w-0">
               <div className={`text-sm font-semibold ${isWaived ? "line-through text-neutral-500" : "text-neutral-100"}`}>{label}</div>
               {item.detail && <div className="text-[11px] text-neutral-500 truncate">{item.detail}</div>}
-              {!invoice.favourableRounding && item.rate !== null && (
+              {!roundingFav(invoice) && item.rate !== null && (
                 <div className="text-[10px] text-neutral-600 mt-0.5">
                   {isDisc
                     ? <><span className="text-tm-warn">{item.discountedQty}</span>/{item.qty} × {fmtGBP(item.rate)}</>
@@ -15710,8 +15734,12 @@ const confirmDelete = (p) => setConfirmOpts({
       // spurious re-render on every mount.
       useEffect(() => {
         setUserPrefs(p => {
-          if (p.onboardingComplete !== undefined) return p;
-          return { ...p, onboardingComplete: true };
+          let next = p;
+          if (next.onboardingComplete === undefined) next = { ...next, onboardingComplete: true };
+          // Consolidate legacy favourableRounding/apaRounding into the single
+          // roundingMode (both-on → favourable, per the approved migration).
+          if (next.roundingMode === undefined) next = { ...next, roundingMode: roundingModeOf(next) };
+          return next;
         });
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -15837,8 +15865,7 @@ const confirmDelete = (p) => setConfirmOpts({
           iAmCrewId: null,
           dayDefaults: {},
           isElevenHourDay: false,
-          favourableRounding: userPrefs.favourableRounding ?? false,
-          apaRounding: userPrefs.apaRounding ?? false,
+          roundingMode: roundingModeOf(userPrefs),
           startDate: todayISO(),
           isNew: true,
         };
