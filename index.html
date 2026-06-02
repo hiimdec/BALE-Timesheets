@@ -992,7 +992,7 @@
 
     /* ═══════════════════════════ UTILITIES ═══════════════════════════ */
 
-    const fmtGBP = (n) => "£" + (Number(n) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    const fmtGBP = (n) => { const v = Number(n); return "£" + (Number.isFinite(v) ? v : 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); };
     const parseHHMM = (s) => {
       if (!s || !/^\d{1,2}:\d{2}$/.test(s)) return null;
       const [h, m] = s.split(":").map(Number);
@@ -1211,7 +1211,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const workedHrs = wrapAbs - callH;
       const lunchStartH = parseHHMM(day.lunchStartTime);
       const lunchStartAbs = absTime(lunchStartH, callH);
-      const lunchDuration = Number(day.lunchDurationMins ?? 60);
+      const rawLunch = Number(day.lunchDurationMins ?? 60);
+      const lunchDuration = (Number.isFinite(rawLunch) && rawLunch >= 0) ? rawLunch : 60;
       const lunchMissed = lunchDuration === 0 || lunchStartH === null;
       const lunchEndAbs = lunchMissed ? null : lunchStartAbs + lunchDuration / 60;
       const lateThreshold = callH + 5.5;
@@ -1662,8 +1663,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (cwd2Required && day.cwdBreak2Given === false) lines.push({ label: "Missed CWD Break (12.5h)", detail: `30m × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate * 0.5 });
       }
 
-      const travelOutRaw = Math.max(0, (Number(day.travelOutMins) || 0) - 60) / 60;
-      const travelBackRaw = Math.max(0, (Number(day.travelBackMins) || 0) - 60) / 60;
+      const finMins = (x) => { const n = Number(x); return Number.isFinite(n) ? n : 0; };
+      const travelOutRaw = Math.max(0, finMins(day.travelOutMins) - 60) / 60;
+      const travelBackRaw = Math.max(0, finMins(day.travelBackMins) - 60) / 60;
       const travelHrs = travelOutRaw + travelBackRaw;
       if (travelHrs > 0) {
         // APA §3.1: travel is payable only once travel + work exceeds 11h,
@@ -2233,7 +2235,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (!crewMember) return [];
       const myDays = (production.days || [])
         .filter(d => d.crewId === userCrewId)
-        .sort((a, b) => a.date.localeCompare(b.date));
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
       // ordered map: aggregation key → { label, dates[], qty, rate, amount, isExpense }
       const map = new Map();
@@ -2390,7 +2392,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function findPrevDay(allDays, currDay) {
       return allDays
         .filter(d => d.crewId === currDay.crewId && d.date < currDay.date)
-        .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0] || null;
     }
 
     function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew, apaRounding = false) {
@@ -2509,11 +2511,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function generateCrewText(crewMember, entries, production) {
       const lines = [];
-      lines.push(`${crewMember.name.toUpperCase()} — ${crewMember.role}`);
+      lines.push(`${(crewMember.name || '').toUpperCase()} — ${crewMember.role}`);
       if (production.title) lines.push(production.title);
       if (production.prodCo) lines.push(production.prodCo);
       lines.push('');
-      const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+      const sorted = [...entries].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       let grandTotal = 0;
       let prevEntry = null;
       sorted.forEach((d) => {
@@ -3436,7 +3438,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
               const prevDay = allDaysForCrew
                 .filter(x => x.date < dateISO)
-                .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+                .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0] || null;
               const calc = calcForDisplay(production, day, crewMember, prevDay);
               const flags = penaltyFlags(calc);
               const isBH = flags.isBankHoliday;
@@ -3531,7 +3533,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       let weekTotal = 0, weekHrs = 0, weekOTHrs = 0;
       const crewTotals = crew.map(c => {
         const crewDays = Object.values(byCA[c.id] || {});
-        const sorted = [...(allDays || [])].filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+        const sorted = [...(allDays || [])].filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         let tot = 0, hrs = 0, otHrs = 0;
         crewDays.forEach(day => {
           const prev = sorted.filter(x => x.date < day.date).pop() || null;
@@ -3552,7 +3554,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         crew.forEach((c, ci) => {
           const day = (byCA[c.id] || {})[dateISO];
           if (!day || day.dayType === "Rest Day") return;
-          const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+          const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
           const calc = calcForDisplay(production, day, c, prev);
           tot += calc.total;
@@ -3606,7 +3608,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
 
               {crew.map((c, ci) => {
-                const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+                const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
                 return (
                   <div key={c.id} className="grid-row grid-body">
                     <div className="grid-cell crew">
@@ -3710,7 +3712,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (mode === "timesheet" && crewMember) {
         const crewDays = (days || [])
           .filter(d => d.crewId === crewMember.id)
-          .sort((a, b) => a.date.localeCompare(b.date));
+          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
         // Compute grand totals
         let grandTotal = 0, grandHrs = 0, grandOTHrs = 0;
@@ -5232,7 +5234,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           (d.crewId === day.crewId || (!d.crewId && !day.crewId))
         );
         if (relevant.length === 0) return null;
-        return [...relevant].sort((a, b) => a.date.localeCompare(b.date)).slice(-1)[0];
+        return [...relevant].sort((a, b) => (a.date || '').localeCompare(b.date || '')).slice(-1)[0];
       }, [days, day.date, day.crewId]);
 
       const hasPrevMileage = previousDay && (previousDay.miles > 0 || previousDay.mileagePostcode);
@@ -6274,7 +6276,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const map = {};
         for (const member of crew) {
           const memberDays = days.filter(d => d.crewId === member.id)
-            .sort((a, b) => a.date.localeCompare(b.date));
+            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           for (let i = 0; i < memberDays.length; i++) {
             const entry = map[memberDays[i].id] || {};
             entry.prevDay = i > 0 ? memberDays[i - 1] : null;
@@ -9242,7 +9244,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
               {crew.map(c => {
                 const cDays = (days || []).filter(d => d.crewId === c.id);
-                const sorted = [...cDays].sort((a, b) => a.date.localeCompare(b.date));
+                const sorted = [...cDays].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
                 const total = sorted.reduce((s, d, i) => s + calcForDisplay(production, d, c, sorted[i-1]||null).total, 0);
                 return (
                   <button key={c.id} type="button"
@@ -9289,7 +9291,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [crew, days]);
 
       const grandTotal = byCrew.reduce((s, { crew: c, entries }) => {
-        const sortedG = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+        const sortedG = [...entries].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         return s + sortedG.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedG[i - 1] || null).total, 0);
       }, 0);
 
@@ -10189,7 +10191,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const sortedDays = useMemo(() => {
         return (production.days || [])
           .filter(d => d.crewId === crewMember.id)
-          .sort((a, b) => a.date.localeCompare(b.date));
+          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       }, [production.days, crewMember.id]);
 
       const perDayBreakdowns = useMemo(() => {
@@ -10504,7 +10506,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay, onGenerateInvoice }) {
       const sorted = useMemo(() => [...days].sort((a, b) => {
-        const dc = a.date.localeCompare(b.date);
+        const dc = (a.date || '').localeCompare(b.date || '');
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
       }), [days]);
 
@@ -11211,7 +11213,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
       const handleExportText = async () => {
         if (!soloCrew) return;
-        const sortedE = [...days].sort((a, b) => a.date.localeCompare(b.date));
+        const sortedE = [...days].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         const text = generateCrewText(soloCrew, sortedE, production);
         const r = await shareTextOrCopy(text, `${soloCrew.name} Timesheet`);
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
