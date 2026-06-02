@@ -15587,7 +15587,12 @@ const confirmDelete = (p) => setConfirmOpts({
         if (!production) return;
         const setProduction = updater =>
           setProductions(prev => prev.map(p => p.id === productionId ? (typeof updater === 'function' ? updater(p) : updater) : p));
-        const userCrewId = production.bestBoyMode ? null : (production.crew?.[0]?.id ?? null);
+        // Resolve the crew to invoice the same way the in-production path does
+        // (best-boy included, via userCrewIdsInProduction) — falling back to the
+        // first crew member — so the global picker never emits an empty invoice;
+        // bail if the shoot has no crew at all.
+        const userCrewId = userCrewIdsInProduction(production, userPrefs)[0] ?? production.crew?.[0]?.id ?? null;
+        if (!userCrewId) return;
         const newInvoiceId = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
         openProduction(productionId, { invoiceId: newInvoiceId });
       };
