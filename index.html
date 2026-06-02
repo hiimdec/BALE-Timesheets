@@ -1819,6 +1819,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function migrateDay(d) {
       d = { note: "", expenses: [], ...d };
+      // Normalise a corrupt/legacy dayType: a present-but-unknown value (or blank)
+      // would otherwise throw in the calc engine. undefined is left for the cascade.
+      if (d.dayType !== undefined && !DAY_TYPES.includes(d.dayType)) d = { ...d, dayType: "Shoot" };
       // V4-5h-10: *Enabled flags dropped; value presence drives activation.
       // Existing records with the flags get them removed (idempotent). Values preserved —
       // records previously saved as enabled:false with a value will now show as ACTIVE.
@@ -2468,7 +2471,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function calcForDisplay(production, day, crewMember, prevDay = null) {
       const resolved = resolveDay(production, day, crewMember);
       const effectiveCrew = resolveCrewForDay(resolved, crewMember);
-      let calc = augmentCalc(calculateDay(resolved, effectiveCrew, production), resolved, crewMember);
+      let calc;
+      try {
+        calc = augmentCalc(calculateDay(resolved, effectiveCrew, production), resolved, crewMember);
+      } catch (err) {
+        // Fail safe: a corrupt/legacy day (e.g. an unknown dayType) must not crash
+        // the many render sites that call calcForDisplay. Return a zero day + note.
+        calc = { meta: { workedHrs: 0, otHrs: 0, bhr: 0, otRate: 0, dayLabel: "—",
+          notes: ["Couldn't calculate this day — check its details."],
+          secondBreakRequired: false, continuousDay: false, isBankHoliday: false, bankHolidayName: null },
+          lines: [], total: 0 };
+      }
       if (prevDay) {
         const prevResolved = resolveDay(production, prevDay, crewMember);
         const toc = calcTOC(prevResolved, resolved, effectiveCrew, production?.apaRounding ?? false);
