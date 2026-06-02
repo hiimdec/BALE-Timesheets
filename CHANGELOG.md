@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.8.1] - 2026-06-02
+
+Pay-calculation accuracy (overtime, pre-call, travel, riggers), bidirectional invoice linking, fuller backups, and data-integrity fixes throughout.
+
+### Added
+
+- Client and job details (company, emails, project, reference) now flow between your project and its invoices — fill them once; sent invoices stay locked as issued.
+
+### Changed
+
+- Backups now include bank details, company info, settings and invoice numbering — so a restore, or moving to a new device, brings everything back.
+- Favourable-rounding invoices now show clean amounts without confusing line maths.
+
+### Fixed
+
+- Overtime after midnight now correctly pays triple time through to wrap.
+- Pre-call premiums (early starts) are always paid in full, even on short days.
+- Corrected the travel-time threshold across all day types.
+- Mileage lines now show the correct route and M25 status.
+- Rigger rates now compute via the standard rules from the rate-card day rate.
+- Duplicating a shoot no longer copies its invoices.
+- Data-integrity, input-validation and stability fixes throughout.
+
 ## [4.8.0] - 2026-06-01
 
 The first iPhone (TestFlight) release, plus new invoicing and stats touches for everyone.

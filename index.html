@@ -582,21 +582,24 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "4.8.0";
+    const APP_VERSION = "4.8.1";
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-06-01",
+      date: "2026-06-02",
       added: [
-        "New: Mark-as-paid celebration — an emoji shower when you mark an invoice paid. Customise it (or switch it off) in Settings → Celebration: choose the emoji (Cash / Bag / Mix), how much falls (Light / Medium / Heavy), and how fast (Chill / Normal / Fast), with a Preview button to try it.",
-        "New: Per-shoot rounding — set Favourable or APA rounding for each shoot in its own Shoot Settings. The global setting now only chooses the default for new shoots and never changes existing ones. Invoice line items, notes, and day totals all reconcile to a single figure.",
-        "Improved: Crisper invoice PDFs on iPhone — invoices export as sharp, selectable, correctly-paginated PDFs (matching the web and print layout) instead of a single flattened image.",
-        "Fix: Overtime Earned now shows the correct total in Stats — it had been reading zero for shoots with weekday overtime.",
-        "Fix: Imported shoots now show their call/wrap times on the day and shoot views, and Stats averages count those days correctly.",
-        "Fix: Sharing or emailing an invoice no longer attaches the PDF twice.",
-        "Under-the-hood improvements for App Store readiness and tidier example text.",
+        "New: Client and job details (company, emails, project, reference) now flow between your project and its invoices — fill them once; sent invoices stay locked as issued.",
+        "Improved: Backups now include bank details, company info, settings and invoice numbering — so a restore, or moving to a new device, brings everything back.",
+        "Improved: Favourable-rounding invoices now show clean amounts without confusing line maths.",
+        "Fix: Overtime after midnight now correctly pays triple time through to wrap.",
+        "Fix: Pre-call premiums (early starts) are always paid in full, even on short days.",
+        "Fix: Corrected the travel-time threshold across all day types.",
+        "Fix: Mileage lines now show the correct route and M25 status.",
+        "Fix: Rigger rates now compute via the standard rules from the rate-card day rate.",
+        "Fix: Duplicating a shoot no longer copies its invoices.",
+        "Data-integrity, input-validation and stability fixes throughout.",
       ],
-      notes: "Mark-as-paid celebration, per-shoot rounding, crisper iPhone invoice PDFs, and fixes to Stats and imported shoots. See CHANGELOG.md for full notes.",
+      notes: "Pay-calc accuracy (overtime, pre-call, travel, riggers), bidirectional invoice linking, fuller backups, and data-integrity fixes. See CHANGELOG.md for full notes.",
     };
 
     /* ─── Schema version & storage-safety helpers ─── */
