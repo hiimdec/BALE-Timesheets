@@ -582,26 +582,31 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "4.8.0";
+    const APP_VERSION = "4.8.1";
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-06-01",
+      date: "2026-06-02",
       added: [
-        "New: Mark-as-paid celebration — an emoji shower when you mark an invoice paid. Customise it (or switch it off) in Settings → Celebration: choose the emoji (Cash / Bag / Mix), how much falls (Light / Medium / Heavy), and how fast (Chill / Normal / Fast), with a Preview button to try it.",
-        "New: Per-shoot rounding — set Favourable or APA rounding for each shoot in its own Shoot Settings. The global setting now only chooses the default for new shoots and never changes existing ones. Invoice line items, notes, and day totals all reconcile to a single figure.",
-        "Improved: Crisper invoice PDFs on iPhone — invoices export as sharp, selectable, correctly-paginated PDFs (matching the web and print layout) instead of a single flattened image.",
-        "Fix: Overtime Earned now shows the correct total in Stats — it had been reading zero for shoots with weekday overtime.",
-        "Fix: Imported shoots now show their call/wrap times on the day and shoot views, and Stats averages count those days correctly.",
-        "Fix: Sharing or emailing an invoice no longer attaches the PDF twice.",
-        "Under-the-hood improvements for App Store readiness and tidier example text.",
+        "New: Client and job details (company, emails, project, reference) now flow between your project and its invoices — fill them once; sent invoices stay locked as issued.",
+        "Improved: Backups now include bank details, company info, settings and invoice numbering — so a restore, or moving to a new device, brings everything back.",
+        "Improved: Favourable invoices now show clean whole-pound amounts on every line, including penalties.",
+        "Improved: Rounding is now a single choice — Exact, Favourable, or APA — instead of two separate switches that could conflict.",
+        "Fix: Overtime after midnight now correctly pays triple time through to wrap.",
+        "Fix: Pre-call premiums (early starts) are always paid in full, even on short days.",
+        "Fix: Corrected the travel-time threshold across all day types.",
+        "Fix: Mileage lines now show the correct route and M25 status.",
+        "Fix: Rigger rates now compute via the standard rules from the rate-card day rate.",
+        "Fix: A wrap time could go blank and zero the day total after changing the call time; the wrap now defaults to 11 hours after the call.",
+        "Fix: Duplicating a shoot no longer copies its invoices.",
+        "Data-integrity, input-validation and stability fixes throughout.",
       ],
-      notes: "Mark-as-paid celebration, per-shoot rounding, crisper iPhone invoice PDFs, and fixes to Stats and imported shoots. See CHANGELOG.md for full notes.",
+      notes: "Pay-calc accuracy (overtime, pre-call, travel, riggers, wrap time), a single rounding choice, bidirectional invoice linking, fuller backups, and data-integrity fixes. See CHANGELOG.md for full notes.",
     };
 
     /* ─── Schema version & storage-safety helpers ─── */
 
-    const SCHEMA_VERSION = 2;
+    const SCHEMA_VERSION = 3;
     const SCHEMA_VERSION_KEY = 'bigals_schema_version';
     const PRE_MIGRATION_BACKUP_KEY = 'bigals_pre_migration_backup';
 
@@ -697,9 +702,9 @@
         "Trainee":             { bdr: 250, otCoef: 1.5 },
       },
       "Rigging": {
-        "Master Rigger":   { bdr: 675, otCoef: 1.5, otRate: 102, bectu: true },
-        "Advanced Rigger": { bdr: 515, otCoef: 1.5, otRate: 78,  bectu: true },
-        "Standby Rigger":  { bdr: 515, otCoef: 1.5, otRate: 78,  bectu: true },
+        "Master Rigger":   { bdr: 675, otCoef: 1.5 },
+        "Advanced Rigger": { bdr: 515, otCoef: 1.5 },
+        "Standby Rigger":  { bdr: 515, otCoef: 1.5 },
       },
       "SFX": {
         "SFX Supervisor":      { bdr: 1516, otCoef: 1.0  },
@@ -926,8 +931,6 @@
       defaultKitMoneyAmount: 0,
       defaultPerDiemEnabled: false,
       defaultPerDiemAmount: 0,
-      favourableRounding: false,
-      apaRounding: false,
       onboardingComplete: false,
       lastSeenAppVersion: "",
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off' to hide.
@@ -992,7 +995,7 @@
 
     /* ═══════════════════════════ UTILITIES ═══════════════════════════ */
 
-    const fmtGBP = (n) => "£" + (Number(n) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    const fmtGBP = (n) => { const v = Number(n); return "£" + (Number.isFinite(v) ? v : 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); };
     const parseHHMM = (s) => {
       if (!s || !/^\d{1,2}:\d{2}$/.test(s)) return null;
       const [h, m] = s.split(":").map(Number);
@@ -1000,6 +1003,7 @@
       return h + m / 60;
     };
     const toHHMM = (h) => {
+      if (!Number.isFinite(h)) return "";   // never emit "NaN:NaN" from a bad calc
       const n = ((h % 24) + 24) % 24;
       const hh = Math.floor(n);
       const mm = Math.round((n - hh) * 60);
@@ -1136,6 +1140,16 @@
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
     const ceilHalf = (n) => Math.ceil(n * 2) / 2;
     const computeAPArate = (bdr, multiplier, apaRounding) => { const raw = (Number(bdr) || 0) * multiplier / 10; return apaRounding ? Math.round(raw) : raw; };
+
+    // Rounding: a single mode ('exact' | 'favourable' | 'apa') is the source of
+    // truth on a production / invoice / userPrefs. These derive the two underlying
+    // behaviours from it, falling back to the legacy favourableRounding/apaRounding
+    // booleans for un-migrated data — and the invalid legacy both-on combo collapses
+    // to 'favourable' (the approved, crew-safe migration; APA-down-rounds are dropped).
+    const ROUNDING_MODES = ['exact', 'favourable', 'apa'];
+    const roundingModeOf = (o) => o?.roundingMode ?? (o?.favourableRounding ? 'favourable' : o?.apaRounding ? 'apa' : 'exact');
+    const roundingApa = (o) => roundingModeOf(o) === 'apa';
+    const roundingFav = (o) => roundingModeOf(o) === 'favourable';
     const todayISO = () => new Date().toISOString().slice(0, 10);
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
     const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
@@ -1206,12 +1220,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const callH = parseHHMM(day.callTime);
       const wrapH = parseHHMM(day.wrapTime);
       if (callH === null || wrapH === null) return null;
-      const wrapNextDay = day.wrapNextDay || wrapH <= callH;
-      const wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
-      const workedHrs = wrapAbs - callH;
+      // E1: strict '<' so wrap == call is NOT auto-treated as a 24h overnight; with no
+      // explicit wrapNextDay it's a 0h day, handled as an invalid-time day (£0 + note —
+      // the same path as unparseable times) rather than a silent 24h.
+      const wrapNextDay = day.wrapNextDay || wrapH < callH;
+      if (wrapH === callH && !day.wrapNextDay) return null;
+      let wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
+      let workedHrs = wrapAbs - callH;
+      // E2: clamp an implausibly long day (e.g. a stale wrapNextDay on a same-day wrap)
+      // to 24h so OT/triple-time can't scale to 36-48h.
+      const dayClamped = workedHrs > 24;
+      if (dayClamped) { workedHrs = 24; wrapAbs = callH + 24; }
       const lunchStartH = parseHHMM(day.lunchStartTime);
       const lunchStartAbs = absTime(lunchStartH, callH);
-      const lunchDuration = Number(day.lunchDurationMins ?? 60);
+      const rawLunch = Number(day.lunchDurationMins ?? 60);
+      const lunchDuration = (Number.isFinite(rawLunch) && rawLunch >= 0) ? rawLunch : 60;
       const lunchMissed = lunchDuration === 0 || lunchStartH === null;
       const lunchEndAbs = lunchMissed ? null : lunchStartAbs + lunchDuration / 60;
       const lateThreshold = callH + 5.5;
@@ -1242,7 +1265,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lateThreshold, cwdThreshold, lunchLate, lunchVeryLate,
         continuousDay, cwdApplies, sbDeadline, secondBreakRequired,
         sbStartAbs, sbDuration, sbState,
-        cwd1Deadline, cwd2Deadline, cwd2Required,
+        cwd1Deadline, cwd2Deadline, cwd2Required, dayClamped,
       };
     }
 
@@ -1268,6 +1291,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
      * not in use" which is the same as "inherit default" semantically.
      */
     function resolveDay(production, day, crew) {
+      // Defensive: a time field corrupted to a non-parsing string (e.g. an old
+      // "NaN:NaN" wrap from the pre-fix onCallChange bug) is treated as unset so
+      // the cascade/default re-supplies a valid time — no display or calc surface
+      // ever shows NaN. No-op for valid data (undefined fields short-circuit before
+      // parseHHMM; valid times parse fine).
+      const _badTime = (s) => typeof s === "string" && s !== "" && parseHHMM(s) === null;
+      if (_badTime(day.callTime) || _badTime(day.wrapTime) || _badTime(day.lunchStartTime) ||
+          _badTime(day.secondBreakStartTime) || _badTime(day.preCallTime)) {
+        day = { ...day };
+        for (const f of ["callTime", "wrapTime", "lunchStartTime", "secondBreakStartTime", "preCallTime"]) {
+          if (_badTime(day[f])) delete day[f];
+        }
+      }
       const defaultDay = production.defaultDay ?? {};
       const dateDefaults = production.dayDefaults?.[day.date] ?? {};
       const merged = { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...day };
@@ -1307,8 +1343,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     const isPmpaRole = (crew) => ROLE_DEFAULTS[crew?.role]?.pmpa === true;
 
+    // Mileage line detail — reflects the entry method and (for postcode) the
+    // actual M25 status, instead of a hardcoded "outside M25". Payment is
+    // unchanged: inside-M25 miles are still charged (enforcement is held as a
+    // separate question) but no longer mislabelled on the breakdown/invoice.
+    function buildMileageDetail(day) {
+      const miles = Number(day.miles) || 0;
+      const method = day.mileageMethod || 'manual';
+      const pc = (day.mileagePostcode || '').trim();
+      if (method === 'postcode' && pc) {
+        const trip = day.mileageRoundTrip !== false ? 'round trip' : 'one way';
+        const res = lookupPostcodeMiles(pc, day.mileageRoundTrip !== false);
+        if (res && res.insideM25) return `${pc.toUpperCase()} · within M25 · ${trip}`;
+        return `${pc.toUpperCase()} · from W1F 9SE · ${trip}`;
+      }
+      return `${miles} mi`;
+    }
+
     function calculateDay(day, crew, weekendOpts = {}) {
-      const bdr = Number(crew.bdr) || 0;
+      const rawBdr = Number(crew.bdr);
+      const bdr = Number.isFinite(rawBdr) ? Math.max(0, rawBdr) : 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
       const otCoef = crew.noOT ? 0 : (Number(crew.otCoef) || 1);
       const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : computeAPArate(bdr, otCoef, weekendOpts.apaRounding);
@@ -1345,6 +1399,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
       }
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
+      if (bs.dayClamped) notes.push("Day length exceeded 24h — clamped to 24h. Check the wrap time / +1 flag.");
       const preCallTime = day.preCallTime || day.truckCallTime; // back-compat with legacy truckCallTime
       const preCallH = preCallTime ? parseHHMM(preCallTime) : null;
       // Split the pre-call window into (a) hours before 05:00 paid at 3× BHR
@@ -1403,7 +1458,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lines.push({ label: "Travel Day (BHR)", detail: `${callWrapLabel} · min 5h`, rate: bhr, qty: paidHrs, amount: paidHrs * bhr });
         if (workedHrs < 5) notes.push("Min 5h applied");
         const miles = Number(day.miles) || 0;
-        if (miles > 0) lines.push({ label: "Mileage", detail: `${miles} mi outside M25`, rate: 0.5, qty: miles, amount: miles * 0.5 });
+        if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
         const total = lines.reduce((s, l) => s + l.amount, 0);
         return { meta: { workedHrs, otHrs: 0, bhr, otRate, dayLabel: "Travel Day", notes, secondBreakRequired: false, continuousDay: false }, lines, total };
       }
@@ -1427,20 +1482,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const effectiveHrs = wrapAbs - effectiveStart;
 
       // Pre-call lines (computed up top, emitted now that basicHrs / isNightShoot
-      // are in scope). Absorbs into unused basic-day hours (industry practice,
-      // mirrors the existing travel-time absorption pattern). Absorb from the
-      // call-time end backwards — OT-rate portion first, then triple — so the
-      // unsocial early-hours triple-time premium is preserved as long as possible.
-      const preCallGap = Math.max(0, basicHrs - workedHrs);
-      const preCallAbsorbed = Math.min(preCallSplit.total, preCallGap);
-      const preCallOtAbsorbed = Math.min(preCallSplit.ot, preCallAbsorbed);
-      const preCallTripleAbsorbed = preCallAbsorbed - preCallOtAbsorbed;
-      const preCallTripleChargeable = ceilHalf(Math.max(0, preCallSplit.triple - preCallTripleAbsorbed));
-      const preCallOtChargeable = ceilHalf(Math.max(0, preCallSplit.ot - preCallOtAbsorbed));
-      // preUnitHrs is the basic-day-filling portion — used by the travelGap
-      // formula downstream so travel can't also claim absorption hours
-      // pre-call already filled.
-      const preUnitHrs = preCallAbsorbed;
+      // are in scope). APA §2.1.3: pre-call premiums are defined by clock time,
+      // not day length — pre-05:00 (3× BHR) and 05:00→call (OT rate) pay in full
+      // even on a short day. They are NOT basic-rate hours, so nothing absorbs
+      // them (only basic-rate travel time absorbs into unused basic-day hours).
+      const preCallTripleChargeable = ceilHalf(preCallSplit.triple);
+      const preCallOtChargeable = ceilHalf(preCallSplit.ot);
+      // Pre-call sits outside the basic day, so it never fills basic hours for
+      // the downstream travel-absorption gap.
+      const preUnitHrs = 0;
       if (preCallSplit.total > 0) {
         if (isNightShoot) {
           // APA §2.1.5: night shoots pay flat 2× BHR call-to-wrap, no
@@ -1450,8 +1500,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const nightPreCallHrs = ceilHalf(preCallSplit.total);
           const nightRate = bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding);
           lines.push({ label: "Pre-call", detail: `${preCallTime} – ${day.callTime} · 2× BHR (night)`, rate: nightRate, qty: nightPreCallHrs, amount: nightPreCallHrs * nightRate });
-        } else if (preCallTripleChargeable === 0 && preCallOtChargeable === 0) {
-          notes.push(`Pre-call absorbed (worked ${workedHrs.toFixed(1)}h + pre-call ${preCallSplit.total.toFixed(1)}h ≤ ${basicHrs}h threshold)`);
         } else {
           if (preCallTripleChargeable > 0) {
             const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
@@ -1490,8 +1538,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const satOtRate = bectuOtRate ?? satRate;
         if (effectiveDayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
-          const otHrs = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
-          if (otHrs > 0) { lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: "After basic" + otCurtailedSuffix, rate: satOtRate, qty: otHrs, amount: otHrs * satOtRate }); }
+          // APA §4.6: Saturday OT is 1.5× BHR, but OT after 00:00 is 3× BHR and
+          // continues at triple to wrap.
+          const otTotal = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
+          if (otTotal > 0) {
+            const otStartAbs = effectiveStart + basicHrs;
+            const tripleHrs = ceilHalf(Math.max(0, wrapAbs - Math.max(otStartAbs, 24)));
+            const satOtHrs = Math.max(0, otTotal - tripleHrs);
+            if (satOtHrs > 0) lines.push({ label: `Saturday OT (${satMult}× BHR)`, detail: (tripleHrs > 0 ? `${toHHMM(otStartAbs)} – 00:00` : "After basic") + otCurtailedSuffix, rate: satOtRate, qty: satOtHrs, amount: satOtHrs * satOtRate });
+            if (tripleHrs > 0) {
+              const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+              lines.push({ label: "OT Triple Time (after 00:00)", detail: `00:00 – ${toHHMM(wrapAbs)}`, rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
+            }
+          }
         } else {
           // APA §2.3 / §2.4(ix): flat 8h × satRate for both Pre-light and
           // discretionary days. Lunch is unpaid filler — it only shifts the
@@ -1509,11 +1568,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (effectiveDayType === "Shoot") {
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
+          // APA §4.7: Sun/BH is 2× BHR for all hours, but hours after 00:00 are
+          // 3× BHR and continue at triple to wrap. Split the flat day at
+          // midnight; the min-10h floor tops up the pre-midnight (2× BHR) part.
+          const tripleHrs = ceilHalf(Math.max(0, wrapAbs - 24));
+          const flatHrs = Math.max(0, paidHrs - tripleHrs);
           lines.push({
             label: `${sunBranchPrefix} Shoot (${sunMult}× BHR, flat)`,
-            detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
-            rate: sunRate, qty: paidHrs, amount: paidHrs * sunRate,
+            detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}${tripleHrs > 0 ? " · to 00:00" : ""}`,
+            rate: sunRate, qty: flatHrs, amount: flatHrs * sunRate,
           });
+          if (tripleHrs > 0) {
+            const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+            lines.push({ label: "OT Triple Time (after 00:00)", detail: `00:00 – ${toHHMM(wrapAbs)}`, rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
+          }
           if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
         } else {
           // Sun/BH non-Shoot pays a single flat-rate line covering basic +
@@ -1553,9 +1621,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (otTotal > 0) {
             const otStartAbs = effectiveStart + basicHrs;
             const otEndAbs = wrapAbs;
+            // APA §4.4: once OT crosses 00:00 it's 3× BHR and CONTINUES at
+            // triple to wrap (not just to 05:00).
             const tripleStart = Math.max(otStartAbs, 24);
-            const tripleEnd = Math.min(otEndAbs, 29);
-            const tripleRaw = Math.max(0, tripleEnd - tripleStart);
+            const tripleRaw = Math.max(0, otEndAbs - tripleStart);
             const tripleHrs = ceilHalf(tripleRaw);
             const standardOtHrs = Math.max(0, otTotal - tripleHrs);
             if (standardOtHrs > 0) {
@@ -1567,7 +1636,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             }
             if (tripleHrs > 0) {
               const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
-              lines.push({ label: "OT Triple Time (00:00–05:00)", detail: "After midnight", rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
+              lines.push({ label: "OT Triple Time (after 00:00)", detail: `00:00 – ${toHHMM(otEndAbs)}`, rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
             }
           }
         }
@@ -1630,23 +1699,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (cwd2Required && day.cwdBreak2Given === false) lines.push({ label: "Missed CWD Break (12.5h)", detail: `30m × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate * 0.5 });
       }
 
-      const travelOutRaw = Math.max(0, (Number(day.travelOutMins) || 0) - 60) / 60;
-      const travelBackRaw = Math.max(0, (Number(day.travelBackMins) || 0) - 60) / 60;
+      const finMins = (x) => { const n = Number(x); return Number.isFinite(n) ? n : 0; };
+      const travelOutRaw = Math.max(0, finMins(day.travelOutMins) - 60) / 60;
+      const travelBackRaw = Math.max(0, finMins(day.travelBackMins) - 60) / 60;
       const travelHrs = travelOutRaw + travelBackRaw;
       if (travelHrs > 0) {
-        const travelGap = Math.max(0, basicHrs - (workedHrs + preUnitHrs));
+        // APA §3.1: travel is payable only once travel + work exceeds 11h,
+        // regardless of day type (a flat 11h threshold, not the day's basic hours).
+        const travelGap = Math.max(0, 11 - (workedHrs + preUnitHrs));
         const chargeableTravel = ceilHalf(Math.max(0, travelHrs - travelGap));
         if (chargeableTravel > 0) {
           lines.push({ label: "Travel Time", detail: "1hr each way deducted", rate: bhr, qty: chargeableTravel, amount: chargeableTravel * bhr });
         } else {
-          notes.push(`Travel not paid (work ${workedHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ ${basicHrs}h threshold)`);
+          notes.push(`Travel not paid (work ${workedHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ 11h threshold)`);
         }
       }
       const miles = Number(day.miles) || 0;
-      if (miles > 0) lines.push({ label: "Mileage", detail: `${miles} mi outside M25`, rate: 0.5, qty: miles, amount: miles * 0.5 });
+      if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
 
       const total = lines.reduce((s, l) => s + l.amount, 0);
-      const otHrsForMeta = lines.filter((l) => /ot|triple/i.test(l.label)).reduce((s, l) => s + (Number(l.qty) || 0), 0);
+      const otHrsForMeta = lines.filter((l) => categorizeBreakdownLine(l.label) === 'ot').reduce((s, l) => s + (Number(l.qty) || 0), 0);
 
       return {
         meta: {
@@ -1665,7 +1737,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     /* ─────────────── PM / PA / Runner — APA Appendix 1 §(a) ─────────────── */
 
     function calculatePmpaDay(day, crew, weekendOpts = {}) {
-      const bdr = Number(crew.bdr) || 0;
+      const rawBdr = Number(crew.bdr);
+      const bdr = Number.isFinite(rawBdr) ? Math.max(0, rawBdr) : 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
 
       // Non-shoot day: flat BDR. Travel Day, Pre-light, Prep, Recce, Build,
@@ -1694,9 +1767,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           lines: [], total: 0,
         };
       }
-      const wrapNextDay = day.wrapNextDay || wrapH <= callH;
-      const wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
-      const workedHrs = wrapAbs - callH;
+      // E1/E2 (mirrors deriveBreakState): wrap == call with no explicit wrapNextDay is a
+      // 0h day (£0 + note, not a silent 24h); clamp an implausibly long day to 24h.
+      const wrapNextDay = day.wrapNextDay || wrapH < callH;
+      if (wrapH === callH && !day.wrapNextDay) {
+        return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true }, lines: [], total: 0 };
+      }
+      let wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
+      let workedHrs = wrapAbs - callH;
+      const dayClamped = workedHrs > 24;
+      if (dayClamped) { workedHrs = 24; wrapAbs = callH + 24; }
       const callWrapLabel = `${day.callTime} – ${day.wrapTime}${wrapNextDay ? " (+1)" : ""}`;
 
       const dow = dayOfWeek(day.date);
@@ -1760,7 +1840,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // Mileage stays functional even though §3 doesn't apply — defaults to 0.
       const miles = Number(day.miles) || 0;
-      if (miles > 0) lines.push({ label: "Mileage", detail: `${miles} mi outside M25`, rate: 0.5, qty: miles, amount: miles * 0.5 });
+      if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
 
       const total = lines.reduce((s, l) => s + l.amount, 0);
 
@@ -1773,7 +1853,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return {
         meta: {
           workedHrs, otHrs, bhr, otRate, dayLabel,
-          notes: [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
+          notes: dayClamped ? ["Day length exceeded 24h — clamped to 24h. Check the wrap time / +1 flag."] : [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
           isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
         },
         lines, total,
@@ -1784,6 +1864,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function migrateDay(d) {
       d = { note: "", expenses: [], ...d };
+      // Normalise a corrupt/legacy dayType: a present-but-unknown value (or blank)
+      // would otherwise throw in the calc engine. undefined is left for the cascade.
+      if (d.dayType !== undefined && !DAY_TYPES.includes(d.dayType)) d = { ...d, dayType: "Shoot" };
+      // Sanitise corrupt time fields (e.g. a "NaN:NaN" wrap persisted by the
+      // pre-fix onCallChange bug): a non-empty string that doesn't parse as HH:MM
+      // is dropped so the cascade/default re-supplies a valid time. null (lunch
+      // "missed") and undefined (cascade) are left untouched.
+      {
+        const _tf = ["callTime", "wrapTime", "lunchStartTime", "secondBreakStartTime", "preCallTime", "truckCallTime"];
+        if (_tf.some(f => typeof d[f] === "string" && d[f] !== "" && parseHHMM(d[f]) === null)) {
+          d = { ...d };
+          for (const f of _tf) if (typeof d[f] === "string" && d[f] !== "" && parseHHMM(d[f]) === null) delete d[f];
+        }
+      }
       // V4-5h-10: *Enabled flags dropped; value presence drives activation.
       // Existing records with the flags get them removed (idempotent). Values preserved —
       // records previously saved as enabled:false with a value will now show as ACTIVE.
@@ -1871,6 +1965,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const migrated = {
         ...inv,
         linesEdited: inv.linesEdited ?? false,
+        ccEmail: inv.ccEmail ?? "",
+        roundingMode: roundingModeOf(inv),
         jobTitle: inv.jobTitle ?? p.title ?? "",
         jobReference: inv.jobReference ?? p.jobReference ?? "",
         jobRole: inv.jobRole ?? "",
@@ -1950,6 +2046,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         d.expenses          = d.expenses          ?? [];
       }
 
+      // Promote client/job fields a user typed only on an invoice up to the
+      // production (the single source) so the bidirectional draft sync doesn't
+      // blank values entered before linking existed. Fills EMPTY production
+      // fields ONLY (||=, latest non-empty invoice) — never overwrites a set
+      // field, and never alters any invoice (sent snapshots stay byte-identical).
+      const _invs = p.invoices || [];
+      const _latestInv = (key) => { for (let i = _invs.length - 1; i >= 0; i--) { const v = _invs[i]?.[key]; if (v != null && v !== "") return v; } return ""; };
+      const _client = {
+        prodCo:         (p.prodCo ?? "") || (p.toName ?? "") || _latestInv("toName"),
+        invoicingEmail: (p.invoicingEmail ?? "") || _latestInv("toEmail"),
+        toAddress:      (p.toAddress ?? "") || _latestInv("toAddress"),
+        jobReference:   (p.jobReference ?? "") || _latestInv("jobReference"),
+        ccEmail:        p.ccEmail ?? "",
+      };
+      const _rmode = roundingModeOf(p);
+
       return {
         ...p,
         crew: (p.crew || []).map(migrateCrew),
@@ -1958,15 +2070,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         iAmCrewId: p.iAmCrewId ?? null,
         dayDefaults: backfilledDefaults,
         isElevenHourDay: p.isElevenHourDay ?? false,
-        jobReference: p.jobReference ?? "",
-        invoicingEmail: p.invoicingEmail ?? "",
-        favourableRounding: p.favourableRounding ?? false,
-        apaRounding: p.apaRounding ?? false,
+        prodCo: _client.prodCo,
+        jobReference: _client.jobReference,
+        invoicingEmail: _client.invoicingEmail,
+        ccEmail: _client.ccEmail,
+        roundingMode: _rmode,
+        favourableRounding: _rmode === 'favourable',
+        apaRounding: _rmode === 'apa',
         startDate: p.startDate ?? todayISO(),
         weekStarts: p.weekStarts ?? [],
         gridDates: p.gridDates ?? [],
         cancellationData: p.cancellationData ?? null,
-        toAddress: p.toAddress ?? "",
+        toAddress: _client.toAddress,
         invoices: (p.invoices || []).map(inv => migrateInvoice(inv, p)),
         days,
       };
@@ -2000,6 +2115,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             wrapped: typeof d.wrapped === 'boolean' ? d.wrapped : !!(d.date && d.date < today),
           })) : p.days,
         }));
+        storage.set('bigals_productions', JSON.stringify(updated));
+      },
+      // v3: riggers now compute OT/night/triple via APA from BHR (S5). Older
+      // role defaults stamped a flat BECTU otRate onto rigger crew (Master £102,
+      // Advanced/Standby £78). Clear it so the APA path applies — but only when
+      // it still equals that default, preserving any genuine custom per-crew rate.
+      3: () => {
+        const raw = storage.get('bigals_productions');
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return;
+        const RIGGER_OT = { "Master Rigger": 102, "Advanced Rigger": 78, "Standby Rigger": 78 };
+        const updated = arr.map(p => {
+          if (!p || !Array.isArray(p.crew)) return p;
+          return {
+            ...p,
+            crew: p.crew.map(c => {
+              if (c && RIGGER_OT[c.role] != null && Number(c.otRate) === RIGGER_OT[c.role]) {
+                const { otRate, ...rest } = c;
+                return rest;
+              }
+              return c;
+            }),
+          };
+        });
         storage.set('bigals_productions', JSON.stringify(updated));
       },
     };
@@ -2037,17 +2177,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Snapshot the ORIGINAL user data before overwriting — runMigrations() takes its own snapshot
       // after the overwrite, so without this, a migration failure would restore the imported (bad)
       // data rather than the original.
+      // Restore userPrefs only when the backup actually carries it. Older backups
+      // predate the userPrefs export — those must leave the device's current prefs
+      // untouched (never clobber bank details / settings with defaults).
+      const importedPrefs = (parsed && typeof parsed === 'object' && parsed.userPrefs &&
+        typeof parsed.userPrefs === 'object' && !Array.isArray(parsed.userPrefs)) ? parsed.userPrefs : null;
       const originalProductions = storage.get('bigals_productions');
       const originalSchemaVersion = storage.get(SCHEMA_VERSION_KEY);
+      const originalUserPrefs = storage.get('bigals_user_prefs');
       try {
         storage.set('bigals_productions', JSON.stringify(arr));
         setStoredSchemaVersion(fileSchemaVersion);
+        // Merge over DEFAULT_USER_PREFS so an older-schema prefs object gains any
+        // newer keys (the same normalisation useStoredState applies on read).
+        if (importedPrefs) storage.set('bigals_user_prefs', JSON.stringify({ ...DEFAULT_USER_PREFS, ...importedPrefs }));
         const result = runMigrations();
         if (result.error) {
           if (originalProductions != null) storage.set('bigals_productions', originalProductions);
           else storage.remove('bigals_productions');
           if (originalSchemaVersion != null) storage.set(SCHEMA_VERSION_KEY, originalSchemaVersion);
           else storage.remove(SCHEMA_VERSION_KEY);
+          if (importedPrefs) {
+            if (originalUserPrefs != null) storage.set('bigals_user_prefs', originalUserPrefs);
+            else storage.remove('bigals_user_prefs');
+          }
           return { ok: false, error: `Migration failed: ${result.error}` };
         }
         return { ok: true };
@@ -2157,7 +2310,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (!crewMember) return [];
       const myDays = (production.days || [])
         .filter(d => d.crewId === userCrewId)
-        .sort((a, b) => a.date.localeCompare(b.date));
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
       // ordered map: aggregation key → { label, dates[], qty, rate, amount, isExpense }
       const map = new Map();
@@ -2171,7 +2324,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (isExpense) {
             const category = (line.label || "").replace(/^Expense:\s*/i, "").trim();
             const desc = (line.detail || "").trim();
-            key = `exp|${category}|${desc}`;
+            key = `exp|${JSON.stringify([category, desc])}`;
             displayLabel = desc || category;
           } else {
             const prefix = (line.label || "").split(" (")[0].trim();
@@ -2218,6 +2371,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return generateCrewText(crewMember, myDays, production);
     }
 
+    // The client/job fields shared between a production (single source) and its
+    // invoices. An invoice snapshots these — frozen on send, re-synced live for
+    // drafts. Bill-To name comes from production.prodCo (production.toName is a
+    // deprecated, back-compat-read-only fallback).
+    function clientFieldsFromProduction(production) {
+      return {
+        jobTitle: production.title ?? "",
+        toName: production.prodCo ?? production.toName ?? "",
+        toAddress: production.toAddress ?? "",
+        toEmail: production.invoicingEmail ?? "",
+        ccEmail: production.ccEmail ?? "",
+        jobReference: production.jobReference ?? "",
+      };
+    }
+
+    // Inverse of clientFieldsFromProduction: invoice snapshot field -> production
+    // field. Drives the draft write-through (editing a draft's client/job field
+    // updates the production, the single source).
+    const INVOICE_TO_PRODUCTION_FIELD = { jobTitle: "title", toName: "prodCo", toAddress: "toAddress", toEmail: "invoicingEmail", ccEmail: "ccEmail", jobReference: "jobReference" };
+
+    // Freeze-on-send: when a DRAFT becomes sent/paid, snapshot the production's
+    // current shared client/job fields onto the invoice. No-op for any other
+    // transition (so re-sending an already-issued invoice keeps its edited snapshot).
+    function freezeOnSend(production, currentInvoice, patch) {
+      const becomingIssued = (patch.status === "sent" || patch.status === "paid") && currentInvoice?.status === "draft";
+      return becomingIssued ? { ...patch, ...clientFieldsFromProduction(production) } : patch;
+    }
+
     function createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId) {
       const crewMember = (production.crew || []).find(c => c.id === userCrewId);
       const prefix = userPrefs.invoicePrefix || "INV-";
@@ -2230,14 +2411,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const newId = uid();
       const invoice = {
         id: newId,
+        userCrewId,
         invoiceNumber,
         invoiceDate: today,
         dueDate,
-        toName: production.toName ?? "",
-        toAddress: production.toAddress ?? "",
-        toEmail: production.invoicingEmail ?? "",
-        jobReference: production.jobReference ?? "",
-        jobTitle: production.title ?? "",
+        ...clientFieldsFromProduction(production),
         jobRole: crewMember?.role ?? "",
         shootDateStart: production.startDate ?? "",
         shootDateEnd: (() => {
@@ -2257,6 +2435,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         vatRegistered: crewMember?.vatRegistered ?? userPrefs.vatRegistered ?? false,
         vatRate: crewMember?.vatRate ?? userPrefs.vatRate ?? 20,
         vatNumber: userPrefs.vatNumber || "",
+        // Snapshot the shoot's rounding mode so the invoice's display matches the
+        // amounts baked into its line items (Favourable = clean Description + Amount).
+        roundingMode: roundingModeOf(production),
+        favourableRounding: roundingFav(production),
         // Logo is NOT snapshotted per-invoice — read from userPrefs at render time to avoid
         // duplicating ~500KB of base64 data into every invoice (iOS Safari 5MB localStorage cap).
         lineItems,
@@ -2284,10 +2466,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function applyRateRounding(calc) {
       if (calc.meta?.isPmpa) return calc;
-      const lines = calc.lines.map(l => {
-        if (l.rate == null) return l;
-        return { ...l, amount: Math.ceil(l.amount) };
-      });
+      // Favourable rounding: ceil EVERY contributing line to the whole pound — rate×qty
+      // lines, flat fees and penalties (missed break, late, etc.) alike, not just the
+      // rate×qty ones. Math.ceil rounds a negative line (a deduction) toward zero — the
+      // favourable direction (a smaller deduction = more pay) — so it never worsens one.
+      // Only the line amounts round; VAT is computed downstream on the resulting subtotal.
+      const lines = calc.lines.map(l => ({ ...l, amount: Math.ceil(Number(l.amount) || 0) }));
       const total = lines.reduce((s, l) => s + l.amount, 0);
       return { ...calc, lines, total };
     }
@@ -2310,7 +2494,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function findPrevDay(allDays, currDay) {
       return allDays
         .filter(d => d.crewId === currDay.crewId && d.date < currDay.date)
-        .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0] || null;
     }
 
     function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew, apaRounding = false) {
@@ -2391,10 +2575,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function calcForDisplay(production, day, crewMember, prevDay = null) {
       const resolved = resolveDay(production, day, crewMember);
       const effectiveCrew = resolveCrewForDay(resolved, crewMember);
-      let calc = augmentCalc(calculateDay(resolved, effectiveCrew, production), resolved, crewMember);
+      let calc;
+      try {
+        calc = augmentCalc(calculateDay(resolved, effectiveCrew, { ...production, apaRounding: roundingApa(production) }), resolved, crewMember);
+      } catch (err) {
+        // Fail safe: a corrupt/legacy day (e.g. an unknown dayType) must not crash
+        // the many render sites that call calcForDisplay. Return a zero day + note.
+        calc = { meta: { workedHrs: 0, otHrs: 0, bhr: 0, otRate: 0, dayLabel: "—",
+          notes: ["Couldn't calculate this day — check its details."],
+          secondBreakRequired: false, continuousDay: false, isBankHoliday: false, bankHolidayName: null },
+          lines: [], total: 0 };
+      }
       if (prevDay) {
         const prevResolved = resolveDay(production, prevDay, crewMember);
-        const toc = calcTOC(prevResolved, resolved, effectiveCrew, production?.apaRounding ?? false);
+        const toc = calcTOC(prevResolved, resolved, effectiveCrew, roundingApa(production));
         if (toc) {
           const isBreach = toc.isBreach;
           const tocLine = {
@@ -2406,7 +2600,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           calc = { ...calc, lines: [...calc.lines, tocLine], total: calc.total + toc.amount };
         }
       }
-      const useFavourableRounding = production?.favourableRounding ?? false;
+      const useFavourableRounding = roundingFav(production);
       const finalCalc = useFavourableRounding ? applyRateRounding(calc) : calc;
       return {
         ...finalCalc,
@@ -2419,11 +2613,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function generateCrewText(crewMember, entries, production) {
       const lines = [];
-      lines.push(`${crewMember.name.toUpperCase()} — ${crewMember.role}`);
+      lines.push(`${(crewMember.name || '').toUpperCase()} — ${crewMember.role}`);
       if (production.title) lines.push(production.title);
       if (production.prodCo) lines.push(production.prodCo);
       lines.push('');
-      const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+      const sorted = [...entries].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       let grandTotal = 0;
       let prevEntry = null;
       sorted.forEach((d) => {
@@ -2443,9 +2637,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return lines.join('\n');
     }
 
-    function crewVAT(crewMember, subtotal) {
-      if (!crewMember?.vatRegistered) return { vatAmount: 0, totalIncVAT: subtotal };
-      const rate = Number(crewMember.vatRate) || 20;
+    // When an invoice has been created for this crew member, prefer its snapshot
+    // VAT settings over the live crew record so day-text VAT matches the invoice
+    // even after the crew's VAT settings are edited later. Returns null if there
+    // is no matching invoice (new invoices link by userCrewId; older invoices —
+    // created before the link existed — fall back to a jobRole match).
+    function invoiceVATSnapshot(production, crewMember) {
+      if (!crewMember) return null;
+      const invs = production?.invoices || [];
+      const match = [...invs].reverse().find(i => i.userCrewId === crewMember.id)
+        || [...invs].reverse().find(i => i.userCrewId == null && i.jobRole === crewMember.role);
+      return match ? { vatRegistered: match.vatRegistered, vatRate: match.vatRate } : null;
+    }
+
+    function crewVAT(crewMember, subtotal, vatSource) {
+      const src = vatSource || crewMember;
+      if (!src?.vatRegistered) return { vatAmount: 0, totalIncVAT: subtotal };
+      const rate = Number(src.vatRate) || 20;
       const vatAmount = subtotal * rate / 100;
       return { vatAmount, totalIncVAT: subtotal + vatAmount };
     }
@@ -2460,9 +2668,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       lines.push('');
       calc.lines.forEach((l) => lines.push(formatLineText(l)));
       lines.push('');
-      const { vatAmount, totalIncVAT } = crewVAT(crewMember, calc.total);
-      if (crewMember.vatRegistered) {
-        const rate = Number(crewMember.vatRate) || 20;
+      const vatSource = invoiceVATSnapshot(production, crewMember) || crewMember;
+      const { vatAmount, totalIncVAT } = crewVAT(crewMember, calc.total, vatSource);
+      if (vatSource.vatRegistered) {
+        const rate = Number(vatSource.vatRate) || 20;
         lines.push(`SUBTOTAL: ${fmtGBP(calc.total)}`);
         lines.push(`VAT (${rate}%): ${fmtGBP(vatAmount)}`);
         lines.push(`TOTAL INC. VAT: ${fmtGBP(totalIncVAT)}`);
@@ -3229,10 +3438,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // BDR / OT rate display
       const bdr = Number(crewMember.bdr) || 0;
-      const bhr = computeAPArate(bdr, 1, production.apaRounding);
+      const bhr = computeAPArate(bdr, 1, roundingApa(production));
       const otRate = (crewMember.otRate != null && crewMember.otRate > 0)
         ? Number(crewMember.otRate)
-        : computeAPArate(bdr, Number(crewMember.otCoef) || 1.5, production.apaRounding);
+        : computeAPArate(bdr, Number(crewMember.otCoef) || 1.5, roundingApa(production));
 
       return (
         <div className="page ts-page">
@@ -3331,7 +3540,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
               const prevDay = allDaysForCrew
                 .filter(x => x.date < dateISO)
-                .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+                .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0] || null;
               const calc = calcForDisplay(production, day, crewMember, prevDay);
               const flags = penaltyFlags(calc);
               const isBH = flags.isBankHoliday;
@@ -3426,7 +3635,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       let weekTotal = 0, weekHrs = 0, weekOTHrs = 0;
       const crewTotals = crew.map(c => {
         const crewDays = Object.values(byCA[c.id] || {});
-        const sorted = [...(allDays || [])].filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+        const sorted = [...(allDays || [])].filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         let tot = 0, hrs = 0, otHrs = 0;
         crewDays.forEach(day => {
           const prev = sorted.filter(x => x.date < day.date).pop() || null;
@@ -3447,7 +3656,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         crew.forEach((c, ci) => {
           const day = (byCA[c.id] || {})[dateISO];
           if (!day || day.dayType === "Rest Day") return;
-          const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+          const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
           const calc = calcForDisplay(production, day, c, prev);
           tot += calc.total;
@@ -3501,7 +3710,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
 
               {crew.map((c, ci) => {
-                const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => a.date.localeCompare(b.date));
+                const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
                 return (
                   <div key={c.id} className="grid-row grid-body">
                     <div className="grid-cell crew">
@@ -3605,7 +3814,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (mode === "timesheet" && crewMember) {
         const crewDays = (days || [])
           .filter(d => d.crewId === crewMember.id)
-          .sort((a, b) => a.date.localeCompare(b.date));
+          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
         // Compute grand totals
         let grandTotal = 0, grandHrs = 0, grandOTHrs = 0;
@@ -3701,9 +3910,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const expenseLines = allLines.filter(l => isExpenseLine(l));
       const showInd = invoice.showIndividualExpenses === true;
 
-      const subtotal = allLines.reduce((s, l) => s + getLineTotal(l), 0);
-      const vatAmount = invoice.vatRegistered ? subtotal * (invoice.vatRate || 20) / 100 : 0;
-      const total = subtotal + vatAmount;
+      const subtotal = invoiceSubtotal(allLines);
+      const { vatAmount, total } = invoiceVAT(invoice, subtotal);
+      // Favourable rounding rounds each line's Amount up, so Qty × Rate wouldn't
+      // equal it — render a clean Description + Amount table (no numeric columns
+      // to "not add up"). Exact mode keeps the full Qty × Rate × Amount breakdown.
+      const fav = roundingFav(invoice);
 
       const renderLineRows = (item, labelOverride) => {
         const label = labelOverride ?? item.label ?? "";
@@ -3714,6 +3926,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const partiallyWaived = hasDisc && !fullyWaived && billedQty < item.qty;
         const waivedQty = partiallyWaived ? (item.qty - billedQty) : 0;
         const rows = [];
+
+        if (fav) {
+          // Clean 2-column row: Description + the billed amount only (no Qty/Rate).
+          return [
+            <tr key={`${item.id}-${fullyWaived ? 'w' : 'k'}`} className={fullyWaived ? 'waived' : undefined}>
+              <td>
+                <div>
+                  {label}
+                  {fullyWaived && <span className="waived-badge">Waived</span>}
+                  {partiallyWaived && <span className="waived-badge">Reduced</span>}
+                </div>
+                {item.detail && <div className="line-detail">{item.detail}</div>}
+              </td>
+              <td className="num">{fmtGBP(fullyWaived ? item.amount : getLineTotal(item))}</td>
+            </tr>
+          ];
+        }
 
         if (fullyWaived) {
           // Single strikethrough row — no kept portion
@@ -3742,9 +3971,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <td className="num">{isFixed ? "" : (partiallyWaived ? billedQty : item.qty)}</td>
               <td className="num">{isFixed ? "" : fmtGBP(item.rate)}</td>
               <td className="num">
-                {isFixed
-                  ? fmtGBP(item.amount)
-                  : fmtGBP(partiallyWaived ? billedQty * item.rate : item.amount)}
+                {fmtGBP(getLineTotal(item))}
               </td>
             </tr>
           );
@@ -3862,12 +4089,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="invoice-section-label">Line Items</div>
               <table className="invoice-lines">
                 <thead>
-                  <tr>
-                    <th style={{ width: '52%' }}>Description</th>
-                    <th style={{ width: '10%' }}>Qty</th>
-                    <th style={{ width: '18%' }}>Rate</th>
-                    <th style={{ width: '20%' }}>Amount</th>
-                  </tr>
+                  {fav ? (
+                    <tr>
+                      <th style={{ width: '78%' }}>Description</th>
+                      <th style={{ width: '22%' }}>Amount</th>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <th style={{ width: '52%' }}>Description</th>
+                      <th style={{ width: '10%' }}>Qty</th>
+                      <th style={{ width: '18%' }}>Rate</th>
+                      <th style={{ width: '20%' }}>Amount</th>
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
                   {normalLines.map(item => renderLineRows(item))}
@@ -3879,8 +4113,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <div>Expenses</div>
                           <div className="line-detail">{expenseLines.length} item{expenseLines.length !== 1 ? "s" : ""}</div>
                         </td>
-                        <td className="num"></td>
-                        <td className="num"></td>
+                        {!fav && <td className="num"></td>}
+                        {!fav && <td className="num"></td>}
                         <td className="num">{fmtGBP(sum)}</td>
                       </tr>
                     );
@@ -3972,14 +4206,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     /* ── mailto: email opener ── */
-    // cc is entered per-send in the invoice editor and never persisted.
+    // cc is the invoice's persisted ccEmail (invoice.ccEmail); callers pass it in.
     function openInvoiceMailto(invoice, cc = '') {
       const recipient = (invoice.toEmail || '').trim();
       const subjectBase = `Invoice ${invoice.invoiceNumber}`;
       const subject = invoice.jobTitle ? `${subjectBase} — ${invoice.jobTitle}` : subjectBase;
 
       const subtotal = invoiceSubtotal(invoice.lineItems);
-      const vatAmount = invoice.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
+      const { vatAmount } = invoiceVAT(invoice, subtotal);
       const totalStr = fmtGBP(subtotal + vatAmount);
       const fromName = invoice.fromName || invoice.fromCompanyName || '';
       const jobBit = invoice.jobTitle ? ` for ${invoice.jobTitle}` : '';
@@ -4108,6 +4342,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         {...p} />;
     };
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
+
+    const ROUNDING_OPTIONS = [
+      { value: 'exact',      label: 'Exact',      desc: 'Exact decimals — no rounding.' },
+      { value: 'favourable', label: 'Favourable', desc: 'Round each line amount up to the next whole pound, in your favour.' },
+      { value: 'apa',        label: 'APA',        desc: "Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR)." },
+    ];
+    const RoundingModeSelect = ({ value, onChange }) => {
+      const cur = ROUNDING_MODES.includes(value) ? value : 'exact';
+      return (
+        <div className="space-y-1.5">
+          {ROUNDING_OPTIONS.map((opt) => {
+            const active = cur === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onChange(opt.value)}
+                aria-pressed={active}
+                className={`w-full text-left rounded-xl border px-3.5 py-2.5 transition-colors ${active ? 'bg-sky-500/10 border-sky-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`w-3.5 h-3.5 rounded-full border flex-shrink-0 flex items-center justify-center ${active ? 'border-sky-400' : 'border-neutral-600'}`}>
+                    {active && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+                  </span>
+                  <span className={`text-[13px] font-bold ${active ? 'text-sky-300' : 'text-neutral-200'}`}>{opt.label}</span>
+                </div>
+                <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight pl-[22px]">{opt.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+      );
+    };
 
     const StatusMsg = ({ kind = "info", children }) => {
       const colors  = { ok: "text-tm-good",       info: "text-neutral-400",     warn: "text-tm-warn",        bad: "text-tm-pen" };
@@ -4563,7 +4831,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </Select>
                 </Field>
                 <Field label="Basic Day Rate (£)" hint="Editable — default is APA max for role">
-                  <Input type="number" step="0.01" value={form.bdr} onChange={(e) => { const bdr = Number(e.target.value); setForm({ ...form, bdr, otCoef: autoOtCoef(bdr) }); }} />
+                  <Input type="number" step="0.01" min="0" value={form.bdr} onChange={(e) => { const bdr = Number(e.target.value); setForm({ ...form, bdr, otCoef: autoOtCoef(bdr) }); }} />
                 </Field>
                 <Field label="OT Coefficient" hint="Grade I=1.5× · II=1.25× · III=1.0×">
                   <Select value={form.otCoef} onChange={(e) => setForm({ ...form, otCoef: Number(e.target.value) })}>
@@ -5102,7 +5370,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           (d.crewId === day.crewId || (!d.crewId && !day.crewId))
         );
         if (relevant.length === 0) return null;
-        return [...relevant].sort((a, b) => a.date.localeCompare(b.date)).slice(-1)[0];
+        return [...relevant].sort((a, b) => (a.date || '').localeCompare(b.date || '')).slice(-1)[0];
       }, [days, day.date, day.crewId]);
 
       const hasPrevMileage = previousDay && (previousDay.miles > 0 || previousDay.mileagePostcode);
@@ -5174,7 +5442,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div className="text-[10px] text-neutral-500">Approximate — adjust manually if your route differs.</div>
                     {result.insideM25 && (
                       <div className="text-xs text-tm-warn">
-                        ⚠ {result.outcode} is inside the M25 — APA mileage typically not paid for inside-M25 shoots. You can keep the value if your job pays anyway.
+                        ⚠ {result.outcode} is inside the M25 — APA mileage usually isn't charged for inside-M25 shoots, so you can clear this. Only keep it if your job pays mileage anyway.
                       </div>
                     )}
                   </div>
@@ -5220,16 +5488,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const onDayTypeChange = (dayType) => {
         const callH = parseHHMM(v.callTime);
         const patch = { dayType };
-        if (callH !== null) patch.wrapTime = toHHMM(callH + DEFAULT_HOURS[dayType]);
+        if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[dayType] ?? 11));
         set(patch);
       };
       const onCallChange = (callTime) => {
-        const callH = parseHHMM(callTime);
+        const newCallH = parseHHMM(callTime);
         const patch = { callTime };
-        if (callH !== null) {
-          patch.wrapTime = toHHMM(callH + DEFAULT_HOURS[v.dayType]);
-          patch.lunchStartTime = toHHMM(callH + 5);
-          patch.secondBreakStartTime = toHHMM(callH + 11);
+        if (newCallH !== null) {
+          // Default hours come from the RESOLVED day type — cascaded days leave
+          // v.dayType undefined, which is what produced a NaN wrap. ?? 11 is a hard
+          // floor so the wrap can never be NaN even for an unknown type.
+          const hrs = DEFAULT_HOURS[vr.dayType] ?? 11;
+          const oldCallH = parseHHMM(vr.callTime);
+          // Re-derive the wrap only when it's missing/invalid (recovers a corrupt
+          // "NaN:NaN") or was tracking the old call. A valid, explicitly-different
+          // wrap is preserved.
+          const wrapAuto = parseHHMM(vr.wrapTime) === null ||
+            (oldCallH !== null && vr.wrapTime === toHHMM(oldCallH + hrs));
+          if (wrapAuto) patch.wrapTime = toHHMM(newCallH + hrs);
+          patch.lunchStartTime = toHHMM(newCallH + 5);
+          patch.secondBreakStartTime = toHHMM(newCallH + 11);
         }
         set(patch);
       };
@@ -5370,7 +5648,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {/* Contextual APA-rule notices — render whether or not the DAY card is shown. */}
           {bwdOverrideApplies && (
             <StatusMsg kind="info">
-              APA §2.3: {role} always works to Basic Working Day rules, even on non-shoot days. This {v.dayType} is calculated as a Shoot Day (10+1, OT after 11h).
+              APA §2.3: {role} always works to Basic Working Day rules, even on non-shoot days. This {vr.dayType} is calculated as a Shoot Day (10+1, OT after 11h).
             </StatusMsg>
           )}
           {isPmpa && (
@@ -5457,7 +5735,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {!isPmpa && !isTravelDay && (
                 <div className="border-t border-neutral-800 pt-3 mt-1 space-y-3">
                   {(() => {
-                    const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(v.dayType);
+                    const isDiscretionary = !bwdOverrideApplies && DISCRETIONARY_LUNCH_DAY_TYPES.includes(vr.dayType);
                     const dur = Number(vr.lunchDurationMins ?? 60);
                     // Status chip surfaces the scheduled lunch state: CWD,
                     // LATE, CURTAILED, or ON TIME. Discretionary days get no
@@ -5523,7 +5801,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {bs && (
                     <>
                       {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of {isElevenHourDay ? 12 : 11}h.</StatusMsg>}
-                      {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {v.dayType} days. Paid as 8h × BHR.</StatusMsg>}
+                      {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {vr.dayType} days. Paid as 8h × BHR.</StatusMsg>}
                       {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
                       {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
                       {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && bs.lunchEndAbs != null && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
@@ -6144,14 +6422,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const map = {};
         for (const member of crew) {
           const memberDays = days.filter(d => d.crewId === member.id)
-            .sort((a, b) => a.date.localeCompare(b.date));
+            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           for (let i = 0; i < memberDays.length; i++) {
             const entry = map[memberDays[i].id] || {};
             entry.prevDay = i > 0 ? memberDays[i - 1] : null;
             if (i > 0) {
               const prevR = resolveDay(production, memberDays[i - 1], member);
               const currR = resolveDay(production, memberDays[i], member);
-              const toc = calcTOC(prevR, currR, member, production?.apaRounding ?? false);
+              const toc = calcTOC(prevR, currR, member, roundingApa(production));
               if (toc) { entry.hasTOC = true; entry.isTOCBreach = toc.isBreach; }
             }
             map[memberDays[i].id] = entry;
@@ -6946,6 +7224,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         </div>
                       );
                       const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
+                      const resolved = resolveDay(production, d, c);
                       const hasPenalty = calc.lines.some(l => l.rate === null);
                       const hasTocBreach = calc.lines.some(l => l.isTOC && l.isBreach);
                       // In-app priority stripe: tm-pen = penalty/TOC breach, tm-warn = OT/CWD/TOC, tm-good = clean
@@ -6963,11 +7242,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               <div className="flex items-center gap-2 flex-wrap">
                                 <div className="font-semibold text-neutral-100">{c.name}</div>
                                 <span className="text-[10px] uppercase tracking-wider bg-neutral-800 text-neutral-400 px-1.5 py-0.5">{c.role}</span>
-                                <span className="text-[10px] uppercase tracking-wider bg-sky-500 text-black px-1.5 py-0.5 font-bold">{d.dayType}</span>
+                                <span className="text-[10px] uppercase tracking-wider bg-sky-500 text-black px-1.5 py-0.5 font-bold">{calc.meta.dayType}</span>
                                 {calc.meta.continuousDay && <span className="text-[10px] uppercase tracking-wider bg-tm-pen/10 text-tm-pen border border-tm-pen/25 px-1.5 py-0.5 font-bold rounded">CWD</span>}
                               </div>
                               <div className="text-[11px] text-neutral-400 font-mono mt-1">
-                                {d.callTime}–{d.wrapTime}{(parseHHMM(d.wrapTime) !== null && parseHHMM(d.callTime) !== null && parseHHMM(d.wrapTime) <= parseHHMM(d.callTime)) ? " (+1)" : ""} · {calc.meta.workedHrs.toFixed(1)}h · {calc.meta.dayLabel}
+                                {resolved.callTime}–{resolved.wrapTime}{(parseHHMM(resolved.wrapTime) !== null && parseHHMM(resolved.callTime) !== null && parseHHMM(resolved.wrapTime) <= parseHHMM(resolved.callTime)) ? " (+1)" : ""} · {calc.meta.workedHrs.toFixed(1)}h · {calc.meta.dayLabel}
                               </div>
                               {d.note?.trim() && <div className="flex items-center gap-1 mt-1"><INote size={11} className="text-neutral-600 flex-shrink-0"/><span className="text-[10px] text-neutral-600">Note</span></div>}
                             </div>
@@ -7108,8 +7387,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Not on this day', dayRecord: null };
           }
 
-          // V4-5h-11: respect cascade — explicit override wins, else inherit dept default.
-          const effectiveDayType = dayRecord.dayType ?? production.dayDefaults?.[currentDate]?.dayType;
+          // V4-5h-11: respect cascade — explicit override wins, else inherit dept
+          // default. Use the full resolveDay cascade (dayDefaults ← defaultDay ←
+          // DEFAULT_PRODUCTION_DAY) so an inherited Rest Day is recognised too.
+          const effectiveDayType = resolveDay(production, dayRecord, member).dayType;
           if (effectiveDayType === 'Rest Day') {
             return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Rest Day', dayRecord };
           }
@@ -7122,7 +7403,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           const chips = [];
           const otHrs = calc.lines
-            .filter(l => /\bot\b|overtime|triple/i.test(l.label))
+            .filter(l => categorizeBreakdownLine(l.label) === 'ot')
             .reduce((s, l) => s + (Number(l.qty) || 0), 0);
           if (otHrs > 0) {
             chips.push({
@@ -7194,7 +7475,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (calc.meta?.continuousDay) bump('CWD', true);
           if (calc.meta?.isElevenHourDay) bump('11h day', false);
           const otHrs = (calc.lines || [])
-            .filter(l => /\bot\b|overtime|triple/i.test(l.label))
+            .filter(l => categorizeBreakdownLine(l.label) === 'ot')
             .reduce((s, l) => s + (Number(l.qty) || 0), 0);
           if (otHrs > 0) bump('OT', true);
           if ((calc.lines || []).some(l => /late 1st|l1\b/i.test(l.label))) bump('L1', true, true);
@@ -7226,10 +7507,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const firstActiveDay = activeCrew[0]
         ? days.find(d => d.date === currentDate && d.crewId === activeCrew[0].member.id)
         : null;
-      const deptCall = dayDefaults?.callTime ?? firstActiveDay?.callTime ?? '';
-      const deptWrap = dayDefaults?.wrapTime ?? firstActiveDay?.wrapTime ?? '';
-      const deptLunchStart = dayDefaults?.lunchStartTime ?? firstActiveDay?.lunchStartTime ?? '';
-      const deptLunchMins = dayDefaults?.lunchDurationMins ?? firstActiveDay?.lunchDurationMins ?? null;
+      // Resolve through the full cascade (DEFAULT_PRODUCTION_DAY ← production.defaultDay
+      // ← dayDefaults[date]) so the dept card shows the effective call/wrap/lunch the
+      // crew are calc'd with, not just the date-level override (which blanks otherwise).
+      const deptBase = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}), ...(dayDefaults ?? {}) };
+      const deptCall = deptBase.callTime ?? firstActiveDay?.callTime ?? '';
+      const deptWrap = deptBase.wrapTime ?? firstActiveDay?.wrapTime ?? '';
+      const deptLunchStart = deptBase.lunchStartTime ?? firstActiveDay?.lunchStartTime ?? '';
+      const deptLunchMins = deptBase.lunchDurationMins ?? firstActiveDay?.lunchDurationMins ?? null;
       const deptLunchEnd = deptLunchStart && deptLunchMins != null
         ? addMinutesToTime(deptLunchStart, deptLunchMins)
         : '';
@@ -7798,8 +8083,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           {showLunchSheet && (() => {
             const defs = getDayDefaults(production, currentDate);
-            const startVal = defs?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime;
-            const durVal = defs?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins;
+            const startVal = defs?.lunchStartTime ?? production.defaultDay?.lunchStartTime ?? DEFAULT_PRODUCTION_DAY.lunchStartTime;
+            const durVal = defs?.lunchDurationMins ?? production.defaultDay?.lunchDurationMins ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins;
             return (
               <div
                 className="fixed inset-0 z-50 flex items-end"
@@ -8007,7 +8292,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (calc?.meta?.continuousDay) pills.push({ label: 'CWD', warn: true });
       if (calc?.meta?.isElevenHourDay) pills.push({ label: '11h day', warn: false });
       const otHrs = (calc?.lines || [])
-        .filter(l => /\bot\b|overtime|triple/i.test(l.label))
+        .filter(l => categorizeBreakdownLine(l.label) === 'ot')
         .reduce((s, l) => s + (Number(l.qty) || 0), 0);
       if (otHrs > 0) pills.push({ label: `OT ${otHrs % 1 ? otHrs.toFixed(1) : otHrs}h`, warn: true });
       if ((calc?.lines || []).some(l => /late 1st|l1/i.test(l.label))) pills.push({ label: 'Late 1st break', warn: true });
@@ -8929,7 +9214,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Start</div>
                     <input
                       type="time"
-                      value={dayRecord.lunchStartTime ?? defaults?.lunchStartTime ?? ''}
+                      value={resolvedDay?.lunchStartTime ?? ''}
                       onChange={(e) => updateTimeField('lunchStartTime', e.target.value)}
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
                       style={{ WebkitAppearance: 'none' }}
@@ -8941,7 +9226,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       type="number"
                       min="0"
                       step="15"
-                      value={dayRecord.lunchDurationMins ?? defaults?.lunchDurationMins ?? 0}
+                      value={resolvedDay?.lunchDurationMins ?? 0}
                       onChange={(e) => updateTimeField('lunchDurationMins', Number(e.target.value) || 0)}
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
                     />
@@ -9105,7 +9390,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
               {crew.map(c => {
                 const cDays = (days || []).filter(d => d.crewId === c.id);
-                const sorted = [...cDays].sort((a, b) => a.date.localeCompare(b.date));
+                const sorted = [...cDays].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
                 const total = sorted.reduce((s, d, i) => s + calcForDisplay(production, d, c, sorted[i-1]||null).total, 0);
                 return (
                   <button key={c.id} type="button"
@@ -9152,7 +9437,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [crew, days]);
 
       const grandTotal = byCrew.reduce((s, { crew: c, entries }) => {
-        const sortedG = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+        const sortedG = [...entries].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         return s + sortedG.reduce((t, e, i) => t + calcForDisplay(production, e, c, sortedG[i - 1] || null).total, 0);
       }, 0);
 
@@ -9441,6 +9726,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
                 <Input value={production.invoicingEmail || ""} onChange={set("invoicingEmail")} placeholder="e.g. accounts@example.com" />
               </Field>
+              <p className="text-[11px] text-neutral-500 leading-snug mt-1">
+                Changes here update your draft invoices. Invoices you've already sent keep the details they were sent with.
+              </p>
             </Disclosure>
 
             <Disclosure label="Mode" summary={modeSummary}>
@@ -9466,18 +9754,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
               </div>
               <div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Favourable rounding</span>
-                  <Toggle value={!!production.favourableRounding} onChange={(v) => setProduction(p => ({ ...p, favourableRounding: v }))} ariaLabel="Favourable rounding" />
-                </div>
-                <p className="text-[11px] text-neutral-500 mt-1">Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used. Applies to this shoot only.</p>
-              </div>
-              <div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">APA rounding</span>
-                  <Toggle value={!!production.apaRounding} onChange={(v) => setProduction(p => ({ ...p, apaRounding: v }))} ariaLabel="APA rounding" />
-                </div>
-                <p className="text-[11px] text-neutral-500 mt-1">Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40). Applies to this shoot only.</p>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Rounding</div>
+                <RoundingModeSelect value={roundingModeOf(production)} onChange={(m) => setProduction(p => ({ ...p, roundingMode: m }))} />
+                <p className="text-[11px] text-neutral-500 mt-2">Applies to this shoot only.</p>
               </div>
               {production.bestBoyMode && (
                 <div className="mt-4 pt-4 border-t border-neutral-800">
@@ -10052,7 +10331,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const sortedDays = useMemo(() => {
         return (production.days || [])
           .filter(d => d.crewId === crewMember.id)
-          .sort((a, b) => a.date.localeCompare(b.date));
+          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       }, [production.days, crewMember.id]);
 
       const perDayBreakdowns = useMemo(() => {
@@ -10113,7 +10392,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <div className="px-3.5 py-2.5 border-b border-neutral-800/60 flex items-center gap-2.5 flex-wrap">
                           <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">D{idx + 1}</span>
                           <span className="text-[11px] font-mono text-neutral-300">{fdate}</span>
-                          <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{day.dayType || 'Shoot'}</span>
+                          <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{calc.meta.dayType}</span>
                           <span className="ml-auto font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(total)}</span>
                         </div>
                         <div className="px-3.5 py-2 flex flex-col gap-1">
@@ -10367,7 +10646,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay, onGenerateInvoice }) {
       const sorted = useMemo(() => [...days].sort((a, b) => {
-        const dc = a.date.localeCompare(b.date);
+        const dc = (a.date || '').localeCompare(b.date || '');
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
       }), [days]);
 
@@ -10841,9 +11120,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               {sorted.map((day, idx) => {
                 const c = crew.find(cc => cc.id === day.crewId);
                 const calc = c ? calcForDisplay(production, day, c, findPrevDay(days, day)) : null;
+                const resolved = c ? resolveDay(production, day, c) : day;
                 const isCurrent = day.id === currentDayId;
                 const dateStr = day.date ? new Date(day.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "—";
-                const times = (day.callTime && day.wrapTime) ? `${day.callTime} – ${day.wrapTime}` : "";
+                const times = (resolved.callTime && resolved.wrapTime) ? `${resolved.callTime} – ${resolved.wrapTime}` : "";
                 return (
                   <button
                     key={day.id}
@@ -10855,7 +11135,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div className="text-xs font-bold text-neutral-400 w-8 flex-shrink-0">D{idx + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-500" : "text-neutral-200"}`}>{dateStr}</div>
-                      {(times || day.dayType) && <div className="text-[11px] text-neutral-500">{[times, day.dayType || "Shoot Day"].filter(Boolean).join(" · ")}</div>}
+                      {(times || resolved.dayType) && <div className="text-[11px] text-neutral-500">{[times, resolved.dayType].filter(Boolean).join(" · ")}</div>}
                     </div>
                     {day.note?.trim() && <INote size={13} className="text-neutral-600 flex-shrink-0"/>}
                     {calc && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(calc.total)}</div>}
@@ -11073,7 +11353,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
       const handleExportText = async () => {
         if (!soloCrew) return;
-        const sortedE = [...days].sort((a, b) => a.date.localeCompare(b.date));
+        const sortedE = [...days].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         const text = generateCrewText(soloCrew, sortedE, production);
         const r = await shareTextOrCopy(text, `${soloCrew.name} Timesheet`);
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
@@ -11223,7 +11503,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const newType = e.target.value;
                       const callH = parseHHMM(currentDay?.callTime);
                       const patch = { dayType: newType };
-                      if (callH !== null) patch.wrapTime = toHHMM(callH + DEFAULT_HOURS[newType]);
+                      if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[newType] ?? 11));
                       handleDayChange({ ...currentDay, ...patch });
                     }}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -12411,10 +12691,8 @@ const setDays = (updater) =>
       })();
 
       const calcSummary = (() => {
-        const bits = [];
-        if (userPrefs.favourableRounding) bits.push('Favourable');
-        if (userPrefs.apaRounding) bits.push('APA');
-        return bits.length ? `${bits.join(' + ')} rounding` : 'Exact';
+        const m = roundingModeOf(userPrefs);
+        return m === 'favourable' ? 'Favourable rounding' : m === 'apa' ? 'APA rounding' : 'Exact';
       })();
 
       const displaySummary = userPrefs.comparisonUnit === 'off'
@@ -12650,20 +12928,9 @@ const setDays = (updater) =>
             </Disclosure>
 
             <Disclosure label="Calculation" summary={calcSummary}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Favourable rounding</div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Default for new shoots. Round each line amount up to the next whole pound, in your favour. When off, exact decimals are used. Change a specific shoot in its own settings — this never alters existing shoots.</div>
-                </div>
-                <Toggle value={userPrefs.favourableRounding} onChange={(v) => set({ favourableRounding: v })} ariaLabel="Favourable rounding" />
-              </div>
-              <div className="flex items-center justify-between gap-3 mt-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">APA rounding</div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Default for new shoots. Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR instead of £44.40). Change a specific shoot in its own settings — this never alters existing shoots.</div>
-                </div>
-                <Toggle value={userPrefs.apaRounding} onChange={(v) => set({ apaRounding: v })} ariaLabel="APA rounding" />
-              </div>
+              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Rounding</div>
+              <RoundingModeSelect value={roundingModeOf(userPrefs)} onChange={(m) => set({ roundingMode: m })} />
+              <p className="text-[11px] text-neutral-500 mt-2.5 leading-tight">This sets the default for new shoots. To change a shoot you've already created, open that shoot's settings.</p>
             </Disclosure>
 
             <Disclosure label="Display" summary={displaySummary}>
@@ -13275,6 +13542,14 @@ const setDays = (updater) =>
       return (lineItems || []).reduce((sum, item) => sum + getLineTotal(item), 0);
     }
 
+    // Single VAT definition for every invoice surface (PDF, screen, email, list
+    // cards). Number() normalises a stringy vatRate; numerically identical to the
+    // inline `subtotal * (vatRate || 20) / 100` forms it replaces.
+    function invoiceVAT(invoice, subtotal) {
+      const vatAmount = invoice?.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
+      return { vatAmount, total: subtotal + vatAmount };
+    }
+
     function getDisplayStatus(invoice) {
       if (invoice.status === "paid") return { label: "PAID", variant: "paid" };
       if (invoice.status === "sent") {
@@ -13318,7 +13593,10 @@ const setDays = (updater) =>
         !isFixed && item.discountedQty !== null ? String(item.discountedQty) : String(item.qty)
       );
       const parsedQty = parseFloat(dqty) || 0;
-      const originalAmount = isFixed ? item.amount : item.qty * item.rate;
+      // Use the stored line amount (what the invoice actually bills, incl.
+      // Favourable rounding) so "Full amt"/"saving" match the invoiced line.
+      // Recomputing qty×rate here would disagree with the line's Amount column.
+      const originalAmount = Number(item.amount) || 0;
       const discountedAmount = isFixed ? 0 : parsedQty * item.rate;
       const saving = originalAmount - discountedAmount;
       const isAlreadyWaived = isFixed && item.discountedQty !== null;
@@ -13484,6 +13762,8 @@ const setDays = (updater) =>
       const [discountingItem, setDiscountingItem] = React.useState(null);
       const [confirmDel, setConfirmDel] = React.useState(false);
       const [confirmRefresh, setConfirmRefresh] = React.useState(false);
+      const [editingSentFields, setEditingSentFields] = React.useState(false);
+      const [confirmEditSent, setConfirmEditSent] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
       // Native-only: tells the post-mount effect which delivery to run.
       //   'share'  → render PDF + iOS share sheet (existing print/share button)
@@ -13494,8 +13774,8 @@ const setDays = (updater) =>
       const emailCcRef = React.useRef('');
       const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
       const [notesOpen, setNotesOpen] = React.useState(!!invoice?.notes);
-      // CC is entered per-send and never persisted — resets to empty each visit.
-      const [ccEmail, setCcEmail] = React.useState('');
+      // CC is persisted on the invoice (invoice.ccEmail). emailCcRef just carries
+      // it into the async native print/email effect after setPrintTarget.
       const [bankOpen, setBankOpen] = React.useState(false);
       const [fromOpen, setFromOpen] = React.useState(false);
       const [toastMsg, setToastMsg] = React.useState(null);
@@ -13519,7 +13799,7 @@ const setDays = (updater) =>
               const subjectBase = `Invoice ${inv.invoiceNumber}`;
               const subject = inv.jobTitle ? `${subjectBase} — ${inv.jobTitle}` : subjectBase;
               const subtotal = invoiceSubtotal(inv.lineItems);
-              const vatAmount = inv.vatRegistered ? subtotal * (Number(inv.vatRate) || 20) / 100 : 0;
+              const { vatAmount } = invoiceVAT(inv, subtotal);
               const totalStr = fmtGBP(subtotal + vatAmount);
               const fromName = inv.fromName || inv.fromCompanyName || '';
               const jobBit = inv.jobTitle ? ` for ${inv.jobTitle}` : '';
@@ -13532,8 +13812,13 @@ const setDays = (updater) =>
                 }))
                 .then((mode) => {
                   if (wasDraft) {
-                    updateInvoice({ status: 'sent', dateSent: todayISO() });
+                    updateInvoice(freezeOnSend(production, inv, { status: 'sent', dateSent: todayISO() }));
                     showToast(mode === 'composer' ? 'Email composer opened — marked as sent' : 'Share sheet opened — marked as sent');
+                  } else {
+                    // Re-sending an already-issued invoice: re-lock so the edit-sent
+                    // UX ends in the same locked state as the web path. The setter is
+                    // stable (no stale-read), and it's a no-op when not in edit mode.
+                    setEditingSentFields(false);
                   }
                 })
                 .catch((e) => { try { console.error('Invoice email failed', e); } catch (_) {} })
@@ -13553,23 +13838,31 @@ const setDays = (updater) =>
         return () => clearTimeout(timer);
       }, [printTarget]);
 
-      // Auto-refresh line items and job context for un-edited drafts whenever this invoice is opened
+      // Re-sync a DRAFT from the production (the single source) whenever it is
+      // opened. The shared client/job fields sync UNCONDITIONALLY — editing them
+      // writes through to the production (see editClientField), so there is nothing
+      // to protect. Line items and notes keep their own edited-guards. Sent/paid
+      // invoices early-return → frozen (their snapshot is never re-synced).
       React.useEffect(() => {
         const inv = (production.invoices || []).find(i => i.id === invoiceId);
-        if (!inv || inv.status !== "draft" || inv.linesEdited) return;
+        if (!inv || inv.status !== "draft") return;
         const userCrew = (production.crew || []).find(c => c.id === userCrewId);
         const relevantDays = userCrewId
           ? (production.days || []).filter(d => d.crewId === userCrewId)
           : (production.days || []);
         const sortedDates = relevantDays.map(d => d.date).filter(Boolean).sort();
         const updates = {
-          jobTitle: production.title || "",
-          jobReference: production.jobReference || "",
+          ...clientFieldsFromProduction(production),
+          // The rounding DISPLAY flag must track the re-derived line items: otherwise a
+          // draft whose shoot rounding changed after creation shows favourable-rounded
+          // amounts under the full Qty×Rate layout (the clean 2-column display never fires).
+          roundingMode: roundingModeOf(production),
+          favourableRounding: roundingFav(production),
           jobRole: userCrew?.role || inv.jobRole || "",
           shootDateStart: sortedDates[0] || "",
           shootDateEnd: sortedDates[sortedDates.length - 1] || "",
         };
-        if (userCrewId) updates.lineItems = buildInvoiceLineItems(production, userPrefs, userCrewId);
+        if (userCrewId && !inv.linesEdited) updates.lineItems = buildInvoiceLineItems(production, userPrefs, userCrewId);
         // Regenerate the notes snapshot so it tracks current figures and this
         // shoot's rounding mode — but only if the user hasn't hand-edited them
         // (notesEdited guards manual edits from being clobbered).
@@ -13579,6 +13872,12 @@ const setDays = (updater) =>
           invoices: (p.invoices || []).map(i => i.id === invoiceId ? { ...i, ...updates } : i),
         }));
       }, [invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+      // Edit-sent flow: a sent/paid invoice's client/job details are LOCKED until
+      // the user explicitly unlocks them. Re-lock whenever a different invoice is
+      // opened, so issued records can't be changed by accident.
+      React.useEffect(() => { setEditingSentFields(false); }, [invoiceId]);
+      const fieldsLocked = !!invoice && invoice.status !== "draft" && !editingSentFields;
 
       if (!invoice) {
         return (
@@ -13593,6 +13892,18 @@ const setDays = (updater) =>
           ...p,
           invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...updates } : inv),
         }));
+
+      // Edit a shared client/job field. On a DRAFT, write THROUGH to the production
+      // (the single source) so project setup + sibling drafts stay in sync, and
+      // also update this invoice's snapshot for immediate display. On a sent/paid
+      // invoice (edit-sent mode), write ONLY to this invoice — edits stay isolated.
+      const editClientField = (invKey, value) => {
+        updateInvoice({ [invKey]: value });
+        if (invoice && invoice.status === "draft") {
+          const prodKey = INVOICE_TO_PRODUCTION_FIELD[invKey];
+          if (prodKey) setProduction(p => ({ ...p, [prodKey]: value }));
+        }
+      };
 
       const updateLineItem = (itemId, updates) =>
         updateInvoice({ lineItems: invoice.lineItems.map(item => item.id === itemId ? { ...item, ...updates } : item), linesEdited: true });
@@ -13615,23 +13926,26 @@ const setDays = (updater) =>
           // (renders PDF + opens iOS Mail composer with the PDF attached, or
           // falls back to the share sheet). Auto-mark-as-sent fires there.
           printIntentRef.current = 'email';
-          emailCcRef.current = ccEmail;
+          emailCcRef.current = invoice.ccEmail || '';
           setPrintTarget(invoice);
           return;
         }
         const wasDraft = invoice.status === 'draft';
-        openInvoiceMailto(invoice, ccEmail);
+        openInvoiceMailto(invoice, invoice.ccEmail || '');
         if (wasDraft) {
           // Auto-mark sent. The mailto opens the user's mail client; we optimistically
           // assume they'll send. If they cancel, the header kebab has "Revert to draft".
-          updateInvoice({ status: 'sent', dateSent: todayISO() });
+          updateInvoice(freezeOnSend(production, invoice, { status: 'sent', dateSent: todayISO() }));
           showToast('Email opened — marked as sent');
+        } else if (editingSentFields) {
+          // Re-sending an edited issued invoice: re-lock — its details are re-frozen.
+          setEditingSentFields(false);
+          showToast('Email opened — updated details re-saved');
         }
       };
 
       const subtotal = invoiceSubtotal(invoice.lineItems);
-      const vatAmount = invoice.vatRegistered ? subtotal * (invoice.vatRate || 20) / 100 : 0;
-      const total = subtotal + vatAmount;
+      const { vatAmount, total } = invoiceVAT(invoice, subtotal);
 
       // Due-in-days: derived from invoiceDate + dueDate
       const issueMs = invoice.invoiceDate ? new Date(invoice.invoiceDate + "T12:00:00").getTime() : null;
@@ -13654,7 +13968,7 @@ const setDays = (updater) =>
             <div className="flex-1 min-w-0">
               <div className={`text-sm font-semibold ${isWaived ? "line-through text-neutral-500" : "text-neutral-100"}`}>{label}</div>
               {item.detail && <div className="text-[11px] text-neutral-500 truncate">{item.detail}</div>}
-              {item.rate !== null && (
+              {!roundingFav(invoice) && item.rate !== null && (
                 <div className="text-[10px] text-neutral-600 mt-0.5">
                   {isDisc
                     ? <><span className="text-tm-warn">{item.discountedQty}</span>/{item.qty} × {fmtGBP(item.rate)}</>
@@ -13752,13 +14066,31 @@ const setDays = (updater) =>
               )}
             </div>
 
+            {invoice.status !== 'draft' && (fieldsLocked ? (
+              <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5 mb-1">
+                <div className="text-[11px] text-amber-200/90 leading-snug">
+                  <span className="font-bold">{invoice.status === 'paid' ? 'Paid' : 'Sent'}{invoice.dateSent ? ` ${fmtDateMed(invoice.dateSent)}` : ''}.</span> These details are locked.
+                </div>
+                <button type="button" onClick={() => setConfirmEditSent(true)}
+                  className="flex-shrink-0 text-[10px] uppercase tracking-[0.14em] font-bold text-amber-300 hover:text-amber-200 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  Edit details
+                </button>
+              </div>
+            ) : (
+              <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl px-4 py-2.5 mb-1 text-[11px] text-sky-200/90 leading-snug">
+                <span className="font-bold">Editing a sent invoice.</span> Changes affect only this invoice — not the project or your other invoices.
+              </div>
+            ))}
+
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-1 mb-1">
               <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Job</span>
                 <input
                   type="text"
                   value={invoice.jobTitle || ''}
-                  onChange={(e) => updateInvoice({ jobTitle: e.target.value })}
+                  onChange={(e) => editClientField('jobTitle', e.target.value)}
+                  readOnly={fieldsLocked}
                   placeholder="Production title"
                   className="flex-1 bg-transparent text-sm font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
                 />
@@ -13768,7 +14100,8 @@ const setDays = (updater) =>
                 <input
                   type="text"
                   value={invoice.jobReference || ''}
-                  onChange={(e) => updateInvoice({ jobReference: e.target.value })}
+                  onChange={(e) => editClientField('jobReference', e.target.value)}
+                  readOnly={fieldsLocked}
                   placeholder="e.g. Vodafone Q3, PO#1234"
                   className="flex-1 bg-transparent text-sm font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
                 />
@@ -13779,6 +14112,7 @@ const setDays = (updater) =>
                   type="text"
                   value={invoice.jobRole || ''}
                   onChange={(e) => updateInvoice({ jobRole: e.target.value })}
+                  readOnly={fieldsLocked}
                   placeholder="e.g. Gaffer, Spark"
                   className="flex-1 bg-transparent text-sm font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
                 />
@@ -13790,21 +14124,24 @@ const setDays = (updater) =>
               <input
                 type="text"
                 value={invoice.toName || ''}
-                onChange={(e) => updateInvoice({ toName: e.target.value })}
+                onChange={(e) => editClientField('toName', e.target.value)}
+                readOnly={fieldsLocked}
                 placeholder="Client / company name"
                 className="w-full bg-transparent text-[14px] font-bold text-neutral-100 placeholder-neutral-600 focus:outline-none"
               />
               <input
                 type="email"
                 value={invoice.toEmail || ''}
-                onChange={(e) => updateInvoice({ toEmail: e.target.value })}
+                onChange={(e) => editClientField('toEmail', e.target.value)}
+                readOnly={fieldsLocked}
                 placeholder="billing@example.com"
                 className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
               />
               <input
                 type="email"
-                value={ccEmail}
-                onChange={(e) => setCcEmail(e.target.value)}
+                value={invoice.ccEmail || ''}
+                onChange={(e) => editClientField('ccEmail', e.target.value)}
+                readOnly={fieldsLocked}
                 placeholder="CC (optional) — accounts@example.com"
                 className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
                 aria-label="CC recipients for this send"
@@ -13812,22 +14149,23 @@ const setDays = (updater) =>
               {invoice.toAddress !== '' && invoice.toAddress != null ? (
                 <textarea
                   value={invoice.toAddress}
-                  onChange={(e) => updateInvoice({ toAddress: e.target.value })}
+                  onChange={(e) => editClientField('toAddress', e.target.value)}
+                  readOnly={fieldsLocked}
                   rows={3}
                   placeholder={"Address line 1\nLine 2\nPostcode"}
                   className="w-full bg-transparent text-[11px] text-neutral-500 placeholder-neutral-700 focus:outline-none resize-none mt-1.5 font-mono leading-snug"
                   style={{ fontFamily: 'inherit' }}
                 />
-              ) : (
+              ) : !fieldsLocked ? (
                 <button
                   type="button"
-                  onClick={() => updateInvoice({ toAddress: ' ' })}
+                  onClick={() => editClientField('toAddress', ' ')}
                   className="inline-flex items-center gap-1 mt-2 text-[9px] uppercase tracking-[0.16em] font-bold text-sky-500 hover:text-sky-400 transition-colors"
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
                   <IPlus size={9}/> Add billing address
                 </button>
-              )}
+              ) : null}
             </div>
 
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
@@ -14187,6 +14525,14 @@ const setDays = (updater) =>
             }}
             onCancel={() => setConfirmRefresh(false)}
           />
+          <ConfirmDialog
+            open={confirmEditSent}
+            title="Edit a sent invoice?"
+            message="This invoice has already been sent. Changes update this issued record only — they won't affect the project or your other invoices. Re-send it afterwards so the client gets the corrected version."
+            confirmLabel="Edit details" confirmTone="primary" cancelLabel="Keep locked"
+            onConfirm={() => { setEditingSentFields(true); setConfirmEditSent(false); }}
+            onCancel={() => setConfirmEditSent(false)}
+          />
         </div>
       );
     }
@@ -14205,8 +14551,7 @@ const setDays = (updater) =>
         let draft = 0, sent = 0, paid = 0, overdue = 0, outstanding = 0;
         for (const inv of invoices) {
           const sub = invoiceSubtotal(inv.lineItems);
-          const vat = inv.vatRegistered ? sub * (inv.vatRate || 20) / 100 : 0;
-          const tot = sub + vat;
+          const { vatAmount: vat, total: tot } = invoiceVAT(inv, sub);
           if (inv.status === 'paid') paid++;
           else if (inv.status === 'sent') {
             sent++;
@@ -14284,8 +14629,7 @@ const setDays = (updater) =>
                 <div className="space-y-2">
                   {filteredInvoices.map((inv) => {
                     const subtotal = invoiceSubtotal(inv.lineItems);
-                    const vatAmount = inv.vatRegistered ? subtotal * (inv.vatRate || 20) / 100 : 0;
-                    const total = subtotal + vatAmount;
+                    const { vatAmount, total } = invoiceVAT(inv, subtotal);
                     const dueMs = inv.dueDate ? new Date(inv.dueDate + 'T12:00:00').getTime() : null;
                     const isOverdue = inv.status === 'sent' && dueMs && dueMs < todayMs;
                     const daysOverdue = isOverdue ? Math.floor((todayMs - dueMs) / 86400000) : 0;
@@ -14585,8 +14929,7 @@ const setDays = (updater) =>
         let draft = 0, sent = 0, paid = 0, overdue = 0, outstanding = 0;
         for (const { invoice: inv } of allInvoices) {
           const sub = invoiceSubtotal(inv.lineItems);
-          const vat = inv.vatRegistered ? sub * (inv.vatRate || 20) / 100 : 0;
-          const tot = sub + vat;
+          const { vatAmount: vat, total: tot } = invoiceVAT(inv, sub);
           if (inv.status === 'paid') paid++;
           else if (inv.status === 'sent') {
             sent++;
@@ -14682,8 +15025,7 @@ const setDays = (updater) =>
             {visible.map(({ invoice, production }) => {
               const s = getDisplayStatus(invoice);
               const subtotal = invoiceSubtotal(invoice.lineItems);
-              const vatAmount = invoice.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
-              const total = subtotal + vatAmount;
+              const { vatAmount, total } = invoiceVAT(invoice, subtotal);
               const dueMs = invoice.dueDate ? new Date(invoice.dueDate + 'T12:00:00').getTime() : null;
               const isOverdue = invoice.status === 'sent' && dueMs && dueMs < todayMs;
               const daysOverdue = isOverdue ? Math.floor((todayMs - dueMs) / 86400000) : 0;
@@ -14904,8 +15246,17 @@ const confirmDelete = (p) => setConfirmOpts({
           // State now derives from the explicit `wrapped` flag, not wrapTime
           // presence — wrapTime is auto-filled on day creation and is no
           // longer a reliable WRAPPED signal.
-          const someOnCall = todayRecords.some(d => d.callTime && d.wrapped !== true);
-          const allWrapped = todayRecords.length > 0 && todayRecords.every(d => d.callTime && d.wrapped === true);
+          // Resolve each record's call/wrap through the cascade (matching the
+          // engine) so cascade-inherited days still register as on-call/wrapped
+          // and feed the live timers — raw d.callTime is undefined when a day
+          // inherits its time fields from dept/production defaults.
+          const resolvedToday = todayRecords.map(d => {
+            const cr = (p.crew ?? []).find(cc => cc.id === d.crewId);
+            const r = cr ? resolveDay(p, d, cr) : d;
+            return { d, callTime: r.callTime, wrapTime: r.wrapTime };
+          });
+          const someOnCall = resolvedToday.some(({ d, callTime }) => callTime && d.wrapped !== true);
+          const allWrapped = resolvedToday.length > 0 && resolvedToday.every(({ d, callTime }) => callTime && d.wrapped === true);
 
           // ON CALL drops its text prefix — the pulsing green dot is the live signal.
           // WRAPPED and CURRENT SHOOT keep their prefixes (no dot accompanying).
@@ -14914,7 +15265,7 @@ const confirmDelete = (p) => setConfirmOpts({
           else if (allWrapped) { stateLabel = `WRAPPED · DAY ${dayIndex} OF ${dayCount}`;       stateClass = "text-neutral-400"; showDot = false; }
           else                 { stateLabel = `CURRENT SHOOT · DAY ${dayIndex} OF ${dayCount}`; stateClass = "text-sky-500";     showDot = false; }
 
-          const callMinsList = todayRecords.map(d => parseHHMM(d.callTime)).filter(v => v != null).map(h => Math.round(h * 60));
+          const callMinsList = resolvedToday.map(({ callTime }) => parseHHMM(callTime)).filter(v => v != null).map(h => Math.round(h * 60));
           const earliestCallMins = callMinsList.length ? Math.min(...callMinsList) : null;
           const earliestCallStr = earliestCallMins != null ? toHHMM(earliestCallMins / 60) : null;
 
@@ -14922,9 +15273,9 @@ const confirmDelete = (p) => setConfirmOpts({
           let clockedSub = "";
           if (allWrapped) {
             let totalMins = 0;
-            todayRecords.forEach(d => {
-              const c = parseHHMM(d.callTime);
-              const w = parseHHMM(d.wrapTime);
+            resolvedToday.forEach(({ callTime, wrapTime }) => {
+              const c = parseHHMM(callTime);
+              const w = parseHHMM(wrapTime);
               if (c != null && w != null) {
                 let diff = (w - c) * 60;
                 if (diff < 0) diff += 24 * 60;
@@ -15392,8 +15743,12 @@ const confirmDelete = (p) => setConfirmOpts({
       // spurious re-render on every mount.
       useEffect(() => {
         setUserPrefs(p => {
-          if (p.onboardingComplete !== undefined) return p;
-          return { ...p, onboardingComplete: true };
+          let next = p;
+          if (next.onboardingComplete === undefined) next = { ...next, onboardingComplete: true };
+          // Consolidate legacy favourableRounding/apaRounding into the single
+          // roundingMode (both-on → favourable, per the approved migration).
+          if (next.roundingMode === undefined) next = { ...next, roundingMode: roundingModeOf(next) };
+          return next;
         });
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -15434,7 +15789,7 @@ const confirmDelete = (p) => setConfirmOpts({
       const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); };
       const handleUpdateInvoice = (productionId, invoiceId, patch) => {
         setProductions(prev => prev.map(p => p.id !== productionId ? p : {
-          ...p, invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...patch } : inv),
+          ...p, invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...freezeOnSend(p, inv, patch) } : inv),
         }));
       };
       const handleDeleteInvoice = (productionId, invoiceId) => {
@@ -15447,7 +15802,12 @@ const confirmDelete = (p) => setConfirmOpts({
         if (!production) return;
         const setProduction = updater =>
           setProductions(prev => prev.map(p => p.id === productionId ? (typeof updater === 'function' ? updater(p) : updater) : p));
-        const userCrewId = production.bestBoyMode ? null : (production.crew?.[0]?.id ?? null);
+        // Resolve the crew to invoice the same way the in-production path does
+        // (best-boy included, via userCrewIdsInProduction) — falling back to the
+        // first crew member — so the global picker never emits an empty invoice;
+        // bail if the shoot has no crew at all.
+        const userCrewId = userCrewIdsInProduction(production, userPrefs)[0] ?? production.crew?.[0]?.id ?? null;
+        if (!userCrewId) return;
         const newInvoiceId = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
         openProduction(productionId, { invoiceId: newInvoiceId });
       };
@@ -15457,7 +15817,26 @@ const confirmDelete = (p) => setConfirmOpts({
       };
       const duplicateProduction = (p) => {
         const newId = uid();
-        const copy = { ...p, id: newId, title: `${p.title || 'Untitled Production'} (copy)`, days: [], weekStarts: [], gridDates: [] };
+        // Fresh crew objects with new ids so the two productions don't share crew
+        // references (safe: the copy starts with no days, so nothing points at these ids yet).
+        const crewIdMap = {};
+        const newCrew = (p.crew || []).map(c => {
+          const nid = uid();
+          if (c?.id) crewIdMap[c.id] = nid;
+          return { ...c, id: nid };
+        });
+        const copy = {
+          ...p,
+          id: newId,
+          title: `${p.title || 'Untitled Production'} (copy)`,
+          days: [],
+          weekStarts: [],
+          gridDates: [],
+          invoices: [],      // invoices belong to the source shoot, not the copy
+          dayDefaults: {},   // no days yet -> no date-keyed defaults to carry
+          crew: newCrew,
+          iAmCrewId: (p.iAmCrewId && crewIdMap[p.iAmCrewId]) || null,
+        };
         setProductions(prev => [...prev, copy]);
         setOpenId(newId);
       };
@@ -15486,6 +15865,7 @@ const confirmDelete = (p) => setConfirmOpts({
           prodCo: "",
           jobReference: "",
           invoicingEmail: "",
+          ccEmail: "",
           crew: soloCrew,
           days: [],
           defaultDay: DEFAULT_PRODUCTION_DAY,
@@ -15494,8 +15874,7 @@ const confirmDelete = (p) => setConfirmOpts({
           iAmCrewId: null,
           dayDefaults: {},
           isElevenHourDay: false,
-          favourableRounding: userPrefs.favourableRounding ?? false,
-          apaRounding: userPrefs.apaRounding ?? false,
+          roundingMode: roundingModeOf(userPrefs),
           startDate: todayISO(),
           isNew: true,
         };
@@ -15518,6 +15897,7 @@ const confirmDelete = (p) => setConfirmOpts({
           exportDate: now.toISOString(),
           exportedAt: now.toISOString(),
           productions,
+          userPrefs,
         }, null, 2);
         const filename = `timemachine-backup-${date}.json`;
         if (IS_NATIVE) {
