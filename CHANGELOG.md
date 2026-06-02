@@ -16,9 +16,9 @@ Pay-calculation accuracy (overtime, pre-call, travel, riggers, wrap time), a sin
 
 ### Changed
 
-- Rounding is now a single choice — Exact, Favourable or APA — instead of two separate switches that could conflict.
+- Rounding is now a single choice — Exact, Favourable, or APA — instead of two separate switches that could conflict.
 - Backups now include bank details, company info, settings and invoice numbering — so a restore, or moving to a new device, brings everything back.
-- Favourable-rounding invoices now show clean amounts without confusing line maths.
+- Favourable invoices now show clean whole-pound amounts on every line, including penalties.
 
 ### Fixed
 
