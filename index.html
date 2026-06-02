@@ -1206,9 +1206,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const callH = parseHHMM(day.callTime);
       const wrapH = parseHHMM(day.wrapTime);
       if (callH === null || wrapH === null) return null;
-      const wrapNextDay = day.wrapNextDay || wrapH <= callH;
-      const wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
-      const workedHrs = wrapAbs - callH;
+      // E1: strict '<' so wrap == call is NOT auto-treated as a 24h overnight; with no
+      // explicit wrapNextDay it's a 0h day, handled as an invalid-time day (£0 + note —
+      // the same path as unparseable times) rather than a silent 24h.
+      const wrapNextDay = day.wrapNextDay || wrapH < callH;
+      if (wrapH === callH && !day.wrapNextDay) return null;
+      let wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
+      let workedHrs = wrapAbs - callH;
+      // E2: clamp an implausibly long day (e.g. a stale wrapNextDay on a same-day wrap)
+      // to 24h so OT/triple-time can't scale to 36-48h.
+      const dayClamped = workedHrs > 24;
+      if (dayClamped) { workedHrs = 24; wrapAbs = callH + 24; }
       const lunchStartH = parseHHMM(day.lunchStartTime);
       const lunchStartAbs = absTime(lunchStartH, callH);
       const rawLunch = Number(day.lunchDurationMins ?? 60);
@@ -1243,7 +1251,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lateThreshold, cwdThreshold, lunchLate, lunchVeryLate,
         continuousDay, cwdApplies, sbDeadline, secondBreakRequired,
         sbStartAbs, sbDuration, sbState,
-        cwd1Deadline, cwd2Deadline, cwd2Required,
+        cwd1Deadline, cwd2Deadline, cwd2Required, dayClamped,
       };
     }
 
@@ -1364,6 +1372,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
       }
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
+      if (bs.dayClamped) notes.push("Day length exceeded 24h — clamped to 24h. Check the wrap time / +1 flag.");
       const preCallTime = day.preCallTime || day.truckCallTime; // back-compat with legacy truckCallTime
       const preCallH = preCallTime ? parseHHMM(preCallTime) : null;
       // Split the pre-call window into (a) hours before 05:00 paid at 3× BHR
@@ -1731,9 +1740,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           lines: [], total: 0,
         };
       }
-      const wrapNextDay = day.wrapNextDay || wrapH <= callH;
-      const wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
-      const workedHrs = wrapAbs - callH;
+      // E1/E2 (mirrors deriveBreakState): wrap == call with no explicit wrapNextDay is a
+      // 0h day (£0 + note, not a silent 24h); clamp an implausibly long day to 24h.
+      const wrapNextDay = day.wrapNextDay || wrapH < callH;
+      if (wrapH === callH && !day.wrapNextDay) {
+        return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true }, lines: [], total: 0 };
+      }
+      let wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
+      let workedHrs = wrapAbs - callH;
+      const dayClamped = workedHrs > 24;
+      if (dayClamped) { workedHrs = 24; wrapAbs = callH + 24; }
       const callWrapLabel = `${day.callTime} – ${day.wrapTime}${wrapNextDay ? " (+1)" : ""}`;
 
       const dow = dayOfWeek(day.date);
@@ -1810,7 +1826,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return {
         meta: {
           workedHrs, otHrs, bhr, otRate, dayLabel,
-          notes: [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
+          notes: dayClamped ? ["Day length exceeded 24h — clamped to 24h. Check the wrap time / +1 flag."] : [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
           isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
         },
         lines, total,
