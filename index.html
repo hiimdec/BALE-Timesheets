@@ -13851,6 +13851,11 @@ const setDays = (updater) =>
         const sortedDates = relevantDays.map(d => d.date).filter(Boolean).sort();
         const updates = {
           ...clientFieldsFromProduction(production),
+          // The rounding DISPLAY flag must track the re-derived line items: otherwise a
+          // draft whose shoot rounding changed after creation shows favourable-rounded
+          // amounts under the full Qty×Rate layout (the clean 2-column display never fires).
+          roundingMode: roundingModeOf(production),
+          favourableRounding: roundingFav(production),
           jobRole: userCrew?.role || inv.jobRole || "",
           shootDateStart: sortedDates[0] || "",
           shootDateEnd: sortedDates[sortedDates.length - 1] || "",
