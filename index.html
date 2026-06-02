@@ -4162,7 +4162,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     /* ── mailto: email opener ── */
-    // cc is entered per-send in the invoice editor and never persisted.
+    // cc is the invoice's persisted ccEmail (invoice.ccEmail); callers pass it in.
     function openInvoiceMailto(invoice, cc = '') {
       const recipient = (invoice.toEmail || '').trim();
       const subjectBase = `Invoice ${invoice.invoiceNumber}`;
@@ -13708,8 +13708,8 @@ const setDays = (updater) =>
       const emailCcRef = React.useRef('');
       const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
       const [notesOpen, setNotesOpen] = React.useState(!!invoice?.notes);
-      // CC is entered per-send and never persisted — resets to empty each visit.
-      // (cc is now persisted on the invoice as invoice.ccEmail — no ephemeral state)
+      // CC is persisted on the invoice (invoice.ccEmail). emailCcRef just carries
+      // it into the async native print/email effect after setPrintTarget.
       const [bankOpen, setBankOpen] = React.useState(false);
       const [fromOpen, setFromOpen] = React.useState(false);
       const [toastMsg, setToastMsg] = React.useState(null);
