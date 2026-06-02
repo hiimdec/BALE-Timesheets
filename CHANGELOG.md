@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [4.8.1] - 2026-06-02
 
-Pay-calculation accuracy (overtime, pre-call, travel, riggers), bidirectional invoice linking, fuller backups, and data-integrity fixes throughout.
+Pay-calculation accuracy (overtime, pre-call, travel, riggers, wrap time), a single rounding choice, bidirectional invoice linking, fuller backups, and data-integrity fixes throughout.
 
 ### Added
 
@@ -16,6 +16,7 @@ Pay-calculation accuracy (overtime, pre-call, travel, riggers), bidirectional in
 
 ### Changed
 
+- Rounding is now a single choice — Exact, Favourable or APA — instead of two separate switches that could conflict.
 - Backups now include bank details, company info, settings and invoice numbering — so a restore, or moving to a new device, brings everything back.
 - Favourable-rounding invoices now show clean amounts without confusing line maths.
 
@@ -26,6 +27,7 @@ Pay-calculation accuracy (overtime, pre-call, travel, riggers), bidirectional in
 - Corrected the travel-time threshold across all day types.
 - Mileage lines now show the correct route and M25 status.
 - Rigger rates now compute via the standard rules from the rate-card day rate.
+- Fixed a wrap time that could go blank and zero the day total after changing the call time; the wrap now defaults to 11 hours after the call.
 - Duplicating a shoot no longer copies its invoices.
 - Data-integrity, input-validation and stability fixes throughout.
 
