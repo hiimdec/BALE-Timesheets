@@ -9638,6 +9638,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
                 <Input value={production.invoicingEmail || ""} onChange={set("invoicingEmail")} placeholder="e.g. accounts@example.com" />
               </Field>
+              <p className="text-[11px] text-neutral-500 leading-snug mt-1">
+                Changes here update your draft invoices. Invoices you've already sent keep the details they were sent with.
+              </p>
             </Disclosure>
 
             <Disclosure label="Mode" summary={modeSummary}>
@@ -13693,6 +13696,8 @@ const setDays = (updater) =>
       const [discountingItem, setDiscountingItem] = React.useState(null);
       const [confirmDel, setConfirmDel] = React.useState(false);
       const [confirmRefresh, setConfirmRefresh] = React.useState(false);
+      const [editingSentFields, setEditingSentFields] = React.useState(false);
+      const [confirmEditSent, setConfirmEditSent] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
       // Native-only: tells the post-mount effect which delivery to run.
       //   'share'  → render PDF + iOS share sheet (existing print/share button)
@@ -13792,6 +13797,12 @@ const setDays = (updater) =>
         }));
       }, [invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+      // Edit-sent flow: a sent/paid invoice's client/job details are LOCKED until
+      // the user explicitly unlocks them. Re-lock whenever a different invoice is
+      // opened, so issued records can't be changed by accident.
+      React.useEffect(() => { setEditingSentFields(false); }, [invoiceId]);
+      const fieldsLocked = !!invoice && invoice.status !== "draft" && !editingSentFields;
+
       if (!invoice) {
         return (
           <div className="min-h-screen bg-neutral-950 flex items-center justify-center text-neutral-500 text-sm">
@@ -13850,6 +13861,10 @@ const setDays = (updater) =>
           // assume they'll send. If they cancel, the header kebab has "Revert to draft".
           updateInvoice(freezeOnSend(production, invoice, { status: 'sent', dateSent: todayISO() }));
           showToast('Email opened — marked as sent');
+        } else if (editingSentFields) {
+          // Re-sending an edited issued invoice: re-lock — its details are re-frozen.
+          setEditingSentFields(false);
+          showToast('Email opened — updated details re-saved');
         }
       };
 
@@ -13975,6 +13990,23 @@ const setDays = (updater) =>
               )}
             </div>
 
+            {invoice.status !== 'draft' && (fieldsLocked ? (
+              <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5 mb-1">
+                <div className="text-[11px] text-amber-200/90 leading-snug">
+                  <span className="font-bold">{invoice.status === 'paid' ? 'Paid' : 'Sent'}{invoice.dateSent ? ` ${fmtDateMed(invoice.dateSent)}` : ''}.</span> These details are locked.
+                </div>
+                <button type="button" onClick={() => setConfirmEditSent(true)}
+                  className="flex-shrink-0 text-[10px] uppercase tracking-[0.14em] font-bold text-amber-300 hover:text-amber-200 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  Edit details
+                </button>
+              </div>
+            ) : (
+              <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl px-4 py-2.5 mb-1 text-[11px] text-sky-200/90 leading-snug">
+                <span className="font-bold">Editing a sent invoice.</span> Changes affect only this invoice — not the project or your other invoices.
+              </div>
+            ))}
+
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-1 mb-1">
               <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Job</span>
@@ -13982,6 +14014,7 @@ const setDays = (updater) =>
                   type="text"
                   value={invoice.jobTitle || ''}
                   onChange={(e) => editClientField('jobTitle', e.target.value)}
+                  readOnly={fieldsLocked}
                   placeholder="Production title"
                   className="flex-1 bg-transparent text-sm font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
                 />
@@ -13992,6 +14025,7 @@ const setDays = (updater) =>
                   type="text"
                   value={invoice.jobReference || ''}
                   onChange={(e) => editClientField('jobReference', e.target.value)}
+                  readOnly={fieldsLocked}
                   placeholder="e.g. Vodafone Q3, PO#1234"
                   className="flex-1 bg-transparent text-sm font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
                 />
@@ -14002,6 +14036,7 @@ const setDays = (updater) =>
                   type="text"
                   value={invoice.jobRole || ''}
                   onChange={(e) => updateInvoice({ jobRole: e.target.value })}
+                  readOnly={fieldsLocked}
                   placeholder="e.g. Gaffer, Spark"
                   className="flex-1 bg-transparent text-sm font-mono font-semibold text-neutral-100 placeholder-neutral-600 focus:outline-none"
                 />
@@ -14014,6 +14049,7 @@ const setDays = (updater) =>
                 type="text"
                 value={invoice.toName || ''}
                 onChange={(e) => editClientField('toName', e.target.value)}
+                readOnly={fieldsLocked}
                 placeholder="Client / company name"
                 className="w-full bg-transparent text-[14px] font-bold text-neutral-100 placeholder-neutral-600 focus:outline-none"
               />
@@ -14021,6 +14057,7 @@ const setDays = (updater) =>
                 type="email"
                 value={invoice.toEmail || ''}
                 onChange={(e) => editClientField('toEmail', e.target.value)}
+                readOnly={fieldsLocked}
                 placeholder="billing@example.com"
                 className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
               />
@@ -14028,6 +14065,7 @@ const setDays = (updater) =>
                 type="email"
                 value={invoice.ccEmail || ''}
                 onChange={(e) => editClientField('ccEmail', e.target.value)}
+                readOnly={fieldsLocked}
                 placeholder="CC (optional) — accounts@example.com"
                 className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
                 aria-label="CC recipients for this send"
@@ -14036,12 +14074,13 @@ const setDays = (updater) =>
                 <textarea
                   value={invoice.toAddress}
                   onChange={(e) => editClientField('toAddress', e.target.value)}
+                  readOnly={fieldsLocked}
                   rows={3}
                   placeholder={"Address line 1\nLine 2\nPostcode"}
                   className="w-full bg-transparent text-[11px] text-neutral-500 placeholder-neutral-700 focus:outline-none resize-none mt-1.5 font-mono leading-snug"
                   style={{ fontFamily: 'inherit' }}
                 />
-              ) : (
+              ) : !fieldsLocked ? (
                 <button
                   type="button"
                   onClick={() => editClientField('toAddress', ' ')}
@@ -14050,7 +14089,7 @@ const setDays = (updater) =>
                 >
                   <IPlus size={9}/> Add billing address
                 </button>
-              )}
+              ) : null}
             </div>
 
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
@@ -14409,6 +14448,14 @@ const setDays = (updater) =>
               setConfirmRefresh(false);
             }}
             onCancel={() => setConfirmRefresh(false)}
+          />
+          <ConfirmDialog
+            open={confirmEditSent}
+            title="Edit a sent invoice?"
+            message="This invoice has already been sent. Changes update this issued record only — they won't affect the project or your other invoices. Re-send it afterwards so the client gets the corrected version."
+            confirmLabel="Edit details" confirmTone="primary" cancelLabel="Keep locked"
+            onConfirm={() => { setEditingSentFields(true); setConfirmEditSent(false); }}
+            onCancel={() => setConfirmEditSent(false)}
           />
         </div>
       );
