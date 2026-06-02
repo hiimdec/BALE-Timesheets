@@ -1927,6 +1927,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const migrated = {
         ...inv,
         linesEdited: inv.linesEdited ?? false,
+        ccEmail: inv.ccEmail ?? "",
         jobTitle: inv.jobTitle ?? p.title ?? "",
         jobReference: inv.jobReference ?? p.jobReference ?? "",
         jobRole: inv.jobRole ?? "",
@@ -2006,6 +2007,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         d.expenses          = d.expenses          ?? [];
       }
 
+      // Promote client/job fields a user typed only on an invoice up to the
+      // production (the single source) so the bidirectional draft sync doesn't
+      // blank values entered before linking existed. Fills EMPTY production
+      // fields ONLY (||=, latest non-empty invoice) — never overwrites a set
+      // field, and never alters any invoice (sent snapshots stay byte-identical).
+      const _invs = p.invoices || [];
+      const _latestInv = (key) => { for (let i = _invs.length - 1; i >= 0; i--) { const v = _invs[i]?.[key]; if (v != null && v !== "") return v; } return ""; };
+      const _client = {
+        prodCo:         (p.prodCo ?? "") || (p.toName ?? "") || _latestInv("toName"),
+        invoicingEmail: (p.invoicingEmail ?? "") || _latestInv("toEmail"),
+        toAddress:      (p.toAddress ?? "") || _latestInv("toAddress"),
+        jobReference:   (p.jobReference ?? "") || _latestInv("jobReference"),
+        ccEmail:        p.ccEmail ?? "",
+      };
+
       return {
         ...p,
         crew: (p.crew || []).map(migrateCrew),
@@ -2014,15 +2030,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         iAmCrewId: p.iAmCrewId ?? null,
         dayDefaults: backfilledDefaults,
         isElevenHourDay: p.isElevenHourDay ?? false,
-        jobReference: p.jobReference ?? "",
-        invoicingEmail: p.invoicingEmail ?? "",
+        prodCo: _client.prodCo,
+        jobReference: _client.jobReference,
+        invoicingEmail: _client.invoicingEmail,
+        ccEmail: _client.ccEmail,
         favourableRounding: p.favourableRounding ?? false,
         apaRounding: p.apaRounding ?? false,
         startDate: p.startDate ?? todayISO(),
         weekStarts: p.weekStarts ?? [],
         gridDates: p.gridDates ?? [],
         cancellationData: p.cancellationData ?? null,
-        toAddress: p.toAddress ?? "",
+        toAddress: _client.toAddress,
         invoices: (p.invoices || []).map(inv => migrateInvoice(inv, p)),
         days,
       };
@@ -2312,6 +2330,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return generateCrewText(crewMember, myDays, production);
     }
 
+    // The client/job fields shared between a production (single source) and its
+    // invoices. An invoice snapshots these — frozen on send, re-synced live for
+    // drafts. Bill-To name comes from production.prodCo (production.toName is a
+    // deprecated, back-compat-read-only fallback).
+    function clientFieldsFromProduction(production) {
+      return {
+        jobTitle: production.title ?? "",
+        toName: production.prodCo ?? production.toName ?? "",
+        toAddress: production.toAddress ?? "",
+        toEmail: production.invoicingEmail ?? "",
+        ccEmail: production.ccEmail ?? "",
+        jobReference: production.jobReference ?? "",
+      };
+    }
+
+    // Freeze-on-send: when a DRAFT becomes sent/paid, snapshot the production's
+    // current shared client/job fields onto the invoice. No-op for any other
+    // transition (so re-sending an already-issued invoice keeps its edited snapshot).
+    function freezeOnSend(production, currentInvoice, patch) {
+      const becomingIssued = (patch.status === "sent" || patch.status === "paid") && currentInvoice?.status === "draft";
+      return becomingIssued ? { ...patch, ...clientFieldsFromProduction(production) } : patch;
+    }
+
     function createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId) {
       const crewMember = (production.crew || []).find(c => c.id === userCrewId);
       const prefix = userPrefs.invoicePrefix || "INV-";
@@ -2328,11 +2369,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         invoiceNumber,
         invoiceDate: today,
         dueDate,
-        toName: production.toName ?? "",
-        toAddress: production.toAddress ?? "",
-        toEmail: production.invoicingEmail ?? "",
-        jobReference: production.jobReference ?? "",
-        jobTitle: production.title ?? "",
+        ...clientFieldsFromProduction(production),
         jobRole: crewMember?.role ?? "",
         shootDateStart: production.startDate ?? "",
         shootDateEnd: (() => {
@@ -13699,7 +13736,7 @@ const setDays = (updater) =>
                 }))
                 .then((mode) => {
                   if (wasDraft) {
-                    updateInvoice({ status: 'sent', dateSent: todayISO() });
+                    updateInvoice(freezeOnSend(production, inv, { status: 'sent', dateSent: todayISO() }));
                     showToast(mode === 'composer' ? 'Email composer opened — marked as sent' : 'Share sheet opened — marked as sent');
                   }
                 })
@@ -13791,7 +13828,7 @@ const setDays = (updater) =>
         if (wasDraft) {
           // Auto-mark sent. The mailto opens the user's mail client; we optimistically
           // assume they'll send. If they cancel, the header kebab has "Revert to draft".
-          updateInvoice({ status: 'sent', dateSent: todayISO() });
+          updateInvoice(freezeOnSend(production, invoice, { status: 'sent', dateSent: todayISO() }));
           showToast('Email opened — marked as sent');
         }
       };
@@ -15605,7 +15642,7 @@ const confirmDelete = (p) => setConfirmOpts({
       const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); };
       const handleUpdateInvoice = (productionId, invoiceId, patch) => {
         setProductions(prev => prev.map(p => p.id !== productionId ? p : {
-          ...p, invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...patch } : inv),
+          ...p, invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...freezeOnSend(p, inv, patch) } : inv),
         }));
       };
       const handleDeleteInvoice = (productionId, invoiceId) => {
@@ -15681,6 +15718,7 @@ const confirmDelete = (p) => setConfirmOpts({
           prodCo: "",
           jobReference: "",
           invoicingEmail: "",
+          ccEmail: "",
           crew: soloCrew,
           days: [],
           defaultDay: DEFAULT_PRODUCTION_DAY,
