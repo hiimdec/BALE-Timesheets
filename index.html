@@ -2466,10 +2466,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function applyRateRounding(calc) {
       if (calc.meta?.isPmpa) return calc;
-      const lines = calc.lines.map(l => {
-        if (l.rate == null) return l;
-        return { ...l, amount: Math.ceil(l.amount) };
-      });
+      // Favourable rounding: ceil EVERY contributing line to the whole pound — rate×qty
+      // lines, flat fees and penalties (missed break, late, etc.) alike, not just the
+      // rate×qty ones. Math.ceil rounds a negative line (a deduction) toward zero — the
+      // favourable direction (a smaller deduction = more pay) — so it never worsens one.
+      // Only the line amounts round; VAT is computed downstream on the resulting subtotal.
+      const lines = calc.lines.map(l => ({ ...l, amount: Math.ceil(Number(l.amount) || 0) }));
       const total = lines.reduce((s, l) => s + l.amount, 0);
       return { ...calc, lines, total };
     }
