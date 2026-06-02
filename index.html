@@ -2095,17 +2095,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Snapshot the ORIGINAL user data before overwriting — runMigrations() takes its own snapshot
       // after the overwrite, so without this, a migration failure would restore the imported (bad)
       // data rather than the original.
+      // Restore userPrefs only when the backup actually carries it. Older backups
+      // predate the userPrefs export — those must leave the device's current prefs
+      // untouched (never clobber bank details / settings with defaults).
+      const importedPrefs = (parsed && typeof parsed === 'object' && parsed.userPrefs &&
+        typeof parsed.userPrefs === 'object' && !Array.isArray(parsed.userPrefs)) ? parsed.userPrefs : null;
       const originalProductions = storage.get('bigals_productions');
       const originalSchemaVersion = storage.get(SCHEMA_VERSION_KEY);
+      const originalUserPrefs = storage.get('bigals_user_prefs');
       try {
         storage.set('bigals_productions', JSON.stringify(arr));
         setStoredSchemaVersion(fileSchemaVersion);
+        // Merge over DEFAULT_USER_PREFS so an older-schema prefs object gains any
+        // newer keys (the same normalisation useStoredState applies on read).
+        if (importedPrefs) storage.set('bigals_user_prefs', JSON.stringify({ ...DEFAULT_USER_PREFS, ...importedPrefs }));
         const result = runMigrations();
         if (result.error) {
           if (originalProductions != null) storage.set('bigals_productions', originalProductions);
           else storage.remove('bigals_productions');
           if (originalSchemaVersion != null) storage.set(SCHEMA_VERSION_KEY, originalSchemaVersion);
           else storage.remove(SCHEMA_VERSION_KEY);
+          if (importedPrefs) {
+            if (originalUserPrefs != null) storage.set('bigals_user_prefs', originalUserPrefs);
+            else storage.remove('bigals_user_prefs');
+          }
           return { ok: false, error: `Migration failed: ${result.error}` };
         }
         return { ok: true };
@@ -15643,6 +15656,7 @@ const confirmDelete = (p) => setConfirmOpts({
           exportDate: now.toISOString(),
           exportedAt: now.toISOString(),
           productions,
+          userPrefs,
         }, null, 2);
         const filename = `timemachine-backup-${date}.json`;
         if (IS_NATIVE) {
