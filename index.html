@@ -13748,6 +13748,11 @@ const setDays = (updater) =>
                   if (wasDraft) {
                     updateInvoice(freezeOnSend(production, inv, { status: 'sent', dateSent: todayISO() }));
                     showToast(mode === 'composer' ? 'Email composer opened — marked as sent' : 'Share sheet opened — marked as sent');
+                  } else {
+                    // Re-sending an already-issued invoice: re-lock so the edit-sent
+                    // UX ends in the same locked state as the web path. The setter is
+                    // stable (no stale-read), and it's a no-op when not in edit mode.
+                    setEditingSentFields(false);
                   }
                 })
                 .catch((e) => { try { console.error('Invoice email failed', e); } catch (_) {} })
