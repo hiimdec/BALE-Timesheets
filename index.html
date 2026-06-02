@@ -2316,6 +2316,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         vatRegistered: crewMember?.vatRegistered ?? userPrefs.vatRegistered ?? false,
         vatRate: crewMember?.vatRate ?? userPrefs.vatRate ?? 20,
         vatNumber: userPrefs.vatNumber || "",
+        // Snapshot the shoot's rounding mode so the invoice's display matches the
+        // amounts baked into its line items (Favourable = clean Description + Amount).
+        favourableRounding: !!production.favourableRounding,
         // Logo is NOT snapshotted per-invoice — read from userPrefs at render time to avoid
         // duplicating ~500KB of base64 data into every invoice (iOS Safari 5MB localStorage cap).
         lineItems,
@@ -3777,6 +3780,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const subtotal = invoiceSubtotal(allLines);
       const { vatAmount, total } = invoiceVAT(invoice, subtotal);
+      // Favourable rounding rounds each line's Amount up, so Qty × Rate wouldn't
+      // equal it — render a clean Description + Amount table (no numeric columns
+      // to "not add up"). Exact mode keeps the full Qty × Rate × Amount breakdown.
+      const fav = !!invoice.favourableRounding;
 
       const renderLineRows = (item, labelOverride) => {
         const label = labelOverride ?? item.label ?? "";
@@ -3787,6 +3794,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const partiallyWaived = hasDisc && !fullyWaived && billedQty < item.qty;
         const waivedQty = partiallyWaived ? (item.qty - billedQty) : 0;
         const rows = [];
+
+        if (fav) {
+          // Clean 2-column row: Description + the billed amount only (no Qty/Rate).
+          return [
+            <tr key={`${item.id}-${fullyWaived ? 'w' : 'k'}`} className={fullyWaived ? 'waived' : undefined}>
+              <td>
+                <div>
+                  {label}
+                  {fullyWaived && <span className="waived-badge">Waived</span>}
+                  {partiallyWaived && <span className="waived-badge">Reduced</span>}
+                </div>
+                {item.detail && <div className="line-detail">{item.detail}</div>}
+              </td>
+              <td className="num">{fmtGBP(fullyWaived ? item.amount : getLineTotal(item))}</td>
+            </tr>
+          ];
+        }
 
         if (fullyWaived) {
           // Single strikethrough row — no kept portion
@@ -3933,12 +3957,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="invoice-section-label">Line Items</div>
               <table className="invoice-lines">
                 <thead>
-                  <tr>
-                    <th style={{ width: '52%' }}>Description</th>
-                    <th style={{ width: '10%' }}>Qty</th>
-                    <th style={{ width: '18%' }}>Rate</th>
-                    <th style={{ width: '20%' }}>Amount</th>
-                  </tr>
+                  {fav ? (
+                    <tr>
+                      <th style={{ width: '78%' }}>Description</th>
+                      <th style={{ width: '22%' }}>Amount</th>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <th style={{ width: '52%' }}>Description</th>
+                      <th style={{ width: '10%' }}>Qty</th>
+                      <th style={{ width: '18%' }}>Rate</th>
+                      <th style={{ width: '20%' }}>Amount</th>
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
                   {normalLines.map(item => renderLineRows(item))}
@@ -3950,8 +3981,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <div>Expenses</div>
                           <div className="line-detail">{expenseLines.length} item{expenseLines.length !== 1 ? "s" : ""}</div>
                         </td>
-                        <td className="num"></td>
-                        <td className="num"></td>
+                        {!fav && <td className="num"></td>}
+                        {!fav && <td className="num"></td>}
                         <td className="num">{fmtGBP(sum)}</td>
                       </tr>
                     );
@@ -13743,7 +13774,7 @@ const setDays = (updater) =>
             <div className="flex-1 min-w-0">
               <div className={`text-sm font-semibold ${isWaived ? "line-through text-neutral-500" : "text-neutral-100"}`}>{label}</div>
               {item.detail && <div className="text-[11px] text-neutral-500 truncate">{item.detail}</div>}
-              {item.rate !== null && (
+              {!invoice.favourableRounding && item.rate !== null && (
                 <div className="text-[10px] text-neutral-600 mt-0.5">
                   {isDisc
                     ? <><span className="text-tm-warn">{item.discountedQty}</span>/{item.qty} × {fmtGBP(item.rate)}</>
