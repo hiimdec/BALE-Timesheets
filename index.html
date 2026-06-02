@@ -15595,7 +15595,26 @@ const confirmDelete = (p) => setConfirmOpts({
       };
       const duplicateProduction = (p) => {
         const newId = uid();
-        const copy = { ...p, id: newId, title: `${p.title || 'Untitled Production'} (copy)`, days: [], weekStarts: [], gridDates: [] };
+        // Fresh crew objects with new ids so the two productions don't share crew
+        // references (safe: the copy starts with no days, so nothing points at these ids yet).
+        const crewIdMap = {};
+        const newCrew = (p.crew || []).map(c => {
+          const nid = uid();
+          if (c?.id) crewIdMap[c.id] = nid;
+          return { ...c, id: nid };
+        });
+        const copy = {
+          ...p,
+          id: newId,
+          title: `${p.title || 'Untitled Production'} (copy)`,
+          days: [],
+          weekStarts: [],
+          gridDates: [],
+          invoices: [],      // invoices belong to the source shoot, not the copy
+          dayDefaults: {},   // no days yet -> no date-keyed defaults to carry
+          crew: newCrew,
+          iAmCrewId: (p.iAmCrewId && crewIdMap[p.iAmCrewId]) || null,
+        };
         setProductions(prev => [...prev, copy]);
         setOpenId(newId);
       };
