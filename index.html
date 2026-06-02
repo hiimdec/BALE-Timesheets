@@ -1325,7 +1325,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function calculateDay(day, crew, weekendOpts = {}) {
-      const bdr = Number(crew.bdr) || 0;
+      const rawBdr = Number(crew.bdr);
+      const bdr = Number.isFinite(rawBdr) ? Math.max(0, rawBdr) : 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
       const otCoef = crew.noOT ? 0 : (Number(crew.otCoef) || 1);
       const otRate = (crew.otRate != null && crew.otRate > 0) ? Number(crew.otRate) : computeAPArate(bdr, otCoef, weekendOpts.apaRounding);
@@ -1698,7 +1699,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     /* ─────────────── PM / PA / Runner — APA Appendix 1 §(a) ─────────────── */
 
     function calculatePmpaDay(day, crew, weekendOpts = {}) {
-      const bdr = Number(crew.bdr) || 0;
+      const rawBdr = Number(crew.bdr);
+      const bdr = Number.isFinite(rawBdr) ? Math.max(0, rawBdr) : 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
 
       // Non-shoot day: flat BDR. Travel Day, Pre-light, Prep, Recce, Build,
@@ -4678,7 +4680,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </Select>
                 </Field>
                 <Field label="Basic Day Rate (£)" hint="Editable — default is APA max for role">
-                  <Input type="number" step="0.01" value={form.bdr} onChange={(e) => { const bdr = Number(e.target.value); setForm({ ...form, bdr, otCoef: autoOtCoef(bdr) }); }} />
+                  <Input type="number" step="0.01" min="0" value={form.bdr} onChange={(e) => { const bdr = Number(e.target.value); setForm({ ...form, bdr, otCoef: autoOtCoef(bdr) }); }} />
                 </Field>
                 <Field label="OT Coefficient" hint="Grade I=1.5× · II=1.25× · III=1.0×">
                   <Select value={form.otCoef} onChange={(e) => setForm({ ...form, otCoef: Number(e.target.value) })}>
