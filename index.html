@@ -1003,6 +1003,7 @@
       return h + m / 60;
     };
     const toHHMM = (h) => {
+      if (!Number.isFinite(h)) return "";   // never emit "NaN:NaN" from a bad calc
       const n = ((h % 24) + 24) % 24;
       const hh = Math.floor(n);
       const mm = Math.round((n - hh) * 60);
@@ -1280,6 +1281,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
      * not in use" which is the same as "inherit default" semantically.
      */
     function resolveDay(production, day, crew) {
+      // Defensive: a time field corrupted to a non-parsing string (e.g. an old
+      // "NaN:NaN" wrap from the pre-fix onCallChange bug) is treated as unset so
+      // the cascade/default re-supplies a valid time — no display or calc surface
+      // ever shows NaN. No-op for valid data (undefined fields short-circuit before
+      // parseHHMM; valid times parse fine).
+      const _badTime = (s) => typeof s === "string" && s !== "" && parseHHMM(s) === null;
+      if (_badTime(day.callTime) || _badTime(day.wrapTime) || _badTime(day.lunchStartTime) ||
+          _badTime(day.secondBreakStartTime) || _badTime(day.preCallTime)) {
+        day = { ...day };
+        for (const f of ["callTime", "wrapTime", "lunchStartTime", "secondBreakStartTime", "preCallTime"]) {
+          if (_badTime(day[f])) delete day[f];
+        }
+      }
       const defaultDay = production.defaultDay ?? {};
       const dateDefaults = production.dayDefaults?.[day.date] ?? {};
       const merged = { ...DEFAULT_PRODUCTION_DAY, ...defaultDay, ...day };
@@ -1843,6 +1857,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Normalise a corrupt/legacy dayType: a present-but-unknown value (or blank)
       // would otherwise throw in the calc engine. undefined is left for the cascade.
       if (d.dayType !== undefined && !DAY_TYPES.includes(d.dayType)) d = { ...d, dayType: "Shoot" };
+      // Sanitise corrupt time fields (e.g. a "NaN:NaN" wrap persisted by the
+      // pre-fix onCallChange bug): a non-empty string that doesn't parse as HH:MM
+      // is dropped so the cascade/default re-supplies a valid time. null (lunch
+      // "missed") and undefined (cascade) are left untouched.
+      {
+        const _tf = ["callTime", "wrapTime", "lunchStartTime", "secondBreakStartTime", "preCallTime", "truckCallTime"];
+        if (_tf.some(f => typeof d[f] === "string" && d[f] !== "" && parseHHMM(d[f]) === null)) {
+          d = { ...d };
+          for (const f of _tf) if (typeof d[f] === "string" && d[f] !== "" && parseHHMM(d[f]) === null) delete d[f];
+        }
+      }
       // V4-5h-10: *Enabled flags dropped; value presence drives activation.
       // Existing records with the flags get them removed (idempotent). Values preserved —
       // records previously saved as enabled:false with a value will now show as ACTIVE.
@@ -5413,16 +5438,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const onDayTypeChange = (dayType) => {
         const callH = parseHHMM(v.callTime);
         const patch = { dayType };
-        if (callH !== null) patch.wrapTime = toHHMM(callH + DEFAULT_HOURS[dayType]);
+        if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[dayType] ?? 11));
         set(patch);
       };
       const onCallChange = (callTime) => {
-        const callH = parseHHMM(callTime);
+        const newCallH = parseHHMM(callTime);
         const patch = { callTime };
-        if (callH !== null) {
-          patch.wrapTime = toHHMM(callH + DEFAULT_HOURS[v.dayType]);
-          patch.lunchStartTime = toHHMM(callH + 5);
-          patch.secondBreakStartTime = toHHMM(callH + 11);
+        if (newCallH !== null) {
+          // Default hours come from the RESOLVED day type — cascaded days leave
+          // v.dayType undefined, which is what produced a NaN wrap. ?? 11 is a hard
+          // floor so the wrap can never be NaN even for an unknown type.
+          const hrs = DEFAULT_HOURS[vr.dayType] ?? 11;
+          const oldCallH = parseHHMM(vr.callTime);
+          // Re-derive the wrap only when it's missing/invalid (recovers a corrupt
+          // "NaN:NaN") or was tracking the old call. A valid, explicitly-different
+          // wrap is preserved.
+          const wrapAuto = parseHHMM(vr.wrapTime) === null ||
+            (oldCallH !== null && vr.wrapTime === toHHMM(oldCallH + hrs));
+          if (wrapAuto) patch.wrapTime = toHHMM(newCallH + hrs);
+          patch.lunchStartTime = toHHMM(newCallH + 5);
+          patch.secondBreakStartTime = toHHMM(newCallH + 11);
         }
         set(patch);
       };
@@ -11427,7 +11462,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const newType = e.target.value;
                       const callH = parseHHMM(currentDay?.callTime);
                       const patch = { dayType: newType };
-                      if (callH !== null) patch.wrapTime = toHHMM(callH + DEFAULT_HOURS[newType]);
+                      if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[newType] ?? 11));
                       handleDayChange({ ...currentDay, ...patch });
                     }}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
