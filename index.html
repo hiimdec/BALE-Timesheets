@@ -2244,7 +2244,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (isExpense) {
             const category = (line.label || "").replace(/^Expense:\s*/i, "").trim();
             const desc = (line.detail || "").trim();
-            key = `exp|${category}|${desc}`;
+            key = `exp|${JSON.stringify([category, desc])}`;
             displayLabel = desc || category;
           } else {
             const prefix = (line.label || "").split(" (")[0].trim();
