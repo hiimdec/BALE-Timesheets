@@ -152,9 +152,11 @@ async function transformedAppCode() {
   const e = html.indexOf('</script>', s);
   const body = html.slice(s, e) +
     '\n;globalThis.__storage = storage;\n' +
-    // Web boot is synchronous: migrationResult is populated by the time the
-    // appended code runs. Native boot is async; tests that need it must wait.
-    'try { globalThis.__migrationResult = migrationResult; } catch (_) {}\n';
+    // Both web and native boots are async (since the IDB-prep boot-order
+    // change). Expose migrationResult via a getter so tests reading it after
+    // `await settle()` always see the latest assignment (the `let
+    // migrationResult` is reassigned inside the async chain).
+    'try { Object.defineProperty(globalThis, "__migrationResult", { get: () => migrationResult, configurable: true }); } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',

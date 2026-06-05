@@ -16221,30 +16221,44 @@ const confirmDelete = (p) => setConfirmOpts({
       root.render(<Root />);
     }
 
-    if (storage.isNative) {
-      nativeSetupStatusBar();
-      // NATIVE: load durable Preferences into the in-memory cache (and run the
-      // one-time localStorage→Preferences copy) BEFORE migrations and the first
-      // render, so the synchronous code below sees warm data. Then wire up the
-      // flush-on-background safety net.
-      storage.preload()
-        .then(() => {
-          migrationResult = runMigrations();
-          storage.installBackgroundFlush();
-          startRender();
-        })
-        .catch((err) => {
-          try { console.error('Storage preload failed; starting with empty/best-effort data', err); } catch (_) {}
-          migrationResult = runMigrations();
-          storage.installBackgroundFlush();
-          startRender();
-        });
-    } else {
-      // WEB: unchanged synchronous path — migrations then render, exactly as
-      // before this adapter existed (storage.* are localStorage pass-throughs).
+    // Boot — same async shape for both backends so the IndexedDB upgrade
+    // (Phase 1 commits 2-3) can drop straight in without touching this path.
+    // Order is the safety guarantee: preload populates the in-memory cache
+    // FIRST, then runMigrations is allowed to read it. On the current web
+    // localStorage backend preload is a no-op that can't fail, so this
+    // change is functionally identical to the synchronous boot it replaces.
+    // On IDB (commit 2) the order matters: a migrate-before-preload race
+    // against an unpopulated cache would silently stamp the schema version
+    // onto empty data — a data-erase bug. Establishing the order here, on
+    // a backend where it can't hurt, is the gate the boot-order audit test
+    // verifies before IDB ships.
+    function bootError(err) {
+      try { console.error('Storage preload failed', err); } catch (_) {}
+      // Last-resort error screen: never boot against an empty/unknown cache.
+      // localStorage preload can't fail; the IDB backend (commit 2) catches
+      // its own errors and falls back to localStorage so preload() still
+      // resolves. This branch is the safety net for the case both fail.
+      try {
+        const root = (typeof document !== 'undefined') && document.getElementById('root');
+        if (root) {
+          root.innerHTML = '<div style="position:fixed;inset:0;background:#0a0a0a;color:#fca5a5;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;font-family:ui-sans-serif,system-ui;font-size:13px;line-height:1.6;">'
+            + '<div style="font-weight:600;font-size:18px;color:#f5f5f5;margin-bottom:12px;">TimeMachine</div>'
+            + '<div style="max-width:380px;">Storage failed to load. Your data is still safe in browser storage — try reloading the page, or open in another browser to recover.</div>'
+            + '</div>';
+        }
+      } catch (_) {}
+    }
+
+    function bootApp() {
       migrationResult = runMigrations();
+      storage.installBackgroundFlush();
       startRender();
     }
+
+    if (storage.isNative) {
+      nativeSetupStatusBar();
+    }
+    storage.preload().then(bootApp).catch(bootError);
   </script>
 </body>
 </html>
