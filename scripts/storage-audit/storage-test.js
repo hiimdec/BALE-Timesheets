@@ -31,6 +31,64 @@ const esbuild = require('esbuild');
 const ROOT = path.resolve(__dirname, '..', '..');
 const SRC_HTML = path.join(ROOT, 'index.html');
 
+// ---- fake-indexeddb factory + helpers ------------------------------------
+// Each test that uses IDB needs an ISOLATED database (the fake-indexeddb
+// module is a singleton, so two test runs would share state if we used the
+// global). `freshIdb()` returns a brand-new IDBFactory each time.
+function freshIdb() {
+  // Clear the require cache so a clean factory is constructed per test.
+  for (const k of Object.keys(require.cache)) {
+    if (k.includes('fake-indexeddb')) delete require.cache[k];
+  }
+  const mod = require('fake-indexeddb');
+  return { indexedDB: mod.indexedDB, IDBKeyRange: mod.IDBKeyRange };
+}
+
+// Wraps an IDBFactory so that put()s of specific keys silently store a
+// different value. Used to simulate the LS→IDB import byte-compare failure.
+function corruptingIdb(realIdb, corruptKeySet) {
+  const wrapStore = (store) => new Proxy(store, {
+    get(target, prop) {
+      if (prop === 'put') {
+        return (value, key) => {
+          if (corruptKeySet.has(key)) return target.put(value + '__CORRUPT', key);
+          return target.put(value, key);
+        };
+      }
+      const v = target[prop];
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  });
+  const wrapTx = (tx) => new Proxy(tx, {
+    get(target, prop) {
+      if (prop === 'objectStore') return (name) => wrapStore(target.objectStore(name));
+      const v = target[prop];
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+    set(target, prop, value) { target[prop] = value; return true; },
+  });
+  const wrapDb = (db) => db ? new Proxy(db, {
+    get(target, prop) {
+      if (prop === 'transaction') return (storeName, mode) => wrapTx(target.transaction(storeName, mode));
+      const v = target[prop];
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  }) : db;
+  return {
+    open(name, version) {
+      const req = realIdb.open(name, version);
+      return new Proxy(req, {
+        get(target, prop) {
+          if (prop === 'result') return wrapDb(target.result);
+          const v = target[prop];
+          return typeof v === 'function' ? v.bind(target) : v;
+        },
+        set(target, prop, value) { target[prop] = value; return true; },
+      });
+    },
+  };
+}
+
 // ---- tiny assert ----------------------------------------------------------
 let failures = 0;
 const results = [];
@@ -102,7 +160,7 @@ function makeAppPlugin() {
 }
 
 // ---- sandbox --------------------------------------------------------------
-function makeSandbox({ capacitor, localStorage }) {
+function makeSandbox({ capacitor, localStorage, indexedDB, IDBKeyRange }) {
   const noop = () => {};
   const el = () => ({
     style: {}, setAttribute: noop, appendChild: noop, removeChild: noop,
@@ -121,6 +179,7 @@ function makeSandbox({ capacitor, localStorage }) {
     Date, Math, JSON, RegExp, Number, String, Array, Object, Map, Set, WeakMap, Symbol,
     Promise, Error, TypeError, RangeError, parseInt, parseFloat, isNaN, isFinite,
     NaN, Infinity, undefined, Boolean, Proxy, Reflect, encodeURIComponent, decodeURIComponent,
+    URL, URLSearchParams,
     React,
     ReactDOM: { createRoot: () => ({ render: noop, unmount: noop }), version: 'stub' },
     localStorage,
@@ -139,6 +198,8 @@ function makeSandbox({ capacitor, localStorage }) {
   sandbox.window = sandbox;
   sandbox.self = sandbox;
   if (capacitor) sandbox.Capacitor = capacitor; // window.Capacitor
+  if (indexedDB) sandbox.indexedDB = indexedDB;
+  if (IDBKeyRange) sandbox.IDBKeyRange = IDBKeyRange;
   return sandbox;
 }
 
@@ -478,6 +539,154 @@ async function main() {
       `ran=${mr && mr.ran}`);
     check('H1 marker-fail: app loaded (no crash)',
       !!sb.__storage);
+  }
+
+  // ===== J. INDEXEDDB BACKEND — opt-in adapter =====
+
+  // J1 — BOOT-ORDER GATE (critical): seed IDB with a populated production
+  // store at the current schema_version, boot via the async path, assert
+  // productions came through intact and runMigrations DID NOT migrate.
+  // This is the safety property the whole boot reorder existed to enable:
+  // a regression here would silently wipe user data.
+  {
+    const idbEnv = freshIdb();
+    const seededProductions = JSON.stringify([{ id: 'p1', title: 'Pre-existing on IDB', days: [], crew: [] }]);
+    // Pre-populate fake IDB by writing directly through the factory.
+    await new Promise((resolve, reject) => {
+      const req = idbEnv.indexedDB.open('timemachine', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(seededProductions, 'bigals_productions');
+        tx.objectStore('kv').put('3', 'bigals_schema_version');
+        tx.objectStore('kv').put('1', '__idb_ls_import_complete');
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+    const localStorage = makeLocalStorage({ bigals_idb_optin: '1' });
+    const sb = await runApp({ capacitor: undefined, localStorage, indexedDB: idbEnv.indexedDB, IDBKeyRange: idbEnv.IDBKeyRange });
+    await settle(100); // give preload + boot a beat
+    const storage = sb.__storage;
+    check('J1 boot-order: adapter is IDB-backed',
+      storage.backend === 'indexeddb',
+      `backend=${storage.backend}`);
+    check('J1 boot-order: productions came through preload unmodified',
+      storage.get('bigals_productions') === seededProductions,
+      `got=${storage.get('bigals_productions')}`);
+    check('J1 boot-order: schema_version untouched (no spurious migration)',
+      storage.get('bigals_schema_version') === '3',
+      `schema=${storage.get('bigals_schema_version')}`);
+    const mr = sb.__migrationResult;
+    check('J1 boot-order: runMigrations took no-op (early return)',
+      mr && mr.ran === false,
+      `migrationResult=${JSON.stringify(mr)}`);
+  }
+
+  // J2 — LS→IDB import success: seed LS with productions, empty IDB,
+  // assert the rollback-safe import copies LS → IDB, verifies byte-equal,
+  // sets the marker, and leaves LS untouched.
+  {
+    const idbEnv = freshIdb();
+    const seededProductions = JSON.stringify([{ id: 'pX', title: 'On localStorage, awaiting import', days: [], crew: [] }]);
+    const localStorage = makeLocalStorage({
+      bigals_idb_optin: '1',
+      bigals_productions: seededProductions,
+      bigals_schema_version: '3',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage, indexedDB: idbEnv.indexedDB, IDBKeyRange: idbEnv.IDBKeyRange });
+    await settle(100);
+    const storage = sb.__storage;
+    // Adapter cache must now see the imported value.
+    check('J2 import: cache reflects imported productions',
+      storage.get('bigals_productions') === seededProductions,
+      `cache=${storage.get('bigals_productions')}`);
+    // Verify IDB itself holds the value AND the marker.
+    const idbProd = await new Promise((res) => {
+      const req = idbEnv.indexedDB.open('timemachine', 1);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction('kv', 'readonly');
+        const r = tx.objectStore('kv').get('bigals_productions');
+        r.onsuccess = () => { db.close(); res(r.result); };
+      };
+    });
+    check('J2 import: IDB now holds the imported productions',
+      idbProd === seededProductions,
+      `idb=${idbProd}`);
+    const idbMarker = await new Promise((res) => {
+      const req = idbEnv.indexedDB.open('timemachine', 1);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction('kv', 'readonly');
+        const r = tx.objectStore('kv').get('__idb_ls_import_complete');
+        r.onsuccess = () => { db.close(); res(r.result); };
+      };
+    });
+    check('J2 import: marker SET (import complete)',
+      idbMarker === '1',
+      `marker=${idbMarker}`);
+    check('J2 import: localStorage left intact as fallback',
+      localStorage._store.get('bigals_productions') === seededProductions);
+  }
+
+  // J3 — Import verify-failure: corrupt the put() of one key so the
+  // byte-compare on read-back fails. Marker MUST NOT be set; the error
+  // must surface via the deferred-errors queue when a handler registers.
+  {
+    const idbEnv = freshIdb();
+    const corruptingFactory = corruptingIdb(idbEnv.indexedDB, new Set(['bigals_productions']));
+    const seededProductions = JSON.stringify([{ id: 'p1', title: 'Will be corrupted', days: [], crew: [] }]);
+    const localStorage = makeLocalStorage({
+      bigals_idb_optin: '1',
+      bigals_productions: seededProductions,
+      bigals_schema_version: '3',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage, indexedDB: corruptingFactory, IDBKeyRange: idbEnv.IDBKeyRange });
+    await settle(100);
+    // Read the marker directly from the underlying (real) factory.
+    const idbMarker = await new Promise((res) => {
+      const req = idbEnv.indexedDB.open('timemachine', 1);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction('kv', 'readonly');
+        const r = tx.objectStore('kv').get('__idb_ls_import_complete');
+        r.onsuccess = () => { db.close(); res(r.result); };
+      };
+    });
+    check('J3 verify-fail: marker NOT set (next launch will retry)',
+      idbMarker == null,
+      `marker unexpectedly=${idbMarker}`);
+    // The deferred-errors queue should hold the import-verify error.
+    const errs = [];
+    sb.__storage.setAsyncErrorHandler((info) => errs.push(info));
+    await settle(10);
+    check('J3 verify-fail: error surfaced via deferred queue when handler registers',
+      errs.some(e => e.op === 'import-verify' || /verify|mismatch/i.test(e.error && e.error.message || '')),
+      `captured=${JSON.stringify(errs.map(e => ({ key: e.key, op: e.op, msg: e.error && e.error.message })))}`);
+    check('J3 verify-fail: localStorage still primary (untouched)',
+      localStorage._store.get('bigals_productions') === seededProductions);
+  }
+
+  // J4 — WEB-FALLBACK: indexedDB unavailable → adapter is the LS
+  // passthrough. App boots without touching IDB.
+  {
+    const localStorage = makeLocalStorage({
+      bigals_idb_optin: '1',  // opt-in is set but IDB is undefined
+      bigals_productions: '[]',
+      bigals_schema_version: '3',
+    });
+    // Pass NO indexedDB into the sandbox — opt-in returns false because of
+    // `typeof indexedDB === 'undefined'` short-circuit.
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    check('J4 fallback: adapter is localStorage when IDB is unavailable',
+      sb.__storage.backend === 'localStorage',
+      `backend=${sb.__storage.backend}`);
+    check('J4 fallback: data accessible via LS passthrough',
+      sb.__storage.get('bigals_productions') === '[]');
   }
 
   // ---- report ----
