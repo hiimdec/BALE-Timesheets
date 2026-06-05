@@ -7831,7 +7831,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <>
                           <div>
                             <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
-                            <input type="time" value={dd.preCallTime || ''} onChange={(e) => updateDeptDefault('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
+                            <input type="time" value={dd.preCallTime || ''} onChange={(e) => updateDeptDefault('preCallTime', e.target.value)} className="w-full min-h-[44px] bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
                           </div>
                         </>
                       );
@@ -8949,7 +8949,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             body = (
                               <div>
                                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Pre-call time</div>
-                                <input type="time" value={dayRecord.preCallTime || ''} onChange={(e) => updateField('preCallTime', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
+                                <input type="time" value={dayRecord.preCallTime || ''} onChange={(e) => updateField('preCallTime', e.target.value)} className="w-full min-h-[44px] bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ WebkitAppearance: 'none' }}/>
                                 <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Early arrival paid at BHR. Clear the time to deactivate.</div>
                                 {(() => { const pc = parseHHMM(dayRecord.preCallTime || dayRecord.truckCallTime); return pc != null && pc < 5; })() && (
                                   <div className="mt-2"><StatusMsg kind="warn"><span className="whitespace-pre-line">{PRE_CALL_PRE5_DISCLAIMER}</span></StatusMsg></div>
