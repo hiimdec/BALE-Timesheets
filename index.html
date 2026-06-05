@@ -13137,7 +13137,7 @@ const setDays = (updater) =>
       const toggleExpand = (key) => { setExpandedStat(prev => prev === key ? null : key); setShowAllMonths(false); };
       const fmtMonth = (yyyymm) => new Date(yyyymm + '-01T12:00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 
-      const { enrichedDays, excludedCount } = useMemo(() => {
+      const { enrichedDays, excludedCount, notYetCountedDays } = useMemo(() => {
         const now = new Date();
         const today = now.toISOString().slice(0, 10);
         let startISO, endISO;
@@ -13147,29 +13147,32 @@ const setDays = (updater) =>
         } else if (filter === 'ytd') {
           startISO = `${now.getFullYear()}-01-01`; endISO = today;
         }
+        // True iff a day sits inside the current filter window (no today-bound).
+        // Drives both the excluded-productions check and the "not yet counted"
+        // tally, so the hint surfaces only days the user is actively looking at.
+        const inWindow = filter === 'all'
+          ? () => true
+          : (d) => d.date >= startISO && d.date <= endISO;
         const days = [];
         let excluded = 0;
+        let notYetCounted = 0;
         for (const p of productions) {
           const userCrewIds = userCrewIdsInProduction(p, userPrefs);
           if (userCrewIds.length === 0) {
-            const hasDaysInRange = filter === 'all'
-              ? (p.days || []).length > 0
-              : (p.days || []).some(d => d.date >= startISO && d.date <= endISO);
-            if (hasDaysInRange) excluded++;
+            if ((p.days || []).some(inWindow)) excluded++;
             continue;
           }
           // Aggregate-earnings date rule: a day counts only if its date is
           // strictly before today. Today's live shoot and any pre-loaded future
           // days are excluded across every filter mode ('all', 'taxyear',
           // 'ytd') so the hero earnings reflect what has actually been worked,
-          // not what's just been pre-loaded into the calendar. Every derivative
-          // stat (highestDay, monthBreakdown, busiestMonth, topProdCo, OT/late-
-          // lunch earnings, working/shoot-day counts, hours, averages, streak)
-          // flows from enrichedDays, so this one filter fixes them all.
-          const pDays = filter === 'all'
-            ? (p.days || []).filter(d => userCrewIds.includes(d.crewId) && d.date < today)
-            : (p.days || []).filter(d => d.date >= startISO && d.date <= endISO && userCrewIds.includes(d.crewId) && d.date < today);
-          for (const day of pDays) {
+          // not what's just been pre-loaded into the calendar. Days that fall
+          // inside the window but are today-or-later are tallied separately
+          // so the UI can surface a subtle "N day(s) not yet counted" hint.
+          for (const day of (p.days || [])) {
+            if (!userCrewIds.includes(day.crewId)) continue;
+            if (!inWindow(day)) continue;
+            if (day.date >= today) { notYetCounted++; continue; }
             const crew = (p.crew || []).find(c => c.id === day.crewId);
             if (!crew) continue;
             try {
@@ -13179,7 +13182,7 @@ const setDays = (updater) =>
             } catch {}
           }
         }
-        return { enrichedDays: days, excludedCount: excluded };
+        return { enrichedDays: days, excludedCount: excluded, notYetCountedDays: notYetCounted };
       }, [productions, filter, userPrefs]);
 
       const stats = useMemo(() => {
@@ -13531,8 +13534,18 @@ const setDays = (updater) =>
                   </>
                 )}
 
-                {excludedCount > 0 && (
+                {notYetCountedDays > 0 && (
                   <div className="mt-8 bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4">
+                    <div className="text-xs font-semibold text-sky-400 mb-1">
+                      {notYetCountedDays} day{notYetCountedDays !== 1 ? 's' : ''} not yet counted
+                    </div>
+                    <p className="text-xs text-neutral-400 leading-relaxed">
+                      {notYetCountedDays === 1 ? 'A scheduled day is' : `${notYetCountedDays} scheduled days are`} today or upcoming, so {notYetCountedDays === 1 ? "it's" : "they're"} not yet included in earnings. {notYetCountedDays === 1 ? "It'll" : "They'll"} roll in the day after each shoot.
+                    </p>
+                  </div>
+                )}
+                {excludedCount > 0 && (
+                  <div className="mt-4 bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4">
                     <div className="text-xs font-semibold text-sky-400 mb-1">
                       {excludedCount} production{excludedCount !== 1 ? 's' : ''} excluded
                     </div>
