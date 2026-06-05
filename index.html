@@ -14323,6 +14323,7 @@ const setDays = (updater) =>
                   <textarea
                     value={(invoice.notes || '').replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '').trimEnd()}
                     onChange={(e) => updateInvoice({ notes: e.target.value, notesEdited: true })}
+                    readOnly={fieldsLocked}
                     rows={5}
                     placeholder="Timesheet breakdown, payment terms, or any other notes…"
                     className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
