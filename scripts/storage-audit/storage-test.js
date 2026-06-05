@@ -67,14 +67,24 @@ function makeLocalStorage(seed = {}, opts = {}) {
 }
 
 // ---- fake @capacitor/preferences (async, in-memory) -----------------------
-function makePreferences(seed = {}) {
+function makePreferences(seed = {}, opts = {}) {
   const store = new Map(Object.entries(seed));
   const calls = { get: 0, set: 0, remove: 0 };
+  // opts.rejectOnSet: function (key) -> string|null. Return a string to reject
+  // the async set; null to allow. Simulates a Preferences write failure
+  // (e.g. quota exceeded on iOS).
   return {
     _store: store,
     _calls: calls,
     async get({ key }) { calls.get++; return { value: store.has(key) ? store.get(key) : null }; },
-    async set({ key, value }) { calls.set++; store.set(key, String(value)); },
+    async set({ key, value }) {
+      calls.set++;
+      if (opts.rejectOnSet) {
+        const reason = opts.rejectOnSet(key);
+        if (reason) throw new Error(reason);
+      }
+      store.set(key, String(value));
+    },
     async remove({ key }) { calls.remove++; store.delete(key); },
     async keys() { return { keys: Array.from(store.keys()) }; },
     async clear() { store.clear(); },
@@ -392,6 +402,56 @@ async function main() {
       `error=${mr && mr.error}`);
     check('G1 abort: app loaded (sandbox completed, no crash)',
       !!sb.__storage);
+  }
+
+  // ===== I. NATIVE ASYNC WRITE-FAILURE ROUTING (B3) =====
+  // The native adapter's set() / remove() resolve synchronously into an
+  // in-memory cache, then persist Preferences in the background. A background
+  // failure used to be logged to console and silently set lastError. We now
+  // expose setAsyncErrorHandler so the React layer can surface it in the
+  // same red banner useStoredState already feeds.
+  {
+    const Preferences = makePreferences(
+      { bigals_productions: '[]', bigals_schema_version: '3', bigals_native_migrated: '1' },
+      { rejectOnSet: (k) => k === 'bigals_user_prefs' ? 'QuotaExceededError: native quota' : null },
+    );
+    const localStorage = makeLocalStorage();
+    const App = makeAppPlugin();
+    const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App } };
+    const sb = await runApp({ capacitor, localStorage });
+    await settle();
+    const storage = sb.__storage;
+    check('I0 setAsyncErrorHandler exists on native adapter',
+      typeof storage.setAsyncErrorHandler === 'function');
+    // Capture errors the way Root() does — call setAsyncErrorHandler with a
+    // collector instead of the real setNativeStorageError.
+    const captured = [];
+    storage.setAsyncErrorHandler((info) => captured.push(info));
+    // Trigger a write that the Preferences mock will reject.
+    storage.set('bigals_user_prefs', '{"x":1}');
+    await settle();
+    check('I1 native: in-memory cache reflects the rejected write (sync semantics)',
+      storage.get('bigals_user_prefs') === '{"x":1}',
+      `cache=${storage.get('bigals_user_prefs')}`);
+    check('I1 native: handler invoked with the failed write',
+      captured.length === 1 && captured[0].key === 'bigals_user_prefs' && captured[0].op === 'set',
+      `captured=${JSON.stringify(captured)}`);
+    check('I1 native: handler error message preserved',
+      captured.length === 1 && /native quota/i.test(captured[0].error && captured[0].error.message || ''),
+      `error=${captured[0] && captured[0].error}`);
+    // Sanity: a write that does NOT fail must NOT trigger the handler.
+    storage.set('bigals_productions', '["allowed"]');
+    await settle();
+    check('I2 native: successful writes do not trigger the handler',
+      captured.length === 1,
+      `captured len=${captured.length}`);
+    // Unregister: setting null must clear the handler.
+    storage.setAsyncErrorHandler(null);
+    storage.set('bigals_user_prefs', '{"y":2}');
+    await settle();
+    check('I3 native: handler unregistration silences notifications',
+      captured.length === 1,
+      `captured len after unregister=${captured.length}`);
   }
 
   // ===== H. VERSION-MARKER WRITE FAILURE — soft error =====

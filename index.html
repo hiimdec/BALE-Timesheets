@@ -295,6 +295,19 @@
       const cache = Object.create(null);
       const writeChains = Object.create(null); // key -> Promise (ordered, last-write-wins)
       let lastError = null;
+      // B3: async write-failure callback. Registered by React after mount via
+      // setAsyncErrorHandler(fn). When set, every Preferences.set / .remove
+      // failure fires it with the key + error so the UI can route to the same
+      // red banner useStoredState already feeds. Default is null (boot-time
+      // failures from preload() still log to console + lastError).
+      let asyncErrorHandler = null;
+      const notifyAsyncError = (key, op, err) => {
+        lastError = err;
+        try { console.warn(`Preferences.${op} failed`, key, err); } catch (_) {}
+        if (asyncErrorHandler) {
+          try { asyncErrorHandler({ key, op, error: err }); } catch (_) {}
+        }
+      };
 
       const get = (key) => (key in cache ? cache[key] : null);
 
@@ -303,7 +316,7 @@
         const prev = writeChains[key] || Promise.resolve();
         writeChains[key] = prev
           .then(() => Preferences.set({ key, value }))   // persist in the background, in order
-          .catch((e) => { lastError = e; try { console.warn('Preferences.set failed', key, e); } catch (_) {} });
+          .catch((e) => notifyAsyncError(key, 'set', e));
       };
 
       const remove = (key) => {
@@ -311,7 +324,7 @@
         const prev = writeChains[key] || Promise.resolve();
         writeChains[key] = prev
           .then(() => Preferences.remove({ key }))
-          .catch((e) => { lastError = e; try { console.warn('Preferences.remove failed', key, e); } catch (_) {} });
+          .catch((e) => notifyAsyncError(key, 'remove', e));
       };
 
       // Await every in-flight write. Called before any reload and on background.
@@ -357,7 +370,11 @@
         } catch (_) {}
       };
 
-      return { isNative: true, get, set, remove, preload, flush, installBackgroundFlush, lastError: () => lastError };
+      return {
+        isNative: true, get, set, remove, preload, flush, installBackgroundFlush,
+        lastError: () => lastError,
+        setAsyncErrorHandler: (fn) => { asyncErrorHandler = typeof fn === 'function' ? fn : null; },
+      };
     })();
 
     /* ═══════════════════════════ NATIVE BRIDGE HELPERS ═══════════════════════════
@@ -15888,7 +15905,22 @@ const confirmDelete = (p) => setConfirmOpts({
     function Root() {
       const [productions, setProductions, prodError] = useStoredState("bigals_productions", [], migrateProduction);
       const [userPrefs, setUserPrefs, prefsError] = useStoredState("bigals_user_prefs", DEFAULT_USER_PREFS);
-      const storageError = prodError || prefsError || null;
+      // B3: native async write-failure routing. The Capacitor Preferences
+      // adapter's `set`/`remove` operations resolve synchronously into an
+      // in-memory cache, then persist in the background. Without this hook,
+      // a background persist failure (e.g. quota exceeded on iOS) was logged
+      // to console and stored in lastError, but never surfaced — useStoredState
+      // never saw it. Register a handler so native write failures flow into
+      // the same red banner web users already see.
+      const [nativeStorageError, setNativeStorageError] = useState(null);
+      useEffect(() => {
+        if (!storage.isNative || typeof storage.setAsyncErrorHandler !== 'function') return;
+        storage.setAsyncErrorHandler(({ key, op, error }) => {
+          setNativeStorageError(`Write error on "${key}" (${op}): ${error && error.message || String(error)}`);
+        });
+        return () => { try { storage.setAsyncErrorHandler(null); } catch (_) {} };
+      }, []);
+      const storageError = prodError || prefsError || nativeStorageError || null;
       const [openId, setOpenId] = useState(null);
       const [showSettings, setShowSettings] = useState(false);
       const [showStats, setShowStats] = useState(false);
