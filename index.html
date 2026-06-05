@@ -1378,7 +1378,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Rest Day: flat BDR, no breaks, no OT, no penalties.
       if (effectiveDayType === "Rest Day") {
         return {
-          meta: { workedHrs: 0, otHrs: 0, bhr, otRate, dayLabel: "Rest Day", notes: [], secondBreakRequired: false, continuousDay: false },
+          meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "Rest Day", notes: [], secondBreakRequired: false, continuousDay: false },
           lines: [{ label: "Rest Day (flat BDR)", detail: "", rate: null, qty: 1, amount: bdr }],
           total: bdr,
         };
@@ -1396,7 +1396,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const notes = [];
       const bs = deriveBreakState(day, effectiveDayType);
       if (bs === null) {
-        return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
+        return { meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
       }
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
       if (bs.dayClamped) notes.push("Day length exceeded 24h — clamped to 24h. Check the wrap time / +1 flag.");
@@ -1460,7 +1460,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const miles = Number(day.miles) || 0;
         if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
         const total = lines.reduce((s, l) => s + l.amount, 0);
-        return { meta: { workedHrs, otHrs: 0, bhr, otRate, dayLabel: "Travel Day", notes, secondBreakRequired: false, continuousDay: false }, lines, total };
+        return { meta: { workedHrs, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "Travel Day", notes, secondBreakRequired: false, continuousDay: false }, lines, total };
       }
 
       let basicHrs;
@@ -1480,6 +1480,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const effectiveStart = isLate ? 11 : callH;
       const effectiveHrs = wrapAbs - effectiveStart;
+
+      // 11-hour-day waiver (READ-ONLY meta exposure — no impact on lines/total).
+      // In 11h mode, basicHrs is bumped from 11 → 12 on (non-CWD) Shoot days, so
+      // the 10h→11h working hour that would have paid OT in standard mode is
+      // absorbed into BDR. Expose the absorbed quantity here so the invoice
+      // builder can surface it as a £0 "OT waived" line without recomputing.
+      // Guard: weekday Shoot or Sat Shoot only — Sun/BH, Night Shoot and CWD
+      // pay structures don't use the bumped basicHrs for OT, so no hour is
+      // waived in those branches. Default 0 everywhere else.
+      const waivedOtHrs = (isElevenHourDay && effectiveDayType === "Shoot" && !continuousDay && !treatAsSun && !isNightShoot)
+        ? ceilHalf(Math.max(0, Math.min(effectiveHrs, basicHrs) - (basicHrs - 1)))
+        : 0;
 
       // Pre-call lines (computed up top, emitted now that basicHrs / isNightShoot
       // are in scope). APA §2.1.3: pre-call premiums are defined by clock time,
@@ -1722,7 +1734,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return {
         meta: {
-          workedHrs, otHrs: otHrsForMeta, bhr, otRate,
+          workedHrs, otHrs: otHrsForMeta, waivedOtHrs, bhr, otRate,
           notes, secondBreakRequired, continuousDay,
           isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
           dayLabel: isNightShoot ? (isNightPre5 ? "Night Shoot (pre-5am)" : "Night Shoot (post-5pm)")
@@ -1747,7 +1759,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (day.dayType !== "Shoot") {
         return {
           meta: {
-            workedHrs: 0, otHrs: 0, bhr, otRate: bhr,
+            workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr,
             dayLabel: day.dayType || "—", notes: [],
             secondBreakRequired: false, continuousDay: false, isPmpa: true,
             isBankHoliday: isBankHoliday(day.date),
@@ -1763,7 +1775,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const wrapH = parseHHMM(day.wrapTime);
       if (callH === null || wrapH === null) {
         return {
-          meta: { workedHrs: 0, otHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true },
+          meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true },
           lines: [], total: 0,
         };
       }
@@ -1771,7 +1783,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // 0h day (£0 + note, not a silent 24h); clamp an implausibly long day to 24h.
       const wrapNextDay = day.wrapNextDay || wrapH < callH;
       if (wrapH === callH && !day.wrapNextDay) {
-        return { meta: { workedHrs: 0, otHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true }, lines: [], total: 0 };
+        return { meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true }, lines: [], total: 0 };
       }
       let wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
       let workedHrs = wrapAbs - callH;
@@ -1823,6 +1835,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const otHrs = ceilHalf(Math.max(0, workedHrs - basicHrs));
       const otRate = computeAPArate(bdr, mult, weekendOpts.apaRounding);
 
+      // 11-hour-day waiver (READ-ONLY meta exposure — no impact on lines/total).
+      // Matches the main-engine logic: in 11h mode the absorbed OT hour is
+      // exposed for the invoice builder. PMPA pay structure is flat-multiplier
+      // for all day paths, so the guard differs slightly: weekday or Sat path
+      // only — Sun/BH and Night Shoot use the same mult math but the user-
+      // facing "11-hour day" arrangement traditionally doesn't apply there.
+      const waivedOtHrs = (isElevenHourDay && !isNightShoot && !treatAsSun)
+        ? ceilHalf(Math.max(0, Math.min(workedHrs, basicHrs) - (basicHrs - 1)))
+        : 0;
+
       const lines = [];
       lines.push({
         label: dayLineLabel,
@@ -1852,7 +1874,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return {
         meta: {
-          workedHrs, otHrs, bhr, otRate, dayLabel,
+          workedHrs, otHrs, waivedOtHrs, bhr, otRate, dayLabel,
           notes: dayClamped ? ["Day length exceeded 24h — clamped to 24h. Check the wrap time / +1 flag."] : [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
           isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
         },
