@@ -259,6 +259,96 @@ async function main() {
     check('E3 durability: background flush persisted the write', Preferences._store.get('bigals_user_prefs') === '{"x":1}');
   }
 
+  // ===== F. PRE-MIGRATION BACKUP PRUNE — safe deletion semantics =====
+  // The prune lives inside runMigrations' early-return branch (no migration
+  // needed). It must NEVER fire in the same run that wrote a snapshot, and
+  // must fire when a backup from a prior launch has survived a cold relaunch.
+  {
+    // F1 — NO-OP LAUNCH WITH BACKUP PRESENT (native): backup pruned.
+    const stalePrefsBackup = JSON.stringify({ productions: '[]', schemaVersion: '2' });
+    const Preferences = makePreferences({
+      bigals_productions: '[]',
+      bigals_schema_version: '3',
+      bigals_native_migrated: '1',
+      bigals_pre_migration_backup: stalePrefsBackup,
+    });
+    const localStorage = makeLocalStorage();
+    const App = makeAppPlugin();
+    const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App } };
+    await runApp({ capacitor, localStorage });
+    await settle();
+    check('F1 prune: stale backup removed on no-op launch (native)',
+      !Preferences._store.has('bigals_pre_migration_backup'),
+      `still=${Preferences._store.get('bigals_pre_migration_backup')}`);
+    check('F1 prune: productions data untouched',
+      Preferences._store.get('bigals_productions') === '[]');
+    check('F1 prune: schema_version unchanged',
+      Preferences._store.get('bigals_schema_version') === '3');
+  }
+  {
+    // F2 — MIGRATION LAUNCH WITH STALE BACKUP (native): backup is REFRESHED
+    //       (the new snapshot), NOT removed by the prune (prune branch doesn't
+    //       fire on a migration launch). Verifies the "never deletes a backup
+    //       created in the same run" guarantee.
+    const stalePrefsBackup = JSON.stringify({ productions: '"OLD STALE — should be overwritten by fresh snapshot"', schemaVersion: '0' });
+    const Preferences = makePreferences({
+      bigals_productions: '[]',
+      bigals_schema_version: '2',  // one below target → migrate 3 runs
+      bigals_native_migrated: '1',
+      bigals_pre_migration_backup: stalePrefsBackup,
+    });
+    const localStorage = makeLocalStorage();
+    const App = makeAppPlugin();
+    const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App } };
+    await runApp({ capacitor, localStorage });
+    await settle();
+    const backupAfter = Preferences._store.get('bigals_pre_migration_backup');
+    check('F2 prune: backup STILL PRESENT after migration (not deleted)',
+      backupAfter !== undefined && backupAfter !== null,
+      `gone or missing=${backupAfter === undefined ? 'undefined' : backupAfter}`);
+    check('F2 prune: backup REFRESHED (no longer the stale one)',
+      backupAfter !== stalePrefsBackup,
+      `still equals stale (snapshot was NOT refreshed)`);
+    let parsedBackup;
+    try { parsedBackup = JSON.parse(backupAfter); } catch {}
+    check('F2 prune: fresh backup carries the pre-migration schema version',
+      parsedBackup && parsedBackup.schemaVersion === '2',
+      `parsed.schemaVersion=${parsedBackup && parsedBackup.schemaVersion}`);
+    check('F2 prune: migration ran (schema bumped to current)',
+      Preferences._store.get('bigals_schema_version') === '3');
+  }
+  {
+    // F3 — NO-OP LAUNCH WITH NO BACKUP (native): no-op, no error.
+    const Preferences = makePreferences({
+      bigals_productions: '[]',
+      bigals_schema_version: '3',
+      bigals_native_migrated: '1',
+      // no pre_migration_backup key
+    });
+    const localStorage = makeLocalStorage();
+    const App = makeAppPlugin();
+    const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App } };
+    const sb = await runApp({ capacitor, localStorage });
+    await settle();
+    check('F3 prune: no-op launch with no backup is safe (no throw)',
+      !!sb.__storage);
+    check('F3 prune: backup key never appeared',
+      !Preferences._store.has('bigals_pre_migration_backup'));
+  }
+  {
+    // F4 — WEB: same prune behaviour through localStorage.
+    const localStorage = makeLocalStorage({
+      bigals_productions: '[]',
+      bigals_schema_version: '3',
+      bigals_pre_migration_backup: '{"productions":"[]","schemaVersion":"2"}',
+    });
+    await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    check('F4 prune: stale backup removed on no-op launch (web)',
+      !localStorage._store.has('bigals_pre_migration_backup'),
+      `still=${localStorage._store.get('bigals_pre_migration_backup')}`);
+  }
+
   // ---- report ----
   console.log('');
   console.log('============================================================');

@@ -2168,7 +2168,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function runMigrations() {
       const stored = getStoredSchemaVersion();
-      if (stored >= SCHEMA_VERSION) return { ran: false };
+      if (stored >= SCHEMA_VERSION) {
+        // Safe prune: any backup at this key was written by a PRIOR launch's
+        // migration. It has now survived that entire session AND a full cold
+        // relaunch — long enough for a latent migration bug to have surfaced
+        // during use. This branch is the "no migration needed" branch, so we
+        // can never delete a backup created in the same run that wrote it.
+        // Guards: only remove when the key actually exists, and swallow any
+        // failure (a remove error here must not cascade into a launch failure).
+        // NOT called from importBackup's success path — that snapshot, if any,
+        // will be pruned on the next no-op launch like every other.
+        try {
+          if (storage.get(PRE_MIGRATION_BACKUP_KEY) != null) {
+            storage.remove(PRE_MIGRATION_BACKUP_KEY);
+          }
+        } catch (_) {}
+        return { ran: false };
+      }
       const hadData = !!storage.get('bigals_productions');
       takePreMigrationSnapshot();
       try {
