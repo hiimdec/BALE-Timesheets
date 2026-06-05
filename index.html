@@ -15162,13 +15162,19 @@ const confirmDelete = (p) => setConfirmOpts({
       const todayStr = new Date().toISOString().slice(0, 10);
       const displayName = userPrefs?.displayName?.trim() || "";
 
-      // Per-production totals
+      // Per-production totals. Day counts only if d.date < today, so today's
+      // live shoot and any pre-loaded future days don't inflate the figure on
+      // the productions list — keeps it in sync with the stats hero. The Today
+      // widget (`todayTotal` below) intentionally bypasses this rule because
+      // its job IS the live in-progress number.
       const productionTotals = useMemo(() => {
+        const today = todayISO();
         const totals = {};
         for (const p of productions) {
           const crew = p.crew ?? [];
           const days = p.days ?? [];
           totals[p.id] = days.reduce((sum, d) => {
+            if (!d.date || d.date >= today) return sum;
             const c = crew.find(cc => cc.id === d.crewId);
             if (!c) return sum;
             return sum + calcForDisplay(p, d, c, findPrevDay(days, d)).total;
@@ -15179,11 +15185,13 @@ const confirmDelete = (p) => setConfirmOpts({
 
       // Per-production worked-hours total (for the month-group head's hour figure).
       const productionHours = useMemo(() => {
+        const today = todayISO();
         const hrs = {};
         for (const p of productions) {
           const crew = p.crew ?? [];
           const days = p.days ?? [];
           hrs[p.id] = days.reduce((sum, d) => {
+            if (!d.date || d.date >= today) return sum;
             const c = crew.find(cc => cc.id === d.crewId);
             if (!c) return sum;
             return sum + (calcForDisplay(p, d, c, findPrevDay(days, d)).meta?.workedHrs || 0);
@@ -15194,11 +15202,13 @@ const confirmDelete = (p) => setConfirmOpts({
 
       // Per-production OT hours total (for the full prod-card meta line).
       const productionOTHours = useMemo(() => {
+        const today = todayISO();
         const hrs = {};
         for (const p of productions) {
           const crew = p.crew ?? [];
           const days = p.days ?? [];
           hrs[p.id] = days.reduce((sum, d) => {
+            if (!d.date || d.date >= today) return sum;
             const c = crew.find(cc => cc.id === d.crewId);
             if (!c) return sum;
             return sum + (calcForDisplay(p, d, c, findPrevDay(days, d)).meta?.otHrs || 0);
