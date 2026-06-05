@@ -268,12 +268,46 @@
       const AppPlugin   = cap && cap.Plugins && cap.Plugins.App;
       const isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform() && Preferences);
 
-      // ---- WEB backend: transparent pass-through to localStorage ----
+      // Keys shared by the IndexedDB (web) and Preferences (native) backends —
+      // both warm an in-memory cache from these at boot. The legacy keys
+      // below get absorbed (then removed) by their respective one-time
+      // backend-migration step.
+      const KEYS = [
+        'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',
+        'bigals_pre_migration_backup',
+        'bigals_production', 'bigals_crew', 'bigals_days',
+      ];
+
+      // ---- WEB IndexedDB opt-in detection ----
+      // Persistent localStorage flag so it survives reloads. URL param ?idb=1
+      // sets the flag (one-click activation); ?idb=0 clears it. Phase 1 keeps
+      // the default as localStorage — users only land on IDB if they opt in.
+      const IDB_OPT_IN_KEY = 'bigals_idb_optin';
+      const idbOptIn = (() => {
+        if (isNative) return false;
+        if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return false;
+        try {
+          const search = (window.location && window.location.search) || '';
+          const params = new URLSearchParams(search);
+          if (params.get('idb') === '1') {
+            try { localStorage.setItem(IDB_OPT_IN_KEY, '1'); } catch (_) {}
+            return true;
+          }
+          if (params.get('idb') === '0') {
+            try { localStorage.removeItem(IDB_OPT_IN_KEY); } catch (_) {}
+            return false;
+          }
+          return localStorage.getItem(IDB_OPT_IN_KEY) === '1';
+        } catch (_) { return false; }
+      })();
+
+      // ---- WEB localStorage backend (default for now) ----
       // Intentionally NOT wrapped in try/catch — callers already handle thrown
       // storage errors exactly as they did before this adapter existed.
-      if (!isNative) {
+      if (!isNative && !idbOptIn) {
         return {
           isNative: false,
+          backend: 'localStorage',
           get: (key) => localStorage.getItem(key),
           set: (key, value) => localStorage.setItem(key, value),
           remove: (key) => localStorage.removeItem(key),
@@ -283,13 +317,175 @@
         };
       }
 
+      // ---- WEB IndexedDB backend (opt-in) ----
+      // Mirrors the native cache + async write-behind pattern. Single object
+      // store keyed by the same KEYS. Reads come from the warm in-memory
+      // cache (synchronous); writes update the cache synchronously and
+      // persist to IDB on per-key writeChains (last-write-wins). On first
+      // boot the rollback-safe LS→IDB import runs in preload(): copy each
+      // key only when IDB is empty for it, verify byte-equal, then write a
+      // marker. localStorage is NEVER cleared — it stays as a fallback for
+      // multiple release cycles.
+      if (!isNative) {
+        const IDB_DB_NAME = 'timemachine';
+        const IDB_STORE = 'kv';
+        const IDB_IMPORT_MARKER_KEY = '__idb_ls_import_complete';
+
+        const cache = Object.create(null);
+        const writeChains = Object.create(null);
+        let lastError = null;
+        let asyncErrorHandler = null;
+        const deferredErrors = [];
+        const notifyAsyncError = (key, op, err) => {
+          lastError = err;
+          try { console.warn(`IDB.${op} failed`, key, err); } catch (_) {}
+          if (asyncErrorHandler) {
+            try { asyncErrorHandler({ key, op, error: err }); } catch (_) {}
+          } else {
+            // Boot-time errors arrive before React mounts. Hold them until
+            // Root() registers the handler, then drain.
+            deferredErrors.push({ key, op, error: err });
+          }
+        };
+        const setAsyncErrorHandler = (fn) => {
+          asyncErrorHandler = typeof fn === 'function' ? fn : null;
+          if (asyncErrorHandler && deferredErrors.length) {
+            const pending = deferredErrors.slice();
+            deferredErrors.length = 0;
+            for (const e of pending) {
+              try { asyncErrorHandler(e); } catch (_) {}
+            }
+          }
+        };
+
+        let dbPromise = null;
+        const openDb = () => {
+          if (dbPromise) return dbPromise;
+          dbPromise = new Promise((resolve, reject) => {
+            try {
+              const req = indexedDB.open(IDB_DB_NAME, 1);
+              req.onupgradeneeded = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+              };
+              req.onsuccess = () => resolve(req.result);
+              req.onerror = () => reject(req.error || new Error('IDB open failed'));
+              req.onblocked = () => reject(new Error('IDB open blocked'));
+            } catch (e) { reject(e); }
+          });
+          return dbPromise;
+        };
+
+        const idbGet = async (key) => {
+          const db = await openDb();
+          return new Promise((resolve, reject) => {
+            const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+            req.onsuccess = () => resolve(req.result == null ? null : req.result);
+            req.onerror = () => reject(req.error);
+          });
+        };
+        const idbSet = async (key, value) => {
+          const db = await openDb();
+          return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            tx.objectStore(IDB_STORE).put(value, key);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+        };
+        const idbRemove = async (key) => {
+          const db = await openDb();
+          return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            tx.objectStore(IDB_STORE).delete(key);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+        };
+
+        const get = (key) => (key in cache ? cache[key] : null);
+        const set = (key, value) => {
+          cache[key] = value;
+          const prev = writeChains[key] || Promise.resolve();
+          writeChains[key] = prev
+            .then(() => idbSet(key, value))
+            .catch((e) => notifyAsyncError(key, 'set', e));
+        };
+        const remove = (key) => {
+          delete cache[key];
+          const prev = writeChains[key] || Promise.resolve();
+          writeChains[key] = prev
+            .then(() => idbRemove(key))
+            .catch((e) => notifyAsyncError(key, 'remove', e));
+        };
+        const flush = () => Promise.allSettled(Object.keys(writeChains).map((k) => writeChains[k]));
+
+        const preload = async () => {
+          // Phase 1 — populate cache from IDB.
+          for (const key of KEYS) {
+            try {
+              const v = await idbGet(key);
+              if (v != null) cache[key] = v;
+            } catch (e) { notifyAsyncError(key, 'preload', e); }
+          }
+          // Phase 2 — one-time rollback-safe LS→IDB import.
+          let marker = null;
+          try { marker = await idbGet(IDB_IMPORT_MARKER_KEY); }
+          catch (e) { notifyAsyncError(IDB_IMPORT_MARKER_KEY, 'preload', e); return; }
+          if (marker === '1') return;
+
+          let attemptedAny = false;
+          let allVerified = true;
+          for (const key of KEYS) {
+            if (cache[key] != null) continue;  // IDB already has it; don't clobber
+            let lsVal = null;
+            try { lsVal = localStorage.getItem(key); } catch (_) {}
+            if (lsVal == null) continue;
+            attemptedAny = true;
+            try {
+              await idbSet(key, lsVal);
+              // Verify byte-equal by reading back.
+              const readBack = await idbGet(key);
+              if (readBack !== lsVal) {
+                allVerified = false;
+                notifyAsyncError(key, 'import-verify', new Error('LS→IDB byte-compare mismatch'));
+                break;
+              }
+              cache[key] = lsVal;
+            } catch (e) {
+              allVerified = false;
+              notifyAsyncError(key, 'import', e);
+              break;
+            }
+          }
+          // Mark the import complete only when EITHER:
+          //   - nothing needed importing (fresh install or already imported), OR
+          //   - everything that was imported verified byte-equal.
+          // On verify failure: don't mark, retry on next launch, surface error.
+          // localStorage is NEVER cleared — stays as a fallback for releases.
+          if (!attemptedAny || allVerified) {
+            try { await idbSet(IDB_IMPORT_MARKER_KEY, '1'); }
+            catch (e) { notifyAsyncError(IDB_IMPORT_MARKER_KEY, 'import-marker', e); }
+          }
+        };
+
+        const installBackgroundFlush = () => {
+          try { document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); }); } catch (_) {}
+          try { window.addEventListener('pagehide', () => flush()); } catch (_) {}
+        };
+
+        return {
+          isNative: false,
+          backend: 'indexeddb',
+          get, set, remove, preload, flush, installBackgroundFlush,
+          lastError: () => lastError,
+          setAsyncErrorHandler,
+        };
+      }
+
       // ---- NATIVE backend: in-memory cache + async Preferences ----
-      const KEYS = [
-        'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',
-        'bigals_pre_migration_backup',
-        // legacy keys absorbed (then removed) by the one-time in-app migration:
-        'bigals_production', 'bigals_crew', 'bigals_days',
-      ];
       const MIGRATED_FLAG = 'bigals_native_migrated';
 
       const cache = Object.create(null);
