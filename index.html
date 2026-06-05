@@ -313,7 +313,18 @@
           remove: (key) => localStorage.removeItem(key),
           preload: () => Promise.resolve(),
           flush: () => Promise.resolve(),
-          installBackgroundFlush: () => {},
+          installBackgroundFlush: () => {
+            // beforeunload safety net even on LS — harmless (writes are
+            // already synchronous) but parity with the IDB backend's
+            // wiring so tests and future-proofing match.
+            try { window.addEventListener('beforeunload', () => {}); } catch (_) {}
+          },
+          getStatus: () => ({
+            backend: 'localStorage',
+            backendReason: 'default',
+            persistent: 'unknown',
+            privateBrowsingLikely: false,
+          }),
         };
       }
 
@@ -405,8 +416,35 @@
           });
         };
 
-        const get = (key) => (key in cache ? cache[key] : null);
+        // Degraded mode: when IDB open fails or the integrity check trips, the
+        // adapter quietly routes reads/writes to localStorage instead. The
+        // boot path continues, the user keeps working off LS, and the red
+        // banner surfaces the reason via the deferred-errors queue.
+        let degradedMode = false;
+        let degradedReason = null;
+        const goDegraded = (reason, key, op, err) => {
+          if (degradedMode) return;
+          degradedMode = true;
+          degradedReason = reason;
+          notifyAsyncError(key || '__idb', op || 'degrade', err || new Error(reason));
+        };
+
+        // Persistence status — set fire-and-forget after a successful preload.
+        let persistent = 'unknown'; // 'granted' | 'best-effort' | 'unknown'
+        let privateBrowsingLikely = false;
+
+        const get = (key) => {
+          if (degradedMode) {
+            try { return localStorage.getItem(key); } catch (_) { return null; }
+          }
+          return (key in cache ? cache[key] : null);
+        };
         const set = (key, value) => {
+          if (degradedMode) {
+            try { localStorage.setItem(key, value); }
+            catch (e) { notifyAsyncError(key, 'set', e); }
+            return;
+          }
           cache[key] = value;
           const prev = writeChains[key] || Promise.resolve();
           writeChains[key] = prev
@@ -414,6 +452,11 @@
             .catch((e) => notifyAsyncError(key, 'set', e));
         };
         const remove = (key) => {
+          if (degradedMode) {
+            try { localStorage.removeItem(key); }
+            catch (e) { notifyAsyncError(key, 'remove', e); }
+            return;
+          }
           delete cache[key];
           const prev = writeChains[key] || Promise.resolve();
           writeChains[key] = prev
@@ -423,6 +466,13 @@
         const flush = () => Promise.allSettled(Object.keys(writeChains).map((k) => writeChains[k]));
 
         const preload = async () => {
+          // Probe: open IDB. On failure (private mode, ITP, locked DB),
+          // fall back to localStorage for the rest of this launch.
+          try { await openDb(); }
+          catch (e) {
+            goDegraded('IDB open failed — falling back to localStorage for this launch', '__idb_open', 'open', e);
+            return;
+          }
           // Phase 1 — populate cache from IDB.
           for (const key of KEYS) {
             try {
@@ -430,51 +480,96 @@
               if (v != null) cache[key] = v;
             } catch (e) { notifyAsyncError(key, 'preload', e); }
           }
+          // Integrity check: the productions blob is JSON. If it's corrupted,
+          // a downstream JSON.parse in useStoredState would throw — fall back
+          // to localStorage and let the user recover via export/reimport.
+          const prodRaw = cache['bigals_productions'];
+          if (prodRaw != null) {
+            try { JSON.parse(prodRaw); }
+            catch (e) {
+              goDegraded('bigals_productions in IDB failed JSON parse — falling back to localStorage', 'bigals_productions', 'integrity', e);
+              // Clear the partial cache so degraded-mode reads go to LS.
+              for (const key of KEYS) delete cache[key];
+              return;
+            }
+          }
           // Phase 2 — one-time rollback-safe LS→IDB import.
           let marker = null;
           try { marker = await idbGet(IDB_IMPORT_MARKER_KEY); }
           catch (e) { notifyAsyncError(IDB_IMPORT_MARKER_KEY, 'preload', e); return; }
-          if (marker === '1') return;
-
-          let attemptedAny = false;
-          let allVerified = true;
-          for (const key of KEYS) {
-            if (cache[key] != null) continue;  // IDB already has it; don't clobber
-            let lsVal = null;
-            try { lsVal = localStorage.getItem(key); } catch (_) {}
-            if (lsVal == null) continue;
-            attemptedAny = true;
-            try {
-              await idbSet(key, lsVal);
-              // Verify byte-equal by reading back.
-              const readBack = await idbGet(key);
-              if (readBack !== lsVal) {
+          if (marker !== '1') {
+            let attemptedAny = false;
+            let allVerified = true;
+            for (const key of KEYS) {
+              if (cache[key] != null) continue;  // IDB already has it; don't clobber
+              let lsVal = null;
+              try { lsVal = localStorage.getItem(key); } catch (_) {}
+              if (lsVal == null) continue;
+              attemptedAny = true;
+              try {
+                await idbSet(key, lsVal);
+                const readBack = await idbGet(key);
+                if (readBack !== lsVal) {
+                  allVerified = false;
+                  notifyAsyncError(key, 'import-verify', new Error('LS→IDB byte-compare mismatch'));
+                  break;
+                }
+                cache[key] = lsVal;
+              } catch (e) {
                 allVerified = false;
-                notifyAsyncError(key, 'import-verify', new Error('LS→IDB byte-compare mismatch'));
+                notifyAsyncError(key, 'import', e);
                 break;
               }
-              cache[key] = lsVal;
-            } catch (e) {
-              allVerified = false;
-              notifyAsyncError(key, 'import', e);
-              break;
+            }
+            // Mark complete ONLY when nothing needed importing OR everything verified.
+            // On verify failure: don't mark, retry on next launch, surface the error.
+            // localStorage is NEVER cleared — kept as a fallback for releases.
+            if (!attemptedAny || allVerified) {
+              try { await idbSet(IDB_IMPORT_MARKER_KEY, '1'); }
+              catch (e) { notifyAsyncError(IDB_IMPORT_MARKER_KEY, 'import-marker', e); }
             }
           }
-          // Mark the import complete only when EITHER:
-          //   - nothing needed importing (fresh install or already imported), OR
-          //   - everything that was imported verified byte-equal.
-          // On verify failure: don't mark, retry on next launch, surface error.
-          // localStorage is NEVER cleared — stays as a fallback for releases.
-          if (!attemptedAny || allVerified) {
-            try { await idbSet(IDB_IMPORT_MARKER_KEY, '1'); }
-            catch (e) { notifyAsyncError(IDB_IMPORT_MARKER_KEY, 'import-marker', e); }
+
+          // Phase 3 — fire-and-forget persistence + private-browsing detection.
+          // Don't block boot on either. Errors are silent — these are nice-to-
+          // haves, not correctness requirements.
+          if (typeof navigator !== 'undefined' && navigator.storage) {
+            try {
+              if (typeof navigator.storage.persist === 'function') {
+                Promise.resolve(navigator.storage.persist())
+                  .then((granted) => { persistent = granted ? 'granted' : 'best-effort'; })
+                  .catch(() => { persistent = 'best-effort'; });
+              }
+              if (typeof navigator.storage.estimate === 'function') {
+                Promise.resolve(navigator.storage.estimate())
+                  .then((est) => {
+                    // Private browsing typically reports a quota < ~50MB.
+                    // The 5MB legacy localStorage cap is the obvious tell.
+                    if (est && typeof est.quota === 'number' && est.quota < 50 * 1024 * 1024) {
+                      privateBrowsingLikely = true;
+                    }
+                  })
+                  .catch(() => {});
+              }
+            } catch (_) {}
           }
         };
 
         const installBackgroundFlush = () => {
           try { document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); }); } catch (_) {}
           try { window.addEventListener('pagehide', () => flush()); } catch (_) {}
+          // beforeunload: call flush() synchronously (no await). Async IDB
+          // writes are already in-flight at this point — the browser typically
+          // gives them a brief grace window to complete after unload.
+          try { window.addEventListener('beforeunload', () => { flush(); }); } catch (_) {}
         };
+
+        const getStatus = () => ({
+          backend: degradedMode ? 'localStorage' : 'indexeddb',
+          backendReason: degradedReason,
+          persistent,
+          privateBrowsingLikely,
+        });
 
         return {
           isNative: false,
@@ -482,6 +577,7 @@
           get, set, remove, preload, flush, installBackgroundFlush,
           lastError: () => lastError,
           setAsyncErrorHandler,
+          getStatus,
         };
       }
 
@@ -570,6 +666,12 @@
         isNative: true, get, set, remove, preload, flush, installBackgroundFlush,
         lastError: () => lastError,
         setAsyncErrorHandler: (fn) => { asyncErrorHandler = typeof fn === 'function' ? fn : null; },
+        getStatus: () => ({
+          backend: 'preferences',
+          backendReason: 'native',
+          persistent: 'granted',  // Preferences is platform-durable
+          privateBrowsingLikely: false,
+        }),
       };
     })();
 
@@ -13321,6 +13423,26 @@ const setDays = (updater) =>
 
             <Disclosure label="Data">
               <div className="flex flex-col gap-3">
+                {(() => {
+                  const s = (typeof storage.getStatus === 'function') ? storage.getStatus() : null;
+                  if (!s) return null;
+                  const backendLabel = s.backend === 'indexeddb' ? 'IndexedDB' : s.backend === 'preferences' ? 'Native Preferences' : 'Browser storage (localStorage)';
+                  const persistLabel = s.persistent === 'granted' ? 'Persistent ✓'
+                    : s.persistent === 'best-effort' ? 'Best-effort — keep backups'
+                    : null;
+                  return (
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] text-neutral-400 leading-relaxed">
+                      <div>Storage backend: <span className="text-neutral-200 font-semibold">{backendLabel}</span></div>
+                      {persistLabel && <div>Persistence: <span className="text-neutral-200">{persistLabel}</span></div>}
+                      {s.backendReason && s.backendReason !== 'default' && s.backendReason !== 'native' && (
+                        <div className="text-tm-warn mt-1">{s.backendReason}</div>
+                      )}
+                      {s.privateBrowsingLikely && (
+                        <div className="text-tm-warn mt-1">Private browsing detected — your data may not be saved when this tab closes. Export a backup before leaving.</div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div>
                   <Btn variant="ghost" onClick={onExport}><IDownload/>Export Backup</Btn>
                   <p className="text-[10px] text-neutral-500 mt-1">Downloads all productions as a JSON file. This file contains your data — keep it private.</p>
