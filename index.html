@@ -6023,7 +6023,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 {showPreCallInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{PRE_CALL_EXPLAINER}</span></StatusMsg>}
                 <Field label="Pre-call time" hint="Early arrival — paid at BHR. Lunch and CWD still measured from main call time.">
-                  <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} />
+                  <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} className="min-h-[44px]" />
                 </Field>
                 {(() => { const pc = parseHHMM(v.preCallTime || v.truckCallTime); return pc != null && pc < 5; })() && (
                   <StatusMsg kind="warn"><span className="whitespace-pre-line">{PRE_CALL_PRE5_DISCLAIMER}</span></StatusMsg>
