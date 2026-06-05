@@ -5590,11 +5590,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const expensesActive   = expandedChips.has("expenses");
 
       const toggleChip = (key) => {
-        setExpandedChips(prev => {
-          const n = new Set(prev);
-          if (n.has(key)) n.delete(key); else n.add(key);
-          return n;
-        });
+        // Single-open: tapping a chip closes any other open chip.
+        // Chip state is pure UI; inputs write through to the day record on change,
+        // so collapsing never discards in-progress input.
+        setExpandedChips(prev => prev.has(key) ? new Set() : new Set([key]));
       };
 
       const renderChip = (key, label, isSet, summary) => (
@@ -8561,30 +8560,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const extraRefs = useRef({});
       const toggleExtra = (key) => {
         setExpandedExtras(prev => {
-          const next = new Set(prev);
-          if (next.has(key)) {
-            next.delete(key);
-            // Closing the 2nd break panel marks the field as "logged" — the chip
-            // then reflects the actual duration (incl. 0/Missed) instead of the
-            // dim-caps "not yet logged" state.
-            if (key === 'secondBreak') {
-              setProduction(p => ({
-                ...p,
-                days: (p.days || []).map(d =>
-                  d.date === currentDate && d.crewId === crewMember.id
-                    ? { ...d, secondBreakLogged: true }
-                    : d
-                ),
-              }));
-            }
-          } else {
-            next.add(key);
+          const wasOpen = prev.has(key);
+          // Single-open: tapping a chip closes any other open chip.
+          // Collect every chip that's about to be closed so confirm-on-close
+          // side-effects fire whether the user tapped it directly or it was
+          // auto-closed to make way for a different chip.
+          const closing = wasOpen ? [key] : Array.from(prev);
+          // 2nd-break close marks the field as "logged" so the chip reflects
+          // the actual duration (incl. 0/Missed) instead of the dim "not yet
+          // logged" state.
+          if (closing.includes('secondBreak')) {
+            setProduction(p => ({
+              ...p,
+              days: (p.days || []).map(d =>
+                d.date === currentDate && d.crewId === crewMember.id
+                  ? { ...d, secondBreakLogged: true }
+                  : d
+              ),
+            }));
+          }
+          if (!wasOpen) {
             // smooth scroll into view after the panel mounts
             requestAnimationFrame(() => {
               extraRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             });
           }
-          return next;
+          return wasOpen ? new Set() : new Set([key]);
         });
       };
       const [editingNote, setEditingNote] = useState(false);
