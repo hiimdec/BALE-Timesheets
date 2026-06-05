@@ -16133,6 +16133,13 @@ const confirmDelete = (p) => setConfirmOpts({
               <button onClick={() => setShowMigrationBanner(false)} style={{ color: '#7dd3fc', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} aria-label="Dismiss">×</button>
             </div>
           )}
+          {migrationResult.error && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#7f1d1d', color: '#fca5a5', padding: '10px 16px', fontSize: 12, fontFamily: 'ui-sans-serif, system-ui', textAlign: 'center', lineHeight: 1.5 }}>
+              <strong>⚠ Your data couldn't be updated to the latest format — storage may be full.</strong>
+              <br/>
+              Export a backup (Settings → Export), then remove an old production to free space. Details: {migrationResult.error}
+            </div>
+          )}
           {versionToast && (
             <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 80px)', left: 12, right: 12, zIndex: 9997, background: '#052e16', border: '1px solid #4ade80', borderRadius: 12, color: '#bbf7d0', padding: '10px 14px', fontSize: 12, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
               Updated to TimeMachine v{APP_VERSION} ✓
