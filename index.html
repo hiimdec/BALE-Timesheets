@@ -5608,7 +5608,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           }`}
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
-          <span className={isSet ? '' : 'uppercase tracking-wider'}>{label}</span>
+          <span>{label}</span>
           {isSet && summary && (
             <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{summary}</span>
           )}
@@ -5917,7 +5917,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 }`}
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
-                <span className={noteHasText ? '' : 'uppercase tracking-wider'}>Notes</span>
+                <span>Notes</span>
               </button>
             </div>
           </div>
@@ -8162,7 +8162,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           }`}
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
-          <span className={isSet || isOverridden ? '' : 'uppercase tracking-wider'}>{label}</span>
+          <span>{label}</span>
           {summary && (
             <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{summary}</span>
           )}
