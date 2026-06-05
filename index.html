@@ -8562,14 +8562,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         setExpandedExtras(prev => {
           const wasOpen = prev.has(key);
           // Single-open: tapping a chip closes any other open chip.
-          // Collect every chip that's about to be closed so confirm-on-close
-          // side-effects fire whether the user tapped it directly or it was
-          // auto-closed to make way for a different chip.
-          const closing = wasOpen ? [key] : Array.from(prev);
-          // 2nd-break close marks the field as "logged" so the chip reflects
-          // the actual duration (incl. 0/Missed) instead of the dim "not yet
-          // logged" state.
-          if (closing.includes('secondBreak')) {
+          // 2nd-break "logged" side-effect fires ONLY when the user deliberately
+          // closes the 2nd-break panel — either by tapping its chip while open
+          // (handled here) or via the panel's × control (handled in `close`
+          // below). An auto-close caused by opening a different chip must NOT
+          // log — the user hasn't engaged with the second-break section, so the
+          // chip stays in its "engage with me" state.
+          if (wasOpen && key === 'secondBreak') {
             setProduction(p => ({
               ...p,
               days: (p.days || []).map(d =>
@@ -8902,7 +8901,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
                       {/* Inline expandable panels — one per expanded chip key. */}
                       {(() => {
-                        const close = (key) => setExpandedExtras(prev => { const n = new Set(prev); n.delete(key); return n; });
+                        const close = (key) => {
+                          // Deliberate close via the panel's × control — same
+                          // "logged" side-effect as a direct chip tap (see
+                          // toggleExtra). Auto-close from opening a different
+                          // chip is handled separately and does not log.
+                          if (key === 'secondBreak') {
+                            setProduction(p => ({
+                              ...p,
+                              days: (p.days || []).map(d =>
+                                d.date === currentDate && d.crewId === crewMember.id
+                                  ? { ...d, secondBreakLogged: true }
+                                  : d
+                              ),
+                            }));
+                          }
+                          setExpandedExtras(prev => { const n = new Set(prev); n.delete(key); return n; });
+                        };
                         const setRef = (key) => (el) => { extraRefs.current[key] = el; };
                         const resetFields = (key, ...fields) => {
                           setProduction(p => ({
