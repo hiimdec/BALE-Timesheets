@@ -13158,9 +13158,17 @@ const setDays = (updater) =>
             if (hasDaysInRange) excluded++;
             continue;
           }
+          // Aggregate-earnings date rule: a day counts only if its date is
+          // strictly before today. Today's live shoot and any pre-loaded future
+          // days are excluded across every filter mode ('all', 'taxyear',
+          // 'ytd') so the hero earnings reflect what has actually been worked,
+          // not what's just been pre-loaded into the calendar. Every derivative
+          // stat (highestDay, monthBreakdown, busiestMonth, topProdCo, OT/late-
+          // lunch earnings, working/shoot-day counts, hours, averages, streak)
+          // flows from enrichedDays, so this one filter fixes them all.
           const pDays = filter === 'all'
-            ? (p.days || []).filter(d => userCrewIds.includes(d.crewId))
-            : (p.days || []).filter(d => d.date >= startISO && d.date <= endISO && userCrewIds.includes(d.crewId));
+            ? (p.days || []).filter(d => userCrewIds.includes(d.crewId) && d.date < today)
+            : (p.days || []).filter(d => d.date >= startISO && d.date <= endISO && userCrewIds.includes(d.crewId) && d.date < today);
           for (const day of pDays) {
             const crew = (p.crew || []).find(c => c.id === day.crewId);
             if (!crew) continue;
