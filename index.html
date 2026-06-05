@@ -613,9 +613,21 @@
     function getStoredSchemaVersion() {
       try { return Number(storage.get(SCHEMA_VERSION_KEY)) || 0; } catch { return 0; }
     }
+    // Returns { ok: true } | { ok: false, error }. A failed version write
+    // (e.g. quota exceeded on a near-cap launch) used to be silently swallowed
+    // — runMigrations would return { ran: true } and the user would have no
+    // idea the success marker wasn't persisted. Callers (only runMigrations)
+    // now propagate the error into migrationResult so B1's banner can surface
+    // it.
     function setStoredSchemaVersion(v) {
-      try { storage.set(SCHEMA_VERSION_KEY, String(v)); } catch {}
+      try { storage.set(SCHEMA_VERSION_KEY, String(v)); return { ok: true }; }
+      catch (err) { return { ok: false, error: String(err) }; }
     }
+    // Returns { ok: true } | { ok: false, error }. A failed snapshot must
+    // ABORT the migration — running a migration without a rollback snapshot is
+    // the worst-case path (migration body throws later → no rollback possible).
+    // Better to bail loud and leave the data at the old schema version
+    // untouched; the user sees B1's banner with actionable copy.
     function takePreMigrationSnapshot() {
       try {
         const snap = {
@@ -623,7 +635,10 @@
           schemaVersion: storage.get(SCHEMA_VERSION_KEY),
         };
         storage.set(PRE_MIGRATION_BACKUP_KEY, JSON.stringify(snap));
-      } catch {}
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
     }
     function restoreFromPreMigrationSnapshot() {
       try {
@@ -2186,12 +2201,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return { ran: false };
       }
       const hadData = !!storage.get('bigals_productions');
-      takePreMigrationSnapshot();
+      // Abort if the snapshot can't be written — running a migration without a
+      // rollback snapshot risks an unrecoverable corruption if the migration
+      // body then throws. Leave data at the old schema version untouched and
+      // surface a clear error to the user via the B1 banner.
+      const snap = takePreMigrationSnapshot();
+      if (!snap.ok) {
+        return { ran: false, error: `Couldn't write a safety snapshot before updating data (${snap.error}). The update was skipped so nothing is lost.` };
+      }
       try {
         for (let v = stored + 1; v <= SCHEMA_VERSION; v++) {
           if (MIGRATIONS[v]) MIGRATIONS[v]();
         }
-        setStoredSchemaVersion(SCHEMA_VERSION);
+        const verWrite = setStoredSchemaVersion(SCHEMA_VERSION);
+        if (!verWrite.ok) {
+          // Migration body succeeded but the success marker didn't persist.
+          // Don't restore — the data is at the new schema. Surface the error
+          // so the user knows the next launch will think a migration is still
+          // needed and re-run it (idempotent for our migrations today, but
+          // worth flagging).
+          return { ran: hadData, from: stored, to: SCHEMA_VERSION, error: `Data updated but the version marker couldn't be saved (${verWrite.error}). The update will repeat on next launch.` };
+        }
         return { ran: hadData, from: stored, to: SCHEMA_VERSION };
       } catch (err) {
         restoreFromPreMigrationSnapshot();

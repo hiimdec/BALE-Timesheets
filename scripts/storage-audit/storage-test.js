@@ -41,14 +41,24 @@ function check(name, cond, detail) {
 }
 
 // ---- recording localStorage stub -----------------------------------------
-function makeLocalStorage(seed = {}) {
+function makeLocalStorage(seed = {}, opts = {}) {
   const store = new Map(Object.entries(seed));
   const calls = { get: 0, set: 0, remove: 0 };
+  // opts.throwOnSet: function (key) -> string|null. Return an error string to
+  // throw a QuotaExceededError-like for that write; null to allow. Lets tests
+  // simulate a near-cap user where specific keys can't be written.
   return {
     _store: store,
     _calls: calls,
     getItem(k) { calls.get++; return store.has(k) ? store.get(k) : null; },
-    setItem(k, v) { calls.set++; store.set(k, String(v)); },
+    setItem(k, v) {
+      calls.set++;
+      if (opts.throwOnSet) {
+        const reason = opts.throwOnSet(k);
+        if (reason) { const e = new Error(reason); e.name = 'QuotaExceededError'; throw e; }
+      }
+      store.set(k, String(v));
+    },
     removeItem(k) { calls.remove++; store.delete(k); },
     clear() { store.clear(); },
     key(i) { return Array.from(store.keys())[i] ?? null; },
@@ -130,7 +140,11 @@ async function transformedAppCode() {
   const startMarker = '<script type="text/babel" data-type="module">';
   const s = html.indexOf(startMarker) + startMarker.length;
   const e = html.indexOf('</script>', s);
-  const body = html.slice(s, e) + '\n;globalThis.__storage = storage;\n';
+  const body = html.slice(s, e) +
+    '\n;globalThis.__storage = storage;\n' +
+    // Web boot is synchronous: migrationResult is populated by the time the
+    // appended code runs. Native boot is async; tests that need it must wait.
+    'try { globalThis.__migrationResult = migrationResult; } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -347,6 +361,61 @@ async function main() {
     check('F4 prune: stale backup removed on no-op launch (web)',
       !localStorage._store.has('bigals_pre_migration_backup'),
       `still=${localStorage._store.get('bigals_pre_migration_backup')}`);
+  }
+
+  // ===== G. ABORT PATH — snapshot write failure on a migration launch =====
+  // Simulates a near-cap user: localStorage throws QuotaExceededError on the
+  // pre-migration snapshot write. Migration must NOT touch productions data,
+  // schema_version must NOT advance, and migrationResult.error must surface.
+  {
+    const preserved = JSON.stringify([{ id: 'p1', title: 'Pre-update data, must not be touched' }]);
+    const localStorage = makeLocalStorage(
+      { bigals_productions: preserved, bigals_schema_version: '2' },
+      { throwOnSet: (k) => k === 'bigals_pre_migration_backup' ? 'QuotaExceededError: quota' : null },
+    );
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    check('G1 abort: productions data UNTOUCHED when snapshot fails',
+      localStorage._store.get('bigals_productions') === preserved,
+      `productions=${localStorage._store.get('bigals_productions')}`);
+    check('G1 abort: schema_version stayed at old value',
+      localStorage._store.get('bigals_schema_version') === '2',
+      `schema_version=${localStorage._store.get('bigals_schema_version')}`);
+    check('G1 abort: snapshot backup NOT written',
+      !localStorage._store.has('bigals_pre_migration_backup'));
+    const mr = sb.__migrationResult;
+    check('G1 abort: migrationResult.error set (B1 banner will surface)',
+      mr && typeof mr.error === 'string' && mr.error.length > 0,
+      `migrationResult=${JSON.stringify(mr)}`);
+    check('G1 abort: migrationResult.error mentions safety snapshot',
+      mr && /safety snapshot/i.test(mr.error || ''),
+      `error=${mr && mr.error}`);
+    check('G1 abort: app loaded (sandbox completed, no crash)',
+      !!sb.__storage);
+  }
+
+  // ===== H. VERSION-MARKER WRITE FAILURE — soft error =====
+  // Migration body succeeded but the version-marker write fails. Data is
+  // at the new schema; surface a non-fatal error so the user knows the
+  // marker will retry on next launch. (Our migrations are idempotent.)
+  {
+    const localStorage = makeLocalStorage(
+      { bigals_productions: '[]', bigals_schema_version: '2' },
+      // Refuse only the final schema-version bump (snapshot doesn't write
+      // that key, so this isolates the marker-write failure).
+      { throwOnSet: (k) => k === 'bigals_schema_version' ? 'QuotaExceededError: quota' : null },
+    );
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    const mr = sb.__migrationResult;
+    check('H1 marker-fail: migrationResult.error set (soft)',
+      mr && typeof mr.error === 'string' && /version marker/i.test(mr.error || ''),
+      `error=${mr && mr.error}`);
+    check('H1 marker-fail: migrationResult still says ran=true',
+      mr && mr.ran === true,
+      `ran=${mr && mr.ran}`);
+    check('H1 marker-fail: app loaded (no crash)',
+      !!sb.__storage);
   }
 
   // ---- report ----
