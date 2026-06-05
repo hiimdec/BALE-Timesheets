@@ -2368,7 +2368,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const crewMember = (production.crew || []).find(c => c.id === userCrewId);
       if (!crewMember) return "";
       const myDays = (production.days || []).filter(d => d.crewId === userCrewId);
-      return generateCrewText(crewMember, myDays, production);
+      // Strip the generateCrewText trailing "—\nGenerated with TimeMachine ..." tagline:
+      // the invoice editor shows the notes verbatim, and the print/PDF view carries the
+      // brand in its own footer — share-text callers of generateCrewText still keep theirs.
+      return generateCrewText(crewMember, myDays, production)
+        .replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '')
+        .trimEnd();
     }
 
     // The client/job fields shared between a production (single source) and its
@@ -14291,13 +14296,16 @@ const setDays = (updater) =>
                   Notes
                 </span>
                 <span className="text-[11px] text-neutral-600 font-mono">
-                  {invoice.notes ? `${invoice.notes.length} chars` : 'empty'}
+                  {(() => {
+                    const editorNotes = (invoice.notes || '').replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '').trimEnd();
+                    return editorNotes ? `${editorNotes.length} chars` : 'empty';
+                  })()}
                 </span>
               </button>
               {notesOpen && (
                 <div className="px-4 pb-3">
                   <textarea
-                    value={invoice.notes || ''}
+                    value={(invoice.notes || '').replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '').trimEnd()}
                     onChange={(e) => updateInvoice({ notes: e.target.value, notesEdited: true })}
                     rows={5}
                     placeholder="Timesheet breakdown, payment terms, or any other notes…"
