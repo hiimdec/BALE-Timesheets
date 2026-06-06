@@ -678,7 +678,7 @@ async function main() {
       bigals_productions: '[]',
       bigals_schema_version: '3',
     });
-    // Pass NO indexedDB into the sandbox — opt-in returns false because of
+    // Pass NO indexedDB into the sandbox — useIdb returns false because of
     // `typeof indexedDB === 'undefined'` short-circuit.
     const sb = await runApp({ capacitor: undefined, localStorage });
     await settle(50);
@@ -687,6 +687,117 @@ async function main() {
       `backend=${sb.__storage.backend}`);
     check('J4 fallback: data accessible via LS passthrough',
       sb.__storage.get('bigals_productions') === '[]');
+  }
+
+  // ===== K. PHASE 2 — IndexedDB is the web default =====
+
+  // K1 — Default landing: NO flag set, IDB available → adapter is IDB and
+  // the LS→IDB import runs on first launch.
+  {
+    const idbEnv = freshIdb();
+    const seededProductions = JSON.stringify([{ id: 'p1', title: 'Fresh user, IDB default', days: [], crew: [] }]);
+    const localStorage = makeLocalStorage({
+      // NO bigals_idb_optin, NO bigals_idb_force_off — fully default behaviour.
+      bigals_productions: seededProductions,
+      bigals_schema_version: '3',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage, indexedDB: idbEnv.indexedDB, IDBKeyRange: idbEnv.IDBKeyRange });
+    await settle(100);
+    check('K1 default: adapter is IDB without any opt-in flag',
+      sb.__storage.backend === 'indexeddb',
+      `backend=${sb.__storage.backend}`);
+    check('K1 default: cache reflects LS data after import',
+      sb.__storage.get('bigals_productions') === seededProductions,
+      `cache=${sb.__storage.get('bigals_productions')}`);
+    const idbProd = await new Promise((res) => {
+      const req = idbEnv.indexedDB.open('timemachine', 1);
+      req.onsuccess = () => {
+        const db = req.result;
+        const r = db.transaction('kv', 'readonly').objectStore('kv').get('bigals_productions');
+        r.onsuccess = () => { db.close(); res(r.result); };
+      };
+    });
+    check('K1 default: IDB holds the imported data',
+      idbProd === seededProductions,
+      `idb=${idbProd}`);
+    const status = sb.__storage.getStatus();
+    check('K1 default: getStatus reports indexeddb',
+      status && status.backend === 'indexeddb',
+      `status=${JSON.stringify(status)}`);
+  }
+
+  // K2 — Force-localStorage override (?idb=0 sticky flag): even when IDB
+  // is available, the adapter stays on LS. Used as the in-the-wild OFF
+  // switch when something goes wrong with IDB.
+  {
+    const idbEnv = freshIdb();
+    const seededProductions = JSON.stringify([{ id: 'pX', title: 'Force-LS override path', days: [], crew: [] }]);
+    const localStorage = makeLocalStorage({
+      bigals_idb_force_off: '1',  // the sticky override flag
+      bigals_productions: seededProductions,
+      bigals_schema_version: '3',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage, indexedDB: idbEnv.indexedDB, IDBKeyRange: idbEnv.IDBKeyRange });
+    await settle(50);
+    check('K2 force-off: adapter is localStorage despite IDB being available',
+      sb.__storage.backend === 'localStorage',
+      `backend=${sb.__storage.backend}`);
+    check('K2 force-off: data accessible via LS passthrough',
+      sb.__storage.get('bigals_productions') === seededProductions);
+    const status = sb.__storage.getStatus();
+    check('K2 force-off: getStatus reports localStorage with override reason',
+      status && status.backend === 'localStorage' && /override/i.test(status.backendReason || ''),
+      `status=${JSON.stringify(status)}`);
+    check('K2 force-off: IDB never touched (still empty)',
+      await new Promise((res) => {
+        const req = idbEnv.indexedDB.open('timemachine', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('kv');
+        req.onsuccess = () => {
+          const db = req.result;
+          const r = db.transaction('kv', 'readonly').objectStore('kv').get('bigals_productions');
+          r.onsuccess = () => { db.close(); res(r.result == null); };
+        };
+      }));
+  }
+
+  // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
+  // IDB factory whose open() rejects forces the adapter into degraded
+  // mode; subsequent reads/writes route to localStorage transparently.
+  {
+    const brokenIdb = {
+      open() {
+        const req = {};
+        // Fire onerror on the next microtask so onerror is registered first.
+        setTimeout(() => {
+          req.error = new Error('Simulated IDB open failure');
+          if (typeof req.onerror === 'function') req.onerror({ target: req });
+        }, 1);
+        return req;
+      },
+    };
+    const seededProductions = JSON.stringify([{ id: 'p1', title: 'IDB unhealthy → LS primary', days: [], crew: [] }]);
+    const localStorage = makeLocalStorage({
+      bigals_productions: seededProductions,
+      bigals_schema_version: '3',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage, indexedDB: brokenIdb });
+    await settle(100);
+    const status = sb.__storage.getStatus();
+    check('K3 unhealthy: getStatus reports localStorage (degraded)',
+      status && status.backend === 'localStorage',
+      `status=${JSON.stringify(status)}`);
+    check('K3 unhealthy: degraded reason mentions the IDB failure',
+      status && /IDB|IndexedDB|open/i.test(status.backendReason || ''),
+      `reason=${status && status.backendReason}`);
+    check('K3 unhealthy: reads return LS data',
+      sb.__storage.get('bigals_productions') === seededProductions,
+      `got=${sb.__storage.get('bigals_productions')}`);
+    // Writes in degraded mode must land in LS, not get lost in an IDB write
+    // chain that will never complete.
+    sb.__storage.set('bigals_productions', '"changed-in-degraded-mode"');
+    check('K3 unhealthy: writes routed to LS in degraded mode',
+      localStorage._store.get('bigals_productions') === '"changed-in-degraded-mode"',
+      `ls=${localStorage._store.get('bigals_productions')}`);
   }
 
   // ---- report ----
