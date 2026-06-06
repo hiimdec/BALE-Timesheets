@@ -52,6 +52,9 @@ const ENGINE_NAMES = [
   // Stage 2d: user-crew-id resolver for kit scoping (combines
   // resolveUserCrewId with a solo single-crew fallback).
   'getEffectiveUserCrewId',
+  // Stage 3: shoot-level kit aggregation (days-on, usual total,
+  // negotiated total + computed % discount).
+  'aggregateKitForShoot',
 ];
 
 const EXPORT_LINE =

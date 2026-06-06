@@ -7445,6 +7445,72 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // being kit-bearing without a deliberate edit here.
     const KIT_BEARING_DAY_TYPES = new Set(["Pre-light", "Build Day", "Shoot", "De-rig"]);
 
+    // Stage 3: shoot-level kit aggregation for the "Kit on this shoot"
+    // summary AND for the invoice in Stage 4 (no invoice wiring yet — this
+    // helper is read-only). Looks at the USER'S OWN days only (Stage 2d
+    // scoping) and returns:
+    //   kitBearingUserDayCount → M, the number of the user's kit-bearing
+    //     days in the production (Pre-light / Build Day / Shoot / De-rig
+    //     via resolveEffectiveDayType, so cascade-only days count too).
+    //   items[] → one entry per kit itemId found in ANY of the user's
+    //     days' kitItems:
+    //       { itemId, name, daysOn, usual, negotiatedTotal, discountPct }
+    //     daysOn = how many of the user's days carry this itemId
+    //     usual  = sum of per-day snapshot rates (the rate captured at
+    //              toggle-on time, frozen on the day record)
+    //     negotiatedTotal = production.kitDeals[itemId].negotiatedTotal,
+    //                       or null when there's no deal entry
+    //     discountPct     = round((usual − negotiatedTotal) / usual × 100)
+    //                       when usual > 0 AND a deal exists AND
+    //                       negotiatedTotal < usual; otherwise 0
+    function aggregateKitForShoot(production, userPrefs) {
+      const empty = { kitBearingUserDayCount: 0, items: [] };
+      if (!production || !userPrefs) return empty;
+      const userCrewId = getEffectiveUserCrewId(production, userPrefs);
+      if (userCrewId == null) return empty;
+
+      const allUserDays = (production.days || []).filter(d => d && d.crewId === userCrewId);
+      const kitBearingUserDayCount = allUserDays.filter(d =>
+        KIT_BEARING_DAY_TYPES.has(resolveEffectiveDayType(production, d.date, d))
+      ).length;
+
+      const byItem = new Map();
+      for (const d of allUserDays) {
+        for (const entry of (d.kitItems || [])) {
+          if (!entry || !entry.itemId) continue;
+          const rate = Number(entry.rate) || 0;
+          if (!byItem.has(entry.itemId)) {
+            byItem.set(entry.itemId, {
+              itemId: entry.itemId,
+              name: entry.name || '',
+              daysOn: 0,
+              usual: 0,
+            });
+          }
+          const agg = byItem.get(entry.itemId);
+          agg.daysOn += 1;
+          agg.usual += rate;
+        }
+      }
+
+      const deals = production.kitDeals || [];
+      const dealMap = new Map();
+      for (const d of deals) {
+        if (d && d.itemId) dealMap.set(d.itemId, Number(d.negotiatedTotal) || 0);
+      }
+      const items = [...byItem.values()].map(it => {
+        const hasDeal = dealMap.has(it.itemId);
+        const negotiatedTotal = hasDeal ? dealMap.get(it.itemId) : null;
+        let discountPct = 0;
+        if (hasDeal && it.usual > 0 && negotiatedTotal < it.usual) {
+          discountPct = Math.round(((it.usual - negotiatedTotal) / it.usual) * 100);
+        }
+        return { ...it, negotiatedTotal, discountPct };
+      });
+
+      return { kitBearingUserDayCount, items };
+    }
+
     // Stage 2d: resolve which crew member is "you" on a given production,
     // for kit-scoping purposes. Combines resolveUserCrewId (iAmCrewId
     // override → displayName match) with a solo fallback for the case
@@ -10603,6 +10669,73 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 );
               })()}
             </Disclosure>
+
+            {/* Stage 3: Kit-on-this-shoot summary + per-item negotiated
+                deal entry. Rendered only when the user has any kit items
+                across their own days. DISPLAY + DATA only — the deal % is
+                NOT applied to invoices, breakdowns or totals in this
+                stage (Stage 4 will wire that into buildInvoiceLineItems). */}
+            {(() => {
+              const kitAgg = aggregateKitForShoot(production, userPrefs);
+              if (kitAgg.items.length === 0) return null;
+              const updateDeal = (itemId, raw) => {
+                setProduction(p => {
+                  const others = (p.kitDeals || []).filter(d => d.itemId !== itemId);
+                  const trimmed = (raw == null ? '' : String(raw)).trim();
+                  if (trimmed === '') return { ...p, kitDeals: others };
+                  const value = Number(trimmed);
+                  if (!Number.isFinite(value) || value <= 0) {
+                    return { ...p, kitDeals: others };
+                  }
+                  return { ...p, kitDeals: [...others, { itemId, negotiatedTotal: value }] };
+                });
+              };
+              const summaryText = `${kitAgg.items.length} item${kitAgg.items.length === 1 ? '' : 's'}`;
+              return (
+                <Disclosure label="Kit on this shoot" summary={summaryText}>
+                  <p className="text-[11px] text-neutral-500 -mt-1 leading-relaxed">
+                    Summary of the kit items on your own days. Enter a "Deal £" if you've agreed a flat total for an item across the shoot — the discount is shown here for reference. It doesn't change invoice or breakdown totals yet.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {kitAgg.items.map(item => (
+                      <div key={item.itemId} className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5">
+                        <div className="flex items-baseline gap-2">
+                          <div className="flex-1 min-w-0 text-sm text-neutral-100 truncate">
+                            {item.name || <span className="text-neutral-500 italic">Unnamed item</span>}
+                          </div>
+                          <div className="text-[10px] text-neutral-500 font-mono whitespace-nowrap">
+                            on {item.daysOn} of {kitAgg.kitBearingUserDayCount}
+                          </div>
+                        </div>
+                        <div className="flex items-baseline gap-2 mt-1.5 text-[11px]">
+                          <span className="text-neutral-500">Usual</span>
+                          <span className="font-mono text-neutral-200">{fmtGBP(item.usual)}</span>
+                          {item.discountPct > 0 && (
+                            <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/30 font-mono">
+                              −{item.discountPct}%
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold flex-shrink-0">Deal £</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.negotiatedTotal == null ? '' : item.negotiatedTotal}
+                            onChange={(e) => updateDeal(item.itemId, e.target.value)}
+                            placeholder="—"
+                            aria-label={`Negotiated deal total for ${item.name || 'kit item'}`}
+                            style={{ width: 110 }}
+                            className="text-sm"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Disclosure>
+              );
+            })()}
 
             <Disclosure label="Weekend rate overrides" summary={weekendSummary}>
               <p className="text-[11px] text-neutral-500 -mt-1">App applies APA standard rates by default. Toggle on to override.</p>
