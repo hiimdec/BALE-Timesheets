@@ -5975,11 +5975,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const callH = parseHHMM(v.callTime);
         const patch = { dayType };
         if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[dayType] ?? 11));
-        // Stage 2b: also patch kitItems if the new type is kit-bearing AND
-        // current kitItems is empty. applyKitAutoApply is additive; it never
-        // removes or clobbers, so non-kit transitions and already-set days
-        // both pass through unchanged.
-        const merged = applyKitAutoApply({ ...v, ...patch }, userPrefs);
+        // Stage 2c: chain auto-remove → auto-apply. Auto-remove fires if the
+        // new type is non-kit-bearing (strips only auto:true items, keeps
+        // manual + ad-hoc). Auto-apply fires if the new type is kit-bearing
+        // and kitItems ends up empty (adds default-on items with auto:true).
+        // The two are mutually exclusive on the type guard, so order is
+        // belt-and-braces.
+        const removed = applyKitAutoRemove({ ...v, ...patch });
+        const merged = applyKitAutoApply(removed, userPrefs);
         if (merged.kitItems !== v.kitItems) patch.kitItems = merged.kitItems;
         set(patch);
       };
@@ -7434,17 +7437,35 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // being kit-bearing without a deliberate edit here.
     const KIT_BEARING_DAY_TYPES = new Set(["Pre-light", "Build Day", "Shoot", "De-rig"]);
 
-    // Stage 2b auto-apply: when a day's dayType is set to / changed to a kit-
-    // bearing type AND the day currently has NO kitItems, snapshot every
-    // default-on inventory item onto the day. Additive only — never removes,
-    // never clobbers an existing kitItems list, never fires on non-kit-bearing
-    // transitions. Pure function returning the (possibly-augmented) day so it
-    // composes inside .map()/setProduction reducer patterns cleanly. Callers
-    // pass the day post-dayType assignment so the function can inspect the
-    // freshly-set type.
-    function applyKitAutoApply(day, userPrefs) {
+    // Stage 2c: resolve a day's EFFECTIVE dayType via the same cascade the
+    // calc engine uses — day.dayType (if explicit) → dayDefaults[date] →
+    // production.defaultDay → DEFAULT_PRODUCTION_DAY. Cascade-creation paths
+    // (CrewMemberDayView.handleAddToThisDay, etc.) write day records without
+    // an explicit dayType, so auto-apply must consult the cascade at creation
+    // time to know if the day is kit-bearing.
+    function resolveEffectiveDayType(production, date, day) {
+      if (day && day.dayType) return day.dayType;
+      const dd = production && production.dayDefaults && production.dayDefaults[date];
+      if (dd && dd.dayType) return dd.dayType;
+      return (production && production.defaultDay && production.defaultDay.dayType)
+        || DEFAULT_PRODUCTION_DAY.dayType;
+    }
+
+    // Stage 2c auto-add: when a day's dayType (or its effective type via the
+    // optional override) is kit-bearing AND the day currently has NO kitItems,
+    // snapshot every default-on inventory item onto the day with auto:true.
+    // The auto:true tag is what distinguishes defaults from manually-toggled
+    // items — applyKitAutoRemove (below) strips ONLY auto:true entries when
+    // the day stops being kit-bearing, so deliberate user picks are safe.
+    //
+    // Pure function returning the (possibly-augmented) day so it composes
+    // inside .map() / setProduction reducer patterns cleanly. Callers pass
+    // the day POST-dayType assignment, optionally with an effectiveType
+    // override for cascade-creation paths.
+    function applyKitAutoApply(day, userPrefs, effectiveType = null) {
       if (!day || !userPrefs) return day;
-      if (!KIT_BEARING_DAY_TYPES.has(day.dayType)) return day;
+      const type = effectiveType || day.dayType;
+      if (!KIT_BEARING_DAY_TYPES.has(type)) return day;
       if ((day.kitItems || []).length > 0) return day;
       const defaults = (userPrefs.kitInventory || []).filter(it => it && it.defaultOn === true);
       if (defaults.length === 0) return day;
@@ -7454,8 +7475,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           itemId: it.id,
           name: it.name || '',
           rate: Number(it.defaultDailyRate) || 0,
+          auto: true,
         })),
       };
+    }
+
+    // Stage 2c auto-remove: when a day's dayType is set to / changed to a
+    // non-kit-bearing type, strip ONLY auto:true items from kitItems. Items
+    // without auto:true (manual toggles, legacy pre-2c entries) are left
+    // alone — the user removes them deliberately via the chip if they want.
+    // The ad-hoc kitMoneyAmount is never touched. Pure function; no-op when
+    // the day still has a kit-bearing type, no kitItems, or no auto entries.
+    function applyKitAutoRemove(day) {
+      if (!day) return day;
+      if (KIT_BEARING_DAY_TYPES.has(day.dayType)) return day;
+      const items = day.kitItems || [];
+      if (items.length === 0) return day;
+      const filtered = items.filter(it => !(it && it.auto === true));
+      if (filtered.length === items.length) return day;
+      return { ...day, kitItems: filtered };
     }
 
     function makeBlankDay(crewId = "") {
@@ -7670,8 +7708,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
             mileageMethod, mileagePostcode, mileageRoundTrip,
           };
-          // Stage 2b: auto-apply only when kitItems is empty — never clobbers.
-          return applyKitAutoApply(next, userPrefs);
+          // Stage 2c: chain auto-remove → auto-apply (strip auto:true items
+          // on non-kit-bearing bulk edits; add defaults on kit-bearing bulk
+          // edits when kitItems is empty).
+          return applyKitAutoApply(applyKitAutoRemove(next), userPrefs);
         }));
       };
       const handleAssignAllOnDate = (date, dayType = "Shoot") => {
@@ -9225,7 +9265,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             ...makeBlankDay(crewMember.id),
             date: currentDate,
           };
-          return { ...p, days: [...(p.days || []), newDay] };
+          // Stage 2c: auto-apply on cascade-only creation. The day has no
+          // explicit dayType — resolve it via the same cascade resolveDay
+          // uses (dayDefaults[date] → production.defaultDay → DEFAULT). If
+          // that effective type is kit-bearing, snapshot default-on items
+          // with auto:true. The day record's dayType field stays unset so
+          // future cascade changes (e.g. user edits dayDefaults[date]) keep
+          // affecting this day's resolved type.
+          const effectiveType = resolveEffectiveDayType(p, currentDate, newDay);
+          return { ...p, days: [...(p.days || []), applyKitAutoApply(newDay, userPrefs, effectiveType)] };
         });
       };
 
@@ -9289,11 +9337,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           days: p.days.map(d => {
             if (d.id !== dayRecord.id) return d;
             const next = { ...d, [field]: value };
-            // Stage 2b: dayType changes here go through applyKitAutoApply
-            // (additive, only fires on kit-bearing transitions with empty
-            // kitItems). Other field updates pass through unchanged because
-            // the helper only inspects dayType + kitItems.
-            return field === 'dayType' ? applyKitAutoApply(next, userPrefs) : next;
+            // Stage 2c: dayType changes chain auto-remove → auto-apply
+            // (strip auto:true items on non-kit-bearing transitions; add
+            // default-on items on kit-bearing transitions when kitItems is
+            // empty). Other field updates pass through unchanged.
+            return field === 'dayType'
+              ? applyKitAutoApply(applyKitAutoRemove(next), userPrefs)
+              : next;
           })
         }));
       };
@@ -11833,7 +11883,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           };
           const callH = parseHHMM(initialDay.callTime) ?? 8;
           initialDay.secondBreakStartTime = toHHMM(callH + 11);
-          setDays([initialDay]);
+          // Stage 2c: the spread `...defaults` brings in defaults.dayType
+          // (typically "Shoot" from DEFAULT_PRODUCTION_DAY), so this day
+          // has an explicit dayType field. applyKitAutoApply checks it
+          // and snapshots default-on items if it's kit-bearing.
+          setDays([applyKitAutoApply(initialDay, userPrefs)]);
         }
       }, []); // mount-only; intentional — auto-create runs once per page entry
 
@@ -11918,8 +11972,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         };
         const callH = parseHHMM(newDay.callTime) ?? 8;
         newDay.secondBreakStartTime = toHHMM(callH + 11);
-        setDays(prev => [...prev, newDay]);
-        setCurrentDayId(newDay.id);
+        // Stage 2c: same as ensure-one-day useEffect — defaults.dayType is
+        // present on the new day, so applyKitAutoApply seeds kitItems
+        // when it's kit-bearing.
+        const augmented = applyKitAutoApply(newDay, userPrefs);
+        setDays(prev => [...prev, augmented]);
+        setCurrentDayId(augmented.id);
       };
 
       const handleDayChange = (updatedDay) => {

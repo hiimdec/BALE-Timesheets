@@ -46,6 +46,9 @@ const ENGINE_NAMES = [
   // returns the day with kitItems snapshotted from default-on inventory
   // items IFF the day's dayType is kit-bearing AND kitItems is empty.
   'applyKitAutoApply',
+  // Stage 2c: auto-remove + cascade-resolved effective type.
+  'applyKitAutoRemove',
+  'resolveEffectiveDayType',
 ];
 
 const EXPORT_LINE =
