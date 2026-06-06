@@ -55,6 +55,10 @@ const ENGINE_NAMES = [
   // Stage 3: shoot-level kit aggregation (days-on, usual total,
   // negotiated total + computed % discount).
   'aggregateKitForShoot',
+  // Stage 4: end-to-end invoice line generation. Spot-checks build a
+  // production, call buildInvoiceLineItems, and assert deal application,
+  // detail formatting, double-counting safety, and rate-variation handling.
+  'buildInvoiceLineItems',
 ];
 
 const EXPORT_LINE =

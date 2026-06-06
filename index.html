@@ -2724,6 +2724,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           detail: "",
           rate, qty: 1, amount: rate,
           bucket: 'kit',
+          // Stage 4: carries the snapshot itemId so buildInvoiceLineItems can
+          // aggregate per-day lines into one line per item (across rate
+          // variations and label drift) and apply kitDeals via the same
+          // aggregateKitForShoot helper the Stage 3 summary uses.
+          itemId: it.itemId,
         });
       }
       // Flat kit: day's ad-hoc amount wins; otherwise crew default ONLY when
@@ -2766,6 +2771,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       for (const day of myDays) {
         const calc = calcForDisplay(production, day, crewMember, prevDay);
         for (const line of calc.lines) {
+          // Stage 4: itemised kit lines aggregate by itemId AND get any
+          // kitDeals discount applied — that's done once below the per-day
+          // loop via aggregateKitForShoot. Skip them here to avoid double-
+          // counting. The flat ad-hoc / legacy-crew-default "Kit" line has
+          // bucket:'kit' but NO itemId; it's NOT a kit-item line and
+          // aggregates the existing way via `Kit|null` so the legacy
+          // behaviour is preserved exactly.
+          if (line.bucket === 'kit' && line.itemId) continue;
           const isExpense = (line.label || "").startsWith("Expense:");
           let key, displayLabel;
           if (isExpense) {
@@ -2826,9 +2839,52 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         prevDay = day;
       }
 
+      // Stage 4: append one line per kit item via the SAME aggregator the
+      // Stage 3 summary uses (single source of truth for deal application).
+      // Per-day kit-item lines were skipped above, so this is the only place
+      // they enter the invoice — no double-counting.
+      const kitAgg = aggregateKitForShoot(production, userPrefs, userCrewId);
+      const M = kitAgg.kitBearingUserDayCount;
+      for (const item of kitAgg.items) {
+        if (item.usual <= 0) continue;
+        const hasDeal = item.negotiatedTotal != null
+          && item.usual > 0
+          && item.negotiatedTotal < item.usual;
+        const amount = hasDeal ? item.negotiatedTotal : item.usual;
+        if (amount <= 0) continue;
+        // Detail per spec:
+        //   full job:      "N days @ £rate"
+        //   partial:       "N of M days @ £rate"
+        //   varied rates:  rate part omitted (just "N days" / "N of M days")
+        //   deal:          " · X% kit discount" appended
+        const isPartial = M > 0 && item.daysOn < M;
+        const dayBasis = isPartial
+          ? `${item.daysOn} of ${M} days`
+          : `${item.daysOn} day${item.daysOn === 1 ? '' : 's'}`;
+        const rateBasis = item.uniformRate != null ? ` @ ${fmtGBP(item.uniformRate)}` : '';
+        const dealPart = hasDeal ? ` · ${item.discountPct}% kit discount` : '';
+        const detail = `${dayBasis}${rateBasis}${dealPart}`;
+        map.set(`kititem|${item.itemId}`, {
+          label: item.name || 'Kit',
+          dates: [],
+          qty: item.daysOn,
+          // Null the rate when there's a deal (so the invoice renderer
+          // doesn't show a misleading qty × rate that doesn't equal the
+          // negotiated amount) or when rates varied across days.
+          rate: (hasDeal || item.uniformRate == null) ? null : item.uniformRate,
+          amount,
+          isExpense: false,
+          // customDetail short-circuits the auto-derived date-range detail
+          // below so the structured "N days @ £R · X% kit discount" wins.
+          customDetail: detail,
+        });
+      }
+
       return [...map.values()].map(e => {
         const n = e.dates.length;
-        const detail = e.isWaivedAuto
+        const detail = e.customDetail != null
+          ? e.customDetail
+          : e.isWaivedAuto
           ? '11-hour day · absorbed into BDR'
           : (n === 1 ? fmtDateShort(e.dates[0])
             : n === 2 ? `${fmtDateShort(e.dates[0])} – ${fmtDateShort(e.dates[n - 1])}`
@@ -7463,10 +7519,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     //     discountPct     = round((usual − negotiatedTotal) / usual × 100)
     //                       when usual > 0 AND a deal exists AND
     //                       negotiatedTotal < usual; otherwise 0
-    function aggregateKitForShoot(production, userPrefs) {
+    function aggregateKitForShoot(production, userPrefs, userCrewId = null) {
       const empty = { kitBearingUserDayCount: 0, items: [] };
       if (!production || !userPrefs) return empty;
-      const userCrewId = getEffectiveUserCrewId(production, userPrefs);
+      // Stage 4: optional userCrewId override. buildInvoiceLineItems calls
+      // this with the explicit invoice target (which IS the user for that
+      // invoice), bypassing the displayName-based resolution.
+      if (userCrewId == null) userCrewId = getEffectiveUserCrewId(production, userPrefs);
       if (userCrewId == null) return empty;
 
       const allUserDays = (production.days || []).filter(d => d && d.crewId === userCrewId);
@@ -7485,11 +7544,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               name: entry.name || '',
               daysOn: 0,
               usual: 0,
+              // Stage 4: track per-day rates so we can render "N days @ £R"
+              // when uniform and fall back gracefully when varied.
+              _rates: [],
             });
           }
           const agg = byItem.get(entry.itemId);
           agg.daysOn += 1;
           agg.usual += rate;
+          agg._rates.push(rate);
         }
       }
 
@@ -7505,7 +7568,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (hasDeal && it.usual > 0 && negotiatedTotal < it.usual) {
           discountPct = Math.round(((it.usual - negotiatedTotal) / it.usual) * 100);
         }
-        return { ...it, negotiatedTotal, discountPct };
+        // Uniform per-day rate iff every recorded rate equals the first.
+        const rates = it._rates;
+        const uniformRate = rates.length > 0 && rates.every(r => r === rates[0]) ? rates[0] : null;
+        const { _rates, ...rest } = it;
+        return { ...rest, uniformRate, negotiatedTotal, discountPct };
       });
 
       return { kitBearingUserDayCount, items };
