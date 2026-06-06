@@ -1278,6 +1278,13 @@
       defaultKitMoneyAmount: 0,
       defaultPerDiemEnabled: false,
       defaultPerDiemAmount: 0,
+      // Kit Inventory — Stage 1 (additive only). Users build a personal Kit
+      // Room here; later stages (Stage 2+) will read it for per-day item ticks
+      // and itemised invoice lines. Each item: { id, name, defaultDailyRate,
+      // defaultOn }. New users start empty; existing users get the empty
+      // array via the merge-over-DEFAULT_USER_PREFS read in useStoredState,
+      // so no migration / no schema bump is needed.
+      kitInventory: [],
       onboardingComplete: false,
       lastSeenAppVersion: "",
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off' to hide.
@@ -13380,6 +13387,92 @@ const setDays = (updater) =>
                   />
                 </Field>
               )}
+            </Disclosure>
+
+            {/* Kit Inventory Stage 1 — additive store + inline editor. No
+                calc/day/invoice wiring yet; Stage 2+ will read defaultOn
+                for auto-apply and emit itemised invoice lines. Edits write
+                straight back through setUserPrefs — same persistence path
+                as every other userPrefs field. */}
+            <Disclosure
+              label="Kit Room"
+              summary={(() => {
+                const n = (userPrefs.kitInventory || []).length;
+                return n ? `${n} item${n === 1 ? '' : 's'}` : '—';
+              })()}
+            >
+              {(() => {
+                const items = userPrefs.kitInventory || [];
+                const updateKitItem = (id, patch) =>
+                  set({ kitInventory: items.map(it => it.id === id ? { ...it, ...patch } : it) });
+                const removeKitItem = (id) =>
+                  set({ kitInventory: items.filter(it => it.id !== id) });
+                const addKitItem = () =>
+                  set({ kitInventory: [...items, { id: uid(), name: "", defaultDailyRate: 0, defaultOn: false }] });
+                return (
+                  <div className="flex flex-col gap-1">
+                    <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
+                      Your personal inventory of kit items. Each has a name, a default daily rate, and a "default on for new shoots" toggle that Stage&nbsp;2 will use to auto-apply this item to qualifying day records.
+                    </div>
+                    {items.length === 0 && (
+                      <div className="text-[11px] text-neutral-600 italic py-2">No items yet — tap "Add kit item" to start.</div>
+                    )}
+                    {items.length > 0 && (
+                      <div className="bg-neutral-900 border border-neutral-800 rounded-lg">
+                        {items.map((item, idx) => (
+                          <div
+                            key={item.id}
+                            className={`flex items-center gap-2 px-2.5 py-2 ${idx > 0 ? 'border-t border-neutral-800' : ''}`}
+                          >
+                            <Input
+                              type="text"
+                              placeholder="Item name"
+                              value={item.name ?? ""}
+                              onChange={(e) => updateKitItem(item.id, { name: e.target.value })}
+                              className="flex-1 min-w-[80px] text-sm"
+                            />
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <span className="text-[11px] text-neutral-500 font-mono">£</span>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="0"
+                                value={Number.isFinite(item.defaultDailyRate) ? item.defaultDailyRate : 0}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const n = raw === '' ? 0 : Number(raw);
+                                  updateKitItem(item.id, { defaultDailyRate: Number.isFinite(n) ? n : 0 });
+                                }}
+                                aria-label={`Daily rate for ${item.name || 'kit item'}`}
+                                style={{ width: 78 }}
+                                className="text-sm"
+                              />
+                            </div>
+                            <Toggle
+                              value={!!item.defaultOn}
+                              onChange={(v) => updateKitItem(item.id, { defaultOn: v })}
+                              ariaLabel={`Default on for new shoots — ${item.name || 'kit item'}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeKitItem(item.id)}
+                              className="text-neutral-600 hover:text-tm-pen transition-colors p-1 flex-shrink-0"
+                              style={{ WebkitTapHighlightColor: 'transparent' }}
+                              aria-label={`Remove ${item.name || 'kit item'}`}
+                            >
+                              <IX size={14}/>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <Btn variant="ghost" onClick={addKitItem} className="mt-1.5 self-start">
+                      <IPlus size={13}/>Add kit item
+                    </Btn>
+                  </div>
+                );
+              })()}
             </Disclosure>
 
             <Disclosure label="Calculation" summary={calcSummary}>

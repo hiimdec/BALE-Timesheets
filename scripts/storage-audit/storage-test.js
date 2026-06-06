@@ -217,7 +217,13 @@ async function transformedAppCode() {
     // change). Expose migrationResult via a getter so tests reading it after
     // `await settle()` always see the latest assignment (the `let
     // migrationResult` is reassigned inside the async chain).
-    'try { Object.defineProperty(globalThis, "__migrationResult", { get: () => migrationResult, configurable: true }); } catch (_) {}\n';
+    'try { Object.defineProperty(globalThis, "__migrationResult", { get: () => migrationResult, configurable: true }); } catch (_) {}\n' +
+    // Stage-1 Kit Inventory verification: expose importBackup and
+    // DEFAULT_USER_PREFS so tests can exercise the backup round-trip path
+    // (used by the L-suite to confirm kitInventory restores cleanly and old
+    // backups without the key get the empty-array fallback).
+    'try { globalThis.__importBackup = importBackup; } catch (_) {}\n' +
+    'try { globalThis.__DEFAULT_USER_PREFS = DEFAULT_USER_PREFS; } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -758,6 +764,86 @@ async function main() {
           r.onsuccess = () => { db.close(); res(r.result == null); };
         };
       }));
+  }
+
+  // ===== L. STAGE-1 KIT INVENTORY ROUND-TRIP =====
+  // userPrefs.kitInventory is a new top-level field in DEFAULT_USER_PREFS
+  // (additive, no schema bump, no migration). The merge-over-defaults guard
+  // inside importBackup means a Stage-1 backup (with items) restores them
+  // verbatim and a pre-Stage-1 backup (no kitInventory key) imports cleanly
+  // to an empty array.
+  {
+    // L1 — DEFAULT_USER_PREFS exposes the new key.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const defaults = sb.__DEFAULT_USER_PREFS;
+    check('L1 prefs: DEFAULT_USER_PREFS has a kitInventory key',
+      defaults && Array.isArray(defaults.kitInventory),
+      `kitInventory=${defaults && defaults.kitInventory}`);
+    check('L1 prefs: default kitInventory is empty',
+      defaults && Array.isArray(defaults.kitInventory) && defaults.kitInventory.length === 0,
+      `length=${defaults && defaults.kitInventory && defaults.kitInventory.length}`);
+
+    // L2 — Backup made WITH items restores them.
+    const payload = JSON.stringify({
+      version: 1,
+      schemaVersion: 3,
+      productions: [],
+      userPrefs: {
+        displayName: 'Test User',
+        defaultBDR: 444,
+        kitInventory: [
+          { id: 'kit-a', name: 'Sennheiser MKH8060', defaultDailyRate: 75, defaultOn: true },
+          { id: 'kit-b', name: 'Sound Devices MixPre-6', defaultDailyRate: 50, defaultOn: false },
+        ],
+      },
+    });
+    const r1 = sb.__importBackup(payload);
+    check('L2 import-with-items: importBackup ok',
+      r1 && r1.ok === true,
+      `result=${JSON.stringify(r1)}`);
+    const storedPrefsRaw = sb.__storage.get('bigals_user_prefs');
+    const stored = JSON.parse(storedPrefsRaw || 'null');
+    check('L2 import-with-items: kitInventory length restored',
+      stored && Array.isArray(stored.kitInventory) && stored.kitInventory.length === 2,
+      `length=${stored && stored.kitInventory && stored.kitInventory.length}`);
+    check('L2 import-with-items: kitInventory[0] fields verbatim',
+      stored && stored.kitInventory && stored.kitInventory[0] &&
+        stored.kitInventory[0].id === 'kit-a' &&
+        stored.kitInventory[0].name === 'Sennheiser MKH8060' &&
+        stored.kitInventory[0].defaultDailyRate === 75 &&
+        stored.kitInventory[0].defaultOn === true,
+      `item0=${JSON.stringify(stored && stored.kitInventory && stored.kitInventory[0])}`);
+    check('L2 import-with-items: other userPrefs survived the merge',
+      stored && stored.displayName === 'Test User' && stored.defaultBDR === 444,
+      `prefs=${JSON.stringify({ name: stored && stored.displayName, bdr: stored && stored.defaultBDR })}`);
+  }
+  {
+    // L3 — Pre-Stage-1 backup (no kitInventory key) imports cleanly to [].
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const legacyPayload = JSON.stringify({
+      version: 1,
+      schemaVersion: 3,
+      productions: [],
+      userPrefs: {
+        displayName: 'Legacy User',
+        defaultBDR: 500,
+        // NO kitInventory key at all — simulates a backup made before Stage 1.
+      },
+    });
+    const r2 = sb.__importBackup(legacyPayload);
+    check('L3 pre-stage-1: importBackup ok',
+      r2 && r2.ok === true,
+      `result=${JSON.stringify(r2)}`);
+    const stored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('L3 pre-stage-1: kitInventory present as empty array (merge-over-defaults)',
+      stored && Array.isArray(stored.kitInventory) && stored.kitInventory.length === 0,
+      `kitInventory=${JSON.stringify(stored && stored.kitInventory)}`);
+    check('L3 pre-stage-1: legacy fields preserved',
+      stored && stored.displayName === 'Legacy User' && stored.defaultBDR === 500);
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
