@@ -59,6 +59,10 @@ const ENGINE_NAMES = [
   // production, call buildInvoiceLineItems, and assert deal application,
   // detail formatting, double-counting safety, and rate-variation handling.
   'buildInvoiceLineItems',
+  // Stage 6: per-production kit discount = Σ max(0, usual − negotiatedTotal)
+  // over the user's dealt items. Same helper / same user-crew-id resolution
+  // as the invoice path → stats-vs-invoice reconcile by construction.
+  'computeProductionKitDiscount',
 ];
 
 const EXPORT_LINE =

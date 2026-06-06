@@ -820,6 +820,209 @@ function runStage4(eng, ok) {
   }
 }
 
+// ===========================================================================
+// Stage 6 — per-production kit discount + aggregate-rollup application.
+// Stats / Home production-or-above totals subtract the discount; per-day
+// surfaces (DayBreakdownView, Today widget) stay at daily rate.
+// ===========================================================================
+
+function runStage6(eng, ok) {
+  const { computeProductionKitDiscount, buildInvoiceLineItems, calcForDisplay } = eng;
+
+  const crewMember = { id: 'c-me', name: 'Test User', role: 'Sound Mixer',
+    department: 'Sound', bdr: 444, otCoef: 1.5, otRate: null, noOT: false,
+    pmpa: false, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false,
+    kitMoneyAmount: 0, isDriver: false, email: '' };
+  const otherCrewMember = { ...crewMember, id: 'c-other', name: 'Sparks Smith' };
+  const userPrefs = { displayName: 'Test User', kitInventory: [
+    { id: 'k-a', name: 'Sennheiser MKH8060', defaultDailyRate: 100, defaultOn: true },
+    { id: 'k-b', name: 'MixPre-6', defaultDailyRate: 50, defaultOn: true },
+  ]};
+  const bDay = (date, crewId, kitItems = []) => ({
+    id: `d-${crewId}-${date}`, crewId, date,
+    callTime: '08:00', wrapTime: '19:00', wrapNextDay: false,
+    dayType: 'Shoot', lunchStartTime: '13:00', lunchDurationMins: 60,
+    noMealProvided: false, secondBreakDurationMins: 0, secondBreakLogged: false,
+    cwdBreak1Given: false, cwdBreak2Given: false, preCallTime: '',
+    travelOutMins: 0, travelBackMins: 0, miles: 0, mileagePostcode: '',
+    mileageMethod: 'distance', mileageRoundTrip: false,
+    perDiemAmount: 0, kitMoneyAmount: 0,
+    kitItems, expenses: [],
+    stepUpRole: '', stepUpBDR: 0, stepUpOTCoef: 0, wrapped: false, note: '',
+  });
+  const bProd = (o = {}) => ({
+    id: 'p1', title: 'T', prodCo: 'Acme Films', jobReference: '',
+    crew: [crewMember], days: [],
+    defaultDay: null, dayDefaults: {},
+    bestBoyMode: false, viewMode: 'mobile', iAmCrewId: 'c-me',
+    isElevenHourDay: false, favourableRounding: false, apaRounding: false,
+    startDate: '2026-06-01', gridDates: [], weekStarts: [],
+    invoicingEmail: '', cancellationData: null, kitDeals: [], ...o,
+  });
+
+  // (a) Stats kit total reduced by the discount = the dealt kit total.
+  //     Verifies (i) computeProductionKitDiscount returns the exact discount;
+  //     (ii) the per-production total falls by that discount; (iii) the number
+  //     reconciles with the invoice line for the same item.
+  {
+    const days = [
+      bDay('2026-06-01', 'c-me', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      bDay('2026-06-02', 'c-me', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ];
+    const prod = bProd({ days, kitDeals: [{ itemId: 'k-a', negotiatedTotal: 150 }] });
+    const discount = computeProductionKitDiscount(prod, userPrefs);
+    ok('Stage 6 · a1: discount = usual £200 − negotiated £150 = £50',
+      discount === 50, `got £${discount}`);
+    // Build raw per-day total (no discount), then apply rollup adjustment.
+    const rawProdTotal = days.reduce((s, d) => {
+      const c = prod.crew.find(cc => cc.id === d.crewId);
+      return s + calcForDisplay(prod, d, c, null).total;
+    }, 0);
+    const rollupProdTotal = rawProdTotal - discount;
+    ok('Stage 6 · a2: per-production rollup total drops by exactly the discount',
+      Math.abs((rawProdTotal - rollupProdTotal) - 50) < 0.01);
+    // Invoice consistency: dealt line on the invoice == negotiatedTotal.
+    const invoiceItems = buildInvoiceLineItems(prod, userPrefs, 'c-me');
+    const kitLine = invoiceItems.find(li => li.label === 'Sennheiser MKH8060');
+    ok('Stage 6 · a3: dealt kit line on invoice = negotiatedTotal (£150)',
+      kitLine && kitLine.amount === 150);
+    // Stats-vs-invoice consistency: same number subtracted from the rollup as
+    // the line items collectively reflect — usual £200 - dealt line £150 = £50.
+    const invoiceTotalKitContribution = kitLine.amount;
+    const wouldHaveBeen = 100 + 100; // usual sum from per-day walk
+    ok('Stage 6 · a4: stats discount === (usual sum) − (dealt invoice line)',
+      Math.abs(discount - (wouldHaveBeen - invoiceTotalKitContribution)) < 0.01);
+  }
+
+  // (b) Per-day breakdown for a day in the dealt production stays at daily rate.
+  //     This is the central invariant: deal applies at rollup level only;
+  //     calcForDisplay (which DayBreakdownView and the meter render) is untouched.
+  {
+    const day = bDay('2026-06-01', 'c-me',
+      [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]);
+    const dealtProd = bProd({ days: [day, bDay('2026-06-02', 'c-me',
+      [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }])],
+      kitDeals: [{ itemId: 'k-a', negotiatedTotal: 150 }] });
+    const undealtProd = bProd({ days: [day, bDay('2026-06-02', 'c-me',
+      [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }])] });
+    const dealtCalc   = calcForDisplay(dealtProd,   day,
+      dealtProd.crew[0],   null);
+    const undealtCalc = calcForDisplay(undealtProd, day, undealtProd.crew[0], null);
+    ok('Stage 6 · b1: per-day calc.total identical with vs without deal',
+      Math.abs(dealtCalc.total - undealtCalc.total) < 0.01,
+      `dealt=${dealtCalc.total}, undealt=${undealtCalc.total}`);
+    const sumKit = (lines) => lines.filter(l => l.bucket === 'kit')
+      .reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    ok('Stage 6 · b2: per-day kit bucket on the breakdown unchanged (daily rate)',
+      sumKit(dealtCalc.lines) === sumKit(undealtCalc.lines),
+      `dealt=${sumKit(dealtCalc.lines)}, undealt=${sumKit(undealtCalc.lines)}`);
+    ok('Stage 6 · b3: that day still shows £100 kit (the daily rate)',
+      sumKit(dealtCalc.lines) === 100);
+  }
+
+  // (c) Home rollup: simulate productionTotals = raw − discount; monthTotal
+  //     derived from productionTotals auto-inherits the discount.
+  {
+    const days = [
+      bDay('2026-06-01', 'c-me', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      bDay('2026-06-02', 'c-me', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ];
+    const prodA = bProd({ id: 'pA', days, kitDeals: [{ itemId: 'k-a', negotiatedTotal: 150 }] });
+    const prodB = bProd({ id: 'pB', days: [
+      bDay('2026-06-03', 'c-me', [{ itemId: 'k-b', name: 'MixPre-6', rate: 50 }]),
+    ]});
+    const rawA = days.reduce((s, d) => s + calcForDisplay(prodA, d, prodA.crew[0], null).total, 0);
+    const rawB = calcForDisplay(prodB, prodB.days[0], prodB.crew[0], null).total;
+    const discA = computeProductionKitDiscount(prodA, userPrefs);
+    const discB = computeProductionKitDiscount(prodB, userPrefs);
+    ok('Stage 6 · c1: prod A has a deal — discount = £50',
+      discA === 50, `discA=£${discA}`);
+    ok('Stage 6 · c2: prod B has NO deal — discount = £0',
+      discB === 0, `discB=£${discB}`);
+    const homeTotalsA = rawA - discA;
+    const homeTotalsB = rawB - discB;
+    const monthTotal  = homeTotalsA + homeTotalsB;
+    ok('Stage 6 · c3: per-production rollup A drops by £50',
+      Math.abs((rawA - homeTotalsA) - 50) < 0.01);
+    ok('Stage 6 · c4: per-production rollup B unchanged',
+      Math.abs(rawB - homeTotalsB) < 0.01);
+    ok('Stage 6 · c5: per-month total = Σ(rollup totals) — auto-reflects discount',
+      Math.abs(monthTotal - ((rawA + rawB) - 50)) < 0.01);
+  }
+
+  // (d) No deal anywhere → no rollup change.
+  {
+    const days = [
+      bDay('2026-06-01', 'c-me', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      bDay('2026-06-02', 'c-me', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ];
+    const prod = bProd({ days }); // no kitDeals
+    const discount = computeProductionKitDiscount(prod, userPrefs);
+    ok('Stage 6 · d1: production with no deals → discount = £0',
+      discount === 0);
+    // Same with deals >= usual.
+    const prod2 = bProd({ days, kitDeals: [{ itemId: 'k-a', negotiatedTotal: 999 }] });
+    const discount2 = computeProductionKitDiscount(prod2, userPrefs);
+    ok('Stage 6 · d2: deal >= usual → discount = £0 (no negative discount)',
+      discount2 === 0);
+    // Deal exactly equal to usual.
+    const prod3 = bProd({ days, kitDeals: [{ itemId: 'k-a', negotiatedTotal: 200 }] });
+    const discount3 = computeProductionKitDiscount(prod3, userPrefs);
+    ok('Stage 6 · d3: deal == usual → discount = £0',
+      discount3 === 0);
+  }
+
+  // (e) User-scoped: another crew member's days don't contribute to the
+  //     discount. The user is solo on prod, even if "the other crew" used
+  //     the same dealt itemId on their own days, those days don't count.
+  {
+    const days = [
+      bDay('2026-06-01', 'c-me',    [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      bDay('2026-06-01', 'c-other', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      bDay('2026-06-02', 'c-other', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ];
+    const prod = bProd({
+      bestBoyMode: true,
+      crew: [crewMember, otherCrewMember],
+      iAmCrewId: 'c-me',
+      days,
+      kitDeals: [{ itemId: 'k-a', negotiatedTotal: 50 }],
+    });
+    const discount = computeProductionKitDiscount(prod, userPrefs);
+    // User has the item on 1 day only (£100 usual). Deal £50 → discount £50.
+    // Other crew's 2 days × £100 = £200 are NOT included.
+    ok("Stage 6 · e1: discount = (user's usual £100) − (deal £50) = £50",
+      discount === 50, `got £${discount}`);
+    // If the discount had counted other crew's days, it would be (£300 − £50 = £250).
+    ok('Stage 6 · e2: discount specifically NOT £250 (other crew excluded)',
+      discount !== 250);
+    // Confirm via explicit user-crew-id override that the result is identical.
+    const discountExplicit = computeProductionKitDiscount(prod, userPrefs, 'c-me');
+    ok('Stage 6 · e3: explicit userCrewId="c-me" matches displayName-resolved result',
+      discountExplicit === 50);
+    // And explicit other-crew override gives the other crew's discount (£200 − £50 = £150).
+    const discountOther = computeProductionKitDiscount(prod, userPrefs, 'c-other');
+    ok("Stage 6 · e4: explicit userCrewId=\"c-other\" gives THAT crew's scoped discount",
+      discountOther === 150, `got £${discountOther}`);
+  }
+
+  // (f) Frozen-record interaction: applying a discount at Stats/Home rollup
+  //     level NEVER mutates production.kitDeals nor any day record nor any
+  //     invoice. Verify computeProductionKitDiscount is read-only.
+  {
+    const days = [
+      bDay('2026-06-01', 'c-me', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      bDay('2026-06-02', 'c-me', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ];
+    const prod = bProd({ days, kitDeals: [{ itemId: 'k-a', negotiatedTotal: 150 }] });
+    const before = JSON.stringify(prod);
+    computeProductionKitDiscount(prod, userPrefs);
+    computeProductionKitDiscount(prod, userPrefs);
+    ok('Stage 6 · f1: computeProductionKitDiscount does not mutate production',
+      JSON.stringify(prod) === before);
+  }
+}
+
 // ---- Orchestrator ----------------------------------------------------------
 
 async function runKitAssertions() {
@@ -829,6 +1032,7 @@ async function runKitAssertions() {
     'calcForDisplay', 'categorizeBreakdownLine',
     'applyKitAutoApply', 'applyKitAutoRemove', 'resolveEffectiveDayType',
     'getEffectiveUserCrewId', 'aggregateKitForShoot', 'buildInvoiceLineItems',
+    'computeProductionKitDiscount',
   ];
   for (const name of required) {
     if (typeof eng[name] !== 'function') {
@@ -855,6 +1059,8 @@ async function runKitAssertions() {
   runStage3(eng, ok);
   console.log('\n── Stage 4: buildInvoiceLineItems (deals + frozen invoices) ──');
   runStage4(eng, ok);
+  console.log('\n── Stage 6: per-production kit discount + Stats/Home rollups ──');
+  runStage6(eng, ok);
 
   return summary();
 }

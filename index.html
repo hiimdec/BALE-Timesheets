@@ -7578,6 +7578,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return { kitBearingUserDayCount, items };
     }
 
+    // Stage 6: per-production kit discount = Σ over the user's dealt items of
+    // max(0, usual − negotiatedTotal). Same helper, same user-crew-id
+    // resolution, same arithmetic as buildInvoiceLineItems — so the number
+    // subtracted from Stats/Home rollups equals the discount on the invoice.
+    // Returns 0 when no user can be identified, no items have a deal, or all
+    // deals are >= usual. Per-DAY surfaces never call this — it is the
+    // rollup-level adjustment for production-or-above aggregate views.
+    function computeProductionKitDiscount(production, userPrefs, userCrewId = null) {
+      if (!production || !userPrefs) return 0;
+      const agg = aggregateKitForShoot(production, userPrefs, userCrewId);
+      let discount = 0;
+      for (const it of agg.items) {
+        if (it.negotiatedTotal != null && it.usual > 0 && it.negotiatedTotal < it.usual) {
+          discount += it.usual - it.negotiatedTotal;
+        }
+      }
+      return discount;
+    }
+
     // Stage 2d: resolve which crew member is "you" on a given production,
     // for kit-scoping purposes. Combines resolveUserCrewId (iAmCrewId
     // override → displayName match) with a solo fallback for the case
@@ -14247,7 +14266,7 @@ const setDays = (updater) =>
 
       const stats = useMemo(() => {
         if (enrichedDays.length === 0) return null;
-        const totalEarnings = enrichedDays.reduce((s, e) => s + e.calc.total, 0);
+        let totalEarnings = enrichedDays.reduce((s, e) => s + e.calc.total, 0);
         // Use RESOLVED times (call/wrap can cascade from dayDefaults — the raw
         // day record may have them undefined), so cascade-inheriting days still
         // count as worked and avgDayEarnings isn't divided by too few days.
@@ -14305,6 +14324,34 @@ const setDays = (updater) =>
           if (flags.hasL1) lateLunchSet.add(pKey);
           if (e.calc.lines.some(l => l.isTOC && l.isBreach)) tocBreachSet.add(pKey);
           if ((e.calc.meta.dayLabel || '').includes('Night Shoot')) nightShootSet.add(pKey);
+        }
+
+        // Stage 6: apply per-production kit discount at rollup level only.
+        // Per-day surfaces (earningsByDay → highestDay, .buckets.kit) stay at
+        // daily rate — the deal is shoot-wide and can't be pinned to one day.
+        // Subtract from: totalEarnings (all-time), earningsByMonth (per-month
+        // — attributed to the production's first user-day-pre-today, matching
+        // the invoice-once mental model), earningsByProdCo (per-prodCo — the
+        // production's own co key). Same helper / same user-crew-id as the
+        // invoice path → stats kit total reconciles with the invoice exactly.
+        // Walk enrichedDays once to find each production's earliest user-day
+        // month — that becomes the deal-month for monthly attribution.
+        const firstUserMonthForProd = new Map();
+        for (const e of enrichedDays) {
+          const prev = firstUserMonthForProd.get(e.production.id);
+          if (prev == null || e.day.date < prev) firstUserMonthForProd.set(e.production.id, e.day.date);
+        }
+        const seenProds = new Set();
+        for (const e of enrichedDays) {
+          if (seenProds.has(e.production.id)) continue;
+          seenProds.add(e.production.id);
+          const discount = computeProductionKitDiscount(e.production, userPrefs);
+          if (discount <= 0) continue;
+          totalEarnings -= discount;
+          const dealMonth = firstUserMonthForProd.get(e.production.id).slice(0, 7);
+          earningsByMonth[dealMonth] = (earningsByMonth[dealMonth] || 0) - discount;
+          const co = e.production.prodCo?.trim() || '(Unknown)';
+          earningsByProdCo[co] = (earningsByProdCo[co] || 0) - discount;
         }
 
         const highestDay = Object.values(earningsByDay).reduce((best, d) => d.amount > (best?.amount || 0) ? d : best, null);
@@ -16229,21 +16276,27 @@ const confirmDelete = (p) => setConfirmOpts({
       // the productions list — keeps it in sync with the stats hero. The Today
       // widget (`todayTotal` below) intentionally bypasses this rule because
       // its job IS the live in-progress number.
+      //
+      // Stage 6: subtract the per-production kit discount once at this
+      // rollup level so the per-production figure (and `monthTotal` derived
+      // from it below) matches what the invoice will charge. Per-day surfaces
+      // — DayBreakdownView and `todayTotal` — stay at daily rate by design.
       const productionTotals = useMemo(() => {
         const today = todayISO();
         const totals = {};
         for (const p of productions) {
           const crew = p.crew ?? [];
           const days = p.days ?? [];
-          totals[p.id] = days.reduce((sum, d) => {
+          const raw = days.reduce((sum, d) => {
             if (!d.date || d.date >= today) return sum;
             const c = crew.find(cc => cc.id === d.crewId);
             if (!c) return sum;
             return sum + calcForDisplay(p, d, c, findPrevDay(days, d)).total;
           }, 0);
+          totals[p.id] = raw - computeProductionKitDiscount(p, userPrefs);
         }
         return totals;
-      }, [productions]);
+      }, [productions, userPrefs]);
 
       // Per-production worked-hours total (for the month-group head's hour figure).
       const productionHours = useMemo(() => {
