@@ -5975,14 +5975,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const callH = parseHHMM(v.callTime);
         const patch = { dayType };
         if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[dayType] ?? 11));
-        // Stage 2c: chain auto-remove → auto-apply. Auto-remove fires if the
-        // new type is non-kit-bearing (strips only auto:true items, keeps
-        // manual + ad-hoc). Auto-apply fires if the new type is kit-bearing
-        // and kitItems ends up empty (adds default-on items with auto:true).
-        // The two are mutually exclusive on the type guard, so order is
-        // belt-and-braces.
-        const removed = applyKitAutoRemove({ ...v, ...patch });
-        const merged = applyKitAutoApply(removed, userPrefs);
+        // Stage 2c chain (auto-remove → auto-apply), Stage 2d scoped: both
+        // helpers no-op unless the day belongs to the user. For multi-crew
+        // productions edited by a best boy who isn't on the shoot, this
+        // means the user's defaults never bleed onto someone else's day.
+        const myCrewId = getEffectiveUserCrewId(production, userPrefs);
+        const removed = applyKitAutoRemove({ ...v, ...patch }, myCrewId);
+        const merged = applyKitAutoApply(removed, userPrefs, null, myCrewId);
         if (merged.kitItems !== v.kitItems) patch.kitItems = merged.kitItems;
         set(patch);
       };
@@ -6548,9 +6547,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </SectionCard>
           )}
 
-          {/* ── Kit money (chip-gated) — Stage 2 itemised + ad-hoc ── */}
+          {/* ── Kit money (chip-gated) — Stage 2d: scoped inventory display ── */}
           {kitMoneyActive && (() => {
-            const inventory = (userPrefs && userPrefs.kitInventory) || [];
+            // Stage 2d: the Kit Room inventory belongs to the USER (it lives
+            // in userPrefs). Only show the inventory toggles when this day
+            // belongs to the user. For another crew member's day in a multi-
+            // crew / best-boy production, the chip shows just the ad-hoc
+            // field (legacy per-crew behaviour) plus any stranded items so
+            // the user can still untick them.
+            const myCrewId = getEffectiveUserCrewId(production, userPrefs);
+            const isUsersOwnDay = myCrewId != null && v.crewId === myCrewId;
+            const inventory = isUsersOwnDay ? ((userPrefs && userPrefs.kitInventory) || []) : [];
             const dayItems = v.kitItems || [];
             const onIds = new Set(dayItems.map(it => it && it.itemId).filter(Boolean));
             const inventoryIds = new Set(inventory.map(it => it.id));
@@ -6559,8 +6566,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               if (onIds.has(invItem.id)) {
                 set({ kitItems: dayItems.filter(it => it.itemId !== invItem.id) });
               } else {
-                // Snapshot name+rate AT TOGGLE-ON TIME. Later Kit Room edits
-                // will not retroactively change this day record.
+                // Manual toggle-on: snapshot name+rate AT TOGGLE TIME. NO
+                // auto:true flag — items added manually here survive
+                // applyKitAutoRemove when the day stops being kit-bearing.
                 set({ kitItems: [...dayItems, { itemId: invItem.id, name: invItem.name || '', rate: Number(invItem.defaultDailyRate) || 0 }] });
               }
             };
@@ -6610,7 +6618,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     )}
                   </div>
                 )}
-                {!hasAny && (
+                {!hasAny && isUsersOwnDay && (
                   <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
                     Your Kit Room is empty. Add items in <span className="text-neutral-300">Settings → Kit Room</span> to tick them on individual days, or use the ad-hoc amount below for one-off kit charges.
                   </div>
@@ -7437,6 +7445,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // being kit-bearing without a deliberate edit here.
     const KIT_BEARING_DAY_TYPES = new Set(["Pre-light", "Build Day", "Shoot", "De-rig"]);
 
+    // Stage 2d: resolve which crew member is "you" on a given production,
+    // for kit-scoping purposes. Combines resolveUserCrewId (iAmCrewId
+    // override → displayName match) with a solo fallback for the case
+    // where displayName is empty on a non-best-boy single-crew production
+    // (the soloCrew IS the user even without an explicit name). Returns
+    // null when the user has no claim on this production — in best-boy
+    // mode with no matching crew, kit auto-apply correctly skips
+    // everything because nothing is "the user's day".
+    function getEffectiveUserCrewId(production, userPrefs) {
+      if (!production) return null;
+      const resolved = resolveUserCrewId(production, userPrefs);
+      if (resolved != null) return resolved;
+      if (!production.bestBoyMode && (production.crew || []).length === 1) {
+        return production.crew[0].id;
+      }
+      return null;
+    }
+
     // Stage 2c: resolve a day's EFFECTIVE dayType via the same cascade the
     // calc engine uses — day.dayType (if explicit) → dayDefaults[date] →
     // production.defaultDay → DEFAULT_PRODUCTION_DAY. Cascade-creation paths
@@ -7462,8 +7488,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // inside .map() / setProduction reducer patterns cleanly. Callers pass
     // the day POST-dayType assignment, optionally with an effectiveType
     // override for cascade-creation paths.
-    function applyKitAutoApply(day, userPrefs, effectiveType = null) {
+    function applyKitAutoApply(day, userPrefs, effectiveType = null, userCrewId = null) {
       if (!day || !userPrefs) return day;
+      // Stage 2d: scope to the user's OWN crew day. The Kit Room is personal
+      // to the user (it lives in userPrefs), so it must never auto-apply to
+      // another crew member's day in a multi-crew / best-boy production.
+      // If the caller didn't pass a userCrewId, OR the day belongs to a
+      // different crew member, skip — no add. Solo single-crew callers pass
+      // the soloCrew id (always = the user); multi-crew callers pass
+      // getEffectiveUserCrewId(production, userPrefs).
+      if (userCrewId == null || day.crewId !== userCrewId) return day;
       const type = effectiveType || day.dayType;
       if (!KIT_BEARING_DAY_TYPES.has(type)) return day;
       if ((day.kitItems || []).length > 0) return day;
@@ -7486,8 +7520,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // alone — the user removes them deliberately via the chip if they want.
     // The ad-hoc kitMoneyAmount is never touched. Pure function; no-op when
     // the day still has a kit-bearing type, no kitItems, or no auto entries.
-    function applyKitAutoRemove(day) {
+    function applyKitAutoRemove(day, userCrewId = null) {
       if (!day) return day;
+      // Stage 2d: same scope rule as applyKitAutoApply — only act on the
+      // user's own crew day. Auto items on someone else's day were never
+      // added by us (auto-apply is scoped too); leaving them alone here is
+      // the safe default.
+      if (userCrewId == null || day.crewId !== userCrewId) return day;
       if (KIT_BEARING_DAY_TYPES.has(day.dayType)) return day;
       const items = day.kitItems || [];
       if (items.length === 0) return day;
@@ -7664,12 +7703,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => {
         const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
         const callH = parseHHMM(d.callTime) ?? 8;
-        // Stage 2b: applyKitAutoApply seeds kitItems on the freshly-created
-        // form if dayType is kit-bearing. Form-level onDayTypeChange will
-        // re-trigger it if the user then picks a different kit-bearing type
-        // inside the modal.
+        // Stage 2d: kit auto-apply seeds the form ONLY when this row is
+        // for the user themselves (crewId === user's crew). For a best
+        // boy creating a sound mixer's day, the form opens clean.
         const initial = { ...d, ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11), wrapped: !!(date && date < todayISO()) };
-        setForm(applyKitAutoApply(initial, userPrefs));
+        const myCrewId = getEffectiveUserCrewId(production, userPrefs);
+        setForm(applyKitAutoApply(initial, userPrefs, null, myCrewId));
         setEditing("new");
         setFixedCrewId(crewId);
         setFixedDate(date);
@@ -7678,8 +7717,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (crew.length === 0) return;
         const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
         const callH = parseHHMM(d.callTime) ?? 8;
+        // Stage 2d: "new-all" form has no crewId set yet (sentinel ""),
+        // so the scope check inside applyKitAutoApply rejects this initial
+        // shape regardless. When the modal saves, each per-crew copy goes
+        // through the form's onDayTypeChange or the bulk-add path, which
+        // re-check scope per crew. Pass myCrewId for symmetry / readability.
         const initial = { ...d, ...makeBlankDay(""), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11), wrapped: !!(date && date < todayISO()) };
-        setForm(applyKitAutoApply(initial, userPrefs));
+        const myCrewId = getEffectiveUserCrewId(production, userPrefs);
+        setForm(applyKitAutoApply(initial, userPrefs, null, myCrewId));
         setEditing("new-all");
         setFixedCrewId(null);
         setFixedDate(date);
@@ -7695,6 +7740,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
           mileageMethod, mileagePostcode, mileageRoundTrip,
         } = overrides;
+        // Stage 2d: compute myCrewId ONCE for the bulk edit; each per-day
+        // helper call skips rows that aren't the user's.
+        const myCrewId = getEffectiveUserCrewId(production, userPrefs);
         setDays(prev => prev.map(d => {
           if (d.date !== date) return d;
           const next = {
@@ -7708,19 +7756,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
             mileageMethod, mileagePostcode, mileageRoundTrip,
           };
-          // Stage 2c: chain auto-remove → auto-apply (strip auto:true items
-          // on non-kit-bearing bulk edits; add defaults on kit-bearing bulk
-          // edits when kitItems is empty).
-          return applyKitAutoApply(applyKitAutoRemove(next), userPrefs);
+          // Auto-remove → auto-apply chain. Both helpers no-op on non-user
+          // rows, so other crew on this date pass through unmodified.
+          return applyKitAutoApply(applyKitAutoRemove(next, myCrewId), userPrefs, null, myCrewId);
         }));
       };
       const handleAssignAllOnDate = (date, dayType = "Shoot") => {
         const toAdd = crew.filter(m => !days.find(d => d.date === date && d.crewId === m.id));
-        if (toAdd.length > 0) setDays(prev => [
+        if (toAdd.length === 0) return;
+        // Stage 2d: only the user's row in the bulk-create gets kit
+        // defaults. Other crew rows get a clean day record.
+        const myCrewId = getEffectiveUserCrewId(production, userPrefs);
+        setDays(prev => [
           ...prev,
           ...toAdd.map(m => applyKitAutoApply(
             { ...makeBlankDay(m.id), date, dayType, ...dayTypeDefaults(dayType), wrapped: !!(date && date < todayISO()) },
-            userPrefs,
+            userPrefs, null, myCrewId,
           )),
         ]);
       };
@@ -7768,7 +7819,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const save = () => {
         if (!form.date || !form.callTime || !form.wrapTime) return;
         if (editing === "new-all") {
-          const newDays = crew.map((c) => ({ ...form, id: uid(), crewId: c.id }));
+          // Stage 2d: each per-crew duplicate goes through applyKitAutoApply
+          // with the user's crewId, so the user's own row picks up defaults
+          // (when kit-bearing + empty kitItems) and every other crew row is
+          // a no-op. The form's kitItems IS empty at this point because the
+          // form-level hooks all reject crewId="" → no kitItems leaked from
+          // the modal into the cross-crew duplication.
+          const myCrewId = getEffectiveUserCrewId(production, userPrefs);
+          const newDays = crew.map((c) => applyKitAutoApply(
+            { ...form, id: uid(), crewId: c.id },
+            userPrefs, null, myCrewId,
+          ));
           setDays((prev) => [...prev, ...newDays]);
           cancel();
         } else {
@@ -8204,19 +8265,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const existing = new Set(days.filter(d => d.date === date).map(d => d.crewId));
         const toAdd = crew.filter(m => !existing.has(m.id));
         if (toAdd.length === 0) return;
+        // Stage 2d: scope per row — only the user's new day picks up the
+        // Kit Room defaults; other crew rows get a clean kitItems: [].
+        const myCrewId = getEffectiveUserCrewId(production, userPrefs);
         setProduction(p => ({
           ...p,
           days: [
             ...(p.days || []),
-            // Stage 2b: applyKitAutoApply per row seeds kitItems when type
-            // is kit-bearing AND the row's kitItems is empty (it IS empty —
-            // these rows come straight from makeBlankDay).
             ...toAdd.map(m => applyKitAutoApply({
               ...makeBlankDay(m.id),
               date,
               dayType: type,
               wrapped: !!(date && date < todayISO()),
-            }, userPrefs)),
+            }, userPrefs, null, myCrewId)),
           ],
         }));
       };
@@ -9265,15 +9326,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             ...makeBlankDay(crewMember.id),
             date: currentDate,
           };
-          // Stage 2c: auto-apply on cascade-only creation. The day has no
-          // explicit dayType — resolve it via the same cascade resolveDay
-          // uses (dayDefaults[date] → production.defaultDay → DEFAULT). If
-          // that effective type is kit-bearing, snapshot default-on items
-          // with auto:true. The day record's dayType field stays unset so
-          // future cascade changes (e.g. user edits dayDefaults[date]) keep
-          // affecting this day's resolved type.
+          // Stage 2d: scope check via crewMember.id (the drilldown can be
+          // entered for any crew, not just the user). When this drilldown
+          // is for someone else's day, the helper no-ops — no Kit Room
+          // defaults bleed onto their day.
           const effectiveType = resolveEffectiveDayType(p, currentDate, newDay);
-          return { ...p, days: [...(p.days || []), applyKitAutoApply(newDay, userPrefs, effectiveType)] };
+          const myCrewId = getEffectiveUserCrewId(p, userPrefs);
+          return { ...p, days: [...(p.days || []), applyKitAutoApply(newDay, userPrefs, effectiveType, myCrewId)] };
         });
       };
 
@@ -9337,12 +9396,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           days: p.days.map(d => {
             if (d.id !== dayRecord.id) return d;
             const next = { ...d, [field]: value };
-            // Stage 2c: dayType changes chain auto-remove → auto-apply
-            // (strip auto:true items on non-kit-bearing transitions; add
-            // default-on items on kit-bearing transitions when kitItems is
-            // empty). Other field updates pass through unchanged.
+            // Stage 2d: scope per-row. The drilldown can be entered for ANY
+            // crew member, not just the user; helpers no-op on someone
+            // else's day so a best-boy retyping a sound mixer's Shoot →
+            // Prep Day doesn't strip the mixer's kit. (The mixer's items
+            // can only be theirs / manually set, never auto-added by us.)
+            const myCrewId = getEffectiveUserCrewId(p, userPrefs);
             return field === 'dayType'
-              ? applyKitAutoApply(applyKitAutoRemove(next), userPrefs)
+              ? applyKitAutoApply(applyKitAutoRemove(next, myCrewId), userPrefs, null, myCrewId)
               : next;
           })
         }));
@@ -11883,11 +11944,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           };
           const callH = parseHHMM(initialDay.callTime) ?? 8;
           initialDay.secondBreakStartTime = toHHMM(callH + 11);
-          // Stage 2c: the spread `...defaults` brings in defaults.dayType
-          // (typically "Shoot" from DEFAULT_PRODUCTION_DAY), so this day
-          // has an explicit dayType field. applyKitAutoApply checks it
-          // and snapshots default-on items if it's kit-bearing.
-          setDays([applyKitAutoApply(initialDay, userPrefs)]);
+          // Stage 2d: solo is single-crew non-best-boy, so the user IS
+          // crew[0] — pass it as userCrewId. getEffectiveUserCrewId would
+          // resolve the same id (with the solo fallback) but using crew[0]
+          // here saves a lookup and never depends on displayName being set.
+          setDays([applyKitAutoApply(initialDay, userPrefs, null, crew[0].id)]);
         }
       }, []); // mount-only; intentional — auto-create runs once per page entry
 
@@ -11972,10 +12033,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         };
         const callH = parseHHMM(newDay.callTime) ?? 8;
         newDay.secondBreakStartTime = toHHMM(callH + 11);
-        // Stage 2c: same as ensure-one-day useEffect — defaults.dayType is
-        // present on the new day, so applyKitAutoApply seeds kitItems
-        // when it's kit-bearing.
-        const augmented = applyKitAutoApply(newDay, userPrefs);
+        // Stage 2d: same solo-is-user pattern as ensure-one-day above.
+        const augmented = applyKitAutoApply(newDay, userPrefs, null, crew[0]?.id);
         setDays(prev => [...prev, augmented]);
         setCurrentDayId(augmented.id);
       };
@@ -12511,18 +12570,19 @@ const setDays = (updater) =>
         const existing = new Set((production.days || []).filter(d => d.date === date).map(d => d.crewId));
         const toAdd = (production.crew || []).filter(m => !existing.has(m.id));
         if (toAdd.length === 0) return;
+        // Stage 2d: same per-row scope as the BestBoyMobileDayView path —
+        // only the user's row picks up the Kit Room defaults.
+        const myCrewId = getEffectiveUserCrewId(production, userPrefs);
         setProduction(p => ({
           ...p,
           days: [
             ...(p.days || []),
-            // Stage 2b: same auto-apply as the BestBoyMobileDayView path —
-            // seeds kitItems on each new row when type is kit-bearing.
             ...toAdd.map(m => applyKitAutoApply({
               ...makeBlankDay(m.id),
               date,
               dayType: type,
               wrapped: !!(date && date < todayISO()),
-            }, userPrefs)),
+            }, userPrefs, null, myCrewId)),
           ],
         }));
       };

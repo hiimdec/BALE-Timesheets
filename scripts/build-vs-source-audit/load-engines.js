@@ -49,6 +49,9 @@ const ENGINE_NAMES = [
   // Stage 2c: auto-remove + cascade-resolved effective type.
   'applyKitAutoRemove',
   'resolveEffectiveDayType',
+  // Stage 2d: user-crew-id resolver for kit scoping (combines
+  // resolveUserCrewId with a solo single-crew fallback).
+  'getEffectiveUserCrewId',
 ];
 
 const EXPORT_LINE =
