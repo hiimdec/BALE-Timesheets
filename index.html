@@ -278,33 +278,50 @@
         'bigals_production', 'bigals_crew', 'bigals_days',
       ];
 
-      // ---- WEB IndexedDB opt-in detection ----
-      // Persistent localStorage flag so it survives reloads. URL param ?idb=1
-      // sets the flag (one-click activation); ?idb=0 clears it. Phase 1 keeps
-      // the default as localStorage — users only land on IDB if they opt in.
-      const IDB_OPT_IN_KEY = 'bigals_idb_optin';
-      const idbOptIn = (() => {
+      // ---- WEB backend selection (Phase 2: IndexedDB is the default) ----
+      // Rules:
+      //   native                              → Preferences (unchanged)
+      //   web + IndexedDB present + !forceLs  → IndexedDB (NEW DEFAULT)
+      //   web + force-off override            → localStorage
+      //   web + IndexedDB absent              → localStorage (fallback)
+      //
+      // Emergency OFF switch: ?idb=0 sets a sticky localStorage flag
+      // (bigals_idb_force_off) so we can disable IDB in the wild without a
+      // redeploy if something goes wrong. ?idb=1 clears it and re-enables the
+      // default. The Phase 1 opt-IN flag (bigals_idb_optin) is no longer read
+      // — Phase 2 makes IDB the default, so an explicit opt-in is redundant.
+      // Existing installs that have the flag set keep working unchanged
+      // (they were already on IDB; they still are).
+      const FORCE_LS_KEY = 'bigals_idb_force_off';
+      const useIdb = (() => {
         if (isNative) return false;
         if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return false;
         try {
           const search = (window.location && window.location.search) || '';
           const params = new URLSearchParams(search);
-          if (params.get('idb') === '1') {
-            try { localStorage.setItem(IDB_OPT_IN_KEY, '1'); } catch (_) {}
-            return true;
-          }
           if (params.get('idb') === '0') {
-            try { localStorage.removeItem(IDB_OPT_IN_KEY); } catch (_) {}
+            try { localStorage.setItem(FORCE_LS_KEY, '1'); } catch (_) {}
             return false;
           }
-          return localStorage.getItem(IDB_OPT_IN_KEY) === '1';
+          if (params.get('idb') === '1') {
+            try { localStorage.removeItem(FORCE_LS_KEY); } catch (_) {}
+            return true;
+          }
+          if (localStorage.getItem(FORCE_LS_KEY) === '1') return false;
+          return true;  // Phase 2: IDB is the default
         } catch (_) { return false; }
       })();
 
-      // ---- WEB localStorage backend (default for now) ----
+      // ---- WEB localStorage backend (force-off, IDB absent, or fallback) ----
       // Intentionally NOT wrapped in try/catch — callers already handle thrown
       // storage errors exactly as they did before this adapter existed.
-      if (!isNative && !idbOptIn) {
+      if (!isNative && !useIdb) {
+        // Reason for ending up here drives the Settings badge wording.
+        let lsReason = 'default';
+        try {
+          if (typeof indexedDB === 'undefined') lsReason = 'IndexedDB unavailable in this browser';
+          else if (typeof localStorage !== 'undefined' && localStorage.getItem(FORCE_LS_KEY) === '1') lsReason = 'IndexedDB disabled via ?idb=0 override';
+        } catch (_) {}
         return {
           isNative: false,
           backend: 'localStorage',
@@ -321,7 +338,7 @@
           },
           getStatus: () => ({
             backend: 'localStorage',
-            backendReason: 'default',
+            backendReason: lsReason,
             persistent: 'unknown',
             privateBrowsingLikely: false,
           }),
@@ -13426,15 +13443,20 @@ const setDays = (updater) =>
                 {(() => {
                   const s = (typeof storage.getStatus === 'function') ? storage.getStatus() : null;
                   if (!s) return null;
-                  const backendLabel = s.backend === 'indexeddb' ? 'IndexedDB' : s.backend === 'preferences' ? 'Native Preferences' : 'Browser storage (localStorage)';
+                  const backendLabel = s.backend === 'indexeddb' ? 'IndexedDB'
+                    : s.backend === 'preferences' ? 'Native Preferences'
+                    : 'localStorage';
                   const persistLabel = s.persistent === 'granted' ? 'Persistent ✓'
                     : s.persistent === 'best-effort' ? 'Best-effort — keep backups'
                     : null;
+                  const showReason = s.backendReason
+                    && s.backendReason !== 'default'
+                    && s.backendReason !== 'native';
                   return (
                     <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] text-neutral-400 leading-relaxed">
                       <div>Storage backend: <span className="text-neutral-200 font-semibold">{backendLabel}</span></div>
                       {persistLabel && <div>Persistence: <span className="text-neutral-200">{persistLabel}</span></div>}
-                      {s.backendReason && s.backendReason !== 'default' && s.backendReason !== 'native' && (
+                      {showReason && (
                         <div className="text-tm-warn mt-1">{s.backendReason}</div>
                       )}
                       {s.privateBrowsingLikely && (
