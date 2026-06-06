@@ -1395,7 +1395,23 @@
     // owns per diem / mileage / travel time / any "Expense: …" line so
     // they live in one place in the breakdown meter. Anything else
     // (BDR / BHR day pay, Pre-call, Night Shoot) is basic.
-    function categorizeBreakdownLine(label) {
+    //
+    // Stage 2: accepts EITHER a label string (legacy callers) OR a full line
+    // object. When a line carries `bucket: 'kit'` (set by augmentCalc on
+    // itemised + flat kit lines from this version forward), honour it FIRST
+    // — the itemised lines have free-text inventory names the regex below
+    // would miss. The /\bkit\s*money\b/i fallback continues to match legacy
+    // labels in frozen invoice line items so sent invoices keep bucketing
+    // correctly.
+    function categorizeBreakdownLine(arg) {
+      let line = null, label = '';
+      if (typeof arg === 'string') {
+        label = arg;
+      } else if (arg && typeof arg === 'object') {
+        line = arg;
+        label = arg.label || '';
+      }
+      if (line && line.bucket === 'kit') return 'kit';
       const s = label || '';
       if (/late|missed|curtailed|off the clock|breach|penalty/i.test(s)) return 'pen';
       if (/\bOT\b|overtime|triple time|double time|time and a half/i.test(s)) return 'ot';
@@ -2691,15 +2707,39 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function augmentCalc(calc, resolvedDay, crewMember) {
       const extra = [];
-      // Kit money: day's amount wins if set; otherwise fall back to crew's default amount
-      // (crew.kitMoneyEnabled still gates the crew-level default; this is a per-crew UI
-      // toggle, distinct from the day-level flag that was dropped in V4-5h-10).
+      // ── Kit Inventory Stage 2 ──
+      // Itemised lines first: one per kitItems entry with a positive rate.
+      // Snapshot fields (name, rate) come from the day record, captured at
+      // toggle-on time by the Kit Money chip — later Kit Room edits never
+      // touch a day that's already set. `bucket: 'kit'` is the explicit
+      // marker categorizeBreakdownLine honours before the regex fallback
+      // (the free-text inventory names would otherwise miss /\bkit money\b/i).
+      const kitItems = resolvedDay?.kitItems || [];
+      const hasAnyKitItems = kitItems.length > 0;
+      for (const it of kitItems) {
+        const rate = Number(it?.rate) || 0;
+        if (rate <= 0) continue;
+        extra.push({
+          label: (it?.name && String(it.name).trim()) || "Kit",
+          detail: "",
+          rate, qty: 1, amount: rate,
+          bucket: 'kit',
+        });
+      }
+      // Flat kit: day's ad-hoc amount wins; otherwise crew default ONLY when
+      // the day has no kitItems (any presence in kitItems suppresses the
+      // legacy crew default so nothing double-counts). Relabel "Kit Money" →
+      // "Kit" and tag with bucket:'kit'. Pre-Stage-2 stored lines / frozen
+      // invoice lineItems still say "Kit Money" forever and the regex in
+      // categorizeBreakdownLine continues to bucket them correctly.
       const dayKmAmount = Number(resolvedDay?.kitMoneyAmount) || 0;
       const crewKmAmount = (crewMember?.kitMoneyEnabled && Number(crewMember?.kitMoneyAmount) > 0)
         ? Number(crewMember.kitMoneyAmount) : 0;
-      const kmAmount = dayKmAmount > 0 ? dayKmAmount : crewKmAmount;
+      let kmAmount = 0;
+      if (dayKmAmount > 0) kmAmount = dayKmAmount;
+      else if (!hasAnyKitItems) kmAmount = crewKmAmount;
       if (kmAmount > 0)
-        extra.push({ label: "Kit Money", detail: "", rate: null, qty: 1, amount: kmAmount });
+        extra.push({ label: "Kit", detail: "", rate: null, qty: 1, amount: kmAmount, bucket: 'kit' });
       if (Number(resolvedDay?.perDiemAmount) > 0)
         extra.push({ label: "Per Diem", detail: "", rate: null, qty: 1, amount: Number(resolvedDay.perDiemAmount) });
       (resolvedDay?.expenses || []).forEach(exp => {
@@ -5910,7 +5950,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ DAY ENTRY FORM ═══════════════════════════ */
 
-    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null }) {
+    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null, userPrefs = null }) {
       const v = value;
       // DISPLAY-ONLY resolved view: call/wrap/lunch/dayType can cascade from
       // dayDefaults, so the raw `v` may leave those fields undefined. Resolve
@@ -6013,7 +6053,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // the panel (0, empty, or "— None —"). Visual treatment mirrors BB's
       // ExtraChip: solid border, sky tint when set, value summary inline.
       const stepUpSet     = !!v.stepUpRole;
-      const kitMoneySet   = (Number(v.kitMoneyAmount) || 0) > 0;
+      // Stage 2: chip is "set" when EITHER itemised kit items are ticked OR
+      // the ad-hoc amount is positive — both contribute to the day total.
+      const kitItemsCount = (v.kitItems || []).length;
+      const kitMoneySet   = kitItemsCount > 0 || (Number(v.kitMoneyAmount) || 0) > 0;
       const perDiemSet    = (Number(v.perDiemAmount) || 0) > 0;
       const preCallSet    = !!(v.preCallTime || v.truckCallTime);
       const mileageSet    = Number(v.miles) > 0 || !!v.mileagePostcode;
@@ -6333,7 +6376,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const stepUpSummary     = stepUpSet     ? v.stepUpRole : null;
                 const preCallSummary    = preCallSet    ? (v.preCallTime || v.truckCallTime) : null;
                 const mileageSummary    = mileageSet    ? (Number(v.miles) > 0 ? `${Number(v.miles)} mi` : v.mileagePostcode) : null;
-                const kitMoneySummary   = kitMoneySet   ? fmtGBP(v.kitMoneyAmount) : null;
+                const kitMoneySummary   = !kitMoneySet ? null : (() => {
+                  const adHoc = Number(v.kitMoneyAmount) || 0;
+                  const bits = [];
+                  if (kitItemsCount > 0) bits.push(`${kitItemsCount} item${kitItemsCount === 1 ? '' : 's'}`);
+                  if (adHoc > 0) bits.push(fmtGBP(adHoc));
+                  return bits.join(' · ');
+                })();
                 const travelTimeSummary = travelTimeSet ? fmtMins(travelTotalMins) : null;
                 const perDiemSummary    = perDiemSet    ? fmtGBP(v.perDiemAmount) : null;
                 const expensesSummary   = expensesSet   ? `${(v.expenses || []).length}` : null;
@@ -6490,14 +6539,81 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </SectionCard>
           )}
 
-          {/* ── Kit money (chip-gated) ── */}
-          {kitMoneyActive && (
-            <SectionCard title="Kit money" variant="condition" onClose={() => toggleChip("kitMoney")}>
-              <Field label="Kit Money Amount (£)" hint="Added to day total">
-                <Input type="number" min="0" step="0.01" value={v.kitMoneyAmount ?? 0} onChange={(e) => set({ kitMoneyAmount: Number(e.target.value) })} />
-              </Field>
-            </SectionCard>
-          )}
+          {/* ── Kit money (chip-gated) — Stage 2 itemised + ad-hoc ── */}
+          {kitMoneyActive && (() => {
+            const inventory = (userPrefs && userPrefs.kitInventory) || [];
+            const dayItems = v.kitItems || [];
+            const onIds = new Set(dayItems.map(it => it && it.itemId).filter(Boolean));
+            const inventoryIds = new Set(inventory.map(it => it.id));
+            const strandedItems = dayItems.filter(it => it && it.itemId && !inventoryIds.has(it.itemId));
+            const toggleItem = (invItem) => {
+              if (onIds.has(invItem.id)) {
+                set({ kitItems: dayItems.filter(it => it.itemId !== invItem.id) });
+              } else {
+                // Snapshot name+rate AT TOGGLE-ON TIME. Later Kit Room edits
+                // will not retroactively change this day record.
+                set({ kitItems: [...dayItems, { itemId: invItem.id, name: invItem.name || '', rate: Number(invItem.defaultDailyRate) || 0 }] });
+              }
+            };
+            const untickStranded = (entry) => {
+              set({ kitItems: dayItems.filter(it => it.itemId !== entry.itemId) });
+            };
+            const hasInventory = inventory.length > 0;
+            const hasAny = hasInventory || strandedItems.length > 0;
+            return (
+              <SectionCard title="Kit money" variant="condition" onClose={() => toggleChip("kitMoney")}>
+                {hasAny && (
+                  <div className="space-y-2">
+                    {inventory.map((invItem) => {
+                      const isOn = onIds.has(invItem.id);
+                      const rate = Number(invItem.defaultDailyRate) || 0;
+                      return (
+                        <div key={invItem.id} className="flex items-center gap-2 px-2.5 py-2 bg-neutral-900 border border-neutral-800 rounded-lg">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-neutral-100 truncate">{invItem.name || <span className="text-neutral-500 italic">Unnamed item</span>}</div>
+                            <div className="text-[10px] text-neutral-500 font-mono">{fmtGBP(rate)}/day</div>
+                          </div>
+                          <Toggle
+                            value={isOn}
+                            onChange={() => toggleItem(invItem)}
+                            ariaLabel={`Tick ${invItem.name || 'kit item'} for this day`}
+                          />
+                        </div>
+                      );
+                    })}
+                    {strandedItems.length > 0 && (
+                      <>
+                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold pt-1">No longer in Kit Room</div>
+                        {strandedItems.map((entry) => (
+                          <div key={entry.itemId} className="flex items-center gap-2 px-2.5 py-2 bg-neutral-900 border border-neutral-800 rounded-lg">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm text-neutral-300 truncate">{entry.name || <span className="text-neutral-500 italic">Unnamed item</span>}</div>
+                              <div className="text-[10px] text-neutral-500 font-mono">{fmtGBP(Number(entry.rate) || 0)}/day · stranded</div>
+                            </div>
+                            <Toggle
+                              value={true}
+                              onChange={() => untickStranded(entry)}
+                              ariaLabel={`Untick stranded ${entry.name || 'kit item'}`}
+                            />
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+                {!hasAny && (
+                  <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
+                    Your Kit Room is empty. Add items in <span className="text-neutral-300">Settings → Kit Room</span> to tick them on individual days, or use the ad-hoc amount below for one-off kit charges.
+                  </div>
+                )}
+                <div className={hasAny ? 'mt-3 pt-3 border-t border-neutral-800' : ''}>
+                  <Field label="Kit (ad-hoc) — £/day" hint="Added on top of any ticked items above. Use for one-off kit not in your Kit Room.">
+                    <Input type="number" min="0" step="0.01" value={v.kitMoneyAmount ?? 0} onChange={(e) => set({ kitMoneyAmount: Number(e.target.value) })} />
+                  </Field>
+                </div>
+              </SectionCard>
+            );
+          })()}
 
           {/* ── Travel time (chip-gated) ── */}
           {!isTravelDay && travelTimeActive && (
@@ -6599,7 +6715,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ DAY EDIT MODAL ═══════════════════════════ */
 
-    function DayEditModal({ editing, form, setForm, crew, production, days, onSave, onCancel, onRemove, fixedCrewId = null, fixedDate = null }) {
+    function DayEditModal({ editing, form, setForm, crew, production, days, onSave, onCancel, onRemove, fixedCrewId = null, fixedDate = null, userPrefs = null }) {
       const isNewAll = editing === "new-all";
       const isNew    = editing === "new";
       const isKnown  = !isNew && !isNewAll;
@@ -6688,6 +6804,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 days={days}
                 isElevenHourDay={!!production?.isElevenHourDay}
                 production={production}
+                userPrefs={userPrefs}
               />
               {isNewAll && (
                 <div className="mt-3 bg-black border border-sky-500 p-3 text-xs text-neutral-300 rounded-xl">
@@ -7316,6 +7433,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         travelOutMins: 0, travelBackMins: 0, miles: 0,
         perDiemAmount: 0,
         kitMoneyAmount: 0,
+        // Kit Inventory Stage 2: per-day snapshots of inventory items the user
+        // has ticked on. Each entry: { itemId, name, rate } — name + rate are
+        // captured at toggle-on time so later Kit Room edits never change a day
+        // that's already set. Empty for new days. Existing days predating
+        // Stage 2 won't have this key; every read uses (day.kitItems || []).
+        kitItems: [],
         expenses: [],
         stepUpRole: "", stepUpBDR: 0, stepUpOTCoef: 1,
         note: "",
@@ -7424,7 +7547,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek }) {
+    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, userPrefs = null }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -7636,6 +7759,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onRemove={(id) => { remove(id); cancel(); }}
               fixedCrewId={fixedCrewId}
               fixedDate={fixedDate}
+              userPrefs={userPrefs}
             />
           )}
 
@@ -10769,7 +10893,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function BreakdownLineRow({ line }) {
-      const bucket = categorizeBreakdownLine(line.label);
+      const bucket = categorizeBreakdownLine(line);
       const isPenalty = line.rate === null || bucket === 'pen';
       const isOT = !isPenalty && bucket === 'ot';
       const amountCls = isPenalty ? 'text-tm-pen'
@@ -11119,7 +11243,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (!c) return;
           const calc = calcForDisplay(production, d, c, findPrevDay(days, d));
           calc.lines.forEach(line => {
-            b[categorizeBreakdownLine(line.label || '')] += Number(line.amount) || 0;
+            // Pass the line (not just label) so categorizeBreakdownLine can
+            // honour the bucket:'kit' marker on Stage-2 itemised kit lines
+            // whose free-text inventory names the legacy regex would miss.
+            b[categorizeBreakdownLine(line)] += Number(line.amount) || 0;
           });
         });
         const sum = b.basic + b.ot + b.pen + b.kit + b.extras;
@@ -12033,6 +12160,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 hideDayCard={true}
                 isElevenHourDay={!!production?.isElevenHourDay}
                 production={production}
+                userPrefs={userPrefs}
               />
             </div>
           </div>
@@ -12557,7 +12685,7 @@ const setDays = (updater) =>
                         onCrewTap={setDrilldownCrewMember}
                         showToast={showToast}
                       />)
-                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} />
+                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} userPrefs={userPrefs} />
             )}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
           </div>
@@ -13789,7 +13917,9 @@ const setDays = (updater) =>
             // zeroing Overtime Earned for every shoot with weekday OT.
             if (categorizeBreakdownLine(l.label || '') === 'ot') otEarnings += l.amount;
             if ((l.label || '').toLowerCase().startsWith('late')) lateLunchEarnings += l.amount;
-            dayEntry.buckets[categorizeBreakdownLine(l.label || '')] += Number(l.amount) || 0;
+            // Pass the line so Stage-2 itemised kit lines (bucket:'kit') bucket
+            // correctly into HighestDayBreakdown's kit segment.
+            dayEntry.buckets[categorizeBreakdownLine(l)] += Number(l.amount) || 0;
           }
           const flags = penaltyFlags(e.calc);
           if (flags.hasL1) lateLunchSet.add(pKey);

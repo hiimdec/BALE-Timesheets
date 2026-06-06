@@ -39,6 +39,9 @@ const ENGINE_NAMES = [
   'augmentCalc',
   'computeAPArate',
   'dayOfWeek',
+  // Stage 2 (Kit Inventory): spot-checks read the categoriser to confirm
+  // itemised kit lines bucket via the bucket:'kit' marker, not the regex.
+  'categorizeBreakdownLine',
 ];
 
 const EXPORT_LINE =
