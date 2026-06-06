@@ -5975,6 +5975,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const callH = parseHHMM(v.callTime);
         const patch = { dayType };
         if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[dayType] ?? 11));
+        // Stage 2b: also patch kitItems if the new type is kit-bearing AND
+        // current kitItems is empty. applyKitAutoApply is additive; it never
+        // removes or clobbers, so non-kit transitions and already-set days
+        // both pass through unchanged.
+        const merged = applyKitAutoApply({ ...v, ...patch }, userPrefs);
+        if (merged.kitItems !== v.kitItems) patch.kitItems = merged.kitItems;
         set(patch);
       };
       const onCallChange = (callTime) => {
@@ -7422,6 +7428,36 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
+    // Day types whose calc.engine basic-pay model includes kit (per Stage 2b
+    // spec). Plain literals — not derived from DAY_TYPES — because we want a
+    // type that gets renamed in DAY_TYPES later to NOT silently become / stop
+    // being kit-bearing without a deliberate edit here.
+    const KIT_BEARING_DAY_TYPES = new Set(["Pre-light", "Build Day", "Shoot", "De-rig"]);
+
+    // Stage 2b auto-apply: when a day's dayType is set to / changed to a kit-
+    // bearing type AND the day currently has NO kitItems, snapshot every
+    // default-on inventory item onto the day. Additive only — never removes,
+    // never clobbers an existing kitItems list, never fires on non-kit-bearing
+    // transitions. Pure function returning the (possibly-augmented) day so it
+    // composes inside .map()/setProduction reducer patterns cleanly. Callers
+    // pass the day post-dayType assignment so the function can inspect the
+    // freshly-set type.
+    function applyKitAutoApply(day, userPrefs) {
+      if (!day || !userPrefs) return day;
+      if (!KIT_BEARING_DAY_TYPES.has(day.dayType)) return day;
+      if ((day.kitItems || []).length > 0) return day;
+      const defaults = (userPrefs.kitInventory || []).filter(it => it && it.defaultOn === true);
+      if (defaults.length === 0) return day;
+      return {
+        ...day,
+        kitItems: defaults.map(it => ({
+          itemId: it.id,
+          name: it.name || '',
+          rate: Number(it.defaultDailyRate) || 0,
+        })),
+      };
+    }
+
     function makeBlankDay(crewId = "") {
       return {
         id: uid(), crewId, date: todayISO(),
@@ -7590,7 +7626,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const handleAddDayFromGrid = (crewId, date, dayType = "Shoot") => {
         const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
         const callH = parseHHMM(d.callTime) ?? 8;
-        setForm({ ...d, ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11), wrapped: !!(date && date < todayISO()) });
+        // Stage 2b: applyKitAutoApply seeds kitItems on the freshly-created
+        // form if dayType is kit-bearing. Form-level onDayTypeChange will
+        // re-trigger it if the user then picks a different kit-bearing type
+        // inside the modal.
+        const initial = { ...d, ...makeBlankDay(crewId), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11), wrapped: !!(date && date < todayISO()) };
+        setForm(applyKitAutoApply(initial, userPrefs));
         setEditing("new");
         setFixedCrewId(crewId);
         setFixedDate(date);
@@ -7599,7 +7640,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (crew.length === 0) return;
         const d = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}) };
         const callH = parseHHMM(d.callTime) ?? 8;
-        setForm({ ...d, ...makeBlankDay(""), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11), wrapped: !!(date && date < todayISO()) });
+        const initial = { ...d, ...makeBlankDay(""), date, dayType, ...dayTypeDefaults(dayType), secondBreakStartTime: toHHMM(callH + 11), wrapped: !!(date && date < todayISO()) };
+        setForm(applyKitAutoApply(initial, userPrefs));
         setEditing("new-all");
         setFixedCrewId(null);
         setFixedDate(date);
@@ -7615,8 +7657,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
           mileageMethod, mileagePostcode, mileageRoundTrip,
         } = overrides;
-        setDays(prev => prev.map(d =>
-          d.date !== date ? d : {
+        setDays(prev => prev.map(d => {
+          if (d.date !== date) return d;
+          const next = {
             ...d,
             dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins,
             secondBreakStartTime, secondBreakDurationMins,
@@ -7626,12 +7669,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             kitMoneyAmount,
             stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
             mileageMethod, mileagePostcode, mileageRoundTrip,
-          }
-        ));
+          };
+          // Stage 2b: auto-apply only when kitItems is empty — never clobbers.
+          return applyKitAutoApply(next, userPrefs);
+        }));
       };
       const handleAssignAllOnDate = (date, dayType = "Shoot") => {
         const toAdd = crew.filter(m => !days.find(d => d.date === date && d.crewId === m.id));
-        if (toAdd.length > 0) setDays(prev => [...prev, ...toAdd.map(m => ({ ...makeBlankDay(m.id), date, dayType, ...dayTypeDefaults(dayType), wrapped: !!(date && date < todayISO()) }))]);
+        if (toAdd.length > 0) setDays(prev => [
+          ...prev,
+          ...toAdd.map(m => applyKitAutoApply(
+            { ...makeBlankDay(m.id), date, dayType, ...dayTypeDefaults(dayType), wrapped: !!(date && date < todayISO()) },
+            userPrefs,
+          )),
+        ]);
       };
       const handleRemoveAllOnDate = (date) => {
         const count = days.filter(d => d.date === date).length;
@@ -8117,12 +8168,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           ...p,
           days: [
             ...(p.days || []),
-            ...toAdd.map(m => ({
+            // Stage 2b: applyKitAutoApply per row seeds kitItems when type
+            // is kit-bearing AND the row's kitItems is empty (it IS empty —
+            // these rows come straight from makeBlankDay).
+            ...toAdd.map(m => applyKitAutoApply({
               ...makeBlankDay(m.id),
               date,
               dayType: type,
               wrapped: !!(date && date < todayISO()),
-            })),
+            }, userPrefs)),
           ],
         }));
       };
@@ -9232,9 +9286,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!dayRecord) return;
         setProduction(p => ({
           ...p,
-          days: p.days.map(d =>
-            d.id === dayRecord.id ? { ...d, [field]: value } : d
-          )
+          days: p.days.map(d => {
+            if (d.id !== dayRecord.id) return d;
+            const next = { ...d, [field]: value };
+            // Stage 2b: dayType changes here go through applyKitAutoApply
+            // (additive, only fires on kit-bearing transitions with empty
+            // kitItems). Other field updates pass through unchanged because
+            // the helper only inspects dayType + kitItems.
+            return field === 'dayType' ? applyKitAutoApply(next, userPrefs) : next;
+          })
         }));
       };
 
@@ -12397,12 +12457,14 @@ const setDays = (updater) =>
           ...p,
           days: [
             ...(p.days || []),
-            ...toAdd.map(m => ({
+            // Stage 2b: same auto-apply as the BestBoyMobileDayView path —
+            // seeds kitItems on each new row when type is kit-bearing.
+            ...toAdd.map(m => applyKitAutoApply({
               ...makeBlankDay(m.id),
               date,
               dayType: type,
               wrapped: !!(date && date < todayISO()),
-            })),
+            }, userPrefs)),
           ],
         }));
       };
