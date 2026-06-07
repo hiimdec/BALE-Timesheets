@@ -2951,6 +2951,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return becomingIssued ? { ...patch, ...clientFieldsFromProduction(production) } : patch;
     }
 
+    // Saved Clients Stage 2: derive the client-library effect of freezing this
+    // invoice on send. Pure — callers do the setUserPrefs / setProduction
+    // writes. Returns { clientId, nextClients }:
+    //   - empty trimmed name → clientId: null, nextClients: clients (unchanged)
+    //   - existing match (trimmed, case-insensitive name) → clientId of that
+    //     client; nextClients unchanged. The matched client is NEVER mutated
+    //     (Stage 4 will surface an opt-in nudge for stale address / email).
+    //   - no match → fresh client { id: uid(), name: trimmed (user's case),
+    //     address, email }, appended; clientId is the new client's id.
+    // The "frozen" invoice fields (post-freezeOnSend) are the source of truth
+    // for the input; callers pass them in as { name, address, email }.
+    function deriveClientFromSentInvoice(frozen, clients) {
+      const trimmedName = ((frozen && frozen.name) || '').trim();
+      const list = clients || [];
+      if (!trimmedName) return { clientId: null, nextClients: list };
+      const norm = (s) => ((s || '') + '').trim().toLowerCase();
+      const key = norm(trimmedName);
+      const existing = list.find(c => norm(c && c.name) === key);
+      if (existing) return { clientId: existing.id, nextClients: list };
+      const fresh = {
+        id: uid(),
+        name: trimmedName,
+        address: (frozen.address || ''),
+        email:   (frozen.email   || ''),
+      };
+      return { clientId: fresh.id, nextClients: [...list, fresh] };
+    }
+
     function createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId) {
       const crewMember = (production.crew || []).find(c => c.id === userCrewId);
       const prefix = userPrefs.invoicePrefix || "INV-";
@@ -15066,7 +15094,7 @@ const setDays = (updater) =>
                 }))
                 .then((mode) => {
                   if (wasDraft) {
-                    updateInvoice(freezeOnSend(production, inv, { status: 'sent', dateSent: todayISO() }));
+                    sendInvoice(production, inv, { status: 'sent', dateSent: todayISO() });
                     showToast(mode === 'composer' ? 'Email composer opened — marked as sent' : 'Share sheet opened — marked as sent');
                   } else {
                     // Re-sending an already-issued invoice: re-lock so the edit-sent
@@ -15147,6 +15175,34 @@ const setDays = (updater) =>
           invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...updates } : inv),
         }));
 
+      // Saved Clients Stage 2: send-time hook. Wraps the existing freeze +
+      // updateInvoice path so the auto-save runs in lock-step with freezeOnSend.
+      // - prod / inv are the captured (possibly slightly stale) values from
+      //   the click moment, same as the existing freeze sites; the freeze
+      //   patch shape is byte-identical to before.
+      // - If the post-freeze invoice carries a non-empty toName, we dedupe
+      //   it into userPrefs.clients (Stage 1 storage) and write the matched
+      //   / new client's id onto production.clientId. No invoice mutation
+      //   beyond the freeze patch itself.
+      // - Frozen / sent invoices stay frozen — only userPrefs.clients +
+      //   production.clientId may change here.
+      const sendInvoice = (prod, inv, basePatch) => {
+        const frozenPatch = freezeOnSend(prod, inv, basePatch);
+        const effective = { ...inv, ...frozenPatch };
+        const { clientId, nextClients } = deriveClientFromSentInvoice(
+          { name: effective.toName, address: effective.toAddress, email: effective.toEmail },
+          userPrefs.clients
+        );
+        setProduction(p => ({
+          ...p,
+          ...(clientId !== null ? { clientId } : {}),
+          invoices: (p.invoices || []).map(i => i.id === invoiceId ? { ...i, ...frozenPatch } : i),
+        }));
+        if (clientId !== null && nextClients !== (userPrefs.clients || [])) {
+          setUserPrefs(prev => ({ ...prev, clients: nextClients }));
+        }
+      };
+
       // Edit a shared client/job field. On a DRAFT, write THROUGH to the production
       // (the single source) so project setup + sibling drafts stay in sync, and
       // also update this invoice's snapshot for immediate display. On a sent/paid
@@ -15189,7 +15245,7 @@ const setDays = (updater) =>
         if (wasDraft) {
           // Auto-mark sent. The mailto opens the user's mail client; we optimistically
           // assume they'll send. If they cancel, the header kebab has "Revert to draft".
-          updateInvoice(freezeOnSend(production, invoice, { status: 'sent', dateSent: todayISO() }));
+          sendInvoice(production, invoice, { status: 'sent', dateSent: todayISO() });
           showToast('Email opened — marked as sent');
         } else if (editingSentFields) {
           // Re-sending an edited issued invoice: re-lock — its details are re-frozen.
@@ -17105,9 +17161,28 @@ const confirmDelete = (p) => setConfirmOpts({
       const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); };
       const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); };
       const handleUpdateInvoice = (productionId, invoiceId, patch) => {
+        // Saved Clients Stage 2: kebab-action-sheet send path. Derive the
+        // auto-save BEFORE the setProductions updater so the React state
+        // updater stays pure (no closure-write side effects). Re-reads
+        // production / invoice from the current `productions` snapshot —
+        // same staleness profile as the editor send sites.
+        const production = productions.find(p => p.id === productionId);
+        const invoice = production?.invoices?.find(i => i.id === invoiceId);
+        if (!production || !invoice) return;
+        const frozenPatch = freezeOnSend(production, invoice, patch);
+        const effective = { ...invoice, ...frozenPatch };
+        const { clientId, nextClients } = deriveClientFromSentInvoice(
+          { name: effective.toName, address: effective.toAddress, email: effective.toEmail },
+          userPrefs.clients
+        );
         setProductions(prev => prev.map(p => p.id !== productionId ? p : {
-          ...p, invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...freezeOnSend(p, inv, patch) } : inv),
+          ...p,
+          ...(clientId !== null ? { clientId } : {}),
+          invoices: (p.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, ...frozenPatch } : inv),
         }));
+        if (clientId !== null && nextClients !== (userPrefs.clients || [])) {
+          setUserPrefs(prev => ({ ...prev, clients: nextClients }));
+        }
       };
       const handleDeleteInvoice = (productionId, invoiceId) => {
         setProductions(prev => prev.map(p => p.id !== productionId ? p : {

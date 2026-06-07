@@ -223,7 +223,11 @@ async function transformedAppCode() {
     // (used by the L-suite to confirm kitInventory restores cleanly and old
     // backups without the key get the empty-array fallback).
     'try { globalThis.__importBackup = importBackup; } catch (_) {}\n' +
-    'try { globalThis.__DEFAULT_USER_PREFS = DEFAULT_USER_PREFS; } catch (_) {}\n';
+    'try { globalThis.__DEFAULT_USER_PREFS = DEFAULT_USER_PREFS; } catch (_) {}\n' +
+    // Saved Clients Stage 2: expose the pure derivation so the N-suite can
+    // exercise dedupe / no-mutation / empty-name / idempotency / sent-frozen
+    // invariants without standing up a full React tree.
+    'try { globalThis.__deriveClientFromSentInvoice = deriveClientFromSentInvoice; } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -938,6 +942,159 @@ async function main() {
     check('M3 pre-stage-1: kitInventory also defaults to empty (same guard)',
       stored && Array.isArray(stored.kitInventory) && stored.kitInventory.length === 0,
       `kitInventory=${JSON.stringify(stored && stored.kitInventory)}`);
+  }
+
+  // ===== N. SAVED CLIENTS STAGE-2 AUTO-SAVE ON SEND =====
+  // Exercises the pure derivation `deriveClientFromSentInvoice` against
+  // the user's Stage-2 spec (a)–(e). Each assertion simulates the
+  // send-flow state transitions with plain JS to lock in the dedupe /
+  // no-mutation / idempotency / frozen-record invariants.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const derive = sb.__deriveClientFromSentInvoice;
+    if (typeof derive !== 'function') {
+      check('N0: deriveClientFromSentInvoice exposed in sandbox', false,
+        `typeof=${typeof derive}`);
+    } else {
+      check('N0: deriveClientFromSentInvoice exposed in sandbox', true);
+
+      // (a) Sending with a new client name creates exactly one client
+      //     {name, address, email} and sets production.clientId.
+      {
+        let clients = [];
+        let productionClientId = null;
+        const frozen = { name: 'Acme Films', address: '5 Margaret St\nLondon W1W 8RG', email: 'accounts@acme.example' };
+        const r = derive(frozen, clients);
+        clients = r.nextClients;
+        if (r.clientId !== null) productionClientId = r.clientId;
+        check('Na1: new client appended (clients length 0 → 1)',
+          clients.length === 1, `length=${clients.length}`);
+        check('Na2: stored client name preserves user capitalisation, trimmed',
+          clients[0] && clients[0].name === 'Acme Films',
+          `name=${clients[0] && clients[0].name}`);
+        check('Na3: stored client address verbatim',
+          clients[0] && clients[0].address === '5 Margaret St\nLondon W1W 8RG');
+        check('Na4: stored client email verbatim',
+          clients[0] && clients[0].email === 'accounts@acme.example');
+        check('Na5: production.clientId set to the new client id',
+          productionClientId === clients[0].id,
+          `clientId=${productionClientId}, newId=${clients[0] && clients[0].id}`);
+        check('Na6: returned clientId === new client id',
+          r.clientId === clients[0].id);
+      }
+
+      // (b) Sending with a name that matches an existing client by trim +
+      //     case-insensitive comparison LINKS to it; creates NO duplicate;
+      //     does NOT mutate the existing client's address / email.
+      {
+        const original = { id: 'cli-existing', name: 'Acme Films',
+          address: '5 Margaret St\nLondon W1W 8RG', email: 'accounts@acme.example' };
+        let clients = [original];
+        let productionClientId = null;
+        // Different case + leading/trailing whitespace + DIFFERENT address/email
+        // (should be ignored — no silent overwrite).
+        const frozen = { name: '  ACME films  ',
+          address: '99 New Street\nOther Town', email: 'pay@elsewhere.example' };
+        const r = derive(frozen, clients);
+        clients = r.nextClients;
+        if (r.clientId !== null) productionClientId = r.clientId;
+        check('Nb1: no duplicate created (length stays 1)',
+          clients.length === 1, `length=${clients.length}`);
+        check('Nb2: links to the existing client id',
+          productionClientId === 'cli-existing',
+          `clientId=${productionClientId}`);
+        check('Nb3: existing client name unchanged',
+          clients[0].name === 'Acme Films');
+        check('Nb4: existing client address UNCHANGED (no silent overwrite)',
+          clients[0].address === '5 Margaret St\nLondon W1W 8RG',
+          `address=${clients[0].address}`);
+        check('Nb5: existing client email UNCHANGED (no silent overwrite)',
+          clients[0].email === 'accounts@acme.example',
+          `email=${clients[0].email}`);
+        check('Nb6: nextClients is the same array reference (no rewrite)',
+          r.nextClients === clients);
+      }
+
+      // (c) Empty name → no client created, no clientId set.
+      {
+        for (const empty of [
+          { name: '',    address: 'x', email: 'y' },
+          { name: '   ', address: 'x', email: 'y' },
+          { name: null,  address: 'x', email: 'y' },
+          { name: undefined, address: 'x', email: 'y' },
+        ]) {
+          let clients = [];
+          const r = derive(empty, clients);
+          check(`Nc[name=${JSON.stringify(empty.name)}]: clientId is null`,
+            r.clientId === null,
+            `clientId=${r.clientId}`);
+          check(`Nc[name=${JSON.stringify(empty.name)}]: clients unchanged (length 0)`,
+            r.nextClients.length === 0,
+            `length=${r.nextClients.length}`);
+        }
+      }
+
+      // (d) Idempotency — a second send for the SAME production (same
+      //     toName/address/email post-freeze) must re-link to the same
+      //     client and never duplicate. Also covers "another invoice on
+      //     the same production" which has identical frozen client fields.
+      {
+        let clients = [];
+        let productionClientId = null;
+        // First send.
+        const frozen1 = { name: 'Acme Films', address: '5 Margaret St', email: 'a@acme.example' };
+        const r1 = derive(frozen1, clients);
+        clients = r1.nextClients;
+        productionClientId = r1.clientId;
+        const firstClientId = productionClientId;
+        // Second send (re-send same invoice, OR send another invoice on
+        // the same production — both arrive with identical frozen fields).
+        const r2 = derive(frozen1, clients);
+        clients = r2.nextClients;
+        productionClientId = r2.clientId;
+        check('Nd1: second send keeps clients length at 1 (no duplicate)',
+          clients.length === 1, `length=${clients.length}`);
+        check('Nd2: second send re-links to the same client id',
+          productionClientId === firstClientId,
+          `first=${firstClientId}, second=${productionClientId}`);
+        check('Nd3: r2.nextClients is the same array reference as input (no rewrite)',
+          r2.nextClients === r1.nextClients);
+        // And once more for good measure — third call still stable.
+        const r3 = derive(frozen1, clients);
+        check('Nd4: third call also re-links to the same id, still no duplicate',
+          r3.clientId === firstClientId && r3.nextClients.length === 1);
+      }
+
+      // (e) Sent invoice's frozen fields are unchanged by the auto-save.
+      //     The derivation reads from the frozen invoice fields; it must
+      //     not mutate them. Simulate by snapshotting the input and
+      //     comparing after.
+      {
+        const sentInvoice = {
+          id: 'inv-1', status: 'sent',
+          toName: 'Acme Films',
+          toAddress: '5 Margaret St',
+          toEmail: 'accounts@acme.example',
+        };
+        const before = JSON.stringify(sentInvoice);
+        const clients = [];
+        derive({ name: sentInvoice.toName, address: sentInvoice.toAddress, email: sentInvoice.toEmail }, clients);
+        check('Ne1: sent invoice fields unchanged after derivation (frozen)',
+          JSON.stringify(sentInvoice) === before,
+          `before=${before}, after=${JSON.stringify(sentInvoice)}`);
+        check('Ne2: input clients array unchanged when empty (no in-place push)',
+          clients.length === 0);
+        // Pre-existing clients array must not be mutated by derivation.
+        const existing = [{ id: 'x', name: 'Other Co', address: 'a', email: 'e' }];
+        const beforeClients = JSON.stringify(existing);
+        derive({ name: 'Acme Films', address: 'b', email: 'f' }, existing);
+        check('Ne3: pre-existing clients array NOT mutated in place',
+          JSON.stringify(existing) === beforeClients,
+          `before=${beforeClients}, after=${JSON.stringify(existing)}`);
+      }
+    }
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
