@@ -16298,6 +16298,34 @@ const confirmDelete = (p) => setConfirmOpts({
         return totals;
       }, [productions, userPrefs]);
 
+      // Stage 7: full per-production total — ALL of the user's days in the
+      // production (no d.date < today gate), kit discount applied. Read ONLY
+      // by the current-shoot headline card so a live shoot's "Shoot" figure
+      // reflects the full booking the user is working toward.
+      //
+      // NEVER fed into any aggregate rollup (per-month / all-time / per-prodCo
+      // on StatsScreen, monthTotal on Home). `productionTotals` above stays
+      // the source of truth for those — keeps the StatsScreen "N days not
+      // yet counted" promise honest. Zero risk of re-inflation: the two maps
+      // are independent and `monthTotal` keeps reading `productionTotals`.
+      //
+      // For a fully-past shoot, full == elapsed (no future days to add).
+      const productionTotalsFull = useMemo(() => {
+        const totals = {};
+        for (const p of productions) {
+          const crew = p.crew ?? [];
+          const days = p.days ?? [];
+          const raw = days.reduce((sum, d) => {
+            if (!d.date) return sum;
+            const c = crew.find(cc => cc.id === d.crewId);
+            if (!c) return sum;
+            return sum + calcForDisplay(p, d, c, findPrevDay(days, d)).total;
+          }, 0);
+          totals[p.id] = raw - computeProductionKitDiscount(p, userPrefs);
+        }
+        return totals;
+      }, [productions, userPrefs]);
+
       // Per-production worked-hours total (for the month-group head's hour figure).
       const productionHours = useMemo(() => {
         const today = todayISO();
@@ -16540,7 +16568,7 @@ const confirmDelete = (p) => setConfirmOpts({
                   </div>
                   <div>
                     <div className="uppercase text-[9px] tracking-[0.15em] text-neutral-500 font-bold">Shoot</div>
-                    <div className="font-mono text-[17px] font-bold text-neutral-100">{fmtGBP(productionTotals[p.id] || 0)}</div>
+                    <div className="font-mono text-[17px] font-bold text-neutral-100">{fmtGBP(productionTotalsFull[p.id] || 0)}</div>
                     <div className="text-[10px] text-neutral-500 font-mono">{dayCount} day{dayCount !== 1 ? 's' : ''}</div>
                   </div>
                 </div>

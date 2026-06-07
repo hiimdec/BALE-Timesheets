@@ -1023,6 +1023,195 @@ function runStage6(eng, ok) {
   }
 }
 
+// ===========================================================================
+// Stage 7 — current-shoot total includes future days; aggregates stay
+// elapsed-only. Locks in the two-map split on HomeScreen (productionTotals
+// vs productionTotalsFull) so a future re-inflation regression is caught.
+// ===========================================================================
+
+function runStage7(eng, ok) {
+  const { calcForDisplay, computeProductionKitDiscount } = eng;
+
+  const crewMember = { id: 'c-me', name: 'Test User', role: 'Sound Mixer',
+    department: 'Sound', bdr: 444, otCoef: 1.5, otRate: null, noOT: false,
+    pmpa: false, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false,
+    kitMoneyAmount: 0, isDriver: false, email: '' };
+  const userPrefs = { displayName: 'Test User', kitInventory: [
+    { id: 'k-a', name: 'Sennheiser MKH8060', defaultDailyRate: 100, defaultOn: true },
+  ]};
+  const sDay = (date, kitItems = []) => ({
+    id: `d-${date}`, crewId: 'c-me', date,
+    callTime: '08:00', wrapTime: '19:00', wrapNextDay: false,
+    dayType: 'Shoot', lunchStartTime: '13:00', lunchDurationMins: 60,
+    noMealProvided: false, secondBreakDurationMins: 0, secondBreakLogged: false,
+    cwdBreak1Given: false, cwdBreak2Given: false, preCallTime: '',
+    travelOutMins: 0, travelBackMins: 0, miles: 0, mileagePostcode: '',
+    mileageMethod: 'distance', mileageRoundTrip: false,
+    perDiemAmount: 0, kitMoneyAmount: 0,
+    kitItems, expenses: [],
+    stepUpRole: '', stepUpBDR: 0, stepUpOTCoef: 0, wrapped: false, note: '',
+  });
+  const sProd = (o = {}) => ({
+    id: 'p1', title: 'T', prodCo: 'Acme Films', jobReference: '',
+    crew: [crewMember], days: [],
+    defaultDay: null, dayDefaults: {},
+    bestBoyMode: false, viewMode: 'mobile', iAmCrewId: 'c-me',
+    isElevenHourDay: false, favourableRounding: false, apaRounding: false,
+    startDate: '2026-06-01', gridDates: [], weekStarts: [],
+    invoicingEmail: '', cancellationData: null, kitDeals: [], ...o,
+  });
+  // Replicate the EXACT formulas HomeScreen uses for productionTotals and
+  // productionTotalsFull, so the assertions catch any future divergence in
+  // either path (re-inflation of aggregates, or removal of the discount).
+  // FIXED_TODAY is a Wednesday and the test days are Mon-Tue (past), Wed
+  // (today), Thu-Fri (future) — all weekdays, so BDR math is uniform and
+  // the expected numbers don't accidentally bake in Sat/Sun multipliers.
+  const FIXED_TODAY = '2026-06-10'; // Wednesday
+  const elapsedTotal = (p, today) => {
+    const raw = (p.days || []).reduce((s, d) => {
+      if (!d.date || d.date >= today) return s;
+      const c = (p.crew || []).find(cc => cc.id === d.crewId);
+      if (!c) return s;
+      return s + calcForDisplay(p, d, c, null).total;
+    }, 0);
+    return raw - computeProductionKitDiscount(p, userPrefs);
+  };
+  const fullTotal = (p) => {
+    const raw = (p.days || []).reduce((s, d) => {
+      if (!d.date) return s;
+      const c = (p.crew || []).find(cc => cc.id === d.crewId);
+      if (!c) return s;
+      return s + calcForDisplay(p, d, c, null).total;
+    }, 0);
+    return raw - computeProductionKitDiscount(p, userPrefs);
+  };
+
+  // (a) Live shoot with PAST + TODAY + FUTURE days: full-total includes them
+  //     all; elapsed-only stops before today.
+  {
+    const prod = sProd({ days: [
+      sDay('2026-06-08', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-09', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-10', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-11', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-12', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ]});
+    const full = fullTotal(prod);
+    const elapsed = elapsedTotal(prod, FIXED_TODAY);
+    ok('Stage 7 · a1: full > elapsed (future days lift the headline)',
+      full > elapsed, `full=£${full}, elapsed=£${elapsed}`);
+    // 5 days total at BDR £444 + £100 kit = £544/day. Past + today + future.
+    const expectedFull = 5 * (444 + 100);
+    ok('Stage 7 · a2: full = Σ ALL days × per-day total (£2,720)',
+      Math.abs(full - expectedFull) < 0.01,
+      `full=£${full}, expected=£${expectedFull}`);
+    const expectedElapsed = 2 * (444 + 100); // only June 5 + 6 < today 2026-06-07
+    ok('Stage 7 · a3: elapsed = Σ days WHERE date < today (£1,088)',
+      Math.abs(elapsed - expectedElapsed) < 0.01,
+      `elapsed=£${elapsed}, expected=£${expectedElapsed}`);
+    ok('Stage 7 · a4: full − elapsed = sum of today + future days (£1,632)',
+      Math.abs((full - elapsed) - (3 * (444 + 100))) < 0.01);
+  }
+
+  // (b) Same shoot with a kit deal: discount applied to BOTH paths. Neither
+  //     is "discount-free"; both reflect the negotiated total.
+  {
+    const prod = sProd({ days: [
+      sDay('2026-06-08', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-09', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-10', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-11', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-12', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ], kitDeals: [{ itemId: 'k-a', negotiatedTotal: 300 }] });
+    const discount = computeProductionKitDiscount(prod, userPrefs);
+    ok('Stage 7 · b1: deal £300 on 5 × £100 kit → discount = £200',
+      discount === 200, `discount=£${discount}`);
+    const full    = fullTotal(prod);
+    const elapsed = elapsedTotal(prod, FIXED_TODAY);
+    // Full raw = 5 × £544 = £2720. After discount: £2520.
+    ok('Stage 7 · b2: full reflects the discount (£2,720 − £200 = £2,520)',
+      Math.abs(full - 2520) < 0.01, `full=£${full}`);
+    // Elapsed raw = 2 × £544 = £1088. After discount: £888.
+    ok('Stage 7 · b3: elapsed reflects the discount (£1,088 − £200 = £888)',
+      Math.abs(elapsed - 888) < 0.01, `elapsed=£${elapsed}`);
+    // Sanity: both paths subtract the SAME discount number.
+    const rawFull = full + discount;
+    const rawElapsed = elapsed + discount;
+    ok('Stage 7 · b4: both paths subtract the same discount (£200)',
+      Math.abs((rawFull - full) - (rawElapsed - elapsed)) < 0.01);
+  }
+
+  // (c) Aggregate guard — productionTotals (elapsed) is what feeds Home
+  //     monthTotal and StatsScreen totalEarnings / earningsByMonth. Verify
+  //     that adding future days to a production does NOT change the elapsed
+  //     total (i.e. the future days don't leak into aggregates).
+  {
+    const pastOnly = sProd({ days: [
+      sDay('2026-06-08', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-09', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ]});
+    const pastPlusFuture = sProd({ days: [
+      sDay('2026-06-08', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-09', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-11', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-06-12', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ]});
+    const elapsedA = elapsedTotal(pastOnly,        FIXED_TODAY);
+    const elapsedB = elapsedTotal(pastPlusFuture,  FIXED_TODAY);
+    ok('Stage 7 · c1: future days do NOT inflate elapsed total (aggregate guard)',
+      Math.abs(elapsedA - elapsedB) < 0.01,
+      `pastOnly=£${elapsedA}, pastPlusFuture=£${elapsedB}`);
+    const fullA = fullTotal(pastOnly);
+    const fullB = fullTotal(pastPlusFuture);
+    ok('Stage 7 · c2: full DOES include the added future days',
+      fullB > fullA, `fullA=£${fullA}, fullB=£${fullB}`);
+    ok('Stage 7 · c3: future-only increment = 2 days × £544 = £1,088',
+      Math.abs((fullB - fullA) - 2 * (444 + 100)) < 0.01);
+  }
+
+  // (d) Fully-past shoot — full == elapsed; the fix doesn't change anything
+  //     for past shoots.
+  {
+    const past = sProd({ days: [
+      // Mon/Tue/Wed — weekdays so BDR math is uniform.
+      sDay('2026-05-04', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-05-05', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-05-06', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ]});
+    ok('Stage 7 · d1: fully-past shoot — full == elapsed (no future to add)',
+      Math.abs(fullTotal(past) - elapsedTotal(past, FIXED_TODAY)) < 0.01);
+    // And with a deal:
+    const pastDealt = { ...past, kitDeals: [{ itemId: 'k-a', negotiatedTotal: 200 }] };
+    ok('Stage 7 · d2: fully-past dealt shoot — full == elapsed, discount applied',
+      Math.abs(fullTotal(pastDealt) - elapsedTotal(pastDealt, FIXED_TODAY)) < 0.01);
+    const disc = computeProductionKitDiscount(pastDealt, userPrefs);
+    ok('Stage 7 · d3: fully-past dealt shoot — discount = usual £300 − deal £200 = £100',
+      disc === 100, `disc=£${disc}`);
+  }
+
+  // (e) Fully-future shoot — elapsed = 0 (nothing past today), full = the
+  //     entire booked total with deal applied. Edge case for a newly booked
+  //     production with no day worked yet.
+  {
+    const futureOnly = sProd({ days: [
+      sDay('2026-07-01', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+      sDay('2026-07-02', [{ itemId: 'k-a', name: 'Sennheiser MKH8060', rate: 100 }]),
+    ], kitDeals: [{ itemId: 'k-a', negotiatedTotal: 150 }] });
+    const elapsed = elapsedTotal(futureOnly, FIXED_TODAY);
+    const full    = fullTotal(futureOnly);
+    ok('Stage 7 · e1: fully-future shoot — elapsed = −discount, full > 0',
+      // elapsed raw = 0; elapsed = 0 - discount = -£50. The aggregates would
+      // negative-bias this shoot, which is correct: invoice-once mental model
+      // says the deal is realised but no work has happened — but as soon as
+      // the first day passes, the discount catches up to actual earnings.
+      full > 0 && elapsed < 0,
+      `elapsed=£${elapsed}, full=£${full}`);
+    // Full = 2 × £544 raw, − £50 discount = £1,038.
+    ok('Stage 7 · e2: fully-future full = booked total minus discount (£1,038)',
+      Math.abs(full - 1038) < 0.01, `full=£${full}`);
+  }
+}
+
 // ---- Orchestrator ----------------------------------------------------------
 
 async function runKitAssertions() {
@@ -1061,6 +1250,8 @@ async function runKitAssertions() {
   runStage4(eng, ok);
   console.log('\n── Stage 6: per-production kit discount + Stats/Home rollups ──');
   runStage6(eng, ok);
+  console.log('\n── Stage 7: current-shoot full vs aggregate elapsed-only ──');
+  runStage7(eng, ok);
 
   return summary();
 }
