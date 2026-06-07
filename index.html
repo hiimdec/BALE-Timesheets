@@ -4848,14 +4848,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       </label>
     );
 
-    const Input = ({ type, style, className, onFocus: onFocusProp, inputMode: inputModeProp, ...p }) => {
+    // Display-only helper: numeric inputs show empty (and Input defaults a "0"
+    // placeholder below) when the stored value is 0 / null / undefined / NaN —
+    // so the user can type cleanly without backspacing a leading zero. The
+    // stored value is unchanged: every numeric onChange in the app maps a
+    // cleared box to 0 via Number(e.target.value) (and `Number("")` IS 0), so
+    // calc / invoices / cascade behaviour are identical to before. Pass-through
+    // for string values so intentional mid-edit string state (DiscountModal's
+    // dqty, EditLineForm's qty/rate, etc.) keeps a typed "0" visible.
+    const numDisplay = (v) =>
+      (v === 0 || v == null || (typeof v === 'number' && Number.isNaN(v))) ? '' : v;
+
+    const Input = ({ type, value, placeholder, style, className, onFocus: onFocusProp, inputMode: inputModeProp, ...p }) => {
       const isDate = type === "date";
-      const resolvedInputMode = inputModeProp ?? (type === "number" ? "decimal" : undefined);
+      const isNumber = type === "number";
+      const resolvedInputMode = inputModeProp ?? (isNumber ? "decimal" : undefined);
       const handleFocus = (e) => {
-        if (type === 'number') e.target.select();
+        if (isNumber) e.target.select();
         if (onFocusProp) onFocusProp(e);
       };
-      return <input type={type} inputMode={resolvedInputMode} onFocus={handleFocus} {...p}
+      const displayValue = isNumber ? numDisplay(value) : value;
+      const resolvedPlaceholder = (isNumber && placeholder == null) ? '0' : placeholder;
+      return <input type={type} inputMode={resolvedInputMode} onFocus={handleFocus}
+        value={displayValue} placeholder={resolvedPlaceholder} {...p}
         style={isDate ? { WebkitAppearance: 'none', ...style } : style}
         className={`w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
@@ -8729,11 +8744,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Out (mins)</div>
-                              <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelOutMins) || 0} onChange={(e) => updateDeptDefault('travelOutMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                              <input type="number" min="0" step="1" inputMode="numeric" value={numDisplay(Number(dd.travelOutMins) || 0)} placeholder="0" onChange={(e) => updateDeptDefault('travelOutMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
                             </div>
                             <div>
                               <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Back (mins)</div>
-                              <input type="number" min="0" step="1" inputMode="numeric" value={Number(dd.travelBackMins) || 0} onChange={(e) => updateDeptDefault('travelBackMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                              <input type="number" min="0" step="1" inputMode="numeric" value={numDisplay(Number(dd.travelBackMins) || 0)} placeholder="0" onChange={(e) => updateDeptDefault('travelBackMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
                             </div>
                           </div>
                         </>
@@ -8746,7 +8761,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <>
                           <div>
                             <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                            <input type="number" min="0" step="0.01" inputMode="decimal" value={Number(dd.perDiemAmount) || 0} onChange={(e) => updateDeptDefault('perDiemAmount', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
+                            <input type="number" min="0" step="0.01" inputMode="decimal" value={numDisplay(Number(dd.perDiemAmount) || 0)} placeholder="0" onChange={(e) => updateDeptDefault('perDiemAmount', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
                           </div>
                           )}
                         </>
@@ -8773,7 +8788,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                   <select value={exp.category} onChange={(e) => upExp(exp.id, { category: e.target.value })} className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 116 }}>
                                     {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                   </select>
-                                  <input type="number" min="0" step="0.01" inputMode="decimal" value={exp.amount} onChange={(e) => upExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
+                                  <input type="number" min="0" step="0.01" inputMode="decimal" value={numDisplay(exp.amount)} onChange={(e) => upExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
                                   <input type="text" value={exp.description} onChange={(e) => upExp(exp.id, { description: e.target.value })} placeholder="Description" className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"/>
                                   <button type="button" onClick={() => rmExp(exp.id)} className="text-neutral-600 hover:text-tm-pen transition-colors p-1" aria-label="Remove expense" style={{ WebkitTapHighlightColor: 'transparent' }}><IX size={14}/></button>
                                 </div>
@@ -10014,7 +10029,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                         <select value={exp.category} onChange={(e) => updateExp(exp.id, { category: e.target.value })} className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 116 }}>
                                           {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
-                                        <input type="number" min="0" step="0.01" inputMode="decimal" value={exp.amount} onChange={(e) => updateExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
+                                        <input type="number" min="0" step="0.01" inputMode="decimal" value={numDisplay(exp.amount)} onChange={(e) => updateExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
                                         <input type="text" value={exp.description} onChange={(e) => updateExp(exp.id, { description: e.target.value })} placeholder="Description" className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"/>
                                         <button type="button" onClick={() => removeExp(exp.id)} className="text-neutral-600 hover:text-tm-pen transition-colors p-1" aria-label="Remove expense" style={{ WebkitTapHighlightColor: 'transparent' }}><IX size={14}/></button>
                                       </div>
