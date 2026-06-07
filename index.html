@@ -2951,6 +2951,50 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return becomingIssued ? { ...patch, ...clientFieldsFromProduction(production) } : patch;
     }
 
+    // Saved Clients Stage 3 — picker pure helpers. UI lives in ClientPicker
+    // (next to Input/Field). All three are case-insensitive on read and
+    // preserve the stored capitalisation on write — the picker never mutates
+    // a client's stored name. Tested directly in the storage suite's O-suite.
+
+    // Case-insensitive name-prefix filter. Order preserves the userPrefs.clients
+    // ordering (most-recently-added is at the end of the array — see Stage 1).
+    function matchClientsByPrefix(clients, typed) {
+      const q = (((typed || '') + '')).trim().toLowerCase();
+      if (!q) return [];
+      return (clients || []).filter(c => {
+        if (!c || typeof c.name !== 'string') return false;
+        return c.name.toLowerCase().startsWith(q);
+      });
+    }
+
+    // Inline-completion candidate: the top prefix match strictly LONGER than
+    // the typed text, gated by typed.length >= 2 (the 2-char spec threshold).
+    // Returns { client, tail } or null. The picker's <input>.value becomes
+    // client.name when this is non-null; setSelectionRange highlights `tail`.
+    function pickInlineCompletion(clients, typed) {
+      const t = ((typed || '') + '');
+      if (t.length < 2) return null;
+      const matches = matchClientsByPrefix(clients, t);
+      if (matches.length === 0) return null;
+      const top = matches[0];
+      if (top.name.length <= t.length) return null;
+      return { client: top, tail: top.name.slice(t.length) };
+    }
+
+    // Recents for the empty-field chips. Stage 3 ships the simpler heuristic:
+    // most-recently-added first (end of clients[] in reverse), capped at
+    // `limit` (default 3). A production-linked heuristic could replace this
+    // later without changing the picker UI — same return shape.
+    function pickRecentClients(clients, limit = 3) {
+      const list = clients || [];
+      if (list.length === 0) return [];
+      const out = [];
+      for (let i = list.length - 1; i >= 0 && out.length < limit; i--) {
+        if (list[i]) out.push(list[i]);
+      }
+      return out;
+    }
+
     // Saved Clients Stage 2: derive the client-library effect of freezing this
     // invoice on send. Pure — callers do the setUserPrefs / setProduction
     // writes. Returns { clientId, nextClients }:
@@ -4885,6 +4929,146 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         {hint && <div className="text-[10px] text-neutral-500 mt-1 leading-tight">{hint}</div>}
       </label>
     );
+
+    // Saved Clients Stage 3 — the picker. ONE component, applied to both the
+    // Basics prodCo input and the invoice editor "To" card toName input.
+    // Behaviour:
+    //   - Empty field → up to 3 recent client chips (most-recently-added).
+    //   - Typing → up to 3 case-insensitive prefix matches as chips.
+    //   - ≥2 chars typed + top match strictly longer than typed → inline
+    //     completion: input.value = matched name, setSelectionRange
+    //     highlights the tail. Tab / Enter / → accepts. Backspace / Delete
+    //     suppresses the NEXT re-completion. Typing replaces the selected
+    //     tail and re-matches.
+    //   - A brand-new name that matches nothing types completely normally
+    //     — no forced completion, no chip appears.
+    //   - `inactive` (sent invoice) → no completion, no chips, plain input.
+    //   - The parent owns the field via `value` + `onValueChange` (plain
+    //     string). The picker never writes to the field except via accept
+    //     (which calls onAccept(client); the parent decides what to fill).
+    function ClientPicker({
+      value,
+      onValueChange,
+      onAccept,
+      clients,
+      inactive,
+      className,
+      placeholder,
+      ariaLabel,
+      autoFocus,
+    }) {
+      const inputRef = React.useRef(null);
+      const [completion, setCompletion] = React.useState(null);
+      // Set on Backspace/Delete; the *next* onChange skips picking a new
+      // completion so the user isn't forced back into the same one.
+      const suppressNextRef = React.useRef(false);
+
+      // Clear stale completion if the parent's value diverges from the
+      // completion's name prefix (external write, or user typed something
+      // that no longer matches). Cheap case-insensitive check.
+      React.useEffect(() => {
+        if (!completion) return;
+        const name = completion.client.name;
+        if (value.length >= name.length) { setCompletion(null); return; }
+        if (name.slice(0, value.length).toLowerCase() !== value.toLowerCase()) {
+          setCompletion(null);
+        }
+      }, [value, completion]);
+
+      // Highlight the completion tail in the input. Re-runs on every
+      // completion / value change while focused; harmless when blurred.
+      React.useLayoutEffect(() => {
+        if (!completion || inactive) return;
+        const el = inputRef.current;
+        if (!el) return;
+        try {
+          el.setSelectionRange(value.length, value.length + completion.tail.length);
+        } catch (_) {}
+      }, [completion, value, inactive]);
+
+      const handleChange = (e) => {
+        const newTyped = e.target.value;
+        onValueChange(newTyped);
+        if (suppressNextRef.current) {
+          suppressNextRef.current = false;
+          setCompletion(null);
+          return;
+        }
+        setCompletion(pickInlineCompletion(clients, newTyped));
+      };
+
+      const handleKeyDown = (e) => {
+        if (inactive) return;
+        if (e.key === 'Backspace' || e.key === 'Delete') {
+          suppressNextRef.current = true;
+          return;
+        }
+        if (completion && (e.key === 'Tab' || e.key === 'Enter' || e.key === 'ArrowRight')) {
+          e.preventDefault();
+          const client = completion.client;
+          setCompletion(null);
+          onAccept(client);
+        }
+      };
+
+      const doAcceptFromChip = (client) => {
+        setCompletion(null);
+        onAccept(client);
+      };
+
+      const recents = React.useMemo(
+        () => pickRecentClients(clients, 3),
+        [clients]
+      );
+      const typingMatches = React.useMemo(
+        () => matchClientsByPrefix(clients, value).slice(0, 3),
+        [clients, value]
+      );
+      const chips = inactive
+        ? []
+        : (value.length === 0 ? recents : typingMatches);
+
+      // displayValue: matched name when completion is active (so the input
+      // visually shows the suggestion); user's typed text otherwise. The
+      // capitalisation "inheritance" (typed prefix takes on the client's
+      // case while completion is shown) is the well-known URL-bar UX.
+      const displayValue = !inactive && completion ? completion.client.name : value;
+
+      return (
+        <div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={displayValue}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            readOnly={inactive}
+            placeholder={placeholder}
+            aria-label={ariaLabel}
+            autoFocus={autoFocus}
+            autoComplete="off"
+            autoCapitalize="words"
+            className={className}
+          />
+          {chips.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {chips.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); doAcceptFromChip(c); }}
+                  className="px-2.5 py-1 text-[11px] rounded-full bg-neutral-900 border border-neutral-700 hover:bg-neutral-800 text-neutral-300 transition-colors truncate max-w-[180px] focus:outline-none focus:border-sky-500"
+                  title={c.name}
+                  aria-label={`Use saved client: ${c.name}`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
 
     // Display-only helper: numeric inputs show empty (and Input defaults a "0"
     // placeholder below) when the stored value is 0 / null / undefined / NaN —
@@ -10650,7 +10834,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" />
               </Field>
               <Field label="Production company">
-                <Input value={production.prodCo || ""} onChange={set("prodCo")} placeholder="Production company" />
+                <ClientPicker
+                  value={production.prodCo || ""}
+                  onValueChange={(v) => setProduction(p => ({ ...p, prodCo: v }))}
+                  onAccept={(c) => setProduction(p => ({
+                    ...p,
+                    prodCo: c.name,
+                    toAddress: c.address || '',
+                    invoicingEmail: c.email || '',
+                    clientId: c.id,
+                  }))}
+                  clients={userPrefs.clients}
+                  placeholder="Production company"
+                  ariaLabel="Production company"
+                  className="w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg"
+                />
               </Field>
               <Field label="Start date">
                 <div className="relative w-full">
@@ -15431,12 +15629,27 @@ const setDays = (updater) =>
 
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
               <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold mb-1.5">To</div>
-              <input
-                type="text"
+              <ClientPicker
                 value={invoice.toName || ''}
-                onChange={(e) => editClientField('toName', e.target.value)}
-                readOnly={fieldsLocked}
+                onValueChange={(v) => editClientField('toName', v)}
+                onAccept={(c) => {
+                  // editClientField handles the invoice write AND, for draft
+                  // invoices, the production write-through via the
+                  // INVOICE_TO_PRODUCTION_FIELD map (toName→prodCo,
+                  // toAddress→toAddress, toEmail→invoicingEmail). The
+                  // production.clientId field is a Saved-Clients addition
+                  // outside that map, so set it directly only for drafts.
+                  editClientField('toName',    c.name);
+                  editClientField('toAddress', c.address || '');
+                  editClientField('toEmail',   c.email   || '');
+                  if (invoice && invoice.status === 'draft') {
+                    setProduction(p => ({ ...p, clientId: c.id }));
+                  }
+                }}
+                clients={userPrefs.clients}
+                inactive={fieldsLocked}
                 placeholder="Client / company name"
+                ariaLabel="Client / company name"
                 className="w-full bg-transparent text-[14px] font-bold text-neutral-100 placeholder-neutral-600 focus:outline-none"
               />
               <input
