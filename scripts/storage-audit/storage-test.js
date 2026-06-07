@@ -846,6 +846,100 @@ async function main() {
       stored && stored.displayName === 'Legacy User' && stored.defaultBDR === 500);
   }
 
+  // ===== M. SAVED CLIENTS STAGE-1 ROUND-TRIP =====
+  // userPrefs.clients is a new top-level field in DEFAULT_USER_PREFS
+  // (additive, no schema bump, no migration). Same merge-over-defaults
+  // guard as kitInventory: a backup WITH clients restores them verbatim
+  // and a pre-Stage-1 backup (no clients key) imports cleanly to [].
+  {
+    // M1 — DEFAULT_USER_PREFS exposes the new key.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const defaults = sb.__DEFAULT_USER_PREFS;
+    check('M1 prefs: DEFAULT_USER_PREFS has a clients key',
+      defaults && Array.isArray(defaults.clients),
+      `clients=${defaults && defaults.clients}`);
+    check('M1 prefs: default clients is empty',
+      defaults && Array.isArray(defaults.clients) && defaults.clients.length === 0,
+      `length=${defaults && defaults.clients && defaults.clients.length}`);
+
+    // M2 — Backup made WITH clients restores them verbatim.
+    const payload = JSON.stringify({
+      version: 1,
+      schemaVersion: 3,
+      productions: [],
+      userPrefs: {
+        displayName: 'Test User',
+        defaultBDR: 444,
+        clients: [
+          { id: 'cli-a', name: 'Acme Films',  address: '5 Margaret Street\nLondon W1W 8RG', email: 'accounts@acme.example' },
+          { id: 'cli-b', name: 'Northsouth Productions', address: '', email: 'pay@northsouth.example' },
+        ],
+      },
+    });
+    const r1 = sb.__importBackup(payload);
+    check('M2 import-with-clients: importBackup ok',
+      r1 && r1.ok === true,
+      `result=${JSON.stringify(r1)}`);
+    const stored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('M2 import-with-clients: clients length restored',
+      stored && Array.isArray(stored.clients) && stored.clients.length === 2,
+      `length=${stored && stored.clients && stored.clients.length}`);
+    check('M2 import-with-clients: clients[0] fields verbatim',
+      stored && stored.clients && stored.clients[0] &&
+        stored.clients[0].id === 'cli-a' &&
+        stored.clients[0].name === 'Acme Films' &&
+        stored.clients[0].address === '5 Margaret Street\nLondon W1W 8RG' &&
+        stored.clients[0].email === 'accounts@acme.example',
+      `client0=${JSON.stringify(stored && stored.clients && stored.clients[0])}`);
+    check('M2 import-with-clients: clients[1] empty-address preserved',
+      stored && stored.clients && stored.clients[1] &&
+        stored.clients[1].id === 'cli-b' &&
+        stored.clients[1].name === 'Northsouth Productions' &&
+        stored.clients[1].address === '' &&
+        stored.clients[1].email === 'pay@northsouth.example',
+      `client1=${JSON.stringify(stored && stored.clients && stored.clients[1])}`);
+    check('M2 import-with-clients: other userPrefs survived the merge',
+      stored && stored.displayName === 'Test User' && stored.defaultBDR === 444,
+      `prefs=${JSON.stringify({ name: stored && stored.displayName, bdr: stored && stored.defaultBDR })}`);
+    // Sibling Stage-1 additive field also still present.
+    check('M2 import-with-clients: kitInventory still defaulted (independent of clients)',
+      stored && Array.isArray(stored.kitInventory) && stored.kitInventory.length === 0,
+      `kitInventory=${JSON.stringify(stored && stored.kitInventory)}`);
+  }
+  {
+    // M3 — Pre-Stage-1 backup (no clients key) imports cleanly to [].
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const legacyPayload = JSON.stringify({
+      version: 1,
+      schemaVersion: 3,
+      productions: [],
+      userPrefs: {
+        displayName: 'Legacy User',
+        defaultBDR: 500,
+        // NO clients key at all — simulates a backup made before Saved
+        // Clients Stage 1. Also intentionally NO kitInventory key — both
+        // additive fields should default to [] via the same guard.
+      },
+    });
+    const r2 = sb.__importBackup(legacyPayload);
+    check('M3 pre-stage-1: importBackup ok',
+      r2 && r2.ok === true,
+      `result=${JSON.stringify(r2)}`);
+    const stored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('M3 pre-stage-1: clients present as empty array (merge-over-defaults)',
+      stored && Array.isArray(stored.clients) && stored.clients.length === 0,
+      `clients=${JSON.stringify(stored && stored.clients)}`);
+    check('M3 pre-stage-1: legacy fields preserved',
+      stored && stored.displayName === 'Legacy User' && stored.defaultBDR === 500);
+    check('M3 pre-stage-1: kitInventory also defaults to empty (same guard)',
+      stored && Array.isArray(stored.kitInventory) && stored.kitInventory.length === 0,
+      `kitInventory=${JSON.stringify(stored && stored.kitInventory)}`);
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.

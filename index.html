@@ -1285,6 +1285,16 @@
       // array via the merge-over-DEFAULT_USER_PREFS read in useStoredState,
       // so no migration / no schema bump is needed.
       kitInventory: [],
+      // Saved Clients — Stage 1 (additive only). Users build a personal
+      // library of clients / production companies in Settings; later stages
+      // will wire auto-save (insert on production-edit / invoice-send),
+      // typeahead on the "Bill To" / production-company fields, and an
+      // optional production.clientId link that resolves through this list.
+      // Each client: { id, name, address, email }. Field names are
+      // load-bearing — Stage 2 wires the typeahead to exactly these keys.
+      // Same merge-over-DEFAULT_USER_PREFS pattern as kitInventory: no
+      // migration, no schema bump.
+      clients: [],
       onboardingComplete: false,
       lastSeenAppVersion: "",
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off' to hide.
@@ -14011,6 +14021,84 @@ const setDays = (updater) =>
                     )}
                     <Btn variant="ghost" onClick={addKitItem} className="mt-1.5 self-start">
                       <IPlus size={13}/>Add kit item
+                    </Btn>
+                  </div>
+                );
+              })()}
+            </Disclosure>
+
+            {/* Saved Clients — Stage 1. Personal library of client / production
+                companies. Stage 2+ will wire auto-save, typeahead on the Bill-To
+                / production-company fields, and an optional production.clientId
+                link. Writes go straight to userPrefs.clients via the same set()
+                helper used by every other userPrefs field; no save button. */}
+            <Disclosure
+              label="Saved Clients"
+              summary={(() => {
+                const n = (userPrefs.clients || []).length;
+                return n ? `${n} client${n === 1 ? '' : 's'}` : '—';
+              })()}
+            >
+              {(() => {
+                const items = userPrefs.clients || [];
+                const updateClient = (id, patch) =>
+                  set({ clients: items.map(c => c.id === id ? { ...c, ...patch } : c) });
+                const removeClient = (id) =>
+                  set({ clients: items.filter(c => c.id !== id) });
+                const addClient = () =>
+                  set({ clients: [...items, { id: uid(), name: "", address: "", email: "" }] });
+                return (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
+                      Your saved clients / production companies. Later stages will let invoices and new productions auto-fill from this list.
+                    </div>
+                    {items.length === 0 && (
+                      <div className="text-[11px] text-neutral-600 italic py-2">No clients yet — tap "Add client" to start.</div>
+                    )}
+                    {items.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        {items.map((client) => (
+                          <div
+                            key={client.id}
+                            className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 relative"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => removeClient(client.id)}
+                              className="absolute top-2 right-2 text-neutral-600 hover:text-tm-pen transition-colors p-1"
+                              style={{ WebkitTapHighlightColor: 'transparent' }}
+                              aria-label={`Remove ${client.name || 'client'}`}
+                            >
+                              <IX size={14}/>
+                            </button>
+                            <input
+                              type="text"
+                              value={client.name || ''}
+                              onChange={(e) => updateClient(client.id, { name: e.target.value })}
+                              placeholder="Client / company name"
+                              className="w-full bg-transparent text-[14px] font-bold text-neutral-100 placeholder-neutral-600 focus:outline-none pr-7"
+                            />
+                            <input
+                              type="email"
+                              value={client.email || ''}
+                              onChange={(e) => updateClient(client.id, { email: e.target.value })}
+                              placeholder="billing@example.com"
+                              className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
+                            />
+                            <textarea
+                              value={client.address || ''}
+                              onChange={(e) => updateClient(client.id, { address: e.target.value })}
+                              rows={3}
+                              placeholder={"Address line 1\nLine 2\nPostcode"}
+                              className="w-full bg-transparent text-[11px] text-neutral-500 placeholder-neutral-700 focus:outline-none resize-none mt-1.5 font-mono leading-snug"
+                              style={{ fontFamily: 'inherit' }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <Btn variant="ghost" onClick={addClient} className="mt-1.5 self-start">
+                      <IPlus size={13}/>Add client
                     </Btn>
                   </div>
                 );
