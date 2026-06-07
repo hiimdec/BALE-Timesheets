@@ -233,7 +233,13 @@ async function transformedAppCode() {
     // selection without needing a DOM.
     'try { globalThis.__matchClientsByPrefix = matchClientsByPrefix; } catch (_) {}\n' +
     'try { globalThis.__pickInlineCompletion = pickInlineCompletion; } catch (_) {}\n' +
-    'try { globalThis.__pickRecentClients = pickRecentClients; } catch (_) {}\n';
+    'try { globalThis.__pickRecentClients = pickRecentClients; } catch (_) {}\n' +
+    // Saved Clients Stage 4: expose the nudge derivation + applier so the
+    // P-suite can verify divergence detection / null-on-name-mismatch /
+    // null-on-empty / null-on-unlinked, plus the apply path's selective
+    // patching (only the diverged fields change; other clients untouched).
+    'try { globalThis.__detectClientUpdate = detectClientUpdate; } catch (_) {}\n' +
+    'try { globalThis.__applyClientUpdate  = applyClientUpdate;  } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -1301,6 +1307,288 @@ async function main() {
           JSON.stringify(invoiceSent) === beforeSentInv);
         check('Od13 (Inactive): production unchanged when picker is inactive on sent',
           JSON.stringify(productionSent) === beforeSentProd);
+      }
+    }
+  }
+
+  // ===== P. SAVED CLIENTS STAGE-4 NUDGE PURE HELPERS =====
+  // The nudge's UI (input blur + dismiss flag) is wired by the inline
+  // hook useClientUpdateNudge. The pure pieces — divergence detection
+  // (`detectClientUpdate`) and the selective patch (`applyClientUpdate`) —
+  // are verified here against the Stage-4 spec.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const detect = sb.__detectClientUpdate;
+    const apply  = sb.__applyClientUpdate;
+    if (typeof detect !== 'function' || typeof apply !== 'function') {
+      check('P0: Stage-4 helpers exposed in sandbox', false,
+        `detect=${typeof detect}, apply=${typeof apply}`);
+    } else {
+      check('P0: Stage-4 helpers exposed in sandbox', true);
+
+      const saved = {
+        id: 'cli-acme',
+        name: 'Acme Films',
+        address: '5 Margaret Street\nLondon W1W 8RG',
+        email: 'accounts@acme.example',
+      };
+      const baseProd = (over = {}) => ({
+        id: 'p1',
+        prodCo: 'Acme Films',
+        toAddress: '5 Margaret Street\nLondon W1W 8RG',
+        invoicingEmail: 'accounts@acme.example',
+        clientId: 'cli-acme',
+        ...over,
+      });
+
+      // (a) Divergence detection — address only, email only, both, neither.
+      {
+        // Address diverged (email matches) → { address, email: null }.
+        const r1 = detect(
+          baseProd({ toAddress: '99 New Street\nLondon WC1 1AA' }),
+          saved
+        );
+        check('Pa1: address diverged → returns {clientId, address, email:null}',
+          r1 && r1.clientId === 'cli-acme' && r1.address === '99 New Street\nLondon WC1 1AA' && r1.email === null,
+          `r=${JSON.stringify(r1)}`);
+
+        // Email diverged (address matches) → { address: null, email }.
+        const r2 = detect(
+          baseProd({ invoicingEmail: 'pay@acme.example' }),
+          saved
+        );
+        check('Pa2: email diverged → returns {clientId, address:null, email}',
+          r2 && r2.clientId === 'cli-acme' && r2.address === null && r2.email === 'pay@acme.example',
+          `r=${JSON.stringify(r2)}`);
+
+        // Both diverged → both populated.
+        const r3 = detect(
+          baseProd({ toAddress: 'NEW', invoicingEmail: 'pay@acme.example' }),
+          saved
+        );
+        check('Pa3: both diverged → returns {clientId, address, email}',
+          r3 && r3.clientId === 'cli-acme' && r3.address === 'NEW' && r3.email === 'pay@acme.example',
+          `r=${JSON.stringify(r3)}`);
+
+        // Neither diverged → null.
+        const r4 = detect(baseProd(), saved);
+        check('Pa4: neither diverged → null (no nudge)',
+          r4 === null, `r=${JSON.stringify(r4)}`);
+
+        // Trim normalization — trailing/leading whitespace counts as same.
+        const r5 = detect(
+          baseProd({ toAddress: '  ' + saved.address + '  ', invoicingEmail: '  ' + saved.email + '  ' }),
+          saved
+        );
+        check('Pa5: whitespace-only differences are trimmed → no nudge',
+          r5 === null, `r=${JSON.stringify(r5)}`);
+      }
+
+      // (b) Name change SUPPRESSES the nudge entirely (Stage 2 self-heals).
+      {
+        const r1 = detect(
+          baseProd({ prodCo: 'Acme Films Holdings', toAddress: 'NEW' }),
+          saved
+        );
+        check('Pb1: production prodCo renamed → null (suppressed)',
+          r1 === null, `r=${JSON.stringify(r1)}`);
+
+        const r2 = detect(
+          baseProd({ prodCo: '', toAddress: 'NEW' }),
+          saved
+        );
+        check('Pb2: production prodCo cleared → null (suppressed)',
+          r2 === null);
+
+        // Case + whitespace differences in the name DO match (no suppression).
+        const r3 = detect(
+          baseProd({ prodCo: '  ACME films  ', toAddress: 'NEW' }),
+          saved
+        );
+        check('Pb3: prodCo trim+case-insensitive matches → nudge fires',
+          r3 && r3.clientId === 'cli-acme' && r3.address === 'NEW',
+          `r=${JSON.stringify(r3)}`);
+      }
+
+      // (c) Empty edits don't trigger (we never sync a cleared field to the
+      //     template via the nudge — that's a deletion-shaped action).
+      {
+        const r1 = detect(
+          baseProd({ toAddress: '' }),
+          saved
+        );
+        check('Pc1: empty address (saved has a value) → no address divergence',
+          r1 === null, `r=${JSON.stringify(r1)}`);
+
+        const r2 = detect(
+          baseProd({ invoicingEmail: '' }),
+          saved
+        );
+        check('Pc2: empty email (saved has a value) → no email divergence',
+          r2 === null);
+
+        const r3 = detect(
+          baseProd({ toAddress: '   ', invoicingEmail: '   ' }),
+          saved
+        );
+        check('Pc3: whitespace-only address + email → null (treated as empty)',
+          r3 === null);
+
+        // BUT: empty address + diverged email → email-only nudge.
+        const r4 = detect(
+          baseProd({ toAddress: '', invoicingEmail: 'pay@elsewhere.example' }),
+          saved
+        );
+        check('Pc4: empty address + diverged email → email-only nudge',
+          r4 && r4.address === null && r4.email === 'pay@elsewhere.example',
+          `r=${JSON.stringify(r4)}`);
+      }
+
+      // (d) Unlinked productions (no clientId) → null.
+      {
+        const r1 = detect(
+          baseProd({ clientId: null,      toAddress: 'NEW' }),
+          saved
+        );
+        check('Pd1: production with clientId=null → null',
+          r1 === null);
+        const r2 = detect(
+          baseProd({ clientId: undefined, toAddress: 'NEW' }),
+          saved
+        );
+        check('Pd2: production with clientId=undefined → null',
+          r2 === null);
+        const r3 = detect(
+          baseProd({ clientId: 'cli-OTHER', toAddress: 'NEW' }),
+          { ...saved, id: 'cli-OTHER' }
+        );
+        check('Pd3: production with mismatched clientId points to DIFFERENT saved client → name still matches → fires for THAT client',
+          r3 && r3.clientId === 'cli-OTHER',
+          `r=${JSON.stringify(r3)}`);
+        // No savedClient → null (defensive).
+        check('Pd4: null savedClient → null',
+          detect(baseProd(), null) === null);
+        check('Pd5: null production → null',
+          detect(null, saved) === null);
+      }
+
+      // (e) Locked / sent invoices: at the simulation layer, the UI gate is
+      //     "readOnly inputs never blur-fire" — the nudge stays inert. We
+      //     model the gate here by simulating that armed=false → pending=null.
+      {
+        // The hook's armed-flag gate: if armed is false, pending stays null
+        // regardless of divergence. We verify the gate by inspection — the
+        // hook computes `pending = armed && !dismissed ? detect(...) : null`.
+        // For the LOCKED case (sent invoice), readOnly inputs don't trigger
+        // onBlur, so armed never becomes true, so pending is always null.
+        // This is a structural property: the helper itself doesn't know
+        // about lock state; the gate is upstream. Cover it here with a
+        // mini-simulation of the gate.
+        const computePending = ({ armed, dismissed, production, saved }) =>
+          armed && !dismissed ? detect(production, saved) : null;
+        const lockedProd = baseProd({ toAddress: 'NEW' });
+        check('Pe1: locked surface (armed=false) → pending=null',
+          computePending({ armed: false, dismissed: false, production: lockedProd, saved }) === null);
+        check('Pe2: dismissed (armed=true, dismissed=true) → pending=null',
+          computePending({ armed: true, dismissed: true, production: lockedProd, saved }) === null);
+        check('Pe3: editable + armed → pending populated when diverged',
+          computePending({ armed: true, dismissed: false, production: lockedProd, saved }) !== null);
+      }
+
+      // (f) applyClientUpdate produces the right nextClients and leaves
+      //     OTHER clients untouched (by reference).
+      {
+        const other1 = { id: 'cli-other-1', name: 'Other One',   address: 'a1', email: 'e1' };
+        const other2 = { id: 'cli-other-2', name: 'Other Two',   address: 'a2', email: 'e2' };
+        const target = { id: 'cli-acme',    name: 'Acme Films',  address: 'OLD ADDR', email: 'OLD EMAIL' };
+        const clients = [other1, target, other2];
+
+        // Address-only update.
+        {
+          const r = apply(clients, { clientId: 'cli-acme', address: 'NEW ADDR', email: null });
+          check('Pf1: address-only update → target.address overwritten',
+            r[1].id === 'cli-acme' && r[1].address === 'NEW ADDR');
+          check('Pf2: address-only update → target.email preserved',
+            r[1].email === 'OLD EMAIL');
+          check('Pf3: address-only update → other clients identical by reference',
+            r[0] === other1 && r[2] === other2);
+          check('Pf4: result is a NEW array (not the input)',
+            r !== clients);
+          // Input array not mutated in place.
+          check('Pf5: input clients array NOT mutated (target.address still OLD)',
+            clients[1].address === 'OLD ADDR');
+        }
+
+        // Email-only update.
+        {
+          const r = apply(clients, { clientId: 'cli-acme', address: null, email: 'NEW EMAIL' });
+          check('Pf6: email-only update → target.email overwritten',
+            r[1].email === 'NEW EMAIL');
+          check('Pf7: email-only update → target.address preserved',
+            r[1].address === 'OLD ADDR');
+        }
+
+        // Both update.
+        {
+          const r = apply(clients, { clientId: 'cli-acme', address: 'A', email: 'E' });
+          check('Pf8: both update → both fields overwritten',
+            r[1].address === 'A' && r[1].email === 'E');
+        }
+
+        // No matching id → returned by reference (no rewrite).
+        {
+          const r = apply(clients, { clientId: 'cli-MISSING', address: 'A', email: 'E' });
+          check('Pf9: no matching id → returns the SAME array reference (no rewrite)',
+            r === clients);
+        }
+
+        // Null update → returned unchanged.
+        {
+          const r = apply(clients, null);
+          check('Pf10: null update → returns the SAME array (no-op)',
+            r === clients);
+        }
+
+        // Update with no fields (both null) → no-op patch.
+        {
+          const r = apply(clients, { clientId: 'cli-acme', address: null, email: null });
+          // The map still runs; the patched client is a new object equal to
+          // target. Not the same reference, but address/email preserved.
+          check('Pf11: empty fields update → preserves both address and email values',
+            r[1].address === 'OLD ADDR' && r[1].email === 'OLD EMAIL');
+        }
+
+        // Empty list / null list defensive.
+        check('Pf12: empty clients → empty result',
+          Array.isArray(apply([], { clientId: 'x', address: 'a', email: 'e' })) &&
+          apply([], { clientId: 'x', address: 'a', email: 'e' }).length === 0);
+        check('Pf13: null clients → empty result (defensive)',
+          Array.isArray(apply(null, { clientId: 'x', address: 'a', email: 'e' })) &&
+          apply(null, { clientId: 'x', address: 'a', email: 'e' }).length === 0);
+      }
+
+      // (g) Round-trip: detect → apply → detect again returns null.
+      {
+        const target = { id: 'cli-acme', name: 'Acme Films', address: 'OLD', email: 'old@acme.example' };
+        const list = [target];
+        const prod = {
+          prodCo: 'Acme Films',
+          toAddress: 'NEW',
+          invoicingEmail: 'new@acme.example',
+          clientId: 'cli-acme',
+        };
+        const pending = detect(prod, target);
+        check('Pg1: divergence detected initially',
+          pending !== null && pending.address === 'NEW' && pending.email === 'new@acme.example');
+        const nextList = apply(list, pending);
+        const updatedSaved = nextList[0];
+        check('Pg2: saved client now has the production\'s address/email',
+          updatedSaved.address === 'NEW' && updatedSaved.email === 'new@acme.example');
+        const pending2 = detect(prod, updatedSaved);
+        check('Pg3: detect against updated client → null (round-trip resolved)',
+          pending2 === null);
       }
     }
   }

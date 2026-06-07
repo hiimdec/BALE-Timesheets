@@ -2951,6 +2951,73 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return becomingIssued ? { ...patch, ...clientFieldsFromProduction(production) } : patch;
     }
 
+    // Saved Clients Stage 4 — "update saved client for next time" nudge.
+    // The nudge fires when the production's CURRENT address / email diverges
+    // from the LINKED saved client's stored values. It's user-initiated
+    // (only applies on tap); Stage 4 NEVER auto-writes the saved client.
+    //
+    // detectClientUpdate(production, savedClient) → null OR
+    //   { clientId, address, email } (address / email are null when that
+    //   particular field is in sync with the saved client OR empty).
+    //
+    // Trigger rules (all must hold):
+    //   - production.clientId is set AND equals savedClient.id.
+    //   - production.prodCo (trimmed, case-insensitive) STILL matches
+    //     savedClient.name — a name change SUPPRESSES the nudge entirely.
+    //     Stage 2's send-time dedupe will rebuild the link on next send.
+    //   - At least one of address / email is NON-EMPTY (after trim) AND
+    //     differs (after trim) from the saved value. Empty edits don't
+    //     trigger a sync — we never clear the saved template this way.
+    //
+    // Callers gate on input blur AND a dismiss flag — see the
+    // useClientUpdateNudge inline state in ProductionSettingsSheet /
+    // InvoiceEditorView.
+    function detectClientUpdate(production, savedClient) {
+      if (!production || !savedClient) return null;
+      if (!production.clientId || production.clientId !== savedClient.id) return null;
+      const trimLower = (s) => (((s || '') + '').trim().toLowerCase());
+      const prodName  = trimLower(production.prodCo);
+      const savedName = trimLower(savedClient.name);
+      if (!prodName || prodName !== savedName) return null;
+
+      const trim = (s) => (((s || '') + '').trim());
+      const prodAddr  = trim(production.toAddress);
+      const savedAddr = trim(savedClient.address);
+      const addrDiverged = prodAddr !== '' && prodAddr !== savedAddr;
+
+      const prodEmail  = trim(production.invoicingEmail);
+      const savedEmail = trim(savedClient.email);
+      const emailDiverged = prodEmail !== '' && prodEmail !== savedEmail;
+
+      if (!addrDiverged && !emailDiverged) return null;
+
+      return {
+        clientId: savedClient.id,
+        address: addrDiverged  ? prodAddr  : null,
+        email:   emailDiverged ? prodEmail : null,
+      };
+    }
+
+    // Apply an update returned by detectClientUpdate to userPrefs.clients.
+    // Returns a NEW clients array with only the matched client patched
+    // (address / email overwritten only when the update has non-null
+    // values for them). Other clients are returned by reference (no
+    // rewrite). If no match found, returns the input list unchanged.
+    function applyClientUpdate(clients, update) {
+      const list = clients || [];
+      if (!update || !update.clientId) return list;
+      let changed = false;
+      const next = list.map(c => {
+        if (!c || c.id !== update.clientId) return c;
+        const patched = { ...c };
+        if (update.address != null) patched.address = update.address;
+        if (update.email   != null) patched.email   = update.email;
+        changed = true;
+        return patched;
+      });
+      return changed ? next : list;
+    }
+
     // Saved Clients Stage 3 — picker pure helpers. UI lives in ClientPicker
     // (next to Input/Field). All three are case-insensitive on read and
     // preserve the stored capitalisation on write — the picker never mutates
@@ -4929,6 +4996,84 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         {hint && <div className="text-[10px] text-neutral-500 mt-1 leading-tight">{hint}</div>}
       </label>
     );
+
+    // Saved Clients Stage 4 — the "update saved details" nudge component +
+    // its driving hook. ONE component (rendered on BOTH surfaces); one hook
+    // (called by ProductionSettingsSheet AND InvoiceEditorView) that gates
+    // detectClientUpdate on (a) input blur after a real edit and (b) a per-
+    // session dismiss flag. The nudge writes to userPrefs.clients ONLY when
+    // the user taps Update — Stage 4 NEVER auto-mutates the saved template.
+    //
+    // The hook returns { pending, savedClient, disarmOnChange, armOnBlur,
+    // apply, dismiss }:
+    //   - disarmOnChange()  — call from input onChange handlers (resets
+    //       the dismiss flag and hides the nudge while typing).
+    //   - armOnBlur()       — call from input onBlur handlers (re-checks
+    //       divergence; only re-arms if the user actually typed since the
+    //       last reset, so tabbing through fields doesn't fire the nudge).
+    //   - apply()           — writes the diverged fields back to the saved
+    //       client via applyClientUpdate.
+    //   - dismiss()         — hides the nudge until the user edits again.
+    function useClientUpdateNudge(production, userPrefs, setUserPrefs) {
+      const [armed, setArmed] = React.useState(false);
+      const [dismissed, setDismissed] = React.useState(false);
+      const typedRef = React.useRef(false);
+
+      const savedClient = React.useMemo(
+        () => ((userPrefs && userPrefs.clients) || []).find(
+          c => c && production && c.id === production.clientId
+        ) || null,
+        [userPrefs && userPrefs.clients, production && production.clientId]
+      );
+
+      const pending = (armed && !dismissed)
+        ? detectClientUpdate(production, savedClient)
+        : null;
+
+      const disarmOnChange = () => {
+        typedRef.current = true;
+        if (armed) setArmed(false);
+        if (dismissed) setDismissed(false);
+      };
+      const armOnBlur = () => {
+        if (typedRef.current) {
+          setArmed(true);
+          typedRef.current = false;
+        }
+      };
+      const apply = () => {
+        if (!pending) return;
+        setUserPrefs(prev => ({ ...prev, clients: applyClientUpdate(prev.clients, pending) }));
+        setArmed(false);
+      };
+      const dismiss = () => setDismissed(true);
+
+      return { pending, savedClient, disarmOnChange, armOnBlur, apply, dismiss };
+    }
+
+    function ClientUpdateNudge({ pending, savedClient, onApply, onDismiss }) {
+      if (!pending || !savedClient) return null;
+      const name = savedClient.name || 'this client';
+      return (
+        <div className="mt-3 bg-sky-950/40 border border-sky-800 rounded-xl px-3 py-2.5 flex items-center gap-2">
+          <span className="text-[12px] text-sky-200 leading-snug flex-1 min-w-0">
+            Update <span className="font-semibold">{name}</span>'s saved details for next time?
+          </span>
+          <button
+            type="button"
+            onClick={onApply}
+            className="flex-shrink-0 text-[11px] font-bold uppercase tracking-wide text-sky-300 hover:text-sky-100 px-2.5 py-1 rounded-md border border-sky-700 hover:bg-sky-900/40 transition-colors"
+          >Update</button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="flex-shrink-0 text-sky-500 hover:text-sky-300 p-1 transition-colors"
+            aria-label="Dismiss update nudge"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          ><IX size={14}/></button>
+        </div>
+      );
+    }
 
     // Saved Clients Stage 3 — the picker. ONE component, applied to both the
     // Basics prodCo input and the invoice editor "To" card toName input.
@@ -10765,9 +10910,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION SETTINGS SHEET ═══════════════════════════ */
 
-    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs }) {
+    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs }) {
       const set = (k) => (e) => setProduction(p => ({ ...p, [k]: e.target.value }));
       const setNum = (k) => (e) => setProduction(p => ({ ...p, [k]: Number(e.target.value) }));
+      // Saved Clients Stage 4 — nudge for the Basics "Invoicing details"
+      // surface (toAddress / invoicingEmail). The hook gates on real edits
+      // + input blur. Empty values, name mismatches, unlinked productions,
+      // and missing setUserPrefs all naturally produce a null `pending` so
+      // the nudge stays hidden.
+      const nudge = useClientUpdateNudge(production, userPrefs, setUserPrefs);
 
       const handleStartDateChange = (e) => {
         const newDate = e.target.value;
@@ -10873,7 +11024,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <Field label="Company address" hint="Where the invoice is addressed to">
                 <textarea
                   value={production.toAddress || ""}
-                  onChange={(e) => setProduction(p => ({ ...p, toAddress: e.target.value }))}
+                  onChange={(e) => { nudge.disarmOnChange(); setProduction(p => ({ ...p, toAddress: e.target.value })); }}
+                  onBlur={nudge.armOnBlur}
                   placeholder={"e.g.\n5 Margaret Street\nLondon W1W 8RG"}
                   rows={3}
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
@@ -10884,8 +11036,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Input value={production.jobReference || ""} onChange={set("jobReference")} placeholder="e.g. Vodafone Q3, PO#1234" />
               </Field>
               <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
-                <Input value={production.invoicingEmail || ""} onChange={set("invoicingEmail")} placeholder="e.g. accounts@example.com" />
+                <Input
+                  value={production.invoicingEmail || ""}
+                  onChange={(e) => { nudge.disarmOnChange(); setProduction(p => ({ ...p, invoicingEmail: e.target.value })); }}
+                  onBlur={nudge.armOnBlur}
+                  placeholder="e.g. accounts@example.com"
+                />
               </Field>
+              <ClientUpdateNudge
+                pending={nudge.pending}
+                savedClient={nudge.savedClient}
+                onApply={nudge.apply}
+                onDismiss={nudge.dismiss}
+              />
               <p className="text-[11px] text-neutral-500 leading-snug mt-1">
                 Changes here update your draft invoices. Invoices you've already sent keep the details they were sent with.
               </p>
@@ -12622,6 +12785,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             setProduction={setProduction}
             crew={crew}
             onClose={() => setShowSettings(false)}
+            userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
           />
         );
       }
@@ -13136,6 +13301,7 @@ const setDays = (updater) =>
             crew={crew}
             onClose={() => setShowProdSettings(false)}
             userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
           />
         );
       }
@@ -15419,6 +15585,14 @@ const setDays = (updater) =>
       const deleteLineItem = (itemId) =>
         updateInvoice({ lineItems: invoice.lineItems.filter(item => item.id !== itemId), linesEdited: true });
 
+      // Saved Clients Stage 4 — nudge for the invoice "To" surface
+      // (toAddress / toEmail mirror to production.toAddress /
+      // production.invoicingEmail for drafts via editClientField, so the
+      // hook reads off `production` exactly like the Basics surface does).
+      // fieldsLocked → readOnly → onBlur never fires → nudge stays inert
+      // on sent/paid invoices.
+      const nudge = useClientUpdateNudge(production, userPrefs, setUserPrefs);
+
       const addLineItem = () =>
         updateInvoice({ lineItems: [...invoice.lineItems, { id: uid(), label: "New item", detail: "", qty: 1, rate: null, amount: 0, discountedQty: null, isExpense: false }], linesEdited: true });
 
@@ -15655,7 +15829,8 @@ const setDays = (updater) =>
               <input
                 type="email"
                 value={invoice.toEmail || ''}
-                onChange={(e) => editClientField('toEmail', e.target.value)}
+                onChange={(e) => { nudge.disarmOnChange(); editClientField('toEmail', e.target.value); }}
+                onBlur={nudge.armOnBlur}
                 readOnly={fieldsLocked}
                 placeholder="billing@example.com"
                 className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
@@ -15672,7 +15847,8 @@ const setDays = (updater) =>
               {invoice.toAddress !== '' && invoice.toAddress != null ? (
                 <textarea
                   value={invoice.toAddress}
-                  onChange={(e) => editClientField('toAddress', e.target.value)}
+                  onChange={(e) => { nudge.disarmOnChange(); editClientField('toAddress', e.target.value); }}
+                  onBlur={nudge.armOnBlur}
                   readOnly={fieldsLocked}
                   rows={3}
                   placeholder={"Address line 1\nLine 2\nPostcode"}
@@ -15689,6 +15865,17 @@ const setDays = (updater) =>
                   <IPlus size={9}/> Add billing address
                 </button>
               ) : null}
+              {/* Saved Clients Stage 4: same nudge component as Basics,
+                  rendered at the bottom of the "To" card. The hook gates
+                  on real edits + input blur; fieldsLocked never triggers
+                  blur on these inputs (they're readOnly) so the nudge is
+                  inert on sent/paid invoices. */}
+              <ClientUpdateNudge
+                pending={nudge.pending}
+                savedClient={nudge.savedClient}
+                onApply={nudge.apply}
+                onDismiss={nudge.dismiss}
+              />
             </div>
 
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
