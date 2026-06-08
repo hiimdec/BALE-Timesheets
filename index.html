@@ -5242,29 +5242,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         className={`w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
     };
-    const TimeInput = ({ onChange, value, className, style, ...p }) => {
-      const roundTo5 = (timeStr) => {
-        if (!timeStr || typeof timeStr !== 'string') return timeStr;
-        const m = timeStr.match(/^(\d{1,2}):(\d{2})$/);
-        if (!m) return timeStr;
-        const totalMins = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-        const rounded = Math.round(totalMins / 5) * 5;
-        const h = Math.floor(rounded / 60) % 24;
-        const min = rounded % 60;
-        return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-      };
-      const handleBlur = (e) => {
-        const newVal = roundTo5(e.target.value);
-        if (newVal !== e.target.value && onChange) {
-          onChange({ target: { value: newVal } });
-        }
-        if (p.onBlur) p.onBlur(e);
-      };
-      return <Input type="time" step="300" value={value} onChange={onChange} onBlur={handleBlur}
+    // Exact-time picker. Previously the component snapped the entered
+    // value to the nearest 5 minutes on blur — that could quietly erase
+    // owed overtime (a wrap landing 2 minutes into an OT increment would
+    // round back to the boundary and lose the increment). Now the
+    // entered/blurred value passes straight through onChange unchanged,
+    // no rounding ever. The 5-minute `step` attribute is also dropped —
+    // it did nothing on iOS, and off-grid times would otherwise render
+    // as step-invalid. Any onBlur supplied by the caller still fires via
+    // the `...p` passthrough.
+    const TimeInput = ({ onChange, value, className, style, ...p }) => (
+      <Input type="time" value={value} onChange={onChange}
         className={`min-w-0 ${className || ""}`}
         style={{ WebkitAppearance: 'none', ...style }}
-        {...p} />;
-    };
+        {...p} />
+    );
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
     const ROUNDING_OPTIONS = [

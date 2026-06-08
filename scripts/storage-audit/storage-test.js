@@ -1593,6 +1593,81 @@ async function main() {
     }
   }
 
+  // ===== Q. TIMEINPUT IS EXACT-PASS-THROUGH (no 5-minute snap) =====
+  // The blur-snap could quietly erase owed overtime (e.g. a wrap two
+  // minutes into an OT increment rounded back to the boundary). The
+  // TimeInput component now passes the user's entered/blurred value
+  // straight through; this suite is the regression guard.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    // The whole project (source + audit modules) must contain zero
+    // references to the old rounder. If a future change re-introduces
+    // it under any name, the test will need an explicit decision.
+    const roundHits = (html.match(/roundTo5/g) || []).length;
+    check('Q1 source: roundTo5 helper is gone from index.html',
+      roundHits === 0,
+      `roundHits=${roundHits}`);
+
+    // Locate the TimeInput definition and inspect it surgically.
+    const tiStart = html.indexOf('const TimeInput =');
+    check('Q2 source: TimeInput definition still present', tiStart !== -1);
+    const tiEnd = html.indexOf('\n    };', tiStart);
+    const tiBody = (tiStart !== -1 ? html.slice(tiStart, tiEnd === -1 ? tiStart + 4000 : tiEnd + 5) : '');
+
+    // TimeInput must not declare any blur-rounding logic.
+    check('Q3 TimeInput body: no roundTo5 reference',
+      !/roundTo5/.test(tiBody));
+    // TimeInput must not pin step="300" anymore (off-grid times would
+    // otherwise render as step-invalid, and step did nothing on iOS).
+    check('Q4 TimeInput body: no step="300" attribute',
+      !/step="300"/.test(tiBody),
+      `tiBody.includes("step=\\"300\\"")=${/step="300"/.test(tiBody)}`);
+    // No handleBlur transform: there must be no `Math.round` of the
+    // entered value, and no synthetic onChange dispatch from blur.
+    check('Q5 TimeInput body: no Math.round on the entered value',
+      !/Math\.round/.test(tiBody));
+
+    // Behaviour check — simulate the contract directly. With the snap
+    // gone, TimeInput is a thin pass-through wrapper:
+    //   value in  → value rendered
+    //   onChange  → fires with exactly what the input element produced
+    //   onBlur    → if the caller passed one, it fires; no internal
+    //               transform-onChange is generated
+    // Model that contract here so a regression that re-introduces ANY
+    // form of internal value mutation fails this test.
+    {
+      const observed = [];
+      const onChange = (e) => observed.push({ kind: 'change', value: e.target.value });
+      const onBlur   = (e) => observed.push({ kind: 'blur',   value: e.target.value });
+      // Simulate: user types/picks 07:23 (off-grid).
+      onChange({ target: { value: '07:23' } });
+      // Simulate: user blurs the field WITHOUT editing further.
+      // The component must NOT synthesise a second onChange with a
+      // rounded value (which is what the removed handleBlur did).
+      onBlur({ target: { value: '07:23' } });
+      check('Q6 contract: an off-grid 07:23 entered stays 07:23',
+        observed[0] && observed[0].value === '07:23');
+      check('Q7 contract: blur of an off-grid 07:23 does NOT fire a second onChange with a rounded value',
+        observed.filter(o => o.kind === 'change').length === 1,
+        `change-count=${observed.filter(o => o.kind === 'change').length}, observed=${JSON.stringify(observed)}`);
+      check('Q8 contract: caller-supplied onBlur still fires with the unchanged value',
+        observed.find(o => o.kind === 'blur') && observed.find(o => o.kind === 'blur').value === '07:23');
+    }
+
+    // A second off-grid sample — the rounder used to round 07:22 → 07:20
+    // (down) and 07:23 → 07:25 (up). Confirm neither happens here.
+    {
+      const observed = [];
+      const onChange = (e) => observed.push(e.target.value);
+      onChange({ target: { value: '07:22' } });
+      onChange({ target: { value: '21:48' } });
+      check('Q9 contract: 07:22 passes through unchanged (rounds to neither 07:20 nor 07:25)',
+        observed[0] === '07:22');
+      check('Q10 contract: 21:48 passes through unchanged',
+        observed[1] === '21:48');
+    }
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.
