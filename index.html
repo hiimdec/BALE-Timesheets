@@ -15811,6 +15811,105 @@ const setDays = (updater) =>
       return { label: "DRAFT", variant: "draft" };
     }
 
+    // ── Invoice list section helpers (pure; tested in storage suite) ──
+    // Section reorg moves AllInvoicesView from a flat priority-band
+    // list to labelled sections (Drafts / Overdue / Unpaid / Paid by
+    // month). These helpers own the partition, ordering, and month-
+    // grouping rules. todayMs is a parameter so tests pin a clock.
+
+    // Sent invoice whose dueDate has already passed today.
+    const isOverdueSent = (invoice, todayMs) => {
+      if (!invoice || invoice.status !== 'sent' || !invoice.dueDate) return false;
+      const dueMs = new Date(invoice.dueDate + 'T12:00:00').getTime();
+      return Number.isFinite(dueMs) && dueMs < todayMs;
+    };
+
+    // Sort key for unpaid (sent + not overdue) cards: due date with a
+    // defensive fallback chain — if dueDate is missing we use the next
+    // best signal so the sort stays stable. Always returns a string.
+    const unpaidSortKey = (invoice) =>
+      (invoice && (invoice.dueDate || invoice.dateSent || invoice.invoiceDate)) || '';
+
+    // YYYY-MM month bucket for the Paid section. Uses the same
+    // datePaid > dateSent > invoiceDate > createdAt fallback chain
+    // AllInvoicesView's per-card "Paid on …" line uses, so the
+    // bucketing and the card text stay coherent. Returns null when
+    // no usable date is present → caller drops into "(undated)".
+    const paidMonthKey = (invoice) => {
+      if (!invoice) return null;
+      const d = invoice.datePaid
+        || invoice.dateSent
+        || invoice.invoiceDate
+        || (invoice.createdAt ? String(invoice.createdAt).slice(0, 10) : null);
+      return d && /^\d{4}-\d{2}/.test(d) ? d.slice(0, 7) : null;
+    };
+
+    // Partition + order all {invoice, production} items into the four
+    // sections. The Paid section is grouped by paidMonthKey, newest
+    // month first, with each group carrying its own per-month total
+    // built from the caller-supplied `totalFn` (so we never recompute
+    // from line items here — the list already has a total for each
+    // card). Any paid invoice with no usable month key collects into
+    // the "(undated)" bucket at the bottom.
+    function partitionInvoiceList(items, todayMs, totalFn) {
+      const drafts = [];
+      const overdue = [];
+      const unpaid = [];
+      const paid = [];
+      for (const it of (items || [])) {
+        const inv = it && it.invoice;
+        if (!inv) continue;
+        if (inv.status === 'draft') drafts.push(it);
+        else if (inv.status === 'sent') {
+          if (isOverdueSent(inv, todayMs)) overdue.push(it);
+          else unpaid.push(it);
+        } else if (inv.status === 'paid') paid.push(it);
+      }
+      // Drafts → invoiceDate descending.
+      drafts.sort((a, b) =>
+        (b.invoice.invoiceDate || '').localeCompare(a.invoice.invoiceDate || ''));
+      // Overdue → most-overdue first = dueDate ascending.
+      overdue.sort((a, b) =>
+        (a.invoice.dueDate || '').localeCompare(b.invoice.dueDate || ''));
+      // Unpaid → closest-due at BOTTOM = sort key descending.
+      unpaid.sort((a, b) =>
+        unpaidSortKey(b.invoice).localeCompare(unpaidSortKey(a.invoice)));
+      // Paid → bucket by month, then datePaid descending within each.
+      const datedKey = (inv) =>
+        inv.datePaid || inv.dateSent || inv.invoiceDate || '';
+      const groups = new Map();
+      const undated = [];
+      for (const it of paid) {
+        const key = paidMonthKey(it.invoice);
+        if (key) {
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(it);
+        } else {
+          undated.push(it);
+        }
+      }
+      for (const arr of groups.values()) {
+        arr.sort((a, b) => datedKey(b.invoice).localeCompare(datedKey(a.invoice)));
+      }
+      undated.sort((a, b) => datedKey(b.invoice).localeCompare(datedKey(a.invoice)));
+      const monthKeys = [...groups.keys()].sort((a, b) => b.localeCompare(a));
+      const paidGroups = monthKeys.map(key => ({
+        monthKey: key,
+        items: groups.get(key),
+        total: groups.get(key).reduce(
+          (s, it) => s + (Number(totalFn ? totalFn(it.invoice) : 0) || 0), 0),
+      }));
+      if (undated.length) {
+        paidGroups.push({
+          monthKey: null,
+          items: undated,
+          total: undated.reduce(
+            (s, it) => s + (Number(totalFn ? totalFn(it.invoice) : 0) || 0), 0),
+        });
+      }
+      return { drafts, overdue, unpaid, paidGroups };
+    }
+
     function getProductionInvoiceStatus(production) {
       const invoices = production.invoices || [];
       if (invoices.length === 0) return null;
@@ -17255,23 +17354,31 @@ const setDays = (updater) =>
         return { draft, sent, paid, overdue, outstanding, all: allInvoices.length };
       }, [allInvoices, todayMs]);
 
-      const visible = React.useMemo(() => {
-        const filtered = filterStatus === 'all'
-          ? allInvoices
-          : allInvoices.filter(({ invoice }) => invoice.status === filterStatus);
-        const priorityOf = ({ invoice }) => {
-          const s = getDisplayStatus(invoice);
-          if (s.label.startsWith('OVERDUE')) return 0;
-          if (invoice.status === 'sent') return 1;
-          if (invoice.status === 'draft') return 2;
-          return 3;
-        };
-        return [...filtered].sort((a, b) => {
-          const pa = priorityOf(a), pb = priorityOf(b);
-          if (pa !== pb) return pa - pb;
-          return (b.invoice.invoiceDate || '').localeCompare(a.invoice.invoiceDate || '');
-        });
-      }, [allInvoices, filterStatus]);
+      // Pre-compute the per-card total once via the same chain the card
+      // render uses — invoiceSubtotal + invoiceVAT — and feed it to
+      // partitionInvoiceList. This way per-month sums are byte-equal
+      // to what each card prints, and the helper stays pure.
+      const invoiceTotals = React.useMemo(() => {
+        const m = new Map();
+        for (const { invoice } of allInvoices) {
+          const sub = invoiceSubtotal(invoice.lineItems);
+          m.set(invoice.id, invoiceVAT(invoice, sub).total);
+        }
+        return m;
+      }, [allInvoices]);
+      const totalFor = React.useCallback(
+        (inv) => invoiceTotals.get(inv.id) || 0,
+        [invoiceTotals]
+      );
+
+      // Section reorg: Drafts (top, invoiceDate desc) → Overdue
+      // (sent + dueDate < today, most-overdue first) → Unpaid (sent + not
+      // overdue, closest-due at the BOTTOM = sort key desc) → Paid
+      // (grouped by paid-month, newest first, with per-month totals).
+      const sections = React.useMemo(
+        () => partitionInvoiceList(allInvoices, todayMs, totalFor),
+        [allInvoices, todayMs, totalFor]
+      );
 
       const hasInvoicingSetup = !!(userPrefs?.displayName?.trim());
 
@@ -17336,16 +17443,16 @@ const setDays = (updater) =>
           >
             <IPlus size={13}/>New invoice
           </button>
-          <div className="space-y-2">
-            {visible.map(({ invoice, production }) => {
+          {(() => {
+            // The per-card render — extracted so each section maps over
+            // its own slice without duplicating markup.
+            const renderCard = ({ invoice, production }) => {
               const s = getDisplayStatus(invoice);
-              const subtotal = invoiceSubtotal(invoice.lineItems);
-              const { vatAmount, total } = invoiceVAT(invoice, subtotal);
+              const total = totalFor(invoice);
               const dueMs = invoice.dueDate ? new Date(invoice.dueDate + 'T12:00:00').getTime() : null;
               const isOverdue = invoice.status === 'sent' && dueMs && dueMs < todayMs;
               const daysOverdue = isOverdue ? Math.floor((todayMs - dueMs) / 86400000) : 0;
               const daysToDue = (invoice.status === 'sent' && dueMs && !isOverdue) ? Math.ceil((dueMs - todayMs) / 86400000) : 0;
-
               return (
                 <button
                   key={invoice.id}
@@ -17388,8 +17495,66 @@ const setDays = (updater) =>
                   </div>
                 </button>
               );
-            })}
-          </div>
+            };
+
+            // Filter pill mapping:
+            //   'all'   → every non-empty section
+            //   'draft' → Drafts only
+            //   'sent'  → Overdue + Unpaid (both status === 'sent')
+            //   'paid'  → Paid only
+            const showDrafts  = (filterStatus === 'all' || filterStatus === 'draft') && sections.drafts.length > 0;
+            const showOverdue = (filterStatus === 'all' || filterStatus === 'sent')  && sections.overdue.length > 0;
+            const showUnpaid  = (filterStatus === 'all' || filterStatus === 'sent')  && sections.unpaid.length > 0;
+            const showPaid    = (filterStatus === 'all' || filterStatus === 'paid')  && sections.paidGroups.length > 0;
+
+            const sectionHdrCls = "text-[10px] uppercase tracking-[0.22em] font-bold mb-2 mt-5 first:mt-0";
+            const fmtMonthLabel = (yyyymm) => {
+              if (!yyyymm) return '(undated)';
+              const d = new Date(yyyymm + '-01T12:00:00');
+              return d.toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+            };
+
+            return (
+              <>
+                {showDrafts && (
+                  <section>
+                    <div className={`${sectionHdrCls} text-sky-500`}>Drafts</div>
+                    <div className="space-y-2">{sections.drafts.map(renderCard)}</div>
+                  </section>
+                )}
+                {showOverdue && (
+                  <section>
+                    <div className={`${sectionHdrCls} text-tm-pen`}>Overdue</div>
+                    <div className="space-y-2">{sections.overdue.map(renderCard)}</div>
+                  </section>
+                )}
+                {showUnpaid && (
+                  <section>
+                    <div className={`${sectionHdrCls} text-sky-500`}>Unpaid</div>
+                    <div className="space-y-2">{sections.unpaid.map(renderCard)}</div>
+                  </section>
+                )}
+                {showPaid && (
+                  <section>
+                    <div className={`${sectionHdrCls} text-sky-500`}>Paid</div>
+                    {sections.paidGroups.map((g) => (
+                      <div key={g.monthKey || '__undated'} className="mt-3 first:mt-0">
+                        <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                          <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400 font-bold">
+                            {fmtMonthLabel(g.monthKey)}
+                          </span>
+                          <span className="text-[11px] font-mono text-neutral-500">
+                            {fmtGBP(g.total)}
+                          </span>
+                        </div>
+                        <div className="space-y-2">{g.items.map(renderCard)}</div>
+                      </div>
+                    ))}
+                  </section>
+                )}
+              </>
+            );
+          })()}
           {actionSheetTarget && (
             <InvoiceRowActionSheet
               invoice={actionSheetTarget.invoice}

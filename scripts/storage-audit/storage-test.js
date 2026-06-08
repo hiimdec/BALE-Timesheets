@@ -256,7 +256,15 @@ async function transformedAppCode() {
     'try { globalThis.__COMPARISON_ITEMS      = COMPARISON_ITEMS;      } catch (_) {}\n' +
     'try { globalThis.__COMPARISON_SURFACE    = COMPARISON_SURFACE;    } catch (_) {}\n' +
     // Scroll-to-top button (V-suite): expose the pure visibility gate.
-    'try { globalThis.__shouldShowScrollTop = shouldShowScrollTop; } catch (_) {}\n';
+    'try { globalThis.__shouldShowScrollTop = shouldShowScrollTop; } catch (_) {}\n' +
+    // Invoices list section reorg (W-suite): expose the partition +
+    // ordering helpers so the suite can verify the split, sort
+    // directions, paid-month fallback chain, per-month totals, and
+    // the "(undated)" bucket placement without standing up React.
+    'try { globalThis.__isOverdueSent       = isOverdueSent;       } catch (_) {}\n' +
+    'try { globalThis.__unpaidSortKey       = unpaidSortKey;       } catch (_) {}\n' +
+    'try { globalThis.__paidMonthKey        = paidMonthKey;        } catch (_) {}\n' +
+    'try { globalThis.__partitionInvoiceList = partitionInvoiceList; } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -2391,6 +2399,237 @@ async function main() {
         fn(-1) === false);
       check('V9 NaN scrollTop → hidden',
         fn(NaN) === false);
+    }
+  }
+
+  // ===== W. INVOICES LIST SECTION REORG — pure partition + ordering =====
+  // Drafts → Overdue → Unpaid → Paid (grouped by paid-month). The
+  // helpers own the split, sort directions, paid-month fallback chain,
+  // per-month totals, and the "(undated)" bucket. todayMs is a
+  // parameter for testability (no `new Date()` inside).
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const isOverdueSent = sb.__isOverdueSent;
+    const unpaidSortKey = sb.__unpaidSortKey;
+    const paidMonthKey  = sb.__paidMonthKey;
+    const partition     = sb.__partitionInvoiceList;
+
+    check('W0 helpers exposed in sandbox',
+      typeof isOverdueSent === 'function' &&
+      typeof unpaidSortKey === 'function' &&
+      typeof paidMonthKey  === 'function' &&
+      typeof partition     === 'function');
+
+    // FIXED clock — 2026-06-08 (Monday).
+    const TODAY_ISO = '2026-06-08';
+    const todayMs = new Date(TODAY_ISO + 'T12:00:00').getTime();
+
+    // ─ W1: isOverdueSent ─
+    {
+      check('W1a sent + dueDate < today → overdue',
+        isOverdueSent({ status: 'sent', dueDate: '2026-06-01' }, todayMs) === true);
+      check('W1b sent + dueDate == today → NOT overdue (strict <)',
+        isOverdueSent({ status: 'sent', dueDate: '2026-06-08' }, todayMs) === false);
+      check('W1c sent + dueDate > today → NOT overdue',
+        isOverdueSent({ status: 'sent', dueDate: '2026-07-01' }, todayMs) === false);
+      check('W1d sent + no dueDate → NOT overdue',
+        isOverdueSent({ status: 'sent' }, todayMs) === false);
+      check('W1e draft + past dueDate → NOT overdue (status gate)',
+        isOverdueSent({ status: 'draft', dueDate: '2026-06-01' }, todayMs) === false);
+      check('W1f paid + past dueDate → NOT overdue (status gate)',
+        isOverdueSent({ status: 'paid', dueDate: '2026-06-01' }, todayMs) === false);
+    }
+
+    // ─ W2: paidMonthKey fallback chain ─
+    {
+      check('W2a datePaid wins',
+        paidMonthKey({ datePaid: '2026-06-15', dateSent: '2026-05-01', invoiceDate: '2026-04-01' }) === '2026-06');
+      check('W2b datePaid missing → dateSent next',
+        paidMonthKey({ dateSent: '2026-05-15', invoiceDate: '2026-04-01' }) === '2026-05');
+      check('W2c datePaid + dateSent missing → invoiceDate',
+        paidMonthKey({ invoiceDate: '2026-04-15' }) === '2026-04');
+      check('W2d only createdAt → slice(0,10) parsed',
+        paidMonthKey({ createdAt: '2026-03-15T12:34:56.000Z' }) === '2026-03');
+      check('W2e all missing → null',
+        paidMonthKey({}) === null);
+      check('W2f null invoice → null (defensive)',
+        paidMonthKey(null) === null);
+      check('W2g empty-string datePaid falls through (falsy)',
+        paidMonthKey({ datePaid: '', dateSent: '2026-05-01' }) === '2026-05');
+    }
+
+    // ─ W3: unpaidSortKey fallback chain ─
+    {
+      check('W3a dueDate wins',
+        unpaidSortKey({ dueDate: '2026-06-15', dateSent: '2026-05-01' }) === '2026-06-15');
+      check('W3b no dueDate → dateSent',
+        unpaidSortKey({ dateSent: '2026-05-15' }) === '2026-05-15');
+      check('W3c no due/sent → invoiceDate',
+        unpaidSortKey({ invoiceDate: '2026-04-15' }) === '2026-04-15');
+      check('W3d empty → ""',
+        unpaidSortKey({}) === '');
+    }
+
+    // ─ Fixtures: invoice records with the date fields the partition
+    // helper reads. Production is irrelevant to the partition, so we
+    // attach a stub for shape. Totals are pre-set so the per-month
+    // sum is deterministic via the test's totalFn. ─
+    const prod = { id: 'p1', title: 'Test' };
+    const mk = (id, status, dates, total) => ({
+      invoice: { id, status, ...dates, _t: total },
+      production: prod,
+    });
+    const totalFn = (inv) => inv._t;
+
+    // ─ W4: Drafts ordering (invoiceDate descending) ─
+    {
+      const items = [
+        mk('d1', 'draft', { invoiceDate: '2026-05-01' }, 100),
+        mk('d2', 'draft', { invoiceDate: '2026-06-01' }, 200),
+        mk('d3', 'draft', { invoiceDate: '2026-04-01' }, 300),
+      ];
+      const r = partition(items, todayMs, totalFn);
+      check('W4a Drafts split: 3 → drafts',
+        r.drafts.length === 3 && r.overdue.length === 0 && r.unpaid.length === 0 && r.paidGroups.length === 0);
+      check('W4b Drafts order: invoiceDate descending',
+        r.drafts.map(it => it.invoice.id).join(',') === 'd2,d1,d3');
+    }
+
+    // ─ W5: Overdue vs Unpaid split — sent + dueDate < today → overdue. ─
+    {
+      const items = [
+        mk('s1', 'sent', { dueDate: '2026-06-05' }, 100),  // overdue (3d)
+        mk('s2', 'sent', { dueDate: '2026-06-15' }, 200),  // unpaid (in 7d)
+        mk('s3', 'sent', { dueDate: '2026-06-01' }, 300),  // overdue (7d)
+        mk('s4', 'sent', { dueDate: '2026-06-08' }, 400),  // unpaid (today exactly)
+        mk('s5', 'sent', { dueDate: '2026-07-01' }, 500),  // unpaid (far)
+      ];
+      const r = partition(items, todayMs, totalFn);
+      check('W5a overdue contains only past-due sent invoices',
+        r.overdue.map(it => it.invoice.id).sort().join(',') === 's1,s3');
+      check('W5b unpaid contains the rest (today-or-future + no-due)',
+        r.unpaid.map(it => it.invoice.id).sort().join(',') === 's2,s4,s5');
+      // ─ W6: Overdue order — most-overdue first = dueDate ascending. ─
+      check('W6 overdue order: most-overdue first (s3 2026-06-01 before s1 2026-06-05)',
+        r.overdue.map(it => it.invoice.id).join(',') === 's3,s1');
+      // ─ W7: Unpaid order — closest-due at BOTTOM = sort key desc. ─
+      // s5 (2026-07-01) → top, s2 (2026-06-15) → middle, s4 (2026-06-08) → bottom.
+      check('W7 unpaid order: closest-due at BOTTOM (s5,s2,s4)',
+        r.unpaid.map(it => it.invoice.id).join(',') === 's5,s2,s4');
+    }
+
+    // ─ W8: Unpaid with no dueDate falls back via unpaidSortKey. ─
+    {
+      const items = [
+        mk('u1', 'sent', { dueDate: '2026-06-15' }, 100),                                // wins on dueDate
+        mk('u2', 'sent', { dateSent: '2026-06-20' }, 200),                               // fallback dateSent
+        mk('u3', 'sent', { invoiceDate: '2026-06-10' }, 300),                            // fallback invoiceDate
+      ];
+      const r = partition(items, todayMs, totalFn);
+      // Sort-key desc: u2 (2026-06-20) > u1 (2026-06-15) > u3 (2026-06-10).
+      check('W8 unpaid sort uses dueDate || dateSent || invoiceDate fallback',
+        r.unpaid.map(it => it.invoice.id).join(',') === 'u2,u1,u3');
+    }
+
+    // ─ W9: Paid grouped by month, newest first. ─
+    {
+      const items = [
+        mk('p1', 'paid', { datePaid: '2026-04-10' }, 100),
+        mk('p2', 'paid', { datePaid: '2026-06-20' }, 200),
+        mk('p3', 'paid', { datePaid: '2026-04-25' }, 300),
+        mk('p4', 'paid', { datePaid: '2026-05-15' }, 400),
+        mk('p5', 'paid', { datePaid: '2026-06-05' }, 500),
+      ];
+      const r = partition(items, todayMs, totalFn);
+      check('W9a paid: 3 month groups',
+        r.paidGroups.length === 3);
+      check('W9b paid: groups ordered newest-month first',
+        r.paidGroups.map(g => g.monthKey).join(',') === '2026-06,2026-05,2026-04');
+      // Within a group: datePaid descending.
+      check('W9c paid: within 2026-06, datePaid descending (p2 before p5)',
+        r.paidGroups[0].items.map(it => it.invoice.id).join(',') === 'p2,p5');
+      // ─ W10: Per-month totals = Σ totalFn(invoice). ─
+      check('W10a 2026-06 total = p2 + p5 = 700',
+        r.paidGroups[0].total === 700);
+      check('W10b 2026-05 total = p4 = 400',
+        r.paidGroups[1].total === 400);
+      check('W10c 2026-04 total = p1 + p3 = 400',
+        r.paidGroups[2].total === 400);
+    }
+
+    // ─ W11: Paid month key uses fallback chain end-to-end via partition. ─
+    {
+      const items = [
+        // datePaid given → buckets as 2026-06.
+        mk('q1', 'paid', { datePaid: '2026-06-01', dateSent: '2026-05-01', invoiceDate: '2026-04-01' }, 100),
+        // No datePaid → falls to dateSent (2026-05).
+        mk('q2', 'paid', { dateSent: '2026-05-10', invoiceDate: '2026-04-10' }, 200),
+        // No datePaid / dateSent → falls to invoiceDate (2026-04).
+        mk('q3', 'paid', { invoiceDate: '2026-04-15' }, 300),
+        // Only createdAt → falls to that month.
+        mk('q4', 'paid', { createdAt: '2026-03-20T08:00:00.000Z' }, 400),
+      ];
+      const r = partition(items, todayMs, totalFn);
+      check('W11 paid bucketing uses full fallback chain across invoices',
+        r.paidGroups.map(g => `${g.monthKey}:${g.items.length}`).join(',') ===
+        '2026-06:1,2026-05:1,2026-04:1,2026-03:1');
+    }
+
+    // ─ W12: "(undated)" bucket at the very bottom. ─
+    {
+      const items = [
+        mk('p1', 'paid', { datePaid: '2026-06-10' }, 100),
+        mk('p2', 'paid', {                        }, 200),  // no usable date
+        mk('p3', 'paid', { datePaid: '2026-05-10' }, 300),
+        mk('p4', 'paid', { /* also undated */     }, 400),
+      ];
+      const r = partition(items, todayMs, totalFn);
+      check('W12a paid groups end with monthKey === null (undated)',
+        r.paidGroups[r.paidGroups.length - 1].monthKey === null);
+      check('W12b undated bucket contains both undated invoices',
+        r.paidGroups[r.paidGroups.length - 1].items.length === 2 &&
+        r.paidGroups[r.paidGroups.length - 1].items.map(it => it.invoice.id).sort().join(',') === 'p2,p4');
+      check('W12c undated bucket total = sum of its items (600)',
+        r.paidGroups[r.paidGroups.length - 1].total === 600);
+      check('W12d preceding groups are dated, newest-first',
+        r.paidGroups.slice(0, -1).map(g => g.monthKey).join(',') === '2026-06,2026-05');
+    }
+
+    // ─ W13: Defensive — empty input, mixed bad statuses. ─
+    {
+      const r1 = partition([], todayMs, totalFn);
+      check('W13a empty input → all sections empty',
+        r1.drafts.length === 0 && r1.overdue.length === 0 &&
+        r1.unpaid.length === 0 && r1.paidGroups.length === 0);
+      const r2 = partition(null, todayMs, totalFn);
+      check('W13b null input → all sections empty (defensive)',
+        r2.drafts.length === 0 && r2.overdue.length === 0 &&
+        r2.unpaid.length === 0 && r2.paidGroups.length === 0);
+      // Items with unknown status are dropped.
+      const items = [
+        mk('x', 'cancelled', {}, 100),
+        mk('y', null, {}, 100),
+        { invoice: null, production: prod },
+        mk('d', 'draft', { invoiceDate: '2026-05-01' }, 100),
+      ];
+      const r3 = partition(items, todayMs, totalFn);
+      check('W13c unknown / null statuses dropped; only draft retained',
+        r3.drafts.length === 1 && r3.drafts[0].invoice.id === 'd' &&
+        r3.overdue.length === 0 && r3.unpaid.length === 0 &&
+        r3.paidGroups.length === 0);
+    }
+
+    // ─ W14: totalFn missing → totals are 0 (helper-side defensive). ─
+    {
+      const items = [
+        mk('p1', 'paid', { datePaid: '2026-06-10' }, 100),
+        mk('p2', 'paid', { datePaid: '2026-06-12' }, 200),
+      ];
+      const r = partition(items, todayMs, null);
+      check('W14 missing totalFn → group totals are 0',
+        r.paidGroups[0].total === 0 && r.paidGroups[0].items.length === 2);
     }
   }
 
