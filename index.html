@@ -1051,6 +1051,7 @@
       { emoji: "🥖", label: "Greggs sausage rolls", price: 1.30 },
       { emoji: "🚇", label: "Tube journeys", price: 3.10 },
       { emoji: "🥪", label: "Tesco meal deals", price: 3.40 },
+      { emoji: "🥐", label: "Jolene's pastries", price: 3.50 },
       { emoji: "☕", label: "oat flat whites", price: 4.20 },
       { emoji: "🍺", label: "pints in London", price: 6.50 },
       { emoji: "📼", label: "rolls of gaffer tape", price: 15 },
@@ -1063,6 +1064,7 @@
 
     const COMPARISON_SURFACE = [
       "Greggs sausage rolls",
+      "Jolene's pastries",
       "pints in London",
       "rolls of gaffer tape",
       "Leathermans",
@@ -1629,6 +1631,22 @@
     const fmtDateMed = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }); };
     // fmtDateLong → "Wed, 4 May 2026" (day editor headings, weekly summaries)
     const fmtDateLong = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }); };
+    // fmtDateOrdinal → "7th May 2026" (highest-earning-day stat card).
+    // Ordinal suffix rules: 11/12/13 are always "th" (the standard
+    // English exception); otherwise pivot on the units digit.
+    const fmtDateOrdinal = (iso) => {
+      if (!iso) return "—";
+      const d = new Date(iso + "T12:00:00");
+      const day = d.getDate();
+      const j = day % 10, k = day % 100;
+      const suffix = (k >= 11 && k <= 13) ? "th"
+        : j === 1 ? "st"
+        : j === 2 ? "nd"
+        : j === 3 ? "rd"
+        : "th";
+      const month = d.toLocaleDateString("en-GB", { month: "long" });
+      return `${day}${suffix} ${month} ${d.getFullYear()}`;
+    };
     const uid = () => Math.random().toString(36).slice(2, 10);
     const addDays = (isoDate, n) => { const d = new Date(isoDate + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
     const roleRank = (role) => { const r = role === "Spark" ? "Lighting Technician" : role; const i = ROLE_ORDER.indexOf(r); return i === -1 ? 99 : i; };
@@ -15522,7 +15540,7 @@ const setDays = (updater) =>
                 <SectionHdr>Highlights</SectionHdr>
                 <div className="space-y-3">
                   {stats.highestDay && (
-                    <TappableCard label="Highest earning day" value={fmtGBP(stats.highestDay.amount)} sub={stats.highestDay.date} statKey="highest">
+                    <TappableCard label="Highest earning day" value={fmtGBP(stats.highestDay.amount)} sub={fmtDateOrdinal(stats.highestDay.date)} statKey="highest">
                       <HighestDayBreakdown buckets={stats.highestDay.buckets}/>
                       <ComparisonContent amount={stats.highestDay.amount}/>
                     </TappableCard>
