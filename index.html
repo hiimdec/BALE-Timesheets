@@ -1531,21 +1531,6 @@
     const roundingApa = (o) => roundingModeOf(o) === 'apa';
     const roundingFav = (o) => roundingModeOf(o) === 'favourable';
     const todayISO = () => new Date().toISOString().slice(0, 10);
-
-    // Read the HH:MM tokens DIRECTLY from the native time-picker's returned
-    // string, bypassing any Date / timezone parsing. The plugin's default
-    // `format` is `yyyy-MM-dd'T'HH:mm:ss.sss'Z'` — the literal `'Z'` is a
-    // Java DateFormat literal token, NOT a UTC indicator: the date / time
-    // components in the string reflect the USER'S LOCAL CLOCK (the pick on
-    // the wheel). If we ran the string through `new Date(...).getHours()`
-    // we'd get a timezone-shifted value (e.g. a 07:23 pick in BST would
-    // read back as 08:23 because Date treats the trailing Z as UTC).
-    // Reading the tokens out via regex is the only safe path.
-    const isoToHHMM = (iso) => {
-      if (!iso || typeof iso !== 'string') return '';
-      const m = iso.match(/T(\d{2}):(\d{2})/);
-      return m ? `${m[1]}:${m[2]}` : '';
-    };
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
     const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
     const getBankHolidayName = (dateStr) => dateStr ? (UK_BANK_HOLIDAYS[dateStr] || null) : null;
@@ -5257,75 +5242,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         className={`w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
     };
-    // Time-input wrapper, branched by platform:
-    //
-    // WEB — unchanged: the plain <Input type="time"> with the user's
-    //   exact value passing straight through (no rounding, no step).
-    //   That snap-removal landed in the Q-suite; this branch is byte-
-    //   for-byte the same component, gated behind !IS_NATIVE.
-    //
-    // iOS — opens @capawesome-team/capacitor-datetime-picker in time
-    //   mode with minuteInterval: 5 (scrolling a 1-minute wheel to
-    //   reach an exact time is too slow; an explicit 5-min pick on a
-    //   wheel is a user choice, not a silent snap). The trigger looks
-    //   like a regular input (same Input className) but is read-only
-    //   text — tapping it opens the wheel; the wheel returns a value
-    //   that we convert to HH:MM via isoToHHMM and dispatch back via
-    //   onChange({ target: { value } }), preserving the shape every
-    //   caller already reads. The plugin module is loaded with a
-    //   DYNAMIC import inside the click handler so it never enters
-    //   the web bundle — audit:web stays clean.
-    const TimeInput = ({ onChange, value, className, style, disabled, ...p }) => {
-      if (!IS_NATIVE) {
-        return (
-          <Input type="time" value={value} onChange={onChange}
-            className={`min-w-0 ${className || ""}`}
-            style={{ WebkitAppearance: 'none', ...style }}
-            disabled={disabled}
-            {...p} />
-        );
-      }
-      const handleClick = async () => {
-        if (disabled) return;
-        try {
-          // Dynamic import — never reached in the web bundle (the branch
-          // above returns early), and tree-shakers can drop the import
-          // call entirely when IS_NATIVE is the literal `false` of the
-          // web boot. audit:web verifies neither @capawesome nor the
-          // string 'capacitor-datetime-picker' appears in dist.
-          const mod = await import('@capawesome-team/capacitor-datetime-picker');
-          const opts = { mode: 'time', minuteInterval: 5 };
-          // Open the wheel at the current value, if any. Build a LOCAL
-          // Date for today + the stored HH:MM, then toISOString() — the
-          // native plugin parses the resulting string as UTC, displays in
-          // local, and the wheel opens at the same HH:MM the user sees
-          // in the field. Empty value → no `value` opt → picker roots at
-          // "now". Opening on empty is NOT a clear; existing clear /
-          // reset affordances at the call sites are untouched.
-          if (value && /^\d{2}:\d{2}$/.test(value)) {
-            const [hh, mm] = value.split(':').map(Number);
-            const d = new Date();
-            d.setHours(hh, mm, 0, 0);
-            opts.value = d.toISOString();
-          }
-          const { value: picked } = await mod.DatetimePicker.present(opts);
-          const hhmm = isoToHHMM(picked);
-          if (hhmm && onChange) onChange({ target: { value: hhmm } });
-        } catch (_) {
-          // Cancel / dismiss / any plugin error → leave the value
-          // unchanged. No onChange, no write.
-        }
-      };
-      return (
-        <Input type="text" readOnly value={value || ''} onClick={handleClick}
-          placeholder="--:--"
-          className={`min-w-0 cursor-pointer ${className || ""}`}
-          style={{ WebkitAppearance: 'none', ...style }}
-          disabled={disabled}
-          aria-label="Open time picker"
-          {...p} />
-      );
-    };
+    // Exact-time picker. Previously the component snapped the entered
+    // value to the nearest 5 minutes on blur — that could quietly erase
+    // owed overtime (a wrap landing 2 minutes into an OT increment would
+    // round back to the boundary and lose the increment). Now the
+    // entered/blurred value passes straight through onChange unchanged,
+    // no rounding ever. The 5-minute `step` attribute is also dropped —
+    // it did nothing on iOS, and off-grid times would otherwise render
+    // as step-invalid. Any onBlur supplied by the caller still fires via
+    // the `...p` passthrough.
+    const TimeInput = ({ onChange, value, className, style, ...p }) => (
+      <Input type="time" value={value} onChange={onChange}
+        className={`min-w-0 ${className || ""}`}
+        style={{ WebkitAppearance: 'none', ...style }}
+        {...p} />
+    );
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
     const ROUNDING_OPTIONS = [
