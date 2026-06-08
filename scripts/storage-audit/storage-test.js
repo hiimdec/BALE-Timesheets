@@ -3404,27 +3404,31 @@ async function main() {
     //   full-width name on line 1, then labelled "Default on new shoots"
     //   toggle (left) and £ rate + × delete (right) on line 2. Bindings
     //   to {id, name, defaultDailyRate, defaultOn} must be intact; add /
-    //   remove wires must still spawn / drop items. The layout itself is
-    //   only spot-checked (the "Default on new shoots" labelled-toggle
-    //   text is new in Stage 2 and is the load-bearing visual change). ─
+    //   remove wires must still spawn / drop items. Stage 3 moved the
+    //   editor to the top-level KitRoomEditor component, so we scan the
+    //   full file (`html`) instead of the SettingsScreen slice (`body`). ─
     check('Z10a Kit Room: name binding writes via updateKitItem({ name: ... })',
-      body.includes('updateKitItem(item.id, { name: e.target.value })'));
+      html.includes('updateKitItem(item.id, { name: e.target.value })'));
     check('Z10b Kit Room: rate binding writes via updateKitItem({ defaultDailyRate: ... })',
-      body.includes('updateKitItem(item.id, { defaultDailyRate:'));
+      html.includes('updateKitItem(item.id, { defaultDailyRate:'));
     check('Z10c Kit Room: toggle binding writes via updateKitItem({ defaultOn: v })',
-      body.includes('updateKitItem(item.id, { defaultOn: v })'));
+      html.includes('updateKitItem(item.id, { defaultOn: v })'));
     check('Z10d Kit Room: addKitItem appends a new {id, name, defaultDailyRate, defaultOn} item',
-      body.includes("{ id: uid(), name: \"\", defaultDailyRate: 0, defaultOn: false }"));
+      html.includes("{ id: uid(), name: \"\", defaultDailyRate: 0, defaultOn: false }"));
     check('Z10e Kit Room: removeKitItem filters by id',
-      body.includes('items.filter(it => it.id !== id)'));
+      html.includes('items.filter(it => it.id !== id)'));
     check('Z10f Kit Room: "+ Add kit item" button text + addKitItem onClick wired',
-      body.includes('onClick={addKitItem}') && body.includes('Add kit item'));
+      html.includes('onClick={addKitItem}') && html.includes('Add kit item'));
     check('Z10g Kit Room: "Default on new shoots" labelled-toggle text rendered',
-      body.includes('Default on new shoots'));
+      html.includes('Default on new shoots'));
     check('Z10h Kit Room: per-item card uses bg-neutral-900 border rounded-xl (roomier layout)',
-      body.includes('bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3'));
-    check('Z10i Kit Room: name input is full-width (no row-truncation)',
-      body.includes('w-full text-sm font-semibold'));
+      html.includes('bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3'));
+    check('Z10i Kit Room: name input is full-width inside flex row (Stage 3)',
+      html.includes('flex-1 min-w-0 text-sm font-semibold'));
+    check('Z10j Kit Room: SettingsScreen renders <KitRoomEditor> with kitInventory + set onChange',
+      body.includes('<KitRoomEditor') &&
+      body.includes('userPrefs.kitInventory') &&
+      body.includes('set({ kitInventory: newItems })'));
 
     // ─ Z11: dead summary vars from Stage 1 are pruned. If any of these
     //   reappear, someone re-introduced the now-unreferenced summary
@@ -3438,6 +3442,151 @@ async function main() {
         !body.includes(`const ${v} =`),
         `unexpected redeclaration of const ${v} =`);
     }
+
+    // ─ Z12: Kit Room Stage 3 drag-to-reorder source presence. The reorder
+    //   is exercised by storage round-trip in Z13; here we only verify the
+    //   pointer-event surface is wired and the relevant CSS guards are in
+    //   place — touch-action:none on the grip + prefers-reduced-motion read. ─
+    check('Z12a KitRoomEditor: top-level function defined',
+      html.includes('function KitRoomEditor({ items, onChange })'));
+    check('Z12b KitRoomEditor: grip SVG (three horizontal lines) rendered',
+      html.includes('<line x1="2.5" y1="4"') &&
+      html.includes('<line x1="2.5" y1="7"') &&
+      html.includes('<line x1="2.5" y1="10"'));
+    check('Z12c KitRoomEditor: per-card dragstart hook (onPointerDown=beginDrag)',
+      html.includes('onPointerDown={(e) => beginDrag(item.id, e)}'));
+    check('Z12d KitRoomEditor: pointermove handler wired (onPointerMove=onDragMove)',
+      html.includes('onPointerMove={onDragMove}'));
+    check('Z12e KitRoomEditor: pointerup commits (onPointerUp=endDrag(..., true))',
+      html.includes('onPointerUp={(e) => endDrag(e, true)}'));
+    check('Z12f KitRoomEditor: pointercancel reverts (onPointerCancel=endDrag(..., false))',
+      html.includes('onPointerCancel={(e) => endDrag(e, false)}'));
+    check('Z12g KitRoomEditor: setPointerCapture so drag survives finger leaving grip',
+      html.includes('setPointerCapture(e.pointerId)'));
+    check('Z12h KitRoomEditor: touchAction:none on grip (iOS scroll guard)',
+      html.includes("touchAction: 'none'"));
+    check('Z12i KitRoomEditor: body.style.touchAction/overflow suppressed during drag',
+      html.includes("document.body.style.touchAction = 'none'") &&
+      html.includes("document.body.style.overflow = 'hidden'"));
+    check('Z12j KitRoomEditor: prefers-reduced-motion read for neighbour-slide animation',
+      html.includes("'(prefers-reduced-motion: reduce)'"));
+    check('Z12k KitRoomEditor: data-kit-card marker for grip→card closest() lookup',
+      html.includes('data-kit-card="1"'));
+    check('Z12l KitRoomEditor: drop commits through onChange (same path as edits)',
+      html.includes('if (!same) onChange(reordered)'));
+    check('Z12m KitRoomEditor: drop builds reordered array by-id (ids stable, no rewrites)',
+      html.includes('const byId = new Map(items.map(it => [it.id, it]))') &&
+      html.includes('.map(id => byId.get(id))'));
+  }
+
+  // ===== AA. KIT ROOM REORDER ROUND-TRIP — Stage 3 =====
+  // A reordered kitInventory must persist through the same storage path
+  // every other userPrefs field uses. The reorder is a pure UI move — no
+  // calc, no schema bump — so all we need to verify is:
+  //   AA1  the new order is what comes back out of storage
+  //   AA2  ids are stable across the reorder (no id rewrites)
+  //   AA3  length is unchanged (no items dropped or duplicated)
+  //   AA4  each item's name / defaultDailyRate / defaultOn fields survive
+  //   AA5  a no-op reorder (same array order) round-trips identically
+  // The KitRoomEditor itself writes the new array via onChange, which
+  // SettingsScreen wraps as `set({ kitInventory: newItems })` — i.e. the
+  // SAME setUserPrefs path as every other edit. So the round-trip we
+  // exercise here is `storage.set → storage.get → JSON.parse`.
+  {
+    const seedItems = [
+      { id: 'kit-a', name: 'Sennheiser MKH8060', defaultDailyRate: 75,  defaultOn: true  },
+      { id: 'kit-b', name: 'Sound Devices MixPre-6', defaultDailyRate: 50, defaultOn: false },
+      { id: 'kit-c', name: 'Boom Pole', defaultDailyRate: 15, defaultOn: true  },
+      { id: 'kit-d', name: 'Lav Kit', defaultDailyRate: 30, defaultOn: false },
+    ];
+    const seedPrefs = {
+      displayName: 'Reorder User',
+      defaultBDR: 250,
+      kitInventory: seedItems,
+    };
+
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+
+    // Seed via the same import path real backups use.
+    const importResult = sb.__importBackup(JSON.stringify({
+      version: 1,
+      schemaVersion: 3,
+      productions: [],
+      userPrefs: seedPrefs,
+    }));
+    check('AA0 seed: importBackup ok',
+      importResult && importResult.ok === true,
+      `result=${JSON.stringify(importResult)}`);
+
+    // Sanity: seed survives the import.
+    const beforeStored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('AA0 seed: kitInventory restored with 4 items in seed order',
+      beforeStored && Array.isArray(beforeStored.kitInventory) &&
+        beforeStored.kitInventory.length === 4 &&
+        beforeStored.kitInventory.map(it => it.id).join(',') === 'kit-a,kit-b,kit-c,kit-d',
+      `order=${beforeStored && beforeStored.kitInventory && beforeStored.kitInventory.map(it => it.id).join(',')}`);
+
+    // Simulate a drop: KitRoomEditor's `endDrag(commit=true)` rebuilds the
+    // array by looking each id up in the original items via Map.get() —
+    // exactly the same shape we simulate here. The new order is committed
+    // through onChange → set({ kitInventory: newItems }) → setUserPrefs →
+    // storage.set('bigals_user_prefs', ...). Mirror that final write.
+    const beforeArr = beforeStored.kitInventory;
+    const byId = new Map(beforeArr.map(it => [it.id, it]));
+    const reorderedIds = ['kit-c', 'kit-a', 'kit-d', 'kit-b']; // visibly different
+    const reordered = reorderedIds.map(id => byId.get(id));
+    const nextPrefs = { ...beforeStored, kitInventory: reordered };
+    sb.__storage.set('bigals_user_prefs', JSON.stringify(nextPrefs));
+
+    // AA1 — order round-trips verbatim.
+    const afterStored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    const afterIds = (afterStored && afterStored.kitInventory || []).map(it => it.id);
+    check('AA1 reorder: stored order matches the written reorder',
+      afterIds.join(',') === reorderedIds.join(','),
+      `got=${afterIds.join(',')} expected=${reorderedIds.join(',')}`);
+
+    // AA2 — ids stable across the reorder. The set of ids before and
+    // after must be identical (no id rewrites, no missing ids).
+    const beforeIds = beforeArr.map(it => it.id);
+    const sameIdSet = beforeIds.length === afterIds.length &&
+      beforeIds.every(id => afterIds.includes(id));
+    check('AA2 reorder: id set unchanged (no id rewrites)',
+      sameIdSet,
+      `before=${beforeIds.sort().join(',')} after=${afterIds.slice().sort().join(',')}`);
+
+    // AA3 — length is unchanged.
+    check('AA3 reorder: array length unchanged (no items dropped or duplicated)',
+      (afterStored.kitInventory || []).length === seedItems.length,
+      `length=${(afterStored.kitInventory || []).length}`);
+
+    // AA4 — per-item field integrity. Each id maps to the same name /
+    //        defaultDailyRate / defaultOn it had before the reorder.
+    let allFieldsMatch = true;
+    let firstMismatch = null;
+    for (const id of beforeIds) {
+      const before = beforeArr.find(it => it.id === id);
+      const after  = afterStored.kitInventory.find(it => it.id === id);
+      const ok = before && after &&
+        before.name === after.name &&
+        before.defaultDailyRate === after.defaultDailyRate &&
+        before.defaultOn === after.defaultOn;
+      if (!ok && !firstMismatch) firstMismatch = { id, before, after };
+      allFieldsMatch = allFieldsMatch && ok;
+    }
+    check('AA4 reorder: name / defaultDailyRate / defaultOn survive per-id',
+      allFieldsMatch,
+      firstMismatch ? `first mismatch at ${firstMismatch.id}: before=${JSON.stringify(firstMismatch.before)} after=${JSON.stringify(firstMismatch.after)}` : 'all fields match');
+
+    // AA5 — no-op reorder (same order) round-trips identically. This mirrors
+    //        the editor's "skip persist when order didn't change" check.
+    const noopPrefs = { ...afterStored, kitInventory: afterStored.kitInventory.slice() };
+    sb.__storage.set('bigals_user_prefs', JSON.stringify(noopPrefs));
+    const noopAfter = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('AA5 reorder: no-op rewrite round-trips identically',
+      JSON.stringify(noopAfter.kitInventory) === JSON.stringify(afterStored.kitInventory),
+      'no-op write differed from prior state');
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

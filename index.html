@@ -14819,6 +14819,275 @@ const setDays = (updater) =>
       );
     };
 
+    /* ═══════════════════════════ KIT ROOM EDITOR ═══════════════════════════ */
+    // Stage 3 — drag-to-reorder. Stages 1 & 2 lived inline inside the §4
+    // Disclosure in SettingsScreen as an IIFE; Stage 3 needs real React
+    // hooks (useState for drag preview, useMemo for prefers-reduced-motion),
+    // so the editor graduates to its own top-level component. Bindings are
+    // unchanged from Stage 2 — the caller passes `items` (= userPrefs.
+    // kitInventory) and `onChange(newItems)` (= set({ kitInventory: ... })
+    // through SettingsScreen's existing helper).
+    //
+    // REORDER SEMANTICS SAFETY (verified before wiring):
+    //   Nothing in the app indexes into kitInventory by array position —
+    //   day records carry kitItems by `itemId`, production.kitDeals are
+    //   keyed by `itemId`, the default-on auto-apply iterates with
+    //   .filter(it => it.defaultOn) regardless of order, and the day
+    //   chip's `inventoryIds` is built as a Set of ids. Array order is
+    //   purely cosmetic; a reorder is a UI move that doesn't change calc,
+    //   schema, or stored shape (length and ids stay identical).
+    //
+    // DRAG MECHANICS:
+    //   * Grip handle (☰) on the right of the name input on line 1 is the
+    //     only drag-start surface; name/rate/toggle/delete stay tappable.
+    //   * Pointer Events only (NOT HTML5 drag-and-drop, which the iOS
+    //     WebView doesn't fire). setPointerCapture on pointerdown so the
+    //     drag survives the finger leaving the grip.
+    //   * touch-action: none on the grip + body.overflow/touchAction
+    //     suppressed during drag so the page doesn't scroll past the
+    //     dragged finger.
+    //   * Lift is immediate (no long-press) — pointerdown begins the drag.
+    //   * Neighbour cards slide via CSS transform; that transition is
+    //     skipped when prefers-reduced-motion is set.
+    //   * Local preview only during the drag; the new order is committed
+    //     to userPrefs.kitInventory on pointerup through onChange().
+    //     pointercancel reverts cleanly (no write).
+    function KitRoomEditor({ items, onChange }) {
+      const updateKitItem = (id, patch) =>
+        onChange(items.map(it => it.id === id ? { ...it, ...patch } : it));
+      const removeKitItem = (id) =>
+        onChange(items.filter(it => it.id !== id));
+      const addKitItem = () =>
+        onChange([...items, { id: uid(), name: "", defaultDailyRate: 0, defaultOn: false }]);
+
+      // drag is null between drags. While dragging:
+      //   {
+      //     id            kit item id being dragged
+      //     startIndex    its index in items[] at pointerdown (constant)
+      //     startY        pointerdown clientY
+      //     pointerY      latest pointermove clientY (drives translateY)
+      //     cardHeight    height of the dragged card at pointerdown
+      //     pointerId     PointerEvent.pointerId (gates stray events)
+      //     previewOrder  ids in current visual order (commits on drop)
+      //   }
+      const [drag, setDrag] = useState(null);
+
+      // The user's reduced-motion preference doesn't change mid-page; read
+      // once. matchMedia missing → assume motion is fine (defensive default).
+      const reduceMotion = useMemo(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+        try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+        catch (_) { return false; }
+      }, []);
+
+      // If Settings unmounts mid-drag (back-tap, navigation), restore body
+      // styles so the rest of the app isn't stuck in overflow:hidden mode.
+      useEffect(() => () => {
+        if (typeof document !== 'undefined') {
+          document.body.style.touchAction = '';
+          document.body.style.overflow = '';
+        }
+      }, []);
+
+      const beginDrag = (id, e) => {
+        // Primary pointer only — ignore right/middle-click and synthetic taps.
+        if (e.button !== undefined && e.button !== 0) return;
+        const cardEl = e.currentTarget.closest('[data-kit-card="1"]');
+        if (!cardEl) return;
+        const idx = items.findIndex(it => it.id === id);
+        if (idx < 0) return;
+        const rect = cardEl.getBoundingClientRect();
+        // Keep events flowing to the grip even if the finger leaves it.
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+        // Suppress page scroll while dragging so the list doesn't fight
+        // the finger; restored on pointerup / pointercancel / unmount.
+        if (typeof document !== 'undefined') {
+          document.body.style.touchAction = 'none';
+          document.body.style.overflow = 'hidden';
+        }
+        setDrag({
+          id,
+          startIndex: idx,
+          startY: e.clientY,
+          pointerY: e.clientY,
+          cardHeight: rect.height,
+          pointerId: e.pointerId,
+          previewOrder: items.map(it => it.id),
+        });
+      };
+
+      const onDragMove = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        // preventDefault is the belt-and-braces partner to touch-action:none
+        // on the grip; together they stop iOS rubber-banding while dragging.
+        e.preventDefault();
+        const deltaY = e.clientY - drag.startY;
+        const rowH = drag.cardHeight + 8; // 8px = tailwind gap-2
+        const idealIdx = drag.startIndex + Math.round(deltaY / rowH);
+        const clamped = Math.max(0, Math.min(items.length - 1, idealIdx));
+        const currentIdx = drag.previewOrder.indexOf(drag.id);
+        let nextOrder = drag.previewOrder;
+        if (clamped !== currentIdx) {
+          nextOrder = [...drag.previewOrder];
+          nextOrder.splice(currentIdx, 1);
+          nextOrder.splice(clamped, 0, drag.id);
+        }
+        setDrag(s => s ? { ...s, pointerY: e.clientY, previewOrder: nextOrder } : s);
+      };
+
+      const endDrag = (e, commit) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        if (typeof document !== 'undefined') {
+          document.body.style.touchAction = '';
+          document.body.style.overflow = '';
+        }
+        if (commit && drag.previewOrder) {
+          // Look up each id in the ORIGINAL items array — ids are stable;
+          // we never rewrite them. .filter(Boolean) is a paranoia guard in
+          // case an id went missing between drag start and end (mid-drag
+          // edits aren't possible from the UI, but cheap to defend against).
+          const byId = new Map(items.map(it => [it.id, it]));
+          const reordered = drag.previewOrder
+            .map(id => byId.get(id))
+            .filter(Boolean);
+          const same = reordered.length === items.length &&
+            reordered.every((it, i) => it === items[i]);
+          // Skip the persist when the drop lands on the original slot —
+          // avoids a no-op setUserPrefs and the storage churn it brings.
+          if (!same) onChange(reordered);
+        }
+        setDrag(null);
+      };
+
+      // Pre-compute preview index for each item so per-card transform is O(1).
+      const previewIdx = drag
+        ? new Map(drag.previewOrder.map((id, i) => [id, i]))
+        : null;
+
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
+            Your personal inventory of kit items. Each has a name, a default daily rate, and a "default on for new shoots" toggle that auto-applies the item to qualifying day records. Drag the grip handle to reorder.
+          </div>
+          {items.length === 0 && (
+            <div className="text-[11px] text-neutral-600 italic py-2">No items yet — tap "Add kit item" to start.</div>
+          )}
+          {items.length > 0 && (
+            <div className="flex flex-col gap-2" style={{ touchAction: drag ? 'none' : undefined }}>
+              {items.map((item, idx) => {
+                const isDragged = drag && drag.id === item.id;
+                const visualIdx = previewIdx ? (previewIdx.get(item.id) ?? idx) : idx;
+                let translateY = 0;
+                if (isDragged) {
+                  // Dragged card follows the finger 1:1 (no transition).
+                  translateY = drag.pointerY - drag.startY;
+                } else if (drag) {
+                  // Non-dragged cards slide to their new slot. The dragged
+                  // card's transform is uncapped; non-dragged cards' offsets
+                  // are bounded by their preview index inside [0, length-1].
+                  translateY = (visualIdx - idx) * (drag.cardHeight + 8);
+                }
+                const transitionStyle = isDragged
+                  ? 'none'
+                  : (drag && !reduceMotion ? 'transform 180ms ease' : 'none');
+                return (
+                  <div
+                    key={item.id}
+                    data-kit-card="1"
+                    className={`bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3 ${isDragged ? 'shadow-2xl' : ''}`}
+                    style={{
+                      transform: `translateY(${translateY}px)`,
+                      transition: transitionStyle,
+                      position: 'relative',
+                      zIndex: isDragged ? 10 : 0,
+                      opacity: isDragged ? 0.96 : 1,
+                      willChange: drag ? 'transform' : undefined,
+                    }}
+                  >
+                    {/* Line 1 — full-width name (no truncation) + grip handle. */}
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="text"
+                        placeholder="Item name"
+                        value={item.name ?? ""}
+                        onChange={(e) => updateKitItem(item.id, { name: e.target.value })}
+                        aria-label="Kit item name"
+                        className="flex-1 min-w-0 text-sm font-semibold"
+                      />
+                      <button
+                        type="button"
+                        className="text-neutral-500 hover:text-neutral-300 active:text-sky-500 transition-colors p-2 flex-shrink-0 cursor-grab active:cursor-grabbing"
+                        style={{
+                          touchAction: 'none',
+                          WebkitTapHighlightColor: 'transparent',
+                          userSelect: 'none',
+                          WebkitUserSelect: 'none',
+                        }}
+                        aria-label={`Reorder ${item.name || 'kit item'}`}
+                        onPointerDown={(e) => beginDrag(item.id, e)}
+                        onPointerMove={onDragMove}
+                        onPointerUp={(e) => endDrag(e, true)}
+                        onPointerCancel={(e) => endDrag(e, false)}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                          <line x1="2.5" y1="4"  x2="11.5" y2="4" />
+                          <line x1="2.5" y1="7"  x2="11.5" y2="7" />
+                          <line x1="2.5" y1="10" x2="11.5" y2="10" />
+                        </svg>
+                      </button>
+                    </div>
+                    {/* Line 2 — labelled default-on toggle (left) + £ rate + × delete (right). */}
+                    <div className="flex items-center gap-3 mt-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Toggle
+                          value={!!item.defaultOn}
+                          onChange={(v) => updateKitItem(item.id, { defaultOn: v })}
+                          ariaLabel={`Default on new shoots — ${item.name || 'kit item'}`}
+                        />
+                        <span className="text-[11px] text-neutral-400 leading-tight">Default on new shoots</span>
+                      </div>
+                      <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-neutral-500 font-mono">£</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            value={Number.isFinite(item.defaultDailyRate) ? item.defaultDailyRate : 0}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const n = raw === '' ? 0 : Number(raw);
+                              updateKitItem(item.id, { defaultDailyRate: Number.isFinite(n) ? n : 0 });
+                            }}
+                            aria-label={`Daily rate for ${item.name || 'kit item'}`}
+                            style={{ width: 84 }}
+                            className="text-sm"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeKitItem(item.id)}
+                          className="text-neutral-600 hover:text-tm-pen transition-colors p-1.5 flex-shrink-0"
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
+                          aria-label={`Remove ${item.name || 'kit item'}`}
+                        >
+                          <IX size={14}/>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <Btn variant="ghost" onClick={addKitItem} className="mt-1.5 self-start">
+            <IPlus size={13}/>Add kit item
+          </Btn>
+        </div>
+      );
+    }
+
     function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0 }) {
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
@@ -15205,14 +15474,12 @@ const setDays = (updater) =>
               </div>
             </Disclosure>
 
-            {/* §4 — Kit Room: roomier card layout (Stage 2). Each item is its
-                own padded card — full-width name input on its own line, then
-                a labelled "Default on new shoots" toggle (left) and the £
-                daily-rate field + × delete (right) on a second line. Bindings
-                unchanged from Stage 1: name → name, rate → defaultDailyRate,
-                toggle → defaultOn, × → remove by id; "+ Add kit item" appends
-                a new item with the same shape as before. Drag-to-reorder is a
-                future stage. */}
+            {/* §4 — Kit Room: roomier card layout (Stage 2) + drag-to-reorder
+                (Stage 3). The editor moved out to the top-level KitRoomEditor
+                component so it can use real hooks (drag preview state, reduced
+                -motion read). Bindings unchanged: onChange writes the new
+                kitInventory array through the same set() helper as every
+                other userPrefs field. */}
             <Disclosure
               label="Kit Room"
               summary={(() => {
@@ -15220,88 +15487,10 @@ const setDays = (updater) =>
                 return n ? `${n} item${n === 1 ? '' : 's'}` : '—';
               })()}
             >
-              {(() => {
-                const items = userPrefs.kitInventory || [];
-                const updateKitItem = (id, patch) =>
-                  set({ kitInventory: items.map(it => it.id === id ? { ...it, ...patch } : it) });
-                const removeKitItem = (id) =>
-                  set({ kitInventory: items.filter(it => it.id !== id) });
-                const addKitItem = () =>
-                  set({ kitInventory: [...items, { id: uid(), name: "", defaultDailyRate: 0, defaultOn: false }] });
-                return (
-                  <div className="flex flex-col gap-2">
-                    <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
-                      Your personal inventory of kit items. Each has a name, a default daily rate, and a "default on for new shoots" toggle that auto-applies the item to qualifying day records.
-                    </div>
-                    {items.length === 0 && (
-                      <div className="text-[11px] text-neutral-600 italic py-2">No items yet — tap "Add kit item" to start.</div>
-                    )}
-                    {items.length > 0 && (
-                      <div className="flex flex-col gap-2">
-                        {items.map((item) => (
-                          <div
-                            key={item.id}
-                            className="bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3"
-                          >
-                            {/* Line 1 — full-width name (no truncation). */}
-                            <Input
-                              type="text"
-                              placeholder="Item name"
-                              value={item.name ?? ""}
-                              onChange={(e) => updateKitItem(item.id, { name: e.target.value })}
-                              aria-label="Kit item name"
-                              className="w-full text-sm font-semibold"
-                            />
-                            {/* Line 2 — labelled default-on toggle (left) + £ rate + × delete (right). */}
-                            <div className="flex items-center gap-3 mt-3">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Toggle
-                                  value={!!item.defaultOn}
-                                  onChange={(v) => updateKitItem(item.id, { defaultOn: v })}
-                                  ariaLabel={`Default on new shoots — ${item.name || 'kit item'}`}
-                                />
-                                <span className="text-[11px] text-neutral-400 leading-tight">Default on new shoots</span>
-                              </div>
-                              <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[11px] text-neutral-500 font-mono">£</span>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    placeholder="0"
-                                    value={Number.isFinite(item.defaultDailyRate) ? item.defaultDailyRate : 0}
-                                    onChange={(e) => {
-                                      const raw = e.target.value;
-                                      const n = raw === '' ? 0 : Number(raw);
-                                      updateKitItem(item.id, { defaultDailyRate: Number.isFinite(n) ? n : 0 });
-                                    }}
-                                    aria-label={`Daily rate for ${item.name || 'kit item'}`}
-                                    style={{ width: 84 }}
-                                    className="text-sm"
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => removeKitItem(item.id)}
-                                  className="text-neutral-600 hover:text-tm-pen transition-colors p-1.5 flex-shrink-0"
-                                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                                  aria-label={`Remove ${item.name || 'kit item'}`}
-                                >
-                                  <IX size={14}/>
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <Btn variant="ghost" onClick={addKitItem} className="mt-1.5 self-start">
-                      <IPlus size={13}/>Add kit item
-                    </Btn>
-                  </div>
-                );
-              })()}
+              <KitRoomEditor
+                items={userPrefs.kitInventory || []}
+                onChange={(newItems) => set({ kitInventory: newItems })}
+              />
             </Disclosure>
 
             {/* §5 — New-production defaults: applied to NEW shoots only;
