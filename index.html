@@ -8787,8 +8787,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     // Average month amount across a window (typically 12). Empty → 0.
     function monthlyAverage(windowEntries) {
+      // Divide by the count of months in the window with earnings (amount > 0),
+      // not by the full window length. Otherwise a run of pre-data zero months
+      // (or a quiet stretch) drags the average toward zero and misrepresents
+      // the user's typical earning month. £4,003 across 2 earning months reads
+      // as £2,001.50, not £333.58. The numerator stays the window total —
+      // every zero contributes 0 either way, so dropping them from the sum
+      // is unnecessary; only the denominator changes.
+      // Divide-by-zero guard: an all-zero window returns 0 (no division)
+      // so the headline "Monthly average £0.00" reads cleanly with no NaN.
       if (!Array.isArray(windowEntries) || windowEntries.length === 0) return 0;
-      return windowEntries.reduce((s, e) => s + (e.amount || 0), 0) / windowEntries.length;
+      const earning = windowEntries.filter(e => e && (e.amount || 0) > 0);
+      if (earning.length === 0) return 0;
+      return earning.reduce((s, e) => s + (e.amount || 0), 0) / earning.length;
     }
 
     // Stage 2d: resolve which crew member is "you" on a given production,
@@ -15869,6 +15880,16 @@ const setDays = (updater) =>
         return d.toLocaleString('en-GB', { month: 'long', year: 'numeric' });
       };
       const monLetter = (mo) => fmtMonShort(mo).charAt(0);
+      // Whole-pound formatter for the right-hand axis labels — "£4,000",
+      // "£0", not "£4,000.00" / "£0.00". Saves ~12px of horizontal space per
+      // label, which is what lets the chart fit inside the viewport without
+      // the labels clipping or causing horizontal scroll. The hero TOTAL
+      // EARNED and "Monthly average" lines keep fmtGBP (with pence) — only
+      // the side axis ticks change.
+      const fmtAxis = (n) => {
+        const v = Math.round(Number(n) || 0);
+        return '£' + v.toLocaleString('en-GB');
+      };
 
       const rangeLabel = mode === '12m'
         ? `${fmtMonShort(windowEntries[0].month)} – ${fmtMonShort(windowEntries[11].month)}`
@@ -15887,7 +15908,12 @@ const setDays = (updater) =>
       ];
 
       return (
-        <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32">
+        // overflowX:hidden is a backstop — the chart's right-hand axis labels
+        // sit inside a 52px gutter reserved INSIDE the wrapper's 100% width
+        // (see the chart block below), so nothing should actually overflow,
+        // but a single negative-margin slip would otherwise re-introduce the
+        // sideways-scroll bug. Cheap belt-and-braces.
+        <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32" style={{ overflowX: 'hidden' }}>
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
@@ -15939,17 +15965,26 @@ const setDays = (updater) =>
               </div>
             </div>
 
-            {/* Chart */}
+            {/* Chart.
+                Layout: the inner plot has marginRight:52, which reserves a
+                52px gutter on the right of the wrapper for the axis value
+                labels. The labels are absolutely positioned with right:-52
+                + width:48 + textAlign:right, so they sit ENTIRELY inside
+                that gutter — i.e. inside the wrapper's 100% width — and
+                never extend past the viewport edge. The labels are now
+                whole pounds (fmtAxis: "£4,000" / "£0", not "£4,000.00"),
+                which keeps even £100,000 inside the 48px box. The hero
+                TOTAL EARNED and Monthly average lines still use fmtGBP. */}
             <div className="mt-2 relative">
-              <div className="relative" style={{ height: 200, marginRight: 30 }}>
+              <div className="relative" style={{ height: 200, marginRight: 52 }}>
                 {/* gridlines + value labels */}
                 {[0, 0.5, 1].map(f => (
                   <React.Fragment key={f}>
                     <div className="absolute left-0 right-0 border-t border-dashed border-neutral-800"
                          style={{ bottom: `${f * 100}%` }} />
                     <div className="absolute font-mono text-[10px] text-neutral-600"
-                         style={{ right: -30, bottom: `${f * 100}%`, transform: 'translateY(-50%)', width: 28, textAlign: 'left' }}>
-                      {fmtGBP(niceMax * f)}
+                         style={{ right: -52, bottom: `${f * 100}%`, transform: 'translateY(-50%)', width: 48, textAlign: 'right' }}>
+                      {fmtAxis(niceMax * f)}
                     </div>
                   </React.Fragment>
                 ))}
@@ -15959,7 +15994,7 @@ const setDays = (updater) =>
                     <div className="absolute left-0 right-0 border-t border-dashed border-sky-700/60"
                          style={{ bottom: `${(avg / niceMax) * 100}%` }} />
                     <div className="absolute text-[9px] font-bold text-sky-500"
-                         style={{ right: -30, bottom: `${(avg / niceMax) * 100}%`, transform: 'translateY(-50%)' }}>
+                         style={{ right: -52, bottom: `${(avg / niceMax) * 100}%`, transform: 'translateY(-50%)', width: 48, textAlign: 'right' }}>
                       avg
                     </div>
                   </>
@@ -16009,8 +16044,9 @@ const setDays = (updater) =>
                   </>
                 )}
               </div>
-              {/* x labels */}
-              <div className="flex mt-1.5" style={{ marginRight: 30 }}>
+              {/* x labels — marginRight matches the plot above so the
+                  letters line up with their bars. */}
+              <div className="flex mt-1.5" style={{ marginRight: 52 }}>
                 {windowEntries.map((entry, i) => (
                   <span key={entry.month}
                     className={`flex-1 text-center text-[10px] font-mono ${sel === i ? 'text-neutral-100 font-bold' : 'text-neutral-600'}`}>

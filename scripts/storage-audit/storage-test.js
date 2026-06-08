@@ -3153,27 +3153,50 @@ async function main() {
         pct(100, 100) === 0);
     }
 
-    // ─ Y9: monthlyAverage ─
+    // ─ Y9: monthlyAverage divides by the count of months in the window
+    //   with EARNINGS (amount > 0), not the full window length. Otherwise
+    //   pre-data zero months (or quiet stretches) drag the average toward
+    //   zero and misrepresent the user's typical earning month. Divide-by
+    //   -zero is guarded — an all-zero window returns 0. ─
     {
       const win = [
         { amount: 100 }, { amount: 200 }, { amount: 300 },
       ];
-      check('Y9a sum / length',
+      check('Y9a 3 earning months: 600 / 3 = 200',
         avg(win) === 200);
       check('Y9b empty array → 0',
         avg([]) === 0);
       check('Y9c null → 0 (defensive)',
         avg(null) === 0);
-      check('Y9d 12-entry zero window → 0',
+      check('Y9d 12-entry zero window → 0 (guarded, no division)',
         avg(Array.from({ length: 12 }, () => ({ amount: 0 }))) === 0);
-      // Realistic: a few zero months in a 12-entry window.
+      // Realistic: 5 earning months out of a 12-entry window with zeros.
+      // Old behaviour divided by 12 (≈ 1666.67); new divides by 5 (= 4000).
       const realisticWin = [
         { amount: 0 }, { amount: 0 }, { amount: 5000 }, { amount: 0 },
         { amount: 3000 }, { amount: 0 }, { amount: 4000 }, { amount: 0 },
         { amount: 0 }, { amount: 2000 }, { amount: 0 }, { amount: 6000 },
       ];
-      check('Y9e realistic window: sum 20000 / 12 ≈ 1666.67',
-        Math.abs(avg(realisticWin) - 20000 / 12) < 0.01);
+      check('Y9e realistic window: sum 20000 / 5 earning months = 4000',
+        avg(realisticWin) === 4000);
+      // Spec example — £4,003 across 2 earning months in a 12-month window.
+      const specWin = [
+        { amount: 0 }, { amount: 0 }, { amount: 0 }, { amount: 0 },
+        { amount: 0 }, { amount: 0 }, { amount: 0 }, { amount: 0 },
+        { amount: 0 }, { amount: 0 },
+        { amount: 1003 },
+        { amount: 3000 },
+      ];
+      check('Y9f spec: £4,003 across 2 earning months = £2,001.50',
+        avg(specWin) === 2001.5);
+      // A negative or NaN amount must NOT count as an earning month (the
+      // filter is strictly amount > 0). Defensive — the calc engine never
+      // emits negatives, but the filter shouldn't blow up if it ever did.
+      check('Y9g negative / NaN amounts excluded from earning-month count',
+        avg([{ amount: 100 }, { amount: -50 }, { amount: NaN }]) === 100);
+      // Single earning month — average equals that month's amount.
+      check('Y9h single earning month → that month\'s amount',
+        avg([{ amount: 0 }, { amount: 0 }, { amount: 250 }, { amount: 0 }]) === 250);
     }
 
     // ─ Y10: edge — empty series → window of zero-padded months still
@@ -3193,6 +3216,83 @@ async function main() {
       const b = monthlyWindow(undefined, '12m', '2026-06');
       check('Y11a null series → length 12 (zero-padded)', a.length === 12);
       check('Y11b undefined series → length 12 (zero-padded)', b.length === 12);
+    }
+
+    // ─ Y12: MonthlyEarningsView axis label + layout source presence.
+    //   The chart's right-hand value labels show WHOLE pounds (£4,000,
+    //   not £4,000.00) so they fit inside the reserved 52px gutter on
+    //   the right of the wrapper. The hero TOTAL EARNED and the
+    //   "Monthly average" line keep fmtGBP (with pence) — only the
+    //   side axis ticks change. The view root has overflowX:hidden as
+    //   a backstop against future negative-margin regressions. ─
+    {
+      const html = fs.readFileSync(SRC_HTML, 'utf8');
+      const startMarker = '    function MonthlyEarningsView(';
+      const startIdx = html.indexOf(startMarker);
+      const tail = startIdx === -1 ? '' : html.slice(startIdx + startMarker.length);
+      const nextMatch = tail.search(/\n    function [A-Z]/);
+      const view = startIdx === -1 ? '' :
+        html.slice(startIdx, startIdx + startMarker.length + (nextMatch === -1 ? tail.length : nextMatch));
+
+      check('Y12a MonthlyEarningsView function found in source',
+        startIdx !== -1);
+
+      // The local fmtAxis helper rounds to whole pounds and uses
+      // toLocaleString('en-GB') — never .toFixed(2). If a future edit
+      // routed axis labels through fmtGBP, the ".00" would come back.
+      check('Y12b axis label helper: fmtAxis rounds to whole pounds',
+        view.includes('const fmtAxis = (n) =>') &&
+        view.includes('Math.round(Number(n) || 0)') &&
+        view.includes("v.toLocaleString('en-GB')"));
+      check('Y12c axis label helper: no .toFixed(2) inside fmtAxis',
+        // fmtAxis is the only formatter used for axis ticks; .toFixed(2)
+        // is used by fmtGBP elsewhere — but fmtGBP is defined at
+        // module scope, not inside MonthlyEarningsView. Inside the view
+        // we only expect to SEE .toFixed(2) if someone reverted the fix.
+        !view.includes('.toFixed(2)'));
+
+      // The gridline value labels and the "avg" label are both rendered
+      // through fmtAxis — verify the call sites exist verbatim.
+      check('Y12d gridline labels render fmtAxis(niceMax * f)',
+        view.includes('{fmtAxis(niceMax * f)}'));
+
+      // Reserved gutter — the inner plot has marginRight:52 and the
+      // value labels sit at right:-52 with width:48 + textAlign:right.
+      // If anyone reverts to the old 30px gutter, £4,000 overflows again.
+      check('Y12e inner plot reserves 52px gutter (marginRight: 52)',
+        view.includes('marginRight: 52'));
+      check('Y12f x-labels row uses the same 52px gutter (alignment)',
+        // Two occurrences expected — one for the plot inner div, one for
+        // the x-labels flex row. Cheap sanity check.
+        (view.match(/marginRight:\s*52/g) || []).length >= 2);
+      check('Y12g value labels positioned inside the gutter (right:-52, width:48, textAlign:right)',
+        view.includes('right: -52') &&
+        view.includes('width: 48') &&
+        view.includes("textAlign: 'right'"));
+
+      // Backstop — the view root must have overflowX:hidden so a
+      // single accidental wide child can't bring back the sideways
+      // scroll bug across the entire view.
+      check('Y12h view root has overflowX:hidden as a scroll backstop',
+        view.includes("overflowX: 'hidden'"));
+
+      // The hero / breakdown lines keep fmtGBP (pence). At least one
+      // fmtGBP call must still be in the view — if all were replaced by
+      // fmtAxis, the headline total would lose its pence.
+      check('Y12i hero TOTAL EARNED + Monthly average still use fmtGBP',
+        view.includes('fmtGBP(selEntry ? selEntry.amount : total)') &&
+        view.includes('Monthly average ${fmtGBP(avg)}'));
+
+      // Quick fixed-width audit — nothing inside the view should set an
+      // explicit width wider than the viewport (270px is a generous
+      // floor; real phones are >= 360px). If anyone adds a wider fixed
+      // box later we'll catch it here.
+      const fixedWidths = (view.match(/width:\s*(\d{3,})(?:\s*[,}])/g) || [])
+        .map(m => parseInt(m.replace(/\D/g, ''), 10))
+        .filter(n => Number.isFinite(n) && n > 270);
+      check('Y12j no per-element width > 270px inside MonthlyEarningsView',
+        fixedWidths.length === 0,
+        `wide widths found: ${fixedWidths.join(', ')}`);
     }
   }
 
