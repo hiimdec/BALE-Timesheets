@@ -224,6 +224,47 @@
       font-weight: 700;
       pointer-events: none;
     }
+
+    /* TimeInput inline 5-min wheel (touch-only branch).
+       Two scroll-snap columns; fixed 40px items; 200px container;
+       80px pad top/bottom so first/last item can centre. */
+    .tm-wheel-col {
+      scroll-snap-type: y mandatory;
+      overflow-y: scroll;
+      -webkit-overflow-scrolling: touch;
+      height: 200px;
+      width: 64px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 30%, black 70%, transparent 100%);
+              mask-image: linear-gradient(180deg, transparent 0%, black 30%, black 70%, transparent 100%);
+    }
+    .tm-wheel-col::-webkit-scrollbar { display: none; width: 0; height: 0; }
+    .tm-wheel-item {
+      height: 40px;
+      scroll-snap-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 17px;
+      color: rgb(115, 115, 115);
+      transition: color 80ms ease, font-size 80ms ease, font-weight 80ms ease;
+    }
+    .tm-wheel-item-active {
+      color: rgb(245, 245, 245);
+      font-weight: 700;
+      font-size: 19px;
+    }
+    .tm-wheel-band {
+      position: absolute;
+      left: 16px; right: 16px;
+      top: 80px; height: 40px;
+      pointer-events: none;
+      border-top: 1px solid rgb(64, 64, 64);
+      border-bottom: 1px solid rgb(64, 64, 64);
+      background: rgba(255, 255, 255, 0.025);
+    }
   </style>
 
 </head>
@@ -5242,21 +5283,206 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         className={`w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg ${className || ""}`}
       />;
     };
-    // Exact-time picker. Previously the component snapped the entered
-    // value to the nearest 5 minutes on blur — that could quietly erase
-    // owed overtime (a wrap landing 2 minutes into an OT increment would
-    // round back to the boundary and lose the increment). Now the
-    // entered/blurred value passes straight through onChange unchanged,
-    // no rounding ever. The 5-minute `step` attribute is also dropped —
-    // it did nothing on iOS, and off-grid times would otherwise render
-    // as step-invalid. Any onBlur supplied by the caller still fires via
-    // the `...p` passthrough.
-    const TimeInput = ({ onChange, value, className, style, ...p }) => (
-      <Input type="time" value={value} onChange={onChange}
-        className={`min-w-0 ${className || ""}`}
-        style={{ WebkitAppearance: 'none', ...style }}
-        {...p} />
-    );
+    // ── TimeInput inline wheel constants + pure helpers (Stage 1) ──
+    // Two-column 5-minute wheel: hours 00-23, minutes in 5-min steps.
+    // The minute LIST is exactly ['00','05',...,'55'] — 12 entries; the
+    // wheel can never land on a 1-min off-grid value. Field height + pad
+    // are coupled (pad = (container - item) / 2) so the first / last
+    // item can centre under the highlight band.
+    const TIME_WHEEL_ITEM_H = 40;
+    const TIME_WHEEL_HOURS   = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+    const TIME_WHEEL_MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'));
+
+    // Parse an "HH:MM" string into [hourIdx, minuteIdx] column indices,
+    // SNAPPING the minute to the nearest 5 (07:23 → [7, 5]). Returns
+    // null for empty / malformed input — callers use that as "open at
+    // a neutral default". Snapping is for POSITIONING only; the snap
+    // never writes back to the stored value unless the user scrolls.
+    const parseHHMMIndices = (v) => {
+      if (!v || typeof v !== 'string') return null;
+      const m = v.match(/^(\d{2}):(\d{2})$/);
+      if (!m) return null;
+      const h = parseInt(m[1], 10);
+      const min = parseInt(m[2], 10);
+      if (!Number.isFinite(h) || h < 0 || h > 23) return null;
+      if (!Number.isFinite(min) || min < 0 || min > 59) return null;
+      const minIdx = Math.min(11, Math.round(min / 5));
+      return [h, minIdx];
+    };
+
+    // Inverse: build "HH:MM" from column indices. Clamps out-of-range
+    // input defensively (the wheel's scroll math can transiently
+    // produce indices outside the valid range during fast flings).
+    const indicesToHHMM = (hourIdx, minIdx) => {
+      const h = Math.max(0, Math.min(23, Number(hourIdx) || 0));
+      const m = Math.max(0, Math.min(11, Number(minIdx)  || 0));
+      return `${String(h).padStart(2, '0')}:${String(m * 5).padStart(2, '0')}`;
+    };
+
+    // Pointer-type branch is computed once at module load. A touch
+    // device → inline wheel. A fine pointer (desktop) → unchanged
+    // <Input type="time"> (system popover + keyboard entry intact).
+    // The branch is intentionally NOT IS_NATIVE — phone web AND the
+    // iOS app both want the wheel; desktop wants the system input.
+    // Wrapped in try / typeof-window guards for SSR / older WKWebView
+    // resilience (matchMedia exists everywhere modern, defensive cheap).
+    const HAS_COARSE_POINTER = (() => {
+      try {
+        return typeof window !== 'undefined'
+          && typeof window.matchMedia === 'function'
+          && window.matchMedia('(pointer: coarse)').matches;
+      } catch (_) { return false; }
+    })();
+
+    // TimeInput. Touch branch: inline 5-min wheel below a button trigger.
+    // Fine-pointer branch: untouched <Input type="time"> (system popover).
+    //
+    // LIVE-WRITE CONTRACT (mirrors the snap-removal / "now" writers'
+    // principle — never silently mutate the stored value):
+    //   - Opening writes nothing. Wheel positions to the parsed value
+    //     (or a neutral 09:00 when empty) but a two-rAF gate
+    //     suppresses the initial programmatic scroll's commit.
+    //   - Scrolling commits on column settle (120ms debounce) ONLY
+    //     when the computed HH:MM differs from the current `value`.
+    //   - Done / outside-tap / switching fields just closes the
+    //     wheel — no extra commit.
+    //   - Off-grid stored values (e.g. legacy 07:23) keep their
+    //     exact value across open-then-close-without-scrolling.
+    //   - Empty fields stay empty across open-then-close-without-
+    //     scrolling. (The user can land back on 09:00 deliberately;
+    //     that's a one-notch-scroll commit, which is fine.)
+    //
+    // SINGLE-OPEN: each open instance attaches a capture-phase
+    // document-level pointerdown listener; a tap outside its own
+    // container closes it. When the user taps another TimeInput's
+    // button, the first one sees that as outside → closes; React's
+    // onClick on the second button then opens. No shared registry.
+    function TimeInput({ onChange, value, className, style, disabled, ...p }) {
+      if (!HAS_COARSE_POINTER) {
+        return (
+          <Input type="time" value={value} onChange={onChange}
+            className={`min-w-0 ${className || ""}`}
+            style={{ WebkitAppearance: 'none', ...style }}
+            disabled={disabled}
+            {...p} />
+        );
+      }
+      const [open, setOpen] = React.useState(false);
+      const [activeHour, setActiveHour] = React.useState(0);
+      const [activeMin,  setActiveMin]  = React.useState(0);
+      const containerRef          = React.useRef(null);
+      const hourScrollRef         = React.useRef(null);
+      const minScrollRef          = React.useRef(null);
+      const programmaticDoneRef   = React.useRef(false);
+      const settleRef             = React.useRef(null);
+
+      // Initial wheel position. Empty / malformed → 09:00 (neutral).
+      const defaultIdx = React.useMemo(
+        () => parseHHMMIndices(value) || [9, 0],
+        [value]
+      );
+
+      // Open effect: position both columns, gate scroll commits until
+      // the initial programmatic scroll events have fired and been
+      // ignored (two rAFs). Also attach the outside-tap close.
+      React.useEffect(() => {
+        if (!open) return;
+        programmaticDoneRef.current = false;
+        const [hh, mm] = defaultIdx;
+        setActiveHour(hh);
+        setActiveMin(mm);
+        if (hourScrollRef.current) hourScrollRef.current.scrollTop = hh * TIME_WHEEL_ITEM_H;
+        if (minScrollRef.current)  minScrollRef.current.scrollTop  = mm * TIME_WHEEL_ITEM_H;
+        let raf1 = 0, raf2 = 0;
+        raf1 = requestAnimationFrame(() => {
+          raf2 = requestAnimationFrame(() => { programmaticDoneRef.current = true; });
+        });
+        const onDocPointerDown = (e) => {
+          if (containerRef.current && !containerRef.current.contains(e.target)) {
+            setOpen(false);
+          }
+        };
+        document.addEventListener('pointerdown', onDocPointerDown, true);
+        return () => {
+          cancelAnimationFrame(raf1);
+          cancelAnimationFrame(raf2);
+          clearTimeout(settleRef.current);
+          document.removeEventListener('pointerdown', onDocPointerDown, true);
+        };
+      }, [open, defaultIdx]);
+
+      const commitFromScroll = () => {
+        if (!hourScrollRef.current || !minScrollRef.current) return;
+        const hourIdx = Math.round(hourScrollRef.current.scrollTop / TIME_WHEEL_ITEM_H);
+        const minIdx  = Math.round(minScrollRef.current.scrollTop  / TIME_WHEEL_ITEM_H);
+        const hhmm = indicesToHHMM(hourIdx, minIdx);
+        if (hhmm !== value && onChange) onChange({ target: { value: hhmm } });
+      };
+
+      const onColScroll = (col) => () => {
+        const ref = col === 'h' ? hourScrollRef : minScrollRef;
+        if (!ref.current) return;
+        const idx = Math.round(ref.current.scrollTop / TIME_WHEEL_ITEM_H);
+        if (col === 'h') {
+          const clamped = Math.max(0, Math.min(23, idx));
+          if (clamped !== activeHour) setActiveHour(clamped);
+        } else {
+          const clamped = Math.max(0, Math.min(11, idx));
+          if (clamped !== activeMin) setActiveMin(clamped);
+        }
+        if (!programmaticDoneRef.current) return; // ignore positioning scroll events
+        clearTimeout(settleRef.current);
+        settleRef.current = setTimeout(commitFromScroll, 120);
+      };
+
+      const handleClick = () => {
+        if (disabled) return;
+        setOpen(o => !o);
+      };
+
+      const triggerCls = `w-full min-w-0 bg-neutral-950 border text-neutral-100 px-2.5 py-2 font-mono outline-none rounded-lg text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${open ? 'border-sky-500 ring-1 ring-sky-500/40' : 'border-neutral-800'} ${className || ''}`;
+
+      return (
+        <div ref={containerRef} className="relative">
+          <button type="button" onClick={handleClick} disabled={disabled}
+            className={triggerCls}
+            style={{ WebkitAppearance: 'none', WebkitTapHighlightColor: 'transparent', ...style }}
+            aria-label="Open time picker"
+            aria-expanded={open}>
+            {value || <span className="text-neutral-500">--:--</span>}
+          </button>
+          {open && (
+            <div className="mt-2 bg-neutral-900 border border-neutral-800 rounded-lg">
+              <div className="relative flex items-center justify-center gap-3 px-4 py-3" style={{ height: 200 }}>
+                <div className="tm-wheel-band" />
+                <div ref={hourScrollRef} className="tm-wheel-col" onScroll={onColScroll('h')} aria-label="Hours">
+                  <div style={{ height: 80 }} aria-hidden />
+                  {TIME_WHEEL_HOURS.map((h, i) => (
+                    <div key={h} className={`tm-wheel-item ${i === activeHour ? 'tm-wheel-item-active' : ''}`}>{h}</div>
+                  ))}
+                  <div style={{ height: 80 }} aria-hidden />
+                </div>
+                <div className="text-neutral-500 font-mono text-xl select-none pointer-events-none">:</div>
+                <div ref={minScrollRef} className="tm-wheel-col" onScroll={onColScroll('m')} aria-label="Minutes">
+                  <div style={{ height: 80 }} aria-hidden />
+                  {TIME_WHEEL_MINUTES.map((m, i) => (
+                    <div key={m} className={`tm-wheel-item ${i === activeMin ? 'tm-wheel-item-active' : ''}`}>{m}</div>
+                  ))}
+                  <div style={{ height: 80 }} aria-hidden />
+                </div>
+              </div>
+              <div className="flex justify-end px-3 pb-2.5">
+                <button type="button" onClick={() => setOpen(false)}
+                  className="text-[11px] font-bold uppercase tracking-wide text-sky-300 hover:text-sky-100 px-2.5 py-1 rounded-md border border-sky-700 hover:bg-sky-900/40 transition-colors"
+                  aria-label="Close time picker">
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
 
     const ROUNDING_OPTIONS = [

@@ -239,7 +239,13 @@ async function transformedAppCode() {
     // null-on-empty / null-on-unlinked, plus the apply path's selective
     // patching (only the diverged fields change; other clients untouched).
     'try { globalThis.__detectClientUpdate = detectClientUpdate; } catch (_) {}\n' +
-    'try { globalThis.__applyClientUpdate  = applyClientUpdate;  } catch (_) {}\n';
+    'try { globalThis.__applyClientUpdate  = applyClientUpdate;  } catch (_) {}\n' +
+    // Inline time wheel (T-suite): expose the pure column-index
+    // helpers and the constant lists.
+    'try { globalThis.__parseHHMMIndices  = parseHHMMIndices;  } catch (_) {}\n' +
+    'try { globalThis.__indicesToHHMM     = indicesToHHMM;     } catch (_) {}\n' +
+    'try { globalThis.__TIME_WHEEL_HOURS   = TIME_WHEEL_HOURS;   } catch (_) {}\n' +
+    'try { globalThis.__TIME_WHEEL_MINUTES = TIME_WHEEL_MINUTES; } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -1609,10 +1615,17 @@ async function main() {
       `roundHits=${roundHits}`);
 
     // Locate the TimeInput definition and inspect it surgically.
-    const tiStart = html.indexOf('const TimeInput =');
+    // Accepts either an arrow-function-assigned `const TimeInput =`
+    // or a named declaration `function TimeInput(...)` — the wheel
+    // implementation uses the latter so it can hold internal hooks.
+    const tiArrowAt = html.indexOf('const TimeInput =');
+    const tiFnAt    = html.indexOf('function TimeInput(');
+    const tiStart   = tiArrowAt !== -1 ? tiArrowAt :
+                      tiFnAt    !== -1 ? tiFnAt    : -1;
     check('Q2 source: TimeInput definition still present', tiStart !== -1);
-    const tiEnd = html.indexOf('\n    };', tiStart);
-    const tiBody = (tiStart !== -1 ? html.slice(tiStart, tiEnd === -1 ? tiStart + 4000 : tiEnd + 5) : '');
+    // Body slice is generously sized; the assertions below only care
+    // about pattern presence/absence within TimeInput's lexical scope.
+    const tiBody = (tiStart !== -1 ? html.slice(tiStart, tiStart + 8000) : '');
 
     // TimeInput must not declare any blur-rounding logic.
     check('Q3 TimeInput body: no roundTo5 reference',
@@ -1622,10 +1635,13 @@ async function main() {
     check('Q4 TimeInput body: no step="300" attribute',
       !/step="300"/.test(tiBody),
       `tiBody.includes("step=\\"300\\"")=${/step="300"/.test(tiBody)}`);
-    // No handleBlur transform: there must be no `Math.round` of the
-    // entered value, and no synthetic onChange dispatch from blur.
-    check('Q5 TimeInput body: no Math.round on the entered value',
-      !/Math\.round/.test(tiBody));
+    // No handleBlur transform: there must be no `Math.round(.../5)*5`
+    // — the snap-to-5-minutes pattern — anywhere in TimeInput's body.
+    // (The inline wheel that lives in the touch branch uses
+    // Math.round(scrollTop / itemH) to convert scroll position to a
+    // column index; that's not a value snap and is allowed.)
+    check('Q5 TimeInput body: no Math.round(.../5)*5 entered-value snap',
+      !/Math\.round\([^)]*\/\s*5\s*\)\s*\*\s*5/.test(tiBody));
 
     // Behaviour check — simulate the contract directly. With the snap
     // gone, TimeInput is a thin pass-through wrapper:
@@ -1808,12 +1824,266 @@ async function main() {
 
   // (Letter "S" retired — the native 5-min time-picker plugin's
   // bottom-sheet UX tested worse than the standard input, so the
-  // whole branch was reverted: TimeInput is back to a passthrough
-  // <Input type="time">, isoToHHMM and the @capawesome-team/
-  // capacitor-datetime-picker npm dependency are gone. A custom
-  // inline wheel will land separately. Q (snap removal) and R
-  // ("now" writers stamp exact time) remain — those gains are
-  // unaffected by this revert.)
+  // whole branch was reverted. The custom inline wheel that landed
+  // in its place is covered by the T-suite below.)
+
+  // ===== T. INLINE 5-MINUTE TIME WHEEL — touch-branch TimeInput =====
+  // The wheel is a touch-only branch of TimeInput (pointer:coarse).
+  // Two scroll-snap columns (hours 00-23, minutes in 5-min steps),
+  // live-writes via onChange on column settle, never writes from
+  // opening or closing alone. This suite covers the pure pieces:
+  // the column literals, the HH:MM ↔ index helpers, the snap-to-
+  // nearest math, and a contract simulation for the no-silent-write
+  // rule (open→close-without-scroll leaves value unchanged).
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const parseHHMMIndices = sb.__parseHHMMIndices;
+    const indicesToHHMM    = sb.__indicesToHHMM;
+    const TIME_WHEEL_HOURS   = sb.__TIME_WHEEL_HOURS;
+    const TIME_WHEEL_MINUTES = sb.__TIME_WHEEL_MINUTES;
+
+    check('T0: pure helpers + constants exposed in sandbox',
+      typeof parseHHMMIndices === 'function' &&
+      typeof indicesToHHMM === 'function' &&
+      Array.isArray(TIME_WHEEL_HOURS) &&
+      Array.isArray(TIME_WHEEL_MINUTES),
+      `parse=${typeof parseHHMMIndices}, indices=${typeof indicesToHHMM}, ` +
+      `hours=${Array.isArray(TIME_WHEEL_HOURS)}, mins=${Array.isArray(TIME_WHEEL_MINUTES)}`);
+
+    if (Array.isArray(TIME_WHEEL_HOURS) && Array.isArray(TIME_WHEEL_MINUTES)) {
+      // T1 — Hours list: exactly the 24 entries 00..23, zero-padded.
+      check('T1a TIME_WHEEL_HOURS length === 24',
+        TIME_WHEEL_HOURS.length === 24);
+      check('T1b TIME_WHEEL_HOURS[0]  === "00"',  TIME_WHEEL_HOURS[0]  === '00');
+      check('T1c TIME_WHEEL_HOURS[9]  === "09"',  TIME_WHEEL_HOURS[9]  === '09');
+      check('T1d TIME_WHEEL_HOURS[23] === "23"',  TIME_WHEEL_HOURS[23] === '23');
+      check('T1e all hours are 2-char zero-padded strings',
+        TIME_WHEEL_HOURS.every(h => typeof h === 'string' && /^\d{2}$/.test(h)));
+
+      // T2 — Minutes list: exactly ['00','05',...,'55'] — the 5-min
+      // set. The wheel cannot land on a 1-min off-grid value.
+      check('T2a TIME_WHEEL_MINUTES length === 12',
+        TIME_WHEEL_MINUTES.length === 12);
+      check('T2b TIME_WHEEL_MINUTES === ["00","05","10",…,"55"]',
+        JSON.stringify(TIME_WHEEL_MINUTES) ===
+        JSON.stringify(['00','05','10','15','20','25','30','35','40','45','50','55']));
+      check('T2c every minute is a multiple of 5',
+        TIME_WHEEL_MINUTES.every(m => parseInt(m, 10) % 5 === 0));
+    }
+
+    if (typeof parseHHMMIndices === 'function') {
+      // T3 — Round-trip: every on-grid HH:MM parses to indices that
+      // indicesToHHMM rebuilds to exactly the same string. Sweeps
+      // every valid (hour, 5-min) combination.
+      let roundTripOk = 0;
+      let roundTripFail = null;
+      for (const h of TIME_WHEEL_HOURS) {
+        for (const m of TIME_WHEEL_MINUTES) {
+          const v = `${h}:${m}`;
+          const parsed = parseHHMMIndices(v);
+          if (!parsed) { roundTripFail = `${v}: parsed null`; break; }
+          const rebuilt = indicesToHHMM(parsed[0], parsed[1]);
+          if (rebuilt !== v) { roundTripFail = `${v} → ${parsed} → ${rebuilt}`; break; }
+          roundTripOk++;
+        }
+        if (roundTripFail) break;
+      }
+      check('T3 on-grid HH:MM ↔ column-index round-trip (all 24×12 = 288 combos)',
+        roundTripOk === 288 && !roundTripFail,
+        `ok=${roundTripOk}, fail=${roundTripFail}`);
+
+      // T4 — Snap-to-nearest 5 for off-grid minutes. The parsed
+      // minute index lands on the closest 5-min slot.
+      const snap = [
+        ['07:23', [7, 5], '23 → round(4.6)=5 → 25'],         // user 23 → nearest 25
+        ['07:22', [7, 4], '22 → round(4.4)=4 → 20'],
+        ['07:25', [7, 5], 'already on 5'],
+        ['07:27', [7, 5], '27 → round(5.4)=5 → 25'],
+        ['07:28', [7, 6], '28 → round(5.6)=6 → 30'],
+        ['07:02', [7, 0], '02 → round(0.4)=0 → 00'],
+        ['07:03', [7, 1], '03 → round(0.6)=1 → 05'],
+        ['07:57', [7, 11], '57 → round(11.4)=11 → 55 (clamped at top)'],
+        ['07:58', [7, 11], '58 → round(11.6)=12 → clamp 11 → 55'],
+      ];
+      let snapOk = 0, snapFail = null;
+      for (const [v, expect, why] of snap) {
+        const parsed = parseHHMMIndices(v);
+        if (!parsed) { snapFail = `${v}: null (${why})`; break; }
+        if (parsed[0] !== expect[0] || parsed[1] !== expect[1]) {
+          snapFail = `${v} → [${parsed}], expected [${expect}] (${why})`;
+          break;
+        }
+        snapOk++;
+      }
+      check('T4 snap-to-nearest 5 (incl. clamp at minute 55)',
+        snapOk === snap.length && !snapFail,
+        `ok=${snapOk}, fail=${snapFail}`);
+
+      // T5 — Invalid input → null (defensive). Wheel callers use null
+      // as "open at the neutral default 09:00".
+      const invalids = ['', null, undefined, 'not a time', '24:00', '99:99', '7:00', '07:00:00', '7:5'];
+      let nullOk = 0, nullFail = null;
+      for (const v of invalids) {
+        const parsed = parseHHMMIndices(v);
+        if (parsed !== null) { nullFail = `${JSON.stringify(v)} → ${JSON.stringify(parsed)} (expected null)`; break; }
+        nullOk++;
+      }
+      check('T5 parseHHMMIndices returns null for invalid input',
+        nullOk === invalids.length && !nullFail,
+        `ok=${nullOk}, fail=${nullFail}`);
+    }
+
+    if (typeof indicesToHHMM === 'function') {
+      // T6 — indicesToHHMM clamps out-of-range indices. Scroll-fling
+      // math can transiently produce slightly out-of-range values
+      // before settle; the helper must defend.
+      check('T6a indicesToHHMM(-1, 0) clamps to "00:00"',
+        indicesToHHMM(-1, 0) === '00:00');
+      check('T6b indicesToHHMM(24, 0) clamps to "23:00"',
+        indicesToHHMM(24, 0) === '23:00');
+      check('T6c indicesToHHMM(0, -1) clamps to "00:00"',
+        indicesToHHMM(0, -1) === '00:00');
+      check('T6d indicesToHHMM(0, 12) clamps to "00:55"',
+        indicesToHHMM(0, 12) === '00:55');
+      check('T6e indicesToHHMM(0, 999) clamps to "00:55"',
+        indicesToHHMM(0, 999) === '00:55');
+      check('T6f indicesToHHMM(NaN, NaN) → "00:00" (defensive)',
+        indicesToHHMM(NaN, NaN) === '00:00');
+      check('T6g indicesToHHMM(9, 6) → "09:30" (5-min step math)',
+        indicesToHHMM(9, 6) === '09:30');
+    }
+
+    // T7 — No-silent-write contract. Simulates the commit gate that
+    // suppresses writes during the open-and-close-without-scrolling
+    // path. The simulation mirrors `commitFromScroll`'s `hhmm !== value`
+    // guard and the `programmaticDoneRef` two-rAF window for the
+    // initial positioning scroll.
+    {
+      // Mini state machine modelling the wheel's commit logic.
+      const makeWheel = (initial) => {
+        let stored = initial;
+        let opened = false;
+        let programmaticDone = false;
+        let writes = 0;
+        return {
+          get stored() { return stored; },
+          get writes() { return writes; },
+          open() {
+            opened = true;
+            programmaticDone = false;
+            // Two-rAF: simulate the gate flipping later.
+          },
+          finishProgrammaticPositioning() { programmaticDone = true; },
+          // Simulated scroll-settle: only commits when (a) open, (b)
+          // the positioning gate is open, and (c) the computed HH:MM
+          // differs from the stored value.
+          scrollSettleTo(hourIdx, minIdx) {
+            if (!opened) return;
+            if (!programmaticDone) return; // ignore positioning scroll
+            const hhmm = indicesToHHMM(hourIdx, minIdx);
+            if (hhmm !== stored) {
+              stored = hhmm;
+              writes++;
+            }
+          },
+          close() { opened = false; },
+        };
+      };
+
+      // T7a — Open + close-without-scroll on an EMPTY field → stored stays empty.
+      {
+        const w = makeWheel('');
+        w.open();
+        w.finishProgrammaticPositioning();
+        // No scroll fired between positioning and close.
+        w.close();
+        check('T7a open + close-without-scroll on empty field: value stays ""',
+          w.stored === '' && w.writes === 0,
+          `stored=${JSON.stringify(w.stored)}, writes=${w.writes}`);
+      }
+
+      // T7b — Open + close-without-scroll on a populated field → unchanged.
+      {
+        const w = makeWheel('08:30');
+        w.open();
+        w.finishProgrammaticPositioning();
+        w.close();
+        check('T7b open + close-without-scroll on "08:30": value unchanged',
+          w.stored === '08:30' && w.writes === 0);
+      }
+
+      // T7c — Scroll events DURING positioning (before
+      // programmaticDone flips) are ignored. This is the gate that
+      // protects against the browser firing scroll events from a
+      // programmatic scrollTop assignment.
+      {
+        const w = makeWheel('08:30');
+        w.open();
+        // Programmatic scroll-settle to the open position fires here
+        // BEFORE programmaticDone flips. Must NOT commit.
+        w.scrollSettleTo(8, 6); // would be "08:30" anyway, also a no-op by !== check
+        // Also try a "different" position arriving before the gate
+        // flips — still must not commit, because gate is closed.
+        w.scrollSettleTo(9, 6);
+        check('T7c scroll-settle events before programmaticDone are ignored',
+          w.stored === '08:30' && w.writes === 0,
+          `stored=${w.stored}, writes=${w.writes}`);
+      }
+
+      // T7d — Genuine user scroll AFTER positioning DOES commit.
+      {
+        const w = makeWheel('08:30');
+        w.open();
+        w.finishProgrammaticPositioning();
+        w.scrollSettleTo(9, 6); // user scrolled hour wheel up to 09
+        check('T7d genuine scroll after positioning → commits new value',
+          w.stored === '09:30' && w.writes === 1,
+          `stored=${w.stored}, writes=${w.writes}`);
+      }
+
+      // T7e — Same-value scroll-settle is suppressed (the `hhmm !==
+      // value` guard). Even if the user scrolls but lands back on the
+      // same slot, no write fires.
+      {
+        const w = makeWheel('08:30');
+        w.open();
+        w.finishProgrammaticPositioning();
+        w.scrollSettleTo(8, 6); // same as stored
+        check('T7e scroll-settle to the same value: no write',
+          w.stored === '08:30' && w.writes === 0);
+      }
+
+      // T7f — Multiple writes in a session: each column-settle fires
+      // independently. After the first commit, `stored` advances; the
+      // next column-settle compares against the new value.
+      {
+        const w = makeWheel('08:30');
+        w.open();
+        w.finishProgrammaticPositioning();
+        w.scrollSettleTo(9, 6); // → "09:30"
+        w.scrollSettleTo(9, 9); // → "09:45"
+        w.scrollSettleTo(10, 9); // → "10:45"
+        check('T7f three independent column-settles → three writes',
+          w.stored === '10:45' && w.writes === 3,
+          `stored=${w.stored}, writes=${w.writes}`);
+      }
+
+      // T7g — Open empty + scroll: the user lands on a 5-min slot,
+      // value writes the picked HH:MM (the minor accepted edge from
+      // the brief: setting empty to exactly the open-default is a
+      // one-notch-scroll operation).
+      {
+        const w = makeWheel('');
+        w.open();
+        w.finishProgrammaticPositioning();
+        w.scrollSettleTo(9, 1); // scrolled minute wheel from 00 to 05
+        check('T7g open empty + genuine scroll: writes the picked time',
+          w.stored === '09:05' && w.writes === 1);
+      }
+    }
+  }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
