@@ -1072,6 +1072,33 @@
       "years of mortgage on a £450k London flat",
     ];
 
+    // Custom user-defined comparison item. Returns the validated item
+    // (with the neutral ⭐ emoji) or null when label is empty / blank
+    // / whitespace OR price is non-positive. Field absence is treated
+    // as hidden — same defensive path — so removing the field on disk
+    // (or loading a pre-Stage backup that lacks it) just hides the
+    // entry, no error. No SCHEMA_VERSION bump needed.
+    const validCustomComparison = (prefs) => {
+      const c = prefs && prefs.customComparison;
+      if (!c) return null;
+      const label = (((c.label || '') + '')).trim();
+      const price = Number(c.price);
+      if (!label || !(price > 0)) return null;
+      return { emoji: '⭐', label, price };
+    };
+    // Effective comparison items / surface labels — base list plus the
+    // validated custom item when one exists. Used by SoloDayPill,
+    // CalcBreakdownView's "in real money" list, StatsScreen's
+    // ComparisonContent, and the Settings comparison-unit dropdown.
+    const getComparisonItems = (prefs) => {
+      const custom = validCustomComparison(prefs);
+      return custom ? [...COMPARISON_ITEMS, custom] : COMPARISON_ITEMS;
+    };
+    const getComparisonSurface = (prefs) => {
+      const custom = validCustomComparison(prefs);
+      return custom ? [...COMPARISON_SURFACE, custom.label] : COMPARISON_SURFACE;
+    };
+
     const DEPARTMENTS = {
       "Direction & Production": {
         "Director":             { bdr: 933,  otCoef: 0,    noOT: true },
@@ -1363,6 +1390,13 @@
       lastSeenAppVersion: "",
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off' to hide.
       comparisonUnit: "Greggs sausage rolls",
+      // User-defined comparison item (stats/display only, NOT calc).
+      // Shown in the comparison pool ONLY when label is non-empty AND
+      // price > 0; otherwise hidden entirely (no blank/zero row).
+      // Field absence is treated as hidden too — see validCustomComparison.
+      // SCHEMA_VERSION stays 3 (merge-over-defaults restores the empty
+      // shape on read for users on older snapshots).
+      customComparison: { label: "", price: 0 },
       // Mark-as-paid celebration (full-screen emoji shower). Kept in userPrefs
       // so they ride along with the backup. emoji: cash|bag|mix,
       // intensity: light|medium|heavy, speed: chill|normal|fast.
@@ -11792,14 +11826,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
 
-    function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc, isToday, comparisonUnit }) {
+    function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc, isToday, comparisonUnit, customComparisonItem }) {
       // Compare line follows the user's pill-comparison preference. 'off' hides
       // the line entirely; any other value looks up the matching item by label,
       // falling back to the first surface entry if the saved label is stale.
-      const unit = comparisonUnit ?? COMPARISON_SURFACE[0];
+      // customComparisonItem (when valid) extends the surface + item lists so
+      // a user-picked custom label resolves like a built-in.
+      const surface = customComparisonItem
+        ? [...COMPARISON_SURFACE, customComparisonItem.label]
+        : COMPARISON_SURFACE;
+      const items = customComparisonItem
+        ? [...COMPARISON_ITEMS, customComparisonItem]
+        : COMPARISON_ITEMS;
+      const unit = comparisonUnit ?? surface[0];
       const compareLabel = unit === 'off' ? null
-        : (COMPARISON_SURFACE.includes(unit) ? unit : COMPARISON_SURFACE[0]);
-      const compareItem = compareLabel ? COMPARISON_ITEMS.find(c => c.label === compareLabel) : null;
+        : (surface.includes(unit) ? unit : surface[0]);
+      const compareItem = compareLabel ? items.find(c => c.label === compareLabel) : null;
       const compareQty = compareItem ? fmtComparisonQty(total / compareItem.price) : null;
       const swap = { animation: 'tm-pill-swap 140ms ease' };
       return (
@@ -12478,7 +12520,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay, onGenerateInvoice }) {
+    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay, onGenerateInvoice, userPrefs }) {
       const sorted = useMemo(() => [...days].sort((a, b) => {
         const dc = (a.date || '').localeCompare(b.date || '');
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
@@ -12628,8 +12670,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {realMoneyExpanded && (
                   <div className="px-3.5 pb-3.5">
                     <ul className="m-0 p-0 list-none">
-                      {COMPARISON_SURFACE.map((label, idx) => {
-                        const item = COMPARISON_ITEMS.find(c => c.label === label);
+                      {getComparisonSurface(userPrefs).map((label, idx) => {
+                        const item = getComparisonItems(userPrefs).find(c => c.label === label);
                         if (!item) return null;
                         const qty = total / item.price;
                         return (
@@ -13433,6 +13475,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onViewCalc={() => setShowCalc(true)}
             isToday={currentDay?.date === todayISO()}
             comparisonUnit={userPrefs?.comparisonUnit}
+            customComparisonItem={validCustomComparison(userPrefs)}
           />
 
           {showCalc && (
@@ -13446,6 +13489,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
               onExportText={async () => { setShowCalc(false); await handleExportText(); }}
               onPickDay={(dayId) => setCurrentDayId(dayId)}
+              userPrefs={userPrefs}
             />
           )}
 
@@ -13824,6 +13868,7 @@ const setDays = (updater) =>
                 crew={crew}
                 total={totalShoot}
                 onClose={() => setShowCalcView(false)}
+                userPrefs={userPrefs}
               />
             )
           )}
@@ -14956,11 +15001,49 @@ const setDays = (updater) =>
                     value={userPrefs.comparisonUnit ?? COMPARISON_SURFACE[0]}
                     onChange={(e) => set({ comparisonUnit: e.target.value })}
                   >
-                    {COMPARISON_SURFACE.map(label => (
+                    {getComparisonSurface(userPrefs).map(label => (
                       <option key={label} value={label}>{label}</option>
                     ))}
                     <option value="off">Off</option>
                   </Select>
+                </div>
+              </div>
+              {/* Custom comparison item — display only, never in calc.
+                  Hidden from the pool entirely when label is empty or
+                  price is non-positive. Stored under userPrefs.customComparison;
+                  field absence is treated as hidden (no SCHEMA bump). */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Your own comparison</div>
+                <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Adds your own item to the comparison pool. Hidden until both label and price are filled in.</div>
+                <div className="grid grid-cols-[1fr_120px] gap-2 mt-2.5 items-center">
+                  <Input
+                    type="text"
+                    value={(userPrefs.customComparison && userPrefs.customComparison.label) || ''}
+                    onChange={(e) => set({
+                      customComparison: {
+                        ...(userPrefs.customComparison || { label: '', price: 0 }),
+                        label: e.target.value,
+                      },
+                    })}
+                    placeholder="e.g. coffees, train tickets"
+                    aria-label="Custom comparison label"
+                  />
+                  <div className="flex items-center gap-1">
+                    <span className="text-[12px] text-neutral-500 font-mono">£</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={(userPrefs.customComparison && Number(userPrefs.customComparison.price)) || 0}
+                      onChange={(e) => set({
+                        customComparison: {
+                          ...(userPrefs.customComparison || { label: '', price: 0 }),
+                          price: Number(e.target.value) || 0,
+                        },
+                      })}
+                      aria-label="Custom comparison price"
+                    />
+                  </div>
                 </div>
               </div>
             </Disclosure>
@@ -15360,7 +15443,7 @@ const setDays = (updater) =>
         <div className="mt-4 pt-3 border-t border-neutral-800">
           <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-2.5">That's roughly…</div>
           <div className="space-y-1">
-            {COMPARISON_ITEMS.map(item => {
+            {getComparisonItems(userPrefs).map(item => {
               const qty = amount / item.price;
               if (qty < 0.1) return null;
               const displayQty = item.price >= 1000 ? qty.toFixed(1) : Math.round(qty).toLocaleString('en-GB');

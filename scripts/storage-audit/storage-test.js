@@ -245,7 +245,16 @@ async function transformedAppCode() {
     'try { globalThis.__parseHHMMIndices  = parseHHMMIndices;  } catch (_) {}\n' +
     'try { globalThis.__indicesToHHMM     = indicesToHHMM;     } catch (_) {}\n' +
     'try { globalThis.__TIME_WHEEL_HOURS   = TIME_WHEEL_HOURS;   } catch (_) {}\n' +
-    'try { globalThis.__TIME_WHEEL_MINUTES = TIME_WHEEL_MINUTES; } catch (_) {}\n';
+    'try { globalThis.__TIME_WHEEL_MINUTES = TIME_WHEEL_MINUTES; } catch (_) {}\n' +
+    // Custom comparison item (U-suite): expose the validator + the
+    // effective getters so the suite can verify the gate (empty/zero
+    // hidden, valid included), plus the base constants for surface
+    // verification.
+    'try { globalThis.__validCustomComparison = validCustomComparison; } catch (_) {}\n' +
+    'try { globalThis.__getComparisonItems    = getComparisonItems;    } catch (_) {}\n' +
+    'try { globalThis.__getComparisonSurface  = getComparisonSurface;  } catch (_) {}\n' +
+    'try { globalThis.__COMPARISON_ITEMS      = COMPARISON_ITEMS;      } catch (_) {}\n' +
+    'try { globalThis.__COMPARISON_SURFACE    = COMPARISON_SURFACE;    } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -1826,6 +1835,175 @@ async function main() {
   // bottom-sheet UX tested worse than the standard input, so the
   // whole branch was reverted. The custom inline wheel that landed
   // in its place is covered by the T-suite below.)
+
+  // ===== U. CUSTOM COMPARISON ITEM — userPrefs.customComparison =====
+  // Stats/display-only addition. Hidden from the comparison pool
+  // entirely until both label is non-empty AND price > 0. Field
+  // absence is treated as hidden (defensive — no SCHEMA bump).
+  // SCHEMA_VERSION stays 3.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const valid    = sb.__validCustomComparison;
+    const getItems = sb.__getComparisonItems;
+    const getSurf  = sb.__getComparisonSurface;
+    const baseItems = sb.__COMPARISON_ITEMS;
+    const baseSurf  = sb.__COMPARISON_SURFACE;
+
+    check('U0 helpers + constants exposed in sandbox',
+      typeof valid === 'function' && typeof getItems === 'function' &&
+      typeof getSurf === 'function' && Array.isArray(baseItems) &&
+      Array.isArray(baseSurf));
+
+    // U1 — default-shaped customComparison ({ label: "", price: 0 })
+    // is hidden. No item appended to either list.
+    {
+      const prefs = { customComparison: { label: '', price: 0 } };
+      check('U1a default-empty customComparison → validCustomComparison null',
+        valid(prefs) === null);
+      check('U1b default-empty → getComparisonItems unchanged from base',
+        getItems(prefs).length === baseItems.length);
+      check('U1c default-empty → getComparisonSurface unchanged from base',
+        getSurf(prefs).length === baseSurf.length);
+    }
+
+    // U2 — Whitespace-only label is treated as empty (trim).
+    {
+      const prefs = { customComparison: { label: '   ', price: 5 } };
+      check('U2 whitespace-only label → hidden',
+        valid(prefs) === null && getItems(prefs).length === baseItems.length);
+    }
+
+    // U3 — Zero / negative / non-numeric price is treated as
+    // non-positive → hidden.
+    {
+      const cases = [
+        { label: 'X', price: 0 },
+        { label: 'X', price: -1 },
+        { label: 'X', price: 'free' },
+        { label: 'X', price: null },
+        { label: 'X', price: undefined },
+        { label: 'X', price: NaN },
+      ];
+      let allHidden = true, badCase = null;
+      for (const c of cases) {
+        if (valid({ customComparison: c }) !== null) {
+          allHidden = false; badCase = c; break;
+        }
+      }
+      check('U3 non-positive price → hidden (0 / negative / non-numeric / null / undefined / NaN)',
+        allHidden, `badCase=${JSON.stringify(badCase)}`);
+    }
+
+    // U4 — Field absence (no customComparison key at all) is treated
+    // defensively as hidden. SCHEMA_VERSION stays 3.
+    {
+      check('U4a missing field → validCustomComparison null',
+        valid({}) === null && valid(null) === null && valid(undefined) === null);
+      check('U4b missing field → lists unchanged from base',
+        getItems({}).length === baseItems.length &&
+        getSurf({}).length === baseSurf.length);
+    }
+
+    // U5 — Valid customComparison (label + price > 0) appears in both
+    // lists, neutral ⭐ emoji, trimmed label, numeric price.
+    {
+      const prefs = { customComparison: { label: '  rolls of film  ', price: 25.5 } };
+      const c = valid(prefs);
+      check('U5a valid → returned object has neutral ⭐ emoji',
+        c && c.emoji === '⭐');
+      check('U5b valid → label is trimmed verbatim',
+        c && c.label === 'rolls of film');
+      check('U5c valid → price coerced to number',
+        c && c.price === 25.5);
+      check('U5d valid → appended to getComparisonItems',
+        getItems(prefs).length === baseItems.length + 1 &&
+        getItems(prefs)[baseItems.length].label === 'rolls of film');
+      check('U5e valid → label appended to getComparisonSurface',
+        getSurf(prefs).length === baseSurf.length + 1 &&
+        getSurf(prefs)[baseSurf.length] === 'rolls of film');
+    }
+
+    // U6 — Price as a numeric string ("3.50") still validates.
+    {
+      const c = valid({ customComparison: { label: 'coffees', price: '3.50' } });
+      check('U6 numeric-string price → validated as 3.5',
+        c && c.price === 3.5 && c.label === 'coffees');
+    }
+
+    // U7 — SCHEMA_VERSION still 3 (additive userPrefs field; merge-
+    // over-defaults absorbs absence). Verified by checking the
+    // DEFAULT_USER_PREFS exposure already used by the L / M / N suites.
+    {
+      const defaults = sb.__DEFAULT_USER_PREFS;
+      check('U7a DEFAULT_USER_PREFS exposes customComparison',
+        defaults && defaults.customComparison &&
+        typeof defaults.customComparison === 'object');
+      check('U7b default shape is { label: "", price: 0 } → hidden',
+        defaults && defaults.customComparison &&
+        defaults.customComparison.label === '' &&
+        defaults.customComparison.price === 0 &&
+        valid(defaults) === null);
+    }
+
+    // U8 — Backup round-trip: a backup written WITH a filled custom
+    // item restores it (the field survives import); a backup written
+    // WITHOUT the field falls back to the empty default via the
+    // existing merge-over-defaults guard.
+    {
+      const payload = JSON.stringify({
+        version: 1,
+        schemaVersion: 3,
+        productions: [],
+        userPrefs: {
+          displayName: 'Test User',
+          customComparison: { label: 'cups of tea', price: 2.5 },
+        },
+      });
+      const r = sb.__importBackup(payload);
+      check('U8a backup-with-customComparison: import ok',
+        r && r.ok === true);
+      const stored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+      check('U8b backup-with-customComparison: round-trips verbatim',
+        stored && stored.customComparison &&
+        stored.customComparison.label === 'cups of tea' &&
+        stored.customComparison.price === 2.5);
+      check('U8c backup-with-customComparison: validates → included',
+        valid(stored) !== null &&
+        getItems(stored).length === baseItems.length + 1);
+    }
+    {
+      // Fresh sandbox to test legacy backup (no customComparison key).
+      const localStorage2 = makeLocalStorage();
+      const sb2 = await runApp({ capacitor: undefined, localStorage: localStorage2 });
+      await settle(50);
+      const legacyPayload = JSON.stringify({
+        version: 1,
+        schemaVersion: 3,
+        productions: [],
+        userPrefs: { displayName: 'Legacy User' /* no customComparison */ },
+      });
+      const r = sb2.__importBackup(legacyPayload);
+      check('U8d pre-stage backup (no field): import ok',
+        r && r.ok === true);
+      const stored = JSON.parse(sb2.__storage.get('bigals_user_prefs') || 'null');
+      check('U8e pre-stage backup: customComparison restored to default shape',
+        stored && stored.customComparison &&
+        stored.customComparison.label === '' &&
+        stored.customComparison.price === 0);
+      check('U8f pre-stage backup: validates as hidden',
+        sb2.__validCustomComparison(stored) === null);
+    }
+
+    // U9 — schemaVersion in stored snapshot stays 3 (no migration ran).
+    {
+      const storedVer = sb.__storage.get('bigals_schema_version');
+      check('U9 SCHEMA_VERSION unchanged (stored version is 3)',
+        storedVer === '3' || storedVer === 3,
+        `stored=${storedVer}`);
+    }
+  }
 
   // ===== T. INLINE 5-MINUTE TIME WHEEL — touch-branch TimeInput =====
   // The wheel is a touch-only branch of TimeInput (pointer:coarse).
