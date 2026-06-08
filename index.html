@@ -14885,25 +14885,16 @@ const setDays = (updater) =>
 
       const { onDeptChange, onRoleChange } = makeDeptRoleHandlers(set, userPrefs);
 
-      const vatSummary = userPrefs.vatRegistered
-        ? `VAT ${userPrefs.vatRate || 20}%`
-        : 'Not registered';
-
+      // Settings Stage-1 regroup collapsed Tax & Invoicing / Bank details /
+      // Numbering & terms / Logo into sub-areas of one Invoicing Disclosure,
+      // so vatSummary / bankSummary / numberingSummary / logoSummary are no
+      // longer referenced and have been pruned. yourDetailsSummary survives
+      // as the outer Invoicing summary.
       const yourDetailsSummary =
         (userPrefs.legalName || '').trim() ||
         (userPrefs.fromCompanyName || '').trim() ||
         (userPrefs.fromEmail || '').trim() ||
         '—';
-
-      const bankSummary = (userPrefs.bankAccountNumber || '').length >= 4
-        ? `${((userPrefs.bankName || '').trim() || 'Account')} · ***${userPrefs.bankAccountNumber.slice(-4)}`
-        : '—';
-
-      const numberingSummary = userPrefs.invoicePrefix || userPrefs.invoiceNextNumber
-        ? `${userPrefs.invoicePrefix || ''}${userPrefs.invoiceNextNumber || 1} · Net ${userPrefs.paymentTermsDays ?? 30}`
-        : '—';
-
-      const logoSummary = userPrefs.logoBase64 ? 'Uploaded' : '—';
 
       const defaultsSummary = (() => {
         const bits = [];
@@ -15214,8 +15205,14 @@ const setDays = (updater) =>
               </div>
             </Disclosure>
 
-            {/* §4 — Kit Room: existing Stage 1 inline editor, moved AS-IS.
-                Stage 2 will redo the row layout; not in this commit. */}
+            {/* §4 — Kit Room: roomier card layout (Stage 2). Each item is its
+                own padded card — full-width name input on its own line, then
+                a labelled "Default on new shoots" toggle (left) and the £
+                daily-rate field + × delete (right) on a second line. Bindings
+                unchanged from Stage 1: name → name, rate → defaultDailyRate,
+                toggle → defaultOn, × → remove by id; "+ Add kit item" appends
+                a new item with the same shape as before. Drag-to-reorder is a
+                future stage. */}
             <Disclosure
               label="Kit Room"
               summary={(() => {
@@ -15232,59 +15229,69 @@ const setDays = (updater) =>
                 const addKitItem = () =>
                   set({ kitInventory: [...items, { id: uid(), name: "", defaultDailyRate: 0, defaultOn: false }] });
                 return (
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-2">
                     <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
-                      Your personal inventory of kit items. Each has a name, a default daily rate, and a "default on for new shoots" toggle that Stage&nbsp;2 will use to auto-apply this item to qualifying day records.
+                      Your personal inventory of kit items. Each has a name, a default daily rate, and a "default on for new shoots" toggle that auto-applies the item to qualifying day records.
                     </div>
                     {items.length === 0 && (
                       <div className="text-[11px] text-neutral-600 italic py-2">No items yet — tap "Add kit item" to start.</div>
                     )}
                     {items.length > 0 && (
-                      <div className="bg-neutral-900 border border-neutral-800 rounded-lg">
-                        {items.map((item, idx) => (
+                      <div className="flex flex-col gap-2">
+                        {items.map((item) => (
                           <div
                             key={item.id}
-                            className={`flex items-center gap-2 px-2.5 py-2 ${idx > 0 ? 'border-t border-neutral-800' : ''}`}
+                            className="bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3"
                           >
+                            {/* Line 1 — full-width name (no truncation). */}
                             <Input
                               type="text"
                               placeholder="Item name"
                               value={item.name ?? ""}
                               onChange={(e) => updateKitItem(item.id, { name: e.target.value })}
-                              className="flex-1 min-w-[80px] text-sm"
+                              aria-label="Kit item name"
+                              className="w-full text-sm font-semibold"
                             />
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <span className="text-[11px] text-neutral-500 font-mono">£</span>
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                placeholder="0"
-                                value={Number.isFinite(item.defaultDailyRate) ? item.defaultDailyRate : 0}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  const n = raw === '' ? 0 : Number(raw);
-                                  updateKitItem(item.id, { defaultDailyRate: Number.isFinite(n) ? n : 0 });
-                                }}
-                                aria-label={`Daily rate for ${item.name || 'kit item'}`}
-                                style={{ width: 78 }}
-                                className="text-sm"
-                              />
+                            {/* Line 2 — labelled default-on toggle (left) + £ rate + × delete (right). */}
+                            <div className="flex items-center gap-3 mt-3">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Toggle
+                                  value={!!item.defaultOn}
+                                  onChange={(v) => updateKitItem(item.id, { defaultOn: v })}
+                                  ariaLabel={`Default on new shoots — ${item.name || 'kit item'}`}
+                                />
+                                <span className="text-[11px] text-neutral-400 leading-tight">Default on new shoots</span>
+                              </div>
+                              <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[11px] text-neutral-500 font-mono">£</span>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="0"
+                                    value={Number.isFinite(item.defaultDailyRate) ? item.defaultDailyRate : 0}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      const n = raw === '' ? 0 : Number(raw);
+                                      updateKitItem(item.id, { defaultDailyRate: Number.isFinite(n) ? n : 0 });
+                                    }}
+                                    aria-label={`Daily rate for ${item.name || 'kit item'}`}
+                                    style={{ width: 84 }}
+                                    className="text-sm"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeKitItem(item.id)}
+                                  className="text-neutral-600 hover:text-tm-pen transition-colors p-1.5 flex-shrink-0"
+                                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                                  aria-label={`Remove ${item.name || 'kit item'}`}
+                                >
+                                  <IX size={14}/>
+                                </button>
+                              </div>
                             </div>
-                            <Toggle
-                              value={!!item.defaultOn}
-                              onChange={(v) => updateKitItem(item.id, { defaultOn: v })}
-                              ariaLabel={`Default on for new shoots — ${item.name || 'kit item'}`}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeKitItem(item.id)}
-                              className="text-neutral-600 hover:text-tm-pen transition-colors p-1 flex-shrink-0"
-                              style={{ WebkitTapHighlightColor: 'transparent' }}
-                              aria-label={`Remove ${item.name || 'kit item'}`}
-                            >
-                              <IX size={14}/>
-                            </button>
                           </div>
                         ))}
                       </div>

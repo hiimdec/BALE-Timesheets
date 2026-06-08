@@ -3399,6 +3399,45 @@ async function main() {
       body.includes('makeDeptRoleHandlers(set, userPrefs)'));
     check('Z9e RELEASE_NOTES still rendered under About & help / What\'s new',
       body.includes('RELEASE_NOTES.added.map') && body.includes('RELEASE_NOTES.version'));
+
+    // ─ Z10: Kit Room Stage 2 row rework — each item is a padded card with
+    //   full-width name on line 1, then labelled "Default on new shoots"
+    //   toggle (left) and £ rate + × delete (right) on line 2. Bindings
+    //   to {id, name, defaultDailyRate, defaultOn} must be intact; add /
+    //   remove wires must still spawn / drop items. The layout itself is
+    //   only spot-checked (the "Default on new shoots" labelled-toggle
+    //   text is new in Stage 2 and is the load-bearing visual change). ─
+    check('Z10a Kit Room: name binding writes via updateKitItem({ name: ... })',
+      body.includes('updateKitItem(item.id, { name: e.target.value })'));
+    check('Z10b Kit Room: rate binding writes via updateKitItem({ defaultDailyRate: ... })',
+      body.includes('updateKitItem(item.id, { defaultDailyRate:'));
+    check('Z10c Kit Room: toggle binding writes via updateKitItem({ defaultOn: v })',
+      body.includes('updateKitItem(item.id, { defaultOn: v })'));
+    check('Z10d Kit Room: addKitItem appends a new {id, name, defaultDailyRate, defaultOn} item',
+      body.includes("{ id: uid(), name: \"\", defaultDailyRate: 0, defaultOn: false }"));
+    check('Z10e Kit Room: removeKitItem filters by id',
+      body.includes('items.filter(it => it.id !== id)'));
+    check('Z10f Kit Room: "+ Add kit item" button text + addKitItem onClick wired',
+      body.includes('onClick={addKitItem}') && body.includes('Add kit item'));
+    check('Z10g Kit Room: "Default on new shoots" labelled-toggle text rendered',
+      body.includes('Default on new shoots'));
+    check('Z10h Kit Room: per-item card uses bg-neutral-900 border rounded-xl (roomier layout)',
+      body.includes('bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3'));
+    check('Z10i Kit Room: name input is full-width (no row-truncation)',
+      body.includes('w-full text-sm font-semibold'));
+
+    // ─ Z11: dead summary vars from Stage 1 are pruned. If any of these
+    //   reappear, someone re-introduced the now-unreferenced summary
+    //   computations that the regroup removed. ─
+    const PRUNED_VARS = ['vatSummary', 'bankSummary', 'numberingSummary', 'logoSummary'];
+    for (const v of PRUNED_VARS) {
+      // Look for declaration form `const <name> =` only — the explanatory
+      // comment in the source that names all four still mentions them, but
+      // an actual re-declaration would be a regression.
+      check(`Z11 dead summary var "${v}" not redeclared`,
+        !body.includes(`const ${v} =`),
+        `unexpected redeclaration of const ${v} =`);
+    }
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
