@@ -6393,12 +6393,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [showPreCallInfo, setShowPreCallInfo] = useState(false);
 
       const computeNowHHMM = () => {
+        // Stamps the EXACT current time. The 5-minute rounding that used
+        // to live here silently lost owed overtime (a captured 19:02 turned
+        // into 19:00, erasing the increment); an explicit picker selection
+        // is a user choice, a live capture is not.
         const now = new Date();
-        const totalMins = now.getHours() * 60 + now.getMinutes();
-        const rounded = Math.round(totalMins / 5) * 5;
-        const h = Math.floor(rounded / 60) % 24;
-        const m = rounded % 60;
-        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       };
 
       const onDayTypeChange = (dayType) => {
@@ -8091,12 +8091,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [confirming, setConfirming] = useState(false);
 
       const doWrap = () => {
+        // Stamps the EXACT current time — see computeNowHHMM for the
+        // rationale. The wrapped flag, field write, day-match all stay.
         const now = new Date();
-        const totalMins = now.getHours() * 60 + now.getMinutes();
-        const rounded = Math.round(totalMins / 5) * 5;
-        const h = Math.floor(rounded / 60) % 24;
-        const m = rounded % 60;
-        const wrapStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        const wrapStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr, wrapped: true } : d));
         showToast(`Wrapped ${todayEntries.length} entr${todayEntries.length === 1 ? 'y' : 'ies'} at ${wrapStr}`);
         setConfirming(false);
@@ -8142,12 +8140,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [confirming, setConfirming] = useState(false);
 
       const doLunch = () => {
+        // Stamps the EXACT current time — see computeNowHHMM for the
+        // rationale. The field write + day-match all stay.
         const now = new Date();
-        const totalMins = now.getHours() * 60 + now.getMinutes();
-        const rounded = Math.round(totalMins / 5) * 5;
-        const h = Math.floor(rounded / 60) % 24;
-        const m = rounded % 60;
-        const lunchStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        const lunchStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         setDays(prev => prev.map(d => d.date === todayStr ? { ...d, lunchStartTime: lunchStr } : d));
         showToast(`Lunch logged at ${lunchStr}`);
         setConfirming(false);
@@ -9003,12 +8999,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <div className="px-4 mb-3 flex gap-2">
             {(() => {
               const nowHHMM = () => {
+                // Stamps the EXACT current time — see computeNowHHMM for
+                // the rationale.
                 const d = new Date();
-                const mins = d.getHours() * 60 + d.getMinutes();
-                const rounded = Math.round(mins / 5) * 5;
-                const h = Math.floor(rounded / 60) % 24;
-                const m = rounded % 60;
-                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
               };
               const handleLunchNow = () => {
                 const t = nowHHMM();

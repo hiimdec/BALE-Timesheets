@@ -1668,6 +1668,144 @@ async function main() {
     }
   }
 
+  // ===== R. "NOW" WRITERS STAMP EXACT TIME (no 5-minute rounding) =====
+  // After removing the TimeInput blur-snap (Q-suite), the four live-
+  // capture "now" writers were still applying Math.round(mins/5)*5,
+  // which silently lost owed overtime on captures like 19:02. They now
+  // emit the exact getHours()/getMinutes(). This suite is the
+  // regression guard: zero rounders anywhere in the source, plus a
+  // direct functional check of every writer's source body with a
+  // mocked Date.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // R1 — source-wide: no Math.round(...)/5)*5 pattern anywhere. The
+    // single regression catch-all for these writers AND any future
+    // sibling that creeps in. Strict pattern: Math.round followed by a
+    // / 5 (with optional whitespace) before the closing paren.
+    const roundRe = /Math\.round\([^)]*\/\s*5\s*\)\s*\*\s*5/g;
+    const roundHits = (html.match(roundRe) || []).length;
+    check('R1 source: zero Math.round(.../5)*5 occurrences anywhere',
+      roundHits === 0,
+      `roundHits=${roundHits}`);
+
+    // Extract each writer's body from source so we can compile + eval
+    // it with a controlled Date. The bodies are arrow functions, so
+    // wrapping them in a thunk that captures a mocked `Date` exercises
+    // the exact source code.
+    const sliceBetween = (src, startNeedle, endNeedle) => {
+      const i = src.indexOf(startNeedle);
+      if (i === -1) return null;
+      const j = src.indexOf(endNeedle, i);
+      if (j === -1) return null;
+      return src.slice(i, j + endNeedle.length);
+    };
+
+    // computeNowHHMM (DayEntryForm) — returns the HH:MM string directly.
+    const computeNowHHMM_src = sliceBetween(html,
+      'const computeNowHHMM = () => {', '};');
+    check('R2 source: computeNowHHMM body extracted',
+      computeNowHHMM_src && computeNowHHMM_src.length > 0);
+
+    // nowHHMM (BestBoyMobileDayView handleLunchNow / handleWrapNow).
+    const nowHHMM_src = sliceBetween(html,
+      'const nowHHMM = () => {', '};');
+    check('R3 source: nowHHMM body extracted',
+      nowHHMM_src && nowHHMM_src.length > 0);
+
+    // For doWrap / doLunch, the writers mutate state via setDays /
+    // showToast. We don't need to exercise those — we just need to
+    // verify the time-string they BUILD. Pull the construction line
+    // for each.
+    const doWrapHasWrapStr   = /const wrapStr = `\$\{String\(now\.getHours\(\)\)\.padStart\(2, ['"]0['"]\)\}:\$\{String\(now\.getMinutes\(\)\)\.padStart\(2, ['"]0['"]\)\}`/.test(html);
+    const doLunchHasLunchStr = /const lunchStr = `\$\{String\(now\.getHours\(\)\)\.padStart\(2, ['"]0['"]\)\}:\$\{String\(now\.getMinutes\(\)\)\.padStart\(2, ['"]0['"]\)\}`/.test(html);
+    check('R4 source: doWrap builds wrapStr from now.getHours()/Minutes() directly (no rounding)',
+      doWrapHasWrapStr);
+    check('R5 source: doLunch builds lunchStr from now.getHours()/Minutes() directly (no rounding)',
+      doLunchHasLunchStr);
+    // Confirm wrapStr and lunchStr are not built via a rounded-mins
+    // pathway: there should be no `const rounded =` declaration within
+    // the WrapNowBtn / LunchNowBtn function bodies.
+    const wrapNowBody  = sliceBetween(html, 'function WrapNowBtn(',  'function LunchNowBtn(') || '';
+    const lunchNowBody = sliceBetween(html, 'function LunchNowBtn(', '\n    }\n\n    function ') || '';
+    check('R6 WrapNowBtn body: no `const rounded =` declaration',
+      !/const rounded =/.test(wrapNowBody));
+    check('R7 LunchNowBtn body: no `const rounded =` declaration',
+      !/const rounded =/.test(lunchNowBody));
+
+    // Compile + eval the two `() => string` writers (computeNowHHMM,
+    // nowHHMM) against a mocked Date. Each gets its own Function so
+    // there's no leakage. The mocked Date returns the (h, m) we set.
+    const makeMockDate = (h, m) => function MockDate() {
+      this.getHours = () => h;
+      this.getMinutes = () => m;
+    };
+    const evalReturning = (src, MockDate) => {
+      // src is `const NAME = () => { ... };` — wrap to invoke the body
+      // immediately. Replace the inner `new Date()` with the mock.
+      const body = src.replace(/^const \w+ = \(\) => /, '').replace(/;\s*$/, '');
+      // body is now `{ ... }`. Wrap in a thunk where `Date` = MockDate.
+      const fn = new Function('Date', `return (() => ${body})();`);
+      return fn(MockDate);
+    };
+
+    // Test vectors covering the brief: off-grid 19:02, off-grid 07:23,
+    // on-grid 19:05, midnight 00:00, end-of-day 23:59, plus a few
+    // padding-edge values.
+    const vectors = [
+      { h: 19, m:  2, expect: '19:02', label: '19:02 (off-grid, exact)' },
+      { h:  7, m: 23, expect: '07:23', label: '07:23 (off-grid, hour padding)' },
+      { h: 19, m:  5, expect: '19:05', label: '19:05 (already on 5-min grid)' },
+      { h:  0, m:  0, expect: '00:00', label: '00:00 (midnight)' },
+      { h: 23, m: 59, expect: '23:59', label: '23:59 (end of day)' },
+      { h:  9, m:  0, expect: '09:00', label: '09:00 (single-digit hour padded)' },
+      { h: 12, m:  7, expect: '12:07', label: '12:07 (off-grid, would have been 12:05)' },
+    ];
+
+    let n = 0;
+    for (const v of vectors) {
+      const Mock = makeMockDate(v.h, v.m);
+      try {
+        const compute = evalReturning(computeNowHHMM_src, Mock);
+        check(`R8.${++n} computeNowHHMM(${v.label}) → '${v.expect}'`,
+          compute === v.expect, `got=${compute}`);
+      } catch (e) {
+        check(`R8.${++n} computeNowHHMM(${v.label}) eval`, false, e.message);
+      }
+    }
+
+    n = 0;
+    for (const v of vectors) {
+      const Mock = makeMockDate(v.h, v.m);
+      try {
+        const computed = evalReturning(nowHHMM_src, Mock);
+        check(`R9.${++n} nowHHMM(${v.label}) → '${v.expect}'`,
+          computed === v.expect, `got=${computed}`);
+      } catch (e) {
+        check(`R9.${++n} nowHHMM(${v.label}) eval`, false, e.message);
+      }
+    }
+
+    // For doWrap / doLunch, exercise the wrapStr / lunchStr building line
+    // directly against the same mocked Date — same formula as the
+    // returning helpers, just bound to a `now` const for the surrounding
+    // state writes.
+    const buildHHMMFromNow = (MockDate) => {
+      const fn = new Function('Date', `
+        const now = new Date();
+        return \`\${String(now.getHours()).padStart(2, '0')}:\${String(now.getMinutes()).padStart(2, '0')}\`;
+      `);
+      return fn(MockDate);
+    };
+    n = 0;
+    for (const v of vectors) {
+      const Mock = makeMockDate(v.h, v.m);
+      const out = buildHHMMFromNow(Mock);
+      check(`R10.${++n} doWrap/doLunch wrapStr formula(${v.label}) → '${v.expect}'`,
+        out === v.expect, `got=${out}`);
+    }
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.
