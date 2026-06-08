@@ -116,25 +116,31 @@
       touch-action: manipulation;
     }
 
-    /* 2. Press feedback — fast, subtle scale + opacity. Applies to every
-          <button>, [role="button"], and the .tm-press utility (used by
-          whole-row launchers that render as <div onClick={...}>). The
-          press-in is INSTANT (transition: none on :active) and the release
-          runs the 80ms ease-out from the default state.
-          :where() keeps the selector at specificity (0, 1, 0) for :active
-          and (0, 0, 0) for the default state — so any callsite-specific
-          active style (Btn's `active:scale-95`, .tm-pill-nav-btn's
-          scale-0.94 + bg flip, etc.) still wins on that element. */
-    :where(button:not(:disabled):not([aria-disabled="true"]),
-           [role="button"]:not([aria-disabled="true"]),
-           .tm-press:not([aria-disabled="true"])) {
-      transition: transform 80ms ease-out, opacity 80ms ease-out;
+    /* 2. Press feedback — scale-only, consistent across every <button>,
+          [role="button"], and the .tm-press utility. Press-in is INSTANT
+          (transition: none on :active); the release runs 80ms ease-out from
+          the default state. NO opacity dim — earlier Phase A used a 12%
+          opacity drop that read as a grey flash on the dark UI and stacked
+          oddly on Settings cards.
+
+          Specificity note: this rule INTENTIONALLY does not use :where().
+          The type/class selectors give us (0, 2, 1) default and (0, 3, 1)
+          :active, which beats Tailwind's `.transition-all` (0, 1, 0) on
+          Btn and `.active:scale-95:active` (0, 2, 0) on Btn — so Btn now
+          gets the same instant-in / 80ms-out feel as every other button.
+          .tm-pill-nav-btn is also a <button>, so it picks up the universal
+          scale(0.97) too — its prior custom scale(0.94) + bg flip on
+          :active are intentionally dropped below for cross-app
+          consistency. */
+    button:not(:disabled):not([aria-disabled="true"]),
+    [role="button"]:not([aria-disabled="true"]),
+    .tm-press:not([aria-disabled="true"]) {
+      transition: transform 80ms ease-out;
     }
-    :where(button:not(:disabled):not([aria-disabled="true"]),
-           [role="button"]:not([aria-disabled="true"]),
-           .tm-press:not([aria-disabled="true"])):active {
+    button:not(:disabled):not([aria-disabled="true"]):active,
+    [role="button"]:not([aria-disabled="true"]):active,
+    .tm-press:not([aria-disabled="true"]):active {
       transform: scale(0.97);
-      opacity: 0.88;
       transition: none;
     }
     /* Hide native select arrow tint */
@@ -238,10 +244,12 @@
       flex-shrink: 0; cursor: pointer;
       transition: transform 100ms ease, background 150ms ease;
     }
-    .tm-pill-nav-btn:active:not(:disabled) {
-      transform: scale(0.94);
-      background: rgba(0,0,0,0.08);
-    }
+    /* Pill nav buttons used to set their own custom scale(0.94) + bg flip
+       on :active here. The universal Phase A press rule above now wins
+       (specificity 0,3,1 vs this rule's 0,3,0), and the spec asks for a
+       consistent press feel across ALL buttons including these — so the
+       custom transform/bg are intentionally dropped. The pill nav button
+       still inherits the universal scale(0.97) press from the rule above. */
     .tm-pill-nav-btn:disabled {
       opacity: 0.25;
       pointer-events: none;
@@ -250,10 +258,6 @@
       background: #0ea5e9;
       border-color: rgba(0,0,0,0.15);
       color: #000;
-    }
-    .tm-pill-nav-btn-add:active:not(:disabled) {
-      background: #38bdf8;
-      transform: scale(0.94);
     }
     .tm-pill-center {
       flex: 1; min-width: 0;
@@ -16569,8 +16573,20 @@ const setDays = (updater) =>
             </div>
             <div className="text-2xl font-bold font-mono text-neutral-100 tabular-nums">{value}</div>
             {sub && <div className="text-xs text-neutral-500 mt-1">{sub}</div>}
-            <div style={{ overflow: 'hidden', maxHeight: expanded ? 1200 : 0, transition: 'max-height 0.25s ease' }}>
-              {children}
+            {/* grid-template-rows 0fr ↔ 1fr — symmetric, content-aware
+                open/close. Replaces the old maxHeight: 1200 trick, which
+                had a perceptual ~150ms dead time on close because content
+                was shorter than 1200. min-height:0 on the inner div is
+                load-bearing — without it grid items default to
+                min-content sizing and the row never collapses to 0. */}
+            <div style={{
+              display: 'grid',
+              gridTemplateRows: expanded ? '1fr' : '0fr',
+              transition: 'grid-template-rows 0.25s ease',
+            }}>
+              <div style={{ minHeight: 0, overflow: 'hidden' }}>
+                {children}
+              </div>
             </div>
           </div>
         );
@@ -16634,8 +16650,21 @@ const setDays = (updater) =>
                     <div className="text-[40px] leading-none font-bold font-mono text-neutral-100 tabular-nums tracking-tight">
                       {fmtGBP(stats.totalEarnings)}
                     </div>
-                    <div style={{ overflow: 'hidden', maxHeight: expandedStat === 'hero' ? 1600 : 0, transition: 'max-height 0.3s ease' }}>
-                      {filter === 'all' ? <MonthTableContent /> : <ComparisonContent amount={stats.totalEarnings} />}
+                    {/* grid-template-rows 0fr ↔ 1fr — symmetric, content-
+                        aware open/close. Replaces the old maxHeight: 1600
+                        trick, which made the close perceptibly laggy
+                        because content was shorter than 1600 (~150ms of
+                        dead time before anything visible moved).
+                        min-height:0 on the inner div is required — grid
+                        rows default to min-content otherwise. */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateRows: expandedStat === 'hero' ? '1fr' : '0fr',
+                      transition: 'grid-template-rows 0.3s ease',
+                    }}>
+                      <div style={{ minHeight: 0, overflow: 'hidden' }}>
+                        {filter === 'all' ? <MonthTableContent /> : <ComparisonContent amount={stats.totalEarnings} />}
+                      </div>
                     </div>
                   </div>
                 </div>

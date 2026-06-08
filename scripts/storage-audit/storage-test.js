@@ -3813,17 +3813,29 @@ async function main() {
     check('CC3 universal tap-highlight transparent (*, *::before, *::after)',
       /\*,\s*\*::before,\s*\*::after\s*\{[^}]*-webkit-tap-highlight-color:\s*transparent/.test(html));
 
-    // ─ CC4: press feedback — :active scale + opacity, instant press-in.
-    //   The :where() wrapper keeps specificity at (0, 1, 0) so any
-    //   callsite-specific :active style still wins on that element. ─
-    check('CC4 press-feedback default transition (transform 80ms ease-out)',
-      html.includes(':where(button:not(:disabled):not([aria-disabled="true"]),') &&
-      html.includes('transition: transform 80ms ease-out, opacity 80ms ease-out'));
-    check('CC4 press-feedback :active scale(0.97) + opacity 0.88 + transition:none',
-      html.includes('transform: scale(0.97)') &&
-      html.includes('opacity: 0.88') &&
-      // ":active" + "transition: none" both inside the press block
-      /:active\s*\{\s*transform:\s*scale\(0\.97\);\s*opacity:\s*0\.88;\s*transition:\s*none/.test(html));
+    // ─ CC4: press feedback — scale-only, instant press-in, 80ms release.
+    //   The rule uses plain type/class selectors (no :where()) so its
+    //   specificity beats Tailwind's `.transition-all` + `.active:scale-95`
+    //   on Btn. The opacity dim from earlier Phase A was dropped — it
+    //   read as a grey flash on the dark UI and stacked oddly on
+    //   Settings cards. ─
+    check('CC4a press-feedback default transition is TRANSFORM ONLY (no opacity)',
+      html.includes('button:not(:disabled):not([aria-disabled="true"]),') &&
+      html.includes('transition: transform 80ms ease-out') &&
+      // The transition list must NOT include opacity anymore.
+      !/transition:\s*transform 80ms ease-out,\s*opacity/.test(html));
+    check('CC4b press-feedback selector does NOT use :where() (so specificity beats Btn)',
+      !html.includes(':where(button:not(:disabled):not([aria-disabled="true"])'));
+    check('CC4c press-feedback :active is scale(0.97) + transition:none only — NO opacity dim',
+      /button:not\(:disabled\):not\(\[aria-disabled="true"\]\):active,[\s\S]*?\.tm-press:not\(\[aria-disabled="true"\]\):active\s*\{\s*transform:\s*scale\(0\.97\);\s*transition:\s*none\s*;\s*\}/.test(html));
+    check('CC4d press-feedback rule no longer sets opacity 0.88',
+      !html.includes('opacity: 0.88'));
+    // CC4e — pill nav button custom scale(0.94) + bg flip on :active are
+    // intentionally dropped so .tm-pill-nav-btn inherits the universal
+    // scale(0.97). Catch a regression where someone re-adds them.
+    check('CC4e .tm-pill-nav-btn:active no longer sets a custom transform/bg (universal rule wins)',
+      !html.includes('.tm-pill-nav-btn:active:not(:disabled) {') &&
+      !html.includes('.tm-pill-nav-btn-add:active:not(:disabled) {'));
 
     // ─ CC5: app shell — user-select: none + -webkit-touch-callout: none.
     //   Carve-outs below restore both on inputs / textareas / select /
@@ -3871,6 +3883,24 @@ async function main() {
       /body\s*\{[^}]*font-family:\s*-apple-system,\s*BlinkMacSystemFont/.test(html));
     check('CC10 mono stack unchanged (ui-monospace, SFMono-Regular, Menlo)',
       html.includes('ui-monospace, SFMono-Regular, Menlo, monospace'));
+
+    // ─ CC11: Stats expandables use grid-template-rows 0fr ↔ 1fr (not
+    //   maxHeight) so open and close are symmetric and content-aware.
+    //   The old maxHeight: 1200 (TappableCard) / 1600 (hero card) trick
+    //   left ~150ms of dead time on close because content was shorter
+    //   than the fixed cap; the grid-row technique animates only the
+    //   actual row height, so open and close feel equal-time. ─
+    check('CC11a grid-template-rows technique in source (open state 1fr, closed state 0fr)',
+      html.includes("gridTemplateRows: expanded ? '1fr' : '0fr'") &&
+      html.includes("gridTemplateRows: expandedStat === 'hero' ? '1fr' : '0fr'"));
+    check('CC11b grid-template-rows transition declared (per-card duration)',
+      html.includes("transition: 'grid-template-rows 0.25s ease'") &&
+      html.includes("transition: 'grid-template-rows 0.3s ease'"));
+    check('CC11c inner row clipped via min-height:0 + overflow:hidden (grid-row collapses cleanly)',
+      html.includes('minHeight: 0, overflow: \'hidden\''));
+    check('CC11d old maxHeight 1200/1600 ceilings are gone',
+      !html.includes('maxHeight: expanded ? 1200 : 0') &&
+      !html.includes("maxHeight: expandedStat === 'hero' ? 1600 : 0"));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
