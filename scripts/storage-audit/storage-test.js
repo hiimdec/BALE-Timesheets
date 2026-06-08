@@ -2325,8 +2325,10 @@ async function main() {
         /hhmm\s*!==\s*value/.test(body));
       check('T9c TimeWheelPanel body has the two-rAF positioning gate',
         /requestAnimationFrame\([\s\S]*requestAnimationFrame/.test(body));
-      check('T9d TimeWheelPanel body has the settle debounce',
-        /setTimeout\s*\(\s*commitFromScroll\s*,/.test(body));
+      check('T9d TimeWheelPanel body has the settle debounce that calls commitFromScroll',
+        // Either the original direct-fn form OR the Phase B form where
+        // the settle arrow also fires the haptic selectionEnd marker.
+        /setTimeout\s*\(\s*(?:commitFromScroll|\(\)\s*=>\s*\{[\s\S]{0,200}commitFromScroll\(\))/.test(body));
       check('T9e TimeWheelPanel body has NO Math.round(.../5)*5 snap',
         !/Math\.round\([^)]*\/\s*5\s*\)\s*\*\s*5/.test(body));
     }
@@ -3901,6 +3903,174 @@ async function main() {
     check('CC11d old maxHeight 1200/1600 ceilings are gone',
       !html.includes('maxHeight: expanded ? 1200 : 0') &&
       !html.includes("maxHeight: expandedStat === 'hero' ? 1600 : 0"));
+  }
+
+  // ===== DD. HAPTICS — Phase B source presence + pref round-trip =====
+  // Source-presence checks for the @capacitor/haptics wiring: helper shape,
+  // both no-op gates (web feature-detect + user toggle), the wired moments
+  // (time-wheel selection sequence, Toggle light, segmented selectionChanged,
+  // ConfirmDialog danger-tone medium, now-buttons heavy, completions
+  // success), the new userPrefs.hapticsEnabled pref + Settings toggle, and
+  // a JSON round-trip through the storage adapter so the pref survives
+  // import/export. The helper itself never runs against window.Capacitor on
+  // web — audit:web stays clean because _hapticsReady() returns null when
+  // _capPlugins().Haptics is missing.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ DD1: helper shape ─
+    check('DD1a haptic helper declared',
+      /const haptic\s*=\s*\{/.test(html));
+    for (const method of ['selectionStart', 'selectionChanged', 'selectionEnd', 'light', 'medium', 'heavy', 'success']) {
+      check(`DD1b haptic.${method}() defined`,
+        new RegExp(`${method}\\s*\\(\\s*\\)\\s*\\{`).test(html));
+    }
+
+    // ─ DD2: no-op gates ─
+    //   (a) module-scoped _hapticsPrefs.enabled gate (user-toggle off)
+    //   (b) _capPlugins().Haptics feature-detect (web / unsupported)
+    check('DD2a no-op gate: _hapticsPrefs.enabled early-return in _hapticsReady',
+      /function _hapticsReady\(\)\s*\{[\s\S]*?if\s*\(!_hapticsPrefs\.enabled\)\s*return\s*null/.test(html));
+    check('DD2b no-op gate: feature-detect via _capPlugins().Haptics',
+      /const\s*\{\s*Haptics\s*\}\s*=\s*_capPlugins\(\)/.test(html) &&
+      /return\s+Haptics\s*\|\|\s*null/.test(html));
+    check('DD2c every helper method goes through _hapticsReady()',
+      // Each method's body should call _hapticsReady() and gate on a non-null H.
+      (html.match(/const H = _hapticsReady\(\);/g) || []).length >= 7,
+      `_hapticsReady() calls=${(html.match(/const H = _hapticsReady\(\);/g) || []).length}`);
+    check('DD2d every helper method wraps the plugin call in try/catch',
+      // Each method has a `try { H.<plugin call>(); } catch (_) {}` shape.
+      (html.match(/try\s*\{\s*H\./g) || []).length >= 7);
+
+    // ─ DD3: Tailwind/native plugin map — each helper method calls the
+    //   correct Haptics plugin method (case + arg shape matters because
+    //   the native plugin's API surface is fixed). ─
+    check('DD3a selectionStart → Haptics.selectionStart()',
+      /H\.selectionStart\(\)/.test(html));
+    check('DD3b selectionChanged → Haptics.selectionChanged()',
+      /H\.selectionChanged\(\)/.test(html));
+    check('DD3c selectionEnd → Haptics.selectionEnd()',
+      /H\.selectionEnd\(\)/.test(html));
+    check('DD3d light → Haptics.impact({ style: \'LIGHT\' })',
+      /H\.impact\(\{ style: 'LIGHT' \}\)/.test(html));
+    check('DD3e medium → Haptics.impact({ style: \'MEDIUM\' })',
+      /H\.impact\(\{ style: 'MEDIUM' \}\)/.test(html));
+    check('DD3f heavy → Haptics.impact({ style: \'HEAVY\' })',
+      /H\.impact\(\{ style: 'HEAVY' \}\)/.test(html));
+    check('DD3g success → Haptics.notification({ type: \'SUCCESS\' })',
+      /H\.notification\(\{ type: 'SUCCESS' \}\)/.test(html));
+
+    // ─ DD4: wired moments — each call site present at the expected place. ─
+
+    // 4a — Toggle (component-level): every flip across the app fires light.
+    check('DD4a Toggle.onClick fires haptic.light() before onChange',
+      /onClick=\{\(\) => \{ if \(disabled\) return; haptic\.light\(\); onChange\(!value\); \}\}/.test(html));
+
+    // 4b — Time-wheel selection sequence (start / changed / end).
+    check('DD4b time-wheel selectionStart on first user scroll',
+      html.includes('startedRef.current = true;') &&
+      html.includes('haptic.selectionStart();'));
+    check('DD4c time-wheel selectionChanged on each idx change (gated past programmatic done)',
+      // Two call sites — hour and minute columns.
+      (html.match(/if \(programmaticDoneRef\.current\) haptic\.selectionChanged\(\);/g) || []).length >= 2);
+    check('DD4d time-wheel selectionEnd inside the settle timeout',
+      /haptic\.selectionEnd\(\);[\s\S]{0,40}startedRef\.current = false;/.test(html));
+
+    // 4c — Segmented selections: Stats filter pills + Monthly mode toggle.
+    check('DD4e Stats filter pills call haptic.selectionChanged()',
+      html.includes('haptic.selectionChanged(); setFilter(k)'));
+    check('DD4f Monthly Earnings 12m/tax toggle calls haptic.selectionChanged()',
+      html.includes('haptic.selectionChanged(); setMode(k); setSel(null);'));
+    check('DD4g Celebration segmented (emoji/intensity/speed) calls haptic.selectionChanged()',
+      html.includes('haptic.selectionChanged(); set({ [row.key]: o.v });'));
+
+    // 4d — Now-buttons → heavy.
+    check('DD4h doWrap fires haptic.heavy()',
+      /const doWrap = \(\) => \{[\s\S]{0,200}haptic\.heavy\(\);/.test(html));
+    check('DD4i doLunch fires haptic.heavy()',
+      /const doLunch = \(\) => \{[\s\S]{0,200}haptic\.heavy\(\);/.test(html));
+    check('DD4j handleLunchNow (dept defaults) fires haptic.heavy()',
+      /const handleLunchNow = \(\) => \{\s*haptic\.heavy\(\);/.test(html));
+    check('DD4k handleWrapNow (dept defaults) fires haptic.heavy()',
+      /const handleWrapNow = \(\) => \{\s*haptic\.heavy\(\);/.test(html));
+
+    // 4e — Destructive confirm → medium.
+    check('DD4l ConfirmDialog danger tone fires haptic.medium() before onConfirm',
+      /if \(confirmTone === 'danger'\) haptic\.medium\(\);/.test(html));
+
+    // 4f — Completions → success.
+    check('DD4m markPaid fires haptic.success()',
+      /showToast\('Marked as paid'\); haptic\.success\(\);/.test(html));
+    check('DD4n sendInvoice fires haptic.success() when status === \'sent\'',
+      /if \(frozenPatch && frozenPatch\.status === 'sent'\) haptic\.success\(\);/.test(html));
+
+    // ─ DD5: Settings — pref default + Appearance toggle. ─
+    check('DD5a DEFAULT_USER_PREFS.hapticsEnabled defaults to true',
+      /hapticsEnabled:\s*true,/.test(html));
+    check('DD5b Appearance Haptic feedback toggle binds to userPrefs.hapticsEnabled',
+      html.includes('userPrefs.hapticsEnabled !== false') &&
+      html.includes('set({ hapticsEnabled: v })'));
+    check('DD5c Haptic feedback label rendered in Settings',
+      html.includes('>Haptic feedback<'));
+
+    // ─ DD6: Root pref sync — _hapticsPrefs.enabled mirrored from userPrefs. ─
+    check('DD6 Root effect mirrors userPrefs.hapticsEnabled into _hapticsPrefs.enabled',
+      /_hapticsPrefs\.enabled = !userPrefs \|\| userPrefs\.hapticsEnabled !== false/.test(html));
+  }
+
+  // ===== EE. HAPTICS PREF ROUND-TRIP =====
+  // The new userPrefs.hapticsEnabled is an additive boolean — no schema
+  // bump (DEFAULT_USER_PREFS gets merged below the stored value, so
+  // pre-Phase-B backups import to true via default). This block exercises
+  // the full storage path: a backup that explicitly sets hapticsEnabled
+  // false must round-trip false (not silently flip back to the new
+  // default), and a backup with no hapticsEnabled key must come back as
+  // true.
+  {
+    // EE1 — explicit false survives importBackup → storage → JSON round-trip.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+
+    const offPayload = JSON.stringify({
+      version: 1,
+      schemaVersion: 3,
+      productions: [],
+      userPrefs: { hapticsEnabled: false },
+    });
+    const r1 = sb.__importBackup(offPayload);
+    check('EE1 importBackup ok',
+      r1 && r1.ok === true,
+      `result=${JSON.stringify(r1)}`);
+    const stored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('EE1 hapticsEnabled: false explicit value survives import + storage round-trip',
+      stored && stored.hapticsEnabled === false,
+      `stored.hapticsEnabled=${stored && stored.hapticsEnabled}`);
+
+    // EE2 — pre-Phase-B backup (no hapticsEnabled key) merges to default true.
+    const localStorage2 = makeLocalStorage();
+    const sb2 = await runApp({ capacitor: undefined, localStorage: localStorage2 });
+    await settle(50);
+    const legacyPayload = JSON.stringify({
+      version: 1,
+      schemaVersion: 3,
+      productions: [],
+      userPrefs: { displayName: 'Legacy' },
+    });
+    const r2 = sb2.__importBackup(legacyPayload);
+    check('EE2 legacy import ok',
+      r2 && r2.ok === true,
+      `result=${JSON.stringify(r2)}`);
+    const stored2 = JSON.parse(sb2.__storage.get('bigals_user_prefs') || 'null');
+    check('EE2 pre-Phase-B backup: hapticsEnabled defaults to true via merge',
+      stored2 && stored2.hapticsEnabled === true,
+      `stored2.hapticsEnabled=${stored2 && stored2.hapticsEnabled}`);
+
+    // EE3 — DEFAULT_USER_PREFS.hapticsEnabled is exposed and true.
+    const defaults = sb2.__DEFAULT_USER_PREFS;
+    check('EE3 runtime DEFAULT_USER_PREFS.hapticsEnabled === true',
+      defaults && defaults.hapticsEnabled === true,
+      `defaults.hapticsEnabled=${defaults && defaults.hapticsEnabled}`);
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

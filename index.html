@@ -921,6 +921,64 @@
       try { await StatusBar.setStyle({ style: 'DARK' }); } catch (_) {}
     }
 
+    /* ═══════════════════════════ HAPTICS (Phase B) ═══════════════════════════
+     * Thin wrapper around @capacitor/haptics. Accessed ONLY through
+     * window.Capacitor.Plugins.Haptics (via _capPlugins()) — never a bare
+     * ES import, because the no-build app can't resolve bare specifiers.
+     *
+     * Two no-op gates so audit:web stays clean and the user toggle is honoured:
+     *   1. window.Capacitor.Plugins.Haptics missing → web build / unsupported
+     *      runtime. Every call no-ops, no Capacitor footprint on web.
+     *   2. userPrefs.hapticsEnabled === false → user turned it off. The pref
+     *      is mirrored into _hapticsPrefs at the App root via a useEffect so
+     *      the helper can read it synchronously from any call site (same
+     *      shape as _celebrationApi above).
+     *
+     * Map:
+     *   selection*  → Haptics.selectionStart / selectionChanged / selectionEnd
+     *   light/med/heavy → Haptics.impact({ style: 'LIGHT'|'MEDIUM'|'HEAVY' })
+     *   success     → Haptics.notification({ type: 'SUCCESS' })
+     *
+     * Every call is wrapped in a try/catch — the plugin returns a Promise on
+     * native; we don't await (haptics are fire-and-forget) but a rejection
+     * shouldn't break the calling render path. */
+    const _hapticsPrefs = { enabled: true };
+    function _hapticsReady() {
+      if (!_hapticsPrefs.enabled) return null;
+      const { Haptics } = _capPlugins();
+      return Haptics || null;
+    }
+    const haptic = {
+      selectionStart() {
+        const H = _hapticsReady();
+        if (H) { try { H.selectionStart(); } catch (_) {} }
+      },
+      selectionChanged() {
+        const H = _hapticsReady();
+        if (H) { try { H.selectionChanged(); } catch (_) {} }
+      },
+      selectionEnd() {
+        const H = _hapticsReady();
+        if (H) { try { H.selectionEnd(); } catch (_) {} }
+      },
+      light() {
+        const H = _hapticsReady();
+        if (H) { try { H.impact({ style: 'LIGHT' }); } catch (_) {} }
+      },
+      medium() {
+        const H = _hapticsReady();
+        if (H) { try { H.impact({ style: 'MEDIUM' }); } catch (_) {} }
+      },
+      heavy() {
+        const H = _hapticsReady();
+        if (H) { try { H.impact({ style: 'HEAVY' }); } catch (_) {} }
+      },
+      success() {
+        const H = _hapticsReady();
+        if (H) { try { H.notification({ type: 'SUCCESS' }); } catch (_) {} }
+      },
+    };
+
     // Render an already-mounted print container to a multi-page A4 PDF and return
     // the file as base64. Each per-page DOM node is rendered to a canvas at its
     // natural aspect ratio (width = A4 210 mm, height proportional). If the
@@ -1515,6 +1573,13 @@
       celebrationEmoji: 'cash',
       celebrationIntensity: 'medium',
       celebrationSpeed: 'normal',
+      // Phase B haptics master switch. Default true — new users get the
+      // full native feel out of the box. Mirrored into the module-scoped
+      // _hapticsPrefs at the App root so the helper can short-circuit
+      // synchronously without prop-drilling. Merge-over-defaults preserves
+      // any existing user's stored value (none yet — this is the first
+      // build that writes it).
+      hapticsEnabled: true,
     };
 
     // One-way road-miles approximation from W1F 9SE (APA standard origin) per UK outcode district.
@@ -5586,6 +5651,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const minScrollRef        = React.useRef(null);
       const programmaticDoneRef = React.useRef(false);
       const settleRef           = React.useRef(null);
+      // Phase B haptics — the wheel uses the iOS picker selection
+      // sequence: selectionStart on first user scroll after mount,
+      // selectionChanged on each visible index change, selectionEnd at
+      // the moment the settle timer commits. startedRef gates the
+      // start/end pairing — set on first user scroll, cleared at
+      // selectionEnd or on unmount.
+      const startedRef          = React.useRef(false);
 
       const defaultIdx = React.useMemo(
         () => parseHHMMIndices(value) || [9, 0],
@@ -5594,6 +5666,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       React.useEffect(() => {
         programmaticDoneRef.current = false;
+        startedRef.current = false;
         const [hh, mm] = defaultIdx;
         setActiveHour(hh);
         setActiveMin(mm);
@@ -5624,14 +5697,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const idx = Math.round(ref.current.scrollTop / TIME_WHEEL_ITEM_H);
         if (col === 'h') {
           const c = Math.max(0, Math.min(23, idx));
-          if (c !== activeHour) setActiveHour(c);
+          if (c !== activeHour) {
+            if (programmaticDoneRef.current) haptic.selectionChanged();
+            setActiveHour(c);
+          }
         } else {
           const c = Math.max(0, Math.min(11, idx));
-          if (c !== activeMin) setActiveMin(c);
+          if (c !== activeMin) {
+            if (programmaticDoneRef.current) haptic.selectionChanged();
+            setActiveMin(c);
+          }
         }
         if (!programmaticDoneRef.current) return;
+        if (!startedRef.current) {
+          startedRef.current = true;
+          haptic.selectionStart();
+        }
         clearTimeout(settleRef.current);
-        settleRef.current = setTimeout(commitFromScroll, 120);
+        settleRef.current = setTimeout(() => {
+          commitFromScroll();
+          if (startedRef.current) {
+            haptic.selectionEnd();
+            startedRef.current = false;
+          }
+        }, 120);
       };
 
       return (
@@ -5909,7 +5998,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         aria-checked={!!value}
         aria-label={ariaLabel || ""}
         disabled={!!disabled}
-        onClick={() => !disabled && onChange(!value)}
+        onClick={() => { if (disabled) return; haptic.light(); onChange(!value); }}
         className={`relative inline-flex shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:ring-offset-1 focus:ring-offset-neutral-900 ${value ? "bg-sky-500" : "bg-neutral-700"} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
         style={{ width: 56, height: 30, padding: 0 }}
       >
@@ -9017,6 +9106,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const doWrap = () => {
         // Stamps the EXACT current time — see computeNowHHMM for the
         // rationale. The wrapped flag, field write, day-match all stay.
+        haptic.heavy();
         const now = new Date();
         const wrapStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr, wrapped: true } : d));
@@ -9066,6 +9156,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const doLunch = () => {
         // Stamps the EXACT current time — see computeNowHHMM for the
         // rationale. The field write + day-match all stay.
+        haptic.heavy();
         const now = new Date();
         const lunchStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         setDays(prev => prev.map(d => d.date === todayStr ? { ...d, lunchStartTime: lunchStr } : d));
@@ -9929,11 +10020,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
               };
               const handleLunchNow = () => {
+                haptic.heavy();
                 const t = nowHHMM();
                 setProduction(p => setDayDefault(p, currentDate, 'lunchStartTime', t));
                 showToast?.(`Lunch set to ${t}`);
               };
               const handleWrapNow = () => {
+                haptic.heavy();
                 const t = nowHHMM();
                 setProduction(p => setDayDefault(p, currentDate, 'wrapTime', t));
                 showToast?.(`Wrap set to ${t}`);
@@ -13331,7 +13424,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </button>
               <button
                 type="button"
-                onClick={onConfirm}
+                onClick={() => {
+                  // Destructive confirms (delete/reset, danger tone) get a
+                  // medium impact — heavier than a Toggle flip, lighter
+                  // than a now-stamp; reads as "yes, I really do mean it".
+                  // Primary-tone confirms are intentionally silent.
+                  if (confirmTone === 'danger') haptic.medium();
+                  onConfirm && onConfirm();
+                }}
                 className={`w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors ${confirmColors[confirmTone] || confirmColors.primary}`}
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
@@ -15716,6 +15816,20 @@ const setDays = (updater) =>
                   </div>
                 </div>
               </div>
+              {/* Haptic feedback — Phase B master switch. Off → every
+                  haptic.* call in the app silently no-ops (the helper
+                  short-circuits on _hapticsPrefs.enabled). Toggle is in
+                  Appearance because haptics are part of the feel layer
+                  alongside the celebration and pill display options. */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Haptic feedback</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Subtle taps on selections, toggles, time stamps, and completions. Native only — silent on web.</div>
+                  </div>
+                  <Toggle value={userPrefs.hapticsEnabled !== false} onChange={(v) => set({ hapticsEnabled: v })} ariaLabel="Haptic feedback" />
+                </div>
+              </div>
               {/* Celebration — was its own "Celebration" top-level disclosure.
                   Toggle + sub-controls + Preview unchanged. */}
               <div className="mt-4 pt-4 border-t border-neutral-800">
@@ -15737,7 +15851,7 @@ const setDays = (updater) =>
                         <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">{row.label}</div>
                         <div className="flex gap-1.5">
                           {row.opts.map(o => (
-                            <button key={o.v} type="button" onClick={() => set({ [row.key]: o.v })}
+                            <button key={o.v} type="button" onClick={() => { haptic.selectionChanged(); set({ [row.key]: o.v }); }}
                               className={`flex-1 px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${userPrefs[row.key] === o.v ? 'border-sky-500 bg-sky-500/15 text-sky-300' : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700'}`}>
                               {o.l}
                             </button>
@@ -16020,7 +16134,7 @@ const setDays = (updater) =>
             {/* Mode segmented control */}
             <div className="flex bg-neutral-900 border border-neutral-800 rounded-lg p-0.5 gap-0.5 mb-2.5">
               {[['12m', '12 Months'], ['tax', 'Tax Year']].map(([k, l]) => (
-                <button key={k} type="button" onClick={() => { setMode(k); setSel(null); }}
+                <button key={k} type="button" onClick={() => { haptic.selectionChanged(); setMode(k); setSel(null); }}
                   className={`flex-1 text-[12px] font-semibold py-1.5 rounded-md transition-colors ${mode === k ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200'}`}
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
                   {l}
@@ -16606,7 +16720,7 @@ const setDays = (updater) =>
                 {[['all', 'All time'], ['taxyear', 'Tax year'], ['ytd', 'Year to date']].map(([k, l]) => {
                   const active = filter === k;
                   return (
-                    <button key={k} onClick={() => { setFilter(k); setExpandedStat(null); setShowAllMonths(false); }}
+                    <button key={k} onClick={() => { haptic.selectionChanged(); setFilter(k); setExpandedStat(null); setShowAllMonths(false); }}
                       className={`inline-flex items-baseline gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wider whitespace-nowrap border transition-colors ${active ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-tm-card-2 border-neutral-700 text-neutral-400'}`}
                       style={{ WebkitTapHighlightColor: 'transparent' }}>
                       {l}
@@ -17274,6 +17388,11 @@ const setDays = (updater) =>
         if (clientId !== null && nextClients !== (userPrefs.clients || [])) {
           setUserPrefs(prev => ({ ...prev, clients: nextClients }));
         }
+        // Phase B haptic — invoice send is a genuine completion (status
+        // flipped to 'sent', invoice snapshot frozen). Notification-success
+        // for the satisfying "done" pulse. markPaid fires its own success
+        // at the call site.
+        if (frozenPatch && frozenPatch.status === 'sent') haptic.success();
       };
 
       // Edit a shared client/job field. On a DRAFT, write THROUGH to the production
@@ -18121,7 +18240,7 @@ const setDays = (updater) =>
       useEscape(onClose);
       const [confirmDelete, setConfirmDelete] = useState(false);
       const markSent = () => { onUpdate({ status: 'sent', dateSent: todayISO() }); showToast('Marked as sent'); onClose(); };
-      const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); fireCelebration(); onClose(); };
+      const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); haptic.success(); fireCelebration(); onClose(); };
       const revertToDraft = () => { onUpdate({ status: 'draft', dateSent: null }); showToast('Marked as draft'); onClose(); };
       const revertToSent = () => { onUpdate({ status: 'sent', datePaid: null }); showToast('Marked as unpaid'); onClose(); };
       const doDelete = () => { onDelete(); showToast('Invoice deleted'); onClose(); };
@@ -19283,6 +19402,15 @@ const confirmDelete = (p) => setConfirmOpts({
         });
         return () => { try { storage.setAsyncErrorHandler(null); } catch (_) {} };
       }, []);
+
+      // Phase B haptics — keep the module-scoped _hapticsPrefs.enabled in
+      // sync with the user's toggle. The helper reads it on every call,
+      // so flipping the Settings toggle propagates immediately without a
+      // restart. An undefined value is treated as enabled (defends against
+      // pre-Phase-B backups merged over the new default).
+      useEffect(() => {
+        _hapticsPrefs.enabled = !userPrefs || userPrefs.hapticsEnabled !== false;
+      }, [userPrefs && userPrefs.hapticsEnabled]);
       const storageError = prodError || prefsError || nativeStorageError || null;
       const [openId, setOpenId] = useState(null);
       const [showSettings, setShowSettings] = useState(false);
