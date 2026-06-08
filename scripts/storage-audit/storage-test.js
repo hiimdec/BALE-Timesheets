@@ -3196,6 +3196,211 @@ async function main() {
     }
   }
 
+  // ===== Z. SETTINGS SCREEN SOURCE PRESENCE — Stage 1 regroup =====
+  // After the Settings reorganise (You / Tools / Invoicing / Kit Room /
+  // New-production defaults / Appearance / Data & backup / About & help),
+  // assert every userPrefs binding from the pre-regroup inventory still
+  // appears inside SettingsScreen, every new group / sub-area label is
+  // rendered, every one-off action is still wired, and every old
+  // top-level disclosure label is gone. UI structure isn't unit-testable,
+  // so this is a pure source-presence guard against silent drops or
+  // unbindings during the move.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const startMarker = '    function SettingsScreen(';
+    const startIdx = html.indexOf(startMarker);
+    check('Z0a SettingsScreen function found in source',
+      startIdx !== -1, `startMarker not found`);
+    // Find the next top-level function definition (same 4-space indent +
+    // capitalised name) to bound the slice.
+    const tail = startIdx === -1 ? '' : html.slice(startIdx + startMarker.length);
+    const nextMatch = tail.search(/\n    function [A-Z]/);
+    check('Z0b SettingsScreen end-of-function marker found',
+      nextMatch !== -1, `no following function`);
+    const body = startIdx === -1 ? '' :
+      html.slice(startIdx, startIdx + startMarker.length + (nextMatch === -1 ? tail.length : nextMatch));
+
+    // ─ Z1: every userPrefs.<key> binding from the inventory must still
+    //   appear in the function body — either as `userPrefs.<key>` direct
+    //   or as a `<key>:` write inside set({...}) (celebrationEmoji /
+    //   Intensity / Speed are written via row.key, and roundingMode /
+    //   onboardingComplete are only written through the set helper). ─
+    const PREF_BINDINGS = [
+      'displayName',
+      'defaultDepartment',
+      'defaultRole',
+      'defaultBDR',
+      'vatRegistered',
+      'vatRate',
+      'vatNumber',
+      'legalName',
+      'fromCompanyName',
+      'fromAddress',
+      'fromEmail',
+      'bankName',
+      'bankAccountName',
+      'bankAccountNumber',
+      'bankSortCode',
+      'bankIBAN',
+      'bankSWIFT',
+      'invoicePrefix',
+      'invoiceNextNumber',
+      'paymentTermsDays',
+      'logoBase64',
+      'defaultMileageRate',
+      'defaultKitMoneyEnabled',
+      'defaultKitMoneyAmount',
+      'defaultPerDiemEnabled',
+      'defaultPerDiemAmount',
+      'kitInventory',
+      'clients',
+      'roundingMode',
+      'comparisonUnit',
+      'customComparison',
+      'celebrationEnabled',
+      'celebrationEmoji',
+      'celebrationIntensity',
+      'celebrationSpeed',
+      'onboardingComplete',
+    ];
+    for (const key of PREF_BINDINGS) {
+      const hasDirect    = body.includes(`userPrefs.${key}`);
+      const hasSetForm   = body.includes(`${key}:`);
+      // Celebration sub-keys live in a static {key:'celebrationEmoji', ...}
+      // row config, then are read via userPrefs[row.key] / set({[row.key]:...})
+      // — so the literal key string is what survives in source.
+      const hasQuotedKey = body.includes(`'${key}'`) || body.includes(`"${key}"`);
+      check(`Z1 binding userPrefs.${key} still referenced in SettingsScreen`,
+        hasDirect || hasSetForm || hasQuotedKey,
+        `direct=${hasDirect} set-form=${hasSetForm} quoted=${hasQuotedKey}`);
+    }
+
+    // ─ Z2: every new top-level group label must appear as a SectionCard
+    //   or Disclosure label exactly where the regroup placed it. ─
+    const GROUPS = [
+      { label: 'You',                     form: 'SectionCard title="You"' },
+      { label: 'Tools',                   form: 'SectionCard title="Tools"' },
+      { label: 'Invoicing',               form: 'Disclosure label="Invoicing"' },
+      { label: 'Kit Room',                form: 'label="Kit Room"' },
+      { label: 'New-production defaults', form: 'label="New-production defaults"' },
+      { label: 'Appearance',              form: 'Disclosure label="Appearance"' },
+      { label: 'Data & backup',           form: 'Disclosure label="Data & backup"' },
+      { label: 'About & help',            form: 'Disclosure label="About & help"' },
+    ];
+    for (const g of GROUPS) {
+      check(`Z2 top-level group "${g.label}" present`,
+        body.includes(g.form),
+        `expected substring: ${g.form}`);
+    }
+
+    // ─ Z3: the six in-page sub-areas of the Invoicing group are rendered
+    //   as sky-uppercase sub-headers (text-sky-500 font-bold mb-2.5). Match
+    //   on the exact sub-header markup pattern so we don't false-positive
+    //   on incidental occurrences of the word "Logo" / "VAT" elsewhere. ─
+    const INVOICING_SUBS = [
+      'Your details',
+      'Bank details',
+      'Numbering & terms',
+      'VAT',
+      'Logo',
+      'Saved clients',
+    ];
+    for (const sub of INVOICING_SUBS) {
+      const needle = `text-sky-500 font-bold mb-2.5">${sub}<`;
+      check(`Z3 Invoicing sub-area "${sub}" present`,
+        body.includes(needle),
+        `expected sub-header markup ending with >${sub}<`);
+    }
+
+    // ─ Z4: the "stays on your device" reassurance moved into the
+    //   Invoicing group footer. Verify the text wasn't dropped. ─
+    check('Z4 Invoicing privacy reassurance preserved',
+      body.includes("All your invoicing details stay on your device — we don't store or transmit any of this."));
+
+    // ─ Z5: every one-off action still wired up (these are not prefs but
+    //   they're in the inventory and must survive the move). ─
+    check('Z5a Cancellation Calculator launcher (setShowCalc(true))',
+      body.includes('setShowCalc(true)'));
+    check('Z5b Export Backup button bound to onExport',
+      body.includes('onClick={onExport}'));
+    check('Z5c Restore from Backup wired to importRef + handleFileSelect',
+      body.includes('importRef.current?.click()') && body.includes('handleFileSelect'));
+    check('Z5d Reset all data confirm flow bound to onResetAll',
+      body.includes('onConfirm: onResetAll'));
+    check('Z5e Re-run setup wizard sets onboardingComplete: false',
+      body.includes('onboardingComplete: false'));
+    check('Z5f APA Recommended Terms external link present',
+      body.includes('https://www.a-p-a.net/apa-crew-terms/'));
+    check('Z5g Feedback email link present',
+      body.includes('feedback@timemachineapp.co.uk'));
+    check('Z5h Celebration Preview button calls fireCelebration({ force: true })',
+      body.includes('fireCelebration({ force: true })'));
+    check('Z5i Native browser fallback for APA link still wired',
+      body.includes("nativeOpenInBrowser('https://www.a-p-a.net/apa-crew-terms/')"));
+    check('Z5j Native mailto fallback for feedback link still wired',
+      body.includes("nativeOpenUrl('mailto:feedback@timemachineapp.co.uk')"));
+
+    // ─ Z6: every OLD top-level disclosure label is gone. If any of these
+    //   reappear, the regroup has been partially reverted. ─
+    const REMOVED_TOPLEVEL = [
+      'Disclosure label="Tax & Invoicing"',
+      'Disclosure label="Invoicing — Your details"',
+      'Disclosure label="Invoicing — Bank details"',
+      'Disclosure label="Invoicing — Numbering & terms"',
+      'Disclosure label="Invoicing — Logo"',
+      'SectionCard title="My Setup"',
+      'Disclosure label="Defaults for new productions"',
+      'Disclosure label="Saved Clients"',
+      'Disclosure label="Calculation"',
+      'Disclosure label="Display"',
+      'Disclosure label="Celebration"',
+      'Disclosure label="Data"',
+      'Disclosure label="Re-run setup wizard"',
+      'Disclosure label="Reference"',
+      'Disclosure label="What\'s new"',
+      'Disclosure label="About"',
+      'Disclosure label="Privacy"',
+    ];
+    for (const stale of REMOVED_TOPLEVEL) {
+      const niceName = stale.split('"')[1];
+      check(`Z6 stale top-level "${niceName}" removed`,
+        !body.includes(stale),
+        `unexpected: ${stale}`);
+    }
+
+    // ─ Z7: ConfirmDialog prompt strings preserved verbatim. These are
+    //   what the user actually reads, so a drift here is user-visible. ─
+    check('Z7a Restore-from-backup prompt preserved',
+      body.includes('Restore from backup?'));
+    check('Z7b Reset-everything prompt preserved',
+      body.includes('Reset everything?'));
+    check('Z7c Re-run-setup prompt preserved',
+      body.includes('Re-run setup?'));
+
+    // ─ Z8: Storage status badge still computes the three backend labels.
+    //   (Visual feedback that audit:storage runs against the right adapter.) ─
+    check('Z8a Storage status badge — IndexedDB label',
+      body.includes("'IndexedDB'"));
+    check('Z8b Storage status badge — Native Preferences label',
+      body.includes("'Native Preferences'"));
+    check('Z8c Storage status badge — localStorage label',
+      body.includes("'localStorage'"));
+
+    // ─ Z9: helpers / data the regroup still depends on — if any of these
+    //   stopped being referenced the regroup would render but with empty
+    //   selects / lost cascades. ─
+    check('Z9a roundingModeOf(userPrefs) read for RoundingModeSelect',
+      body.includes('roundingModeOf(userPrefs)'));
+    check('Z9b getComparisonSurface(userPrefs) read for Pill comparison',
+      body.includes('getComparisonSurface(userPrefs)'));
+    check('Z9c DEPARTMENTS still iterated for Default department options',
+      body.includes('Object.keys(DEPARTMENTS)'));
+    check('Z9d makeDeptRoleHandlers wires dept/role/BDR cascades',
+      body.includes('makeDeptRoleHandlers(set, userPrefs)'));
+    check('Z9e RELEASE_NOTES still rendered under About & help / What\'s new',
+      body.includes('RELEASE_NOTES.added.map') && body.includes('RELEASE_NOTES.version'));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.

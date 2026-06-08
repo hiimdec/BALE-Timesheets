@@ -14936,12 +14936,18 @@ const setDays = (updater) =>
 
           <div className="max-w-2xl mx-auto px-4 py-6">
 
-            <SectionCard title="Tools">
-              <Btn variant="ghost" onClick={() => setShowCalc(true)}><ICalc/>Cancellation Calculator</Btn>
-              <p className="text-[10px] text-neutral-500 mt-1">Estimate APA cancellation fees for cancelled or curtailed shoots.</p>
-            </SectionCard>
+            {/* Settings Stage 1 — regroup. Eight top-level groups (You, Tools,
+                Invoicing, Kit Room, New-production defaults, Appearance,
+                Data & backup, About & help). UI restructure only — every
+                userPrefs.* binding, conditional visibility, modal flow, and
+                one-off action is preserved verbatim from the pre-Stage-1
+                layout. Stage 2 will reshape sub-sections (Kit Room rows,
+                etc.) — not in this commit. */}
 
-            <SectionCard title="My Setup">
+            {/* §1 — You: identity + defaults for new shoots (display name,
+                dept, role, BDR). Always open. Role only shows when a dept is
+                set; BDR only shows when a role is set. */}
+            <SectionCard title="You">
               <Field label="Display name" hint="Appears on exported PDFs">
                 <Input
                   type="text"
@@ -14976,185 +14982,240 @@ const setDays = (updater) =>
               )}
             </SectionCard>
 
-            <Disclosure label="Tax & Invoicing" summary={vatSummary}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT registered?</span>
-                <Toggle value={userPrefs.vatRegistered} onChange={(v) => set({ vatRegistered: v })} ariaLabel="VAT registered" />
+            {/* §2 — Tools: standalone one-offs that don't fit a settings group.
+                Keep compact (single button) — modal flow + local showCalc state
+                are unchanged. */}
+            <SectionCard title="Tools">
+              <Btn variant="ghost" onClick={() => setShowCalc(true)}><ICalc/>Cancellation Calculator</Btn>
+              <p className="text-[10px] text-neutral-500 mt-1">Estimate APA cancellation fees for cancelled or curtailed shoots.</p>
+            </SectionCard>
+
+            {/* §3 — Invoicing: ONE top-level group with six in-page sub-areas
+                (Your details, Bank details, Numbering & terms, VAT, Logo,
+                Saved clients). Sub-areas are inline blocks separated by
+                divider rules — not nested Disclosures, to keep the mobile
+                feel single-tap-to-open. Stays-on-your-device reassurance
+                lives at the bottom of the group. */}
+            <Disclosure label="Invoicing" summary={yourDetailsSummary}>
+              {/* Sub: Your details */}
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Your details</div>
+                <div className="text-[10px] text-neutral-500 mb-3">The legal name below appears as the invoice's "From" name. Leave it blank to use your display name (from You).</div>
+                <Field label="Legal name (for invoices)" hint="Formal name on generated invoices — distinct from the casual display name shown in the app. Falls back to display name if blank.">
+                  <Input type="text" value={userPrefs.legalName} onChange={(e) => set({ legalName: e.target.value })} placeholder="Your full legal name" />
+                </Field>
+                <Field label="Company name" hint="Optional — if you trade as a limited company">
+                  <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
+                </Field>
+                <Field label="Your address">
+                  <textarea
+                    value={userPrefs.fromAddress}
+                    onChange={(e) => set({ fromAddress: e.target.value })}
+                    rows={3}
+                    placeholder={"e.g.\n12 Crew Lane\nLondon NW1 8AB"}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
+                    style={{ fontFamily: 'inherit' }}
+                  />
+                </Field>
+                <Field label="Email" hint="Where clients reply to about the invoice">
+                  <Input type="email" value={userPrefs.fromEmail} onChange={(e) => set({ fromEmail: e.target.value })} placeholder="you@example.com" />
+                </Field>
               </div>
-              {userPrefs.vatRegistered && (
-                <Field label="VAT rate (%)" hint="Usually 20%">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    inputMode="numeric"
-                    value={userPrefs.vatRate}
-                    onChange={(e) => set({ vatRate: Number(e.target.value) })}
-                  />
+
+              {/* Sub: Bank details */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Bank details</div>
+                <Field label="Bank name">
+                  <Input type="text" value={userPrefs.bankName} onChange={(e) => set({ bankName: e.target.value })} placeholder="e.g. Barclays" />
                 </Field>
-              )}
-              {userPrefs.vatRegistered && (
-                <Field label="VAT number">
-                  <Input
-                    type="text"
-                    placeholder="GB123456789"
-                    value={userPrefs.vatNumber}
-                    onChange={(e) => set({ vatNumber: e.target.value })}
-                  />
+                <Field label="Account name">
+                  <Input type="text" value={userPrefs.bankAccountName} onChange={(e) => set({ bankAccountName: e.target.value })} placeholder="As it appears on the account" />
                 </Field>
-              )}
-            </Disclosure>
-
-            <Disclosure label="Invoicing — Your details" summary={yourDetailsSummary}>
-              <div className="text-[10px] text-neutral-500 mb-3">The legal name below appears as the invoice's "From" name. Leave it blank to use your display name (from My Setup).</div>
-              <Field label="Legal name (for invoices)" hint="Formal name on generated invoices — distinct from the casual display name shown in the app. Falls back to display name if blank.">
-                <Input type="text" value={userPrefs.legalName} onChange={(e) => set({ legalName: e.target.value })} placeholder="Your full legal name" />
-              </Field>
-              <Field label="Company name" hint="Optional — if you trade as a limited company">
-                <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
-              </Field>
-              <Field label="Your address">
-                <textarea
-                  value={userPrefs.fromAddress}
-                  onChange={(e) => set({ fromAddress: e.target.value })}
-                  rows={3}
-                  placeholder={"e.g.\n12 Crew Lane\nLondon NW1 8AB"}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
-                  style={{ fontFamily: 'inherit' }}
-                />
-              </Field>
-              <Field label="Email" hint="Where clients reply to about the invoice">
-                <Input type="email" value={userPrefs.fromEmail} onChange={(e) => set({ fromEmail: e.target.value })} placeholder="you@example.com" />
-              </Field>
-            </Disclosure>
-
-            <Disclosure label="Invoicing — Bank details" summary={bankSummary}>
-              <Field label="Bank name">
-                <Input type="text" value={userPrefs.bankName} onChange={(e) => set({ bankName: e.target.value })} placeholder="e.g. Barclays" />
-              </Field>
-              <Field label="Account name">
-                <Input type="text" value={userPrefs.bankAccountName} onChange={(e) => set({ bankAccountName: e.target.value })} placeholder="As it appears on the account" />
-              </Field>
-              <Field label="Account number">
-                <Input type="text" inputMode="numeric" value={userPrefs.bankAccountNumber}
-                  onChange={(e) => set({ bankAccountNumber: e.target.value.replace(/\D/g, '').slice(0, 8) })}
-                  placeholder="8 digits" />
-              </Field>
-              <Field label="Sort code">
-                <Input type="text" inputMode="numeric" value={userPrefs.bankSortCode}
-                  onChange={(e) => {
-                    const d = e.target.value.replace(/\D/g, '').slice(0, 6);
-                    const fmt = d.length > 4 ? `${d.slice(0,2)}-${d.slice(2,4)}-${d.slice(4)}`
-                              : d.length > 2 ? `${d.slice(0,2)}-${d.slice(2)}`
-                              : d;
-                    set({ bankSortCode: fmt });
-                  }}
-                  placeholder="00-00-00" />
-              </Field>
-              <Field label="IBAN" hint="Optional — for international payments">
-                <Input type="text" value={userPrefs.bankIBAN} onChange={(e) => set({ bankIBAN: e.target.value })} placeholder="GB00 BARC 0000 0000 0000 00" />
-              </Field>
-              <Field label="SWIFT / BIC" hint="Optional — for international payments">
-                <Input type="text" value={userPrefs.bankSWIFT} onChange={(e) => set({ bankSWIFT: e.target.value })} placeholder="BARCGB22" />
-              </Field>
-            </Disclosure>
-
-            <Disclosure label="Invoicing — Numbering & terms" summary={numberingSummary}>
-              <Field label="Invoice prefix" hint="Appears before the number on each invoice">
-                <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
-              </Field>
-              <Field label="Next invoice number" hint="If you've been invoicing elsewhere, enter your last used number + 1 and we'll continue from there">
-                <Input type="number" min="1" step="1" inputMode="numeric" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
-              </Field>
-              <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
-                <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
-              </Field>
-            </Disclosure>
-
-            <Disclosure label="Invoicing — Logo" summary={logoSummary}>
-              <div className="text-[10px] text-neutral-500 mb-3">Recommended: square, under 200KB. Renders at ~100px on your invoices.</div>
-              {userPrefs.logoBase64 ? (
-                <div className="flex items-center gap-3">
-                  <img src={userPrefs.logoBase64} alt="Logo preview" style={{ maxWidth: 100, maxHeight: 100, borderRadius: 8, background: '#262626' }} />
-                  <Btn variant="ghost" size="sm" onClick={() => set({ logoBase64: "" })}>Remove logo</Btn>
-                </div>
-              ) : (
-                <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm font-semibold text-neutral-200 transition-colors cursor-pointer" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    className="hidden"
+                <Field label="Account number">
+                  <Input type="text" inputMode="numeric" value={userPrefs.bankAccountNumber}
+                    onChange={(e) => set({ bankAccountNumber: e.target.value.replace(/\D/g, '').slice(0, 8) })}
+                    placeholder="8 digits" />
+                </Field>
+                <Field label="Sort code">
+                  <Input type="text" inputMode="numeric" value={userPrefs.bankSortCode}
                     onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 500 * 1024) {
-                        showToast('Logo file too large — please use under 500KB.');
-                        e.target.value = '';
-                        return;
-                      }
-                      const reader = new FileReader();
-                      reader.onload = (ev) => set({ logoBase64: ev.target.result });
-                      reader.readAsDataURL(file);
-                      e.target.value = '';
+                      const d = e.target.value.replace(/\D/g, '').slice(0, 6);
+                      const fmt = d.length > 4 ? `${d.slice(0,2)}-${d.slice(2,4)}-${d.slice(4)}`
+                                : d.length > 2 ? `${d.slice(0,2)}-${d.slice(2)}`
+                                : d;
+                      set({ bankSortCode: fmt });
                     }}
-                  />
-                  <IUpload size={14}/> Upload logo
-                </label>
-              )}
+                    placeholder="00-00-00" />
+                </Field>
+                <Field label="IBAN" hint="Optional — for international payments">
+                  <Input type="text" value={userPrefs.bankIBAN} onChange={(e) => set({ bankIBAN: e.target.value })} placeholder="GB00 BARC 0000 0000 0000 00" />
+                </Field>
+                <Field label="SWIFT / BIC" hint="Optional — for international payments">
+                  <Input type="text" value={userPrefs.bankSWIFT} onChange={(e) => set({ bankSWIFT: e.target.value })} placeholder="BARCGB22" />
+                </Field>
+              </div>
+
+              {/* Sub: Numbering & terms */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Numbering & terms</div>
+                <Field label="Invoice prefix" hint="Appears before the number on each invoice">
+                  <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
+                </Field>
+                <Field label="Next invoice number" hint="If you've been invoicing elsewhere, enter your last used number + 1 and we'll continue from there">
+                  <Input type="number" min="1" step="1" inputMode="numeric" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
+                </Field>
+                <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
+                  <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
+                </Field>
+              </div>
+
+              {/* Sub: VAT — rate + number gated on vatRegistered (preserved). */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">VAT</div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT registered?</span>
+                  <Toggle value={userPrefs.vatRegistered} onChange={(v) => set({ vatRegistered: v })} ariaLabel="VAT registered" />
+                </div>
+                {userPrefs.vatRegistered && (
+                  <Field label="VAT rate (%)" hint="Usually 20%">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      inputMode="numeric"
+                      value={userPrefs.vatRate}
+                      onChange={(e) => set({ vatRate: Number(e.target.value) })}
+                    />
+                  </Field>
+                )}
+                {userPrefs.vatRegistered && (
+                  <Field label="VAT number">
+                    <Input
+                      type="text"
+                      placeholder="GB123456789"
+                      value={userPrefs.vatNumber}
+                      onChange={(e) => set({ vatNumber: e.target.value })}
+                    />
+                  </Field>
+                )}
+              </div>
+
+              {/* Sub: Logo — upload / preview / remove. 500KB hard ceiling
+                  preserved; toast text unchanged. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Logo</div>
+                <div className="text-[10px] text-neutral-500 mb-3">Recommended: square, under 200KB. Renders at ~100px on your invoices.</div>
+                {userPrefs.logoBase64 ? (
+                  <div className="flex items-center gap-3">
+                    <img src={userPrefs.logoBase64} alt="Logo preview" style={{ maxWidth: 100, maxHeight: 100, borderRadius: 8, background: '#262626' }} />
+                    <Btn variant="ghost" size="sm" onClick={() => set({ logoBase64: "" })}>Remove logo</Btn>
+                  </div>
+                ) : (
+                  <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm font-semibold text-neutral-200 transition-colors cursor-pointer" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 500 * 1024) {
+                          showToast('Logo file too large — please use under 500KB.');
+                          e.target.value = '';
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (ev) => set({ logoBase64: ev.target.result });
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <IUpload size={14}/> Upload logo
+                  </label>
+                )}
+              </div>
+
+              {/* Sub: Saved clients — Stage 1 personal library. Stage 2+ wires
+                  typeahead on Bill-To / production-company fields. Editor
+                  internals unchanged. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Saved clients</div>
+                {(() => {
+                  const items = userPrefs.clients || [];
+                  const updateClient = (id, patch) =>
+                    set({ clients: items.map(c => c.id === id ? { ...c, ...patch } : c) });
+                  const removeClient = (id) =>
+                    set({ clients: items.filter(c => c.id !== id) });
+                  const addClient = () =>
+                    set({ clients: [...items, { id: uid(), name: "", address: "", email: "" }] });
+                  return (
+                    <div className="flex flex-col gap-2">
+                      <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
+                        Your saved clients / production companies. Later stages will let invoices and new productions auto-fill from this list.
+                      </div>
+                      {items.length === 0 && (
+                        <div className="text-[11px] text-neutral-600 italic py-2">No clients yet — tap "Add client" to start.</div>
+                      )}
+                      {items.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          {items.map((client) => (
+                            <div
+                              key={client.id}
+                              className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 relative"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => removeClient(client.id)}
+                                className="absolute top-2 right-2 text-neutral-600 hover:text-tm-pen transition-colors p-1"
+                                style={{ WebkitTapHighlightColor: 'transparent' }}
+                                aria-label={`Remove ${client.name || 'client'}`}
+                              >
+                                <IX size={14}/>
+                              </button>
+                              <input
+                                type="text"
+                                value={client.name || ''}
+                                onChange={(e) => updateClient(client.id, { name: e.target.value })}
+                                placeholder="Client / company name"
+                                className="w-full bg-transparent text-[14px] font-bold text-neutral-100 placeholder-neutral-600 focus:outline-none pr-7"
+                              />
+                              <input
+                                type="email"
+                                value={client.email || ''}
+                                onChange={(e) => updateClient(client.id, { email: e.target.value })}
+                                placeholder="billing@example.com"
+                                className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
+                              />
+                              <textarea
+                                value={client.address || ''}
+                                onChange={(e) => updateClient(client.id, { address: e.target.value })}
+                                rows={3}
+                                placeholder={"Address line 1\nLine 2\nPostcode"}
+                                className="w-full bg-transparent text-[11px] text-neutral-500 placeholder-neutral-700 focus:outline-none resize-none mt-1.5 font-mono leading-snug"
+                                style={{ fontFamily: 'inherit' }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <Btn variant="ghost" onClick={addClient} className="mt-1.5 self-start">
+                        <IPlus size={13}/>Add client
+                      </Btn>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Privacy reassurance — group footer. Previously a sibling
+                  paragraph between Logo and Defaults. */}
+              <div className="text-[10px] text-neutral-500 italic mt-5 pt-4 border-t border-neutral-800 leading-snug">
+                All your invoicing details stay on your device — we don't store or transmit any of this.
+              </div>
             </Disclosure>
 
-            <div className="text-[10px] text-neutral-500 italic mb-4 leading-snug px-1">
-              All your invoicing details stay on your device — we don't store or transmit any of this.
-            </div>
-
-            <Disclosure label="Defaults for new productions" summary={defaultsSummary}>
-              <Field label="Default mileage rate (£/mile)">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={userPrefs.defaultMileageRate}
-                  onChange={(e) => set({ defaultMileageRate: Number(e.target.value) })}
-                />
-              </Field>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit money</span>
-                <Toggle value={userPrefs.defaultKitMoneyEnabled} onChange={(v) => set({ defaultKitMoneyEnabled: v })} ariaLabel="Kit money by default" />
-              </div>
-              {userPrefs.defaultKitMoneyEnabled && (
-                <Field label="Default kit money amount (£/day)">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={userPrefs.defaultKitMoneyAmount}
-                    onChange={(e) => set({ defaultKitMoneyAmount: Number(e.target.value) })}
-                  />
-                </Field>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Per diem</span>
-                <Toggle value={userPrefs.defaultPerDiemEnabled} onChange={(v) => set({ defaultPerDiemEnabled: v })} ariaLabel="Per diem by default" />
-              </div>
-              {userPrefs.defaultPerDiemEnabled && (
-                <Field label="Default per diem amount (£/day)">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={userPrefs.defaultPerDiemAmount}
-                    onChange={(e) => set({ defaultPerDiemAmount: Number(e.target.value) })}
-                  />
-                </Field>
-              )}
-            </Disclosure>
-
-            {/* Kit Inventory Stage 1 — additive store + inline editor. No
-                calc/day/invoice wiring yet; Stage 2+ will read defaultOn
-                for auto-apply and emit itemised invoice lines. Edits write
-                straight back through setUserPrefs — same persistence path
-                as every other userPrefs field. */}
+            {/* §4 — Kit Room: existing Stage 1 inline editor, moved AS-IS.
+                Stage 2 will redo the row layout; not in this commit. */}
             <Disclosure
               label="Kit Room"
               summary={(() => {
@@ -15236,91 +15297,72 @@ const setDays = (updater) =>
               })()}
             </Disclosure>
 
-            {/* Saved Clients — Stage 1. Personal library of client / production
-                companies. Stage 2+ will wire auto-save, typeahead on the Bill-To
-                / production-company fields, and an optional production.clientId
-                link. Writes go straight to userPrefs.clients via the same set()
-                helper used by every other userPrefs field; no save button. */}
+            {/* §5 — New-production defaults: applied to NEW shoots only;
+                changing these does not retroactively rewrite anything. Rounding
+                lives here because it's a per-shoot default; per-shoot override
+                still happens in the shoot's own settings. */}
             <Disclosure
-              label="Saved Clients"
+              label="New-production defaults"
               summary={(() => {
-                const n = (userPrefs.clients || []).length;
-                return n ? `${n} client${n === 1 ? '' : 's'}` : '—';
+                const parts = [];
+                if (defaultsSummary && defaultsSummary !== '—') parts.push(defaultsSummary);
+                if (calcSummary) parts.push(calcSummary);
+                return parts.length ? parts.join(' · ') : '—';
               })()}
             >
-              {(() => {
-                const items = userPrefs.clients || [];
-                const updateClient = (id, patch) =>
-                  set({ clients: items.map(c => c.id === id ? { ...c, ...patch } : c) });
-                const removeClient = (id) =>
-                  set({ clients: items.filter(c => c.id !== id) });
-                const addClient = () =>
-                  set({ clients: [...items, { id: uid(), name: "", address: "", email: "" }] });
-                return (
-                  <div className="flex flex-col gap-2">
-                    <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
-                      Your saved clients / production companies. Later stages will let invoices and new productions auto-fill from this list.
-                    </div>
-                    {items.length === 0 && (
-                      <div className="text-[11px] text-neutral-600 italic py-2">No clients yet — tap "Add client" to start.</div>
-                    )}
-                    {items.length > 0 && (
-                      <div className="flex flex-col gap-2">
-                        {items.map((client) => (
-                          <div
-                            key={client.id}
-                            className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 relative"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => removeClient(client.id)}
-                              className="absolute top-2 right-2 text-neutral-600 hover:text-tm-pen transition-colors p-1"
-                              style={{ WebkitTapHighlightColor: 'transparent' }}
-                              aria-label={`Remove ${client.name || 'client'}`}
-                            >
-                              <IX size={14}/>
-                            </button>
-                            <input
-                              type="text"
-                              value={client.name || ''}
-                              onChange={(e) => updateClient(client.id, { name: e.target.value })}
-                              placeholder="Client / company name"
-                              className="w-full bg-transparent text-[14px] font-bold text-neutral-100 placeholder-neutral-600 focus:outline-none pr-7"
-                            />
-                            <input
-                              type="email"
-                              value={client.email || ''}
-                              onChange={(e) => updateClient(client.id, { email: e.target.value })}
-                              placeholder="billing@example.com"
-                              className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
-                            />
-                            <textarea
-                              value={client.address || ''}
-                              onChange={(e) => updateClient(client.id, { address: e.target.value })}
-                              rows={3}
-                              placeholder={"Address line 1\nLine 2\nPostcode"}
-                              className="w-full bg-transparent text-[11px] text-neutral-500 placeholder-neutral-700 focus:outline-none resize-none mt-1.5 font-mono leading-snug"
-                              style={{ fontFamily: 'inherit' }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <Btn variant="ghost" onClick={addClient} className="mt-1.5 self-start">
-                      <IPlus size={13}/>Add client
-                    </Btn>
-                  </div>
-                );
-              })()}
+              <Field label="Default mileage rate (£/mile)">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={userPrefs.defaultMileageRate}
+                  onChange={(e) => set({ defaultMileageRate: Number(e.target.value) })}
+                />
+              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Kit money</span>
+                <Toggle value={userPrefs.defaultKitMoneyEnabled} onChange={(v) => set({ defaultKitMoneyEnabled: v })} ariaLabel="Kit money by default" />
+              </div>
+              {userPrefs.defaultKitMoneyEnabled && (
+                <Field label="Default kit money amount (£/day)">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={userPrefs.defaultKitMoneyAmount}
+                    onChange={(e) => set({ defaultKitMoneyAmount: Number(e.target.value) })}
+                  />
+                </Field>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Per diem</span>
+                <Toggle value={userPrefs.defaultPerDiemEnabled} onChange={(v) => set({ defaultPerDiemEnabled: v })} ariaLabel="Per diem by default" />
+              </div>
+              {userPrefs.defaultPerDiemEnabled && (
+                <Field label="Default per diem amount (£/day)">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={userPrefs.defaultPerDiemAmount}
+                    onChange={(e) => set({ defaultPerDiemAmount: Number(e.target.value) })}
+                  />
+                </Field>
+              )}
+              {/* Sub: Rounding — was its own "Calculation" top-level disclosure;
+                  RoundingModeSelect, helper-getter, and footnote unchanged. */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Rounding</div>
+                <RoundingModeSelect value={roundingModeOf(userPrefs)} onChange={(m) => set({ roundingMode: m })} />
+                <p className="text-[11px] text-neutral-500 mt-2.5 leading-tight">This sets the default for new shoots. To change a shoot you've already created, open that shoot's settings.</p>
+              </div>
             </Disclosure>
 
-            <Disclosure label="Calculation" summary={calcSummary}>
-              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Rounding</div>
-              <RoundingModeSelect value={roundingModeOf(userPrefs)} onChange={(m) => set({ roundingMode: m })} />
-              <p className="text-[11px] text-neutral-500 mt-2.5 leading-tight">This sets the default for new shoots. To change a shoot you've already created, open that shoot's settings.</p>
-            </Disclosure>
-
-            <Disclosure label="Display" summary={displaySummary}>
+            {/* §6 — Appearance: display-only options (pill comparison + custom
+                comparison label/price) and the mark-as-paid celebration set.
+                Celebration sub-controls (emoji/intensity/speed/preview) stay
+                gated on celebrationEnabled. */}
+            <Disclosure label="Appearance" summary={displaySummary}>
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Pill comparison</div>
                 <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Shown under the £ amount in the day pill.</div>
@@ -15374,41 +15416,45 @@ const setDays = (updater) =>
                   </div>
                 </div>
               </div>
-            </Disclosure>
-
-            <Disclosure label="Celebration" summary={userPrefs.celebrationEnabled ? 'On' : 'Off'}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Mark-as-paid celebration</div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">A shower of emoji when you mark an invoice paid.</div>
+              {/* Celebration — was its own "Celebration" top-level disclosure.
+                  Toggle + sub-controls + Preview unchanged. */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Mark-as-paid celebration</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">A shower of emoji when you mark an invoice paid.</div>
+                  </div>
+                  <Toggle value={userPrefs.celebrationEnabled} onChange={(v) => set({ celebrationEnabled: v })} ariaLabel="Mark-as-paid celebration" />
                 </div>
-                <Toggle value={userPrefs.celebrationEnabled} onChange={(v) => set({ celebrationEnabled: v })} ariaLabel="Mark-as-paid celebration" />
-              </div>
-              {userPrefs.celebrationEnabled && (
-                <div className="mt-4 space-y-3">
-                  {[
-                    { key: 'celebrationEmoji', label: 'Emoji', opts: [{ v: 'cash', l: '💵 Cash' }, { v: 'bag', l: '💰 Bag' }, { v: 'mix', l: 'Mix' }] },
-                    { key: 'celebrationIntensity', label: 'Intensity', opts: [{ v: 'light', l: 'Light' }, { v: 'medium', l: 'Medium' }, { v: 'heavy', l: 'Heavy' }] },
-                    { key: 'celebrationSpeed', label: 'Fall speed', opts: [{ v: 'chill', l: 'Chill' }, { v: 'normal', l: 'Normal' }, { v: 'fast', l: 'Fast' }] },
-                  ].map(row => (
-                    <div key={row.key}>
-                      <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">{row.label}</div>
-                      <div className="flex gap-1.5">
-                        {row.opts.map(o => (
-                          <button key={o.v} type="button" onClick={() => set({ [row.key]: o.v })}
-                            className={`flex-1 px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${userPrefs[row.key] === o.v ? 'border-sky-500 bg-sky-500/15 text-sky-300' : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700'}`}>
-                            {o.l}
-                          </button>
-                        ))}
+                {userPrefs.celebrationEnabled && (
+                  <div className="mt-4 space-y-3">
+                    {[
+                      { key: 'celebrationEmoji', label: 'Emoji', opts: [{ v: 'cash', l: '💵 Cash' }, { v: 'bag', l: '💰 Bag' }, { v: 'mix', l: 'Mix' }] },
+                      { key: 'celebrationIntensity', label: 'Intensity', opts: [{ v: 'light', l: 'Light' }, { v: 'medium', l: 'Medium' }, { v: 'heavy', l: 'Heavy' }] },
+                      { key: 'celebrationSpeed', label: 'Fall speed', opts: [{ v: 'chill', l: 'Chill' }, { v: 'normal', l: 'Normal' }, { v: 'fast', l: 'Fast' }] },
+                    ].map(row => (
+                      <div key={row.key}>
+                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">{row.label}</div>
+                        <div className="flex gap-1.5">
+                          {row.opts.map(o => (
+                            <button key={o.v} type="button" onClick={() => set({ [row.key]: o.v })}
+                              className={`flex-1 px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${userPrefs[row.key] === o.v ? 'border-sky-500 bg-sky-500/15 text-sky-300' : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700'}`}>
+                              {o.l}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  <Btn variant="ghost" onClick={() => fireCelebration({ force: true })} className="w-full justify-center">Preview</Btn>
-                </div>
-              )}
+                    ))}
+                    <Btn variant="ghost" onClick={() => fireCelebration({ force: true })} className="w-full justify-center">Preview</Btn>
+                  </div>
+                )}
+              </div>
             </Disclosure>
 
-            <Disclosure label="Data">
+            {/* §7 — Data & backup: storage status + the three one-off actions
+                (export, restore, reset). Reset and restore still go through
+                ConfirmDialog; flows unchanged. */}
+            <Disclosure label="Data & backup">
               <div className="flex flex-col gap-3">
                 {(() => {
                   const s = (typeof storage.getStatus === 'function') ? storage.getStatus() : null;
@@ -15457,8 +15503,13 @@ const setDays = (updater) =>
               </div>
             </Disclosure>
 
-            <Disclosure label="Re-run setup wizard">
-              <div className="flex flex-col gap-1">
+            {/* §8 — About & help: re-run setup, APA terms link, What's new,
+                About metadata, Privacy text. Stacked as sub-sections inside
+                a single Disclosure to cut top-level clutter. */}
+            <Disclosure label="About & help" summary={`v${APP_VERSION}`}>
+              {/* Sub: Re-run setup wizard */}
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Re-run setup wizard</div>
                 <Btn variant="ghost" onClick={() => setConfirmOpts({
                   title: "Re-run setup?",
                   message: "Your existing settings won't be lost — you'll just be guided through them again.",
@@ -15468,63 +15519,71 @@ const setDays = (updater) =>
                 })}>Re-run setup wizard</Btn>
                 <p className="text-[10px] text-neutral-500 mt-1">Walk through name, role, rate, and VAT settings again.</p>
               </div>
-            </Disclosure>
 
-            <Disclosure label="Reference">
-              <a
-                href="https://www.a-p-a.net/apa-crew-terms/"
-                onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenInBrowser('https://www.a-p-a.net/apa-crew-terms/').catch(() => {}); } : undefined}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between gap-3 text-sm text-neutral-300 hover:text-sky-500 transition-colors py-1 group"
-              >
-                <div>
-                  <div className="font-medium">APA Recommended Terms</div>
-                  <div className="text-[10px] text-neutral-500 mt-0.5 group-hover:text-neutral-400 transition-colors">Official rate card and working terms — opens in a new tab</div>
-                </div>
-                <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-500 transition-colors"/>
-              </a>
-            </Disclosure>
+              {/* Sub: APA Recommended Terms (external link) */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Reference</div>
+                <a
+                  href="https://www.a-p-a.net/apa-crew-terms/"
+                  onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenInBrowser('https://www.a-p-a.net/apa-crew-terms/').catch(() => {}); } : undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between gap-3 text-sm text-neutral-300 hover:text-sky-500 transition-colors py-1 group"
+                >
+                  <div>
+                    <div className="font-medium">APA Recommended Terms</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5 group-hover:text-neutral-400 transition-colors">Official rate card and working terms — opens in a new tab</div>
+                  </div>
+                  <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-500 transition-colors"/>
+                </a>
+              </div>
 
-            <Disclosure label="What's new" summary={`v${RELEASE_NOTES.version}`}>
-              <div className="font-semibold text-sm text-neutral-200 mb-0.5">Version {RELEASE_NOTES.version}</div>
-              <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
-              <ul className="space-y-1.5 mb-3">
-                {RELEASE_NOTES.added.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
-                    <span className="text-sky-500 flex-shrink-0 leading-snug">·</span>
-                    <span className="leading-snug">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="text-[11px] text-neutral-400 italic">{RELEASE_NOTES.notes}</div>
-            </Disclosure>
+              {/* Sub: What's new */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">What's new — v{RELEASE_NOTES.version}</div>
+                <div className="font-semibold text-sm text-neutral-200 mb-0.5">Version {RELEASE_NOTES.version}</div>
+                <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
+                <ul className="space-y-1.5 mb-3">
+                  {RELEASE_NOTES.added.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
+                      <span className="text-sky-500 flex-shrink-0 leading-snug">·</span>
+                      <span className="leading-snug">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[11px] text-neutral-400 italic">{RELEASE_NOTES.notes}</div>
+              </div>
 
-            <Disclosure label="About" summary={`v${APP_VERSION}`}>
-              <div className="space-y-2 text-[12px] text-neutral-300">
-                <div className="flex justify-between">
-                  <span className="text-neutral-500">App version</span>
-                  <span className="font-mono">{APP_VERSION}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-neutral-500">APA rate version</span>
-                  <span className="font-mono">APA Sept 2025</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-neutral-500">Feedback</span>
-                  <a href="mailto:feedback@timemachineapp.co.uk" onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenUrl('mailto:feedback@timemachineapp.co.uk').catch(() => {}); } : undefined} className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
+              {/* Sub: About */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">About</div>
+                <div className="space-y-2 text-[12px] text-neutral-300">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">App version</span>
+                    <span className="font-mono">{APP_VERSION}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">APA rate version</span>
+                    <span className="font-mono">APA Sept 2025</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Feedback</span>
+                    <a href="mailto:feedback@timemachineapp.co.uk" onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenUrl('mailto:feedback@timemachineapp.co.uk').catch(() => {}); } : undefined} className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
+                  </div>
                 </div>
               </div>
-            </Disclosure>
 
-            <Disclosure label="Privacy">
-              <div className="space-y-3 text-[12px] text-neutral-400 leading-relaxed">
-                <p><span className="text-neutral-200 font-semibold">Your data never leaves your device.</span> Productions, days, crew, invoices, and bank details are stored in your browser's local storage only. We have no server, no sync, and no account.</p>
-                <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
-                <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app bundles everything it needs (including its UI framework) and fetches nothing from outside services while you use it — there are no external CDNs and no third party ever sees your IP address. No data about you or your productions is sent.</p>
-                <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library — only when you upload a logo or attach an expense receipt. Files — only when you export a PDF or backup. Never accessed without your explicit action.</p>
-                <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset All Data</span>.</p>
-                <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
+              {/* Sub: Privacy */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Privacy</div>
+                <div className="space-y-3 text-[12px] text-neutral-400 leading-relaxed">
+                  <p><span className="text-neutral-200 font-semibold">Your data never leaves your device.</span> Productions, days, crew, invoices, and bank details are stored in your browser's local storage only. We have no server, no sync, and no account.</p>
+                  <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
+                  <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app bundles everything it needs (including its UI framework) and fetches nothing from outside services while you use it — there are no external CDNs and no third party ever sees your IP address. No data about you or your productions is sent.</p>
+                  <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library — only when you upload a logo or attach an expense receipt. Files — only when you export a PDF or backup. Never accessed without your explicit action.</p>
+                  <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset All Data</span>.</p>
+                  <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
+                </div>
               </div>
             </Disclosure>
 
