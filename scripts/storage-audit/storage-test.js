@@ -3293,6 +3293,50 @@ async function main() {
       check('Y12j no per-element width > 270px inside MonthlyEarningsView',
         fixedWidths.length === 0,
         `wide widths found: ${fixedWidths.join(', ')}`);
+
+      // ─ Y12k-n: avg label placement.
+      //   The "avg" tag used to sit at right:-52 in the right gutter,
+      //   where it collided with the £ scale label sharing its row
+      //   (e.g. "avg" overlapping "£2,000"). The chip now sits at the
+      //   LEFT end of the dashed line, over a faint solid dark pill,
+      //   centred vertically on the line. The right gutter is reserved
+      //   exclusively for the gridline £ labels.
+      check('Y12k avg label tagged with aria-label="Monthly average" for unique anchor',
+        view.includes('aria-label="Monthly average"'));
+
+      // Slice the avg label block out of the view by its aria-label anchor
+      // so substring checks don't drift into other chips elsewhere in the
+      // view (callout, breakdown panel, day-type chips).
+      const avgAnchor = 'aria-label="Monthly average"';
+      const avgIdx = view.indexOf(avgAnchor);
+      // The opening <div is ~400 chars before the aria-label; "avg"
+      // closing text is ~30 chars after. Slice a generous window.
+      const avgBlock = avgIdx === -1 ? '' : view.slice(Math.max(0, avgIdx - 600), avgIdx + 80);
+
+      check('Y12l avg chip positioned at LEFT end of dashed line (left: 0)',
+        avgBlock.includes('left: 0') && !avgBlock.includes('right: -52'),
+        'avg block did not contain `left: 0` or still contained `right: -52`');
+      check('Y12m avg chip has faint solid dark pill background (bg-neutral-900 + sky border)',
+        avgBlock.includes('bg-neutral-900') &&
+        avgBlock.includes('border border-sky-700/40') &&
+        avgBlock.includes('rounded'));
+      check('Y12n avg chip is sky-coloured + small font',
+        avgBlock.includes('text-sky-400') && avgBlock.includes('text-[9px]'));
+      check('Y12o avg chip vertically centred on the dashed line',
+        avgBlock.includes("transform: 'translateY(-50%)'"));
+      check('Y12p avg chip stays above the bars (zIndex 3 > bars zIndex 2)',
+        avgBlock.includes('zIndex: 3'));
+
+      // Right gutter exclusivity — the actual CSS-property form
+      // `right: -52,` (style-object property with trailing comma) should
+      // appear ONCE in the view source (the gridline label inside
+      // [0, 0.5, 1].map(...)). If anyone re-adds a control in the right
+      // gutter, the count jumps. We require the comma + space form to
+      // skip prose mentions of "right:-52" in surrounding comments.
+      const rightGutterHits = (view.match(/right: -52,/g) || []).length;
+      check('Y12q right gutter has exactly ONE element source-line (gridline £ labels only)',
+        rightGutterHits === 1,
+        `style "right: -52," occurrences=${rightGutterHits} (expected 1)`);
     }
   }
 
