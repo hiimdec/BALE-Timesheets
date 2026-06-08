@@ -6716,8 +6716,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // space). null when both closed; 'call' or 'wrap' when active.
       // Outside-tap closes via the document listener on the pair's
       // own containerRef (effect below). Other TimeInputs in this form
-      // (pre-call / lunch / 2nd-break) keep their own per-instance
-      // close behaviour.
+      // (pre-call / 2nd-break) keep their own per-instance close
+      // behaviour; LUNCH is lifted similarly so the wheel can render
+      // full-width below the "start → end" readout (see lunchOpen).
       const [callWrapOpen, setCallWrapOpen] = useState(null);
       const callWrapRef = useRef(null);
       useEffect(() => {
@@ -6730,6 +6731,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         document.addEventListener('pointerdown', onDoc, true);
         return () => document.removeEventListener('pointerdown', onDoc, true);
       }, [callWrapOpen]);
+
+      // LUNCH wheel: lifted state mirrors the pair pattern so the
+      // wheel can render full-width below the start → end header
+      // (was squeezed into a narrow flex cell beside the end text).
+      // Single-open with the pair: tapping a pair trigger while
+      // lunch is open fires lunch's outside-tap listener first
+      // (closes lunch), then the pair's onClick opens the pair slot
+      // — same pattern as the singleton TimeInputs.
+      const [lunchOpen, setLunchOpen] = useState(false);
+      const lunchRef = useRef(null);
+      useEffect(() => {
+        if (!lunchOpen) return;
+        const onDoc = (e) => {
+          if (lunchRef.current && !lunchRef.current.contains(e.target)) {
+            setLunchOpen(false);
+          }
+        };
+        document.addEventListener('pointerdown', onDoc, true);
+        return () => document.removeEventListener('pointerdown', onDoc, true);
+      }, [lunchOpen]);
 
       const computeNowHHMM = () => {
         // Stamps the EXACT current time. The 5-minute rounding that used
@@ -7065,7 +7086,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     const showBody = !isDiscretionary && dur > 0;
                     const endText = (bs?.lunchEndAbs != null && dur > 0) ? toHHMM(bs.lunchEndAbs) : '—';
                     return (
-                      <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
+                      <div ref={lunchRef} className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
                         {/* Row 1 — header: LUNCH label TL, conditional chip TR */}
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold">LUNCH</span>
@@ -7075,8 +7096,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             </span>
                           )}
                         </div>
-                        {/* Row 2 — body: centred start → end pair (only when there's a lunch to show) */}
-                        {showBody && (
+                        {/* Row 2 — body: centred start → end pair (only when there's a lunch to show).
+                            On touch: the start is a TimeTrigger that opens
+                            a full-width wheel below; end stays as derived
+                            text up top so it stays visible even while
+                            editing. On fine-pointer: the start is a
+                            TimeInput (system <input type="time"> popover),
+                            laid out inline alongside the arrow + end. */}
+                        {showBody && (HAS_COARSE_POINTER ? (
+                          <div className="flex items-center justify-center gap-3.5 pt-1 pb-3">
+                            <TimeTrigger
+                              value={vr.lunchStartTime ?? ""}
+                              onClick={() => setLunchOpen(o => !o)}
+                              active={lunchOpen}
+                              className="!text-[26px] !leading-none !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 font-mono font-bold text-center"
+                              style={{ width: '92px' }}
+                            />
+                            <span className="text-neutral-500" style={{ fontSize: '18px', lineHeight: 1 }}>→</span>
+                            <span className="text-[26px] leading-none font-mono font-bold text-neutral-100" style={{ width: '92px', textAlign: 'center' }}>{endText}</span>
+                          </div>
+                        ) : (
                           <div className="flex items-center justify-center gap-3.5 pt-1 pb-3">
                             <TimeInput
                               value={vr.lunchStartTime ?? ""}
@@ -7087,6 +7126,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             <span className="text-neutral-500" style={{ fontSize: '18px', lineHeight: 1 }}>→</span>
                             <span className="text-[26px] leading-none font-mono font-bold text-neutral-100" style={{ width: '92px', textAlign: 'center' }}>{endText}</span>
                           </div>
+                        ))}
+                        {/* Touch-only: full-width wheel below the start →
+                            end row. WheelExpand handles the open / close
+                            animation + stays mounted through the collapse;
+                            TimeWheelPanel owns the live-write contract
+                            (no silent writes on open / close-without-scroll).
+                            End time stays visible up top and updates live
+                            from `bs.lunchEndAbs` as the wheel scrolls. */}
+                        {showBody && HAS_COARSE_POINTER && (
+                          <WheelExpand open={lunchOpen}>
+                            <TimeWheelPanel
+                              value={vr.lunchStartTime ?? ""}
+                              onChange={(e) => set({ lunchStartTime: e.target.value })}
+                              onClose={() => setLunchOpen(false)}
+                            />
+                          </WheelExpand>
                         )}
                         {/* Row 3 — footer: NOW left, duration select right */}
                         <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-900">
