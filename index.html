@@ -8699,6 +8699,98 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       });
     }
 
+    // ── Monthly chart-view pure helpers (Stage 2) ──
+    // Operate on the series shape aggregateMonthly returns. No calc, no
+    // DOM. The MonthlyEarningsView consumes these; the Y-suite tests
+    // them in isolation.
+
+    // Shift a "YYYY-MM" string by integer months (positive or negative).
+    // Bypasses Date / timezone entirely.
+    const monthlyAddOffset = (mo, deltaMonths) => {
+      const [y, m] = String(mo).split('-').map(Number);
+      const total = y * 12 + (m - 1) + Number(deltaMonths || 0);
+      const ny = Math.floor(total / 12);
+      const nm = ((total % 12) + 12) % 12 + 1;
+      return `${ny}-${String(nm).padStart(2, '0')}`;
+    };
+
+    // UK tax year containing a "YYYY-MM" — Apr Y → Mar (Y+1) belongs
+    // to year Y. (Mar M=3 → previous year; Apr M=4 → this year.)
+    const monthlyTaxYearOf = (mo) => {
+      const [y, m] = String(mo).split('-').map(Number);
+      return m >= 4 ? y : y - 1;
+    };
+
+    // Build a 12-entry window over the series with zero-padding for any
+    // missing months. mode '12m' uses anchor as the END month
+    // (inclusive); mode 'tax' uses anchor as the tax-year start year
+    // (so the window is Apr Y → Mar Y+1).
+    function monthlyWindow(series, mode, anchor) {
+      const zero = (mo) => ({
+        month: mo, amount: 0,
+        grossBuckets: { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 },
+        kitDiscount: 0, days: 0, shoots: 0, dayTypes: {},
+        notYetCounted: 0, isCurrentMonth: false,
+      });
+      const byMonth = new Map();
+      for (const e of (series || [])) byMonth.set(e.month, e);
+      const months = [];
+      if (mode === '12m') {
+        for (let i = 11; i >= 0; i--) months.push(monthlyAddOffset(anchor, -i));
+      } else if (mode === 'tax') {
+        const startY = Number(anchor);
+        for (let k = 0; k < 12; k++) months.push(monthlyAddOffset(`${startY}-04`, k));
+      } else {
+        return [];
+      }
+      return months.map(mo => byMonth.get(mo) || zero(mo));
+    }
+
+    // Clamp a window anchor so prev/next can't drift before the
+    // earliest series month or past the current month. For '12m' the
+    // anchor IS a "YYYY-MM" end-month; for 'tax' it's a numeric year.
+    function clampMonthlyAnchor(mode, anchor, earliestMo, currentMo) {
+      if (mode === '12m') {
+        if (anchor < earliestMo) return earliestMo;
+        if (anchor > currentMo)  return currentMo;
+        return anchor;
+      }
+      if (mode === 'tax') {
+        const startY = Number(anchor);
+        const earliestTY = monthlyTaxYearOf(earliestMo);
+        const currentTY  = monthlyTaxYearOf(currentMo);
+        if (startY < earliestTY) return earliestTY;
+        if (startY > currentTY)  return currentTY;
+        return startY;
+      }
+      return anchor;
+    }
+
+    // vs-last-year lookup over the FULL series (not just the window).
+    // Returns null when last year is absent OR amount is non-positive
+    // — caller renders "no comparison" rather than a fake percentage
+    // or divide-by-zero. The percentChange helper has the same gate.
+    function monthlyVsLastYear(series, month) {
+      if (!Array.isArray(series) || !month) return null;
+      const [y, m] = String(month).split('-').map(Number);
+      if (!Number.isFinite(y) || !Number.isFinite(m)) return null;
+      const lastMo = `${y - 1}-${String(m).padStart(2, '0')}`;
+      const entry = series.find(e => e.month === lastMo);
+      if (!entry || !(entry.amount > 0)) return null;
+      return { month: lastMo, amount: entry.amount };
+    }
+    function monthlyPercentChange(current, previous) {
+      const p = Number(previous);
+      if (!Number.isFinite(p) || !(p > 0)) return null;
+      return ((Number(current) - p) / p) * 100;
+    }
+
+    // Average month amount across a window (typically 12). Empty → 0.
+    function monthlyAverage(windowEntries) {
+      if (!Array.isArray(windowEntries) || windowEntries.length === 0) return 0;
+      return windowEntries.reduce((s, e) => s + (e.amount || 0), 0) / windowEntries.length;
+    }
+
     // Stage 2d: resolve which crew member is "you" on a given production,
     // for kit-scoping purposes. Combines resolveUserCrewId (iAmCrewId
     // override → displayName match) with a solo fallback for the case
@@ -15464,10 +15556,310 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ STATS SCREEN ═══════════════════════════ */
 
+    // Monthly earnings — Stage 2 chart view. Reads the pre-built
+    // series (from aggregateMonthly) and windows over it; doesn't run
+    // calc or rebuild. Bucket colours match HighestDayBreakdown
+    // (sky / tm-warn / tm-pen / tm-kit / tm-good). 12-month window by
+    // default ending at the current month; tax-year toggle switches
+    // to Apr–Mar of the anchor year; prev/next clamped via
+    // clampMonthlyAnchor. Average line is window average. Current
+    // month is rendered distinctly so it never reads as a quiet month.
+    function MonthlyEarningsView({ series, onClose }) {
+      const todayMo = todayISO().slice(0, 7);
+      const earliestMo = (series && series.length > 0) ? series[0].month : todayMo;
+      const currentTY = monthlyTaxYearOf(todayMo);
+      const earliestTY = monthlyTaxYearOf(earliestMo);
+
+      const [mode,       setMode]       = React.useState('12m');
+      const [anchor12m,  setAnchor12m]  = React.useState(todayMo);
+      const [anchorTax,  setAnchorTax]  = React.useState(currentTY);
+      const [sel,        setSel]        = React.useState(null);
+
+      const windowEntries = React.useMemo(() => {
+        if (mode === '12m') {
+          return monthlyWindow(series, '12m', clampMonthlyAnchor('12m', anchor12m, earliestMo, todayMo));
+        }
+        return monthlyWindow(series, 'tax', clampMonthlyAnchor('tax', anchorTax, earliestMo, todayMo));
+      }, [series, mode, anchor12m, anchorTax, earliestMo, todayMo]);
+
+      const total = windowEntries.reduce((s, e) => s + (e.amount || 0), 0);
+      const avg   = monthlyAverage(windowEntries);
+      const max   = Math.max(1, ...windowEntries.map(e => e.amount || 0));
+      const niceMax = Math.max(2000, Math.ceil(max / 2000) * 2000);
+
+      const canPrev = mode === '12m'
+        ? clampMonthlyAnchor('12m', monthlyAddOffset(anchor12m, -12), earliestMo, todayMo) !== anchor12m
+        : clampMonthlyAnchor('tax', anchorTax - 1, earliestMo, todayMo) !== anchorTax;
+      const canNext = mode === '12m'
+        ? clampMonthlyAnchor('12m', monthlyAddOffset(anchor12m, 12), earliestMo, todayMo) !== anchor12m
+        : clampMonthlyAnchor('tax', anchorTax + 1, earliestMo, todayMo) !== anchorTax;
+
+      const page = (dir) => {
+        setSel(null);
+        if (mode === '12m') {
+          setAnchor12m(clampMonthlyAnchor('12m', monthlyAddOffset(anchor12m, dir * 12), earliestMo, todayMo));
+        } else {
+          setAnchorTax(clampMonthlyAnchor('tax', anchorTax + dir, earliestMo, todayMo));
+        }
+      };
+
+      const fmtMonShort = (mo) => {
+        const [y, m] = mo.split('-').map(Number);
+        const d = new Date(y, m - 1, 1);
+        return d.toLocaleString('en-GB', { month: 'short', year: 'numeric' });
+      };
+      const fmtMonLong = (mo) => {
+        const [y, m] = mo.split('-').map(Number);
+        const d = new Date(y, m - 1, 1);
+        return d.toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+      };
+      const monLetter = (mo) => fmtMonShort(mo).charAt(0);
+
+      const rangeLabel = mode === '12m'
+        ? `${fmtMonShort(windowEntries[0].month)} – ${fmtMonShort(windowEntries[11].month)}`
+        : `${anchorTax}/${String(anchorTax + 1).slice(2)} tax year`;
+
+      const selEntry = sel != null ? windowEntries[sel] : null;
+      const vsLY    = selEntry ? monthlyVsLastYear(series, selEntry.month) : null;
+      const vsPct   = (selEntry && vsLY) ? monthlyPercentChange(selEntry.amount, vsLY.amount) : null;
+
+      const bucketRows = [
+        { key: 'basic',  label: 'Basic',     barCls: 'bg-sky-500',  textCls: 'text-sky-400' },
+        { key: 'ot',     label: 'OT',        barCls: 'bg-tm-warn',  textCls: 'text-tm-warn' },
+        { key: 'pen',    label: 'Penalty',   barCls: 'bg-tm-pen',   textCls: 'text-tm-pen' },
+        { key: 'kit',    label: 'Kit',       barCls: 'bg-tm-kit',   textCls: 'text-tm-kit' },
+        { key: 'extras', label: 'Extras',    barCls: 'bg-tm-good',  textCls: 'text-tm-good' },
+      ];
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32">
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
+                <IArrowLeft size={16}/>
+              </button>
+              <h1 className="font-bold text-sm uppercase tracking-wide">Earnings</h1>
+            </div>
+          </div>
+
+          <div className="max-w-2xl mx-auto px-4 pt-4">
+            {/* Mode segmented control */}
+            <div className="flex bg-neutral-900 border border-neutral-800 rounded-lg p-0.5 gap-0.5 mb-2.5">
+              {[['12m', '12 Months'], ['tax', 'Tax Year']].map(([k, l]) => (
+                <button key={k} type="button" onClick={() => { setMode(k); setSel(null); }}
+                  className={`flex-1 text-[12px] font-semibold py-1.5 rounded-md transition-colors ${mode === k ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200'}`}
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {/* Nav row */}
+            <div className="flex items-center justify-between mb-1.5">
+              <button type="button" onClick={() => page(-1)} disabled={!canPrev}
+                className="w-9 h-9 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-sky-500 hover:border-sky-500/40 disabled:opacity-30 transition-colors flex items-center justify-center"
+                style={{ WebkitTapHighlightColor: 'transparent' }} aria-label="Previous">
+                <IChevronLeft size={14}/>
+              </button>
+              <span className="text-[12px] text-neutral-400 font-semibold">{rangeLabel}</span>
+              <button type="button" onClick={() => page(1)} disabled={!canNext}
+                className="w-9 h-9 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-sky-500 hover:border-sky-500/40 disabled:opacity-30 transition-colors flex items-center justify-center"
+                style={{ WebkitTapHighlightColor: 'transparent' }} aria-label="Next">
+                <IChevronRight size={14}/>
+              </button>
+            </div>
+
+            {/* Headline */}
+            <div className="mb-3 mt-2">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold">
+                {selEntry ? (selEntry.isCurrentMonth ? 'This month (in progress)' : (selEntry.amount === 0 ? 'No work' : 'This month')) : 'Total earned'}
+              </div>
+              <div className="text-[34px] leading-none font-bold font-mono text-neutral-100 tabular-nums tracking-tight mt-1">
+                {fmtGBP(selEntry ? selEntry.amount : total)}
+              </div>
+              <div className="text-[12px] text-neutral-500 mt-1">
+                {selEntry
+                  ? fmtMonLong(selEntry.month)
+                  : `Monthly average ${fmtGBP(avg)}`}
+              </div>
+            </div>
+
+            {/* Chart */}
+            <div className="mt-2 relative">
+              <div className="relative" style={{ height: 200, marginRight: 30 }}>
+                {/* gridlines + value labels */}
+                {[0, 0.5, 1].map(f => (
+                  <React.Fragment key={f}>
+                    <div className="absolute left-0 right-0 border-t border-dashed border-neutral-800"
+                         style={{ bottom: `${f * 100}%` }} />
+                    <div className="absolute font-mono text-[10px] text-neutral-600"
+                         style={{ right: -30, bottom: `${f * 100}%`, transform: 'translateY(-50%)', width: 28, textAlign: 'left' }}>
+                      {fmtGBP(niceMax * f)}
+                    </div>
+                  </React.Fragment>
+                ))}
+                {/* avg line */}
+                {total > 0 && (
+                  <>
+                    <div className="absolute left-0 right-0 border-t border-dashed border-sky-700/60"
+                         style={{ bottom: `${(avg / niceMax) * 100}%` }} />
+                    <div className="absolute text-[9px] font-bold text-sky-500"
+                         style={{ right: -30, bottom: `${(avg / niceMax) * 100}%`, transform: 'translateY(-50%)' }}>
+                      avg
+                    </div>
+                  </>
+                )}
+                {/* bars */}
+                <div className="absolute inset-0 flex items-end" style={{ zIndex: 2 }}>
+                  {windowEntries.map((entry, i) => {
+                    const dim = sel != null && sel !== i;
+                    const isSel = sel === i;
+                    const isCurr = entry.isCurrentMonth;
+                    // current-month gets a lighter, distinct fill to read as "in progress"
+                    const fillCls = isSel
+                      ? 'bg-sky-300'
+                      : (isCurr ? 'bg-sky-500/50 border border-sky-500/70 border-b-0' : 'bg-sky-500');
+                    return (
+                      <button key={entry.month} type="button"
+                        onClick={() => setSel(prev => prev === i ? null : i)}
+                        className="flex-1 h-full flex items-end justify-center cursor-pointer"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                        aria-label={`${fmtMonLong(entry.month)}: ${fmtGBP(entry.amount)}`}>
+                        <div className={`${fillCls} rounded-t transition-opacity ${dim ? 'opacity-30' : 'opacity-100'}`}
+                             style={{
+                               width: '62%',
+                               height: `${Math.max(0.5, (entry.amount / niceMax) * 100)}%`,
+                               minHeight: 2,
+                             }} />
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* vertical line + callout for selection */}
+                {selEntry && (
+                  <>
+                    <div className="absolute top-0 bottom-0 w-px bg-neutral-700"
+                         style={{ left: `${((sel + 0.5) / 12) * 100}%`, zIndex: 1 }} />
+                    <div className="absolute bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 whitespace-nowrap shadow-lg"
+                         style={{
+                           top: -8, transform: 'translate(-50%, -100%)',
+                           left: `clamp(56px, ${((sel + 0.5) / 12) * 100}%, calc(100% - 56px))`,
+                           zIndex: 5,
+                         }}>
+                      <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold">
+                        {fmtMonShort(selEntry.month)}{selEntry.isCurrentMonth ? ' · in progress' : ''}
+                      </div>
+                      <div className="text-[18px] font-bold font-mono mt-0.5">{fmtGBP(selEntry.amount)}</div>
+                    </div>
+                  </>
+                )}
+              </div>
+              {/* x labels */}
+              <div className="flex mt-1.5" style={{ marginRight: 30 }}>
+                {windowEntries.map((entry, i) => (
+                  <span key={entry.month}
+                    className={`flex-1 text-center text-[10px] font-mono ${sel === i ? 'text-neutral-100 font-bold' : 'text-neutral-600'}`}>
+                    {monLetter(entry.month)}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Detail panel */}
+            <div className="mt-5">
+              {!selEntry ? (
+                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 py-6 text-center text-[12px] text-neutral-500">
+                  Tap a month to see its breakdown.
+                </div>
+              ) : (selEntry.amount === 0 && selEntry.days === 0) ? (
+                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 py-6 text-center text-[12px] text-neutral-500">
+                  No work recorded in {fmtMonLong(selEntry.month)}{selEntry.isCurrentMonth ? ' yet' : ''}.
+                </div>
+              ) : (
+                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 py-4">
+                  <div className="flex items-baseline justify-between mb-1">
+                    <div className="text-[15px] font-bold">{fmtMonLong(selEntry.month)}{selEntry.isCurrentMonth ? ' · in progress' : ''}</div>
+                    <div className="text-[17px] font-bold font-mono">{fmtGBP(selEntry.amount)}</div>
+                  </div>
+                  <div className="text-[12px] text-neutral-400 mb-3">
+                    <span className="text-neutral-100 font-semibold">{selEntry.shoots}</span> shoot{selEntry.shoots !== 1 ? 's' : ''} ·{' '}
+                    <span className="text-neutral-100 font-semibold">{selEntry.days}</span> day{selEntry.days !== 1 ? 's' : ''}
+                    {selEntry.notYetCounted > 0 && (
+                      <> · <span className="text-sky-400 font-semibold">{selEntry.notYetCounted}</span> not yet counted</>
+                    )}
+                  </div>
+                  {Object.keys(selEntry.dayTypes).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {Object.entries(selEntry.dayTypes)
+                        .filter(([, n]) => n > 0)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([type, n]) => (
+                          <span key={type} className="text-[11px] bg-neutral-950 border border-neutral-800 rounded-md px-2 py-0.5 text-neutral-400">
+                            <span className="text-neutral-100 font-semibold">{n}</span>{' '}{type}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                  <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 font-bold mb-2.5">Breakdown</div>
+                  {(() => {
+                    const bk = selEntry.grossBuckets;
+                    const bmax = Math.max(1, bk.basic, bk.ot, bk.pen, bk.kit, bk.extras);
+                    return bucketRows.map(r => {
+                      const val = bk[r.key] || 0;
+                      const pct = Math.max(2, (val / bmax) * 100);
+                      return (
+                        <div key={r.key} className="flex items-center gap-2 mb-2">
+                          <span className={`w-2 h-2 rounded-sm ${r.barCls} flex-shrink-0`} />
+                          <span className="text-[12px] text-neutral-400 flex-shrink-0" style={{ width: 56 }}>{r.label}</span>
+                          <span className="flex-1 h-[7px] bg-neutral-950 rounded overflow-hidden">
+                            <span className={`block h-full ${r.barCls} rounded`} style={{ width: `${pct}%` }} />
+                          </span>
+                          <span className={`text-[12px] font-mono font-semibold tabular-nums text-right flex-shrink-0 ${r.textCls}`} style={{ width: 70 }}>{fmtGBP(val)}</span>
+                        </div>
+                      );
+                    });
+                  })()}
+                  {selEntry.kitDiscount > 0 && (
+                    <div className="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800 text-[12px] font-mono text-neutral-400">
+                      <span className="flex-1">Kit deal − {fmtGBP(selEntry.kitDiscount)}</span>
+                      <span className="text-tm-good">{fmtGBP(-selEntry.kitDiscount)}</span>
+                    </div>
+                  )}
+                  <div className="mt-4 pt-3 border-t border-neutral-800 text-[12px] text-neutral-400 leading-snug">
+                    {!vsLY ? (
+                      <span>No comparison — first {fmtMonShort(selEntry.month).split(' ')[0]} on record.</span>
+                    ) : (
+                      (() => {
+                        const sign = vsPct >= 0 ? '+' : '−';
+                        const colour = vsPct >= 0 ? 'text-tm-good' : 'text-tm-pen';
+                        return (
+                          <>
+                            vs <span className="text-neutral-200">{fmtMonShort(vsLY.month)}</span>:{' '}
+                            <span className={`font-semibold ${colour}`}>{sign}{fmtGBP(Math.abs(selEntry.amount - vsLY.amount))}</span>
+                            {Number.isFinite(vsPct) && (
+                              <span className={`ml-1 ${colour}`}>({sign}{Math.abs(vsPct).toFixed(0)}%)</span>
+                            )}
+                          </>
+                        );
+                      })()
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     function StatsScreen({ productions, userPrefs, onClose, onOpenSettings }) {
       const [filter, setFilter] = useState('all');
       const [expandedStat, setExpandedStat] = useState(null);
       const [showAllMonths, setShowAllMonths] = useState(false);
+      // Stage 2: drilldown into the monthly earnings chart view. Local
+      // state to keep the routing self-contained — no App-level
+      // router change needed (pattern from the investigation).
+      const [drilldown, setDrilldown] = useState(null);
 
       const displayName = (userPrefs?.displayName || "").trim();
 
@@ -15646,6 +16038,17 @@ const setDays = (updater) =>
       }, [enrichedDays, filter]);
 
       const heroLabel = filter === 'all' ? 'All-time earnings' : filter === 'taxyear' ? 'Tax year earnings' : 'Year to date';
+
+      // Stage 2: monthly series for the chart drill-down. Reads the
+      // SAME enrichedDays the rest of stats reads — no parallel calc.
+      const monthlySeries = useMemo(
+        () => aggregateMonthly(enrichedDays, productions, userPrefs),
+        [enrichedDays, productions, userPrefs]
+      );
+
+      if (drilldown === 'monthly') {
+        return <MonthlyEarningsView series={monthlySeries} onClose={() => setDrilldown(null)} />;
+      }
 
       // Highest-earning-day bucket breakdown — same colours as the Shoot Total
       // meter. Only renders non-zero buckets.
@@ -15839,6 +16242,24 @@ const setDays = (updater) =>
                     </div>
                   </div>
                 </div>
+
+                {/* Monthly earnings — Stage 2 entry card. Opens the
+                    full-screen chart drill-down. Pre-empts the Activity
+                    section because the chart is a primary view; uses the
+                    TappableCard-style sky border but is a single button
+                    that navigates rather than expanding inline. */}
+                <button
+                  type="button"
+                  onClick={() => setDrilldown('monthly')}
+                  className="w-full mt-3 bg-neutral-900 border border-neutral-800 hover:border-sky-500/60 transition-colors rounded-xl px-5 py-4 text-left flex items-center justify-between gap-3"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                  aria-label="Open monthly earnings chart">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold">Monthly earnings</div>
+                    <div className="text-[13px] text-neutral-400 mt-1.5">Chart + per-month breakdown</div>
+                  </div>
+                  <IChevronRight size={14} className="text-neutral-500 flex-shrink-0"/>
+                </button>
 
                 <SectionHdr>Activity</SectionHdr>
                 <div className="grid grid-cols-2 gap-3">

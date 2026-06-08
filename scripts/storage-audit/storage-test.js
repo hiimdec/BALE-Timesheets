@@ -271,7 +271,17 @@ async function transformedAppCode() {
     'try { globalThis.__aggregateMonthly  = aggregateMonthly;  } catch (_) {}\n' +
     'try { globalThis.__categorizeBreakdownLine = categorizeBreakdownLine; } catch (_) {}\n' +
     'try { globalThis.__computeProductionKitDiscount = computeProductionKitDiscount; } catch (_) {}\n' +
-    'try { globalThis.__todayISO = todayISO; } catch (_) {}\n';
+    'try { globalThis.__todayISO = todayISO; } catch (_) {}\n' +
+    // Monthly earnings chart-view helpers (Y-suite): expose the pure
+    // windowing / clamping / vs-last-year / average helpers so the
+    // suite can verify the chart's data layer without rendering.
+    'try { globalThis.__monthlyAddOffset    = monthlyAddOffset;    } catch (_) {}\n' +
+    'try { globalThis.__monthlyTaxYearOf    = monthlyTaxYearOf;    } catch (_) {}\n' +
+    'try { globalThis.__monthlyWindow       = monthlyWindow;       } catch (_) {}\n' +
+    'try { globalThis.__clampMonthlyAnchor  = clampMonthlyAnchor;  } catch (_) {}\n' +
+    'try { globalThis.__monthlyVsLastYear   = monthlyVsLastYear;   } catch (_) {}\n' +
+    'try { globalThis.__monthlyPercentChange = monthlyPercentChange; } catch (_) {}\n' +
+    'try { globalThis.__monthlyAverage      = monthlyAverage;      } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -2983,6 +2993,206 @@ async function main() {
       check('X14c undefined → empty series',
         Array.isArray(aggregateMonthly(undefined, [], { displayName: 'U' })) &&
         aggregateMonthly(undefined, [], { displayName: 'U' }).length === 0);
+    }
+  }
+
+  // ===== Y. MONTHLY EARNINGS CHART — windowing + vs-last-year =====
+  // The chart view (MonthlyEarningsView) layers over the Stage-1
+  // series. The pure pieces — month math, 12-entry windowing, clamp,
+  // vs-last-year lookup, percent-change with no-divide-by-zero, and
+  // window-average — are verified here. Visual scroll feel is
+  // dogfooded on device.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const addOff = sb.__monthlyAddOffset;
+    const taxYearOf = sb.__monthlyTaxYearOf;
+    const monthlyWindow = sb.__monthlyWindow;
+    const clamp = sb.__clampMonthlyAnchor;
+    const vsLastYear = sb.__monthlyVsLastYear;
+    const pct = sb.__monthlyPercentChange;
+    const avg = sb.__monthlyAverage;
+
+    check('Y0 helpers exposed in sandbox',
+      typeof addOff === 'function' && typeof taxYearOf === 'function' &&
+      typeof monthlyWindow === 'function' && typeof clamp === 'function' &&
+      typeof vsLastYear === 'function' && typeof pct === 'function' &&
+      typeof avg === 'function');
+
+    // ─ Y1: monthlyAddOffset boundary cases ─
+    {
+      check('Y1a addOff("2026-06", 1) → "2026-07"',  addOff('2026-06', 1)  === '2026-07');
+      check('Y1b addOff("2026-12", 1) → "2027-01"',  addOff('2026-12', 1)  === '2027-01');
+      check('Y1c addOff("2026-01", -1) → "2025-12"', addOff('2026-01', -1) === '2025-12');
+      check('Y1d addOff("2026-06", -12) → "2025-06"', addOff('2026-06', -12) === '2025-06');
+      check('Y1e addOff("2026-06", 0) === "2026-06"', addOff('2026-06', 0)  === '2026-06');
+      check('Y1f addOff zero-pads month', addOff('2026-08', 1) === '2026-09' && addOff('2026-09', 1) === '2026-10');
+    }
+
+    // ─ Y2: taxYearOf — Apr Y → Mar Y+1 belongs to year Y ─
+    {
+      check('Y2a Apr 2026 → tax year 2026', taxYearOf('2026-04') === 2026);
+      check('Y2b Mar 2026 → tax year 2025', taxYearOf('2026-03') === 2025);
+      check('Y2c Dec 2026 → tax year 2026', taxYearOf('2026-12') === 2026);
+      check('Y2d Jan 2027 → tax year 2026', taxYearOf('2027-01') === 2026);
+    }
+
+    // ─ Y3: monthlyWindow '12m' — 12 entries ending at anchor, ASC,
+    //   zero-padded for missing months ─
+    {
+      const series = [
+        { month: '2026-04', amount: 100, grossBuckets: { basic: 100, ot: 0, pen: 0, kit: 0, extras: 0 }, kitDiscount: 0, days: 1, shoots: 1, dayTypes: {}, notYetCounted: 0, isCurrentMonth: false },
+        { month: '2026-05', amount: 200, grossBuckets: { basic: 200, ot: 0, pen: 0, kit: 0, extras: 0 }, kitDiscount: 0, days: 1, shoots: 1, dayTypes: {}, notYetCounted: 0, isCurrentMonth: false },
+        { month: '2026-06', amount: 300, grossBuckets: { basic: 300, ot: 0, pen: 0, kit: 0, extras: 0 }, kitDiscount: 0, days: 1, shoots: 1, dayTypes: {}, notYetCounted: 0, isCurrentMonth: true  },
+      ];
+      const win = monthlyWindow(series, '12m', '2026-06');
+      check('Y3a window length is exactly 12', win.length === 12);
+      check('Y3b first month is 2025-07 (12 before 2026-06)', win[0].month === '2025-07');
+      check('Y3c last month is the anchor 2026-06', win[11].month === '2026-06');
+      check('Y3d months are ascending',
+        win.every((e, i) => i === 0 || e.month > win[i - 1].month));
+      // Zero-padded months keep default shape.
+      check('Y3e older months (no series entry) are zero-padded',
+        win[0].amount === 0 && win[0].days === 0 && win[0].shoots === 0 &&
+        Object.values(win[0].grossBuckets).every(v => v === 0));
+      // Real series entries pass through unchanged.
+      check('Y3f real series entries reach the window verbatim',
+        win[9].amount === 100 && win[10].amount === 200 && win[11].amount === 300 &&
+        win[11].isCurrentMonth === true);
+    }
+
+    // ─ Y4: monthlyWindow 'tax' — Apr Y → Mar Y+1, 12 entries ─
+    {
+      const series = [
+        { month: '2026-04', amount: 100, grossBuckets: { basic: 100, ot: 0, pen: 0, kit: 0, extras: 0 }, kitDiscount: 0, days: 0, shoots: 0, dayTypes: {}, notYetCounted: 0, isCurrentMonth: false },
+        { month: '2026-12', amount: 500, grossBuckets: { basic: 500, ot: 0, pen: 0, kit: 0, extras: 0 }, kitDiscount: 0, days: 0, shoots: 0, dayTypes: {}, notYetCounted: 0, isCurrentMonth: false },
+        { month: '2027-03', amount: 700, grossBuckets: { basic: 700, ot: 0, pen: 0, kit: 0, extras: 0 }, kitDiscount: 0, days: 0, shoots: 0, dayTypes: {}, notYetCounted: 0, isCurrentMonth: false },
+      ];
+      const win = monthlyWindow(series, 'tax', 2026);
+      check('Y4a tax-year window length is 12', win.length === 12);
+      check('Y4b starts at 2026-04 (April of anchor year)',
+        win[0].month === '2026-04');
+      check('Y4c ends at 2027-03 (March of anchor+1)',
+        win[11].month === '2027-03');
+      check('Y4d months ascending',
+        win.every((e, i) => i === 0 || e.month > win[i - 1].month));
+      check('Y4e Apr / Dec / Mar amounts pass through',
+        win[0].amount === 100 && win[8].month === '2026-12' && win[8].amount === 500 &&
+        win[11].amount === 700);
+      check('Y4f intermediate months zero-padded',
+        win[5].amount === 0 && win[5].month === '2026-09');
+    }
+
+    // ─ Y5: clampMonthlyAnchor — '12m' mode ─
+    {
+      check('Y5a anchor before earliest → snaps to earliest',
+        clamp('12m', '2024-01', '2025-06', '2026-06') === '2025-06');
+      check('Y5b anchor after current → snaps to current',
+        clamp('12m', '2027-01', '2025-06', '2026-06') === '2026-06');
+      check('Y5c anchor within range → unchanged',
+        clamp('12m', '2026-03', '2025-06', '2026-06') === '2026-03');
+      check('Y5d anchor at earliest → unchanged',
+        clamp('12m', '2025-06', '2025-06', '2026-06') === '2025-06');
+      check('Y5e anchor at current → unchanged',
+        clamp('12m', '2026-06', '2025-06', '2026-06') === '2026-06');
+    }
+
+    // ─ Y6: clampMonthlyAnchor — 'tax' mode ─
+    {
+      check('Y6a tax-year before earliest TY → snaps up',
+        clamp('tax', 2020, '2025-06', '2026-06') === 2025);    // earliestTY = 2025
+      check('Y6b tax-year after current TY → snaps down',
+        clamp('tax', 2030, '2025-06', '2026-06') === 2026);    // currentTY = 2026
+      check('Y6c tax-year within range → unchanged',
+        clamp('tax', 2025, '2025-06', '2026-06') === 2025);
+      // currentTY math: March 2026 → tax year 2025; April 2026 → 2026.
+      check('Y6d March 2026 currentMo → currentTY = 2025',
+        clamp('tax', 2027, '2025-06', '2026-03') === 2025);
+      check('Y6e April 2026 currentMo → currentTY = 2026',
+        clamp('tax', 2027, '2025-06', '2026-04') === 2026);
+    }
+
+    // ─ Y7: monthlyVsLastYear lookup + amount > 0 gate ─
+    {
+      const series = [
+        { month: '2025-04', amount: 1000 },
+        { month: '2025-05', amount: 0    },
+        { month: '2025-06', amount:  500 },
+        { month: '2026-04', amount: 1500 },
+        { month: '2026-05', amount: 1200 },
+        { month: '2026-06', amount:  800 },
+      ];
+      check('Y7a vs-last-year found → returns { month, amount }',
+        JSON.stringify(vsLastYear(series, '2026-04')) ===
+        JSON.stringify({ month: '2025-04', amount: 1000 }));
+      check('Y7b vs-last-year for missing year → null',
+        vsLastYear(series, '2024-01') === null);
+      check('Y7c last-year amount === 0 → null (no fake comparison)',
+        vsLastYear(series, '2026-05') === null);
+      check('Y7d non-array series → null', vsLastYear(null, '2026-04') === null);
+      check('Y7e missing month → null',    vsLastYear(series, null) === null);
+      check('Y7f malformed month → null',  vsLastYear(series, 'not-a-month') === null);
+    }
+
+    // ─ Y8: monthlyPercentChange — gates on previous > 0 ─
+    {
+      check('Y8a normal case (100 → 150) = +50%',
+        pct(150, 100) === 50);
+      check('Y8b decrease (200 → 100) = -50%',
+        pct(100, 200) === -50);
+      check('Y8c previous = 0 → null',
+        pct(100, 0) === null);
+      check('Y8d previous < 0 → null (defensive)',
+        pct(100, -10) === null);
+      check('Y8e previous = null → null',
+        pct(100, null) === null);
+      check('Y8f previous NaN → null',
+        pct(100, NaN) === null);
+      check('Y8g current = previous → 0%',
+        pct(100, 100) === 0);
+    }
+
+    // ─ Y9: monthlyAverage ─
+    {
+      const win = [
+        { amount: 100 }, { amount: 200 }, { amount: 300 },
+      ];
+      check('Y9a sum / length',
+        avg(win) === 200);
+      check('Y9b empty array → 0',
+        avg([]) === 0);
+      check('Y9c null → 0 (defensive)',
+        avg(null) === 0);
+      check('Y9d 12-entry zero window → 0',
+        avg(Array.from({ length: 12 }, () => ({ amount: 0 }))) === 0);
+      // Realistic: a few zero months in a 12-entry window.
+      const realisticWin = [
+        { amount: 0 }, { amount: 0 }, { amount: 5000 }, { amount: 0 },
+        { amount: 3000 }, { amount: 0 }, { amount: 4000 }, { amount: 0 },
+        { amount: 0 }, { amount: 2000 }, { amount: 0 }, { amount: 6000 },
+      ];
+      check('Y9e realistic window: sum 20000 / 12 ≈ 1666.67',
+        Math.abs(avg(realisticWin) - 20000 / 12) < 0.01);
+    }
+
+    // ─ Y10: edge — empty series → window of zero-padded months still
+    //   has length 12 (the view can render with no data) ─
+    {
+      const win = monthlyWindow([], '12m', '2026-06');
+      check('Y10a empty series, 12m anchor → 12 zero entries',
+        win.length === 12 && win.every(e => e.amount === 0 && e.days === 0));
+      const winTax = monthlyWindow([], 'tax', 2026);
+      check('Y10b empty series, tax 2026 → 12 zero entries Apr-Mar',
+        winTax.length === 12 && winTax[0].month === '2026-04' && winTax[11].month === '2027-03');
+    }
+
+    // ─ Y11: null/undefined series defensive ─
+    {
+      const a = monthlyWindow(null, '12m', '2026-06');
+      const b = monthlyWindow(undefined, '12m', '2026-06');
+      check('Y11a null series → length 12 (zero-padded)', a.length === 12);
+      check('Y11b undefined series → length 12 (zero-padded)', b.length === 12);
     }
   }
 
