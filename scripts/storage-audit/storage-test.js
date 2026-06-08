@@ -2083,6 +2083,102 @@ async function main() {
           w.stored === '09:05' && w.writes === 1);
       }
     }
+
+    // ── T8–T12: structural checks for the polish-pass refactor ──
+    // TimeInput was split into TimeTrigger + TimeWheelPanel +
+    // WheelExpand so the CALL/WRAP pair could render the wheel full-
+    // width below the 2-col grid. The no-silent-write contract is
+    // now owned by TimeWheelPanel; verify the lifted code carries
+    // the exact same gates.
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // Helper: slice a function body from source by its declaration.
+    const sliceFn = (decl) => {
+      const start = html.indexOf(decl);
+      if (start === -1) return null;
+      // Generous body window — the assertions only care about pattern
+      // presence within the function's lexical area.
+      return html.slice(start, start + 8000);
+    };
+
+    // T8 — The three components exist as named function declarations.
+    check('T8a source: function TimeTrigger(...) defined',
+      /function TimeTrigger\s*\(/.test(html));
+    check('T8b source: function TimeWheelPanel(...) defined',
+      /function TimeWheelPanel\s*\(/.test(html));
+    check('T8c source: function WheelExpand(...) defined',
+      /function WheelExpand\s*\(/.test(html));
+    check('T8d source: function TimeInput(...) still defined (composer)',
+      /function TimeInput\s*\(/.test(html));
+
+    // T9 — TimeWheelPanel owns the live-write contract.
+    {
+      const body = sliceFn('function TimeWheelPanel(') || '';
+      check('T9a TimeWheelPanel body has programmaticDoneRef gate',
+        /programmaticDoneRef/.test(body));
+      check('T9b TimeWheelPanel body has the `hhmm !== value` guard',
+        /hhmm\s*!==\s*value/.test(body));
+      check('T9c TimeWheelPanel body has the two-rAF positioning gate',
+        /requestAnimationFrame\([\s\S]*requestAnimationFrame/.test(body));
+      check('T9d TimeWheelPanel body has the settle debounce',
+        /setTimeout\s*\(\s*commitFromScroll\s*,/.test(body));
+      check('T9e TimeWheelPanel body has NO Math.round(.../5)*5 snap',
+        !/Math\.round\([^)]*\/\s*5\s*\)\s*\*\s*5/.test(body));
+    }
+
+    // T10 — TimeInput now COMPOSES the wheel; the live-write code
+    // (commitFromScroll / programmaticDoneRef / scroll handlers) has
+    // moved out into TimeWheelPanel. TimeInput's body just renders
+    // TimeTrigger + WheelExpand + TimeWheelPanel.
+    {
+      const body = sliceFn('function TimeInput(') || '';
+      check('T10a TimeInput body references <TimeWheelPanel',
+        /<TimeWheelPanel/.test(body));
+      check('T10b TimeInput body references <TimeTrigger',
+        /<TimeTrigger/.test(body));
+      check('T10c TimeInput body references <WheelExpand',
+        /<WheelExpand/.test(body));
+      check('T10d TimeInput body NO LONGER contains commitFromScroll',
+        !/commitFromScroll/.test(body));
+      check('T10e TimeInput body NO LONGER contains programmaticDoneRef',
+        !/programmaticDoneRef/.test(body));
+    }
+
+    // T11 — WheelExpand is the animated container; its body uses the
+    // CSS classes `.tm-wheel-anim` and `.tm-wheel-anim-open` to drive
+    // the open/close animation, and stays mounted through close so
+    // the collapse animates.
+    {
+      const body = sliceFn('function WheelExpand(') || '';
+      check('T11a WheelExpand body uses tm-wheel-anim class',
+        /tm-wheel-anim/.test(body));
+      check('T11b WheelExpand body uses tm-wheel-anim-open class',
+        /tm-wheel-anim-open/.test(body));
+      check('T11c WheelExpand stays mounted through close (setTimeout … setRender(false))',
+        /setTimeout\([\s\S]*setRender\(false\)/.test(body));
+      // CSS sanity — the animation classes exist in the inline style block.
+      check('T11d source: CSS .tm-wheel-anim rule defined',
+        /\.tm-wheel-anim\s*\{[\s\S]*max-height:\s*0/.test(html));
+      check('T11e source: CSS .tm-wheel-anim-open rule defined',
+        /\.tm-wheel-anim-open\s*\{[\s\S]*max-height:/.test(html));
+    }
+
+    // T12 — DayEntryForm lifts the CALL/WRAP open state and renders
+    // the wheel as a full-width grid item (col-span-2) below the
+    // 2-col tile pair. Single-open at the pair level is enforced by
+    // a single state variable that can only hold one of 'call' /
+    // 'wrap' / null.
+    {
+      check('T12a source: DayEntryForm declares callWrapOpen state',
+        /\[callWrapOpen,\s*setCallWrapOpen\]\s*=\s*useState\(null\)/.test(html));
+      check('T12b source: CALL/WRAP grid renders a col-span-2 WheelExpand',
+        /<WheelExpand\s+open=\{!!callWrapOpen\}\s+className="col-span-2"/.test(html));
+      check('T12c source: the pair WheelExpand wraps a TimeWheelPanel',
+        /<WheelExpand[\s\S]{0,200}<TimeWheelPanel/.test(html));
+      check('T12d source: callWrapOpen value space is `\'call\' | \'wrap\' | null` only',
+        /setCallWrapOpen\(s\s*=>\s*s\s*===\s*'call'\s*\?\s*null\s*:\s*'call'\)/.test(html) &&
+        /setCallWrapOpen\(s\s*=>\s*s\s*===\s*'wrap'\s*\?\s*null\s*:\s*'wrap'\)/.test(html));
+    }
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

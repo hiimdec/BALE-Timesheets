@@ -265,6 +265,27 @@
       border-bottom: 1px solid rgb(64, 64, 64);
       background: rgba(255, 255, 255, 0.025);
     }
+
+    /* WheelExpand — animated open/close container. Stays mounted for
+       the ~220ms collapse animation, then unmounts. Animates max-height
+       + opacity + padding-top so the 8px top gap also collapses.
+       max-height 320px is comfortably above the panel's ~260px so the
+       wheel never clips when open. */
+    .tm-wheel-anim {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      padding-top: 0;
+      transition:
+        max-height 220ms ease,
+        opacity 220ms ease,
+        padding-top 220ms ease;
+    }
+    .tm-wheel-anim-open {
+      max-height: 320px;
+      opacity: 1;
+      padding-top: 8px;
+    }
   </style>
 
 </head>
@@ -5334,59 +5355,81 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       } catch (_) { return false; }
     })();
 
-    // TimeInput. Touch branch: inline 5-min wheel below a button trigger.
-    // Fine-pointer branch: untouched <Input type="time"> (system popover).
+    // ────────────────────────────────────────────────────────────
+    // The wheel is split into three pieces so the CALL/WRAP pair can
+    // render the panel full-width below the 2-column grid (instead of
+    // inside one cell, which left ~half-width dead space). Single-
+    // field call sites (lunch / 2nd-break / pre-call / dateEdit's 5)
+    // keep using the convenience composer `TimeInput`.
+    //
+    //   TimeTrigger     — the button only. Reusable as a tile child.
+    //   TimeWheelPanel  — the wheel UI + the live-write commit gate.
+    //                     ALL no-silent-write logic lives here so it
+    //                     can be reused unchanged across composers.
+    //   WheelExpand     — animated open/close container (~220ms ease
+    //                     on max-height + opacity + padding-top).
+    //                     Stays mounted through the collapse so the
+    //                     animation is visible.
+    //   TimeInput       — single-trigger composer for the 9 non-pair
+    //                     sites. Wraps TimeTrigger + WheelExpand +
+    //                     TimeWheelPanel; owns its own open state +
+    //                     outside-tap document listener. Fine-pointer
+    //                     branch (desktop) still returns the existing
+    //                     <Input type="time"> byte-identically.
+    //
+    // The CALL/WRAP pair in DayEntryForm consumes TimeTrigger +
+    // WheelExpand + TimeWheelPanel DIRECTLY with a shared `openSlot`
+    // state lifted to DayEntryForm, so the panel becomes a third
+    // grid item with col-span-2 and reflows the form below it.
+
+    // TimeTrigger — the click-to-open button. `active` adds the sky
+    // border/ring (matches the previous TimeInput's open state).
+    function TimeTrigger({ value, onClick, disabled, active, className, style }) {
+      const cls = `w-full min-w-0 bg-neutral-950 border text-neutral-100 px-2.5 py-2 font-mono outline-none rounded-lg text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${active ? 'border-sky-500 ring-1 ring-sky-500/40' : 'border-neutral-800'} ${className || ''}`;
+      return (
+        <button type="button" onClick={onClick} disabled={disabled}
+          className={cls}
+          style={{ WebkitAppearance: 'none', WebkitTapHighlightColor: 'transparent', ...style }}
+          aria-label="Open time picker"
+          aria-expanded={!!active}>
+          {value || <span className="text-neutral-500">--:--</span>}
+        </button>
+      );
+    }
+
+    // TimeWheelPanel — the wheel UI + the live-write commit gate.
     //
     // LIVE-WRITE CONTRACT (mirrors the snap-removal / "now" writers'
     // principle — never silently mutate the stored value):
-    //   - Opening writes nothing. Wheel positions to the parsed value
-    //     (or a neutral 09:00 when empty) but a two-rAF gate
-    //     suppresses the initial programmatic scroll's commit.
+    //   - Mounting writes nothing. Wheel positions to the parsed
+    //     value (or 09:00 when empty) but a two-rAF
+    //     `programmaticDoneRef` gate suppresses the initial scroll
+    //     events fired by those scrollTop assignments.
     //   - Scrolling commits on column settle (120ms debounce) ONLY
     //     when the computed HH:MM differs from the current `value`.
-    //   - Done / outside-tap / switching fields just closes the
-    //     wheel — no extra commit.
+    //   - `onClose` is called by the Done button. Outside-tap /
+    //     single-open is owned by the COMPOSER (TimeInput or the
+    //     CALL/WRAP pair).
     //   - Off-grid stored values (e.g. legacy 07:23) keep their
-    //     exact value across open-then-close-without-scrolling.
-    //   - Empty fields stay empty across open-then-close-without-
-    //     scrolling. (The user can land back on 09:00 deliberately;
-    //     that's a one-notch-scroll commit, which is fine.)
-    //
-    // SINGLE-OPEN: each open instance attaches a capture-phase
-    // document-level pointerdown listener; a tap outside its own
-    // container closes it. When the user taps another TimeInput's
-    // button, the first one sees that as outside → closes; React's
-    // onClick on the second button then opens. No shared registry.
-    function TimeInput({ onChange, value, className, style, disabled, ...p }) {
-      if (!HAS_COARSE_POINTER) {
-        return (
-          <Input type="time" value={value} onChange={onChange}
-            className={`min-w-0 ${className || ""}`}
-            style={{ WebkitAppearance: 'none', ...style }}
-            disabled={disabled}
-            {...p} />
-        );
-      }
-      const [open, setOpen] = React.useState(false);
+    //     exact value across mount-then-close-without-scrolling.
+    //   - Empty fields stay empty across mount-then-close-without-
+    //     scrolling. (Minor accepted edge: setting empty to exactly
+    //     the wheel's open default 09:00 is a one-notch-scroll
+    //     operation.)
+    function TimeWheelPanel({ value, onChange, onClose }) {
       const [activeHour, setActiveHour] = React.useState(0);
       const [activeMin,  setActiveMin]  = React.useState(0);
-      const containerRef          = React.useRef(null);
-      const hourScrollRef         = React.useRef(null);
-      const minScrollRef          = React.useRef(null);
-      const programmaticDoneRef   = React.useRef(false);
-      const settleRef             = React.useRef(null);
+      const hourScrollRef       = React.useRef(null);
+      const minScrollRef        = React.useRef(null);
+      const programmaticDoneRef = React.useRef(false);
+      const settleRef           = React.useRef(null);
 
-      // Initial wheel position. Empty / malformed → 09:00 (neutral).
       const defaultIdx = React.useMemo(
         () => parseHHMMIndices(value) || [9, 0],
         [value]
       );
 
-      // Open effect: position both columns, gate scroll commits until
-      // the initial programmatic scroll events have fired and been
-      // ignored (two rAFs). Also attach the outside-tap close.
       React.useEffect(() => {
-        if (!open) return;
         programmaticDoneRef.current = false;
         const [hh, mm] = defaultIdx;
         setActiveHour(hh);
@@ -5397,19 +5440,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         raf1 = requestAnimationFrame(() => {
           raf2 = requestAnimationFrame(() => { programmaticDoneRef.current = true; });
         });
-        const onDocPointerDown = (e) => {
-          if (containerRef.current && !containerRef.current.contains(e.target)) {
-            setOpen(false);
-          }
-        };
-        document.addEventListener('pointerdown', onDocPointerDown, true);
         return () => {
           cancelAnimationFrame(raf1);
           cancelAnimationFrame(raf2);
           clearTimeout(settleRef.current);
-          document.removeEventListener('pointerdown', onDocPointerDown, true);
         };
-      }, [open, defaultIdx]);
+      }, [defaultIdx]);
 
       const commitFromScroll = () => {
         if (!hourScrollRef.current || !minScrollRef.current) return;
@@ -5424,62 +5460,120 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!ref.current) return;
         const idx = Math.round(ref.current.scrollTop / TIME_WHEEL_ITEM_H);
         if (col === 'h') {
-          const clamped = Math.max(0, Math.min(23, idx));
-          if (clamped !== activeHour) setActiveHour(clamped);
+          const c = Math.max(0, Math.min(23, idx));
+          if (c !== activeHour) setActiveHour(c);
         } else {
-          const clamped = Math.max(0, Math.min(11, idx));
-          if (clamped !== activeMin) setActiveMin(clamped);
+          const c = Math.max(0, Math.min(11, idx));
+          if (c !== activeMin) setActiveMin(c);
         }
-        if (!programmaticDoneRef.current) return; // ignore positioning scroll events
+        if (!programmaticDoneRef.current) return;
         clearTimeout(settleRef.current);
         settleRef.current = setTimeout(commitFromScroll, 120);
       };
 
-      const handleClick = () => {
-        if (disabled) return;
-        setOpen(o => !o);
-      };
+      return (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-lg">
+          <div className="relative flex items-center justify-center gap-3 px-4 py-3" style={{ height: 200 }}>
+            <div className="tm-wheel-band" />
+            <div ref={hourScrollRef} className="tm-wheel-col" onScroll={onColScroll('h')} aria-label="Hours">
+              <div style={{ height: 80 }} aria-hidden />
+              {TIME_WHEEL_HOURS.map((h, i) => (
+                <div key={h} className={`tm-wheel-item ${i === activeHour ? 'tm-wheel-item-active' : ''}`}>{h}</div>
+              ))}
+              <div style={{ height: 80 }} aria-hidden />
+            </div>
+            <div className="text-neutral-500 font-mono text-xl select-none pointer-events-none">:</div>
+            <div ref={minScrollRef} className="tm-wheel-col" onScroll={onColScroll('m')} aria-label="Minutes">
+              <div style={{ height: 80 }} aria-hidden />
+              {TIME_WHEEL_MINUTES.map((m, i) => (
+                <div key={m} className={`tm-wheel-item ${i === activeMin ? 'tm-wheel-item-active' : ''}`}>{m}</div>
+              ))}
+              <div style={{ height: 80 }} aria-hidden />
+            </div>
+          </div>
+          <div className="flex justify-end px-3 pb-2.5">
+            <button type="button" onClick={onClose}
+              className="text-[11px] font-bold uppercase tracking-wide text-sky-300 hover:text-sky-100 px-2.5 py-1 rounded-md border border-sky-700 hover:bg-sky-900/40 transition-colors"
+              aria-label="Close time picker">
+              Done
+            </button>
+          </div>
+        </div>
+      );
+    }
 
-      const triggerCls = `w-full min-w-0 bg-neutral-950 border text-neutral-100 px-2.5 py-2 font-mono outline-none rounded-lg text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${open ? 'border-sky-500 ring-1 ring-sky-500/40' : 'border-neutral-800'} ${className || ''}`;
+    // WheelExpand — animated open/close container. Renders nothing
+    // when fully closed; mounts on open + stays mounted through the
+    // 250ms collapse so the children animate out cleanly. The
+    // animation itself is CSS (`.tm-wheel-anim` / `.tm-wheel-anim-open`).
+    function WheelExpand({ open, className, children }) {
+      const [render, setRender] = React.useState(open);
+      const [animOpen, setAnimOpen] = React.useState(open);
+      React.useEffect(() => {
+        if (open) {
+          setRender(true);
+          // One rAF for the browser to register the closed state, then
+          // flip to open so the transition plays from 0 → full.
+          const raf = requestAnimationFrame(() => setAnimOpen(true));
+          return () => cancelAnimationFrame(raf);
+        } else {
+          setAnimOpen(false);
+          // Match the CSS transition duration (220ms) + small buffer.
+          const t = setTimeout(() => setRender(false), 250);
+          return () => clearTimeout(t);
+        }
+      }, [open]);
+      if (!render) return null;
+      return (
+        <div className={`tm-wheel-anim ${animOpen ? 'tm-wheel-anim-open' : ''} ${className || ''}`}>
+          <div className="tm-wheel-anim-inner">
+            {children}
+          </div>
+        </div>
+      );
+    }
 
+    // TimeInput — single-trigger composer for the 9 non-pair sites.
+    // The CALL/WRAP pair in DayEntryForm uses TimeTrigger + WheelExpand
+    // + TimeWheelPanel directly with a shared open state, so the panel
+    // can render full-width below the 2-column grid. Fine pointer
+    // (desktop) → unchanged <Input type="time"> with the system
+    // popover + keyboard entry intact.
+    function TimeInput({ onChange, value, className, style, disabled, ...p }) {
+      if (!HAS_COARSE_POINTER) {
+        return (
+          <Input type="time" value={value} onChange={onChange}
+            className={`min-w-0 ${className || ""}`}
+            style={{ WebkitAppearance: 'none', ...style }}
+            disabled={disabled}
+            {...p} />
+        );
+      }
+      const [open, setOpen] = React.useState(false);
+      const containerRef = React.useRef(null);
+      // Capture-phase document listener: a tap outside the container
+      // closes the wheel. Tapping another TimeInput's button is
+      // "outside" relative to this one → close happens before the
+      // other onClick fires → no two-open state.
+      React.useEffect(() => {
+        if (!open) return;
+        const onDoc = (e) => {
+          if (containerRef.current && !containerRef.current.contains(e.target)) {
+            setOpen(false);
+          }
+        };
+        document.addEventListener('pointerdown', onDoc, true);
+        return () => document.removeEventListener('pointerdown', onDoc, true);
+      }, [open]);
       return (
         <div ref={containerRef} className="relative">
-          <button type="button" onClick={handleClick} disabled={disabled}
-            className={triggerCls}
-            style={{ WebkitAppearance: 'none', WebkitTapHighlightColor: 'transparent', ...style }}
-            aria-label="Open time picker"
-            aria-expanded={open}>
-            {value || <span className="text-neutral-500">--:--</span>}
-          </button>
-          {open && (
-            <div className="mt-2 bg-neutral-900 border border-neutral-800 rounded-lg">
-              <div className="relative flex items-center justify-center gap-3 px-4 py-3" style={{ height: 200 }}>
-                <div className="tm-wheel-band" />
-                <div ref={hourScrollRef} className="tm-wheel-col" onScroll={onColScroll('h')} aria-label="Hours">
-                  <div style={{ height: 80 }} aria-hidden />
-                  {TIME_WHEEL_HOURS.map((h, i) => (
-                    <div key={h} className={`tm-wheel-item ${i === activeHour ? 'tm-wheel-item-active' : ''}`}>{h}</div>
-                  ))}
-                  <div style={{ height: 80 }} aria-hidden />
-                </div>
-                <div className="text-neutral-500 font-mono text-xl select-none pointer-events-none">:</div>
-                <div ref={minScrollRef} className="tm-wheel-col" onScroll={onColScroll('m')} aria-label="Minutes">
-                  <div style={{ height: 80 }} aria-hidden />
-                  {TIME_WHEEL_MINUTES.map((m, i) => (
-                    <div key={m} className={`tm-wheel-item ${i === activeMin ? 'tm-wheel-item-active' : ''}`}>{m}</div>
-                  ))}
-                  <div style={{ height: 80 }} aria-hidden />
-                </div>
-              </div>
-              <div className="flex justify-end px-3 pb-2.5">
-                <button type="button" onClick={() => setOpen(false)}
-                  className="text-[11px] font-bold uppercase tracking-wide text-sky-300 hover:text-sky-100 px-2.5 py-1 rounded-md border border-sky-700 hover:bg-sky-900/40 transition-colors"
-                  aria-label="Close time picker">
-                  Done
-                </button>
-              </div>
-            </div>
-          )}
+          <TimeTrigger value={value}
+            onClick={() => { if (!disabled) setOpen(o => !o); }}
+            disabled={disabled} active={open}
+            className={className} style={style} />
+          <WheelExpand open={open}>
+            <TimeWheelPanel value={value} onChange={onChange} onClose={() => setOpen(false)} />
+          </WheelExpand>
         </div>
       );
     }
@@ -6617,6 +6711,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const set = (patch) => onChange({ ...v, ...patch });
       const [showTravelInfo, setShowTravelInfo] = useState(false);
       const [showPreCallInfo, setShowPreCallInfo] = useState(false);
+      // CALL/WRAP pair: shared open state lifted up here so the wheel
+      // can render full-width below the 2-col grid (no per-cell dead
+      // space). null when both closed; 'call' or 'wrap' when active.
+      // Outside-tap closes via the document listener on the pair's
+      // own containerRef (effect below). Other TimeInputs in this form
+      // (pre-call / lunch / 2nd-break) keep their own per-instance
+      // close behaviour.
+      const [callWrapOpen, setCallWrapOpen] = useState(null);
+      const callWrapRef = useRef(null);
+      useEffect(() => {
+        if (!callWrapOpen) return;
+        const onDoc = (e) => {
+          if (callWrapRef.current && !callWrapRef.current.contains(e.target)) {
+            setCallWrapOpen(null);
+          }
+        };
+        document.addEventListener('pointerdown', onDoc, true);
+        return () => document.removeEventListener('pointerdown', onDoc, true);
+      }, [callWrapOpen]);
 
       const computeNowHHMM = () => {
         // Stamps the EXACT current time. The 5-minute rounding that used
@@ -6836,8 +6949,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   const otThreshold = isElevenHourDay ? 11 : 10;
                   return workHrs > otThreshold;
                 })();
+                // On touch (pointer:coarse), use TimeTrigger + a
+                // full-width TimeWheelPanel as a third grid item with
+                // col-span-2 so the wheel reflows the form below the
+                // pair instead of leaving dead space in the other
+                // cell. On fine-pointer (desktop), TimeInput's web
+                // branch returns the standard <Input type="time">, so
+                // keep that path unchanged — render TimeInput inside
+                // each tile as before.
+                const activeValue = callWrapOpen === 'call' ? (vr.callTime ?? '')
+                                  : callWrapOpen === 'wrap' ? (vr.wrapTime ?? '')
+                                  : '';
+                const onActiveChange = (e) => {
+                  if (callWrapOpen === 'call') onCallChange(e.target.value);
+                  else if (callWrapOpen === 'wrap') set({ wrapTime: e.target.value });
+                };
                 return (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div ref={callWrapRef} className="grid grid-cols-2 gap-3">
                     {/* CALL tile */}
                     <div>
                       <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
@@ -6851,11 +6979,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             >NOW</button>
                           )}
                         </div>
-                        <TimeInput
-                          value={vr.callTime ?? ''}
-                          onChange={(e) => onCallChange(e.target.value)}
-                          className={tileInputCls}
-                        />
+                        {HAS_COARSE_POINTER ? (
+                          <TimeTrigger
+                            value={vr.callTime ?? ''}
+                            onClick={() => setCallWrapOpen(s => s === 'call' ? null : 'call')}
+                            active={callWrapOpen === 'call'}
+                            className={tileInputCls}
+                          />
+                        ) : (
+                          <TimeInput
+                            value={vr.callTime ?? ''}
+                            onChange={(e) => onCallChange(e.target.value)}
+                            className={tileInputCls}
+                          />
+                        )}
                       </div>
                       {callHint && <div className="text-[10px] text-neutral-500 leading-tight mt-1 px-1">{callHint}</div>}
                     </div>
@@ -6872,14 +7009,36 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             >NOW</button>
                           )}
                         </div>
-                        <TimeInput
-                          value={vr.wrapTime ?? ''}
-                          onChange={(e) => set({ wrapTime: e.target.value })}
-                          className={tileInputCls}
-                        />
+                        {HAS_COARSE_POINTER ? (
+                          <TimeTrigger
+                            value={vr.wrapTime ?? ''}
+                            onClick={() => setCallWrapOpen(s => s === 'wrap' ? null : 'wrap')}
+                            active={callWrapOpen === 'wrap'}
+                            className={tileInputCls}
+                          />
+                        ) : (
+                          <TimeInput
+                            value={vr.wrapTime ?? ''}
+                            onChange={(e) => set({ wrapTime: e.target.value })}
+                            className={tileInputCls}
+                          />
+                        )}
                       </div>
                       {wrapHint && <div className="text-[10px] text-neutral-500 leading-tight mt-1 px-1">{wrapHint}</div>}
                     </div>
+                    {/* Touch-only: full-width wheel below the pair.
+                        col-span-2 makes it a grid row spanning both
+                        columns; WheelExpand handles the open/close
+                        animation + keeps mounted through close. */}
+                    {HAS_COARSE_POINTER && (
+                      <WheelExpand open={!!callWrapOpen} className="col-span-2">
+                        <TimeWheelPanel
+                          value={activeValue}
+                          onChange={onActiveChange}
+                          onClose={() => setCallWrapOpen(null)}
+                        />
+                      </WheelExpand>
+                    )}
                   </div>
                 );
               })()}
