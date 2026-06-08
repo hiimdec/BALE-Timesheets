@@ -1406,8 +1406,17 @@
       clients: [],
       onboardingComplete: false,
       lastSeenAppVersion: "",
-      // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off' to hide.
-      comparisonUnit: "Greggs sausage rolls",
+      // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off'
+      // to hide the compare line entirely. Default is 'off' so new users
+      // land on a clean pill (£ amount only) and pick a comparison
+      // deliberately from Settings → Appearance → Pill comparison.
+      // Existing users keep whatever they have stored — merge-over
+      // -defaults means a previously-saved "Greggs sausage rolls" (or any
+      // other explicit pick) survives this change untouched. The
+      // SoloDayPill / displaySummary / dropdown all already understand
+      // the 'off' value (compareLabel = null, displaySummary = 'Off'),
+      // so no other call-site change is needed.
+      comparisonUnit: "off",
       // User-defined comparison item (stats/display only, NOT calc).
       // Shown in the comparison pool ONLY when label is non-empty AND
       // price > 0; otherwise hidden entirely (no blank/zero row).

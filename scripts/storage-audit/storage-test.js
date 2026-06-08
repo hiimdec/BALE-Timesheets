@@ -3733,6 +3733,59 @@ async function main() {
       'no-op write differed from prior state');
   }
 
+  // ===== BB. PILL COMPARISON DEFAULT — "off" by default =====
+  // The SoloDayPill's compare line (e.g. "= 1,234 Greggs sausage rolls"
+  // under the £ amount) is now hidden by default for new users; they
+  // pick a comparison deliberately from Settings → Appearance → Pill
+  // comparison if they want one. DEFAULT_USER_PREFS.comparisonUnit
+  // flipped from "Greggs sausage rolls" to "off"; merge-over-defaults
+  // means any existing user's stored value is preserved untouched.
+  //
+  // Two-axis check:
+  //   1) source-presence — the literal in DEFAULT_USER_PREFS is "off"
+  //      (catches typos like "OFF", whitespace, or accidental reversion).
+  //   2) runtime — a clean sandbox's __DEFAULT_USER_PREFS reads "off",
+  //      and an imported backup with a non-"off" pick survives the
+  //      merge unscathed (existing explicit selections untouched rule).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    check('BB1 DEFAULT_USER_PREFS.comparisonUnit literal is "off" in source',
+      html.includes('comparisonUnit: "off"'),
+      'expected substring `comparisonUnit: "off"` in index.html');
+    check('BB2 the previous "Greggs sausage rolls" default is no longer assigned to comparisonUnit',
+      !html.includes('comparisonUnit: "Greggs sausage rolls"'),
+      'the old default is back — should be "off"');
+
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const defaults = sb.__DEFAULT_USER_PREFS;
+    check('BB3 runtime DEFAULT_USER_PREFS.comparisonUnit === "off"',
+      defaults && defaults.comparisonUnit === 'off',
+      `got=${defaults && defaults.comparisonUnit}`);
+
+    // BB4-5 — merge-over-defaults preserves an existing user's explicit
+    // choice. A backup carrying a non-"off" comparisonUnit must NOT be
+    // overwritten back to the new default. This is the load-bearing
+    // guarantee: existing users keep whatever they picked (incl. the
+    // historical "Greggs sausage rolls" if that's what they actually
+    // chose), only NEW users see the clean default.
+    const payload = JSON.stringify({
+      version: 1,
+      schemaVersion: 3,
+      productions: [],
+      userPrefs: { comparisonUnit: 'pints in London' },
+    });
+    const r = sb.__importBackup(payload);
+    check('BB4 importBackup ok',
+      r && r.ok === true,
+      `result=${JSON.stringify(r)}`);
+    const stored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('BB5 existing explicit pick survives the default flip',
+      stored && stored.comparisonUnit === 'pints in London',
+      `stored=${stored && stored.comparisonUnit}`);
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.
