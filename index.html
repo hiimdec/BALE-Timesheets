@@ -977,6 +977,23 @@
         const H = _hapticsReady();
         if (H) { try { H.notification({ type: 'SUCCESS' }); } catch (_) {} }
       },
+      // Double-heavy "stamp" — heavy(), then ~70ms later heavy() again.
+      // Reserved for the Wrap-now action ONLY (every Wrap site uses this;
+      // Call and Lunch stay single heavy()). Fire-and-forget — the
+      // setTimeout doesn't await. Re-evaluates _hapticsReady() inside the
+      // timer in case the user toggled hapticsEnabled in the 70ms window,
+      // so the second tap respects the master switch exactly like the
+      // first one.
+      stamp() {
+        const H = _hapticsReady();
+        if (!H) return;
+        try { H.impact({ style: 'HEAVY' }); } catch (_) {}
+        setTimeout(() => {
+          const H2 = _hapticsReady();
+          if (!H2) return;
+          try { H2.impact({ style: 'HEAVY' }); } catch (_) {}
+        }, 70);
+      },
     };
 
     // Render an already-mounted print container to a multi-page A4 PDF and return
@@ -7189,7 +7206,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const renderChip = (key, label, isSet, summary) => (
         <button
           type="button"
-          onClick={() => toggleChip(key)}
+          onClick={() => {
+            // Phase B haptic: closing a chip that has an active (non-empty)
+            // entry fires light — the "you sealed in a value" feedback.
+            // Opening is silent (nothing's been committed yet), and closing
+            // an empty chip is silent too (nothing to seal). The check is
+            // BEFORE toggleChip(), since toggleChip mutates the set.
+            if (expandedChips.has(key) && isSet) haptic.light();
+            toggleChip(key);
+          }}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
             isSet
               ? 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]'
@@ -7303,7 +7328,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           {isToday && (
                             <button
                               type="button"
-                              onClick={() => { const t = computeNowHHMM(); onCallChange(t); showToast?.(`Call ${t}`); }}
+                              onClick={() => { haptic.heavy(); const t = computeNowHHMM(); onCallChange(t); showToast?.(`Call ${t}`); }}
                               className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded"
                             >NOW</button>
                           )}
@@ -7333,7 +7358,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           {isToday && (
                             <button
                               type="button"
-                              onClick={() => { const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); }}
+                              onClick={() => { haptic.stamp(); const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); }}
                               className="text-[9px] tracking-[0.1em] font-bold uppercase bg-tm-warn/15 text-tm-warn px-1.5 py-0.5 rounded"
                             >NOW</button>
                           )}
@@ -7456,7 +7481,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           {isToday && dur !== 0 ? (
                             <button
                               type="button"
-                              onClick={() => { const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
+                              onClick={() => { haptic.heavy(); const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
                               className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded"
                             >NOW</button>
                           ) : <span />}
@@ -9106,7 +9131,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const doWrap = () => {
         // Stamps the EXACT current time — see computeNowHHMM for the
         // rationale. The wrapped flag, field write, day-match all stay.
-        haptic.heavy();
+        // Wrap gets the double-heavy stamp() across every site (main
+        // hero, dept-defaults, and the solo editor's NOW button) so the
+        // end-of-day moment feels bigger than Call/Lunch.
+        haptic.stamp();
         const now = new Date();
         const wrapStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr, wrapped: true } : d));
@@ -10026,7 +10054,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 showToast?.(`Lunch set to ${t}`);
               };
               const handleWrapNow = () => {
-                haptic.heavy();
+                haptic.stamp();
                 const t = nowHHMM();
                 setProduction(p => setDayDefault(p, currentDate, 'wrapTime', t));
                 showToast?.(`Wrap set to ${t}`);
@@ -15851,7 +15879,7 @@ const setDays = (updater) =>
                         <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">{row.label}</div>
                         <div className="flex gap-1.5">
                           {row.opts.map(o => (
-                            <button key={o.v} type="button" onClick={() => { haptic.selectionChanged(); set({ [row.key]: o.v }); }}
+                            <button key={o.v} type="button" onClick={() => { haptic.light(); set({ [row.key]: o.v }); }}
                               className={`flex-1 px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${userPrefs[row.key] === o.v ? 'border-sky-500 bg-sky-500/15 text-sky-300' : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700'}`}>
                               {o.l}
                             </button>
@@ -16134,7 +16162,7 @@ const setDays = (updater) =>
             {/* Mode segmented control */}
             <div className="flex bg-neutral-900 border border-neutral-800 rounded-lg p-0.5 gap-0.5 mb-2.5">
               {[['12m', '12 Months'], ['tax', 'Tax Year']].map(([k, l]) => (
-                <button key={k} type="button" onClick={() => { haptic.selectionChanged(); setMode(k); setSel(null); }}
+                <button key={k} type="button" onClick={() => { haptic.light(); setMode(k); setSel(null); }}
                   className={`flex-1 text-[12px] font-semibold py-1.5 rounded-md transition-colors ${mode === k ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200'}`}
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
                   {l}
@@ -16720,7 +16748,7 @@ const setDays = (updater) =>
                 {[['all', 'All time'], ['taxyear', 'Tax year'], ['ytd', 'Year to date']].map(([k, l]) => {
                   const active = filter === k;
                   return (
-                    <button key={k} onClick={() => { haptic.selectionChanged(); setFilter(k); setExpandedStat(null); setShowAllMonths(false); }}
+                    <button key={k} onClick={() => { haptic.light(); setFilter(k); setExpandedStat(null); setShowAllMonths(false); }}
                       className={`inline-flex items-baseline gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wider whitespace-nowrap border transition-colors ${active ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-tm-card-2 border-neutral-700 text-neutral-400'}`}
                       style={{ WebkitTapHighlightColor: 'transparent' }}>
                       {l}

@@ -3921,10 +3921,17 @@ async function main() {
     // ─ DD1: helper shape ─
     check('DD1a haptic helper declared',
       /const haptic\s*=\s*\{/.test(html));
-    for (const method of ['selectionStart', 'selectionChanged', 'selectionEnd', 'light', 'medium', 'heavy', 'success']) {
+    for (const method of ['selectionStart', 'selectionChanged', 'selectionEnd', 'light', 'medium', 'heavy', 'success', 'stamp']) {
       check(`DD1b haptic.${method}() defined`,
         new RegExp(`${method}\\s*\\(\\s*\\)\\s*\\{`).test(html));
     }
+    // DD1c — stamp() fires heavy(), then setTimeout(heavy()) at ~70ms.
+    // The second tap re-evaluates _hapticsReady() so a mid-stamp toggle
+    // off respects the master switch.
+    check('DD1c haptic.stamp() = heavy() + setTimeout(heavy(), 70)',
+      /stamp\(\)\s*\{[\s\S]*?H\.impact\(\{ style: 'HEAVY' \}\)[\s\S]*?setTimeout\([\s\S]*?H2\.impact\(\{ style: 'HEAVY' \}\)[\s\S]*?,\s*70\s*\)/.test(html));
+    check('DD1d haptic.stamp() re-evaluates _hapticsReady() inside the setTimeout (mid-stamp toggle-off)',
+      /setTimeout\(\(\)\s*=>\s*\{[\s\S]{0,80}const H2 = _hapticsReady\(\)/.test(html));
 
     // ─ DD2: no-op gates ─
     //   (a) module-scoped _hapticsPrefs.enabled gate (user-toggle off)
@@ -3935,12 +3942,16 @@ async function main() {
       /const\s*\{\s*Haptics\s*\}\s*=\s*_capPlugins\(\)/.test(html) &&
       /return\s+Haptics\s*\|\|\s*null/.test(html));
     check('DD2c every helper method goes through _hapticsReady()',
-      // Each method's body should call _hapticsReady() and gate on a non-null H.
-      (html.match(/const H = _hapticsReady\(\);/g) || []).length >= 7,
-      `_hapticsReady() calls=${(html.match(/const H = _hapticsReady\(\);/g) || []).length}`);
+      // Each method's body has `const H = _hapticsReady();` (8 methods).
+      // stamp() ALSO has `const H2 = _hapticsReady();` inside its
+      // setTimeout, so >= 8 catches a missing gate on any of them.
+      (html.match(/const H = _hapticsReady\(\);/g) || []).length >= 8,
+      `const H = _hapticsReady() calls=${(html.match(/const H = _hapticsReady\(\);/g) || []).length}`);
     check('DD2d every helper method wraps the plugin call in try/catch',
-      // Each method has a `try { H.<plugin call>(); } catch (_) {}` shape.
-      (html.match(/try\s*\{\s*H\./g) || []).length >= 7);
+      // Each method has a `try { H.<plugin call>(); } catch (_) {}` shape;
+      // stamp() has 2 (heavy + setTimeout heavy with H2). 8 + 1 = 9.
+      (html.match(/try\s*\{\s*H\d?\./g) || []).length >= 9,
+      `try{H...} calls=${(html.match(/try\s*\{\s*H\d?\./g) || []).length}`);
 
     // ─ DD3: Tailwind/native plugin map — each helper method calls the
     //   correct Haptics plugin method (case + arg shape matters because
@@ -3976,23 +3987,62 @@ async function main() {
     check('DD4d time-wheel selectionEnd inside the settle timeout',
       /haptic\.selectionEnd\(\);[\s\S]{0,40}startedRef\.current = false;/.test(html));
 
-    // 4c — Segmented selections: Stats filter pills + Monthly mode toggle.
-    check('DD4e Stats filter pills call haptic.selectionChanged()',
-      html.includes('haptic.selectionChanged(); setFilter(k)'));
-    check('DD4f Monthly Earnings 12m/tax toggle calls haptic.selectionChanged()',
-      html.includes('haptic.selectionChanged(); setMode(k); setSel(null);'));
-    check('DD4g Celebration segmented (emoji/intensity/speed) calls haptic.selectionChanged()',
-      html.includes('haptic.selectionChanged(); set({ [row.key]: o.v });'));
+    // 4c — Segmented selections use haptic.light() (NOT selectionChanged),
+    //   because tap-only sites need a primed generator on iOS — a cold
+    //   selectionChanged() silently no-ops. light() is the same reliable
+    //   impact the Toggle component already uses.
+    check('DD4e Stats filter pills call haptic.light()',
+      html.includes('haptic.light(); setFilter(k)'));
+    check('DD4f Monthly Earnings 12m/tax toggle calls haptic.light()',
+      html.includes('haptic.light(); setMode(k); setSel(null);'));
+    check('DD4g Celebration segmented (emoji/intensity/speed) calls haptic.light()',
+      html.includes('haptic.light(); set({ [row.key]: o.v });'));
+    check('DD4g2 segmented sites NO LONGER fire haptic.selectionChanged() (cold-tap regression guard)',
+      !html.includes('haptic.selectionChanged(); setFilter(k)') &&
+      !html.includes('haptic.selectionChanged(); setMode(k); setSel(null);') &&
+      !html.includes('haptic.selectionChanged(); set({ [row.key]: o.v });'));
 
-    // 4d — Now-buttons → heavy.
-    check('DD4h doWrap fires haptic.heavy()',
-      /const doWrap = \(\) => \{[\s\S]{0,200}haptic\.heavy\(\);/.test(html));
-    check('DD4i doLunch fires haptic.heavy()',
+    // 4d — Now-buttons.
+    //   Wrap (every site) → stamp() (double-heavy).
+    //   Lunch (every site) → heavy().
+    //   Call (solo editor only — main screen has no Call-now button) → heavy().
+    check('DD4h main doWrap (WrapNowBtn) fires haptic.stamp()',
+      /const doWrap = \(\) => \{[\s\S]{0,500}haptic\.stamp\(\);/.test(html));
+    check('DD4i main doLunch (LunchNowBtn) fires haptic.heavy()',
       /const doLunch = \(\) => \{[\s\S]{0,200}haptic\.heavy\(\);/.test(html));
-    check('DD4j handleLunchNow (dept defaults) fires haptic.heavy()',
+    check('DD4j dept-defaults handleLunchNow fires haptic.heavy()',
       /const handleLunchNow = \(\) => \{\s*haptic\.heavy\(\);/.test(html));
-    check('DD4k handleWrapNow (dept defaults) fires haptic.heavy()',
-      /const handleWrapNow = \(\) => \{\s*haptic\.heavy\(\);/.test(html));
+    check('DD4k dept-defaults handleWrapNow fires haptic.stamp()',
+      /const handleWrapNow = \(\) => \{\s*haptic\.stamp\(\);/.test(html));
+
+    // 4d2 — Solo day editor's Call / Wrap / Lunch NOW buttons.
+    //   These three were missed in the initial Phase B wire-up. They
+    //   live in the per-day form (Call tile + Wrap tile + Lunch tile),
+    //   each rendered only when isToday so the NOW chip is present
+    //   only on today's day.
+    check('DD4o solo editor Call NOW fires haptic.heavy()',
+      html.includes('haptic.heavy(); const t = computeNowHHMM(); onCallChange(t);'));
+    check('DD4p solo editor Wrap NOW fires haptic.stamp()',
+      html.includes("haptic.stamp(); const t = computeNowHHMM(); set({ wrapTime: t });"));
+    check('DD4q solo editor Lunch NOW fires haptic.heavy()',
+      html.includes("haptic.heavy(); const t = computeNowHHMM(); set({ lunchStartTime: t });"));
+
+    // 4d3 — every Wrap site uses stamp() (cross-check: no Wrap site
+    //   leaks back to plain heavy()). The 3 Wrap sites are the only
+    //   stamp() call sites.
+    const stampCallCount = (html.match(/haptic\.stamp\(\)/g) || []).length;
+    check('DD4r exactly 3 haptic.stamp() call sites (main doWrap + dept handleWrapNow + solo Wrap NOW)',
+      stampCallCount === 3,
+      `haptic.stamp() call sites=${stampCallCount}`);
+
+    // 4e — Solo editor chips (kit money / pre-call / mileage / travel
+    //   time / per diem / step-up / expenses). On CLOSE only, AND only
+    //   when the chip has a non-empty entry (isSet truthy), fire
+    //   haptic.light(). The check sits BEFORE toggleChip() because
+    //   toggleChip mutates expandedChips. Opening or closing-empty
+    //   stays silent (no buzz on "I dismissed an empty chip").
+    check('DD4s chip onClick: closing AND isSet fires haptic.light() before toggleChip',
+      /if \(expandedChips\.has\(key\) && isSet\) haptic\.light\(\);[\s\S]{0,80}toggleChip\(key\);/.test(html));
 
     // 4e — Destructive confirm → medium.
     check('DD4l ConfirmDialog danger tone fires haptic.medium() before onConfirm',
