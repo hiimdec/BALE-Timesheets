@@ -239,7 +239,11 @@ async function transformedAppCode() {
     // null-on-empty / null-on-unlinked, plus the apply path's selective
     // patching (only the diverged fields change; other clients untouched).
     'try { globalThis.__detectClientUpdate = detectClientUpdate; } catch (_) {}\n' +
-    'try { globalThis.__applyClientUpdate  = applyClientUpdate;  } catch (_) {}\n';
+    'try { globalThis.__applyClientUpdate  = applyClientUpdate;  } catch (_) {}\n' +
+    // Native time-picker (B1): expose isoToHHMM so the S-suite can
+    // verify token-level parsing of the picker's returned string
+    // bypasses any Date / timezone interpretation.
+    'try { globalThis.__isoToHHMM = isoToHHMM; } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -1803,6 +1807,156 @@ async function main() {
       const out = buildHHMMFromNow(Mock);
       check(`R10.${++n} doWrap/doLunch wrapStr formula(${v.label}) → '${v.expect}'`,
         out === v.expect, `got=${out}`);
+    }
+  }
+
+  // ===== S. NATIVE 5-MIN TIME PICKER — TimeInput branch + isoToHHMM =====
+  // The TimeInput component is branched: web keeps <Input type="time">,
+  // iOS opens @capawesome-team/capacitor-datetime-picker in time mode
+  // with minuteInterval:5. The plugin must NEVER enter the web bundle —
+  // only reachable via a dynamic import inside the IS_NATIVE branch.
+  // isoToHHMM reads the HH:MM tokens directly from the plugin's
+  // returned string, bypassing Date / timezone parsing.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // S1 — source: isoToHHMM helper exists.
+    check('S1 source: isoToHHMM helper is defined',
+      /const isoToHHMM = /.test(html));
+
+    // Boot the sandbox to pick up the exposed helper.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const isoToHHMM = sb.__isoToHHMM;
+    check('S2 isoToHHMM: exposed in sandbox',
+      typeof isoToHHMM === 'function',
+      `typeof=${typeof isoToHHMM}`);
+    check('S3 isoToHHMM: function callable',
+      typeof isoToHHMM === 'function');
+
+    if (typeof isoToHHMM === 'function') {
+      // S4 — empty / null / non-string → '' (defensive).
+      check('S4a isoToHHMM(""): empty string', isoToHHMM('') === '');
+      check('S4b isoToHHMM(null): null',       isoToHHMM(null) === '');
+      check('S4c isoToHHMM(undefined): undef', isoToHHMM(undefined) === '');
+      check('S4d isoToHHMM(123): number',      isoToHHMM(123) === '');
+
+      // S5 — the timezone-shift case the helper exists to PREVENT.
+      // The plugin's default format is `yyyy-MM-dd'T'HH:mm:ss.sss'Z'` —
+      // the trailing 'Z' is a literal char per Java DateFormat syntax,
+      // NOT a UTC indicator. The HH:MM tokens reflect the user's local
+      // pick. If we naively did `new Date(iso).getHours()` we'd get a
+      // timezone-shifted value when the host JS engine interprets the
+      // string as UTC. The helper reads tokens directly via regex.
+      const offGridIso = '2026-06-08T07:23:00.000Z';
+      const viaDate = new Date(offGridIso); // host parses as UTC
+      const dateHours = viaDate.getHours(); // local-shifted
+      const dateMins  = viaDate.getMinutes();
+      // The helper MUST return '07:23' regardless of host timezone.
+      check('S5a isoToHHMM("2026-06-08T07:23:00.000Z") === "07:23"',
+        isoToHHMM(offGridIso) === '07:23',
+        `got=${isoToHHMM(offGridIso)}`);
+      check('S5b isoToHHMM result is independent of timezone shift',
+        // If the helper had used Date parsing, the result would have
+        // depended on the host's local offset and could have differed
+        // from '07:23' (e.g. '08:23' in BST). The helper bypasses this.
+        isoToHHMM(offGridIso) === '07:23' &&
+          isoToHHMM(offGridIso) !== `${String(dateHours).padStart(2, '0')}:${String(dateMins).padStart(2, '0')}`
+          || (dateHours === 7 && dateMins === 23),  // tolerate UTC test hosts
+        `helper=07:23, date-getHours=${dateHours}:${dateMins}`);
+
+      // S6 — on-the-5 sample (the picker can only return 5-min steps,
+      // but the helper itself doesn't care about granularity).
+      check('S6a isoToHHMM on-grid 19:05', isoToHHMM('2026-06-08T19:05:00.000Z') === '19:05');
+      check('S6b isoToHHMM on-grid 12:30', isoToHHMM('2026-06-08T12:30:00.000Z') === '12:30');
+
+      // S7 — edge times.
+      check('S7a isoToHHMM midnight 00:00',
+        isoToHHMM('2026-06-08T00:00:00.000Z') === '00:00');
+      check('S7b isoToHHMM end-of-day 23:59',
+        isoToHHMM('2026-06-08T23:59:00.000Z') === '23:59');
+      check('S7c isoToHHMM single-digit padding 09:00',
+        isoToHHMM('2026-06-08T09:00:00.000Z') === '09:00');
+      check('S7d isoToHHMM off-grid 12:07 (would have been snapped)',
+        isoToHHMM('2026-06-08T12:07:00.000Z') === '12:07');
+
+      // S8 — fractional / extra precision / no Z (defensive).
+      check('S8a isoToHHMM accepts varying second / ms precision',
+        isoToHHMM('2026-06-08T07:23:45.123Z') === '07:23');
+      check('S8b isoToHHMM accepts no trailing Z',
+        isoToHHMM('2026-06-08T07:23:00') === '07:23');
+      // Garbage in → empty out (no crash, no half-result).
+      check('S8c isoToHHMM("not a date") → ""',
+        isoToHHMM('not a date') === '');
+      check('S8d isoToHHMM("07:23 standalone") → ""  (no T separator)',
+        isoToHHMM('07:23 standalone') === '');
+    }
+
+    // S9 — package.json lists the plugin at v8.x.x.
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const plugVer = pkg.dependencies && pkg.dependencies['@capawesome-team/capacitor-datetime-picker'];
+    check('S9 package.json: @capawesome-team/capacitor-datetime-picker present',
+      typeof plugVer === 'string' && plugVer.length > 0,
+      `plugVer=${plugVer}`);
+    check('S9b package.json: plugin version is on the Capacitor-8 line',
+      plugVer && /\b8\./.test(plugVer),
+      `plugVer=${plugVer}`);
+
+    // S10 — source: the plugin import is DYNAMIC, not a top-level static
+    // import. A top-level `import { ... } from '@capawesome-team/...'`
+    // would inline the plugin module into the bundle, breaking
+    // audit:web. Search for both shapes.
+    const staticImportRe = /^\s*import\s.+from\s+['"]@capawesome-team\/capacitor-datetime-picker['"]/m;
+    const dynamicImportRe = /import\(['"]@capawesome-team\/capacitor-datetime-picker['"]\)/;
+    check('S10a source: NO static import of the plugin',
+      !staticImportRe.test(html),
+      `static-import found: ${staticImportRe.test(html)}`);
+    check('S10b source: dynamic import() of the plugin IS present',
+      dynamicImportRe.test(html),
+      `dynamic-import found: ${dynamicImportRe.test(html)}`);
+
+    // S11 — the dynamic import sits INSIDE an IS_NATIVE-gated handler,
+    // not at module scope. We verify structurally: the import() call
+    // must be lexically inside a function body that itself is inside
+    // the TimeInput definition.
+    const tiStart = html.indexOf('const TimeInput =');
+    const tiEnd   = html.indexOf('\n    };', tiStart);
+    const tiBody  = (tiStart !== -1 && tiEnd !== -1) ? html.slice(tiStart, tiEnd) : '';
+    check('S11a TimeInput body contains the dynamic import',
+      /import\(['"]@capawesome-team\/capacitor-datetime-picker['"]\)/.test(tiBody),
+      `tiBody has dynamic-import? ${/import\(['"]@capawesome-team/.test(tiBody)}`);
+    check('S11b TimeInput body branches on IS_NATIVE before the import',
+      /if\s*\(\s*!IS_NATIVE\s*\)/.test(tiBody) || /if\s*\(\s*IS_NATIVE\s*\)/.test(tiBody),
+      `IS_NATIVE gate present? ${/IS_NATIVE/.test(tiBody)}`);
+    // The early-return for the web branch must lexically PRECEDE the
+    // dynamic import.
+    const webBranchIdx     = tiBody.search(/if\s*\(\s*!IS_NATIVE\s*\)\s*\{[\s\S]*?return\s*\(/);
+    const dynamicImportIdx = tiBody.search(/import\(['"]@capawesome-team/);
+    check('S11c web-branch early-return precedes the dynamic import',
+      webBranchIdx !== -1 && dynamicImportIdx !== -1 && webBranchIdx < dynamicImportIdx,
+      `web@${webBranchIdx}, import@${dynamicImportIdx}`);
+
+    // S12 — web bundle is clean: the dist bundle must NOT contain the
+    // plugin's module code (only the import-string sentinel left by
+    // the lazy call site is acceptable; the audit:web suite already
+    // verifies Capacitor isn't defined on web, this complements it).
+    const distPath = path.join(ROOT, 'dist', 'assets', 'app.js');
+    if (fs.existsSync(distPath)) {
+      const dist = fs.readFileSync(distPath, 'utf8');
+      // Any reference to the plugin must be inside an import() call —
+      // not a destructured top-level binding.
+      const distStatic = staticImportRe.test(dist);
+      check('S12a dist: no static import of the plugin in the web bundle',
+        !distStatic);
+      // Confirm we count exactly one occurrence and it's the dynamic
+      // import string. More would imply inlined module code.
+      const occ = (dist.match(/@capawesome-team\/capacitor-datetime-picker/g) || []).length;
+      check('S12b dist: exactly one mention of the plugin name (the lazy import sentinel)',
+        occ === 1, `occurrences=${occ}`);
+    } else {
+      check('S12 dist: skipped — dist/assets/app.js missing (run `npm run build`)',
+        true);
     }
   }
 
