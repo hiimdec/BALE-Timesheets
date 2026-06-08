@@ -264,7 +264,14 @@ async function transformedAppCode() {
     'try { globalThis.__isOverdueSent       = isOverdueSent;       } catch (_) {}\n' +
     'try { globalThis.__unpaidSortKey       = unpaidSortKey;       } catch (_) {}\n' +
     'try { globalThis.__paidMonthKey        = paidMonthKey;        } catch (_) {}\n' +
-    'try { globalThis.__partitionInvoiceList = partitionInvoiceList; } catch (_) {}\n';
+    'try { globalThis.__partitionInvoiceList = partitionInvoiceList; } catch (_) {}\n' +
+    // Monthly earnings (X-suite): expose aggregateMonthly + the
+    // calc-line categoriser + the kit-discount + day-resolver helpers
+    // so the suite can build fixtures that exercise the full path.
+    'try { globalThis.__aggregateMonthly  = aggregateMonthly;  } catch (_) {}\n' +
+    'try { globalThis.__categorizeBreakdownLine = categorizeBreakdownLine; } catch (_) {}\n' +
+    'try { globalThis.__computeProductionKitDiscount = computeProductionKitDiscount; } catch (_) {}\n' +
+    'try { globalThis.__todayISO = todayISO; } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -2630,6 +2637,352 @@ async function main() {
       const r = partition(items, todayMs, null);
       check('W14 missing totalFn → group totals are 0',
         r.paidGroups[0].total === 0 && r.paidGroups[0].items.length === 2);
+    }
+  }
+
+  // ===== X. MONTHLY EARNINGS AGGREGATION — aggregateMonthly =====
+  // Reads enrichedDays (the same shape StatsScreen's reducer produces:
+  // { day, resolved, production, crew, calc }) and returns a continuous
+  // ascending series with per-month totals, buckets, days, shoots,
+  // dayTypes, kit-discount, notYetCounted, and isCurrentMonth.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const aggregateMonthly = sb.__aggregateMonthly;
+    const categorize       = sb.__categorizeBreakdownLine;
+    const computeKitDisc   = sb.__computeProductionKitDiscount;
+    const todayISO         = sb.__todayISO;
+
+    check('X0 helpers exposed in sandbox',
+      typeof aggregateMonthly === 'function' &&
+      typeof categorize === 'function' &&
+      typeof computeKitDisc === 'function' &&
+      typeof todayISO === 'function');
+
+    const currentMo = todayISO().slice(0, 7);
+
+    // ─ Fixture factories (no real calcForDisplay — the helper reads
+    // only calc.total / calc.lines / calc.meta.dayType, so we can
+    // construct synthetic enriched-day objects directly). ─
+    const mkLine = (label, amount, bucket) => bucket
+      ? { label, amount, bucket }
+      : { label, amount };
+    const mkEnriched = (pid, date, dayType, lines, prodOverride) => ({
+      day:        { date, crewId: 'c1' },
+      resolved:   { callTime: '08:00', wrapTime: '19:00' },
+      production: prodOverride || { id: pid, kitDeals: [], crew: [{ id: 'c1', name: 'U' }],
+                                     bestBoyMode: false, days: [], iAmCrewId: 'c1' },
+      crew:       { id: 'c1' },
+      calc: {
+        total: lines.reduce((s, l) => s + l.amount, 0),
+        meta: { dayType },
+        lines,
+      },
+    });
+
+    // ─ X1: month key = day.date.slice(0,7). ─
+    {
+      const ed = [
+        mkEnriched('p1', '2024-03-04', 'Shoot', [mkLine('BDR', 400)]),
+        mkEnriched('p1', '2024-04-15', 'Shoot', [mkLine('BDR', 500)]),
+        mkEnriched('p1', '2024-12-31', 'Shoot', [mkLine('BDR', 600)]),
+      ];
+      const series = aggregateMonthly(ed, [], { displayName: 'U' });
+      const months = series.map(s => s.month);
+      check('X1a months derived from day.date.slice(0,7)',
+        months.includes('2024-03') && months.includes('2024-04') && months.includes('2024-12'));
+      check('X1b month keys are "YYYY-MM" strings',
+        series.every(s => /^\d{4}-\d{2}$/.test(s.month)));
+    }
+
+    // ─ X2: per month, amount === sum(grossBuckets) − kitDiscount. ─
+    // ─ X4: bucket sums correct via categorizeBreakdownLine. ─
+    {
+      const ed = [
+        mkEnriched('p1', '2024-03-04', 'Shoot', [
+          mkLine('BDR',        444),         // basic
+          mkLine('OT (1.5×)',  100),         // ot
+          mkLine('Late lunch', 25),          // pen
+          mkLine('Kit',        50, 'kit'),   // kit (via bucket marker)
+          mkLine('Per diem',   30),          // extras
+        ]),
+        mkEnriched('p1', '2024-03-05', 'Shoot', [
+          mkLine('BDR',        444),
+          mkLine('Travel time', 20),         // extras
+        ]),
+      ];
+      const series = aggregateMonthly(ed, [], { displayName: 'U' });
+      const mar = series.find(s => s.month === '2024-03');
+      check('X4a basic bucket = 888 (2×£444)',
+        mar.grossBuckets.basic === 888);
+      check('X4b ot bucket = 100',
+        mar.grossBuckets.ot === 100);
+      check('X4c pen bucket = 25',
+        mar.grossBuckets.pen === 25);
+      check('X4d kit bucket = 50 (via bucket marker)',
+        mar.grossBuckets.kit === 50);
+      check('X4e extras bucket = 50 (per diem + travel)',
+        mar.grossBuckets.extras === 50);
+      const sumBuckets = Object.values(mar.grossBuckets).reduce((s, v) => s + v, 0);
+      check('X2 amount === Σ grossBuckets − kitDiscount per month',
+        mar.amount === sumBuckets - mar.kitDiscount);
+    }
+
+    // ─ X3: amount equals existing stats earningsByMonth byte-for-byte. ─
+    // Reproduces stats's earningsByMonth computation inline (Σ calc.total
+    // by month, then subtract per-production discount on the deal-month)
+    // and asserts every aggregateMonthly amount matches.
+    {
+      const userPrefs = { displayName: 'U' };
+      const ed = [
+        mkEnriched('p1', '2024-03-04', 'Shoot', [mkLine('BDR', 400)]),
+        mkEnriched('p1', '2024-03-05', 'Shoot', [mkLine('BDR', 400)]),
+        mkEnriched('p2', '2024-04-10', 'Shoot', [mkLine('BDR', 500)]),
+        mkEnriched('p2', '2024-04-11', 'Shoot', [mkLine('BDR', 500)]),
+      ];
+      // Mimic the existing reducer's path.
+      const expectedByMonth = {};
+      const earliestByProd = new Map();
+      for (const e of ed) {
+        const mo = e.day.date.slice(0, 7);
+        expectedByMonth[mo] = (expectedByMonth[mo] || 0) + e.calc.total;
+        const prev = earliestByProd.get(e.production.id);
+        if (prev == null || e.day.date < prev) earliestByProd.set(e.production.id, e.day.date);
+      }
+      const seen = new Set();
+      for (const e of ed) {
+        if (seen.has(e.production.id)) continue;
+        seen.add(e.production.id);
+        const disc = computeKitDisc(e.production, userPrefs);
+        if (disc > 0) {
+          const dealMonth = earliestByProd.get(e.production.id).slice(0, 7);
+          expectedByMonth[dealMonth] -= disc;
+        }
+      }
+      const series = aggregateMonthly(ed, [], userPrefs);
+      // For every month in expectedByMonth, find it in series and compare.
+      let mismatch = null;
+      for (const [mo, expected] of Object.entries(expectedByMonth)) {
+        const entry = series.find(s => s.month === mo);
+        if (!entry) { mismatch = `missing month ${mo}`; break; }
+        if (Math.abs(entry.amount - expected) > 0.001) {
+          mismatch = `${mo}: helper=${entry.amount}, expected=${expected}`;
+          break;
+        }
+      }
+      check('X3 aggregateMonthly amount matches existing stats earningsByMonth byte-for-byte',
+        mismatch === null, mismatch || '');
+    }
+
+    // ─ X5: days = distinct (prodId, date) per month. ─
+    {
+      const ed = [
+        mkEnriched('p1', '2024-03-04', 'Shoot', [mkLine('BDR', 100)]),
+        mkEnriched('p2', '2024-03-04', 'Shoot', [mkLine('BDR', 100)]),  // diff prod, same date → +1 day
+        mkEnriched('p1', '2024-03-04', 'Shoot', [mkLine('Late', 25)]),   // dup (pid,date) → ignored
+        mkEnriched('p1', '2024-03-05', 'Shoot', [mkLine('BDR', 100)]),
+      ];
+      const series = aggregateMonthly(ed, [], { displayName: 'U' });
+      const mar = series.find(s => s.month === '2024-03');
+      check('X5 days = 3 distinct (prodId, date) tuples',
+        mar.days === 3, `days=${mar.days}`);
+    }
+
+    // ─ X6: shoots = distinct production.id with ≥1 day that month. ─
+    {
+      const ed = [
+        mkEnriched('p1', '2024-03-04', 'Shoot', [mkLine('BDR', 100)]),
+        mkEnriched('p1', '2024-03-05', 'Shoot', [mkLine('BDR', 100)]),
+        mkEnriched('p2', '2024-03-07', 'Shoot', [mkLine('BDR', 100)]),
+        mkEnriched('p3', '2024-04-01', 'Shoot', [mkLine('BDR', 100)]),
+      ];
+      const series = aggregateMonthly(ed, [], { displayName: 'U' });
+      const mar = series.find(s => s.month === '2024-03');
+      const apr = series.find(s => s.month === '2024-04');
+      check('X6a March: shoots = 2 (p1 + p2)',
+        mar.shoots === 2, `shoots=${mar.shoots}`);
+      check('X6b April: shoots = 1 (p3)',
+        apr.shoots === 1, `shoots=${apr.shoots}`);
+    }
+
+    // ─ X7: dayTypes counts per month (distinct (pid,date) per type). ─
+    {
+      const ed = [
+        mkEnriched('p1', '2024-03-04', 'Shoot',     [mkLine('BDR', 100)]),
+        mkEnriched('p1', '2024-03-05', 'Shoot',     [mkLine('BDR', 100)]),
+        mkEnriched('p1', '2024-03-06', 'Pre-light', [mkLine('BDR', 100)]),
+        mkEnriched('p2', '2024-03-07', 'Travel Day',[mkLine('BDR', 100)]),
+      ];
+      const series = aggregateMonthly(ed, [], { displayName: 'U' });
+      const mar = series.find(s => s.month === '2024-03');
+      check('X7a Shoot count = 2', mar.dayTypes['Shoot'] === 2);
+      check('X7b Pre-light count = 1', mar.dayTypes['Pre-light'] === 1);
+      check('X7c Travel Day count = 1', mar.dayTypes['Travel Day'] === 1);
+    }
+
+    // ─ X8: kit discount lands on the deal-month (production's first user-day). ─
+    // ─ X9: series total drop = sum of discounts (= existing totalEarnings drop). ─
+    {
+      const userPrefs = {
+        displayName: 'U',
+        kitInventory: [{ id: 'k1', name: 'Boom', defaultDailyRate: 100, defaultOn: true }],
+      };
+      // p1 has a kit deal that drops the total by 50.
+      const prodWithDeal = {
+        id: 'p1',
+        iAmCrewId: 'c1',
+        bestBoyMode: false,
+        crew: [{ id: 'c1', name: 'U' }],
+        kitDeals: [{ itemId: 'k1', negotiatedTotal: 150 }],   // usual 2×£100 = £200, deal £150 → £50 discount
+        days: [
+          { id: 'd1', crewId: 'c1', date: '2024-03-15', dayType: 'Shoot',
+            kitItems: [{ itemId: 'k1', name: 'Boom', rate: 100 }] },
+          { id: 'd2', crewId: 'c1', date: '2024-03-20', dayType: 'Shoot',
+            kitItems: [{ itemId: 'k1', name: 'Boom', rate: 100 }] },
+        ],
+      };
+      const ed = [
+        // First user-day-pre-today is 2024-03-15 (deal-month March 2024)
+        mkEnriched('p1', '2024-03-15', 'Shoot', [mkLine('BDR', 444), mkLine('Boom', 100, 'kit')], prodWithDeal),
+        mkEnriched('p1', '2024-03-20', 'Shoot', [mkLine('BDR', 444), mkLine('Boom', 100, 'kit')], prodWithDeal),
+        // Subsequent April day in same production — discount stays on March, NOT split.
+        mkEnriched('p1', '2024-04-10', 'Shoot', [mkLine('BDR', 444)], prodWithDeal),
+      ];
+      const series = aggregateMonthly(ed, [], userPrefs);
+      const mar = series.find(s => s.month === '2024-03');
+      const apr = series.find(s => s.month === '2024-04');
+      check('X8a kit discount lands on deal-month (March)',
+        mar.kitDiscount === 50, `mar.kitDiscount=${mar.kitDiscount}`);
+      check('X8b non-deal month (April) gets zero kit discount',
+        apr.kitDiscount === 0);
+      check('X8c amount per month reflects discount',
+        Math.abs((mar.grossBuckets.basic + mar.grossBuckets.kit) - mar.kitDiscount - mar.amount) < 0.001);
+      // X9: Σ amount = Σ gross − total discount
+      const totalAmount = series.reduce((s, e) => s + e.amount, 0);
+      const totalGross = series.reduce((s, e) => s + Object.values(e.grossBuckets).reduce((a, b) => a + b, 0), 0);
+      const totalDiscount = series.reduce((s, e) => s + e.kitDiscount, 0);
+      check('X9 Σ amount = Σ grossBuckets − Σ kitDiscount',
+        Math.abs(totalAmount - (totalGross - totalDiscount)) < 0.001,
+        `Σamount=${totalAmount}, Σgross=${totalGross}, Σdisc=${totalDiscount}`);
+      check('X9b Σ kitDiscount equals deal-month allocation (£50)',
+        totalDiscount === 50);
+    }
+
+    // ─ X10: gap months emitted as zero-entries. ─
+    // ─ X11: ascending order. ─
+    {
+      const ed = [
+        mkEnriched('p1', '2024-03-04', 'Shoot', [mkLine('BDR', 100)]),
+        // Gap: April, May 2024 → must appear as zero entries.
+        mkEnriched('p1', '2024-06-01', 'Shoot', [mkLine('BDR', 100)]),
+      ];
+      const series = aggregateMonthly(ed, [], { displayName: 'U' });
+      const months = series.map(s => s.month);
+      check('X10a gap months emitted: 2024-04 in series',
+        months.includes('2024-04'));
+      check('X10b gap months emitted: 2024-05 in series',
+        months.includes('2024-05'));
+      const apr = series.find(s => s.month === '2024-04');
+      check('X10c gap entry has amount=0, days=0, shoots=0, empty buckets',
+        apr.amount === 0 && apr.days === 0 && apr.shoots === 0 &&
+        Object.values(apr.grossBuckets).every(v => v === 0));
+      // X11: ascending.
+      const sortedAsc = [...months].sort();
+      check('X11 series is ascending by month',
+        months.join(',') === sortedAsc.join(','));
+    }
+
+    // ─ X12: isCurrentMonth flag. ─
+    {
+      // Use the actual current month so the assertion is timezone-stable.
+      const ed = [mkEnriched('p1', '2024-03-04', 'Shoot', [mkLine('BDR', 100)])];
+      const series = aggregateMonthly(ed, [], { displayName: 'U' });
+      // Series goes 2024-03 → current month inclusive.
+      const last = series[series.length - 1];
+      check('X12a last entry isCurrentMonth: true',
+        last.month === currentMo && last.isCurrentMonth === true);
+      const allButLast = series.slice(0, -1);
+      check('X12b every other entry isCurrentMonth: false',
+        allButLast.every(s => s.isCurrentMonth === false));
+    }
+
+    // ─ X13: notYetCounted per month — counts user days >= today. ─
+    // Hard to test deterministically without freezing today, but we
+    // can verify the BEHAVIOR with a production day that's far in the
+    // future. The current month's notYetCounted should >= 1 if we
+    // schedule a same-month future day; we use 2099 to be safe.
+    {
+      const futureDate = '2099-12-31';
+      const futureMo = '2099-12';
+      const prodWithFuture = {
+        id: 'p1',
+        iAmCrewId: 'c1',
+        bestBoyMode: false,
+        crew: [{ id: 'c1', name: 'U' }],
+        kitDeals: [],
+        days: [
+          { id: 'd1', crewId: 'c1', date: futureDate, dayType: 'Shoot' },
+        ],
+      };
+      const ed = [
+        // A past day so the series has something to anchor on.
+        mkEnriched('p0', '2024-01-15', 'Shoot', [mkLine('BDR', 100)]),
+      ];
+      // The future day is in productions but NOT in enrichedDays (it
+      // would be filtered out upstream). aggregateMonthly's pass-3
+      // notYetByMonth scan should still pick it up via the productions
+      // arg — but only because the series goes earliest → currentMo
+      // (NOT into 2099), the future entry won't appear in the series.
+      const series = aggregateMonthly(ed, [prodWithFuture], { displayName: 'U' });
+      const futureInSeries = series.find(s => s.month === futureMo);
+      check('X13a series caps at current month — future-month not in series',
+        futureInSeries == null);
+      // If the future day happened to be in the CURRENT month, it'd
+      // show up in the current month's notYetCounted. Test that path
+      // by re-running with a current-month "future" date — we use
+      // tomorrow's date relative to today.
+      const tomorrowIso = (() => {
+        const d = new Date(todayISO() + 'T12:00:00');
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().slice(0, 10);
+      })();
+      const tomorrowMo = tomorrowIso.slice(0, 7);
+      const prodWithTomorrow = {
+        id: 'p2',
+        iAmCrewId: 'c1',
+        bestBoyMode: false,
+        crew: [{ id: 'c1', name: 'U' }],
+        kitDeals: [],
+        days: [{ id: 'd1', crewId: 'c1', date: tomorrowIso, dayType: 'Shoot' }],
+      };
+      const series2 = aggregateMonthly(ed, [prodWithTomorrow], { displayName: 'U' });
+      const tomorrowEntry = series2.find(s => s.month === tomorrowMo);
+      // If tomorrow is in the current month → entry exists with notYet=1.
+      // If tomorrow is in next month → no entry (series stops at currentMo).
+      if (tomorrowMo === currentMo) {
+        check('X13b tomorrow-in-current-month: notYetCounted includes that day',
+          tomorrowEntry && tomorrowEntry.notYetCounted >= 1,
+          `entry=${JSON.stringify(tomorrowEntry)}`);
+      } else {
+        // Spans a month boundary (e.g. last day of month tests). The
+        // future day falls outside the series cap — that's expected.
+        check('X13c future-month day correctly not in series (series caps at current month)',
+          tomorrowEntry == null);
+      }
+    }
+
+    // ─ X14: defensive — empty enrichedDays → empty series. ─
+    {
+      check('X14a empty array → empty series',
+        Array.isArray(aggregateMonthly([], [], { displayName: 'U' })) &&
+        aggregateMonthly([], [], { displayName: 'U' }).length === 0);
+      check('X14b null → empty series',
+        Array.isArray(aggregateMonthly(null, [], { displayName: 'U' })) &&
+        aggregateMonthly(null, [], { displayName: 'U' }).length === 0);
+      check('X14c undefined → empty series',
+        Array.isArray(aggregateMonthly(undefined, [], { displayName: 'U' })) &&
+        aggregateMonthly(undefined, [], { displayName: 'U' }).length === 0);
     }
   }
 

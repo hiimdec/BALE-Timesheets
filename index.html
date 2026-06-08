@@ -8537,6 +8537,168 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return discount;
     }
 
+    // Monthly earnings aggregation — Stage 1 (data only; no UI). Rolls up
+    // the SAME enrichedDays array StatsScreen's reducer already builds,
+    // so it reads from the canonical calc path (no parallel earnings
+    // maths, no re-derived user scoping, no second calcForDisplay walk).
+    //
+    // Returns a continuous ASCENDING series (earliest user work-month →
+    // current month, inclusive; gap months emitted as zero-entries),
+    // each entry:
+    //   { month: "YYYY-MM", amount, grossBuckets, kitDiscount, days,
+    //     shoots, dayTypes, notYetCounted, isCurrentMonth }
+    //
+    // Invariant: amount === Σ grossBuckets − kitDiscount  (per month).
+    // Holds by construction — each calc.lines entry falls in exactly
+    // one bucket via categorizeBreakdownLine, and the per-day Σ lines
+    // equals calc.total. The discount is allocated to the deal-month
+    // (the month of that production's first user-day-pre-today)
+    // identically to StatsScreen's existing computation, so the
+    // series's `amount` per month equals the existing stats
+    // `earningsByMonth[month]` byte-for-byte (X-suite X3 enforces
+    // this back-compat).
+    //
+    // Not single-sourced into stats: gap-month emission and the
+    // earliest→current-month range would change two downstream stats
+    // outputs (`allMonthsInRange` in 'all' filter, `Object.keys(
+    // earningsByMonth)` length). Keeping the helper separate +
+    // asserting parity preserves all existing stats outputs byte-
+    // identical.
+    function aggregateMonthly(enrichedDays, productions, userPrefs) {
+      if (!Array.isArray(enrichedDays) || enrichedDays.length === 0) return [];
+
+      // String-arithmetic month walker — bypasses Date / timezone shifts
+      // entirely.
+      const nextMo = (mo) => {
+        const [y, m] = mo.split('-').map(Number);
+        const ny = m === 12 ? y + 1 : y;
+        const nm = m === 12 ? 1     : m + 1;
+        return `${ny}-${String(nm).padStart(2, '0')}`;
+      };
+
+      // Pass 1 — gather per-month sums, buckets, distinct sets, and the
+      // per-production earliest user-day (drives kit-discount deal-month).
+      const grossAmount   = new Map(); // mo → number
+      const grossBuckets  = new Map(); // mo → { basic, ot, pen, kit, extras }
+      const daysByMonth   = new Map(); // mo → Set<"pid:date">
+      const shootsByMonth = new Map(); // mo → Set<pid>
+      const dayTypesMonth = new Map(); // mo → { [type]: Set<pKey> }
+      const earliestByProd = new Map(); // pid → "YYYY-MM-DD"
+
+      for (const e of enrichedDays) {
+        if (!e || !e.day || !e.calc || !e.day.date) continue;
+        const date = e.day.date;
+        const mo = date.slice(0, 7);
+        const pid = e.production && e.production.id;
+        const pKey = `${pid}:${date}`;
+        const type = (e.calc.meta && e.calc.meta.dayType) || 'Unknown';
+
+        grossAmount.set(mo, (grossAmount.get(mo) || 0) + (Number(e.calc.total) || 0));
+
+        if (!grossBuckets.has(mo)) {
+          grossBuckets.set(mo, { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 });
+        }
+        const bkt = grossBuckets.get(mo);
+        for (const l of (e.calc.lines || [])) {
+          bkt[categorizeBreakdownLine(l)] += Number(l.amount) || 0;
+        }
+
+        if (!daysByMonth.has(mo)) daysByMonth.set(mo, new Set());
+        daysByMonth.get(mo).add(pKey);
+
+        if (pid != null) {
+          if (!shootsByMonth.has(mo)) shootsByMonth.set(mo, new Set());
+          shootsByMonth.get(mo).add(pid);
+
+          const prev = earliestByProd.get(pid);
+          if (prev == null || date < prev) earliestByProd.set(pid, date);
+        }
+
+        if (!dayTypesMonth.has(mo)) dayTypesMonth.set(mo, {});
+        const dt = dayTypesMonth.get(mo);
+        if (!dt[type]) dt[type] = new Set();
+        dt[type].add(pKey);
+      }
+
+      // Pass 2 — kit-discount allocation. Per-production discount is
+      // subtracted from the month of that production's first user-day,
+      // matching StatsScreen's existing rule (see line ~15435).
+      const kitDiscount = new Map(); // mo → number
+      const seenProd = new Set();
+      for (const e of enrichedDays) {
+        if (!e || !e.production) continue;
+        const pid = e.production.id;
+        if (pid == null || seenProd.has(pid)) continue;
+        seenProd.add(pid);
+        const discount = computeProductionKitDiscount(e.production, userPrefs);
+        if (!(discount > 0)) continue;
+        const earliest = earliestByProd.get(pid);
+        if (!earliest) continue;
+        const dealMonth = earliest.slice(0, 7);
+        kitDiscount.set(dealMonth, (kitDiscount.get(dealMonth) || 0) + discount);
+      }
+
+      // Pass 3 — per-month "not yet counted" hint. Walks productions
+      // with the SAME user-scoping (userCrewIdsInProduction) the
+      // enrichedDays reducer uses; doesn't run calc or duplicate
+      // earnings. Days where date >= today bucket into that month's
+      // notYetCounted (mirrors the existing single-counter behaviour
+      // at the month level).
+      const todayStr = todayISO();
+      const notYetByMonth = new Map();
+      for (const p of (productions || [])) {
+        const userCrewIds = userCrewIdsInProduction(p, userPrefs);
+        if (!userCrewIds || userCrewIds.length === 0) continue;
+        for (const day of (p.days || [])) {
+          if (!day || !day.date) continue;
+          if (!userCrewIds.includes(day.crewId)) continue;
+          if (day.date < todayStr) continue;
+          const mo = day.date.slice(0, 7);
+          notYetByMonth.set(mo, (notYetByMonth.get(mo) || 0) + 1);
+        }
+      }
+
+      // Build ascending, gap-filled series from earliest user work-month
+      // → current month inclusive. If the earliest is AFTER the current
+      // month (impossible in practice — future days are excluded
+      // upstream — but defensive), the series still emits earliest as
+      // a single entry.
+      const allMonths = [...grossAmount.keys()].sort();
+      if (allMonths.length === 0) return [];
+      const earliest = allMonths[0];
+      const currentMo = todayStr.slice(0, 7);
+      const endMo = earliest > currentMo ? earliest : currentMo;
+      const months = [];
+      let cur = earliest;
+      while (cur <= endMo) {
+        months.push(cur);
+        cur = nextMo(cur);
+      }
+
+      const zeroBuckets = () => ({ basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 });
+      return months.map(mo => {
+        const discount = kitDiscount.get(mo) || 0;
+        const gross = grossAmount.get(mo) || 0;
+        const buckets = grossBuckets.get(mo) || zeroBuckets();
+        const days = (daysByMonth.get(mo) && daysByMonth.get(mo).size) || 0;
+        const shoots = (shootsByMonth.get(mo) && shootsByMonth.get(mo).size) || 0;
+        const dt = dayTypesMonth.get(mo) || {};
+        const dayTypesOut = {};
+        for (const [type, set] of Object.entries(dt)) dayTypesOut[type] = set.size;
+        return {
+          month: mo,
+          amount: gross - discount,
+          grossBuckets: buckets,
+          kitDiscount: discount,
+          days,
+          shoots,
+          dayTypes: dayTypesOut,
+          notYetCounted: notYetByMonth.get(mo) || 0,
+          isCurrentMonth: mo === currentMo,
+        };
+      });
+    }
+
     // Stage 2d: resolve which crew member is "you" on a given production,
     // for kit-scoping purposes. Combines resolveUserCrewId (iAmCrewId
     // override → displayName match) with a solo fallback for the case
