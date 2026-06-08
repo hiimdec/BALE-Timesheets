@@ -254,7 +254,9 @@ async function transformedAppCode() {
     'try { globalThis.__getComparisonItems    = getComparisonItems;    } catch (_) {}\n' +
     'try { globalThis.__getComparisonSurface  = getComparisonSurface;  } catch (_) {}\n' +
     'try { globalThis.__COMPARISON_ITEMS      = COMPARISON_ITEMS;      } catch (_) {}\n' +
-    'try { globalThis.__COMPARISON_SURFACE    = COMPARISON_SURFACE;    } catch (_) {}\n';
+    'try { globalThis.__COMPARISON_SURFACE    = COMPARISON_SURFACE;    } catch (_) {}\n' +
+    // Scroll-to-top button (V-suite): expose the pure visibility gate.
+    'try { globalThis.__shouldShowScrollTop = shouldShowScrollTop; } catch (_) {}\n';
   const { code } = await esbuild.transform(body, {
     loader: 'jsx', jsx: 'transform', jsxFactory: 'React.createElement',
     jsxFragment: 'React.Fragment', target: 'es2017',
@@ -2356,6 +2358,39 @@ async function main() {
       check('T12d source: callWrapOpen value space is `\'call\' | \'wrap\' | null` only',
         /setCallWrapOpen\(s\s*=>\s*s\s*===\s*'call'\s*\?\s*null\s*:\s*'call'\)/.test(html) &&
         /setCallWrapOpen\(s\s*=>\s*s\s*===\s*'wrap'\s*\?\s*null\s*:\s*'wrap'\)/.test(html));
+    }
+  }
+
+  // ===== V. SCROLL-TO-TOP — visibility gate =====
+  // shouldShowScrollTop(scrollTop, threshold=300) → true iff scrolled
+  // past `threshold`. Pure; the React component layers fade / smooth-
+  // scroll / prefers-reduced-motion on top.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const fn = sb.__shouldShowScrollTop;
+    check('V0 shouldShowScrollTop exposed in sandbox',
+      typeof fn === 'function',
+      `typeof=${typeof fn}`);
+    if (typeof fn === 'function') {
+      // Below / at the default 300px threshold → hidden.
+      check('V1 scrollTop = 0 → hidden',          fn(0)   === false);
+      check('V2 scrollTop = 299 → hidden',        fn(299) === false);
+      check('V3 scrollTop = 300 → hidden (strict >)', fn(300) === false);
+      // Past the default threshold → visible.
+      check('V4 scrollTop = 301 → visible',       fn(301) === true);
+      check('V5 scrollTop = 1000 → visible',      fn(1000) === true);
+      // Custom threshold honoured.
+      check('V6 custom threshold 100, scrollTop 50 → hidden',
+        fn(50, 100) === false);
+      check('V7 custom threshold 100, scrollTop 200 → visible',
+        fn(200, 100) === true);
+      // Defensive: non-numeric or negative inputs → never visible.
+      check('V8 negative scrollTop → hidden',
+        fn(-1) === false);
+      check('V9 NaN scrollTop → hidden',
+        fn(NaN) === false);
     }
   }
 

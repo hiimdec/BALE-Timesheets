@@ -266,6 +266,24 @@
       background: rgba(255, 255, 255, 0.025);
     }
 
+    /* Floating scroll-to-top button — fades + slides up on appear,
+       fades + slides down on hide (~180ms ease). Used by
+       ScrollTopButton on the Shoots / Invoices list (both share
+       the window scroll). */
+    .tm-scrolltop {
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition:
+        opacity 180ms ease,
+        transform 180ms ease;
+    }
+    .tm-scrolltop-visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
     /* WheelExpand — animated open/close container. Stays mounted for
        the ~220ms collapse animation, then unmounts. Animates max-height
        + opacity + padding-top so the 8px top gap also collapses.
@@ -5630,6 +5648,62 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
     const Select = ({ children, ...p }) => <select {...p} className={`w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 px-2.5 py-2 outline-none rounded-lg ${p.className || ""}`}>{children}</select>;
+
+    // Visibility gate for the floating "jump to top" button. Pure so the
+    // U-suite can lock in the threshold rule without standing up a DOM.
+    // True iff `scrollTop > threshold`. The default 300px threshold
+    // clears ProductionsScreen's inline header (TIMEMACHINE title + tabs
+    // ≈ 200px including the safe-area-inset-top) plus a buffer, so the
+    // button doesn't flicker into existence right at the top.
+    const shouldShowScrollTop = (scrollTop, threshold = 300) =>
+      Number(scrollTop) > Number(threshold);
+
+    // Floating scroll-to-top button. Both list screens we care about
+    // (Shoots / Invoices on Home) scroll the WINDOW — Home renders
+    // ProductionsScreen as a single block with `min-h-screen ... pb-32`,
+    // and the Invoices tab is rendered as a child of that same screen.
+    // So a single window-bound instance covers both. Positions in the
+    // bottom-right with safe-area-inset-bottom padding so it never
+    // overlaps any future bottom bar; z-30 sits above content but
+    // below modals / action sheets (z-60).
+    //
+    // Respects `prefers-reduced-motion`: when reduced motion is on we
+    // use an instant jump (`behavior: 'auto'`) instead of the smooth
+    // 'smooth' scroll.
+    function ScrollTopButton({ threshold = 300 }) {
+      const [visible, setVisible] = React.useState(false);
+      React.useEffect(() => {
+        const update = () => setVisible(shouldShowScrollTop(window.scrollY || window.pageYOffset || 0, threshold));
+        update();
+        window.addEventListener('scroll', update, { passive: true });
+        return () => window.removeEventListener('scroll', update);
+      }, [threshold]);
+      const onClick = () => {
+        let reduced = false;
+        try { reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) {}
+        window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+      };
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label="Scroll to top"
+          aria-hidden={!visible}
+          tabIndex={visible ? 0 : -1}
+          className={`tm-scrolltop fixed flex items-center justify-center w-11 h-11 rounded-full bg-sky-500 text-black shadow-lg shadow-sky-500/30 hover:bg-sky-400 active:bg-sky-600 transition-colors ${visible ? 'tm-scrolltop-visible' : ''}`}
+          style={{
+            right: 16,
+            bottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+            zIndex: 30,
+            WebkitTapHighlightColor: 'transparent',
+          }}>
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 15l6-6 6 6"/>
+          </svg>
+        </button>
+      );
+    }
 
     const ROUNDING_OPTIONS = [
       { value: 'exact',      label: 'Exact',      desc: 'Exact decimals — no rounding.' },
@@ -17913,6 +17987,11 @@ const confirmDelete = (p) => setConfirmOpts({
           )}
 
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
+
+          {/* Floating scroll-to-top button. Both Shoots and Invoices
+              tabs share the window scroll, so a single instance at the
+              ProductionsScreen root level covers both. */}
+          <ScrollTopButton />
 
           {/* Production action sheet (kebab menu) */}
           {actionSheet && (
