@@ -21,6 +21,12 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      // iOS Phase A: gate every `hover:*` utility behind `@media (hover: hover)`
+      // so hover styles only apply with a real pointer (desktop). On touch
+      // devices, hover states never stick highlighted after a tap — they
+      // simply don't fire. The `active:*` utilities (used for press feedback)
+      // are unaffected by this flag and keep firing on touch.
+      future: { hoverOnlyWhenSupported: true },
       theme: {
         extend: {
           colors: {
@@ -44,19 +50,93 @@
       --pill-paper: #e6e9ed;
       --pill-ink: #15171a;
     }
-    html, body {
+    /* ═══════════════════════════ iOS PHASE A — FEEL NATIVE ═══════════════════════════
+       Goal: kill the web tells (grey tap flash, hover stickiness, page rubber-band,
+       300ms delay, iOS focus-zoom) and add a fast, subtle press state to every
+       tap target. Pure CSS in this <style> block — no native plugins (status bar
+       and haptics land in Phase B). Composite cards that contain their own
+       sub-controls (e.g. kit-room cards with name/rate/toggle/delete inside)
+       are deliberately NOT scaled on tap — the inner control flashes alone. */
+
+    /* 1. Tap highlight transparent — globally, every element. Existing inline
+          { WebkitTapHighlightColor: 'transparent' } overrides stay (defence in
+          depth) but the universal rule means new components are covered too. */
+    *, *::before, *::after {
       -webkit-tap-highlight-color: transparent;
-      -webkit-touch-callout: none;
+    }
+
+    /* Root layer — overscroll guard + colours. Internal scroll regions keep
+       native momentum + edge-bounce via the .overflow-* block below. */
+    html, body {
       overscroll-behavior: none;
       background: #0a0a0a;
       color: #f5f5f5;
     }
+
+    /* 9. Font stack leads with -apple-system so iOS picks SF Pro directly.
+       Numerals continue to come from the explicit ui-monospace stack on
+       .tm-pill-amount / breakdown numbers — that's unchanged. */
     body {
       padding-bottom: env(safe-area-inset-bottom);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, ui-sans-serif, system-ui,
+                   "Segoe UI", Roboto, sans-serif;
+      /* 4. App shell — no text selection / no long-press callout. Content
+            carve-outs below restore both on real content. */
+      -webkit-user-select: none;
+              user-select: none;
+      -webkit-touch-callout: none;
     }
-    /* Avoid iOS zoom on input focus — inputs must be >= 16px */
+
+    /* 4. Selection / long-press-copy carve-outs — keep working on real content.
+          - inputs/textareas/select: typing requires selection.
+          - #invoice-print-view (PDF render DOM): bank details, invoice numbers,
+            email-target copy — users long-press to copy these onto their device.
+          - [data-tm-selectable]: opt-in hook for any other display-only string
+            we want copyable (none in Phase A; the hook is available for later). */
+    input, textarea, select,
+    #invoice-print-view, #invoice-print-view *,
+    [data-tm-selectable], [data-tm-selectable] * {
+      -webkit-user-select: text;
+              user-select: text;
+      -webkit-touch-callout: default;
+    }
+
+    /* 5. Inputs >= 16px so iOS never auto-zooms on focus (the viewport
+          already blocks the gesture via viewport-fit=cover, but belt-and
+          -braces; 16px also reads better on the device). */
     input, select, textarea { font-size: 16px !important; }
+
+    /* 6. Remove the historical 300ms tap delay + double-tap zoom on real tap
+          targets. The time-wheel scroll columns set their own
+          touch-action via the .tm-wheel-col rule below (unchanged), and the
+          kit-room drag handle sets touch-action:none inline; both win via
+          cascade specificity over this universal rule. */
+    button, [role="button"], a, label,
+    input, textarea, select {
+      touch-action: manipulation;
+    }
+
+    /* 2. Press feedback — fast, subtle scale + opacity. Applies to every
+          <button>, [role="button"], and the .tm-press utility (used by
+          whole-row launchers that render as <div onClick={...}>). The
+          press-in is INSTANT (transition: none on :active) and the release
+          runs the 80ms ease-out from the default state.
+          :where() keeps the selector at specificity (0, 1, 0) for :active
+          and (0, 0, 0) for the default state — so any callsite-specific
+          active style (Btn's `active:scale-95`, .tm-pill-nav-btn's
+          scale-0.94 + bg flip, etc.) still wins on that element. */
+    :where(button:not(:disabled):not([aria-disabled="true"]),
+           [role="button"]:not([aria-disabled="true"]),
+           .tm-press:not([aria-disabled="true"])) {
+      transition: transform 80ms ease-out, opacity 80ms ease-out;
+    }
+    :where(button:not(:disabled):not([aria-disabled="true"]),
+           [role="button"]:not([aria-disabled="true"]),
+           .tm-press:not([aria-disabled="true"])):active {
+      transform: scale(0.97);
+      opacity: 0.88;
+      transition: none;
+    }
     /* Hide native select arrow tint */
     select { -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230ea5e9' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
     /* Invisible time/date inputs overlaid on a styled value display. On

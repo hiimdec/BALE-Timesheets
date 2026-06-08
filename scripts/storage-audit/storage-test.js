@@ -3786,6 +3786,93 @@ async function main() {
       `stored=${stored && stored.comparisonUnit}`);
   }
 
+  // ===== CC. iOS NATIVE FEEL — Phase A source presence =====
+  // Pure source-presence checks for the CSS / config changes that
+  // make the WebView stop feeling like a web page: global tap
+  // highlight, fast press state, hover-on-real-pointer gating,
+  // user-select carve-outs, no-tap-delay, overscroll guard, safe
+  // areas, font stack. No runtime sandbox needed — these are CSS /
+  // <meta> facts of the source.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ CC1: viewport meta has viewport-fit=cover (so safe-area-inset-*
+    //   resolves to actual non-zero values on notched devices). ─
+    check('CC1 viewport meta sets viewport-fit=cover',
+      /<meta\s+name="viewport"[^>]*viewport-fit=cover/.test(html));
+
+    // ─ CC2: Tailwind hoverOnlyWhenSupported flag — gates every
+    //   hover:* utility behind @media (hover: hover). Without this,
+    //   hover styles stick highlighted after a touch tap. ─
+    check('CC2 tailwind config: future.hoverOnlyWhenSupported = true',
+      /future:\s*\{\s*hoverOnlyWhenSupported:\s*true\s*\}/.test(html));
+
+    // ─ CC3: tap highlight transparent globally via universal selector
+    //   (not just html, body). Inline overrides still exist as defence
+    //   in depth, but new components don't need to re-declare. ─
+    check('CC3 universal tap-highlight transparent (*, *::before, *::after)',
+      /\*,\s*\*::before,\s*\*::after\s*\{[^}]*-webkit-tap-highlight-color:\s*transparent/.test(html));
+
+    // ─ CC4: press feedback — :active scale + opacity, instant press-in.
+    //   The :where() wrapper keeps specificity at (0, 1, 0) so any
+    //   callsite-specific :active style still wins on that element. ─
+    check('CC4 press-feedback default transition (transform 80ms ease-out)',
+      html.includes(':where(button:not(:disabled):not([aria-disabled="true"]),') &&
+      html.includes('transition: transform 80ms ease-out, opacity 80ms ease-out'));
+    check('CC4 press-feedback :active scale(0.97) + opacity 0.88 + transition:none',
+      html.includes('transform: scale(0.97)') &&
+      html.includes('opacity: 0.88') &&
+      // ":active" + "transition: none" both inside the press block
+      /:active\s*\{\s*transform:\s*scale\(0\.97\);\s*opacity:\s*0\.88;\s*transition:\s*none/.test(html));
+
+    // ─ CC5: app shell — user-select: none + -webkit-touch-callout: none.
+    //   Carve-outs below restore both on inputs / textareas / select /
+    //   #invoice-print-view / [data-tm-selectable]. ─
+    check('CC5a app shell user-select: none on body',
+      /body\s*\{[^}]*user-select:\s*none/.test(html));
+    check('CC5b app shell -webkit-touch-callout: none on body',
+      /body\s*\{[^}]*-webkit-touch-callout:\s*none/.test(html));
+    check('CC5c carve-out: inputs + textareas + select keep user-select: text',
+      /input,\s*textarea,\s*select[^{]*\{[^}]*user-select:\s*text/.test(html));
+    check('CC5d carve-out: #invoice-print-view keeps user-select: text + touch-callout: default',
+      /#invoice-print-view[^{]*\{[^}]*user-select:\s*text[\s\S]*-webkit-touch-callout:\s*default/.test(html));
+    check('CC5e carve-out: [data-tm-selectable] opt-in hook present for future copyable content',
+      /\[data-tm-selectable\][^{]*\{[^}]*user-select:\s*text/.test(html));
+
+    // ─ CC6: inputs >= 16px so iOS never auto-zooms on focus. ─
+    check('CC6 input/select/textarea font-size: 16px !important',
+      /input,\s*select,\s*textarea\s*\{\s*font-size:\s*16px\s*!important\s*;?\s*\}/.test(html));
+
+    // ─ CC7: touch-action: manipulation on real tap targets — removes
+    //   the historical 300ms tap delay + double-tap zoom on buttons. ─
+    check('CC7 touch-action: manipulation on interactive elements',
+      /button,\s*\[role="button"\],\s*a,\s*label,[\s\S]*?\{[^}]*touch-action:\s*manipulation/.test(html));
+
+    // ─ CC8: overscroll-behavior: none on html, body — kills the
+    //   document-level rubber-band that revealed a background. ─
+    check('CC8 overscroll-behavior: none on html, body',
+      /html,\s*body\s*\{[^}]*overscroll-behavior:\s*none/.test(html));
+    check('CC8 inner scroll regions keep overscroll-behavior: contain (native momentum + bounce)',
+      html.includes('-webkit-overflow-scrolling: touch') &&
+      /overscroll-behavior:\s*contain/.test(html));
+
+    // ─ CC9: safe-area-inset usage — body bottom padding + the various
+    //   sticky/fixed chrome paddingTop/Bottom uses. Spot-check the count
+    //   so a regression that strips them all would fire here. ─
+    const safeAreaCount = (html.match(/env\(safe-area-inset-(top|bottom|left|right)\)/g) || []).length;
+    check('CC9 env(safe-area-inset-*) used in at least 10 places',
+      safeAreaCount >= 10,
+      `count=${safeAreaCount} (expected >= 10)`);
+
+    // ─ CC10: font stack leads with -apple-system so iOS picks San
+    //   Francisco directly. Mono numerals come from ui-monospace stack
+    //   on tm-pill-amount / breakdown numbers (unchanged). ─
+    check('CC10 body font stack leads with -apple-system',
+      /body\s*\{[^}]*font-family:\s*-apple-system,\s*BlinkMacSystemFont/.test(html));
+    check('CC10 mono stack unchanged (ui-monospace, SFMono-Regular, Menlo)',
+      html.includes('ui-monospace, SFMono-Regular, Menlo, monospace'));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.
