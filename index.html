@@ -1531,6 +1531,14 @@
       invoiceNextNumber: 1,
       // Invoicing — Payment terms
       paymentTermsDays: 30,
+      // Invoicing — Accounting export (Stage 1). value-presence; gained by
+      // existing users via the merge-over-DEFAULT_USER_PREFS read in
+      // useStoredState — no migration, no SCHEMA_VERSION bump (same pattern as
+      // kitInventory / clients). Default behaviour = the current TimeMachine
+      // PDF. invoiceExportRounding NEVER takes 'favourable' (favourable stays
+      // TimeMachine-PDF-only).
+      invoiceExportFormat: 'timemachine',   // 'timemachine' | 'xero' | 'quickbooks' | 'csv'
+      invoiceExportRounding: 'apa',         // 'apa' | 'exact'
       // Invoicing — Logo (data URL)
       logoBase64: "",
       defaultMileageRate: 0.5,
@@ -16374,6 +16382,22 @@ const setDays = (updater) =>
                 </Field>
               </div>
 
+              {/* Sub: Accounting export (Stage 1) — format the invoice export
+                  buttons deliver, and the rounding external exports compute at. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Accounting export</div>
+                <Field label="Invoice export format" hint="What the invoice export button produces. TimeMachine keeps the PDF; the rest export a CSV for your accounting software.">
+                  <Select value={userPrefs.invoiceExportFormat || 'timemachine'} onChange={(e) => set({ invoiceExportFormat: e.target.value })}>
+                    {INVOICE_EXPORT_FORMATS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Export rounding" hint="Figures in Xero / QuickBooks / CSV exports are computed at this rounding. (Favourable rounding stays TimeMachine-PDF only.)">
+                  <Select value={userPrefs.invoiceExportRounding || 'apa'} onChange={(e) => set({ invoiceExportRounding: e.target.value })}>
+                    {INVOICE_EXPORT_ROUNDINGS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </Field>
+              </div>
+
               {/* Sub: VAT — rate + number gated on vatRegistered (preserved). */}
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">VAT</div>
@@ -17761,6 +17785,182 @@ const setDays = (updater) =>
       return { vatAmount, total: subtotal + vatAmount };
     }
 
+    /* ═══════════════ INVOICE EXPORT — accounting formats (Stage 1) ═══════════
+     * READ-ONLY over invoices. Figures are RECOMPUTED at the user's chosen
+     * export rounding by reusing the existing calc path parameterised by mode:
+     * buildInvoiceLineItems({ ...production, roundingMode: <mode> }, …). The
+     * pay/calc engine (calculateDay/resolveDay/calcForDisplay) is NEVER edited
+     * — only called with a production whose roundingMode field is overridden,
+     * so the 84 byte-identical scenarios stay byte-identical. Favourable is
+     * NEVER used here (it's TimeMachine-PDF-only); mode is constrained to
+     * apa|exact and defensively coerced. */
+    const INVOICE_EXPORT_FORMATS = [
+      { value: 'timemachine', label: 'TimeMachine (PDF)' },
+      { value: 'xero',        label: 'Xero' },
+      { value: 'quickbooks',  label: 'QuickBooks' },
+      { value: 'csv',         label: 'CSV' },
+    ];
+    const INVOICE_EXPORT_ROUNDINGS = [
+      { value: 'apa',   label: 'APA' },
+      { value: 'exact', label: 'Exact' },
+    ];
+    // The ONLY rounding modes an export may use — favourable is intentionally absent.
+    const INVOICE_EXPORT_ROUNDING_VALUES = ['apa', 'exact'];
+
+    // ISO YYYY-MM-DD → DD/MM/YYYY (empty/invalid → "").
+    function fmtExportDate(iso) {
+      if (!iso || typeof iso !== 'string') return '';
+      const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+    }
+    // Bare money: no symbol, 2dp, no thousands separator (CSV-numeric). Currency
+    // is carried by a separate Currency=GBP column, never a £ glyph.
+    function fmtExportNum(n) { return (Number(n) || 0).toFixed(2); }
+    // RFC-4180 cell quoting.
+    function csvCell(v) {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    }
+
+    // Net line/invoice figures recomputed at the chosen EXPORT rounding.
+    // Reuses buildInvoiceLineItems with a roundingMode override (engine untouched).
+    function invoiceExportFigures(invoice, production, userPrefs) {
+      const want = (userPrefs && userPrefs.invoiceExportRounding) || 'apa';
+      // Constrain to apa|exact — favourable must never reach an export.
+      const mode = INVOICE_EXPORT_ROUNDING_VALUES.includes(want) ? want : 'apa';
+      const lines = buildInvoiceLineItems({ ...production, roundingMode: mode }, userPrefs, invoice.userCrewId);
+      const subtotal = invoiceSubtotal(lines);
+      const { vatAmount, total } = invoiceVAT(invoice, subtotal);
+      return { mode, lines, subtotal, vatAmount, total };
+    }
+
+    // Fidelity guard. Recompute at the invoice's OWN frozen roundingMode and
+    // compare net line amounts to the stored snapshot. Mismatch ⇒ the source
+    // changed since send OR the lines were hand-edited (incl. per-line waivers)
+    // — surface, don't silently export. A clean reproduce returns true and is
+    // safe to export at the chosen apa/exact mode.
+    function invoiceExportReproducesSent(invoice, production, userPrefs) {
+      const frozenMode = roundingModeOf(invoice);
+      const recomputed = buildInvoiceLineItems({ ...production, roundingMode: frozenMode }, userPrefs, invoice.userCrewId);
+      const norm = (arr) => (arr || []).map(getLineTotal).map(n => Math.round((Number(n) || 0) * 100)).sort((a, b) => a - b);
+      const a = norm(invoice.lineItems), b = norm(recomputed);
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    // One line's export description: role context + label + detail (the
+    // human breakdown buildInvoiceLineItems already bakes), plus the line's
+    // own rate when it's a rate×qty line. (Day-rate lines carry the BHR, not
+    // the BDR — edit here if a BDR-style breakdown is preferred.)
+    function invoiceExportLineDesc(invoice, line) {
+      const parts = [];
+      if (invoice.jobRole) parts.push(invoice.jobRole);
+      if (line.label) parts.push(line.label);
+      if (line.detail) parts.push(line.detail);
+      let s = parts.join(' — ');
+      if (line.rate != null) s += ` @ £${fmtExportNum(line.rate)}`;
+      return s;
+    }
+
+    // Xero CSV — one row per line item, header fields repeated across an
+    // invoice's rows. Each line: Quantity 1 × net line total.
+    const XERO_INVOICE_HEADERS = ['ContactName','InvoiceNumber','InvoiceDate','DueDate','Reference','Description','Quantity','UnitAmount','AccountCode','TaxType','Currency'];
+    function formatInvoiceXeroCsv(invoice, production, userPrefs) {
+      const { lines } = invoiceExportFigures(invoice, production, userPrefs);
+      const rows = [XERO_INVOICE_HEADERS.join(',')];
+      for (const line of lines) {
+        rows.push([
+          invoice.toName || '',
+          invoice.invoiceNumber || '',
+          fmtExportDate(invoice.invoiceDate),
+          fmtExportDate(invoice.dueDate),
+          invoice.jobReference || '',
+          invoiceExportLineDesc(invoice, line),
+          '1',
+          fmtExportNum(getLineTotal(line)),
+          '', '', 'GBP',
+        ].map(csvCell).join(','));
+      }
+      return rows.join('\r\n') + '\r\n';
+    }
+
+    // QuickBooks Online CSV invoice import. Header set follows QBO's sample
+    // "Import invoices" template — VERIFY against your QBO region's current
+    // template before relying on it; edit QBO_INVOICE_HEADERS + the row map
+    // together (kept adjacent on purpose). Each line: ItemQuantity 1, ItemRate
+    // = ItemAmount = net line total; tax columns blank.
+    const QBO_INVOICE_HEADERS = ['InvoiceNo','Customer','InvoiceDate','DueDate','Item(Product/Service)','ItemDescription','ItemQuantity','ItemRate','ItemAmount','Taxable','TaxRate'];
+    function formatInvoiceQuickBooksCsv(invoice, production, userPrefs) {
+      const { lines } = invoiceExportFigures(invoice, production, userPrefs);
+      const item = invoice.jobRole || 'Crew services';
+      const rows = [QBO_INVOICE_HEADERS.join(',')];
+      for (const line of lines) {
+        const net = fmtExportNum(getLineTotal(line));
+        rows.push([
+          invoice.invoiceNumber || '',
+          invoice.toName || '',
+          fmtExportDate(invoice.invoiceDate),
+          fmtExportDate(invoice.dueDate),
+          item,
+          invoiceExportLineDesc(invoice, line),
+          '1', net, net, '', '',
+        ].map(csvCell).join(','));
+      }
+      return rows.join('\r\n') + '\r\n';
+    }
+
+    // Generic ledger CSV — one row per INVOICE (net subtotal/VAT/total at the
+    // chosen export rounding; VAT 0 unless vatRegistered).
+    const GENERIC_INVOICE_HEADERS = ['Invoice Number','Status','Issue Date','Due Date','Client','Job','Reference','Role','Shoot Start','Shoot End','Subtotal','VAT','Total','Currency','Date Sent','Date Paid'];
+    function formatInvoiceGenericCsv(invoice, production, userPrefs) {
+      const { subtotal, vatAmount, total } = invoiceExportFigures(invoice, production, userPrefs);
+      const rows = [GENERIC_INVOICE_HEADERS.join(',')];
+      rows.push([
+        invoice.invoiceNumber || '',
+        invoice.status || '',
+        fmtExportDate(invoice.invoiceDate),
+        fmtExportDate(invoice.dueDate),
+        invoice.toName || '',
+        invoice.jobTitle || '',
+        invoice.jobReference || '',
+        invoice.jobRole || '',
+        fmtExportDate(invoice.shootDateStart),
+        fmtExportDate(invoice.shootDateEnd),
+        fmtExportNum(subtotal),
+        fmtExportNum(vatAmount),
+        fmtExportNum(total),
+        'GBP',
+        fmtExportDate(invoice.dateSent),
+        fmtExportDate(invoice.datePaid),
+      ].map(csvCell).join(','));
+      return rows.join('\r\n') + '\r\n';
+    }
+
+    // Dispatch on the chosen format → { filename, content, mime }. Returns null
+    // for 'timemachine' (the caller keeps the existing PDF path).
+    function invoiceExportArtifact(invoice, production, userPrefs) {
+      const fmt = (userPrefs && userPrefs.invoiceExportFormat) || 'timemachine';
+      const num = (invoice.invoiceNumber || 'invoice').replace(/[^\w.-]+/g, '-');
+      if (fmt === 'xero')       return { filename: `${num}-xero.csv`,       content: formatInvoiceXeroCsv(invoice, production, userPrefs),       mime: 'text/csv' };
+      if (fmt === 'quickbooks') return { filename: `${num}-quickbooks.csv`, content: formatInvoiceQuickBooksCsv(invoice, production, userPrefs), mime: 'text/csv' };
+      if (fmt === 'csv')        return { filename: `${num}-ledger.csv`,     content: formatInvoiceGenericCsv(invoice, production, userPrefs),    mime: 'text/csv' };
+      return null;
+    }
+
+    // Deliver a text file — native: write to Cache + share sheet (reuses
+    // nativeSaveAndShare); web: Blob download (same pattern as the data backup).
+    async function deliverTextFile(filename, content, mime = 'text/csv') {
+      if (IS_NATIVE) return nativeSaveAndShare(filename, content, { encoding: 'utf8', title: filename });
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return 'downloaded';
+    }
+
     function getDisplayStatus(invoice) {
       if (invoice.status === "paid") return { label: "PAID", variant: "paid" };
       if (invoice.status === "sent") {
@@ -18096,6 +18296,10 @@ const setDays = (updater) =>
       // effect's IS_NATIVE branch never runs there).
       const printIntentRef = React.useRef('share');
       const emailCcRef = React.useRef('');
+      // Accounting-export (Stage 1) confirm: shown when the chosen non-PDF
+      // format's recompute does NOT reproduce what was sent (hand-edited /
+      // source changed) — surface, don't silently export.
+      const [exportWarn, setExportWarn] = React.useState(false);
       const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
       const [notesOpen, setNotesOpen] = React.useState(!!invoice?.notes);
       // CC is persisted on the invoice (invoice.ccEmail). emailCcRef just carries
@@ -18308,6 +18512,27 @@ const setDays = (updater) =>
           showToast('Email opened — updated details re-saved');
         }
       };
+
+      // Stage-1 accounting export. The per-status PDF/Download button routes
+      // through here: 'timemachine' keeps the EXISTING PDF path untouched
+      // (setPrintTarget); xero/quickbooks/csv produce that invoice's file via
+      // the matching formatter at the chosen rounding and deliver it. A
+      // diverging invoice (recompute ≠ what was sent) is surfaced via
+      // exportWarn rather than silently exported.
+      const doExportFile = () => {
+        const art = invoiceExportArtifact(invoice, production, userPrefs);
+        if (!art) { setPrintTarget(invoice); return; } // timemachine → PDF
+        deliverTextFile(art.filename, art.content, art.mime)
+          .then(() => showToast(`Exported ${art.filename}`))
+          .catch((e) => { try { console.error('Invoice export failed', e); } catch (_) {} });
+      };
+      const handleExport = () => {
+        const fmt = (userPrefs && userPrefs.invoiceExportFormat) || 'timemachine';
+        if (fmt === 'timemachine') { setPrintTarget(invoice); return; }
+        if (!invoiceExportReproducesSent(invoice, production, userPrefs)) { setExportWarn(true); return; }
+        doExportFile();
+      };
+      const exportBtnLabel = ((userPrefs && userPrefs.invoiceExportFormat) || 'timemachine') === 'timemachine' ? 'PDF' : 'Export';
 
       const subtotal = invoiceSubtotal(invoice.lineItems);
       const { vatAmount, total } = invoiceVAT(invoice, subtotal);
@@ -18757,8 +18982,8 @@ const setDays = (updater) =>
               )}
               {invoice.status === 'sent' && (
                 <>
-                  <Btn variant="subtle" onClick={() => setPrintTarget(invoice)} className="flex-1 justify-center">
-                    <IDownload size={13}/>PDF
+                  <Btn variant="subtle" onClick={handleExport} className="flex-1 justify-center">
+                    <IDownload size={13}/>{exportBtnLabel}
                   </Btn>
                   <Btn variant="subtle" onClick={handleEmail} className="flex-1 justify-center">
                     <IMail size={13}/>Email
@@ -18778,8 +19003,8 @@ const setDays = (updater) =>
               )}
               {invoice.status === 'paid' && (
                 <>
-                  <Btn variant="subtle" onClick={() => setPrintTarget(invoice)} className="flex-1 justify-center">
-                    <IDownload size={13}/>PDF
+                  <Btn variant="subtle" onClick={handleExport} className="flex-1 justify-center">
+                    <IDownload size={13}/>{exportBtnLabel}
                   </Btn>
                   <Btn variant="subtle" onClick={handleEmail} className="flex-1 justify-center">
                     <IMail size={13}/>Email
@@ -18879,6 +19104,18 @@ const setDays = (updater) =>
           )}
 
           {printTarget && <InvoicePrintView invoice={printTarget} userPrefs={userPrefs} />}
+
+          {/* Accounting-export fidelity guard: the recompute doesn't reproduce
+              what was sent (hand-edited or shoot data changed since send).
+              Surfaced — not silently exported. */}
+          <ConfirmDialog
+            open={exportWarn}
+            title="Source changed since sent"
+            message="This invoice was hand-edited, or its shoot data changed after it was sent. The export is recomputed from current data and may not match the invoice you sent. Export anyway?"
+            confirmLabel="Export anyway" confirmTone="primary" cancelLabel="Cancel"
+            onConfirm={() => { setExportWarn(false); doExportFile(); }}
+            onCancel={() => setExportWarn(false)}
+          />
 
           {actionSheetItem && (
             <LineItemActionSheet

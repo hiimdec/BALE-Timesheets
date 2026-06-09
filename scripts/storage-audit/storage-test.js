@@ -5015,6 +5015,88 @@ async function main() {
       !/function LineEditModal\([\s\S]{0,3000}blurActiveInput/.test(html));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // NN — Invoice export, Stage 1 (formatters + format/rounding prefs +
+  //      single-invoice export). READ-ONLY over invoices; figures are
+  //      RECOMPUTED at the chosen export rounding by reusing
+  //      buildInvoiceLineItems with a roundingMode override (engine never
+  //      edited — audit:build's 84 byte-identical scenarios prove that).
+  //      Favourable is NEVER an export mode. Source-presence only.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ NN1: the two prefs default with NO migration (merge-over-defaults) ─
+    check('NN1a invoiceExportFormat defaults to timemachine in DEFAULT_USER_PREFS',
+      /const DEFAULT_USER_PREFS = \{[\s\S]{0,4000}invoiceExportFormat: 'timemachine',/.test(html));
+    check('NN1b invoiceExportRounding defaults to apa in DEFAULT_USER_PREFS',
+      /const DEFAULT_USER_PREFS = \{[\s\S]{0,4000}invoiceExportRounding: 'apa',/.test(html));
+    check('NN1c useStoredState merges defaults over stored object — existing users gain the new keys with no migration',
+      /v = \{ \.\.\.initial, \.\.\.v \};/.test(html));
+
+    // ─ NN2: figures recomputed at the SELECTED mode; favourable NEVER used ─
+    check('NN2a invoiceExportFigures recomputes via buildInvoiceLineItems with a roundingMode OVERRIDE (engine reused, not edited)',
+      /function invoiceExportFigures\([\s\S]{0,400}buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
+    check('NN2b export rounding is constrained to apa|exact only — favourable is intentionally absent',
+      /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
+      /INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'apa'/.test(html));
+    check('NN2c favourable is never an offered export-rounding value (scoped to the export option list)',
+      (() => {
+        const m = html.match(/const INVOICE_EXPORT_ROUNDINGS = \[([\s\S]*?)\];/);
+        return m ? !/favourable/.test(m[1]) : false;
+      })() &&
+      !/INVOICE_EXPORT_ROUNDING_VALUES = \[[^\]]*favourable/.test(html));
+    check('NN2d subtotal/VAT for export come from invoiceSubtotal + invoiceVAT (VAT 0 unless vatRegistered)',
+      /function invoiceExportFigures\([\s\S]{0,400}invoiceSubtotal\(lines\)[\s\S]{0,120}invoiceVAT\(invoice, subtotal\)/.test(html));
+
+    // ─ NN3: fidelity guard — recompute at the FROZEN mode, compare to stored;
+    //   surface (don't silently export) on mismatch. ─
+    check('NN3a invoiceExportReproducesSent recomputes at the invoice OWN frozen mode + compares net line amounts to the stored snapshot',
+      /function invoiceExportReproducesSent\([\s\S]{0,300}roundingMode: frozenMode[\s\S]{0,300}getLineTotal/.test(html));
+    check('NN3b handleExport runs the guard and surfaces a mismatch (setExportWarn) instead of exporting',
+      /const handleExport = \(\) => \{[\s\S]{0,300}if \(!invoiceExportReproducesSent\(invoice, production, userPrefs\)\) \{ setExportWarn\(true\); return; \}/.test(html));
+    check('NN3c diverging invoice shows the "Source changed since sent" alert; confirm exports, cancel aborts',
+      /<ConfirmDialog\s*open=\{exportWarn\}[\s\S]{0,200}title="Source changed since sent"[\s\S]{0,400}onConfirm=\{\(\) => \{ setExportWarn\(false\); doExportFile\(\); \}\}/.test(html));
+
+    // ─ NN4: each formatter emits the agreed column set ─
+    check('NN4a Xero headers exactly as agreed',
+      /const XERO_INVOICE_HEADERS = \['ContactName','InvoiceNumber','InvoiceDate','DueDate','Reference','Description','Quantity','UnitAmount','AccountCode','TaxType','Currency'\];/.test(html));
+    check('NN4b QuickBooks headers in ONE editable place + a VERIFY-against-QBO note',
+      /const QBO_INVOICE_HEADERS = \['InvoiceNo','Customer','InvoiceDate','DueDate','Item\(Product\/Service\)','ItemDescription','ItemQuantity','ItemRate','ItemAmount','Taxable','TaxRate'\];/.test(html) &&
+      /VERIFY against your QBO/.test(html));
+    check('NN4c generic ledger headers (one row per invoice) exactly as agreed',
+      /const GENERIC_INVOICE_HEADERS = \['Invoice Number','Status','Issue Date','Due Date','Client','Job','Reference','Role','Shoot Start','Shoot End','Subtotal','VAT','Total','Currency','Date Sent','Date Paid'\];/.test(html));
+
+    // ─ NN5: the cross-cutting rules ─
+    check('NN5a 1 × net line rule — Xero Quantity 1 + UnitAmount = net line total; QBO ItemQuantity 1, ItemRate = ItemAmount = net',
+      /'1',\s*fmtExportNum\(getLineTotal\(line\)\),/.test(html) &&
+      /const net = fmtExportNum\(getLineTotal\(line\)\);[\s\S]{0,400}'1', net, net,/.test(html));
+    check('NN5b contact = invoice.toName (Xero ContactName / QBO Customer)',
+      /function formatInvoiceXeroCsv\([\s\S]{0,300}invoice\.toName \|\| ''/.test(html) &&
+      /function formatInvoiceQuickBooksCsv\([\s\S]{0,400}invoice\.toName \|\| ''/.test(html));
+    check('NN5c currency = GBP, figures carry NO currency symbol (bare toFixed(2))',
+      // Xero (Currency column) + generic ledger (Currency column) each emit
+      // 'GBP'; QuickBooks intentionally has no Currency column → 2 occurrences.
+      /function fmtExportNum\(n\) \{ return \(Number\(n\) \|\| 0\)\.toFixed\(2\); \}/.test(html) &&
+      !/function fmtExportNum\([\s\S]{0,80}£/.test(html) &&
+      (html.match(/'GBP'/g) || []).length >= 2);
+    check('NN5d dates render DD/MM/YYYY via fmtExportDate',
+      /function fmtExportDate\(iso\)[\s\S]{0,200}`\$\{m\[3\]\}\/\$\{m\[2\]\}\/\$\{m\[1\]\}`/.test(html));
+
+    // ─ NN6: single-invoice wiring + delivery + Settings selects ─
+    check('NN6a timemachine keeps the existing PDF path (setPrintTarget); other formats produce a file artifact',
+      /const handleExport = \(\) => \{\s*const fmt = [\s\S]{0,160}if \(fmt === 'timemachine'\) \{ setPrintTarget\(invoice\); return; \}/.test(html) &&
+      /const art = invoiceExportArtifact\(invoice, production, userPrefs\);\s*if \(!art\) \{ setPrintTarget\(invoice\); return; \}/.test(html));
+    check('NN6b deliverTextFile — native nativeSaveAndShare (utf8) + web Blob download',
+      /async function deliverTextFile\([\s\S]{0,200}IS_NATIVE\) return nativeSaveAndShare\(filename, content, \{ encoding: 'utf8'[\s\S]{0,200}new Blob\(\[content\][\s\S]{0,200}a\.download = filename/.test(html));
+    check('NN6c sensible per-format filenames (TM-INV-…-xero.csv etc.)',
+      /-xero\.csv`/.test(html) && /-quickbooks\.csv`/.test(html) && /-ledger\.csv`/.test(html));
+    check('NN6d Settings → Invoicing has format + rounding selects wired to userPrefs',
+      /set\(\{ invoiceExportFormat: e\.target\.value \}\)/.test(html) &&
+      /set\(\{ invoiceExportRounding: e\.target\.value \}\)/.test(html) &&
+      /INVOICE_EXPORT_FORMATS\.map\(/.test(html) &&
+      /INVOICE_EXPORT_ROUNDINGS\.map\(/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
