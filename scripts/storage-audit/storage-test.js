@@ -4480,12 +4480,24 @@ async function main() {
     // ─ HH7: the affordance is rendered ONLY at the last day. ─
     check('HH7a affordance renders only when safeIdx === days.length - 1',
       /safeIdx === days\.length - 1 && typeof onAddDay === 'function' && \(/.test(html));
-    check('HH7b affordance sits off-screen right via left:100% + translates with dragDelta',
-      /left:\s*'100%',[\s\S]{0,150}transform: `translate3d\(\$\{dragDelta\}px, 0, 0\)`/.test(html));
-    check('HH7c affordance has pointer-events:none (never intercepts the gesture)',
-      /className="absolute top-0 bottom-0 flex items-center justify-center pointer-events-none"/.test(html));
+    check('HH7b affordance sits off-screen right via left:100% + translates at 2× dragDelta (raw-pull speed), capped at -trackW (readability fix)',
+      // The 2× multiplier makes the affordance track the user's RAW
+      // finger speed (the track itself has 0.5 resistance), so the
+      // visible strip at the arm point is ≈58% of the container
+      // instead of ≈29% — enough room for the full label. The
+      // Math.max cap at -trackW means it never runs past fully
+      // visible (no overshoot during the snap-advance).
+      /left:\s*'100%',[\s\S]{0,300}transform: `translate3d\(\$\{Math\.max\(-trackW, dragDelta \* 2\)\}px, 0, 0\)`/.test(html));
+    check('HH7c affordance has pointer-events:none + justify-start anchor (content reads from leading edge)',
+      // Switched from justify-center (content stranded at panel centre,
+      // off-screen until ~50% reveal) to justify-start with pl-4 so
+      // the icon + label sit at the panel's LEFT edge — the part that
+      // becomes visible FIRST as the panel slides in.
+      /className="absolute top-0 bottom-0 flex items-center justify-start pl-4 pointer-events-none"/.test(html));
     check('HH7d affordance label flips between "Pull to add day" and "Release to add day"',
       html.includes("'Release to add day'") && html.includes("'Pull to add day'"));
+    check('HH7e affordance inner card is whitespace-nowrap (label can\'t wrap inside the revealed strip)',
+      /whitespace-nowrap/.test(html));
 
     // ─ HH8: prefers-reduced-motion. The carousel's existing reduceMotion
     //   computation drives BOTH the spring-back and the snap-to-new-day

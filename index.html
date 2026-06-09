@@ -13984,26 +13984,46 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {/* + Add day affordance — only at the last day, only forward
               pull, only when onAddDay is wired. Lives as an absolute
               sibling of the track at left:100% (off-screen right by one
-              container width) and translates LEFT with dragDelta as the
-              user pulls past the end. pointer-events:none so it never
-              intercepts the gesture itself; the carousel root owns the
-              pointer handlers. Visual state — fill, ring, label, scale
-              — flips at the armed threshold (also synced with the
-              haptic.light marker fired in onPointerMove). */}
+              container width) and translates LEFT into the viewport as
+              the user pulls past the end. pointer-events:none so it
+              never intercepts the gesture itself; the carousel root
+              owns the pointer handlers. Visual state — fill, ring,
+              label, scale — flips at the armed threshold (also synced
+              with the haptic.light marker fired in onPointerMove).
+
+              READABILITY (the load-bearing layout decision):
+                * The affordance overlay translates at 2× the track's
+                  resistance-damped dragDelta — so it tracks the user's
+                  RAW finger speed, not the elastic-slowed track. The
+                  translate is clamped to -trackW so the snap-advance
+                  still lands the panel cleanly and the affordance can
+                  never run further left than fully-visible.
+                * Inner content is anchored to the LEADING (left) edge
+                  of the panel via justify-start (NOT justify-center) +
+                  a small pl-4 inset. The panel's left edge is the part
+                  that becomes visible first as the panel slides in, so
+                  the icon + label appear from the start of the reveal
+                  rather than waiting for the panel to be ~halfway in.
+
+              Combined: at the arm point (raw pull ≈ 58% of trackW),
+              the visible strip of the panel is ≈58% of the container
+              (~209px on a 360px phone) and the full "Release to add day"
+              label sits anchored at the panel's left edge — fully on
+              screen, well before the strip's right edge. */}
           {safeIdx === days.length - 1 && typeof onAddDay === 'function' && (
             <div
-              className="absolute top-0 bottom-0 flex items-center justify-center pointer-events-none"
+              className="absolute top-0 bottom-0 flex items-center justify-start pl-4 pointer-events-none"
               style={{
                 left: '100%',
                 width: '100%',
-                transform: `translate3d(${dragDelta}px, 0, 0)`,
+                transform: `translate3d(${Math.max(-trackW, dragDelta * 2)}px, 0, 0)`,
                 transition: transitionStyle,
                 willChange: 'transform',
               }}
               aria-hidden="true"
             >
               <div
-                className={`flex flex-col items-center gap-2 px-6 py-8 rounded-2xl border-2 transition-colors ${
+                className={`flex items-center gap-3 px-5 py-6 rounded-2xl border-2 transition-colors whitespace-nowrap ${
                   addDayArmed
                     ? 'border-sky-500 bg-sky-500/10 text-sky-300'
                     : 'border-neutral-700 bg-neutral-900/40 text-neutral-500'
