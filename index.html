@@ -8163,7 +8163,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             const hasInventory = inventory.length > 0;
             const hasAny = hasInventory || strandedItems.length > 0;
             return (
-              <SectionCard title="Kit money" variant="condition" onClose={() => toggleChip("kitMoney")}>
+              <SectionCard title="Kit" variant="condition" onClose={() => toggleChip("kitMoney")}>
                 {hasAny && (
                   <div className="space-y-2">
                     {inventory.map((invItem) => {
