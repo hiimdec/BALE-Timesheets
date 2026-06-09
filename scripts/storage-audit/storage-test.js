@@ -4858,14 +4858,15 @@ async function main() {
     check('KK6c web backdrop tap → onCancel; native gets neither (IS_NATIVE-gated)',
       /onClick=\{IS_NATIVE \? undefined : onCancel\}/.test(html));
 
-    // ─ KK7: deferred modals untouched this commit (still their own centred
-    //   modal with useEscape; converted next). ─
-    check('KK7a DiscountModal still its own modal (useEscape, not yet Sheet)',
-      /function DiscountModal\([\s\S]{0,120}useEscape\(onClose\)/.test(html) &&
-      !/function DiscountModal\([\s\S]{0,2500}<Sheet /.test(html));
-    check('KK7b LineEditModal still its own modal (useEscape, not yet Sheet)',
-      /function LineEditModal\([\s\S]{0,120}useEscape\(onClose\)/.test(html) &&
-      !/function LineEditModal\([\s\S]{0,3000}<Sheet /.test(html));
+    // ─ KK7: the two invoice modals are now routed through <Sheet> (Wave 2
+    //   final pair — see the MM suite). They no longer hand-roll their own
+    //   centred modal / useEscape. ─
+    check('KK7a DiscountModal no longer hand-rolls its own modal (useEscape/fixed-inset gone)',
+      !/function DiscountModal\([\s\S]{0,200}useEscape\(onClose\)/.test(html) &&
+      !/function DiscountModal\([\s\S]{0,2500}fixed inset-0 flex items-center justify-center"/.test(html));
+    check('KK7b LineEditModal no longer hand-rolls its own modal (useEscape/fixed-inset gone)',
+      !/function LineEditModal\([\s\S]{0,260}useEscape\(onClose\)/.test(html) &&
+      !/function LineEditModal\([\s\S]{0,3000}fixed inset-0 flex items-center justify-center"/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -4961,6 +4962,57 @@ async function main() {
     //   content can't bleed through the status-bar strip. ─
     check('LL8 Best Boy mobile header: bg-black on the safe-area-inset-top sticky bar (no see-through status-bar strip)',
       /<div className="sticky top-0 z-40 bg-black" style=\{\{ paddingTop: 'env\(safe-area-inset-top\)' \}\}>\s*<div className="border-b border-sky-500 bg-black">\s*<div className="max-w-6xl mx-auto px-4 pt-3 pb-3\.5">/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // MM — Phase D Wave 2 final pair (DiscountModal + LineEditModal → Sheet)
+  //
+  // The last two invoice-editor modals are routed through <Sheet>, both
+  // opening as bottom sheets over the full-screen invoice editor (a route,
+  // not a sheet — no parent-sheet stacking).
+  //   DiscountModal  → (b) freely dismissable, NO guard.
+  //   LineEditModal  → (c) discard guard via onBeforeDismiss; dirty compares
+  //                    the editable five-field buffer only (amount-from-rate
+  //                    auto-compute untouched).
+  // Both are input-bearing, so they inherit the Sheet's keyboard-up dismiss
+  // (blurActiveInput on swipe/backdrop) — swipe/backdrop/Cancel close cleanly
+  // with the keyboard up; LineEdit still guards when dirty.
+  //
+  // Source-presence only — gesture/keyboard feel is dogfooded on device.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ MM1: DiscountModal (b) — Sheet, no guard, content preserved ─
+    check('MM1a DiscountModal routes through <Sheet open onClose={onClose} maxWidth={400}>',
+      /function DiscountModal\([\s\S]{0,1200}<Sheet open onClose=\{onClose\} maxWidth=\{400\}>/.test(html));
+    check('MM1b DiscountModal has NO discard guard (freely dismissable)',
+      !/function DiscountModal\([\s\S]{0,2500}onBeforeDismiss/.test(html));
+    check('MM1c DiscountModal preserves the units-to-bill input + Waive/Apply + Remove waiver',
+      /value=\{dqty\} onChange=\{\(e\) => setDqty\(e\.target\.value\)\}/.test(html) &&
+      /onClick=\{\(\) => onSave\(isFixed \? 0 : parsedQty\)\}/.test(html) &&
+      /onClick=\{\(\) => onSave\(null\)\}>Remove waiver/.test(html));
+
+    // ─ MM2: LineEditModal (c) — Sheet + discard guard ─
+    check('MM2a LineEditModal routes through <Sheet … onBeforeDismiss={onBeforeDismiss} maxWidth={420}>',
+      /function LineEditModal\([\s\S]{0,1700}<Sheet open onClose=\{onClose\} onBeforeDismiss=\{onBeforeDismiss\} maxWidth=\{420\}>/.test(html));
+    check('MM2b LineEditModal dirty = editable five-field buffer vs on-open snapshot (computedAmount NOT compared)',
+      /const initialRef = React\.useRef\(\{ label, detail, qty, rate, amount \}\);/.test(html) &&
+      /const dirty = label !== initialRef\.current\.label[\s\S]{0,260}amount !== initialRef\.current\.amount;/.test(html) &&
+      /const \{ showDiscard, setShowDiscard, onBeforeDismiss \} = useDiscardGuard\(dirty\);/.test(html));
+    check('MM2c LineEditModal renders the discard alert (Discard / Keep editing); confirm closes, cancel keeps editing',
+      /function LineEditModal\([\s\S]{0,4200}<ConfirmDialog\s*open=\{showDiscard\}[\s\S]{0,300}confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"[\s\S]{0,200}onConfirm=\{\(\) => \{ setShowDiscard\(false\); onClose\(\); \}\}/.test(html));
+    check('MM2d LineEditModal keeps amount-auto-computes-from-rate untouched (computedAmount = hasRate ? qty×rate : …)',
+      /const computedAmount = hasRate \? parsedQty \* parsedRate : parseFloat\(amount\) \|\| 0;/.test(html));
+
+    // ─ MM3: both dropped their own modal scaffold; Sheet owns scroll-lock +
+    //   Escape + keyboard-up dismiss (no per-modal keyboard handling). ─
+    check('MM3a neither modal hand-rolls the old fixed-inset centred backdrop anymore',
+      !/function DiscountModal\([\s\S]{0,2500}fixed inset-0 flex items-center justify-center"/.test(html) &&
+      !/function LineEditModal\([\s\S]{0,3000}fixed inset-0 flex items-center justify-center"/.test(html));
+    check('MM3b keyboard-up dismiss is inherited from the Sheet (blurActiveInput in tryDismiss + axis-lock — see LL7), not re-implemented per modal',
+      /const blurActiveInput = \(\) => \{/.test(html) &&
+      !/function DiscountModal\([\s\S]{0,2500}blurActiveInput/.test(html) &&
+      !/function LineEditModal\([\s\S]{0,3000}blurActiveInput/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
