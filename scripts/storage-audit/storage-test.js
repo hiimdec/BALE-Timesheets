@@ -5097,7 +5097,7 @@ async function main() {
     check('NN6d Settings → Invoicing → Accounting export: format Select + single RoundingModeSelect on userPrefs.roundingMode (favourable greyed for CSV formats)',
       /set\(\{ invoiceExportFormat: e\.target\.value \}\)/.test(html) &&
       /INVOICE_EXPORT_FORMATS\.map\(/.test(html) &&
-      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}\s+disableFavourable=\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
+      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}\s+disableFavourable=\{invoicingEnabled\(userPrefs\) && INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -5125,10 +5125,10 @@ async function main() {
       /disabled=\{disabled\}/.test(html));
 
     // ─ OO2: the single control lives in Invoicing → Accounting export + per-shoot ─
-    check('OO2a Invoicing default control: RoundingModeSelect on userPrefs.roundingMode, greying favourable for CSV formats',
-      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}\s+disableFavourable=\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
-    check('OO2b per-shoot control (Production Settings) greys favourable on the SAME CSV-format condition',
-      /<RoundingModeSelect value=\{roundingModeOf\(production\)\} onChange=\{\(m\) => setProduction\(p => \(\{ \.\.\.p, roundingMode: m \}\)\)\} disableFavourable=\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
+    check('OO2a Invoicing default control: RoundingModeSelect on userPrefs.roundingMode, greying favourable for CSV formats (invoicing on)',
+      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}\s+disableFavourable=\{invoicingEnabled\(userPrefs\) && INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
+    check('OO2b per-shoot control (Production Settings) greys favourable on the SAME condition (invoicing on AND CSV)',
+      /<RoundingModeSelect value=\{roundingModeOf\(production\)\} onChange=\{\(m\) => setProduction\(p => \(\{ \.\.\.p, roundingMode: m \}\)\)\} disableFavourable=\{invoicingEnabled\(userPrefs\) && INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
     check('OO2c favourable selectable when format === timemachine (INVOICE_EXPORT_CSV_FORMATS excludes timemachine → disableFavourable false)',
       /const INVOICE_EXPORT_CSV_FORMATS = \['xero', 'quickbooks', 'csv'\];/.test(html) &&
       !/INVOICE_EXPORT_CSV_FORMATS = \[[^\]]*timemachine/.test(html));
@@ -5178,8 +5178,8 @@ async function main() {
     // ─ PP2: generate action branches on invoiceExportFormat ─
     check('PP2a generateOrExport: timemachine → openInvoiceFromButton; else resolve + confirm',
       /const generateOrExport = \(\) => \{\s*const fmt = \(userPrefs && userPrefs\.invoiceExportFormat\) \|\| 'timemachine';\s*if \(fmt === 'timemachine'\) \{ openInvoiceFromButton\(\); return; \}\s*setExportConfirm\(resolveInvoiceForExport\(\)\);/.test(html));
-    check('PP2b CalcBreakdownView CTA routes through generateOrExport (not openInvoiceFromButton directly)',
-      /onGenerateInvoice=\{\(\) => \{ setShowCalc\(false\); generateOrExport\(\); \}\}/.test(html));
+    check('PP2b CalcBreakdownView CTA routes through generateOrExport (when invoicing is on; not openInvoiceFromButton directly)',
+      /onGenerateInvoice=\{invoicingEnabled\(userPrefs\) \? \(\) => \{ setShowCalc\(false\); generateOrExport\(\); \} : undefined\}/.test(html));
     check('PP2c export-sheet "Generate invoice" button routes through generateOrExport',
       /onClick=\{\(\) => \{ setShowExportSheet\(false\); generateOrExport\(\); \}\}/.test(html));
 
@@ -5220,6 +5220,66 @@ async function main() {
     check('PP7a timemachine still calls openInvoiceFromButton(), and the reuse-first editor opener is intact',
       /if \(fmt === 'timemachine'\) \{ openInvoiceFromButton\(\); return; \}/.test(html) &&
       /const openInvoiceFromButton = \(\) => \{[\s\S]{0,400}const latestDraft = \[\.\.\.invoices\]\.reverse\(\)\.find\(inv => inv\.status === "draft"\);[\s\S]{0,200}setInvoiceNav\(target\.id\)/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // QQ — Invoicing visibility (master toggle, view-only). userPrefs.invoicingEnabled
+  // (default ON) × invoiceExportFormat → FULL (on+timemachine) / EXPORT (on+CSV) /
+  // CALCULATOR-ONLY (off). Hiding ≠ deleting: toggling touches no invoice data and
+  // invoices reappear when re-enabled. Source-presence only (calc engine untouched —
+  // see audit:build).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const dup = (html.match(/const DEFAULT_USER_PREFS = \{[\s\S]*?\n    \};/) || [''])[0];
+
+    // ─ QQ1: the fresh pref + the visibility helpers ─
+    check('QQ1a invoicingEnabled defaults ON (true) in DEFAULT_USER_PREFS',
+      /invoicingEnabled: true,/.test(dup));
+    check('QQ1b invoicingEnabled + invoicesTabVisible helpers (FULL = invoicing ON AND format timemachine)',
+      /const invoicingEnabled = \(p\) => p\?\.invoicingEnabled !== false;/.test(html) &&
+      /const invoicesTabVisible = \(p\) => invoicingEnabled\(p\) && \(\(p\?\.invoiceExportFormat \|\| 'timemachine'\) === 'timemachine'\);/.test(html));
+
+    // ─ QQ2: Invoices tab + views rendered ONLY in FULL mode (every entry point) ─
+    check('QQ2a Home Invoices tab button + its AllInvoicesView render are gated on invoicesTabVisible',
+      /\{invoicesTabVisible\(userPrefs\) && \(\s*<button\s*onClick=\{\(\) => setHomeTab\('invoices'\)\}/.test(html) &&
+      /\{\(invoicesTabVisible\(userPrefs\) && homeTab === "invoices"\) \? \(/.test(html));
+    check('QQ2b a stuck homeTab=invoices redirects to Shoots when the tab becomes hidden',
+      /if \(homeTab === 'invoices' && !invoicesTabVisible\(userPrefs\)\) setHomeTab\('productions'\);/.test(html));
+    check('QQ2c the per-production (Best Boy) tab bar adds Invoices ONLY when invoicesTabVisible',
+      /\.\.\.\(invoicesTabVisible\(userPrefs\) \? \[\{ k: "invoices", label: "Invoices", I: IReceipt \}\] : \[\]\)/.test(html));
+    check('QQ2d mobile-nav Invoices entry + the in-production invoice views are gated too',
+      /\{invoicesTabVisible\(userPrefs\) && \(\s*<button\s*type="button"\s*onClick=\{\(\) => \{ setShowMobileNav\(false\); setInvoiceNav\('list'\); \}\}/.test(html) &&
+      /if \(invoicesTabVisible\(userPrefs\) && invoiceNav === "list"\) \{/.test(html) &&
+      /if \(invoicesTabVisible\(userPrefs\) && invoiceNav && invoiceNav !== "list"\) \{/.test(html));
+
+    // ─ QQ3: day-page Generate/Export CTA — present when ON, hidden when OFF ─
+    check('QQ3a day-page CTA (solo modal) passes onGenerateInvoice only when invoicing is ON (else undefined)',
+      /onGenerateInvoice=\{invoicingEnabled\(userPrefs\) \? \(\) => \{ setShowCalc\(false\); generateOrExport\(\); \} : undefined\}/.test(html));
+    check('QQ3b CalcBreakdownView pill shows the generate CTA only when onGenerateInvoice exists, else a neutral TOTAL',
+      /\{onGenerateInvoice \? \([\s\S]{0,500}<div className="tm-pill-topline">TOTAL<\/div>/.test(html));
+    check('QQ3c export-sheet "Generate invoice" button is gated on invoicingEnabled',
+      /\{invoicingEnabled\(userPrefs\) && \(\s*<button type="button"\s*onClick=\{\(\) => \{ setShowExportSheet\(false\); generateOrExport\(\); \}\}/.test(html));
+
+    // ─ QQ4: Settings → Invoicing — toggle + Rounding always; the rest gated ─
+    check('QQ4a master Toggle on userPrefs.invoicingEnabled is present',
+      /<Toggle value=\{invoicingEnabled\(userPrefs\)\} onChange=\{\(v\) => set\(\{ invoicingEnabled: v \}\)\} ariaLabel="Invoicing" \/>/.test(html));
+    check('QQ4b invoice-specific settings wrapped in an invoicingEnabled gate that closes before </Disclosure>',
+      /\{invoicingEnabled\(userPrefs\) && \(<>/.test(html) &&
+      /<\/>\)\}\s*<\/Disclosure>/.test(html));
+    check('QQ4c the Rounding control renders BEFORE that gate — stays visible when invoicing is OFF',
+      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}\s+disableFavourable=\{invoicingEnabled\(userPrefs\) && INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}[\s\S]{0,500}\{invoicingEnabled\(userPrefs\) && \(<>/.test(html));
+
+    // ─ QQ5: favourable greying now also requires invoicing ON (both controls) ─
+    check('QQ5a favourable greying at BOTH rounding controls requires invoicing ON (invoicingEnabled && CSV); the old un-gated form is gone',
+      (html.match(/disableFavourable=\{invoicingEnabled\(userPrefs\) && INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/g) || []).length === 2 &&
+      !/disableFavourable=\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
+
+    // ─ QQ6: hiding is VIEW-ONLY — invoices persist across an off→on toggle ─
+    check('QQ6a the master toggle writes ONLY userPrefs.invoicingEnabled (no invoice/production mutation)',
+      /onChange=\{\(v\) => set\(\{ invoicingEnabled: v \}\)\}/.test(html));
+    check('QQ6b the visibility helpers are pure reads — no set()/setProduction() inside them',
+      !/const invoicingEnabled = \(p\) =>[^\n]*\bset\(/.test(html) &&
+      !/const invoicesTabVisible = \(p\) =>[^\n]*\bset\(/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

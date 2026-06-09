@@ -1531,6 +1531,11 @@
       invoiceNextNumber: 1,
       // Invoicing — Payment terms
       paymentTermsDays: 30,
+      // Invoicing — master visibility toggle (view-only). ON = invoicing visible
+      // (Invoices tab in FULL mode + day-page Generate/Export CTA). OFF = hidden
+      // (calculator only). Existing invoices are NOT deleted and reappear when
+      // turned back on. Fresh key, no legacy interaction — safe to default here.
+      invoicingEnabled: true,
       // Invoicing — Accounting export. value-presence; gained by existing users
       // via the merge-over-DEFAULT_USER_PREFS read in useStoredState — no
       // migration, no SCHEMA_VERSION bump (same pattern as kitInventory /
@@ -1823,6 +1828,14 @@
     const roundingModeOf = (o) => o?.roundingMode ?? (o?.favourableRounding ? 'favourable' : o?.apaRounding ? 'apa' : 'exact');
     const roundingApa = (o) => roundingModeOf(o) === 'apa';
     const roundingFav = (o) => roundingModeOf(o) === 'favourable';
+    // Invoicing visibility (view-only — never deletes invoice data). Master toggle
+    // userPrefs.invoicingEnabled (default ON) × invoiceExportFormat → 3 modes:
+    //   FULL   (on + 'timemachine'): Invoices tab + list/editor/PDF + day-page CTA
+    //   EXPORT (on + a CSV format):  no Invoices tab; day-page CTA exports CSV
+    //   OFF    (invoicing off):      no tab, no CTA — calculator only
+    // Hiding ≠ deleting: existing invoices persist and reappear when re-enabled.
+    const invoicingEnabled = (p) => p?.invoicingEnabled !== false;
+    const invoicesTabVisible = (p) => invoicingEnabled(p) && ((p?.invoiceExportFormat || 'timemachine') === 'timemachine');
     const todayISO = () => new Date().toISOString().slice(0, 10);
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
     const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
@@ -12504,7 +12517,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Rounding</div>
-                <RoundingModeSelect value={roundingModeOf(production)} onChange={(m) => setProduction(p => ({ ...p, roundingMode: m }))} disableFavourable={INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)} />
+                <RoundingModeSelect value={roundingModeOf(production)} onChange={(m) => setProduction(p => ({ ...p, roundingMode: m }))} disableFavourable={invoicingEnabled(userPrefs) && INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)} />
                 <p className="text-[11px] text-neutral-500 mt-2">Applies to this shoot only.</p>
               </div>
               {production.bestBoyMode && (
@@ -13756,9 +13769,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 } : null}
                 onCenterClick={onGenerateInvoice}
               >
-                <div className="tm-pill-topline">{genTop}</div>
-                <div className="tm-pill-amount">{genBottom}</div>
-                <div className="tm-pill-compare">→ {fmtGBP(total)} · {uniqueDayCount} {uniqueDayCount === 1 ? 'day' : 'days'}</div>
+                {onGenerateInvoice ? (
+                  <>
+                    <div className="tm-pill-topline">{genTop}</div>
+                    <div className="tm-pill-amount">{genBottom}</div>
+                    <div className="tm-pill-compare">→ {fmtGBP(total)} · {uniqueDayCount} {uniqueDayCount === 1 ? 'day' : 'days'}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="tm-pill-topline">TOTAL</div>
+                    <div className="tm-pill-amount">{fmtGBP(total)}</div>
+                    <div className="tm-pill-compare">{uniqueDayCount} {uniqueDayCount === 1 ? 'day' : 'days'}</div>
+                  </>
+                )}
               </Pill>
             </div>
           </div>
@@ -14729,7 +14752,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         );
       }
 
-      if (invoiceNav && invoiceNav !== "list") {
+      if (invoicesTabVisible(userPrefs) && invoiceNav && invoiceNav !== "list") {
         return (
           <InvoiceEditorView
             invoiceId={invoiceNav}
@@ -14742,7 +14765,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           />
         );
       }
-      if (invoiceNav === "list") {
+      if (invoicesTabVisible(userPrefs) && invoiceNav === "list") {
         return (
           <InvoiceListView
             production={production}
@@ -14968,7 +14991,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               crew={crew}
               total={totalShoot}
               onClose={() => setShowCalc(false)}
-              onGenerateInvoice={() => { setShowCalc(false); generateOrExport(); }}
+              onGenerateInvoice={invoicingEnabled(userPrefs) ? () => { setShowCalc(false); generateOrExport(); } : undefined}
               onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
               onExportText={async () => { setShowCalc(false); await handleExportText(); }}
               onPickDay={(dayId) => setCurrentDayId(dayId)}
@@ -15043,12 +15066,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 <IMessage size={15}/>Timesheet (Text)
               </button>
-              <button type="button"
-                onClick={() => { setShowExportSheet(false); generateOrExport(); }}
-                className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <IReceipt size={15}/>{exportSheetCtaLabel}
-              </button>
+              {invoicingEnabled(userPrefs) && (
+                <button type="button"
+                  onClick={() => { setShowExportSheet(false); generateOrExport(); }}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IReceipt size={15}/>{exportSheetCtaLabel}
+                </button>
+              )}
             </div>
             <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
               <button type="button" onClick={() => setShowExportSheet(false)}
@@ -15309,7 +15334,7 @@ const setDays = (updater) =>
         );
       }
 
-      if (invoiceNav && invoiceNav !== "list") {
+      if (invoicesTabVisible(userPrefs) && invoiceNav && invoiceNav !== "list") {
         return (
           <InvoiceEditorView
             invoiceId={invoiceNav}
@@ -15322,7 +15347,7 @@ const setDays = (updater) =>
           />
         );
       }
-      if (invoiceNav === "list") {
+      if (invoicesTabVisible(userPrefs) && invoiceNav === "list") {
         return (
           <InvoiceListView
             production={production}
@@ -15450,7 +15475,7 @@ const setDays = (updater) =>
               <div className="max-w-6xl mx-auto px-4 py-2 flex justify-start overflow-x-auto">
                 <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
                   {(production.bestBoyMode
-                    ? [{ k: "setup", label: "Setup", I: IBriefcase }, { k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }, { k: "invoices", label: "Invoices", I: IReceipt }]
+                    ? [{ k: "setup", label: "Setup", I: IBriefcase }, { k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }, ...(invoicesTabVisible(userPrefs) ? [{ k: "invoices", label: "Invoices", I: IReceipt }] : [])]
                     : [{ k: "days", label: "Timesheets", I: ICal }, { k: "export", label: "Export", I: IShare }]
                   ).map(({ k, label, I }) => (
                     <button key={k} onClick={() => { if (k === "invoices") { setInvoiceNav("list"); } else { setTab(k); } }}
@@ -15662,6 +15687,7 @@ const setDays = (updater) =>
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IMail size={15}/>Save timesheets
                   </button>
+                  {invoicesTabVisible(userPrefs) && (
                   <button
                     type="button"
                     onClick={() => { setShowMobileNav(false); setInvoiceNav('list'); }}
@@ -15669,6 +15695,7 @@ const setDays = (updater) =>
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IReceipt size={15}/>Invoices
                   </button>
+                  )}
                 </div>
                 <div className="px-4 pb-3 pt-1 border-t border-neutral-800">
                   <button
@@ -16439,6 +16466,32 @@ const setDays = (updater) =>
                 feel single-tap-to-open. Stays-on-your-device reassurance
                 lives at the bottom of the group. */}
             <Disclosure label="Invoicing" summary={yourDetailsSummary}>
+              {/* Master visibility toggle — always at the top of Invoicing. OFF
+                  hides invoices everywhere (Invoices tab, list/editor/PDF, and the
+                  day-page Generate/Export CTA) for a calculator-only app; existing
+                  invoices are KEPT and reappear when turned back on. */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="pr-3">
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold">Invoicing</span>
+                  <p className="text-[11px] text-neutral-500 mt-1 leading-tight">Show the Invoices tab and the day-page Generate/Export button. Turn off for a calculator-only app — your existing invoices are kept and return when you switch it back on.</p>
+                </div>
+                <Toggle value={invoicingEnabled(userPrefs)} onChange={(v) => set({ invoicingEnabled: v })} ariaLabel="Invoicing" />
+              </div>
+              {/* Rounding — ALWAYS visible (drives the PDF, the on-screen calc
+                  breakdown, and the CSV export). Favourable greys only when
+                  invoicing is ON and the export format is a CSV type. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Rounding</div>
+                <RoundingModeSelect
+                  value={roundingModeOf(userPrefs)}
+                  onChange={(m) => set({ roundingMode: m })}
+                  disableFavourable={invoicingEnabled(userPrefs) && INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)}
+                />
+                <p className="text-[11px] text-neutral-500 mt-2 leading-tight">Sets the default for new shoots; override per shoot in that shoot's settings.</p>
+              </div>
+              {/* Invoice-specific settings — hidden when invoicing is OFF (the
+                  master toggle + Rounding above stay visible). */}
+              {invoicingEnabled(userPrefs) && (<>
               {/* Sub: Your details */}
               <div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Your details</div>
@@ -16511,8 +16564,9 @@ const setDays = (updater) =>
                 </Field>
               </div>
 
-              {/* Sub: Accounting export (Stage 1) — format the invoice export
-                  buttons deliver, and the rounding external exports compute at. */}
+              {/* Sub: Accounting export — the format the invoice export buttons
+                  deliver. (Rounding moved to the always-visible block above so it
+                  stays available in calculator-only mode.) */}
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Accounting export</div>
                 <Field label="Invoice export format" hint="What the invoice export button produces. TimeMachine keeps the PDF; the rest export a CSV for your accounting software.">
@@ -16520,20 +16574,6 @@ const setDays = (updater) =>
                     {INVOICE_EXPORT_FORMATS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
                 </Field>
-                {/* The single rounding setting (userPrefs.roundingMode), sat
-                    directly under the format dropdown so favourable-greying reads
-                    against the chosen format. Sets the default for NEW shoots;
-                    each shoot overrides in its own settings. Favourable is greyed
-                    for CSV formats (PDF-only); selectable on TimeMachine. */}
-                <div className="mt-3">
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1">Rounding</div>
-                  <RoundingModeSelect
-                    value={roundingModeOf(userPrefs)}
-                    onChange={(m) => set({ roundingMode: m })}
-                    disableFavourable={INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)}
-                  />
-                  <p className="text-[11px] text-neutral-500 mt-2 leading-tight">Sets the default for new shoots; override per shoot in that shoot's settings.</p>
-                </div>
               </div>
 
               {/* Sub: VAT — rate + number gated on vatRegistered (preserved). */}
@@ -16679,6 +16719,7 @@ const setDays = (updater) =>
               <div className="text-[10px] text-neutral-500 italic mt-5 pt-4 border-t border-neutral-800 leading-snug">
                 All your invoicing details stay on your device — we don't store or transmit any of this.
               </div>
+              </>)}
             </Disclosure>
 
             {/* §4 — Kit Room: roomier card layout (Stage 2) + drag-to-reorder
@@ -20678,6 +20719,7 @@ const confirmDelete = (p) => setConfirmOpts({
                 >
                   Shoots <span className="font-mono text-neutral-600 ml-1 font-medium">{productions.length}</span>
                 </button>
+                {invoicesTabVisible(userPrefs) && (
                 <button
                   onClick={() => setHomeTab('invoices')}
                   className={`text-[11px] uppercase tracking-[0.16em] font-bold py-2 pb-2.5 border-b-2 -mb-px transition-colors ${
@@ -20688,6 +20730,7 @@ const confirmDelete = (p) => setConfirmOpts({
                 >
                   Invoices <span className="font-mono text-neutral-600 ml-1 font-medium">{invoicesCount}</span>
                 </button>
+                )}
               </div>
             </div>
 
@@ -20713,7 +20756,7 @@ const confirmDelete = (p) => setConfirmOpts({
             )}
           </div>
 
-          {homeTab === "invoices" ? (
+          {(invoicesTabVisible(userPrefs) && homeTab === "invoices") ? (
             <AllInvoicesView
               productions={productions}
               onOpenInvoice={(productionId, invoiceId) => onOpen(productionId, { invoiceId })}
@@ -20996,6 +21039,12 @@ const confirmDelete = (p) => setConfirmOpts({
 
       const [openInvoiceId, setOpenInvoiceId] = useState(null);
       const [homeTab, setHomeTab] = useState("productions");
+      // Invoicing visibility can drop (master toggle off, or export format switched
+      // to a CSV type) while homeTab is 'invoices'; redirect to Shoots so the hidden
+      // tab isn't left active. View-only — no invoice data touched.
+      useEffect(() => {
+        if (homeTab === 'invoices' && !invoicesTabVisible(userPrefs)) setHomeTab('productions');
+      }, [homeTab, userPrefs]);
       const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); };
       const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); };
       const handleUpdateInvoice = (productionId, invoiceId, patch) => {
