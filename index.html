@@ -6192,6 +6192,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const SHEET_FLICK_VELOCITY = 0.5; // px/ms downward = 500 px/s
     const SHEET_DRAG_AXIS_PX = 6;
     const _sheetStack = [];
+    // Phase D Wave 2: the centred iOS-style alert (ConfirmDialog) presents
+    // ABOVE any sheet. CONFIRM_ALERT_Z clears the whole sheet band
+    // (SHEET_BASE_Z + zSlot*10) with huge headroom but stays below the
+    // top-level banners/time-wheel (9997-10000). While an alert is open
+    // _confirmAlertCount > 0, which tells a sheet beneath to swallow Escape so
+    // the alert can sit over it without the sheet closing.
+    const CONFIRM_ALERT_Z = SHEET_BASE_Z + 900; // 960 — above sheets, below top banners
+    let _confirmAlertCount = 0;
     function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', children }) {
       const [mounted, setMounted] = React.useState(open);
       const [visible, setVisible] = React.useState(false);
@@ -6262,6 +6270,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!mounted || !visible) return;
         const onKey = (e) => {
           if (e.key !== 'Escape') return;
+          // A centred alert (ConfirmDialog) sits above every sheet and is
+          // button-only — while one is open it owns Escape, so the sheet
+          // beneath must NOT close. Keeps the alert genuinely on top.
+          if (_confirmAlertCount > 0) return;
           if (_sheetStack[_sheetStack.length - 1] !== idRef.current) return;
           tryDismiss();
         };
@@ -13695,13 +13707,47 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    /* ═══════════════ CENTRED iOS ALERT (Phase D, Wave 2) ═══════════════
+     * ConfirmDialog is a proper centred alert, not a bottom sheet: dimmed
+     * backdrop, rounded card, title + optional message, iOS-stacked action
+     * buttons (destructive in red on top, Cancel below = the safe default).
+     *
+     * Dismissal is BUTTON-ONLY — no backdrop-tap, no Escape, no swipe —
+     * matching real iOS alerts. (This is a deliberate change: the previous
+     * sheet-style ConfirmDialog dismissed on BOTH backdrop tap and Escape.)
+     * While open it bumps _confirmAlertCount so any sheet beneath ignores
+     * Escape, letting the alert sit ON TOP of a sheet (z=CONFIRM_ALERT_Z,
+     * above the whole sheet band) without the sheet closing.
+     *
+     * Entrance is a scale+fade; prefers-reduced-motion appears instantly. */
     function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", confirmTone = "primary", cancelLabel = "Cancel", onConfirm, onCancel }) {
+      const [visible, setVisible] = useState(false);
+
+      const reduceMotion = useMemo(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+        try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+        catch (_) { return false; }
+      }, []);
+
+      // Body-scroll lock + alert registration while open. _confirmAlertCount
+      // tells a sheet underneath to swallow Escape (see Sheet). Two rAF so the
+      // initial scale(0.96)/opacity-0 lands before the transition runs.
       useEffect(() => {
         if (!open) return;
         lockBodyScroll();
-        return () => { unlockBodyScroll(); };
-      }, [open]);
-      useEscape(open ? onCancel : null);
+        _confirmAlertCount++;
+        let raf1 = 0, raf2 = 0;
+        if (!reduceMotion) {
+          raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setVisible(true)); });
+        }
+        return () => {
+          unlockBodyScroll();
+          _confirmAlertCount = Math.max(0, _confirmAlertCount - 1);
+          setVisible(false);
+          cancelAnimationFrame(raf1);
+          cancelAnimationFrame(raf2);
+        };
+      }, [open, reduceMotion]);
 
       if (!open) return null;
 
@@ -13709,32 +13755,35 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         danger: "bg-red-600 hover:bg-red-500 text-white",
         primary: "bg-sky-600 hover:bg-sky-500 text-white",
       };
+      // Reduced motion → render at the resting state immediately.
+      const enter = reduceMotion || visible;
 
       return (
         <div
           role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title"
-          className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
-          onClick={onCancel}
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{
+            zIndex: CONFIRM_ALERT_Z,
+            backgroundColor: enter ? 'rgba(0,0,0,0.82)' : 'rgba(0,0,0,0)',
+            transition: reduceMotion ? 'none' : 'background-color 180ms ease-out',
+          }}
         >
+          {/* Centred alert card. BUTTON-ONLY: the backdrop has no onClick and
+              there is no Escape/swipe handler — you must choose an action. */}
           <div
-            className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-            style={{ maxWidth: 400 }}
-            onClick={e => e.stopPropagation()}
+            className="bg-neutral-900 w-full rounded-2xl shadow-2xl border border-neutral-700 overflow-hidden text-center"
+            style={{
+              maxWidth: 320,
+              transform: enter ? 'scale(1)' : 'scale(0.96)',
+              opacity: enter ? 1 : 0,
+              transition: reduceMotion ? 'none' : 'transform 200ms cubic-bezier(0.32, 0.72, 0, 1), opacity 160ms ease-out',
+            }}
           >
             <div className="px-5 pt-5 pb-4">
-              {title && <div id="confirm-dialog-title" className="text-sm font-bold text-neutral-100 mb-2">{title}</div>}
+              {title && <div id="confirm-dialog-title" className="text-sm font-bold text-neutral-100 mb-1.5">{title}</div>}
               {message && <div className="text-sm text-neutral-400 leading-snug">{message}</div>}
             </div>
-            <div className="flex flex-col-reverse gap-2 px-4 pb-5 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                {cancelLabel}
-              </button>
+            <div className="flex flex-col gap-2 px-4 pb-5">
               <button
                 type="button"
                 onClick={() => {
@@ -13745,10 +13794,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   if (confirmTone === 'danger') haptic.medium();
                   onConfirm && onConfirm();
                 }}
-                className={`w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors ${confirmColors[confirmTone] || confirmColors.primary}`}
+                className={`w-full px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors ${confirmColors[confirmTone] || confirmColors.primary}`}
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
                 {confirmLabel}
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-300 hover:text-neutral-100 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                {cancelLabel}
               </button>
             </div>
           </div>
@@ -18971,23 +19028,19 @@ const setDays = (updater) =>
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
     function InvoiceRowActionSheet({ invoice, onClose, onUpdate, onDelete, showToast }) {
-      // Wave 1 (Phase D): routed through <Sheet>. The embedded ConfirmDialog
-      // behaviour is left exactly as-is — when confirmDelete flips on we still
-      // return the ConfirmDialog directly (not wrapped in Sheet), so the
-      // delete-confirm UX is byte-identical to before.
+      // Wave 1 routed this through <Sheet>. Wave 2 / decision #5: the
+      // delete-confirm now presents as a centred alert ON TOP of the action
+      // sheet (CONFIRM_ALERT_Z > any sheet) instead of swapping the sheet's
+      // contents in-frame. The Sheet stays mounted behind the alert —
+      // confirming deletes, cancelling returns to the sheet.
       const [confirmDelete, setConfirmDelete] = useState(false);
       const markSent = () => { onUpdate({ status: 'sent', dateSent: todayISO() }); showToast('Marked as sent'); onClose(); };
       const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); haptic.success(); fireCelebration(); onClose(); };
       const revertToDraft = () => { onUpdate({ status: 'draft', dateSent: null }); showToast('Marked as draft'); onClose(); };
       const revertToSent = () => { onUpdate({ status: 'sent', datePaid: null }); showToast('Marked as unpaid'); onClose(); };
       const doDelete = () => { onDelete(); showToast('Invoice deleted'); onClose(); };
-      if (confirmDelete) {
-        return (
-          <ConfirmDialog open title="Delete invoice?" message={`Delete ${invoice.invoiceNumber}? This cannot be undone.`}
-            confirmLabel="Delete" confirmTone="danger" onConfirm={doDelete} onCancel={() => setConfirmDelete(false)} />
-        );
-      }
       return (
+        <>
         <Sheet open onClose={onClose} title={invoice.invoiceNumber}>
           <div className="px-4 pb-4 flex flex-col gap-2">
               {invoice.status === 'draft' && (
@@ -19030,6 +19083,17 @@ const setDays = (updater) =>
                 style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
             </div>
         </Sheet>
+        {/* Decision #5: centred delete-confirm presents ON TOP of the action
+            sheet (not in-frame). Sheet stays mounted behind it. */}
+        <ConfirmDialog
+          open={confirmDelete}
+          title="Delete invoice?"
+          message={`Delete ${invoice.invoiceNumber}? This cannot be undone.`}
+          confirmLabel="Delete" confirmTone="danger"
+          onConfirm={doDelete}
+          onCancel={() => setConfirmDelete(false)}
+        />
+        </>
       );
     }
 

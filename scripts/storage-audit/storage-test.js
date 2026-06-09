@@ -4659,11 +4659,13 @@ async function main() {
       /<Sheet\s+open=\{!!actionSheet\}\s+onClose=\{\(\) => setActionSheet\(null\)\}/.test(html));
     check('II3b SoloDayPage day-actions sheet routes through <Sheet>',
       /<Sheet\s+open=\{showDayActions\}\s+onClose=\{\(\) => setShowDayActions\(false\)\}\s+title="Day actions"/.test(html));
-    check('II3c InvoiceRowActionSheet routes through <Sheet> (embedded ConfirmDialog left intact)',
+    check('II3c InvoiceRowActionSheet routes through <Sheet> (delete-confirm now on top — see JJ7)',
+      // Wave-1 routed the sheet itself; Wave-2/decision #5 moved the
+      // delete-confirm onto a centred alert ABOVE the sheet (the old
+      // in-frame `if (confirmDelete) return <ConfirmDialog>` swap is gone —
+      // JJ7 owns the on-top behaviour).
       /function InvoiceRowActionSheet\([\s\S]{0,3000}<Sheet open onClose=\{onClose\} title=\{invoice\.invoiceNumber\}>/.test(html) &&
-      // Confirm-delete branch still renders ConfirmDialog directly — not
-      // through Sheet — so the delete-confirm UX is unchanged from before.
-      /function InvoiceRowActionSheet\([\s\S]{0,2000}if \(confirmDelete\) \{[\s\S]{0,500}<ConfirmDialog open/.test(html));
+      !/function InvoiceRowActionSheet\([\s\S]{0,2000}if \(confirmDelete\) \{[\s\S]{0,500}<ConfirmDialog open/.test(html));
     check('II3d LineItemActionSheet routes through <Sheet>',
       /function LineItemActionSheet\([\s\S]{0,1500}<Sheet open onClose=\{onClose\}>/.test(html));
     check('II3e DayJumpSheet routes through <Sheet> (maxWidth 480)',
@@ -4702,6 +4704,78 @@ async function main() {
     check('II5c Sheet uses per-instance idRef + zSlot — stack-safe (Wave-3 layered sheets)',
       /function Sheet\([\s\S]{0,4000}const idRef = React\.useRef\(null\)/.test(html) &&
       /function Sheet\([\s\S]{0,4000}const \[zSlot, setZSlot\] = React\.useState\(0\)/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // JJ — Phase D Wave 2 part 1 (centred iOS alert: ConfirmDialog)
+  //
+  // ConfirmDialog is now a proper centred alert, not a bottom sheet:
+  // dimmed backdrop, rounded card, title + optional message, iOS-stacked
+  // buttons (destructive red on top, Cancel below). Dismissal is
+  // BUTTON-ONLY — no backdrop-tap, no Escape, no swipe (a deliberate
+  // change from the old sheet-style dialog which dismissed on both
+  // backdrop tap AND Escape). It presents ABOVE any sheet
+  // (z=CONFIRM_ALERT_Z) and, while open, bumps _confirmAlertCount so a
+  // sheet beneath swallows Escape — letting the InvoiceRowActionSheet
+  // delete-confirm sit on top of the action sheet without it closing
+  // (decision #5). prefers-reduced-motion appears instantly.
+  //
+  // Source-presence only — the gesture/animation is dogfooded on device.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ JJ1: centred (NOT a bottom sheet) + presents at CONFIRM_ALERT_Z ─
+    check('JJ1a ConfirmDialog backdrop is centred (items-center justify-center), not items-end',
+      /className="fixed inset-0 flex items-center justify-center p-4"\s*style=\{\{\s*zIndex: CONFIRM_ALERT_Z/.test(html));
+    check('JJ1b ConfirmDialog no longer uses the items-end bottom-sheet alignment',
+      !/function ConfirmDialog\([\s\S]{0,4000}items-end/.test(html));
+
+    // ─ JJ2: BUTTON-ONLY dismissal — no backdrop onClick, no Escape ─
+    check('JJ2a ConfirmDialog no longer wires useEscape (Escape no longer dismisses)',
+      !/function ConfirmDialog\([\s\S]{0,1200}useEscape/.test(html));
+    check('JJ2b backdrop container has NO onClick — tag closes straight into the card (button-only)',
+      /items-center justify-center p-4"\s*style=\{\{[\s\S]{0,300}?\}\}\s*>\s*\{\/\* Centred alert card\. BUTTON-ONLY/.test(html));
+    check('JJ2c no card-level stopPropagation guard (it only existed to block backdrop-dismiss)',
+      !/function ConfirmDialog\([\s\S]{0,4000}stopPropagation/.test(html));
+
+    // ─ JJ3: z-slot above any sheet ─
+    check('JJ3a CONFIRM_ALERT_Z defined above the sheet band (SHEET_BASE_Z + 900)',
+      /const CONFIRM_ALERT_Z = SHEET_BASE_Z \+ 900;/.test(html));
+    check('JJ3b the alert renders at CONFIRM_ALERT_Z (higher than any SHEET_BASE_Z + zSlot*10)',
+      /zIndex: CONFIRM_ALERT_Z/.test(html));
+
+    // ─ JJ4: prefers-reduced-motion respected (no scale/fade) ─
+    check('JJ4a ConfirmDialog reads prefers-reduced-motion',
+      /function ConfirmDialog\([\s\S]{0,900}matchMedia\('\(prefers-reduced-motion: reduce\)'\)/.test(html));
+    check('JJ4b reduced motion forces transitions off + renders at the resting state (enter = reduceMotion || visible)',
+      /const enter = reduceMotion \|\| visible;/.test(html) &&
+      /transition: reduceMotion \? 'none' :/.test(html));
+    check('JJ4c entrance is a scale+fade when motion is allowed',
+      /transform: enter \? 'scale\(1\)' : 'scale\(0\.96\)'/.test(html) &&
+      /opacity: enter \? 1 : 0/.test(html));
+
+    // ─ JJ5: alert registers itself; sheets beneath swallow Escape ─
+    check('JJ5a ConfirmDialog bumps _confirmAlertCount while open',
+      /_confirmAlertCount\+\+;/.test(html) &&
+      /_confirmAlertCount = Math\.max\(0, _confirmAlertCount - 1\)/.test(html));
+    check('JJ5b Sheet Escape handler bails while an alert is open (alert sits over a sheet without it closing)',
+      /if \(e\.key !== 'Escape'\) return;\s*\/\/[\s\S]{0,260}if \(_confirmAlertCount > 0\) return;\s*if \(_sheetStack\[_sheetStack\.length - 1\]/.test(html));
+
+    // ─ JJ6: iOS-stacked buttons — destructive red on top, Cancel below ─
+    check('JJ6a buttons are vertically stacked (flex flex-col, not row / not col-reverse)',
+      /<div className="flex flex-col gap-2 px-4 pb-5">/.test(html));
+    check('JJ6b destructive/primary confirm renders ABOVE the cancel, and danger tone is red',
+      /flex flex-col gap-2 px-4 pb-5">[\s\S]{0,900}confirmColors\[confirmTone\][\s\S]{0,500}onClick=\{onCancel\}/.test(html) &&
+      /danger: "bg-red-600/.test(html));
+
+    // ─ JJ7: decision #5 — InvoiceRowActionSheet confirm presents ON TOP of
+    //   the sheet (not the old in-frame `if (confirmDelete) return …`). ─
+    check('JJ7a InvoiceRowActionSheet no longer swaps to the dialog in-frame',
+      !/if \(confirmDelete\) \{\s*return \(\s*<ConfirmDialog/.test(html));
+    check('JJ7b InvoiceRowActionSheet renders the Sheet AND the ConfirmDialog together (alert on top)',
+      /function InvoiceRowActionSheet\([\s\S]{0,4000}<Sheet open onClose=\{onClose\} title=\{invoice\.invoiceNumber\}>[\s\S]{0,3000}<ConfirmDialog\s*open=\{confirmDelete\}/.test(html));
+    check('JJ7c the on-top confirm is gated on confirmDelete + keeps the existing doDelete / cancel handlers',
+      /<ConfirmDialog\s*open=\{confirmDelete\}[\s\S]{0,400}onConfirm=\{doDelete\}[\s\S]{0,120}onCancel=\{\(\) => setConfirmDelete\(false\)\}/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
