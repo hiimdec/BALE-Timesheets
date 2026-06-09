@@ -1834,6 +1834,21 @@
         return () => document.removeEventListener('keydown', handler);
       }, []);
     };
+    // Discard-changes guard for edit-form sheets (Phase D Wave 2.2). Pass the
+    // form's dirty flag; wire the returned onBeforeDismiss into <Sheet> so a
+    // swipe-down / backdrop / Escape on a DIRTY form opens a "Discard changes?"
+    // alert instead of closing, and just closes when clean. The form renders
+    // the returned discard <ConfirmDialog> itself (destructive "Discard", safe
+    // "Keep editing"). Explicit Save/Cancel buttons are unchanged — only
+    // accidental dismissals are guarded.
+    const useDiscardGuard = (isDirty) => {
+      const [showDiscard, setShowDiscard] = useState(false);
+      const onBeforeDismiss = React.useCallback(
+        () => { if (isDirty) { setShowDiscard(true); return false; } return true; },
+        [isDirty]
+      );
+      return { showDiscard, setShowDiscard, onBeforeDismiss };
+    };
     const weekday = (iso) => { if (!iso) return ""; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" }); };
     const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
     // fmtDateShort → "04/05/2026" (compact: line items, table rows)
@@ -6199,7 +6214,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // _confirmAlertCount > 0, which tells a sheet beneath to swallow Escape so
     // the alert can sit over it without the sheet closing.
     const CONFIRM_ALERT_Z = SHEET_BASE_Z + 900; // 960 — above sheets, below top banners
-    let _confirmAlertCount = 0;
+    // Stack of open alert ids (mirrors _sheetStack). A sheet beneath swallows
+    // Escape while this is non-empty; on WEB only the TOPMOST alert responds to
+    // Escape / backdrop, so stacked alerts never all dismiss from one keypress.
+    const _confirmAlertStack = [];
     function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', children }) {
       const [mounted, setMounted] = React.useState(open);
       const [visible, setVisible] = React.useState(false);
@@ -6270,10 +6288,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!mounted || !visible) return;
         const onKey = (e) => {
           if (e.key !== 'Escape') return;
-          // A centred alert (ConfirmDialog) sits above every sheet and is
-          // button-only — while one is open it owns Escape, so the sheet
-          // beneath must NOT close. Keeps the alert genuinely on top.
-          if (_confirmAlertCount > 0) return;
+          // A centred alert (ConfirmDialog) sits above every sheet — while one
+          // is open it owns Escape, so the sheet beneath must NOT close. On web
+          // the topmost alert's own handler cancels it; on native there is no
+          // Escape. Either way the sheet stays put.
+          if (_confirmAlertStack.length > 0) return;
           if (_sheetStack[_sheetStack.length - 1] !== idRef.current) return;
           tryDismiss();
         };
@@ -6612,11 +6631,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function CrewEditModal({ editing, form, setForm, onSave, onCancel, onRoleChange }) {
       const [selectedDept, setSelectedDept] = useState(() => ROLE_TO_DEPT[form.role] || "All");
 
-      useEffect(() => {
-        lockBodyScroll();
-        return () => { unlockBodyScroll(); };
-      }, []);
-      useEscape(onCancel);
+      // (c) editor — parent-held `form` buffer until Save. Snapshot on open;
+      // a dirty swipe/backdrop/web-Escape dismiss is guarded. The Sheet owns
+      // scroll-lock + Escape, so the local copies are gone.
+      const initialRef = useRef(form);
+      const dirty = JSON.stringify(form) !== JSON.stringify(initialRef.current);
+      const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(dirty);
 
       const onDeptChange = (dept) => {
         setSelectedDept(dept);
@@ -6627,18 +6647,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
 
       return (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.78)" }}
-          onClick={onCancel}
-        >
-          <div
-            className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
-            style={{ maxWidth: 640, maxHeight: "calc(100dvh - env(safe-area-inset-top) - 1rem)" }}
-            onClick={e => e.stopPropagation()}
-          >
+        <>
+        <Sheet open onClose={onCancel} onBeforeDismiss={onBeforeDismiss} maxWidth={640} contentClassName="flex flex-col max-h-[90vh]">
             {/* ── Fixed header ── */}
-            <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
+            <div className="flex-shrink-0 px-5 pt-1 pb-3 border-b border-neutral-700">
               <div className="flex items-start justify-between gap-3">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">
                   {editing === "new" ? "Add crew member" : "Edit crew member"}
@@ -6717,12 +6729,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
 
             {/* ── Fixed footer ── */}
-            <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 flex gap-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+            <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 flex gap-2">
               <Btn onClick={onSave} variant="success"><ICheck/>Save</Btn>
               <Btn onClick={onCancel} variant="ghost"><IX/>Cancel</Btn>
             </div>
-          </div>
-        </div>
+        </Sheet>
+        <ConfirmDialog
+          open={showDiscard}
+          title="Discard changes?"
+          message="Your unsaved changes will be lost."
+          confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"
+          onConfirm={() => { setShowDiscard(false); onCancel(); }}
+          onCancel={() => setShowDiscard(false)}
+        />
+        </>
       );
     }
 
@@ -6743,11 +6763,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function CancellationCalcModal({ production, setProduction, crew, setCrew, onClose, userPrefs }) {
-      useEffect(() => {
-        lockBodyScroll();
-        return () => { unlockBodyScroll(); };
-      }, []);
-      useEscape(onClose);
+      // (b) auto-save editor — every change commits immediately via commit()
+      // / setCrew (no Save button; just Close + Copy). Routed through <Sheet>
+      // freely dismissable, NO guard. Calc logic untouched. The Sheet owns
+      // scroll-lock + Escape.
 
       // Standalone crew-entry state (used when setCrew is provided)
       const [newName, setNewName] = useState("");
@@ -6845,18 +6864,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
 
       return (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.78)" }}
-          onClick={onClose}
-        >
-          <div
-            className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
-            style={{ maxWidth: 1200, maxHeight: "calc(100dvh - env(safe-area-inset-top) - 1rem)" }}
-            onClick={e => e.stopPropagation()}
-          >
+        <Sheet open onClose={onClose} maxWidth={1200} contentClassName="flex flex-col max-h-[90vh]">
             {/* ── Fixed header ── */}
-            <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700 flex items-start justify-between gap-3" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
+            <div className="flex-shrink-0 px-5 pt-1 pb-3 border-b border-neutral-700 flex items-start justify-between gap-3">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-1">Cancellation Fees</div>
                 <div className="text-[11px] text-neutral-500">APA §7 — fees calculated relative to notice date</div>
@@ -7168,7 +7178,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
 
             {/* ── Fixed footer ── */}
-            <div className="flex-shrink-0 border-t border-neutral-800 px-5 pt-3 flex items-center gap-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+            <div className="flex-shrink-0 border-t border-neutral-800 px-5 pt-3 flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
@@ -7184,8 +7194,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <ICopy size={14}/>{copied ? "Copied!" : "Copy breakdown"}
               </Btn>
             </div>
-          </div>
-        </div>
+        </Sheet>
       );
     }
 
@@ -8268,27 +8277,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         ? new Date(resolvedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
         : "";
 
-      useEffect(() => {
-        lockBodyScroll();
-        return () => { unlockBodyScroll(); };
-      }, []);
-      useEscape(onCancel);
+      // (c) editor — parent-held `form` buffer until Save. Snapshot on open;
+      // a dirty swipe/backdrop/web-Escape dismiss is guarded. The Sheet owns
+      // scroll-lock + Escape now.
+      const initialRef = useRef(form);
+      const dirty = JSON.stringify(form) !== JSON.stringify(initialRef.current);
+      const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(dirty);
 
       const modalTitle = isNew ? "New Day Entry" : isNewAll ? "New Day — All Crew" : "Edit Day Entry";
 
       return (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.78)" }}
-          onClick={onCancel}
-        >
-          <div
-            className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
-            style={{ maxWidth: 640, maxHeight: "calc(100dvh - env(safe-area-inset-top) - 1rem)", height: "auto" }}
-            onClick={e => e.stopPropagation()}
-          >
+        <>
+        <Sheet open onClose={onCancel} onBeforeDismiss={onBeforeDismiss} maxWidth={640} contentClassName="flex flex-col max-h-[90vh]">
             {/* ── Fixed header ── */}
-            <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
+            <div className="flex-shrink-0 px-5 pt-1 pb-3 border-b border-neutral-700">
               <button onClick={onCancel} className="text-[11px] uppercase tracking-[0.2em] text-neutral-400 hover:text-sky-500 transition-colors flex items-center gap-1 mb-2">
                 <IArrowLeft size={12}/> All Days
               </button>
@@ -8364,7 +8366,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
 
             {/* ── Fixed footer ── */}
-            <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 space-y-2.5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+            <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 space-y-2.5">
               {activeCalc && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[9px] text-neutral-600 uppercase tracking-wider mr-0.5">Calc</span>
@@ -8392,8 +8394,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 )}
               </div>
             </div>
-          </div>
-        </div>
+        </Sheet>
+        <ConfirmDialog
+          open={showDiscard}
+          title="Discard changes?"
+          message="Your unsaved changes will be lost."
+          confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"
+          onConfirm={() => { setShowDiscard(false); onCancel(); }}
+          onCancel={() => setShowDiscard(false)}
+        />
+        </>
       );
     }
 
@@ -11034,6 +11044,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [bdr, setBdr] = useState(String(crewMember?.bdr ?? ROLE_DEFAULTS['Lighting Technician'].bdr ?? ''));
       const [email, setEmail] = useState(crewMember?.email || '');
 
+      // (c) editor — local buffer until Add/Save. Snapshot the initial field
+      // values on open; a dirty dismiss (swipe/backdrop/web-Escape) is guarded.
+      const initialRef = useRef({ name, role, bdr, email });
+      const dirty = name !== initialRef.current.name || role !== initialRef.current.role
+        || bdr !== initialRef.current.bdr || email !== initialRef.current.email;
+      const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(dirty);
+
       const canSave = name.trim().length > 0;
       const handleSubmit = () => {
         if (!canSave) return;
@@ -11059,17 +11076,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
 
       return (
-        <div
-          className="fixed inset-0 z-50 flex items-end"
-          onClick={onClose}
-          style={{ background: 'rgba(0,0,0,0.5)' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5 max-h-[85vh] overflow-y-auto"
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
-          >
-            <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
+        <>
+        <Sheet open onClose={onClose} onBeforeDismiss={onBeforeDismiss} maxWidth={480}>
+          <div className="px-5 overflow-y-auto" style={{ maxHeight: '80vh' }}>
             <div className="text-base font-bold text-neutral-100 mb-3">{isEditMode ? `Edit ${crewMember.name || 'crew'}` : "Add to today's crew"}</div>
 
             <div className="space-y-3">
@@ -11138,7 +11147,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               Cancel
             </button>
           </div>
-        </div>
+        </Sheet>
+        <ConfirmDialog
+          open={showDiscard}
+          title="Discard changes?"
+          message="Your unsaved changes will be lost."
+          confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"
+          onConfirm={() => { setShowDiscard(false); onClose(); }}
+          onCancel={() => setShowDiscard(false)}
+        />
+        </>
       );
     }
 
@@ -13253,20 +13271,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         setTimeout(() => onTriggerExport(selectedIds), 50);
       };
 
+      // (b) — ephemeral crew selection (export config); email edits auto-save
+      // via onSetCrewEmail; "Save" triggers the export. No unsaved buffer lost
+      // on dismiss, so routed through <Sheet> freely dismissable, NO guard.
       return (
-        <div
-          className="fixed inset-0 z-50 flex items-end"
-          onClick={onClose}
-          style={{ background: 'rgba(0,0,0,0.5)' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl max-h-[85vh] overflow-y-auto"
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
-          >
-            <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-2 mb-1"/>
-
-            <div className="px-5 pt-3 pb-2">
+        <Sheet open onClose={onClose}>
+          <div className="overflow-y-auto" style={{ maxHeight: '80vh' }}>
+            <div className="px-5 pt-1 pb-2">
               <div className="text-base font-bold text-neutral-100">Save crew timesheets</div>
               <div className="text-[11px] text-neutral-400 mt-0.5">
                 {selectedCount} of {crew.length} selected
@@ -13372,7 +13383,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </button>
             </div>
           </div>
-        </div>
+        </Sheet>
       );
     }
 
@@ -13712,16 +13723,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
      * backdrop, rounded card, title + optional message, iOS-stacked action
      * buttons (destructive in red on top, Cancel below = the safe default).
      *
-     * Dismissal is BUTTON-ONLY — no backdrop-tap, no Escape, no swipe —
-     * matching real iOS alerts. (This is a deliberate change: the previous
-     * sheet-style ConfirmDialog dismissed on BOTH backdrop tap and Escape.)
-     * While open it bumps _confirmAlertCount so any sheet beneath ignores
-     * Escape, letting the alert sit ON TOP of a sheet (z=CONFIRM_ALERT_Z,
-     * above the whole sheet band) without the sheet closing.
-     *
-     * Entrance is a scale+fade; prefers-reduced-motion appears instantly. */
+     * Dismissal differs by platform (Phase D Wave 2.2):
+     *   • NATIVE (iOS): BUTTON-ONLY — no backdrop-tap, no Escape, no swipe,
+     *     matching real iOS alerts.
+     *   • WEB: backdrop-tap and Escape both fall back to onCancel (the safe
+     *     default), matching desktop expectations. Only the TOPMOST alert
+     *     responds to Escape, and a sheet beneath never closes from the same
+     *     keypress (it bails while _confirmAlertStack is non-empty).
+     * While open it pushes onto _confirmAlertStack so the alert sits ON TOP of
+     * a sheet (z=CONFIRM_ALERT_Z, above the whole sheet band) without closing
+     * it. Entrance is a scale+fade; prefers-reduced-motion appears instantly. */
     function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", confirmTone = "primary", cancelLabel = "Cancel", onConfirm, onCancel }) {
       const [visible, setVisible] = useState(false);
+      const idRef = useRef(null);
 
       const reduceMotion = useMemo(() => {
         if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -13729,25 +13743,43 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         catch (_) { return false; }
       }, []);
 
-      // Body-scroll lock + alert registration while open. _confirmAlertCount
-      // tells a sheet underneath to swallow Escape (see Sheet). Two rAF so the
-      // initial scale(0.96)/opacity-0 lands before the transition runs.
+      // Body-scroll lock + push onto the alert stack while open. The stack
+      // tells a sheet underneath to swallow Escape (see Sheet) and lets the web
+      // Escape handler below act only when THIS alert is topmost. Two rAF so
+      // the initial scale(0.96)/opacity-0 lands before the transition runs.
       useEffect(() => {
         if (!open) return;
+        const id = Math.random().toString(36).slice(2);
+        idRef.current = id;
+        _confirmAlertStack.push(id);
         lockBodyScroll();
-        _confirmAlertCount++;
         let raf1 = 0, raf2 = 0;
         if (!reduceMotion) {
           raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setVisible(true)); });
         }
         return () => {
           unlockBodyScroll();
-          _confirmAlertCount = Math.max(0, _confirmAlertCount - 1);
+          const i = _confirmAlertStack.indexOf(id);
+          if (i >= 0) _confirmAlertStack.splice(i, 1);
           setVisible(false);
           cancelAnimationFrame(raf1);
           cancelAnimationFrame(raf2);
         };
       }, [open, reduceMotion]);
+
+      // WEB only: Escape → onCancel (the safe default), topmost alert only.
+      // Native stays button-only. The sheet beneath already bails on Escape
+      // while an alert is open, so this never cascades.
+      useEffect(() => {
+        if (!open || IS_NATIVE) return;
+        const onKey = (e) => {
+          if (e.key !== 'Escape') return;
+          if (_confirmAlertStack[_confirmAlertStack.length - 1] !== idRef.current) return;
+          onCancel && onCancel();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+      }, [open, onCancel]);
 
       if (!open) return null;
 
@@ -13767,9 +13799,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             backgroundColor: enter ? 'rgba(0,0,0,0.82)' : 'rgba(0,0,0,0)',
             transition: reduceMotion ? 'none' : 'background-color 180ms ease-out',
           }}
+          // WEB: backdrop tap → onCancel (safe default). NATIVE: button-only.
+          onClick={IS_NATIVE ? undefined : onCancel}
         >
-          {/* Centred alert card. BUTTON-ONLY: the backdrop has no onClick and
-              there is no Escape/swipe handler — you must choose an action. */}
+          {/* Centred alert card. Native: button-only (no backdrop/Escape).
+              Web: backdrop tap + Escape fall back to Cancel; the card stops
+              propagation so clicks inside don't dismiss. */}
           <div
             className="bg-neutral-900 w-full rounded-2xl shadow-2xl border border-neutral-700 overflow-hidden text-center"
             style={{
@@ -13778,6 +13813,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               opacity: enter ? 1 : 0,
               transition: reduceMotion ? 'none' : 'transform 200ms cubic-bezier(0.32, 0.72, 0, 1), opacity 160ms ease-out',
             }}
+            onClick={IS_NATIVE ? undefined : (e) => e.stopPropagation()}
           >
             <div className="px-5 pt-5 pb-4">
               {title && <div id="confirm-dialog-title" className="text-sm font-bold text-neutral-100 mb-1.5">{title}</div>}
@@ -13814,58 +13850,45 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function DuplicateDateDialog({ opts, onConfirm, onCancel }) {
+      // (b) — a confirm-with-one-date-input. The target date is ephemeral
+      // action-config (like a picker); "Copy" commits, dismissing just cancels
+      // the duplicate. Routed through <Sheet>, freely dismissable, NO guard.
+      // The Sheet owns scroll-lock + Escape.
       const [targetDate, setTargetDate] = useState(opts?.targetDate || "");
       useEffect(() => { if (opts) setTargetDate(opts.targetDate); }, [opts?.targetDate]);
-      useEffect(() => {
-        if (!opts) return;
-        lockBodyScroll();
-        return () => { unlockBodyScroll(); };
-      }, [!!opts]);
-      useEscape(opts ? onCancel : null);
 
       if (!opts) return null;
       const { sourceDate, count } = opts;
       const label = `${count} entr${count === 1 ? 'y' : 'ies'}`;
 
       return (
-        <div
-          role="dialog" aria-modal="true" aria-labelledby="dup-date-title"
-          className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
-          onClick={onCancel}
-        >
-          <div
-            className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-            style={{ maxWidth: 400 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="px-5 pt-5 pb-4">
-              <div id="dup-date-title" className="text-sm font-bold text-neutral-100 mb-3">
-                Copy {label} from {fmtDateShort(sourceDate)} to…
-              </div>
-              <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+        <Sheet open onClose={onCancel} maxWidth={400}>
+          <div className="px-5 pt-1 pb-4">
+            <div id="dup-date-title" className="text-sm font-bold text-neutral-100 mb-3">
+              Copy {label} from {fmtDateShort(sourceDate)} to…
             </div>
-            <div className="flex flex-col-reverse gap-2 px-4 pb-5 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => onConfirm(targetDate)}
-                disabled={!targetDate}
-                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                Copy
-              </button>
-            </div>
+            <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
           </div>
-        </div>
+          <div className="flex flex-col-reverse gap-2 px-4 pb-1 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirm(targetDate)}
+              disabled={!targetDate}
+              className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              Copy
+            </button>
+          </div>
+        </Sheet>
       );
     }
 

@@ -4730,13 +4730,14 @@ async function main() {
     check('JJ1b ConfirmDialog no longer uses the items-end bottom-sheet alignment',
       !/function ConfirmDialog\([\s\S]{0,4000}items-end/.test(html));
 
-    // ─ JJ2: BUTTON-ONLY dismissal — no backdrop onClick, no Escape ─
-    check('JJ2a ConfirmDialog no longer wires useEscape (Escape no longer dismisses)',
-      !/function ConfirmDialog\([\s\S]{0,1200}useEscape/.test(html));
-    check('JJ2b backdrop container has NO onClick — tag closes straight into the card (button-only)',
-      /items-center justify-center p-4"\s*style=\{\{[\s\S]{0,300}?\}\}\s*>\s*\{\/\* Centred alert card\. BUTTON-ONLY/.test(html));
-    check('JJ2c no card-level stopPropagation guard (it only existed to block backdrop-dismiss)',
-      !/function ConfirmDialog\([\s\S]{0,4000}stopPropagation/.test(html));
+    // ─ JJ2: platform-gated dismissal (Wave 2.2) — native button-only, web
+    //   restores backdrop-tap + Escape → onCancel. ─
+    check('JJ2a ConfirmDialog never uses the bare useEscape hook (native button-only; web handler is IS_NATIVE-gated below)',
+      !/function ConfirmDialog\([\s\S]{0,1400}useEscape\(/.test(html));
+    check('JJ2b backdrop tap is IS_NATIVE-gated (native: none; web: onCancel)',
+      /onClick=\{IS_NATIVE \? undefined : onCancel\}/.test(html));
+    check('JJ2c card stopPropagation is IS_NATIVE-gated (only needed for the web backdrop-dismiss)',
+      /onClick=\{IS_NATIVE \? undefined : \(e\) => e\.stopPropagation\(\)\}/.test(html));
 
     // ─ JJ3: z-slot above any sheet ─
     check('JJ3a CONFIRM_ALERT_Z defined above the sheet band (SHEET_BASE_Z + 900)',
@@ -4754,12 +4755,12 @@ async function main() {
       /transform: enter \? 'scale\(1\)' : 'scale\(0\.96\)'/.test(html) &&
       /opacity: enter \? 1 : 0/.test(html));
 
-    // ─ JJ5: alert registers itself; sheets beneath swallow Escape ─
-    check('JJ5a ConfirmDialog bumps _confirmAlertCount while open',
-      /_confirmAlertCount\+\+;/.test(html) &&
-      /_confirmAlertCount = Math\.max\(0, _confirmAlertCount - 1\)/.test(html));
+    // ─ JJ5: alert registers on a stack; sheets beneath swallow Escape ─
+    check('JJ5a ConfirmDialog pushes/splices its id on _confirmAlertStack while open',
+      /_confirmAlertStack\.push\(id\)/.test(html) &&
+      /_confirmAlertStack\.splice\(/.test(html));
     check('JJ5b Sheet Escape handler bails while an alert is open (alert sits over a sheet without it closing)',
-      /if \(e\.key !== 'Escape'\) return;\s*\/\/[\s\S]{0,260}if \(_confirmAlertCount > 0\) return;\s*if \(_sheetStack\[_sheetStack\.length - 1\]/.test(html));
+      /if \(e\.key !== 'Escape'\) return;\s*\/\/[\s\S]{0,320}if \(_confirmAlertStack\.length > 0\) return;\s*if \(_sheetStack\[_sheetStack\.length - 1\]/.test(html));
 
     // ─ JJ6: iOS-stacked buttons — destructive red on top, Cancel below ─
     check('JJ6a buttons are vertically stacked (flex flex-col, not row / not col-reverse)',
@@ -4776,6 +4777,95 @@ async function main() {
       /function InvoiceRowActionSheet\([\s\S]{0,4000}<Sheet open onClose=\{onClose\} title=\{invoice\.invoiceNumber\}>[\s\S]{0,3000}<ConfirmDialog\s*open=\{confirmDelete\}/.test(html));
     check('JJ7c the on-top confirm is gated on confirmDelete + keeps the existing doDelete / cancel handlers',
       /<ConfirmDialog\s*open=\{confirmDelete\}[\s\S]{0,400}onConfirm=\{doDelete\}[\s\S]{0,120}onCancel=\{\(\) => setConfirmDelete\(false\)\}/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // KK — Phase D Wave 2.2 (edit-form sheets + discard guard + web-dismiss)
+  //
+  // Six overlays routed by save-model:
+  //   (c) dirty-buffer editors → Sheet WITH a discard guard: DayEditModal,
+  //       CrewEditModal, QuickAddCrewSheet. A swipe/backdrop/web-Escape on a
+  //       dirty form opens a "Discard changes?" alert (Discard / Keep editing);
+  //       clean forms just close. Save/Cancel buttons unchanged.
+  //   (b) no-unsaved-buffer editors → Sheet, freely dismissable, NO guard:
+  //       CancellationCalcModal (auto-saves; calc untouched), SaveTimesheetsSheet
+  //       (ephemeral selection + auto-save email), DuplicateDateDialog.
+  // Plus: the centred alert's WEB dismissal restore (Escape + backdrop →
+  // onCancel) while native stays button-only, gated on IS_NATIVE.
+  //
+  // Source-presence only — gesture/scroll behaviour is dogfooded on device.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ KK1: shared discard-guard hook ─
+    check('KK1a useDiscardGuard hook defined (returns showDiscard/setShowDiscard/onBeforeDismiss)',
+      /const useDiscardGuard = \(isDirty\) => \{[\s\S]{0,400}return \{ showDiscard, setShowDiscard, onBeforeDismiss \};/.test(html));
+    check('KK1b guard blocks dismiss when dirty (opens discard alert), allows when clean',
+      /onBeforeDismiss = React\.useCallback\(\s*\(\) => \{ if \(isDirty\) \{ setShowDiscard\(true\); return false; \} return true; \}/.test(html));
+
+    // ─ KK2: (c) forms route through Sheet WITH onBeforeDismiss + render a
+    //   "Discard changes?" alert (destructive Discard, safe Keep editing). ─
+    const cFormGuard = (fn) =>
+      new RegExp(`function ${fn}\\(`).test(html) &&
+      new RegExp(`function ${fn}\\([\\s\\S]{0,4500}useDiscardGuard\\(dirty\\)`).test(html) &&
+      new RegExp(`function ${fn}\\([\\s\\S]{0,9000}<Sheet open onClose=\\{[^}]+\\} onBeforeDismiss=\\{onBeforeDismiss\\}`).test(html);
+    const cFormDiscardAlert = (fn) =>
+      new RegExp(`function ${fn}\\([\\s\\S]{0,12000}<ConfirmDialog\\s*open=\\{showDiscard\\}[\\s\\S]{0,400}confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"`).test(html);
+
+    check('KK2a DayEditModal → Sheet + onBeforeDismiss guard', cFormGuard('DayEditModal'));
+    check('KK2b DayEditModal renders the discard alert (Discard / Keep editing)', cFormDiscardAlert('DayEditModal'));
+    check('KK2c CrewEditModal → Sheet + onBeforeDismiss guard', cFormGuard('CrewEditModal'));
+    check('KK2d CrewEditModal renders the discard alert (Discard / Keep editing)', cFormDiscardAlert('CrewEditModal'));
+    check('KK2e QuickAddCrewSheet → Sheet + onBeforeDismiss guard', cFormGuard('QuickAddCrewSheet'));
+    check('KK2f QuickAddCrewSheet renders the discard alert (Discard / Keep editing)', cFormDiscardAlert('QuickAddCrewSheet'));
+
+    // ─ KK3: dirty-tracking — snapshot the buffer on open, compare for dirty ─
+    check('KK3a DayEditModal/CrewEditModal compare form to an initial snapshot (JSON)',
+      (html.match(/const dirty = JSON\.stringify\(form\) !== JSON\.stringify\(initialRef\.current\);/g) || []).length >= 2);
+    check('KK3b QuickAddCrewSheet compares its local fields to the initial snapshot',
+      /const dirty = name !== initialRef\.current\.name[\s\S]{0,200}email !== initialRef\.current\.email;/.test(html));
+    check('KK3c the discard alert confirm closes the form (onConfirm → onClose/onCancel), cancel keeps editing',
+      (html.match(/onConfirm=\{\(\) => \{ setShowDiscard\(false\); on(?:Close|Cancel)\(\); \}\}/g) || []).length >= 3);
+
+    // ─ KK4: (b) forms route through Sheet with NO guard (no onBeforeDismiss) ─
+    check('KK4a CancellationCalcModal → Sheet, no guard; calc untouched (no onBeforeDismiss)',
+      /function CancellationCalcModal\([\s\S]{0,7000}<Sheet open onClose=\{onClose\} maxWidth=\{1200\}/.test(html) &&
+      !/function CancellationCalcModal\([\s\S]{0,9000}onBeforeDismiss/.test(html));
+    check('KK4b SaveTimesheetsSheet → Sheet, no guard',
+      /function SaveTimesheetsSheet\([\s\S]{0,1500}<Sheet open onClose=\{onClose\}>/.test(html) &&
+      !/function SaveTimesheetsSheet\([\s\S]{0,4000}onBeforeDismiss/.test(html));
+    check('KK4c DuplicateDateDialog → Sheet, no guard',
+      /function DuplicateDateDialog\([\s\S]{0,800}<Sheet open onClose=\{onCancel\} maxWidth=\{400\}>/.test(html) &&
+      !/function DuplicateDateDialog\([\s\S]{0,2000}onBeforeDismiss/.test(html));
+
+    // ─ KK5: the routed forms no longer hand-roll their own backdrop /
+    //   useEscape / lockBodyScroll (the Sheet owns those now). ─
+    check('KK5a CrewEditModal dropped its own lockBodyScroll/useEscape',
+      !/function CrewEditModal\([\s\S]{0,1200}useEscape\(onCancel\)/.test(html));
+    check('KK5b DayEditModal dropped its own useEscape',
+      !/function DayEditModal\([\s\S]{0,2500}useEscape\(onCancel\)/.test(html));
+    check('KK5c CancellationCalcModal dropped its own useEscape',
+      !/function CancellationCalcModal\([\s\S]{0,1200}useEscape\(onClose\)/.test(html));
+    check('KK5d none of the routed forms keep the old items-end backdrop scaffold',
+      !/function (DayEditModal|CrewEditModal|CancellationCalcModal)\([\s\S]{0,6000}fixed inset-0 z-50 flex items-end/.test(html));
+
+    // ─ KK6: WEB-DISMISS RESTORE on the centred alert (Escape + backdrop →
+    //   onCancel), topmost-only, native stays button-only. ─
+    check('KK6a alert wires a WEB-only Escape handler, gated on !IS_NATIVE',
+      /if \(!open \|\| IS_NATIVE\) return;\s*const onKey = \(e\) => \{[\s\S]{0,200}onCancel && onCancel\(\);/.test(html));
+    check('KK6b web Escape responds only when THIS alert is topmost on the stack',
+      /if \(_confirmAlertStack\[_confirmAlertStack\.length - 1\] !== idRef\.current\) return;\s*onCancel && onCancel\(\);/.test(html));
+    check('KK6c web backdrop tap → onCancel; native gets neither (IS_NATIVE-gated)',
+      /onClick=\{IS_NATIVE \? undefined : onCancel\}/.test(html));
+
+    // ─ KK7: deferred modals untouched this commit (still their own centred
+    //   modal with useEscape; converted next). ─
+    check('KK7a DiscountModal still its own modal (useEscape, not yet Sheet)',
+      /function DiscountModal\([\s\S]{0,120}useEscape\(onClose\)/.test(html) &&
+      !/function DiscountModal\([\s\S]{0,2500}<Sheet /.test(html));
+    check('KK7b LineEditModal still its own modal (useEscape, not yet Sheet)',
+      /function LineEditModal\([\s\S]{0,120}useEscape\(onClose\)/.test(html) &&
+      !/function LineEditModal\([\s\S]{0,3000}<Sheet /.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
