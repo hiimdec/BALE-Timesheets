@@ -4232,6 +4232,131 @@ async function main() {
       /const \[openSwipeRowId, setOpenSwipeRowId\] = useState\(null\);\s*const \[swipeConfirmDelete, setSwipeConfirmDelete\] = useState\(null\);/.test(html));
   }
 
+  // ===== GG. DAY CAROUSEL — source presence =====
+  // Replaces the old animPhase exit/enter state machine that re-rendered
+  // DayEntryForm mid-flight (the documented CC jank source) with a windowed
+  // [prev, current, next] horizontal carousel. The slide's load-bearing
+  // property is "commit-after-settle" — currentDayId only changes after the
+  // CSS snap finishes, so DayEntryForm doesn't reconcile during the slide.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ GG1: component declared with forwardRef + imperative API. ─
+    check('GG1a DayCarousel declared as React.forwardRef',
+      /const DayCarousel\s*=\s*React\.forwardRef\(function DayCarousel\(\{ days, currentDayId, setCurrentDayId, renderDay \}, ref\)/.test(html));
+    check('GG1b DayCarousel exposes snapPrev / snapNext / jumpTo via useImperativeHandle',
+      /React\.useImperativeHandle\(ref,\s*\(\) => \(\{[\s\S]{0,500}snapPrev[\s\S]{0,500}snapNext[\s\S]{0,500}jumpTo/.test(html));
+
+    // ─ GG2: windowed mount [prev, current, next] keyed by day.id. ─
+    check('GG2a windowDays uses safeIdx ± 1 (trimmed at list edges)',
+      /if \(safeIdx > 0\) out\.push\(days\[safeIdx - 1\]\);[\s\S]{0,200}out\.push\(days\[safeIdx\]\);[\s\S]{0,200}if \(safeIdx < days\.length - 1\) out\.push\(days\[safeIdx \+ 1\]\)/.test(html));
+    check('GG2b windowDays mapped to <div key={day.id}> children (stable identity → React reuses mounts on window shift)',
+      /windowDays\.map\(day => \{[\s\S]{0,300}<div\s+key=\{day\.id\}/.test(html));
+
+    // ─ GG3: translate3d on the track. ─
+    check('GG3a track transform uses translate3d (GPU promotion)',
+      /transform: `translate3d\(calc\(\$\{basePercent\}% \+ \$\{dragDelta\}px\), 0, 0\)`/.test(html));
+    check('GG3b track has will-change: transform (compositor layer)',
+      /willChange: 'transform'/.test(html));
+
+    // ─ GG4: pointer-event swipe with axis-lock + pan-y + setPointerCapture. ─
+    check('GG4a touch-action: pan-y on the carousel container',
+      /<div\s+ref=\{containerRef\}[\s\S]{0,200}touchAction: 'pan-y'/.test(html));
+    check('GG4b axis-lock chooses between x/y on first significant movement',
+      /d\.axis = Math\.abs\(ddx\) > Math\.abs\(ddy\) \? 'x' : 'y'/.test(html));
+    check('GG4c horizontal axis triggers setPointerCapture',
+      /if \(d\.axis === 'x'\) \{\s*try \{ e\.currentTarget\.setPointerCapture\(e\.pointerId\)/.test(html));
+    check('GG4d horizontal drag preventDefault (kills page-scroll fight)',
+      /d\.axis !== 'x'\) return;[\s\S]{0,200}e\.preventDefault\(\)/.test(html));
+    check('GG4e pointer handlers wired to container (down/move/up/cancel)',
+      /onPointerDown=\{onPointerDown\}[\s\S]{0,200}onPointerMove=\{onPointerMove\}[\s\S]{0,200}onPointerUp=\{onPointerUp\}[\s\S]{0,200}onPointerCancel=\{onPointerCancel\}/.test(html));
+
+    // ─ GG5: snap thresholds (velocity flick OR 1/3-width drag) +
+    //   edge rubber-band resistance. ─
+    check('GG5a flick threshold + distance threshold drive snap direction',
+      /velocity < -DAY_CAROUSEL_FLICK_VELOCITY \|\| dragDelta < -distanceThreshold/.test(html) &&
+      /velocity > DAY_CAROUSEL_FLICK_VELOCITY \|\| dragDelta > distanceThreshold/.test(html));
+    check('GG5b distanceThreshold = trackW / 3',
+      /const distanceThreshold = trackW \/ 3/.test(html));
+    check('GG5c edge rubber-band when swiping past first/last',
+      /if \(\(atFirst && delta > 0\) \|\| \(atLast && delta < 0\)\) delta = delta \* DAY_CAROUSEL_EDGE_RESIST/.test(html));
+    check('GG5d DAY_CAROUSEL constants declared (FLICK_VELOCITY, EDGE_RESIST, SNAP_DURATION)',
+      /const DAY_CAROUSEL_FLICK_VELOCITY[\s\S]{0,200}const DAY_CAROUSEL_SNAP_DURATION[\s\S]{0,200}const DAY_CAROUSEL_EDGE_RESIST/.test(html));
+
+    // ─ GG6: commit-after-settle (not mid-gesture) — load-bearing
+    //   invariant that removes the jank. ─
+    check('GG6a animateSnap stages targetDayId in pendingCommitRef, NOT calling setCurrentDayId',
+      /animateSnap[\s\S]{0,400}pendingCommitRef\.current = targetDayId[\s\S]{0,200}setAnimating\(true\)[\s\S]{0,100}setDragDelta\(dir \* trackW\)/.test(html));
+    check('GG6b transitionend commits currentDayId AFTER the snap finishes (commit-after-settle)',
+      /onTransitionEnd = \(e\) => \{[\s\S]{0,400}pendingCommitRef\.current[\s\S]{0,400}setCurrentDayId\(newDayId\)/.test(html));
+    check('GG6c onPointerMove does NOT call setCurrentDayId (no mid-gesture commit)',
+      // The only setCurrentDayId call inside the carousel comes from
+      // onTransitionEnd or jumpTo. Movement just updates dragDelta.
+      // Search the carousel body for any other setCurrentDayId invocation.
+      (() => {
+        const startIdx = html.indexOf('const DayCarousel = React.forwardRef(function DayCarousel');
+        const endIdx = html.indexOf('function SoloDayPage', startIdx);
+        if (startIdx < 0 || endIdx < 0) return false;
+        const body = html.slice(startIdx, endIdx);
+        // setCurrentDayId calls inside the carousel:
+        //  1. animateSnap's fallback when trackW not measured yet
+        //  2. onTransitionEnd's commit
+        //  3. jumpTo's instant recentre
+        // Must NOT appear inside onPointerMove.
+        const moveStart = body.indexOf('const onPointerMove');
+        if (moveStart < 0) return false;
+        const moveEnd = body.indexOf('const onPointerUp', moveStart);
+        const moveBody = body.slice(moveStart, moveEnd);
+        return !moveBody.includes('setCurrentDayId(');
+      })());
+
+      // ─ GG7: React.memo wraps DayEntryForm with custom comparator. ─
+    check('GG7a DayEntryForm wrapped in React.memo (NOT a plain function declaration)',
+      /const DayEntryForm = React\.memo\(function DayEntryFormImpl/.test(html));
+    check('GG7b memo comparator compares value / crew / production / userPrefs etc by identity',
+      /prev\.value === next\.value[\s\S]{0,400}prev\.crew === next\.crew[\s\S]{0,400}prev\.production === next\.production[\s\S]{0,400}prev\.userPrefs === next\.userPrefs/.test(html));
+    check('GG7c memo comparator INTENTIONALLY excludes onChange and showToast',
+      /onChange and showToast are intentionally excluded/.test(html) &&
+      !/prev\.onChange === next\.onChange/.test(html));
+
+    // ─ GG8: chevron + day-jump drive the SAME carousel via ref. ─
+    check('GG8a SoloDayPage owns carouselRef',
+      /const carouselRef = useRef\(null\)/.test(html));
+    check('GG8b goPrev / goNext call carouselRef.current.snapPrev/snapNext',
+      /const goPrev = \(\) => carouselRef\.current && carouselRef\.current\.snapPrev\(\)/.test(html) &&
+      /const goNext = \(\) => carouselRef\.current && carouselRef\.current\.snapNext\(\)/.test(html));
+    check('GG8c handleDayJump uses snapPrev/Next for adjacent + jumpTo for far',
+      /handleDayJump = \(newDayId\) =>[\s\S]{0,400}carouselRef\.current\.snapNext\(\)[\s\S]{0,200}carouselRef\.current\.snapPrev\(\)[\s\S]{0,200}carouselRef\.current\.jumpTo\(newDayId\)/.test(html));
+    check('GG8d <DayCarousel ref={carouselRef} ... /> rendered in SoloDayPage with renderDay',
+      /<DayCarousel\s+ref=\{carouselRef\}\s+days=\{sortedDays\}\s+currentDayId=\{currentDayId\}\s+setCurrentDayId=\{setCurrentDayId\}\s+renderDay=\{/.test(html));
+
+    // ─ GG9: prefers-reduced-motion respected on snap transition. ─
+    check('GG9 reduce-motion read + applied to snap transition (transition:none when set)',
+      html.includes("'(prefers-reduced-motion: reduce)'") &&
+      /reduceMotion \? 'none' : `transform \$\{DAY_CAROUSEL_SNAP_DURATION\}ms cubic-bezier/.test(html));
+
+    // ─ GG10: old animPhase exit/enter machine is GONE. Catches a partial
+    //   revert that re-adds any of those state-name variables. ─
+    check('GG10a animPhase state removed',
+      !html.includes('const [animPhase, setAnimPhase]'));
+    check('GG10b animDirection state removed',
+      !html.includes('const [animDirection, setAnimDirection]'));
+    check('GG10c pendingDayId state removed',
+      !html.includes('const [pendingDayId, setPendingDayId]'));
+    check('GG10d triggerDaySwitch helper removed',
+      !html.includes('const triggerDaySwitch = (direction'));
+    check('GG10e stageClass derived class removed',
+      !html.includes('const stageClass = `tm-day-stage'));
+    check('GG10f .tm-day-stage CSS class definition removed from <style>',
+      !/\.tm-day-stage\s*\{/.test(html));
+
+    // ─ GG11: per-slot onChange writes through its OWN day.id (load-
+    //   bearing — without this, swiping mid-edit would commit to the
+    //   wrong day). ─
+    check('GG11 renderDay closure builds a per-day onChange keyed to day.id',
+      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? updatedDay : d\)\);\s*\}/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.

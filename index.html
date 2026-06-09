@@ -174,18 +174,10 @@
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
-    /* Day-switch animation — horizontal slide + fade for the day-form stage */
-    .tm-day-stage {
-      transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
-                  opacity 200ms ease;
-      will-change: transform, opacity;
-    }
-    .tm-day-stage.exiting-left  { transform: translateX(-24px); opacity: 0; transition-duration: 180ms; }
-    .tm-day-stage.exiting-right { transform: translateX(24px);  opacity: 0; transition-duration: 180ms; }
-    .tm-day-stage.entering-left,
-    .tm-day-stage.entering-right { opacity: 0; transition: none; }
-    .tm-day-stage.entering-left  { transform: translateX(-24px); }
-    .tm-day-stage.entering-right { transform: translateX(24px); }
+    /* Day-switch animation was the old 24px slide + opacity fade applied
+       to a single in-place container. Removed when SoloDayPage switched
+       to the windowed DayCarousel (finger-swipe, prev/current/next
+       mounted at all times) — see DayCarousel for the new mechanics. */
     /* Pill total/counter swap — quick opacity fade alongside the day-stage transition */
     @keyframes tm-pill-swap {
       from { opacity: 0; }
@@ -7025,7 +7017,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ DAY ENTRY FORM ═══════════════════════════ */
 
-    function DayEntryForm({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null, userPrefs = null }) {
+    // DayEntryForm — wrapped in React.memo so the carousel windowing (which
+    // mounts THREE forms at once: prev / current / next) doesn't re-render
+    // neighbour days when the user edits the active one. Custom comparator
+    // compares the data props (value/crew/days/production/userPrefs/etc) by
+    // identity, and intentionally ignores `onChange` and `showToast` —
+    // those are fresh closures per parent render but functionally
+    // equivalent (each closes over the same day.id captured at the map
+    // callback in SoloDayPage's DayCarousel).
+    const DayEntryForm = React.memo(function DayEntryFormImpl({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null, userPrefs = null }) {
       const v = value;
       // DISPLAY-ONLY resolved view: call/wrap/lunch/dayType can cascade from
       // dayDefaults, so the raw `v` may leave those fields undefined. Resolve
@@ -7931,7 +7931,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
         </div>
       );
-    }
+    }, (prev, next) => {
+      // Data-prop identity comparison. If any of these change, re-render.
+      // onChange and showToast are intentionally excluded — they're fresh
+      // closures per parent render but their behaviour is identical, so
+      // their identity changing must NOT force the heavy form to re-paint
+      // (that was the carousel jank we're fixing).
+      return prev.value === next.value
+          && prev.crew === next.crew
+          && prev.allCrewMode === next.allCrewMode
+          && prev.fixedCrewId === next.fixedCrewId
+          && prev.fixedDate === next.fixedDate
+          && prev.isToday === next.isToday
+          && prev.days === next.days
+          && prev.hideDayCard === next.hideDayCard
+          && prev.isElevenHourDay === next.isElevenHourDay
+          && prev.production === next.production
+          && prev.userPrefs === next.userPrefs;
+    });
 
     /* ═══════════════════════════ DAY EDIT MODAL ═══════════════════════════ */
 
@@ -13587,6 +13604,263 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    /* ═══════════════════════════ DAY CAROUSEL ═══════════════════════════
+     * Horizontal track with windowed [prev, current, next] mounts (max 3,
+     * fewer at list edges). Finger-swipe via Pointer Events using the
+     * SAME axis-lock + pan-y + setPointerCapture pattern as SwipeableRow,
+     * so vertical scrolling within a day form and the horizontal day-swipe
+     * never fight.
+     *
+     * KEY INVARIANT — the heavy DayEntryForm doesn't re-render during the
+     * slide: the parent's currentDayId state changes ONLY after the snap
+     * animation settles (transitionend). Until then, the gesture just
+     * updates the inline transform on the track via local dragDelta /
+     * snapTarget state. Neighbour days were already painted at mount, so
+     * the swipe reveals an already-rendered day.
+     *
+     * Commit semantics: when currentDayId changes, React reorders the
+     * windowDays children by key (day.id). The instance that was at the
+     * "current+1" slot moves to the "current" slot, and a new neighbour
+     * mounts at "current+1". Because the basePercent translate ALSO
+     * recomputes (-currentSlotIdx * trackW), the visible day stays
+     * exactly where the user released the swipe. No flicker.
+     *
+     * Imperative API (via forwardRef) for the bottom-pill chevrons and
+     * the day-jump sheet:
+     *   snapPrev() / snapNext() — animated one-step snap, same code path
+     *     as the gesture.
+     *   jumpTo(dayId) — instant recentre, no animated slide across
+     *     intervening days (per spec). */
+    const DAY_CAROUSEL_DRAG_AXIS_PX = 6;       // axis-lock threshold
+    const DAY_CAROUSEL_FLICK_VELOCITY = 0.5;   // px/ms → 500 px/s
+    const DAY_CAROUSEL_SNAP_DURATION = 220;    // ms (matches mock)
+    const DAY_CAROUSEL_EDGE_RESIST = 0.3;      // rubber-band factor at list edges
+    const DayCarousel = React.forwardRef(function DayCarousel({ days, currentDayId, setCurrentDayId, renderDay }, ref) {
+      const currentIdx = days.findIndex(d => d.id === currentDayId);
+      const safeIdx = currentIdx < 0 ? 0 : currentIdx;
+
+      // Windowed mounts: [prev, current, next] trimmed at edges. Stable by
+      // day.id keys → React reuses mounts when the window shifts after a
+      // commit, so only the one new neighbour mounts (the outgoing one
+      // unmounts). The two days that stay in the window keep all their
+      // internal state (TimeWheelPanel, chip expansion, etc.).
+      const windowDays = React.useMemo(() => {
+        const out = [];
+        if (safeIdx > 0) out.push(days[safeIdx - 1]);
+        out.push(days[safeIdx]);
+        if (safeIdx < days.length - 1) out.push(days[safeIdx + 1]);
+        return out;
+      }, [days, safeIdx]);
+      const currentSlotIdx = windowDays.findIndex(d => d && d.id === currentDayId);
+
+      const containerRef = React.useRef(null);
+      const [trackW, setTrackW] = React.useState(0);
+      React.useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const update = () => setTrackW(el.clientWidth);
+        update();
+        if (typeof ResizeObserver !== 'undefined') {
+          const ro = new ResizeObserver(update);
+          ro.observe(el);
+          return () => ro.disconnect();
+        }
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+      }, []);
+
+      // dragDelta = px offset added on top of base translate. During a
+      // gesture it follows the finger; during a snap animation it
+      // interpolates to the snap target via CSS transition.
+      const [dragDelta, setDragDelta] = React.useState(0);
+      const [animating, setAnimating] = React.useState(false);
+      const dragRef = React.useRef({
+        startX: 0, startY: 0,
+        active: false, axis: null,
+        movedHorz: false, pointerId: null,
+        history: [],
+      });
+      const pendingCommitRef = React.useRef(null);
+
+      const reduceMotion = React.useMemo(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+        try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+        catch (_) { return false; }
+      }, []);
+
+      const animateSnap = React.useCallback((targetDayId) => {
+        if (!trackW) {
+          // Container hasn't measured yet — fall back to instant commit.
+          setCurrentDayId(targetDayId);
+          return;
+        }
+        const targetIdx = days.findIndex(d => d.id === targetDayId);
+        if (targetIdx < 0) return;
+        const dir = targetIdx > safeIdx ? -1 : 1;
+        pendingCommitRef.current = targetDayId;
+        setAnimating(true);
+        setDragDelta(dir * trackW);
+      }, [days, safeIdx, trackW, setCurrentDayId]);
+
+      const animateSpringBack = React.useCallback(() => {
+        setAnimating(true);
+        setDragDelta(0);
+      }, []);
+
+      const onPointerDown = (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        dragRef.current = {
+          startX: e.clientX, startY: e.clientY,
+          active: true, axis: null,
+          movedHorz: false, pointerId: e.pointerId,
+          history: [{ t: e.timeStamp, x: e.clientX }],
+        };
+        // Kill any in-flight animation so the finger lands on the static
+        // current transform — no fight with the spring.
+        setAnimating(false);
+      };
+
+      const onPointerMove = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        const ddx = e.clientX - d.startX;
+        const ddy = e.clientY - d.startY;
+        if (d.axis === null) {
+          if (Math.abs(ddx) > DAY_CAROUSEL_DRAG_AXIS_PX || Math.abs(ddy) > DAY_CAROUSEL_DRAG_AXIS_PX) {
+            d.axis = Math.abs(ddx) > Math.abs(ddy) ? 'x' : 'y';
+            if (d.axis === 'x') {
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+            }
+          }
+        }
+        if (d.axis !== 'x') return;
+        d.movedHorz = true;
+        e.preventDefault();
+        // Edge resistance — rubber band when swiping past first/last day.
+        let delta = ddx;
+        const atFirst = safeIdx === 0;
+        const atLast = safeIdx === days.length - 1;
+        if ((atFirst && delta > 0) || (atLast && delta < 0)) delta = delta * DAY_CAROUSEL_EDGE_RESIST;
+        // Track velocity sample window (last ~80ms).
+        d.history.push({ t: e.timeStamp, x: e.clientX });
+        while (d.history.length > 1 && e.timeStamp - d.history[0].t > 80) d.history.shift();
+        setDragDelta(delta);
+      };
+
+      const onPointerUp = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        d.active = false;
+        if (d.axis !== 'x' || !trackW) { setDragDelta(0); return; }
+        // Velocity over the recent sample window.
+        let velocity = 0;
+        if (d.history.length >= 2) {
+          const last = d.history[d.history.length - 1];
+          const first = d.history[0];
+          const dt = last.t - first.t;
+          if (dt > 0) velocity = (last.x - first.x) / dt;
+        }
+        const distanceThreshold = trackW / 3;
+        const atFirst = safeIdx === 0;
+        const atLast = safeIdx === days.length - 1;
+        let targetId = null;
+        // Forward swipe: drag left or flick left.
+        if ((velocity < -DAY_CAROUSEL_FLICK_VELOCITY || dragDelta < -distanceThreshold) && !atLast) {
+          targetId = days[safeIdx + 1].id;
+        }
+        // Backward swipe: drag right or flick right.
+        else if ((velocity > DAY_CAROUSEL_FLICK_VELOCITY || dragDelta > distanceThreshold) && !atFirst) {
+          targetId = days[safeIdx - 1].id;
+        }
+        if (targetId != null) animateSnap(targetId);
+        else animateSpringBack();
+      };
+
+      const onPointerCancel = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        d.active = false;
+        if (d.axis === 'x') animateSpringBack();
+        else setDragDelta(0);
+      };
+
+      // On transitionend (snap finished), commit AND zero the dragDelta in
+      // the SAME batched state update — the new base translate (now -100%
+      // of the new currentSlotIdx) lands the freshly-current day at the
+      // exact visible position the swipe released to. No flicker.
+      const onTransitionEnd = (e) => {
+        if (e.propertyName !== 'transform') return;
+        if (pendingCommitRef.current) {
+          const newDayId = pendingCommitRef.current;
+          pendingCommitRef.current = null;
+          setAnimating(false);
+          setDragDelta(0);
+          setCurrentDayId(newDayId);
+        } else {
+          setAnimating(false);
+        }
+      };
+
+      React.useImperativeHandle(ref, () => ({
+        snapPrev: () => { if (safeIdx > 0) animateSnap(days[safeIdx - 1].id); },
+        snapNext: () => { if (safeIdx < days.length - 1) animateSnap(days[safeIdx + 1].id); },
+        // Day-jump to a non-adjacent day → instant recentre, NOT an
+        // animated slide across many intervening days (per spec).
+        jumpTo: (newDayId) => {
+          pendingCommitRef.current = null;
+          setAnimating(false);
+          setDragDelta(0);
+          setCurrentDayId(newDayId);
+        },
+      }), [safeIdx, days, animateSnap, setCurrentDayId]);
+
+      // Compose the track transform. base is percentage-based (so the
+      // current slot lands at visual x=0); dragDelta is px-based (finger
+      // offset / snap interpolation). CSS calc() lets the two coexist
+      // cleanly. translate3d promotes the layer; the transition only
+      // fires during snap / spring-back, never during the finger drag.
+      const basePercent = -currentSlotIdx * (100 / Math.max(1, windowDays.length));
+      const transitionStyle = animating
+        ? (reduceMotion ? 'none' : `transform ${DAY_CAROUSEL_SNAP_DURATION}ms cubic-bezier(0.22, 1, 0.36, 1)`)
+        : 'none';
+
+      return (
+        <div
+          ref={containerRef}
+          className="relative overflow-hidden"
+          style={{ touchAction: 'pan-y' }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+        >
+          <div
+            className="flex"
+            style={{
+              width: `${windowDays.length * 100}%`,
+              transform: `translate3d(calc(${basePercent}% + ${dragDelta}px), 0, 0)`,
+              transition: transitionStyle,
+              willChange: 'transform',
+            }}
+            onTransitionEnd={onTransitionEnd}
+          >
+            {windowDays.map(day => {
+              const dayIdxInList = days.findIndex(d => d.id === day.id);
+              return (
+                <div
+                  key={day.id}
+                  className="flex-shrink-0"
+                  style={{ width: `${100 / windowDays.length}%` }}
+                >
+                  {renderDay(day, dayIdxInList)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    });
+
     /* ═══════════════════════════ SOLO DAY PAGE (full-page editor for solo mode) ═══════════════════════════ */
 
     function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs, initialInvoiceId }) {
@@ -13648,53 +13922,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const isFirst = currentIdx <= 0;
       const isLast = currentIdx === sortedDays.length - 1;
 
-      // Day-switch animation state machine. animDirection 'left' = exit toward the
-      // left (user tapped next, new content enters from the right); 'right' = opposite.
-      const [animPhase, setAnimPhase] = useState('idle');
-      const [animDirection, setAnimDirection] = useState(null);
-      const [pendingDayId, setPendingDayId] = useState(null);
-
-      const triggerDaySwitch = (direction, newDayId) => {
-        if (animPhase !== 'idle') return;
-        setPendingDayId(newDayId);
-        setAnimDirection(direction === 'next' ? 'left' : 'right');
-        setAnimPhase('exit');
-      };
-
-      useEffect(() => {
-        if (animPhase === 'exit') {
-          const t = setTimeout(() => {
-            setCurrentDayId(pendingDayId);
-            setAnimPhase('enter');
-          }, 180);
-          return () => clearTimeout(t);
-        }
-        if (animPhase === 'enter') {
-          let raf2;
-          const raf1 = requestAnimationFrame(() => {
-            raf2 = requestAnimationFrame(() => {
-              setAnimPhase('idle');
-              setAnimDirection(null);
-              setPendingDayId(null);
-            });
-          });
-          return () => { cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); };
-        }
-      }, [animPhase, pendingDayId]);
-
-      const goPrev = () => { if (!isFirst) triggerDaySwitch('prev', sortedDays[currentIdx - 1].id); };
-      const goNext = () => { if (!isLast) triggerDaySwitch('next', sortedDays[currentIdx + 1].id); };
+      // Finger-swipe carousel for prev/current/next days. Replaces the old
+      // animPhase exit/enter state machine that re-rendered DayEntryForm
+      // mid-flight (CC's documented jank source). The carousel is a true
+      // horizontal track: [prev, current, next] mounted, current centered,
+      // neighbours painted off-screen. Swipe / chevron / day-jump all
+      // drive the SAME track via the imperative ref API. Commit of
+      // setCurrentDayId happens only AFTER the snap animation settles, so
+      // the heavy form never re-renders during the slide.
+      const carouselRef = useRef(null);
+      const goPrev = () => carouselRef.current && carouselRef.current.snapPrev();
+      const goNext = () => carouselRef.current && carouselRef.current.snapNext();
       const handleDayJump = (newDayId) => {
         const newIdx = sortedDays.findIndex(d => d.id === newDayId);
         if (newIdx === -1 || newIdx === currentIdx) return;
-        triggerDaySwitch(newIdx > currentIdx ? 'next' : 'prev', newDayId);
+        // Adjacent → animated one-step snap. Far → instant recentre (NO
+        // animated slide across many intervening days, per spec).
+        if (newIdx === currentIdx + 1) carouselRef.current && carouselRef.current.snapNext();
+        else if (newIdx === currentIdx - 1) carouselRef.current && carouselRef.current.snapPrev();
+        else carouselRef.current && carouselRef.current.jumpTo(newDayId);
       };
-
-      const stageClass = `tm-day-stage${
-        animPhase === 'exit' ? ` exiting-${animDirection}` :
-        animPhase === 'enter' ? ` entering-${animDirection === 'left' ? 'right' : 'left'}` :
-        ''
-      }`;
 
       // addDay computes from currentDay's date + 1 calendar day, not today's date
       const addDay = () => {
@@ -13927,101 +14174,122 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
           </div>
 
-          {/* Day-specific content — animates on prev/next/jump */}
-          <div className={stageClass}>
-            {/* Form-top — DAY counter + day-type chip on left, date + kebab on right */}
-            <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 px-4 py-3 border-b border-neutral-800 mb-3.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <button
-                  type="button"
-                  onClick={() => setShowJumpSheet(true)}
-                  className="font-mono text-[12px] font-bold flex items-baseline gap-1 flex-shrink-0 hover:opacity-70 transition-opacity"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <span className="text-neutral-400">DAY {currentIdx + 1}</span>
-                  <span className="text-neutral-600">/ {sortedDays.length}</span>
-                </button>
-                <span className="text-neutral-700 text-[10px]">·</span>
-                {/* Day type chip — native select overlaid invisibly so the chip is the tap target */}
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <select
-                    value={currentDay?.dayType || "Shoot"}
-                    onChange={(e) => {
-                      const newType = e.target.value;
-                      const callH = parseHHMM(currentDay?.callTime);
-                      const patch = { dayType: newType };
-                      if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[newType] ?? 11));
-                      handleDayChange({ ...currentDay, ...patch });
-                    }}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    aria-label="Day type"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <span className={`text-[10px] uppercase tracking-[0.14em] font-bold px-2 py-[3px] rounded inline-flex items-center gap-1 transition-colors ${
-                    (currentDay?.dayType || 'Shoot') === 'Shoot'
-                      ? 'bg-neutral-800 border border-neutral-700 text-neutral-300'
-                      : 'bg-tm-warn/10 border border-tm-warn/25 text-tm-warn'
-                  }`}>
-                    {currentDay?.dayType || 'Shoot'}
-                    <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
-                  </span>
-                </label>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <label className="relative inline-flex cursor-pointer">
-                  <input
-                    type="date"
-                    value={currentDay?.date || ""}
-                    onChange={(e) => handleDayChange({ ...currentDay, date: e.target.value })}
-                    className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    aria-label="Day date"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  />
-                  <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
-                    {formatDayHeaderDate(currentDay?.date)}
-                  </span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowDayActions(true)}
-                  className="w-7 h-7 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40 transition-colors flex-shrink-0"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  aria-label="Day actions"
-                >
-                  <IDots size={14} />
-                </button>
-              </div>
-            </div>
-
-            {/* Day editor body */}
-            <div className="max-w-3xl mx-auto px-4 pb-6">
-              {(production.invoices || []).some(inv => inv.status === "sent" || inv.status === "paid") && (() => {
-                const count = (production.invoices || []).filter(inv => inv.status === "sent" || inv.status === "paid").length;
-                return (
-                  <div className="bg-sky-900/20 border border-sky-700/40 rounded-xl px-3 py-2 text-[11px] text-sky-300 mb-3">
-                    This production has {count} sent invoice{count !== 1 ? "s" : ""}. Changes here won't update them.
+          {/* Day-specific content — finger-swipe carousel with windowed
+              [prev, current, next] mounts. Each slot renders the day's
+              form-top + body for ITS OWN day (so the form-top scrolls
+              with the carousel rather than only reflecting current).
+              Edits route through a per-day onChange so each mount writes
+              to its own day.id — DayEntryForm is React.memoed so the
+              two neighbour mounts don't reconcile when the active day
+              is edited. */}
+          <DayCarousel
+            ref={carouselRef}
+            days={sortedDays}
+            currentDayId={currentDayId}
+            setCurrentDayId={setCurrentDayId}
+            renderDay={(day, dayIdxInList) => {
+              const dayOnChange = (updatedDay) => {
+                setDays(prev => prev.map(d => d.id === day.id ? updatedDay : d));
+              };
+              return (
+                <>
+                  {/* Form-top — DAY counter + day-type chip on left, date + kebab on right.
+                      All bound to THIS slot's day (not currentDay), so during a swipe the
+                      adjacent day's metadata is what's seen sliding in. */}
+                  <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 px-4 py-3 border-b border-neutral-800 mb-3.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowJumpSheet(true)}
+                        className="font-mono text-[12px] font-bold flex items-baseline gap-1 flex-shrink-0 hover:opacity-70 transition-opacity"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                      >
+                        <span className="text-neutral-400">DAY {dayIdxInList + 1}</span>
+                        <span className="text-neutral-600">/ {sortedDays.length}</span>
+                      </button>
+                      <span className="text-neutral-700 text-[10px]">·</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <select
+                          value={day?.dayType || "Shoot"}
+                          onChange={(e) => {
+                            const newType = e.target.value;
+                            const callH = parseHHMM(day?.callTime);
+                            const patch = { dayType: newType };
+                            if (callH !== null) patch.wrapTime = toHHMM(callH + (DEFAULT_HOURS[newType] ?? 11));
+                            dayOnChange({ ...day, ...patch });
+                          }}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          aria-label="Day type"
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
+                        >
+                          {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <span className={`text-[10px] uppercase tracking-[0.14em] font-bold px-2 py-[3px] rounded inline-flex items-center gap-1 transition-colors ${
+                          (day?.dayType || 'Shoot') === 'Shoot'
+                            ? 'bg-neutral-800 border border-neutral-700 text-neutral-300'
+                            : 'bg-tm-warn/10 border border-tm-warn/25 text-tm-warn'
+                        }`}>
+                          {day?.dayType || 'Shoot'}
+                          <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
+                        </span>
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <label className="relative inline-flex cursor-pointer">
+                        <input
+                          type="date"
+                          value={day?.date || ""}
+                          onChange={(e) => dayOnChange({ ...day, date: e.target.value })}
+                          className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          aria-label="Day date"
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
+                        />
+                        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
+                          {formatDayHeaderDate(day?.date)}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowDayActions(true)}
+                        className="w-7 h-7 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40 transition-colors flex-shrink-0"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                        aria-label="Day actions"
+                      >
+                        <IDots size={14} />
+                      </button>
+                    </div>
                   </div>
-                );
-              })()}
-              <DayEntryForm
-                value={currentDay}
-                onChange={handleDayChange}
-                crew={crew}
-                allCrewMode={false}
-                fixedCrewId={crew[0]?.id ?? null}
-                fixedDate={null}
-                isToday={currentDay?.date === todayISO()}
-                showToast={showToast}
-                days={days}
-                hideDayCard={true}
-                isElevenHourDay={!!production?.isElevenHourDay}
-                production={production}
-                userPrefs={userPrefs}
-              />
-            </div>
-          </div>
+
+                  {/* Day editor body — ALWAYS this slot's day, ALWAYS this slot's onChange. */}
+                  <div className="max-w-3xl mx-auto px-4 pb-6">
+                    {(production.invoices || []).some(inv => inv.status === "sent" || inv.status === "paid") && (() => {
+                      const count = (production.invoices || []).filter(inv => inv.status === "sent" || inv.status === "paid").length;
+                      return (
+                        <div className="bg-sky-900/20 border border-sky-700/40 rounded-xl px-3 py-2 text-[11px] text-sky-300 mb-3">
+                          This production has {count} sent invoice{count !== 1 ? "s" : ""}. Changes here won't update them.
+                        </div>
+                      );
+                    })()}
+                    <DayEntryForm
+                      value={day}
+                      onChange={dayOnChange}
+                      crew={crew}
+                      allCrewMode={false}
+                      fixedCrewId={crew[0]?.id ?? null}
+                      fixedDate={null}
+                      isToday={day?.date === todayISO()}
+                      showToast={showToast}
+                      days={days}
+                      hideDayCard={true}
+                      isElevenHourDay={!!production?.isElevenHourDay}
+                      production={production}
+                      userPrefs={userPrefs}
+                    />
+                  </div>
+                </>
+              );
+            }}
+          />
 
           <SoloDayPill
             total={totalShoot}
