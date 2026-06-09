@@ -4123,6 +4123,115 @@ async function main() {
       `defaults.hapticsEnabled=${defaults && defaults.hapticsEnabled}`);
   }
 
+  // ===== FF. SWIPE-TO-DELETE ROW — source presence =====
+  // A NEW trigger for the existing delete action. Source-presence checks
+  // verify the gesture surface is wired correctly and — critically — that
+  // it reuses the existing delete handlers / ConfirmDialog instances
+  // rather than inventing a parallel delete path. UI gesture itself is
+  // dogfooded on device.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ FF1: component declared with the expected signature. ─
+    check('FF1a SwipeableRow function defined',
+      /function SwipeableRow\(\{ rowId, openRowId, setOpenRowId, isDeletable[\s\S]*?, onTap, onDelete[\s\S]*?, children \}\)/.test(html));
+    check('FF1b SWIPE_DELETE_WIDTH constant declared',
+      /const SWIPE_DELETE_WIDTH\s*=\s*\d+/.test(html));
+
+    // ─ FF2: pointer handlers + axis-locked swipe wiring. ─
+    check('FF2a onPointerDown captures start position + axis flag',
+      /onPointerDown[\s\S]*?startX:\s*e\.clientX[\s\S]*?startY:\s*e\.clientY[\s\S]*?axis:\s*null/.test(html));
+    check('FF2b onPointerMove axis-locks horizontal vs vertical',
+      /d\.axis = Math\.abs\(ddx\) > Math\.abs\(ddy\) \? 'x' : 'y'/.test(html));
+    check('FF2c onPointerMove uses setPointerCapture once horizontal axis is locked',
+      /setPointerCapture\(e\.pointerId\)/.test(html));
+    check('FF2d onPointerMove preventDefault on horizontal swipe (kills page-scroll fight)',
+      /d\.axis !== 'x'\) return;[\s\S]{0,300}e\.preventDefault\(\)/.test(html));
+    check('FF2e dx clamped to [-W*1.2, 0] (partial reveal only, never auto-delete)',
+      /Math\.min\(0, Math\.max\(-SWIPE_DELETE_WIDTH \* 1\.2, d\.startDx \+ ddx\)\)/.test(html));
+    check('FF2f onPointerUp snaps at half-button-width threshold',
+      /dx < -SWIPE_DELETE_WIDTH \/ 2/.test(html));
+    check('FF2g onPointerCancel + onPointerUp both registered on the content layer',
+      html.includes('onPointerUp={onPointerUp}') && html.includes('onPointerCancel={onPointerCancel}'));
+
+    // ─ FF3: pan-y on the content layer so vertical list scroll is unaffected. ─
+    check('FF3 content layer has touch-action: pan-y (vertical scroll preserved)',
+      /touchAction:\s*'pan-y'/.test(html));
+
+    // ─ FF4: one-open-at-a-time semantics. ─
+    check('FF4a opening this row sets parent openRowId to rowId',
+      /setOpenRowId\(rowId\);[\s\S]{0,50}setDx\(-SWIPE_DELETE_WIDTH\)/.test(html));
+    check('FF4b useEffect syncs local dx when parent openRowId changes (closes other rows)',
+      /React\.useEffect\(\(\) => \{[\s\S]{0,200}setDx\(isOpen \? -SWIPE_DELETE_WIDTH : 0\)/.test(html));
+    check('FF4c tap on a different row while another is open → closes the other',
+      /openRowId != null && openRowId !== rowId[\s\S]{0,80}setOpenRowId\(null\)/.test(html));
+
+    // ─ FF5: tap behaviour — plain tap fires onTap, tap-on-open closes,
+    //   tap-after-horizontal-swipe is suppressed. ─
+    check('FF5a plain tap with no horizontal movement fires onTap',
+      /onTap && onTap\(e\)/.test(html));
+    check('FF5b movedHorz suppresses the tap click after a swipe',
+      /if \(dragRef\.current\.movedHorz\)[\s\S]{0,80}return;/.test(html));
+    check('FF5c tapping the open row closes it (no onTap)',
+      /if \(isOpen\) \{\s*setOpenRowId\(null\);\s*setDx\(0\);\s*return;\s*\}/.test(html));
+
+    // ─ FF6: prefers-reduced-motion respected on the snap transition. ─
+    check('FF6 reduce-motion read + applied to the snap transition',
+      html.includes("'(prefers-reduced-motion: reduce)'") &&
+      /reduceMotion \? 'none' : 'transform 180ms ease'/.test(html));
+
+    // ─ FF7: eligibility passthrough — isDeletable=false renders a no-swipe
+    //   pass-through wrapper, mirroring the existing rule "if the kebab
+    //   can't delete it, swipe can't either". ─
+    check('FF7 isDeletable=false → pass-through wrapper (no swipe wiring)',
+      /if \(!isDeletable\) \{[\s\S]{0,400}<div className=\{className\} onClick=\{onTap\}>\{children\}<\/div>/.test(html));
+
+    // ─ FF8: DELETE REUSE — productions use existing confirmDelete(p)
+    //   handler (NOT a parallel impl). Invoice delete uses the existing
+    //   onDeleteInvoice handler via a top-level ConfirmDialog whose
+    //   strings mirror InvoiceRowActionSheet exactly. ─
+    check('FF8a production swipe reuses confirmDelete (existing handler)',
+      // 3 production variants (hero / full / compact) → 3 onDelete sites.
+      (html.match(/onDelete=\{\(\) => confirmDelete\(p\)\}/g) || []).length >= 3,
+      `confirmDelete reuses=${(html.match(/onDelete=\{\(\) => confirmDelete\(p\)\}/g) || []).length}`);
+    check('FF8b invoice swipe reuses onDeleteInvoice (existing handler)',
+      html.includes('onDeleteInvoice(swipeConfirmDelete.production.id, swipeConfirmDelete.invoice.id)'));
+    check('FF8c invoice swipe ConfirmDialog mirrors InvoiceRowActionSheet exactly (title/message/label/tone)',
+      html.includes('title="Delete invoice?"') &&
+      html.includes('confirmLabel="Delete"') &&
+      html.includes('confirmTone="danger"') &&
+      /message=\{`Delete \$\{swipeConfirmDelete\.invoice\.invoiceNumber\}\? This cannot be undone\.`\}/.test(html));
+    check('FF8d production swipe ConfirmDialog is the existing top-level confirmOpts (no parallel)',
+      html.includes('const confirmDelete = (p) => setConfirmOpts({'));
+
+    // ─ FF9: existing kebab path is intact (swipe is an addition, not a
+    //   replacement). ─
+    check('FF9a production kebab still wired to setActionSheet',
+      html.includes("setActionSheet(p)"));
+    check('FF9b invoice kebab still wired to setActionSheetTarget',
+      html.includes("setActionSheetTarget({ invoice, production })"));
+    check('FF9c InvoiceRowActionSheet still uses its internal confirmDelete state (no behavioural change to the menu path)',
+      html.includes('const [confirmDelete, setConfirmDelete] = useState(false);') &&
+      html.includes('onConfirm={doDelete}'));
+
+    // ─ FF10: 3 production card variants + 1 invoice card variant = 4
+    //   SwipeableRow usage sites. ─
+    const swipeUsages = (html.match(/<SwipeableRow\b/g) || []).length;
+    check('FF10 SwipeableRow rendered at 4 call sites (hero + full + compact production + invoice card)',
+      swipeUsages === 4,
+      `<SwipeableRow> usages=${swipeUsages}`);
+
+    // ─ FF11: red Delete button label + ITrash icon inside SwipeableRow. ─
+    check('FF11 red Delete button rendered inside SwipeableRow with ITrash + "Delete" label',
+      /bg-red-600 text-white text-\[12px\] font-bold uppercase[\s\S]{0,800}<ITrash size=\{14\}\/>[\s\S]{0,80}<span>Delete<\/span>/.test(html));
+
+    // ─ FF12: openSwipeRowId state declared in BOTH list components. ─
+    check('FF12a ProductionsScreen owns openSwipeRowId state (precedes confirmDelete declaration)',
+      /const \[openSwipeRowId, setOpenSwipeRowId\] = useState\(null\);[\s\S]{0,2000}confirmDelete = \(p\)/.test(html));
+    check('FF12b AllInvoicesView owns openSwipeRowId + swipeConfirmDelete state',
+      /const \[openSwipeRowId, setOpenSwipeRowId\] = useState\(null\);\s*const \[swipeConfirmDelete, setSwipeConfirmDelete\] = useState\(null\);/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.

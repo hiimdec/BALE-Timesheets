@@ -18479,6 +18479,194 @@ const setDays = (updater) =>
       );
     }
 
+    /* ═══════════════════════════ SWIPE-TO-DELETE ROW ═══════════════════════════
+     * Reusable row wrapper that adds an iOS-style swipe-left gesture to reveal
+     * a red Delete button anchored on the right. NEW TRIGGER for an existing
+     * delete action — does NOT introduce new delete logic, does NOT change
+     * eligibility, does NOT add a new confirm path. Callers pass:
+     *
+     *   onTap     — the row's existing card-open action (fires only on a
+     *               plain tap, no horizontal movement).
+     *   onDelete  — the row's existing delete handler (the one the kebab
+     *               action sheet already calls). Fires when the user taps
+     *               the revealed Delete button. THIS HANDLER OWNS THE
+     *               CONFIRM DIALOG — SwipeableRow does not.
+     *
+     * Gesture mechanics:
+     *   • Pointer Events (not HTML5 DnD; iOS WebView doesn't fire dragstart).
+     *   • touch-action: pan-y on the content layer so vertical list scrolling
+     *     stays unaffected — only horizontal swipes are captured.
+     *   • Axis-lock on first ~4px of movement (whichever axis dominates).
+     *   • Partial reveal only: dx clamps to [-W*1.2, 0]. NEVER auto-deletes
+     *     on a full swipe. Past ~W/2 the release snaps OPEN; below that
+     *     snaps CLOSED.
+     *   • Only one row open at a time, tracked via parent-owned openRowId
+     *     state. Opening row B closes row A via row A's useEffect.
+     *   • Plain tap (no horizontal movement) → fires onTap (row's existing
+     *     card-open). Tap on an already-open row → snaps closed, no onTap.
+     *   • prefers-reduced-motion → snap transition skipped.
+     *   • isDeletable=false → pass-through wrapper, no swipe wiring, onTap
+     *     fires on click. Mirrors the existing "if it can't be deleted via
+     *     the kebab, swipe can't delete it either" rule. */
+    const SWIPE_DELETE_WIDTH = 88;
+    function SwipeableRow({ rowId, openRowId, setOpenRowId, isDeletable = true, onTap, onDelete, className = '', children }) {
+      const isOpen = openRowId === rowId;
+      const [dx, setDx] = React.useState(0);
+      const dragRef = React.useRef({
+        startX: 0, startY: 0, startDx: 0,
+        active: false, axis: null, movedHorz: false, pointerId: null,
+      });
+
+      const reduceMotion = React.useMemo(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+        try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+        catch (_) { return false; }
+      }, []);
+
+      // Sync local dx whenever the parent's openRowId changes — this is
+      // what closes row A when the user swipes row B open.
+      React.useEffect(() => {
+        if (!dragRef.current.active) setDx(isOpen ? -SWIPE_DELETE_WIDTH : 0);
+      }, [isOpen]);
+
+      if (!isDeletable) {
+        // Pass-through wrapper — eligibility mirrors the existing delete.
+        // No swipe wiring, onTap fires directly on click.
+        return (
+          <div className={className} onClick={onTap}>{children}</div>
+        );
+      }
+
+      const onPointerDown = (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        dragRef.current = {
+          startX: e.clientX, startY: e.clientY, startDx: dx,
+          active: true, axis: null, movedHorz: false, pointerId: e.pointerId,
+        };
+      };
+
+      const onPointerMove = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        const ddx = e.clientX - d.startX;
+        const ddy = e.clientY - d.startY;
+        // Axis lock on first significant movement so vertical list scroll
+        // never gets stolen by an ambiguous diagonal start.
+        if (d.axis === null) {
+          if (Math.abs(ddx) > 4 || Math.abs(ddy) > 4) {
+            d.axis = Math.abs(ddx) > Math.abs(ddy) ? 'x' : 'y';
+            if (d.axis === 'x') {
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+            }
+          }
+        }
+        if (d.axis !== 'x') return;
+        d.movedHorz = true;
+        // touch-action:pan-y stops vertical scroll-jacking; preventDefault
+        // here belt-and-braces — keeps the page from following the finger.
+        e.preventDefault();
+        const next = Math.min(0, Math.max(-SWIPE_DELETE_WIDTH * 1.2, d.startDx + ddx));
+        setDx(next);
+      };
+
+      const onPointerUp = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        d.active = false;
+        if (d.axis === 'x') {
+          // Snap past half-button-width = open, else closed. NEVER auto-
+          // -deletes — even a full screen swipe stops at the button reveal.
+          if (dx < -SWIPE_DELETE_WIDTH / 2) {
+            setOpenRowId(rowId);
+            setDx(-SWIPE_DELETE_WIDTH);
+          } else {
+            // Swipe right or insufficient left → close.
+            if (isOpen) setOpenRowId(null);
+            setDx(0);
+          }
+        }
+        // Axis was 'y' (or no movement) — let click bubble for vertical
+        // gestures (list scrolling already handled it).
+      };
+
+      const onPointerCancel = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        d.active = false;
+        setDx(isOpen ? -SWIPE_DELETE_WIDTH : 0);
+      };
+
+      const handleTap = (e) => {
+        // Suppress the click that follows a horizontal swipe gesture.
+        if (dragRef.current.movedHorz) {
+          dragRef.current.movedHorz = false;
+          return;
+        }
+        // Tap on an open row → close it. No card-open action.
+        if (isOpen) {
+          setOpenRowId(null);
+          setDx(0);
+          return;
+        }
+        // Tap on a closed row while ANOTHER row is open → close the other
+        // first (single-open behaviour on plain taps too).
+        if (openRowId != null && openRowId !== rowId) {
+          setOpenRowId(null);
+        }
+        onTap && onTap(e);
+      };
+
+      const transitionStyle = dragRef.current.active
+        ? 'none'
+        : (reduceMotion ? 'none' : 'transform 180ms ease');
+
+      return (
+        <div className={`relative overflow-hidden ${className}`}>
+          {/* Red Delete button — revealed behind the content layer.
+              onClick calls the caller's onDelete which OWNS the confirm
+              dialog (existing logic). SwipeableRow has no confirm of
+              its own. */}
+          <button
+            type="button"
+            className="absolute right-0 top-0 bottom-0 bg-red-600 text-white text-[12px] font-bold uppercase tracking-wide flex flex-col items-center justify-center gap-1"
+            style={{ width: SWIPE_DELETE_WIDTH, WebkitTapHighlightColor: 'transparent' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenRowId(null);
+              setDx(0);
+              onDelete && onDelete();
+            }}
+            aria-label="Delete"
+            tabIndex={isOpen ? 0 : -1}
+          >
+            <ITrash size={14}/>
+            <span>Delete</span>
+          </button>
+          {/* Content layer — translates left on swipe, lays back over the
+              Delete button at rest. role=button so Phase A's universal
+              press-scale fires (the card content underneath stays passive). */}
+          <div
+            role="button"
+            tabIndex={0}
+            style={{
+              transform: `translateX(${dx}px)`,
+              transition: transitionStyle,
+              touchAction: 'pan-y',
+              background: 'inherit',
+              willChange: 'transform',
+            }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            onClick={handleTap}
+          >
+            {children}
+          </div>
+        </div>
+      );
+    }
+
     function AllInvoicesView({ productions, onOpenInvoice, onUpdateInvoice, onDeleteInvoice, showToast, userPrefs, setShowProductionPicker, setShowWizard }) {
       const allInvoices = React.useMemo(() => {
         const items = [];
@@ -18492,6 +18680,13 @@ const setDays = (updater) =>
 
       const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'draft' | 'sent' | 'paid'
       const [actionSheetTarget, setActionSheetTarget] = useState(null);
+      // Swipe-to-delete state. openSwipeRowId tracks the one-and-only open
+      // row (single-open semantics, shared across every section/group).
+      // swipeConfirmDelete drives a ConfirmDialog instance mirroring the
+      // EXACT strings + handler that InvoiceRowActionSheet's existing
+      // delete path uses — no new delete logic, just a second trigger.
+      const [openSwipeRowId, setOpenSwipeRowId] = useState(null);
+      const [swipeConfirmDelete, setSwipeConfirmDelete] = useState(null);
 
       const todayMs = React.useMemo(() => new Date(todayISO() + 'T12:00:00').getTime(), []);
 
@@ -18609,47 +18804,61 @@ const setDays = (updater) =>
               const isOverdue = invoice.status === 'sent' && dueMs && dueMs < todayMs;
               const daysOverdue = isOverdue ? Math.floor((todayMs - dueMs) / 86400000) : 0;
               const daysToDue = (invoice.status === 'sent' && dueMs && !isOverdue) ? Math.ceil((dueMs - todayMs) / 86400000) : 0;
+              // Invoice eligibility mirrors the existing kebab path EXACTLY:
+              // InvoiceRowActionSheet's Delete button has no status gate, so
+              // draft / sent / paid are all deletable today. Swipe does the
+              // same — isDeletable: true for every invoice. If a future
+              // change locks down sent/paid in the kebab, mirror it here.
               return (
-                <button
+                <SwipeableRow
                   key={invoice.id}
-                  onClick={() => onOpenInvoice(production.id, invoice.id)}
-                  className={`w-full text-left rounded-xl p-3 border transition-colors active:bg-neutral-800 ${isOverdue ? 'bg-neutral-900 border-tm-pen/25 hover:border-tm-pen/40' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
-                  style={{
-                    WebkitTapHighlightColor: 'transparent',
-                    ...(isOverdue ? { backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' } : {})
-                  }}>
-                  <div className="flex items-baseline justify-between gap-2 mb-1">
-                    <span className="text-[10px] font-mono tracking-wider text-neutral-500 font-semibold truncate">{invoice.invoiceNumber}</span>
-                    <Badge variant={s.variant}>{s.label}</Badge>
-                  </div>
-                  <div className="text-[15px] font-bold text-neutral-100 mb-1 truncate">
-                    {production.title || <span className="italic text-neutral-500 font-medium">Untitled production</span>}
-                  </div>
-                  <div className="font-mono font-bold text-[17px] text-neutral-100 mb-1.5">{fmtGBP(total)}</div>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <div className="text-[11px] font-mono min-w-0 flex-1">
-                      {invoice.status === 'paid' && invoice.datePaid && (
-                        <span className="text-neutral-500">Paid {fmtDateShort(invoice.datePaid)} <span className="text-tm-good">✓</span></span>
-                      )}
-                      {isOverdue && (
-                        <span className="text-tm-pen font-bold">⚠ {daysOverdue} DAY{daysOverdue !== 1 ? 'S' : ''} OVERDUE <span className="text-neutral-600 font-medium">· due {fmtDateShort(invoice.dueDate)}</span></span>
-                      )}
-                      {invoice.status === 'sent' && !isOverdue && invoice.dueDate && (
-                        <span className="text-neutral-400">Due {fmtDateShort(invoice.dueDate)} <span className="text-neutral-600">· in {daysToDue} day{daysToDue !== 1 ? 's' : ''}</span></span>
-                      )}
-                      {invoice.status === 'draft' && (
-                        <span className="text-neutral-500">Created {fmtDateShort(invoice.invoiceDate || (invoice.createdAt ? invoice.createdAt.slice(0,10) : todayISO()))} <span className="text-neutral-600">· not sent</span></span>
-                      )}
+                  rowId={invoice.id}
+                  openRowId={openSwipeRowId}
+                  setOpenRowId={setOpenSwipeRowId}
+                  isDeletable={true}
+                  onTap={() => onOpenInvoice(production.id, invoice.id)}
+                  onDelete={() => setSwipeConfirmDelete({ invoice, production })}
+                  className="rounded-xl"
+                >
+                  <div
+                    className={`w-full text-left rounded-xl p-3 border transition-colors ${isOverdue ? 'bg-neutral-900 border-tm-pen/25 hover:border-tm-pen/40' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
+                    style={{
+                      WebkitTapHighlightColor: 'transparent',
+                      ...(isOverdue ? { backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' } : {})
+                    }}>
+                    <div className="flex items-baseline justify-between gap-2 mb-1">
+                      <span className="text-[10px] font-mono tracking-wider text-neutral-500 font-semibold truncate">{invoice.invoiceNumber}</span>
+                      <Badge variant={s.variant}>{s.label}</Badge>
                     </div>
-                    <button
-                      onClick={e => { e.stopPropagation(); setActionSheetTarget({ invoice, production }); }}
-                      className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center flex-shrink-0 -mr-1 -mb-1"
-                      style={{ minWidth: 28, minHeight: 28, WebkitTapHighlightColor: 'transparent' }}
-                      aria-label="Invoice options">
-                      <IKebab size={12}/>
-                    </button>
+                    <div className="text-[15px] font-bold text-neutral-100 mb-1 truncate">
+                      {production.title || <span className="italic text-neutral-500 font-medium">Untitled production</span>}
+                    </div>
+                    <div className="font-mono font-bold text-[17px] text-neutral-100 mb-1.5">{fmtGBP(total)}</div>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <div className="text-[11px] font-mono min-w-0 flex-1">
+                        {invoice.status === 'paid' && invoice.datePaid && (
+                          <span className="text-neutral-500">Paid {fmtDateShort(invoice.datePaid)} <span className="text-tm-good">✓</span></span>
+                        )}
+                        {isOverdue && (
+                          <span className="text-tm-pen font-bold">⚠ {daysOverdue} DAY{daysOverdue !== 1 ? 'S' : ''} OVERDUE <span className="text-neutral-600 font-medium">· due {fmtDateShort(invoice.dueDate)}</span></span>
+                        )}
+                        {invoice.status === 'sent' && !isOverdue && invoice.dueDate && (
+                          <span className="text-neutral-400">Due {fmtDateShort(invoice.dueDate)} <span className="text-neutral-600">· in {daysToDue} day{daysToDue !== 1 ? 's' : ''}</span></span>
+                        )}
+                        {invoice.status === 'draft' && (
+                          <span className="text-neutral-500">Created {fmtDateShort(invoice.invoiceDate || (invoice.createdAt ? invoice.createdAt.slice(0,10) : todayISO()))} <span className="text-neutral-600">· not sent</span></span>
+                        )}
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); setActionSheetTarget({ invoice, production }); }}
+                        className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center flex-shrink-0 -mr-1 -mb-1"
+                        style={{ minWidth: 28, minHeight: 28, WebkitTapHighlightColor: 'transparent' }}
+                        aria-label="Invoice options">
+                        <IKebab size={12}/>
+                      </button>
+                    </div>
                   </div>
-                </button>
+                </SwipeableRow>
               );
             };
 
@@ -18720,6 +18929,27 @@ const setDays = (updater) =>
               showToast={showToast}
             />
           )}
+          {/* Swipe-to-delete confirm. Mirrors the EXACT title / message /
+              confirmLabel / confirmTone / handler that InvoiceRowActionSheet
+              already uses for its kebab → Delete path. Same ConfirmDialog
+              component, same onDeleteInvoice handler — just a second
+              trigger reaching it via the swipe gesture instead of the
+              menu. Sent / paid invoices reach it too because the kebab
+              path doesn't gate on status. */}
+          {swipeConfirmDelete && (
+            <ConfirmDialog open
+              title="Delete invoice?"
+              message={`Delete ${swipeConfirmDelete.invoice.invoiceNumber}? This cannot be undone.`}
+              confirmLabel="Delete"
+              confirmTone="danger"
+              onConfirm={() => {
+                onDeleteInvoice(swipeConfirmDelete.production.id, swipeConfirmDelete.invoice.id);
+                showToast('Invoice deleted');
+                setSwipeConfirmDelete(null);
+              }}
+              onCancel={() => setSwipeConfirmDelete(null)}
+            />
+          )}
         </div>
       );
     }
@@ -18729,6 +18959,11 @@ const setDays = (updater) =>
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [actionSheet, setActionSheet] = useState(null);
+      // Swipe-to-delete: shared "only one open" state across every section
+      // (current shoot, search results, month groups). confirmDelete already
+      // owns the ConfirmDialog rendering — swipe simply hands it the row's
+      // p just like the kebab → action sheet → Delete path does.
+      const [openSwipeRowId, setOpenSwipeRowId] = useState(null);
       const [showProductionPicker, setShowProductionPicker] = useState(false);
       const [showWizard, setShowWizard] = useState(false);
       const [searchOpen, setSearchOpen] = useState(false);
@@ -19020,7 +19255,17 @@ const confirmDelete = (p) => setConfirmOpts({
           const showActions = someOnCall && todayRecords.length > 0;
 
           return (
-            <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className="tm-hero-card border border-neutral-800 rounded-xl transition-colors cursor-pointer select-none touch-manipulation">
+            <SwipeableRow
+              key={p.id}
+              rowId={p.id}
+              openRowId={openSwipeRowId}
+              setOpenRowId={setOpenSwipeRowId}
+              isDeletable={true}
+              onTap={() => onOpen(p.id)}
+              onDelete={() => confirmDelete(p)}
+              className="rounded-xl"
+            >
+            <div style={{ WebkitTapHighlightColor: 'transparent' }} className="tm-hero-card border border-neutral-800 rounded-xl transition-colors select-none touch-manipulation">
               <div className="p-4">
                 <div className={`flex items-center gap-1.5 text-[11px] tracking-[0.18em] font-bold mb-2 ${stateClass}`}>
                   {showDot && <span className="tm-pulse inline-block rounded-full bg-tm-good" style={{ width: 6, height: 6 }} />}
@@ -19078,6 +19323,7 @@ const confirmDelete = (p) => setConfirmOpts({
                 )}
               </div>
             </div>
+            </SwipeableRow>
           );
         }
 
@@ -19097,8 +19343,18 @@ const confirmDelete = (p) => setConfirmOpts({
             return acc;
           }, []);
           return (
-            <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }}
-                 className="flex items-center gap-3 px-3.5 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl mb-2 cursor-pointer hover:bg-neutral-800/40 transition-colors select-none touch-manipulation">
+            <SwipeableRow
+              key={p.id}
+              rowId={p.id}
+              openRowId={openSwipeRowId}
+              setOpenRowId={setOpenSwipeRowId}
+              isDeletable={true}
+              onTap={() => onOpen(p.id)}
+              onDelete={() => confirmDelete(p)}
+              className="rounded-2xl mb-2"
+            >
+            <div style={{ WebkitTapHighlightColor: 'transparent' }}
+                 className="flex items-center gap-3 px-3.5 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl hover:bg-neutral-800/40 transition-colors select-none touch-manipulation">
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</div>
                 <div className="text-[11px] font-mono text-neutral-500 truncate mt-0.5">{metaContent}</div>
@@ -19117,12 +19373,23 @@ const confirmDelete = (p) => setConfirmOpts({
                 title="Production options"
               ><IKebab size={16}/></button>
             </div>
+            </SwipeableRow>
           );
         }
 
         // Compact variant — single-row dim card for older-month non-current shoots.
         return (
-          <div key={p.id} onClick={() => onOpen(p.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
+          <SwipeableRow
+            key={p.id}
+            rowId={p.id}
+            openRowId={openSwipeRowId}
+            setOpenRowId={setOpenSwipeRowId}
+            isDeletable={true}
+            onTap={() => onOpen(p.id)}
+            onDelete={() => confirmDelete(p)}
+            className="rounded-xl"
+          >
+          <div style={{ WebkitTapHighlightColor: 'transparent' }} className={wrapperClass}>
             <div className="flex items-center gap-3 px-3.5 py-2.5">
               <h3 className="flex-1 min-w-0 truncate text-[13px] text-neutral-400">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
               {bestBoyBadge}
@@ -19130,6 +19397,7 @@ const confirmDelete = (p) => setConfirmOpts({
               <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
             </div>
           </div>
+          </SwipeableRow>
         );
       };
 
