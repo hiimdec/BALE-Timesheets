@@ -4868,6 +4868,85 @@ async function main() {
       !/function LineEditModal\([\s\S]{0,3000}<Sheet /.test(html));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // LL — Phase D Wave 3 (Production cluster: native sheets + stacking)
+  //
+  // The three remaining hand-rolled bottom sheets are routed through the
+  // Sheet component, and the stacking model is demonstrated on a REAL
+  // parent/child pair: CrewActionSheet (parent) + its email editor (child
+  // ON TOP). ProductionSettingsSheet stays a full-screen page (untouched).
+  //
+  // Stacking model (reuses Wave-1 Sheet infra: _sheetStack + per-instance
+  // zIndex + onBeforeDismiss):
+  //   • child opens at a higher z-slot with its OWN backdrop, covering parent;
+  //   • child swipe/backdrop dismisses ONLY the child (parent remains);
+  //   • the PARENT's swipe-down is disabled while a child is open
+  //     (Sheet.onPointerDown bails unless topmost in _sheetStack);
+  //   • dismissing the parent tears down the whole stack;
+  //   • the child email editor is a dirty buffer → discard guard.
+  //
+  // Source-presence only — the gesture/stack feel is dogfooded on device.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ LL1: the Sheet stacking PRIMITIVE — only the topmost sheet may swipe ─
+    check('LL1a Sheet.onPointerDown bails unless this sheet is topmost in _sheetStack (parent swipe disabled under a child)',
+      /const onPointerDown = \(e\) => \{\s*if \(!swipeDismiss\) return;[\s\S]{0,400}if \(_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current\) return;/.test(html));
+
+    // ─ LL2: CrewActionSheet parent routes through <Sheet> (old hand-rolled
+    //   items-end backdrop + in-frame email swap are gone). ─
+    check('LL2a CrewActionSheet parent renders through <Sheet open onClose={onClose}>',
+      /function CrewActionSheet\([\s\S]{0,1200}<Sheet open onClose=\{onClose\}>/.test(html));
+    check('LL2b old in-frame email swap removed (no `if (emailEditing) return` early branch)',
+      !/function CrewActionSheet\([\s\S]{0,1200}if \(emailEditing\) \{/.test(html));
+    check('LL2c CrewActionSheet no longer hand-rolls its own items-end backdrop',
+      !/function CrewActionSheet\([\s\S]{0,2500}fixed inset-0 z-50 flex items-end/.test(html));
+
+    // ─ LL3: the email editor is a CHILD sheet ON TOP, gated on emailEditing,
+    //   with its own backdrop (a second <Sheet>) + a discard guard. ─
+    check('LL3a email child is a second <Sheet>, gated on emailEditing, with onBeforeDismiss',
+      /\{emailEditing && \(\s*<Sheet open onClose=\{\(\) => setEmailEditing\(false\)\} onBeforeDismiss=\{onBeforeDismiss\}/.test(html));
+    check('LL3b CrewActionSheet renders exactly two <Sheet> (parent + child)',
+      (() => {
+        const m = html.match(/function CrewActionSheet\(([\s\S]*?)\n    function /);
+        const body = m ? m[1] : '';
+        return (body.match(/<Sheet\b/g) || []).length === 2;
+      })());
+    check('LL3c email child holds a dirty buffer → useDiscardGuard(emailDirty)',
+      /const emailDirty = emailDraft !== \(crewMember\?\.email \|\| ''\);/.test(html) &&
+      /const \{ showDiscard, setShowDiscard, onBeforeDismiss \} = useDiscardGuard\(emailDirty\);/.test(html));
+    check('LL3d dirty child dismiss shows the discard alert (Discard / Keep editing); confirm closes only the child',
+      /<ConfirmDialog\s*open=\{showDiscard\}[\s\S]{0,300}confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"[\s\S]{0,200}onConfirm=\{\(\) => \{ setShowDiscard\(false\); setEmailEditing\(false\); \}\}/.test(html));
+
+    // ─ LL4: child dismiss closes ONLY the child (parent stays); dismissing
+    //   the parent tears down the whole stack. ─
+    check('LL4a child onClose closes only the child (setEmailEditing(false)) — parent <Sheet> stays mounted',
+      /<Sheet open onClose=\{\(\) => setEmailEditing\(false\)\}/.test(html));
+    check('LL4b parent onClose is the caller onClose — dismissing it unmounts the whole CrewActionSheet (stack torn down)',
+      /function CrewActionSheet\([\s\S]{0,1200}<Sheet open onClose=\{onClose\}>/.test(html) &&
+      // the parent Cancel button + Sheet both route to onClose
+      /function CrewActionSheet\([\s\S]{0,3000}onClick=\{onClose\}[\s\S]{0,400}<\/Sheet>/.test(html));
+
+    // ─ LL5: the two ExportTab pickers route through <Sheet>, no guard. ─
+    check('LL5a WeekPickerSheet routes through <Sheet open={open}> (no onBeforeDismiss)',
+      /function WeekPickerSheet\([\s\S]{0,800}<Sheet open=\{open\} onClose=\{onClose\} maxWidth=\{420\}>/.test(html) &&
+      !/function WeekPickerSheet\([\s\S]{0,1500}onBeforeDismiss/.test(html));
+    check('LL5b CrewPickerSheet routes through <Sheet open={open}> (no onBeforeDismiss)',
+      /function CrewPickerSheet\([\s\S]{0,500}<Sheet open=\{open\} onClose=\{onClose\} maxWidth=\{420\}>/.test(html) &&
+      !/function CrewPickerSheet\([\s\S]{0,1500}onBeforeDismiss/.test(html));
+    check('LL5c both pickers dropped their own lockBodyScroll/useEscape (Sheet owns them)',
+      !/function WeekPickerSheet\([\s\S]{0,400}useEscape/.test(html) &&
+      !/function CrewPickerSheet\([\s\S]{0,400}useEscape/.test(html));
+
+    // ─ LL6: ProductionSettingsSheet stays a full-screen page (NOT a Sheet) ─
+    check('LL6 ProductionSettingsSheet remains a full-screen page (min-h-screen), not routed through <Sheet>',
+      /function ProductionSettingsSheet\([\s\S]{0,3500}<div className="min-h-screen bg-neutral-950/.test(html) &&
+      (() => {
+        const m = html.match(/function ProductionSettingsSheet\(([\s\S]*?)\n    function /);
+        return m ? !/<Sheet\b/.test(m[1]) : false;
+      })());
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

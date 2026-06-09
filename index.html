@@ -6317,6 +6317,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // on the grabber row).
       const onPointerDown = (e) => {
         if (!swipeDismiss) return;
+        // Only the TOPMOST sheet may be swiped. While a child sheet is open
+        // on top, the parent's swipe-down is disabled — you can't drag the
+        // parent out from under an open child. (Backdrop tap + Escape are
+        // already topmost-gated; this completes the rule for the gesture.)
+        if (_sheetStack[_sheetStack.length - 1] !== idRef.current) return;
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         const card = cardRef.current;
         dragRef.current = {
@@ -10943,6 +10948,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function CrewActionSheet({ crewMember, mode, onClose, onSavePDF, onSendText, onSetEmail, onEditCrew, onRemoveFromDay, canRemove }) {
+      // Wave 3: parent action sheet + a real CHILD email-editor sheet stacked
+      // ON TOP (the old in-frame emailEditing swap is gone). The Sheet infra
+      // (_sheetStack + per-instance zIndex) layers them: the child has its own
+      // backdrop and a higher z-slot; dismissing the child reveals this sheet;
+      // this sheet's swipe is disabled while the child is open; dismissing this
+      // sheet tears down the whole stack.
       const [emailEditing, setEmailEditing] = useState(false);
       const [emailDraft, setEmailDraft] = useState(crewMember?.email || '');
       const hasEmail = !!crewMember?.email;
@@ -10952,48 +10963,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         setEmailEditing(false);
       };
 
-      if (emailEditing) {
-        return (
-          <div className="fixed inset-0 z-50 flex items-end" onClick={() => setEmailEditing(false)} style={{ background: 'rgba(0,0,0,0.5)' }}>
-            <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-              <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
-              <div className="text-base font-bold text-neutral-100 mb-3">{crewMember.name || 'Crew'}'s email</div>
-              <input
-                type="email"
-                autoFocus
-                value={emailDraft}
-                onChange={(e) => setEmailDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEmail(); }}
-                placeholder="email@example.com"
-                className="w-full bg-neutral-950 border border-sky-500 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={handleSaveEmail}
-                className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
-              >
-                Save email
-              </button>
-              <button
-                type="button"
-                onClick={() => setEmailEditing(false)}
-                className="w-full mt-2 px-4 py-2 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        );
-      }
+      // The email child holds unsaved edits → discard guard on its dismiss.
+      const emailDirty = emailDraft !== (crewMember?.email || '');
+      const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(emailDirty);
 
       return (
-        <div className="fixed inset-0 z-50 flex items-end" onClick={onClose} style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-            <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-2 mb-1"/>
-
-            <div className="px-5 pt-3 pb-3 border-b border-neutral-800/60">
+        <>
+        {/* PARENT — crew action list */}
+        <Sheet open onClose={onClose}>
+            <div className="px-5 pt-1 pb-3 border-b border-neutral-800/60">
               <div className="text-base font-bold text-neutral-100 truncate">{crewMember.name || 'Crew'}</div>
               <div className="text-[11px] text-neutral-400 mt-0.5">
                 {crewMember.role || '—'} · £{crewMember.bdr ?? 0} BDR
@@ -11032,8 +11010,55 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Sheet>
+
+        {/* CHILD — email editor, stacked ON TOP of the action sheet. Own
+            backdrop + higher z-slot via _sheetStack; swipe/backdrop dismisses
+            ONLY this child (revealing the parent), guarded while dirty. */}
+        {emailEditing && (
+          <Sheet open onClose={() => setEmailEditing(false)} onBeforeDismiss={onBeforeDismiss} maxWidth={480}>
+            <div className="px-5 pb-1">
+              <div className="text-base font-bold text-neutral-100 mb-3">{crewMember.name || 'Crew'}'s email</div>
+              <input
+                type="email"
+                autoFocus
+                value={emailDraft}
+                onChange={(e) => setEmailDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEmail(); }}
+                placeholder="email@example.com"
+                className="w-full bg-neutral-950 border border-sky-500 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleSaveEmail}
+                className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+              >
+                Save email
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmailEditing(false)}
+                className="w-full mt-2 px-4 py-2 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </Sheet>
+        )}
+
+        {/* Discard guard for the dirty email child — rides the centred alert
+            above all sheets; Keep editing cancels, Discard closes the child. */}
+        <ConfirmDialog
+          open={showDiscard}
+          title="Discard changes?"
+          message="Your unsaved email change will be lost."
+          confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"
+          onConfirm={() => { setShowDiscard(false); setEmailEditing(false); }}
+          onCancel={() => setShowDiscard(false)}
+        />
+        </>
       );
     }
 
@@ -11969,13 +11994,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     // Week picker bottom sheet — lists weeks and lets user pick one
     function WeekPickerSheet({ open, weeks, onPick, onClose, title }) {
-      useEffect(() => {
-        if (!open) return;
-        lockBodyScroll();
-        return () => { unlockBodyScroll(); };
-      }, [open]);
-      useEscape(open ? onClose : null);
-      if (!open) return null;
+      // Wave 3: routed through <Sheet> — a plain selection picker, freely
+      // dismissable, NO guard. Sheet owns scroll-lock + Escape.
       const fmtWeekRange = (wk) => {
         const s = new Date(wk.start + "T12:00:00");
         const e = new Date(wk.end   + "T12:00:00");
@@ -11983,79 +12003,64 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return `${s.toLocaleDateString('en-GB', opt)} – ${e.toLocaleDateString('en-GB', { ...opt, year: 'numeric' })}`;
       };
       return (
-        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-             style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
-             onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-               style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="px-5 pt-5 pb-2">
-              <div className="text-sm font-bold text-neutral-100">{title || "Select week"}</div>
-            </div>
-            <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
-              {weeks.map(wk => (
-                <button key={wk.start} type="button"
-                  onClick={() => { onPick(wk.index); onClose(); }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm text-neutral-100 flex items-center justify-between"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}>
-                  <span className="font-semibold">{wk.label}</span>
-                  <span className="text-neutral-400 text-[11px]">{fmtWeekRange(wk)}</span>
-                </button>
-              ))}
-            </div>
-            <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
-              <button type="button" onClick={onClose}
-                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
-            </div>
+        <Sheet open={open} onClose={onClose} maxWidth={420}>
+          <div className="px-5 pt-1 pb-2">
+            <div className="text-sm font-bold text-neutral-100">{title || "Select week"}</div>
           </div>
-        </div>
+          <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
+            {(weeks || []).map(wk => (
+              <button key={wk.start} type="button"
+                onClick={() => { onPick(wk.index); onClose(); }}
+                className="w-full text-left px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm text-neutral-100 flex items-center justify-between"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <span className="font-semibold">{wk.label}</span>
+                <span className="text-neutral-400 text-[11px]">{fmtWeekRange(wk)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="px-4 pb-1 pt-1 border-t border-neutral-800">
+            <button type="button" onClick={onClose}
+              className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+          </div>
+        </Sheet>
       );
     }
 
     // Crew picker bottom sheet — lists crew and lets user pick one
     function CrewPickerSheet({ open, crew, days, production, onPick, onClose, title }) {
-      useEffect(() => {
-        if (!open) return;
-        lockBodyScroll();
-        return () => { unlockBodyScroll(); };
-      }, [open]);
-      useEscape(open ? onClose : null);
-      if (!open) return null;
+      // Wave 3: routed through <Sheet> — a plain selection picker, freely
+      // dismissable, NO guard. Sheet owns scroll-lock + Escape.
       return (
-        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-             style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
-             onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-               style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="px-5 pt-5 pb-2">
-              <div className="text-sm font-bold text-neutral-100">{title || "Select crew member"}</div>
-            </div>
-            <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
-              {crew.map(c => {
-                const cDays = (days || []).filter(d => d.crewId === c.id);
-                const sorted = [...cDays].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-                const total = sorted.reduce((s, d, i) => s + calcForDisplay(production, d, c, sorted[i-1]||null).total, 0);
-                return (
-                  <button key={c.id} type="button"
-                    onClick={() => { onPick(c.id); onClose(); }}
-                    className="w-full text-left px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors flex items-center justify-between gap-3"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <div>
-                      <div className="text-sm font-semibold text-neutral-100">{c.name}</div>
-                      <div className="text-[10px] text-neutral-400 uppercase tracking-wide mt-0.5">{c.role} · {cDays.length} day{cDays.length !== 1 ? 's' : ''}</div>
-                    </div>
-                    <div className="text-sm font-bold text-neutral-200 font-mono flex-shrink-0">{fmtGBP(total)}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
-              <button type="button" onClick={onClose}
-                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
-            </div>
+        <Sheet open={open} onClose={onClose} maxWidth={420}>
+          <div className="px-5 pt-1 pb-2">
+            <div className="text-sm font-bold text-neutral-100">{title || "Select crew member"}</div>
           </div>
-        </div>
+          <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
+            {(crew || []).map(c => {
+              const cDays = (days || []).filter(d => d.crewId === c.id);
+              const sorted = [...cDays].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+              const total = sorted.reduce((s, d, i) => s + calcForDisplay(production, d, c, sorted[i-1]||null).total, 0);
+              return (
+                <button key={c.id} type="button"
+                  onClick={() => { onPick(c.id); onClose(); }}
+                  className="w-full text-left px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors flex items-center justify-between gap-3"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <div>
+                    <div className="text-sm font-semibold text-neutral-100">{c.name}</div>
+                    <div className="text-[10px] text-neutral-400 uppercase tracking-wide mt-0.5">{c.role} · {cDays.length} day{cDays.length !== 1 ? 's' : ''}</div>
+                  </div>
+                  <div className="text-sm font-bold text-neutral-200 font-mono flex-shrink-0">{fmtGBP(total)}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="px-4 pb-1 pt-1 border-t border-neutral-800">
+            <button type="button" onClick={onClose}
+              className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+          </div>
+        </Sheet>
       );
     }
 
