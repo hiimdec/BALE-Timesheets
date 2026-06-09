@@ -5028,18 +5028,25 @@ async function main() {
     // ─ NN1: the two prefs default with NO migration (merge-over-defaults) ─
     check('NN1a invoiceExportFormat defaults to timemachine in DEFAULT_USER_PREFS',
       /const DEFAULT_USER_PREFS = \{[\s\S]{0,4000}invoiceExportFormat: 'timemachine',/.test(html));
-    check('NN1b invoiceExportRounding defaults to apa in DEFAULT_USER_PREFS',
-      /const DEFAULT_USER_PREFS = \{[\s\S]{0,4000}invoiceExportRounding: 'apa',/.test(html));
+    check('NN1b invoiceExportRounding pref is REMOVED — no separate export-rounding pref anywhere',
+      !/invoiceExportRounding/.test(html));
     check('NN1c useStoredState merges defaults over stored object — existing users gain the new keys with no migration',
       /v = \{ \.\.\.initial, \.\.\.v \};/.test(html));
+    const _dupNN = (html.match(/const DEFAULT_USER_PREFS = \{[\s\S]*?\n    \};/) || [''])[0];
+    check('NN1d default rounding resolves to exact — DEFAULT_USER_PREFS pins no rounding override; roundingModeOf falls through to exact',
+      _dupNN.length > 0 &&
+      !/roundingMode:/.test(_dupNN) &&
+      !/favourableRounding: true/.test(_dupNN) &&
+      !/apaRounding: true/.test(_dupNN) &&
+      /o\?\.roundingMode \?\? \(o\?\.favourableRounding \? 'favourable' : o\?\.apaRounding \? 'apa' : 'exact'\)/.test(html));
 
     // ─ NN2: figures recomputed at the SELECTED mode; favourable NEVER used ─
     check('NN2a invoiceExportFigures recomputes via buildInvoiceLineItems with a roundingMode OVERRIDE (engine reused, not edited)',
       /function invoiceExportFigures\([\s\S]{0,400}buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
-    check('NN2b export rounding is constrained to apa|exact only — favourable is intentionally absent',
+    check('NN2b CSV export computes at the invoice roundingMode, coercing favourable→exact, clamped to apa|exact',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
-      /INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'apa'/.test(html));
-    check('NN2c favourable is never a SELECTABLE export rounding — values list is apa/exact (picker omits favourable entirely; see OO)',
+      /const frozen = roundingModeOf\(invoice\);\s*const want = frozen === 'favourable' \? 'exact' : frozen;\s*const mode = INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'exact';/.test(html));
+    check('NN2c favourable is never a stored export rounding value — list is apa/exact (favourable coerces to exact on the export path; see OO)',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       !/INVOICE_EXPORT_ROUNDING_VALUES = \[[^\]]*favourable/.test(html));
     check('NN2d subtotal/VAT for export come from invoiceSubtotal + invoiceVAT (VAT 0 unless vatRegistered)',
@@ -5087,65 +5094,63 @@ async function main() {
       /async function deliverTextFile\([\s\S]{0,200}IS_NATIVE\) return nativeSaveAndShare\(filename, content, \{ encoding: 'utf8'[\s\S]{0,200}new Blob\(\[content\][\s\S]{0,200}a\.download = filename/.test(html));
     check('NN6c sensible per-format filenames (TM-INV-…-xero.csv etc.)',
       /-xero\.csv`/.test(html) && /-quickbooks\.csv`/.test(html) && /-ledger\.csv`/.test(html));
-    check('NN6d Settings → Invoicing: format Select + ExportRoundingSelect wired to userPrefs',
+    check('NN6d Settings → Invoicing → Accounting export: format Select + single RoundingModeSelect on userPrefs.roundingMode (favourable greyed for CSV formats)',
       /set\(\{ invoiceExportFormat: e\.target\.value \}\)/.test(html) &&
       /INVOICE_EXPORT_FORMATS\.map\(/.test(html) &&
-      /<ExportRoundingSelect value=\{userPrefs\.invoiceExportRounding \|\| 'apa'\} onChange=\{\(m\) => set\(\{ invoiceExportRounding: m \}\)\}/.test(html));
+      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}\s+disableFavourable=\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════
-  // OO — Export rounding picker: Exact · APA only, gated on a CSV export format
-  //
-  // ExportRoundingSelect shares RoundingModeSelect's rich radio style via the
-  // shared RoundingOptionCard, but offers only Exact · APA — Favourable is
-  // TimeMachine-PDF-only and is filtered OUT entirely (no greyed card). The whole
-  // block is hidden unless invoiceExportFormat is a CSV type (xero|quickbooks|csv);
-  // in TimeMachine-PDF mode the pref does nothing, so the control never shows.
-  // RoundingModeSelect (the shoot/userPrefs control that rounds the PDF) is
-  // unchanged and still offers Favourable enabled + selectable at both sites.
+  // OO — One rounding control (userPrefs.roundingMode), surfaced in Invoicing →
+  // Accounting export. The separate ExportRoundingSelect + the invoiceExportRounding
+  // pref are GONE. RoundingModeSelect shows all three modes and greys Favourable
+  // (PDF-only) whenever the chosen invoice export format is a CSV type — in BOTH
+  // the Invoicing default control and each shoot's Production Settings control.
+  // The CSV export computes at the invoice's roundingMode with favourable→exact,
+  // on the EXPORT path only (calcForDisplay / roundingFav untouched).
   // Source-presence only.
   {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
 
-    // ─ OO1: shared presentational radio-card; RoundingModeSelect renders via it ─
+    // ─ OO1: shared card + the single RoundingModeSelect renders through it ─
     check('OO1a RoundingOptionCard shared component defined (radio dot + label + desc + disabled + note)',
       /const RoundingOptionCard = \(\{ label, desc, note, active, disabled = false, onClick \}\) =>/.test(html) &&
       /disabled \? undefined : onClick/.test(html) &&
       /\{note && <div className="text-\[10px\]/.test(html));
-    check('OO1b RoundingModeSelect renders through RoundingOptionCard over ROUNDING_OPTIONS (no inline button markup left)',
-      /const RoundingModeSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,400}ROUNDING_OPTIONS\.map\(\(opt\) => \(\s*<RoundingOptionCard/.test(html) &&
-      // the old inline <button aria-pressed …> markup is gone from RoundingModeSelect
-      !/const RoundingModeSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,500}<button\b/.test(html));
-    check('OO1c RoundingModeSelect byte-identical at its two existing sites (per-shoot + userPrefs default)',
-      /<RoundingModeSelect value=\{roundingModeOf\(production\)\} onChange=\{\(m\) => setProduction\(p => \(\{ \.\.\.p, roundingMode: m \}\)\)\}/.test(html) &&
-      /<RoundingModeSelect value=\{roundingModeOf\(userPrefs\)\} onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}/.test(html));
-    check('OO1d RoundingModeSelect still offers Favourable enabled + selectable (full ROUNDING_OPTIONS, no favourable filter, no disabled prop)',
-      // maps the complete ROUNDING_OPTIONS (favourable included) straight into RoundingOptionCard
-      /const RoundingModeSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,300}ROUNDING_OPTIONS\.map\(\(opt\) => \(\s*<RoundingOptionCard/.test(html) &&
-      // the favourable filter exists ONLY in ExportRoundingSelect (exactly one occurrence), so RoundingModeSelect never filters it out
-      (html.match(/ROUNDING_OPTIONS\.filter\(\(opt\) => opt\.value !== 'favourable'\)/g) || []).length === 1 &&
-      // RoundingModeSelect passes NO disabled prop, so every option (incl. favourable) stays selectable
-      !/const RoundingModeSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,480}disabled=/.test(html));
+    check('OO1b RoundingModeSelect renders ALL three ROUNDING_OPTIONS through RoundingOptionCard — no favourable filter anywhere (every mode present)',
+      /const RoundingModeSelect = \(\{ value, onChange, disableFavourable = false \}\) => \{[\s\S]{0,400}ROUNDING_OPTIONS\.map\(\(opt\) => \{[\s\S]{0,200}<RoundingOptionCard/.test(html) &&
+      !/ROUNDING_OPTIONS\.filter\(\(opt\) => opt\.value !== 'favourable'\)/.test(html));
+    check('OO1c RoundingModeSelect greys/disables ONLY favourable, and ONLY when disableFavourable is set',
+      /const disabled = disableFavourable && opt\.value === 'favourable';/.test(html) &&
+      /disabled=\{disabled\}/.test(html));
 
-    // ─ OO2: ExportRoundingSelect — Exact · APA only; Favourable not an option ─
-    check('OO2a ExportRoundingSelect filters Favourable OUT, rendering Exact · APA only through RoundingOptionCard',
-      /const ExportRoundingSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,400}ROUNDING_OPTIONS\.filter\(\(opt\) => opt\.value !== 'favourable'\)\.map\(\(opt\) => \(\s*<RoundingOptionCard/.test(html));
-    check('OO2b Favourable is NOT an option in ExportRoundingSelect — no isFav / disabled card / PDF-only note anywhere',
-      !/const isFav = opt\.value === 'favourable';/.test(html) &&
-      !/disabled=\{isFav\}/.test(html) &&
-      !/TimeMachine-PDF only — never applied to a CSV \/ accounting export/.test(html));
-    check('OO2c export display coerces a stray non-exact value (incl. favourable) to the apa default',
-      /const cur = value === 'exact' \? 'exact' : 'apa';/.test(html));
-    check('OO2d the old plain <Select> export-rounding control is gone',
-      !/<Select value=\{userPrefs\.invoiceExportRounding/.test(html));
+    // ─ OO2: the single control lives in Invoicing → Accounting export + per-shoot ─
+    check('OO2a Invoicing default control: RoundingModeSelect on userPrefs.roundingMode, greying favourable for CSV formats',
+      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}\s+disableFavourable=\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
+    check('OO2b per-shoot control (Production Settings) greys favourable on the SAME CSV-format condition',
+      /<RoundingModeSelect value=\{roundingModeOf\(production\)\} onChange=\{\(m\) => setProduction\(p => \(\{ \.\.\.p, roundingMode: m \}\)\)\} disableFavourable=\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}/.test(html));
+    check('OO2c favourable selectable when format === timemachine (INVOICE_EXPORT_CSV_FORMATS excludes timemachine → disableFavourable false)',
+      /const INVOICE_EXPORT_CSV_FORMATS = \['xero', 'quickbooks', 'csv'\];/.test(html) &&
+      !/INVOICE_EXPORT_CSV_FORMATS = \[[^\]]*timemachine/.test(html));
+    check('OO2d exactly TWO RoundingModeSelect render sites (Invoicing default + per-shoot) — none in New-production defaults',
+      (html.match(/<RoundingModeSelect/g) || []).length === 2);
 
-    // ─ OO3: the export-rounding block is gated on a CSV export format ─
-    check('OO3a INVOICE_EXPORT_CSV_FORMATS lists the three CSV / accounting formats (xero, quickbooks, csv)',
-      /const INVOICE_EXPORT_CSV_FORMATS = \['xero', 'quickbooks', 'csv'\];/.test(html));
-    check('OO3b CSV export rounding block (Field + ExportRoundingSelect) renders ONLY for a CSV format — hidden in TimeMachine-PDF mode',
-      /\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\) && \([\s\S]{0,400}<Field label="CSV export rounding"[\s\S]{0,300}<ExportRoundingSelect/.test(html));
-    check('OO3c always-visible signpost in Accounting export points to the real rounding control (sits BEFORE the CSV-format gate → shown in both PDF + CSV modes)',
-      /Rounding for your invoices and PDF — including Favourable — is set under New-production defaults → Rounding, or per shoot in that shoot's settings\.<\/p>[\s\S]{0,450}\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)/.test(html));
+    // ─ OO3: the old separate export control + its sub-sections are gone ─
+    check('OO3a ExportRoundingSelect component is gone (one picker only)',
+      !/ExportRoundingSelect/.test(html));
+    check('OO3b New-production defaults no longer renders a Rounding control or a calcSummary line',
+      !/calcSummary/.test(html) &&
+      !/<RoundingModeSelect value=\{roundingModeOf\(userPrefs\)\} onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\} \/>/.test(html));
+    check('OO3c invoiceExportRounding pref + the old <Select> export-rounding control are gone',
+      !/invoiceExportRounding/.test(html));
+
+    // ─ OO4: CSV export computes at the invoice roundingMode, favourable→exact ─
+    check('OO4a invoiceExportFigures derives mode from roundingModeOf(invoice), coercing favourable→exact, clamped to apa|exact, then reuses buildInvoiceLineItems',
+      /function invoiceExportFigures\(invoice, production, userPrefs\) \{\s*const frozen = roundingModeOf\(invoice\);\s*const want = frozen === 'favourable' \? 'exact' : frozen;\s*const mode = INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'exact';/.test(html) &&
+      /buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
+    check('OO4b favourable→exact is EXPORT-path only — calcForDisplay / roundingFav are untouched (favourable still applies for the PDF)',
+      /const useFavourableRounding = roundingFav\(production\);\s*const finalCalc = useFavourableRounding \? applyRateRounding\(calc\) : calc;/.test(html) &&
+      /const roundingFav = \(o\) => roundingModeOf\(o\) === 'favourable';/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════

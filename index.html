@@ -1531,14 +1531,16 @@
       invoiceNextNumber: 1,
       // Invoicing — Payment terms
       paymentTermsDays: 30,
-      // Invoicing — Accounting export (Stage 1). value-presence; gained by
-      // existing users via the merge-over-DEFAULT_USER_PREFS read in
-      // useStoredState — no migration, no SCHEMA_VERSION bump (same pattern as
-      // kitInventory / clients). Default behaviour = the current TimeMachine
-      // PDF. invoiceExportRounding NEVER takes 'favourable' (favourable stays
-      // TimeMachine-PDF-only).
+      // Invoicing — Accounting export. value-presence; gained by existing users
+      // via the merge-over-DEFAULT_USER_PREFS read in useStoredState — no
+      // migration, no SCHEMA_VERSION bump (same pattern as kitInventory /
+      // clients). Default behaviour = the current TimeMachine PDF. Rounding is no
+      // longer a separate export pref: the single userPrefs.roundingMode drives
+      // both the PDF and (favourable→exact) the CSV export. roundingMode is NOT
+      // defaulted here on purpose — the mount-time consolidation effect derives
+      // it from any legacy favourableRounding/apaRounding flags, and an explicit
+      // default would defeat that; roundingModeOf(userPrefs) resolves to 'exact'.
       invoiceExportFormat: 'timemachine',   // 'timemachine' | 'xero' | 'quickbooks' | 'csv'
-      invoiceExportRounding: 'apa',         // 'apa' | 'exact'
       // Invoicing — Logo (data URL)
       logoBase64: "",
       defaultMileageRate: 0.5,
@@ -5960,42 +5962,33 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       </button>
     );
 
-    const RoundingModeSelect = ({ value, onChange }) => {
+    // The single rounding picker — shows ALL three modes (Exact · Favourable ·
+    // APA). `disableFavourable` greys + disables the Favourable card; it's set
+    // whenever the chosen invoice export format is a CSV type, because favourable
+    // rounding is TimeMachine-PDF-only and never reaches a CSV / accounting
+    // export. This only gates whether Favourable can be SELECTED — favourable's
+    // APPLICATION (calcForDisplay / roundingFav) is untouched. There is no
+    // separate export-rounding control: one setting (userPrefs.roundingMode)
+    // drives the PDF and is the source the CSV export computes from (with
+    // favourable coerced to exact on the export path).
+    const RoundingModeSelect = ({ value, onChange, disableFavourable = false }) => {
       const cur = ROUNDING_MODES.includes(value) ? value : 'exact';
       return (
         <div className="space-y-1.5">
-          {ROUNDING_OPTIONS.map((opt) => (
-            <RoundingOptionCard
-              key={opt.value}
-              label={opt.label}
-              desc={opt.desc}
-              active={cur === opt.value}
-              onClick={() => onChange(opt.value)}
-            />
-          ))}
-        </div>
-      );
-    };
-
-    // Export rounding picker (Settings → Invoicing → Accounting export). Same
-    // rich radio style as RoundingModeSelect, reusing RoundingOptionCard, but
-    // only Exact · APA are offered — favourable rounding is TimeMachine-PDF-only
-    // and is never an export option, so it's filtered out entirely (no greyed
-    // card anywhere). invoiceExportRounding only ever holds 'exact' | 'apa'; a
-    // stray 'favourable' coerces to the 'apa' default for display.
-    const ExportRoundingSelect = ({ value, onChange }) => {
-      const cur = value === 'exact' ? 'exact' : 'apa';
-      return (
-        <div className="space-y-1.5">
-          {ROUNDING_OPTIONS.filter((opt) => opt.value !== 'favourable').map((opt) => (
-            <RoundingOptionCard
-              key={opt.value}
-              label={opt.label}
-              desc={opt.desc}
-              active={cur === opt.value}
-              onClick={() => onChange(opt.value)}
-            />
-          ))}
+          {ROUNDING_OPTIONS.map((opt) => {
+            const disabled = disableFavourable && opt.value === 'favourable';
+            return (
+              <RoundingOptionCard
+                key={opt.value}
+                label={opt.label}
+                desc={opt.desc}
+                note={disabled ? 'Applies to the TimeMachine PDF only — set the invoice export format to TimeMachine to use it.' : undefined}
+                active={cur === opt.value}
+                disabled={disabled}
+                onClick={() => onChange(opt.value)}
+              />
+            );
+          })}
         </div>
       );
     };
@@ -12511,7 +12504,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Rounding</div>
-                <RoundingModeSelect value={roundingModeOf(production)} onChange={(m) => setProduction(p => ({ ...p, roundingMode: m }))} />
+                <RoundingModeSelect value={roundingModeOf(production)} onChange={(m) => setProduction(p => ({ ...p, roundingMode: m }))} disableFavourable={INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)} />
                 <p className="text-[11px] text-neutral-500 mt-2">Applies to this shoot only.</p>
               </div>
               {production.bestBoyMode && (
@@ -16367,11 +16360,6 @@ const setDays = (updater) =>
         return bits.length ? bits.join(' · ') : '—';
       })();
 
-      const calcSummary = (() => {
-        const m = roundingModeOf(userPrefs);
-        return m === 'favourable' ? 'Favourable rounding' : m === 'apa' ? 'APA rounding' : 'Exact';
-      })();
-
       const displaySummary = userPrefs.comparisonUnit === 'off'
         ? 'Off'
         : (userPrefs.comparisonUnit || 'Greggs sausage rolls');
@@ -16532,16 +16520,20 @@ const setDays = (updater) =>
                     {INVOICE_EXPORT_FORMATS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
                 </Field>
-                <p className="text-[11px] text-neutral-500 mt-2 leading-tight">Rounding for your invoices and PDF — including Favourable — is set under New-production defaults → Rounding, or per shoot in that shoot's settings.</p>
-                {/* Export rounding only governs CSV / Xero / QuickBooks figures;
-                    the TimeMachine PDF rounds from the shoot rounding, not this
-                    pref. Hide the whole block in PDF mode so an irrelevant control
-                    never reads as "Favourable is unavailable for the PDF". */}
-                {INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat) && (
-                  <Field label="CSV export rounding" hint="Figures in Xero / QuickBooks / CSV exports are computed at this rounding.">
-                    <ExportRoundingSelect value={userPrefs.invoiceExportRounding || 'apa'} onChange={(m) => set({ invoiceExportRounding: m })} />
-                  </Field>
-                )}
+                {/* The single rounding setting (userPrefs.roundingMode), sat
+                    directly under the format dropdown so favourable-greying reads
+                    against the chosen format. Sets the default for NEW shoots;
+                    each shoot overrides in its own settings. Favourable is greyed
+                    for CSV formats (PDF-only); selectable on TimeMachine. */}
+                <div className="mt-3">
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1">Rounding</div>
+                  <RoundingModeSelect
+                    value={roundingModeOf(userPrefs)}
+                    onChange={(m) => set({ roundingMode: m })}
+                    disableFavourable={INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)}
+                  />
+                  <p className="text-[11px] text-neutral-500 mt-2 leading-tight">Sets the default for new shoots; override per shoot in that shoot's settings.</p>
+                </div>
               </div>
 
               {/* Sub: VAT — rate + number gated on vatRegistered (preserved). */}
@@ -16709,15 +16701,14 @@ const setDays = (updater) =>
             </Disclosure>
 
             {/* §5 — New-production defaults: applied to NEW shoots only;
-                changing these does not retroactively rewrite anything. Rounding
-                lives here because it's a per-shoot default; per-shoot override
-                still happens in the shoot's own settings. */}
+                changing these does not retroactively rewrite anything. (Rounding
+                moved to Invoicing → Accounting export — it's now the single
+                rounding setting driving the PDF + the CSV export.) */}
             <Disclosure
               label="New-production defaults"
               summary={(() => {
                 const parts = [];
                 if (defaultsSummary && defaultsSummary !== '—') parts.push(defaultsSummary);
-                if (calcSummary) parts.push(calcSummary);
                 return parts.length ? parts.join(' · ') : '—';
               })()}
             >
@@ -16760,13 +16751,6 @@ const setDays = (updater) =>
                   />
                 </Field>
               )}
-              {/* Sub: Rounding — was its own "Calculation" top-level disclosure;
-                  RoundingModeSelect, helper-getter, and footnote unchanged. */}
-              <div className="mt-4 pt-4 border-t border-neutral-800">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Rounding</div>
-                <RoundingModeSelect value={roundingModeOf(userPrefs)} onChange={(m) => set({ roundingMode: m })} />
-                <p className="text-[11px] text-neutral-500 mt-2.5 leading-tight">This sets the default for new shoots. To change a shoot you've already created, open that shoot's settings.</p>
-              </div>
             </Disclosure>
 
             {/* §6 — Appearance: display-only options (pill comparison + custom
@@ -17931,15 +17915,15 @@ const setDays = (updater) =>
       return { vatAmount, total: subtotal + vatAmount };
     }
 
-    /* ═══════════════ INVOICE EXPORT — accounting formats (Stage 1) ═══════════
-     * READ-ONLY over invoices. Figures are RECOMPUTED at the user's chosen
-     * export rounding by reusing the existing calc path parameterised by mode:
+    /* ═══════════════ INVOICE EXPORT — accounting formats ═══════════════════
+     * READ-ONLY over invoices. Figures are RECOMPUTED at the invoice's OWN
+     * roundingMode by reusing the existing calc path parameterised by mode:
      * buildInvoiceLineItems({ ...production, roundingMode: <mode> }, …). The
      * pay/calc engine (calculateDay/resolveDay/calcForDisplay) is NEVER edited
      * — only called with a production whose roundingMode field is overridden,
      * so the 84 byte-identical scenarios stay byte-identical. Favourable is
-     * NEVER used here (it's TimeMachine-PDF-only); mode is constrained to
-     * apa|exact and defensively coerced. */
+     * NEVER passed here (it's TimeMachine-PDF-only) — on the export path it is
+     * COERCED to exact, so a CSV never carries favourable-rounded figures. */
     const INVOICE_EXPORT_FORMATS = [
       { value: 'timemachine', label: 'TimeMachine (PDF)' },
       { value: 'xero',        label: 'Xero' },
@@ -17947,13 +17931,13 @@ const setDays = (updater) =>
       { value: 'csv',         label: 'CSV' },
     ];
     // The CSV / accounting export formats (everything except the TimeMachine PDF).
-    // The Export rounding control only governs these, so it's shown only for these
-    // formats and hidden in TimeMachine-PDF mode.
+    // When the chosen format is one of these, the rounding picker greys Favourable
+    // (PDF-only) in BOTH the Settings default control and each shoot's control.
     const INVOICE_EXPORT_CSV_FORMATS = ['xero', 'quickbooks', 'csv'];
-    // The ONLY rounding modes an export may use — favourable is intentionally
-    // absent (it's TimeMachine-PDF-only). The Settings picker (ExportRoundingSelect)
-    // offers Exact · APA only (favourable is filtered out, not shown); this list
-    // is the source of truth for what invoiceExportRounding may hold.
+    // The ONLY rounding modes a CSV/accounting export may compute at — favourable
+    // is intentionally absent (it's TimeMachine-PDF-only). invoiceExportFigures
+    // derives the mode from the invoice's roundingMode, coercing favourable→exact,
+    // then clamps to this set as a final defensive guard.
     const INVOICE_EXPORT_ROUNDING_VALUES = ['apa', 'exact'];
 
     // ISO YYYY-MM-DD → DD/MM/YYYY (empty/invalid → "").
@@ -17971,12 +17955,15 @@ const setDays = (updater) =>
       return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     }
 
-    // Net line/invoice figures recomputed at the chosen EXPORT rounding.
-    // Reuses buildInvoiceLineItems with a roundingMode override (engine untouched).
+    // Net line/invoice figures recomputed for the CSV/accounting export at the
+    // invoice's OWN roundingMode — favourable (TimeMachine-PDF-only) is coerced to
+    // exact HERE, on the export path, so buildInvoiceLineItems never sees
+    // favourable for an export and the engine stays untouched. apa|exact pass
+    // through unchanged; the clamp is a final defensive guard.
     function invoiceExportFigures(invoice, production, userPrefs) {
-      const want = (userPrefs && userPrefs.invoiceExportRounding) || 'apa';
-      // Constrain to apa|exact — favourable must never reach an export.
-      const mode = INVOICE_EXPORT_ROUNDING_VALUES.includes(want) ? want : 'apa';
+      const frozen = roundingModeOf(invoice);
+      const want = frozen === 'favourable' ? 'exact' : frozen;
+      const mode = INVOICE_EXPORT_ROUNDING_VALUES.includes(want) ? want : 'exact';
       const lines = buildInvoiceLineItems({ ...production, roundingMode: mode }, userPrefs, invoice.userCrewId);
       const subtotal = invoiceSubtotal(lines);
       const { vatAmount, total } = invoiceVAT(invoice, subtotal);
