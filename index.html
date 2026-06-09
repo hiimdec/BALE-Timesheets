@@ -5978,29 +5978,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     };
 
     // Export rounding picker (Settings → Invoicing → Accounting export). Same
-    // rich radio style as RoundingModeSelect, reusing ROUNDING_OPTIONS, but
-    // Favourable is permanently DISABLED here — favourable rounding is
-    // TimeMachine-PDF-only and never applies to a CSV / accounting export. Only
-    // apa|exact are selectable; invoiceExportRounding stays apa|exact.
+    // rich radio style as RoundingModeSelect, reusing RoundingOptionCard, but
+    // only Exact · APA are offered — favourable rounding is TimeMachine-PDF-only
+    // and is never an export option, so it's filtered out entirely (no greyed
+    // card anywhere). invoiceExportRounding only ever holds 'exact' | 'apa'; a
+    // stray 'favourable' coerces to the 'apa' default for display.
     const ExportRoundingSelect = ({ value, onChange }) => {
-      // Favourable can't be active; anything that isn't 'exact' highlights APA.
       const cur = value === 'exact' ? 'exact' : 'apa';
       return (
         <div className="space-y-1.5">
-          {ROUNDING_OPTIONS.map((opt) => {
-            const isFav = opt.value === 'favourable';
-            return (
-              <RoundingOptionCard
-                key={opt.value}
-                label={opt.label}
-                desc={opt.desc}
-                active={cur === opt.value}
-                disabled={isFav}
-                note={isFav ? 'TimeMachine-PDF only — never applied to a CSV / accounting export.' : undefined}
-                onClick={() => onChange(opt.value)}
-              />
-            );
-          })}
+          {ROUNDING_OPTIONS.filter((opt) => opt.value !== 'favourable').map((opt) => (
+            <RoundingOptionCard
+              key={opt.value}
+              label={opt.label}
+              desc={opt.desc}
+              active={cur === opt.value}
+              onClick={() => onChange(opt.value)}
+            />
+          ))}
         </div>
       );
     };
@@ -16537,9 +16532,15 @@ const setDays = (updater) =>
                     {INVOICE_EXPORT_FORMATS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
                 </Field>
-                <Field label="Export rounding" hint="Figures in Xero / QuickBooks / CSV exports are computed at this rounding.">
-                  <ExportRoundingSelect value={userPrefs.invoiceExportRounding || 'apa'} onChange={(m) => set({ invoiceExportRounding: m })} />
-                </Field>
+                {/* Export rounding only governs CSV / Xero / QuickBooks figures;
+                    the TimeMachine PDF rounds from the shoot rounding, not this
+                    pref. Hide the whole block in PDF mode so an irrelevant control
+                    never reads as "Favourable is unavailable for the PDF". */}
+                {INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat) && (
+                  <Field label="Export rounding" hint="Figures in Xero / QuickBooks / CSV exports are computed at this rounding.">
+                    <ExportRoundingSelect value={userPrefs.invoiceExportRounding || 'apa'} onChange={(m) => set({ invoiceExportRounding: m })} />
+                  </Field>
+                )}
               </div>
 
               {/* Sub: VAT — rate + number gated on vatRegistered (preserved). */}
@@ -17944,10 +17945,14 @@ const setDays = (updater) =>
       { value: 'quickbooks',  label: 'QuickBooks' },
       { value: 'csv',         label: 'CSV' },
     ];
+    // The CSV / accounting export formats (everything except the TimeMachine PDF).
+    // The Export rounding control only governs these, so it's shown only for these
+    // formats and hidden in TimeMachine-PDF mode.
+    const INVOICE_EXPORT_CSV_FORMATS = ['xero', 'quickbooks', 'csv'];
     // The ONLY rounding modes an export may use — favourable is intentionally
     // absent (it's TimeMachine-PDF-only). The Settings picker (ExportRoundingSelect)
-    // renders Favourable greyed-out + unselectable; this list is the source of
-    // truth for what invoiceExportRounding may hold.
+    // offers Exact · APA only (favourable is filtered out, not shown); this list
+    // is the source of truth for what invoiceExportRounding may hold.
     const INVOICE_EXPORT_ROUNDING_VALUES = ['apa', 'exact'];
 
     // ISO YYYY-MM-DD → DD/MM/YYYY (empty/invalid → "").

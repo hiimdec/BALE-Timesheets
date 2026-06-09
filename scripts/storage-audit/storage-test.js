@@ -5039,7 +5039,7 @@ async function main() {
     check('NN2b export rounding is constrained to apa|exact only — favourable is intentionally absent',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       /INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'apa'/.test(html));
-    check('NN2c favourable is never a SELECTABLE export rounding — values list is apa/exact (picker greys it out; see OO)',
+    check('NN2c favourable is never a SELECTABLE export rounding — values list is apa/exact (picker omits favourable entirely; see OO)',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       !/INVOICE_EXPORT_ROUNDING_VALUES = \[[^\]]*favourable/.test(html));
     check('NN2d subtotal/VAT for export come from invoiceSubtotal + invoiceVAT (VAT 0 unless vatRegistered)',
@@ -5094,12 +5094,15 @@ async function main() {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // OO — Export rounding picker restyled to the rich radio (favourable greyed)
+  // OO — Export rounding picker: Exact · APA only, gated on a CSV export format
   //
-  // The plain <Select> export-rounding control is now the same rich radio
-  // style as RoundingModeSelect, via a shared RoundingOptionCard. Favourable
-  // is shown but permanently DISABLED (TimeMachine-PDF only). RoundingModeSelect
-  // and its two existing sites must be visually + behaviourally unchanged.
+  // ExportRoundingSelect shares RoundingModeSelect's rich radio style via the
+  // shared RoundingOptionCard, but offers only Exact · APA — Favourable is
+  // TimeMachine-PDF-only and is filtered OUT entirely (no greyed card). The whole
+  // block is hidden unless invoiceExportFormat is a CSV type (xero|quickbooks|csv);
+  // in TimeMachine-PDF mode the pref does nothing, so the control never shows.
+  // RoundingModeSelect (the shoot/userPrefs control that rounds the PDF) is
+  // unchanged and still offers Favourable enabled + selectable at both sites.
   // Source-presence only.
   {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
@@ -5116,18 +5119,31 @@ async function main() {
     check('OO1c RoundingModeSelect byte-identical at its two existing sites (per-shoot + userPrefs default)',
       /<RoundingModeSelect value=\{roundingModeOf\(production\)\} onChange=\{\(m\) => setProduction\(p => \(\{ \.\.\.p, roundingMode: m \}\)\)\}/.test(html) &&
       /<RoundingModeSelect value=\{roundingModeOf\(userPrefs\)\} onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}/.test(html));
+    check('OO1d RoundingModeSelect still offers Favourable enabled + selectable (full ROUNDING_OPTIONS, no favourable filter, no disabled prop)',
+      // maps the complete ROUNDING_OPTIONS (favourable included) straight into RoundingOptionCard
+      /const RoundingModeSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,300}ROUNDING_OPTIONS\.map\(\(opt\) => \(\s*<RoundingOptionCard/.test(html) &&
+      // the favourable filter exists ONLY in ExportRoundingSelect (exactly one occurrence), so RoundingModeSelect never filters it out
+      (html.match(/ROUNDING_OPTIONS\.filter\(\(opt\) => opt\.value !== 'favourable'\)/g) || []).length === 1 &&
+      // RoundingModeSelect passes NO disabled prop, so every option (incl. favourable) stays selectable
+      !/const RoundingModeSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,480}disabled=/.test(html));
 
-    // ─ OO2: ExportRoundingSelect — rich radio, favourable disabled + note ─
-    check('OO2a ExportRoundingSelect reuses RoundingOptionCard over ROUNDING_OPTIONS (all three options shown)',
-      /const ExportRoundingSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,500}ROUNDING_OPTIONS\.map\(\(opt\) => \{[\s\S]{0,300}<RoundingOptionCard/.test(html));
-    check('OO2b Favourable is permanently disabled here, with the TimeMachine-PDF-only note',
-      /const isFav = opt\.value === 'favourable';/.test(html) &&
-      /disabled=\{isFav\}/.test(html) &&
-      /note=\{isFav \? 'TimeMachine-PDF only — never applied to a CSV \/ accounting export\.' : undefined\}/.test(html));
-    check('OO2c only apa/exact can be active (favourable never highlighted)',
+    // ─ OO2: ExportRoundingSelect — Exact · APA only; Favourable not an option ─
+    check('OO2a ExportRoundingSelect filters Favourable OUT, rendering Exact · APA only through RoundingOptionCard',
+      /const ExportRoundingSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,400}ROUNDING_OPTIONS\.filter\(\(opt\) => opt\.value !== 'favourable'\)\.map\(\(opt\) => \(\s*<RoundingOptionCard/.test(html));
+    check('OO2b Favourable is NOT an option in ExportRoundingSelect — no isFav / disabled card / PDF-only note anywhere',
+      !/const isFav = opt\.value === 'favourable';/.test(html) &&
+      !/disabled=\{isFav\}/.test(html) &&
+      !/TimeMachine-PDF only — never applied to a CSV \/ accounting export/.test(html));
+    check('OO2c export display coerces a stray non-exact value (incl. favourable) to the apa default',
       /const cur = value === 'exact' \? 'exact' : 'apa';/.test(html));
     check('OO2d the old plain <Select> export-rounding control is gone',
       !/<Select value=\{userPrefs\.invoiceExportRounding/.test(html));
+
+    // ─ OO3: the export-rounding block is gated on a CSV export format ─
+    check('OO3a INVOICE_EXPORT_CSV_FORMATS lists the three CSV / accounting formats (xero, quickbooks, csv)',
+      /const INVOICE_EXPORT_CSV_FORMATS = \['xero', 'quickbooks', 'csv'\];/.test(html));
+    check('OO3b Export rounding block (Field + ExportRoundingSelect) renders ONLY for a CSV format — hidden in TimeMachine-PDF mode',
+      /\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\) && \([\s\S]{0,400}<Field label="Export rounding"[\s\S]{0,300}<ExportRoundingSelect/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════
