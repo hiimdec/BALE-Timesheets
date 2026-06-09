@@ -13825,10 +13825,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : 'none';
 
       return (
+        // SWIPE SURFACE — fills the available height between the sticky
+        // header and the bottom pill so a swipe started ANYWHERE on the
+        // day panel (incl. empty space below collapsed chips) reaches the
+        // pointer handlers. Without minHeight, the root would be sized to
+        // the track's content height; an empty area below short content
+        // would fall outside the handler region and silently swallow the
+        // swipe. minHeight: calc(100dvh - 11rem) ≈ viewport minus the
+        // sticky header (~5rem incl. safe-area-top) minus the wrapper's
+        // bottom pill padding (~6rem incl. safe-area-bottom). When chip
+        // panels open and the day form grows past min-height, the root
+        // grows naturally past it (min-height is a floor, not a cap) and
+        // the page scrolls — overflow:hidden only clips the horizontal
+        // off-screen slots, vertical content overflow is allowed because
+        // the root is permitted to grow.
         <div
           ref={containerRef}
           className="relative overflow-hidden"
-          style={{ touchAction: 'pan-y' }}
+          style={{ touchAction: 'pan-y', minHeight: 'calc(100dvh - 11rem)' }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

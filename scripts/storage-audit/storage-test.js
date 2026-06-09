@@ -4355,6 +4355,21 @@ async function main() {
     //   wrong day). ─
     check('GG11 renderDay closure builds a per-day onChange keyed to day.id',
       /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? updatedDay : d\)\);\s*\}/.test(html));
+
+    // ─ GG12: swipe surface fills the panel height (NOT content-sized).
+    //   Without this, the area below collapsed chips falls outside the
+    //   pointer-handler region and swipes started there silently miss.
+    //   minHeight: calc(100dvh - 11rem) on the carousel root keeps the
+    //   swipe area at viewport-fill while allowing the root to grow when
+    //   chips expand (min-height is a floor, not a cap, so the page
+    //   still scrolls naturally when the form gets tall). ─
+    check('GG12a carousel root has minHeight: calc(100dvh - 11rem) for viewport-fill swipe surface',
+      /style=\{\{[^}]*touchAction:\s*'pan-y',\s*minHeight:\s*'calc\(100dvh\s*-\s*11rem\)'/.test(html));
+    check('GG12b carousel root style applies BEFORE the onPointerDown handler (same JSX element)',
+      // Cross-check that the minHeight is on the SAME div that owns the
+      // pointer handlers — not on an inner wrapper that the handlers
+      // would never see.
+      /minHeight:\s*'calc\(100dvh\s*-\s*11rem\)'\s*\}\}[\s\S]{0,200}onPointerDown=\{onPointerDown\}/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
