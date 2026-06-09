@@ -5142,8 +5142,10 @@ async function main() {
     // ─ OO3: the export-rounding block is gated on a CSV export format ─
     check('OO3a INVOICE_EXPORT_CSV_FORMATS lists the three CSV / accounting formats (xero, quickbooks, csv)',
       /const INVOICE_EXPORT_CSV_FORMATS = \['xero', 'quickbooks', 'csv'\];/.test(html));
-    check('OO3b Export rounding block (Field + ExportRoundingSelect) renders ONLY for a CSV format — hidden in TimeMachine-PDF mode',
-      /\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\) && \([\s\S]{0,400}<Field label="Export rounding"[\s\S]{0,300}<ExportRoundingSelect/.test(html));
+    check('OO3b CSV export rounding block (Field + ExportRoundingSelect) renders ONLY for a CSV format — hidden in TimeMachine-PDF mode',
+      /\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\) && \([\s\S]{0,400}<Field label="CSV export rounding"[\s\S]{0,300}<ExportRoundingSelect/.test(html));
+    check('OO3c always-visible signpost in Accounting export points to the real rounding control (sits BEFORE the CSV-format gate → shown in both PDF + CSV modes)',
+      /Rounding for your invoices and PDF — including Favourable — is set under New-production defaults → Rounding, or per shoot in that shoot's settings\.<\/p>[\s\S]{0,450}\{INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════

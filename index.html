@@ -16532,12 +16532,13 @@ const setDays = (updater) =>
                     {INVOICE_EXPORT_FORMATS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
                 </Field>
+                <p className="text-[11px] text-neutral-500 mt-2 leading-tight">Rounding for your invoices and PDF — including Favourable — is set under New-production defaults → Rounding, or per shoot in that shoot's settings.</p>
                 {/* Export rounding only governs CSV / Xero / QuickBooks figures;
                     the TimeMachine PDF rounds from the shoot rounding, not this
                     pref. Hide the whole block in PDF mode so an irrelevant control
                     never reads as "Favourable is unavailable for the PDF". */}
                 {INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat) && (
-                  <Field label="Export rounding" hint="Figures in Xero / QuickBooks / CSV exports are computed at this rounding.">
+                  <Field label="CSV export rounding" hint="Figures in Xero / QuickBooks / CSV exports are computed at this rounding.">
                     <ExportRoundingSelect value={userPrefs.invoiceExportRounding || 'apa'} onChange={(m) => set({ invoiceExportRounding: m })} />
                   </Field>
                 )}
