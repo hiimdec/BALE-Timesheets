@@ -27,5 +27,6 @@ class MainViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(NativePdfPlugin())
+        bridge?.registerPluginInstance(LiveActivityPlugin())
     }
 }

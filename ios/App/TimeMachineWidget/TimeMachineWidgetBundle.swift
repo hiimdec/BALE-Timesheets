@@ -1,19 +1,16 @@
 //
 //  TimeMachineWidgetBundle.swift
+//  TimeMachineWidget
 //
-//  The widget extension's entry point. When you create the Widget Extension in
-//  Xcode it auto-generates its own `@main` WidgetBundle — there can be only ONE
-//  `@main` per target, so:
-//    • If you KEEP Xcode's generated bundle, DELETE this file and instead add
-//      `TimeMachineLiveActivity()` to that generated bundle's `body`.
-//    • If you DELETE Xcode's generated bundle/boilerplate, use this file as-is.
-//
-//  Stage 1 ships only the Live Activity (no Home Screen / Lock Screen static
-//  widgets), so the bundle contains just TimeMachineLiveActivity.
+//  The widget extension's single @main entry point. Stage 1 ships ONLY the
+//  Live Activity (no Home Screen timeline widgets, no Control Center controls)
+//  — Xcode's generated sample widgets (TimeMachineWidget.swift,
+//  TimeMachineWidgetControl.swift, TimeMachineWidgetLiveActivity.swift) were
+//  deliberately deleted; this bundle replaces the generated one.
 //
 
-import SwiftUI
 import WidgetKit
+import SwiftUI
 
 @main
 struct TimeMachineWidgetBundle: WidgetBundle {
