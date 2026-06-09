@@ -5326,6 +5326,42 @@ async function main() {
       /ctx\.font = o\.size \+ 'px system-ui, "Apple Color Emoji", sans-serif';/.test(html));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // SS — Money odometer on the solo day pill total (display-only). Animates TO the
+  // calc's value; never changes the value or its fmtGBP() formatting. £ / comma /
+  // decimal point render static, each digit is a rolling 0–9 column (~0.35s
+  // ease-out), right-aligned by position-from-the-right, reduced-motion snaps.
+  // Scoped to the solo pill only. Source-presence only (no calc — see audit:build).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ SS1: solo pill total renders THROUGH the odometer, fed the unchanged fmtGBP string ─
+    check('SS1a solo day pill amount renders <MoneyOdometer value={fmtGBP(total)} /> (same value + formatter as before)',
+      /<div className="tm-pill-amount pill-amount" key=\{`amount-\$\{dayIndex\}`\} style=\{swap\}><MoneyOdometer value=\{fmtGBP\(total\)\} \/><\/div>/.test(html));
+    check('SS1b odometer is scoped to the solo pill ONLY — exactly one render site (Best Boy / other money displays untouched)',
+      (html.match(/<MoneyOdometer\b/g) || []).length === 1);
+    check('SS1c at rest the odometer spells the IDENTICAL string — non-digits render verbatim + the whole value is the aria-label',
+      /const MoneyOdometer = \(\{ value \}\) =>/.test(html) &&
+      /<span key=\{`s\$\{i\}`\} className="tm-odo-sep" aria-hidden="true">\{ch\}<\/span>/.test(html) &&
+      /<span className="tm-odo" role="text" aria-label=\{value\}>/.test(html));
+
+    // ─ SS2: per-digit rolling column — translateY, ~0.35s ease-out, right-aligned ─
+    check('SS2a each digit is a 0–9 strip translated by -pos em with a 0.35s ease-out transition',
+      /\{ODO_DIGITS\.map\(\(d\) => <span key=\{d\} className="tm-odo-digit">\{d\}<\/span>\)\}/.test(html) &&
+      /transform: `translateY\(\$\{-pos\}em\)`/.test(html) &&
+      /transition: reduce \? 'none' : 'transform 0\.35s ease-out'/.test(html));
+    check('SS2b right-aligned: columns keyed by position-from-the-right; a new leading digit rolls up from 0',
+      /const rightIndex = nDigits - 1 - seen;/.test(html) &&
+      /key=\{`d\$\{rightIndex\}`\}/.test(html) &&
+      /const from = pj >= 0 \? \+prevDigits\[pj\] : 0;/.test(html));
+
+    // ─ SS3: prefers-reduced-motion snaps (no roll) ─
+    check('SS3a reduced-motion snaps — column mounts at `to` and the transition is none',
+      /const \[pos, setPos\] = React\.useState\(reduce \? to : from\);/.test(html) &&
+      /if \(reduce\) \{ setPos\(to\); return; \}/.test(html) &&
+      /reduce = !!\(window\.matchMedia && window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches\)/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

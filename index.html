@@ -271,6 +271,16 @@
       font-size: 19px; font-weight: 700; letter-spacing: -0.01em;
       color: var(--pill-ink);
     }
+    /* Money odometer (solo day pill total) — display-only rolling digits. Inherits
+       the .tm-pill-amount monospace font; £ / , / . render static, each digit is a
+       0–9 strip translated to its value. inline-flex + equal 1em line-boxes keep
+       digits and separators on one baseline; the strip's transform/transition are
+       set inline by the component (so reduced-motion can drop the transition). */
+    .tm-odo { display: inline-flex; align-items: flex-start; }
+    .tm-odo-sep { display: inline-block; height: 1em; line-height: 1em; }
+    .tm-odo-col { display: inline-block; height: 1em; line-height: 1em; overflow: hidden; }
+    .tm-odo-strip { display: block; }
+    .tm-odo-digit { display: block; height: 1em; line-height: 1em; text-align: center; }
     .tm-pill-compare {
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 9px; color: rgba(21,23,26,0.5);
@@ -12799,6 +12809,64 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ BOTTOM MONEY PILL ═══════════════════════════ */
 
+    // ── Money odometer (display-only) ──────────────────────────────────────
+    // Animates the solo day pill's total TO whatever the calc produces — it NEVER
+    // changes the value or its formatting. £, thousands commas and the decimal
+    // point render statically; each DIGIT is a 0–9 column that rolls (translateY)
+    // to its new value (~0.35s ease-out; shortest-path, no wrap/extra spins).
+    // Columns are keyed by position-from-the-RIGHT, so a digit-count change (e.g.
+    // £999→£1,005) stays right-aligned and new leading digits roll up from 0. At
+    // rest it spells the IDENTICAL fmtGBP() string. prefers-reduced-motion snaps.
+    const ODO_DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const OdoColumn = ({ from, to, reduce }) => {
+      // Mount at `from` (a new leading column gets from=0 → rolls up; a persisting
+      // column gets from=prev so there's no jump), then animate to `to`. On later
+      // `to` changes the strip rolls from its current digit to the new one.
+      const [pos, setPos] = React.useState(reduce ? to : from);
+      React.useEffect(() => {
+        if (reduce) { setPos(to); return; }
+        const id = requestAnimationFrame(() => setPos(to));
+        return () => cancelAnimationFrame(id);
+      }, [to, reduce]);
+      return (
+        <span className="tm-odo-col" aria-hidden="true">
+          <span className="tm-odo-strip" style={{ transform: `translateY(${-pos}em)`, transition: reduce ? 'none' : 'transform 0.35s ease-out' }}>
+            {ODO_DIGITS.map((d) => <span key={d} className="tm-odo-digit">{d}</span>)}
+          </span>
+        </span>
+      );
+    };
+    const MoneyOdometer = ({ value }) => {
+      let reduce = false;
+      try { reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) {}
+      // Previous formatted string, to derive each column's `from` digit by
+      // right-index. prevRef updates AFTER commit so this render sees the old value.
+      const prevRef = React.useRef(value);
+      const prev = prevRef.current;
+      React.useEffect(() => { prevRef.current = value; }, [value]);
+      const curDigits = value.match(/\d/g) || [];
+      const prevDigits = prev.match(/\d/g) || [];
+      const nDigits = curDigits.length;
+      let seen = 0;
+      const nodes = [];
+      for (let i = 0; i < value.length; i++) {
+        const ch = value[i];
+        if (ch >= '0' && ch <= '9') {
+          const rightIndex = nDigits - 1 - seen;
+          seen++;
+          const to = +ch;
+          const pj = prevDigits.length - 1 - rightIndex;
+          const from = pj >= 0 ? +prevDigits[pj] : 0;   // new leading digit rolls up from 0
+          nodes.push(<OdoColumn key={`d${rightIndex}`} from={from} to={to} reduce={reduce} />);
+        } else {
+          nodes.push(<span key={`s${i}`} className="tm-odo-sep" aria-hidden="true">{ch}</span>);
+        }
+      }
+      // aria-label carries the whole formatted value so screen readers read
+      // "£1,234.50", not the individual rolling digits.
+      return <span className="tm-odo" role="text" aria-label={value}>{nodes}</span>;
+    };
+
     function SoloDayPill({ total, dayIndex, dayCount, hasPrev, hasNext, onPrev, onNext, onAdd, onViewCalc, isToday, comparisonUnit, customComparisonItem }) {
       // Compare line follows the user's pill-comparison preference. 'off' hides
       // the line entirely; any other value looks up the matching item by label,
@@ -12851,7 +12919,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </>
                 )}
               </div>
-              <div className="tm-pill-amount pill-amount" key={`amount-${dayIndex}`} style={swap}>{fmtGBP(total)}</div>
+              <div className="tm-pill-amount pill-amount" key={`amount-${dayIndex}`} style={swap}><MoneyOdometer value={fmtGBP(total)} /></div>
               {compareItem && (
                 <div className="tm-pill-compare pill-compare" key={`compare-${dayIndex}`} style={swap}>
                   ≈ {compareQty} {compareLabel}
