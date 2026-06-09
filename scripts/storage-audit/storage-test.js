@@ -4634,7 +4634,7 @@ async function main() {
     check('II2b Sheet registers prefers-reduced-motion via matchMedia',
       /function Sheet\([\s\S]{0,4000}matchMedia\(['"]\(prefers-reduced-motion: reduce\)['"]\)/.test(html));
     check('II2c Sheet uses translate3d on the card (GPU layer)',
-      /function Sheet\([\s\S]{0,8000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
+      /function Sheet\([\s\S]{0,10000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
     check('II2d Sheet escape handler gated on topmost stack id (no double-close on stacked sheets)',
       /function Sheet\([\s\S]{0,8000}_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current/.test(html));
     check('II2e Sheet backdrop tap dismisses via tryDismiss (honours onBeforeDismiss)',
@@ -4945,6 +4945,22 @@ async function main() {
         const m = html.match(/function ProductionSettingsSheet\(([\s\S]*?)\n    function /);
         return m ? !/<Sheet\b/.test(m[1]) : false;
       })());
+
+    // ─ LL7: device-test fix 1 — Sheet retracts the soft keyboard on dismiss
+    //   so swipe/backdrop dismiss cleanly with an input focused. General to
+    //   ALL input-bearing sheets (the blur lives in the Sheet component). ─
+    check('LL7a Sheet defines blurActiveInput (blurs a focused INPUT/TEXTAREA/SELECT)',
+      /const blurActiveInput = \(\) => \{[\s\S]{0,250}\/\^\(INPUT\|TEXTAREA\|SELECT\)\$\/[\s\S]{0,80}\.blur\(\)/.test(html));
+    check('LL7b tryDismiss blurs the active input BEFORE onBeforeDismiss (keyboard retracts; dirty guard still fires + alert reachable)',
+      /const tryDismiss = React\.useCallback\(\(\) => \{[\s\S]{0,200}blurActiveInput\(\);\s*if \(typeof onBeforeDismiss === 'function'\)/.test(html));
+    check('LL7c a downward swipe (axis lock = y) blurs the active input so the drag has room to pass the threshold',
+      /if \(d\.axis === 'y'\) \{[\s\S]{0,200}setPointerCapture\(e\.pointerId\)[\s\S]{0,400}blurActiveInput\(\);/.test(html));
+
+    // ─ LL8: device-test fix 2 — Best Boy mobile day-view top bar is fully
+    //   opaque (bg-black on the safe-area-inset-top sticky div), so scrolled
+    //   content can't bleed through the status-bar strip. ─
+    check('LL8 Best Boy mobile header: bg-black on the safe-area-inset-top sticky bar (no see-through status-bar strip)',
+      /<div className="sticky top-0 z-40 bg-black" style=\{\{ paddingTop: 'env\(safe-area-inset-top\)' \}\}>\s*<div className="border-b border-sky-500 bg-black">\s*<div className="max-w-6xl mx-auto px-4 pt-3 pb-3\.5">/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

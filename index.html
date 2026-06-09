@@ -6269,7 +6269,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return () => { unlockBodyScroll(); };
       }, [mounted]);
 
+      // Retract the soft keyboard as part of any dismiss. With an input
+      // focused and the keyboard up, the keyboard covers the lower screen so a
+      // swipe-down can't travel far enough to pass the threshold, and a
+      // backdrop tap is mostly hidden behind the keyboard. Blurring the active
+      // field (input/textarea/select) at dismiss-start retracts the keyboard,
+      // restoring the full sheet height + backdrop so swipe/backdrop dismiss
+      // cleanly. General to ALL input-bearing sheets (Wave-2 forms too).
+      const blurActiveInput = () => {
+        const el = (typeof document !== 'undefined') ? document.activeElement : null;
+        if (el && typeof el.blur === 'function' && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName || '')) {
+          el.blur();
+        }
+      };
+
       const tryDismiss = React.useCallback(() => {
+        // Drop focus first so the keyboard retracts as the sheet leaves (and,
+        // when guarded, the "Discard changes?" alert isn't trapped behind it).
+        blurActiveInput();
         if (typeof onBeforeDismiss === 'function') {
           const ok = onBeforeDismiss();
           if (ok === false) return; // guarded — caller opens its own confirm
@@ -6343,6 +6360,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             d.axis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
             if (d.axis === 'y') {
               try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+              // A downward dismiss-drag has begun — retract the keyboard now so
+              // the full sheet height is draggable (otherwise the keyboard caps
+              // how far the swipe can travel and it never passes the threshold).
+              blurActiveInput();
             }
           }
         }
@@ -15226,7 +15247,7 @@ const setDays = (updater) =>
           )}
 
           {drilldownCrewMember ? null : (production.viewMode === 'mobile' && production.bestBoyMode) ? (
-            <div className="sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="sticky top-0 z-40 bg-black" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
               <div className="border-b border-sky-500 bg-black">
                 <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
                   <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to productions list">
