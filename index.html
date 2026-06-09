@@ -6132,6 +6132,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!active) return;
         const canvas = canvasRef.current;
         if (!canvas) { setActive(false); return; }
+        // Fix 3: clear any stuck 5× hold left by a prior run whose pointer-up was
+        // missed (e.g. the canvas unmounted mid-press) so this run starts at 1×.
+        heldRef.current = false;
         const p = prefsRef.current || {};
         const emojis = CELEBRATION_EMOJI[p.celebrationEmoji] || CELEBRATION_EMOJI.cash;
         const count = CELEBRATION_COUNT[p.celebrationIntensity] || CELEBRATION_COUNT.medium;
@@ -6164,18 +6167,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           };
         });
 
-        let raf = 0, frames = 0;
-        const MAX_FRAMES = 60 * 12; // hard safety stop (~12s)
-        const step = () => {
-          frames++;
-          const mul = heldRef.current ? 5 : 1;   // hold anywhere → 5× while held
+        // Fix 1 + 2: delta-time motion normalised to a 60fps baseline + a
+        // wall-clock safety stop, so the shower looks/lasts the same on 60Hz and
+        // 120Hz (ProMotion) displays. dtf is the per-frame time step in 60fps
+        // units (1 at 60Hz, ~0.5 at 120Hz), clamped to [0,3] so a long frame gap
+        // (tab-backgrounding, GC) can't teleport particles. First frame seeds to
+        // 1. The chill/normal/fast presets are unchanged — units are now
+        // "per 60fps-frame". `t` folds in the 5× hold multiplier.
+        let raf = 0, last = 0, startTs = 0;
+        const MAX_MS = 12000; // hard safety stop (~12s wall-clock, refresh-rate independent)
+        const step = (ts) => {
+          if (!startTs) startTs = ts;
+          const dtf = last ? Math.max(0, Math.min((ts - last) / (1000 / 60), 3)) : 1;
+          last = ts;
+          const t = dtf * (heldRef.current ? 5 : 1);   // hold anywhere → 5× while held
           ctx.clearRect(0, 0, W, H);
           let live = 0;
           for (const o of parts) {
-            o.vy += G * mul;
-            o.y += o.vy * mul;
-            o.x += o.vx * mul;
-            o.rot += o.vrot * mul;
+            o.vy += G * t;
+            o.y += o.vy * t;
+            o.x += o.vx * t;
+            o.rot += o.vrot * t;
             if (o.y - o.size > H) continue; // fallen off the bottom
             live++;
             let alpha = 1;
@@ -6191,7 +6203,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             ctx.restore();
           }
           ctx.globalAlpha = 1;
-          if (live > 0 && frames < MAX_FRAMES) {
+          if (live > 0 && (ts - startTs) < MAX_MS) {
             raf = requestAnimationFrame(step);
           } else {
             setActive(false);

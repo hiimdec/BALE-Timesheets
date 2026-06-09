@@ -5282,6 +5282,50 @@ async function main() {
       !/const invoicesTabVisible = \(p\) =>[^\n]*\bset\(/.test(html));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // RR — Celebration speed fix (UI-only, CelebrationLayer). The mark-as-paid emoji
+  // shower's rAF loop is now delta-time based (normalised to a 60fps baseline,
+  // clamped to [0,3] frames) so it no longer runs ~2× fast on 120Hz ProMotion; the
+  // safety stop is wall-clock; and a stuck 5× hold can't carry into the next run.
+  // Speed presets and particle look are unchanged. Source-presence only (no calc
+  // engine — see audit:build).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ RR1: delta-time normalised to 60fps, clamped to [0,3] (long-gap guard) ─
+    check('RR1a step(ts) computes a 60fps-normalised dtf clamped to [0,3]; first frame seeds to 1',
+      /const step = \(ts\) => \{/.test(html) &&
+      /const dtf = last \? Math\.max\(0, Math\.min\(\(ts - last\) \/ \(1000 \/ 60\), 3\)\) : 1;/.test(html) &&
+      /last = ts;/.test(html));
+    check('RR1b t folds in the 5× hold, and EVERY integration term scales by t — no raw per-frame motion left',
+      /const t = dtf \* \(heldRef\.current \? 5 : 1\);/.test(html) &&
+      /o\.vy \+= G \* t;/.test(html) &&
+      /o\.y \+= o\.vy \* t;/.test(html) &&
+      /o\.x \+= o\.vx \* t;/.test(html) &&
+      /o\.rot \+= o\.vrot \* t;/.test(html) &&
+      !/o\.vy \+= G \* mul;/.test(html));
+
+    // ─ RR2: safety stop is wall-clock, not frame-count ─
+    check('RR2a MAX_MS wall-clock stop (~12s) replaces the frame-count cap (MAX_FRAMES / frames++ gone)',
+      /const MAX_MS = 12000;/.test(html) &&
+      /if \(live > 0 && \(ts - startTs\) < MAX_MS\) \{/.test(html) &&
+      /if \(!startTs\) startTs = ts;/.test(html) &&
+      !/MAX_FRAMES/.test(html) &&
+      !/frames\+\+;/.test(html));
+
+    // ─ RR3: stuck-hold reset at the start of each celebration ─
+    check('RR3a heldRef.current is reset to false at the start of each run (after the canvas guard)',
+      /if \(!canvas\) \{ setActive\(false\); return; \}\s*\/\/[\s\S]{0,220}heldRef\.current = false;/.test(html));
+
+    // ─ RR4: untouched — speed presets + particle look ─
+    check('RR4a chill/normal/fast speed presets unchanged',
+      /const CELEBRATION_SPEED = \{ chill: 2\.4, normal: 3\.8, fast: 5\.6 \};/.test(html));
+    check('RR4b particle look unchanged (gravity G, per-particle vy seed off base, emoji font)',
+      /const G = 0\.05;/.test(html) &&
+      /vy: base \* \(0\.55 \+ rnd\(\) \* 0\.9\)/.test(html) &&
+      /ctx\.font = o\.size \+ 'px system-ui, "Apple Color Emoji", sans-serif';/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
