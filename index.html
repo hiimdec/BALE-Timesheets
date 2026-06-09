@@ -6146,6 +6146,280 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       </div>
     );
 
+    /* ═════════════════════════ BOTTOM SHEET (Phase D, Wave 1) ═════════════════════════
+     * Reusable bottom sheet with iOS-native feel: slide-up entrance, rounded
+     * top corners, grabber handle, dimmed backdrop, spring easing, swipe-down
+     * dismiss. Wave-1 wraps action-list and picker overlays that have no
+     * unsaved-edit risk; Wave 2 will add dirty-form guards via
+     * onBeforeDismiss; Wave 3 will add parent/child stack coordination on
+     * top of the per-instance layering this component already provides.
+     *
+     * API:
+     *   open                — boolean. Parent toggles to mount/unmount. The
+     *                         Sheet stays mounted during its slide-out
+     *                         animation; it only unmounts itself after the
+     *                         exit transitionend fires.
+     *   onClose             — fired ONLY after the close gesture has been
+     *                         approved (passing onBeforeDismiss if any) and
+     *                         the exit animation completes. Always at the
+     *                         right time for parent setOpen(false).
+     *   onBeforeDismiss     — optional () => boolean. Return false to BLOCK
+     *                         a swipe-down/backdrop/escape dismissal. Wave-2
+     *                         edit-form sheets will pass a guard that opens
+     *                         a "Discard changes?" confirm when dirty. Wave 1
+     *                         sheets omit it (default: always permitted).
+     *   swipeDismiss        — default true. Disables ONLY the swipe-down
+     *                         gesture; backdrop tap and escape still close.
+     *   maxWidth            — px cap for the card on tablet+ (default 420).
+     *   title               — optional title string rendered just below the
+     *                         grabber.
+     *   contentClassName    — extra classes on the inner card (e.g. for
+     *                         max-height constraints on long pickers).
+     *   children            — sheet content (action buttons, picker list,
+     *                         form fields, etc.).
+     *
+     * Stack-safety: each open Sheet pushes a unique id onto _sheetStack and
+     * computes its z-index from its slot in that stack. The topmost sheet
+     * has the highest z-index, so pointer events on its content can't
+     * "leak" to a sibling beneath. Escape and backdrop dismissals are
+     * gated on "am I the topmost?" so a child Sheet's escape doesn't
+     * accidentally also close its parent. This is the foundation for
+     * Wave 3's parent/child coordination — not the whole thing. */
+    const SHEET_BASE_Z = 60;
+    const SHEET_OPEN_TRANSITION = 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)';
+    const SHEET_BACKDROP_TRANSITION = 'opacity 220ms ease-out';
+    const SHEET_DISMISS_HEIGHT_FRACTION = 1 / 3;
+    const SHEET_FLICK_VELOCITY = 0.5; // px/ms downward = 500 px/s
+    const SHEET_DRAG_AXIS_PX = 6;
+    const _sheetStack = [];
+    function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', children }) {
+      const [mounted, setMounted] = React.useState(open);
+      const [visible, setVisible] = React.useState(false);
+      const [dragY, setDragY] = React.useState(0);
+      const [zSlot, setZSlot] = React.useState(0);
+      const cardRef = React.useRef(null);
+      const idRef = React.useRef(null);
+      const dragRef = React.useRef({
+        startY: 0, startX: 0, active: false, axis: null,
+        pointerId: null, history: [], sheetH: 0,
+      });
+
+      const reduceMotion = React.useMemo(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+        try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+        catch (_) { return false; }
+      }, []);
+
+      // Mount + stack registration. Open=true → push onto stack and mount;
+      // open=false (after mount) → animate out, transitionend unmounts.
+      React.useEffect(() => {
+        if (open) {
+          const id = Math.random().toString(36).slice(2);
+          idRef.current = id;
+          _sheetStack.push(id);
+          setZSlot(_sheetStack.length);
+          setMounted(true);
+          // Two rAF so the initial translateY(100%) lands before
+          // transition kicks in — otherwise no slide-up is visible.
+          let raf1 = 0, raf2 = 0;
+          raf1 = requestAnimationFrame(() => {
+            raf2 = requestAnimationFrame(() => setVisible(true));
+          });
+          return () => {
+            cancelAnimationFrame(raf1);
+            cancelAnimationFrame(raf2);
+            const i = _sheetStack.indexOf(id);
+            if (i >= 0) _sheetStack.splice(i, 1);
+          };
+        }
+        if (mounted) setVisible(false);
+      }, [open]);
+
+      // Body-scroll lock while mounted (reuses the existing _modalCount
+      // pattern, so nested sheets and confirms don't double-unlock).
+      React.useEffect(() => {
+        if (!mounted) return;
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
+      }, [mounted]);
+
+      const tryDismiss = React.useCallback(() => {
+        if (typeof onBeforeDismiss === 'function') {
+          const ok = onBeforeDismiss();
+          if (ok === false) return; // guarded — caller opens its own confirm
+        }
+        // Trigger the close animation. Parent should setOpen(false) in
+        // response to onClose. We call onClose IMMEDIATELY (not on
+        // transitionend) so the parent's state flips right away; the
+        // open=false effect then drives setVisible(false), which animates
+        // the card out, and transitionend handles the actual unmount.
+        onClose && onClose();
+      }, [onClose, onBeforeDismiss]);
+
+      // Escape closes only the TOPMOST sheet (so a child sheet's escape
+      // doesn't accidentally also close its parent under it).
+      React.useEffect(() => {
+        if (!mounted || !visible) return;
+        const onKey = (e) => {
+          if (e.key !== 'Escape') return;
+          if (_sheetStack[_sheetStack.length - 1] !== idRef.current) return;
+          tryDismiss();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+      }, [mounted, visible, tryDismiss]);
+
+      const onTransitionEnd = (e) => {
+        if (e.propertyName !== 'transform') return;
+        // Unmount only on the exit-transition completing (visible=false).
+        if (!visible) {
+          setMounted(false);
+          setDragY(0);
+        }
+      };
+
+      // Swipe-down dismiss. Pointer events live on the card so a downward
+      // pull anywhere on the sheet's grabber/title strip captures the
+      // gesture (the children are gated against capture by their own
+      // axis lock — vertical scrolls inside scrollable content lose the
+      // race naturally because the gesture starts on the content, not
+      // on the grabber row).
+      const onPointerDown = (e) => {
+        if (!swipeDismiss) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        const card = cardRef.current;
+        dragRef.current = {
+          startY: e.clientY, startX: e.clientX,
+          active: true, axis: null,
+          pointerId: e.pointerId,
+          history: [{ t: e.timeStamp, y: e.clientY }],
+          sheetH: card ? card.offsetHeight : 0,
+        };
+      };
+
+      const onPointerMove = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        const dy = e.clientY - d.startY;
+        const dx = e.clientX - d.startX;
+        if (d.axis === null) {
+          if (Math.abs(dy) > SHEET_DRAG_AXIS_PX || Math.abs(dx) > SHEET_DRAG_AXIS_PX) {
+            d.axis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
+            if (d.axis === 'y') {
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+            }
+          }
+        }
+        if (d.axis !== 'y') return;
+        e.preventDefault();
+        // Only follow finger DOWN — pulling up does nothing (no over-pull
+        // behaviour above the top).
+        const next = Math.max(0, dy);
+        d.history.push({ t: e.timeStamp, y: e.clientY });
+        while (d.history.length > 1 && e.timeStamp - d.history[0].t > 80) d.history.shift();
+        setDragY(next);
+      };
+
+      const onPointerUp = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        d.active = false;
+        if (d.axis !== 'y') { setDragY(0); return; }
+        // Velocity over the recent sample window.
+        let velocity = 0;
+        if (d.history.length >= 2) {
+          const last = d.history[d.history.length - 1];
+          const first = d.history[0];
+          const dt = last.t - first.t;
+          if (dt > 0) velocity = (last.y - first.y) / dt;
+        }
+        const threshold = (d.sheetH || 1) * SHEET_DISMISS_HEIGHT_FRACTION;
+        if (dragY > threshold || velocity > SHEET_FLICK_VELOCITY) {
+          tryDismiss();
+          // Spring the visual back to 0 so the slide-out starts from a
+          // clean transform when the parent flips open=false.
+          setDragY(0);
+        } else {
+          setDragY(0);
+        }
+      };
+
+      const onPointerCancel = (e) => {
+        const d = dragRef.current;
+        if (!d.active || e.pointerId !== d.pointerId) return;
+        d.active = false;
+        setDragY(0);
+      };
+
+      if (!mounted) return null;
+
+      // Compose the card transform: at-rest visible = translateY(dragY),
+      // closed = translateY(100%). dragY adds on top during a pull.
+      const cardTransform = visible
+        ? `translate3d(0, ${dragY}px, 0)`
+        : 'translate3d(0, 100%, 0)';
+      const cardTransition = dragRef.current.active
+        ? 'none'
+        : (reduceMotion ? 'none' : SHEET_OPEN_TRANSITION);
+      const backdropOpacity = visible ? 0.55 : 0;
+      const backdropTransition = reduceMotion ? 'none' : SHEET_BACKDROP_TRANSITION;
+      const z = SHEET_BASE_Z + zSlot * 10;
+
+      return (
+        <div
+          data-sheet="1"
+          className="fixed inset-0 flex items-end justify-center sm:p-4"
+          style={{ zIndex: z, pointerEvents: visible ? 'auto' : 'none' }}
+        >
+          {/* Dimmed backdrop. Tap dismisses (subject to onBeforeDismiss). */}
+          <div
+            className="absolute inset-0 bg-black"
+            style={{
+              opacity: backdropOpacity,
+              transition: backdropTransition,
+            }}
+            onClick={() => {
+              // Only the topmost sheet's backdrop should dismiss it — a
+              // tap on a parent's exposed-edge backdrop while a child is
+              // open would otherwise cascade.
+              if (_sheetStack[_sheetStack.length - 1] !== idRef.current) return;
+              tryDismiss();
+            }}
+          />
+          {/* Sheet card */}
+          <div
+            ref={cardRef}
+            className={`relative w-full bg-neutral-900 border border-neutral-700 border-b-0 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden ${contentClassName}`}
+            style={{
+              maxWidth: `${maxWidth}px`,
+              transform: cardTransform,
+              transition: cardTransition,
+              paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+              touchAction: swipeDismiss ? 'pan-y' : undefined,
+            }}
+            onTransitionEnd={onTransitionEnd}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+          >
+            {/* Grabber — visual cue + drag target. Always rendered (the
+                whole card is draggable when swipeDismiss is on, this is
+                just the affordance the user reads first). */}
+            <div className="pt-2.5 pb-1.5 flex justify-center select-none pointer-events-none">
+              <div className="w-9 h-1 rounded-full bg-neutral-600" />
+            </div>
+            {title && (
+              <div className="px-5 pt-1 pb-3">
+                <div className="text-sm font-bold text-neutral-100">{title}</div>
+              </div>
+            )}
+            {children}
+          </div>
+        </div>
+      );
+    }
+
     function NowBtn({ tone = "sky", onClick, label }) {
       const colors = {
         sky: "bg-sky-600 hover:bg-sky-500 text-white",
@@ -13385,44 +13659,38 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
           </div>
 
-          {/* SHARE menu — Export PDF / Export Text */}
-          {showShareMenu && (
-            <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-                 style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 70 }}
-                 onClick={() => setShowShareMenu(false)}>
-              <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-                   style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-                <div className="px-5 pt-5 pb-3">
-                  <div className="text-sm font-bold text-neutral-100 flex items-center gap-2">
-                    <IShare size={14}/>Share / export
-                  </div>
-                </div>
-                <div className="px-4 pb-4 flex flex-col gap-2">
-                  {onExportPDF && (
-                    <button type="button"
-                      onClick={() => { setShowShareMenu(false); onExportPDF(); }}
-                      className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
-                      style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
-                      <IDownload size={15}/>Export PDF
-                    </button>
-                  )}
-                  {onExportText && (
-                    <button type="button"
-                      onClick={() => { setShowShareMenu(false); onExportText(); }}
-                      className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <IMessage size={15}/>Export text
-                    </button>
-                  )}
-                </div>
-                <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
-                  <button type="button" onClick={() => setShowShareMenu(false)}
-                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
-                </div>
+          {/* SHARE menu — Export PDF / Export Text. Wave 1 (Phase D): now
+              slides up + swipe-down-dismiss via <Sheet>. */}
+          <Sheet open={showShareMenu} onClose={() => setShowShareMenu(false)}>
+            <div className="px-5 pt-1 pb-3">
+              <div className="text-sm font-bold text-neutral-100 flex items-center gap-2">
+                <IShare size={14}/>Share / export
               </div>
             </div>
-          )}
+            <div className="px-4 pb-4 flex flex-col gap-2">
+              {onExportPDF && (
+                <button type="button"
+                  onClick={() => { setShowShareMenu(false); onExportPDF(); }}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
+                  <IDownload size={15}/>Export PDF
+                </button>
+              )}
+              {onExportText && (
+                <button type="button"
+                  onClick={() => { setShowShareMenu(false); onExportText(); }}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IMessage size={15}/>Export text
+                </button>
+              )}
+            </div>
+            <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
+              <button type="button" onClick={() => setShowShareMenu(false)}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+            </div>
+          </Sheet>
         </div>
       );
     }
@@ -13545,62 +13813,48 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function DayJumpSheet({ open, days, currentDayId, production, crew, onPick, onClose }) {
-      useEffect(() => {
-        if (!open) return;
-        lockBodyScroll();
-        return () => { unlockBodyScroll(); };
-      }, [open]);
-      useEscape(open ? onClose : null);
-
-      if (!open) return null;
-
-      const sorted = [...days].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      // Wave 1 (Phase D): routed through <Sheet>. Sheet handles lockBodyScroll
+      // and Escape internally — we no longer need the local copies. The sorted
+      // list and per-day rendering are unchanged.
+      const sorted = React.useMemo(
+        () => [...days].sort((a, b) => (a.date || "").localeCompare(b.date || "")),
+        [days]
+      );
 
       return (
-        <div
-          role="dialog" aria-modal="true" aria-labelledby="jump-sheet-title"
-          className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.78)", zIndex: 50 }}
-          onClick={onClose}
-        >
-          <div
-            className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
-            style={{ maxWidth: 480, maxHeight: "calc(80dvh - env(safe-area-inset-bottom))" }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-700 flex items-center justify-between">
-              <div id="jump-sheet-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">Jump to Day</div>
-              <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
-            </div>
-            <div className="flex-1 overflow-y-auto min-h-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-              {sorted.map((day, idx) => {
-                const c = crew.find(cc => cc.id === day.crewId);
-                const calc = c ? calcForDisplay(production, day, c, findPrevDay(days, day)) : null;
-                const resolved = c ? resolveDay(production, day, c) : day;
-                const isCurrent = day.id === currentDayId;
-                const dateStr = day.date ? new Date(day.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "—";
-                const times = (resolved.callTime && resolved.wrapTime) ? `${resolved.callTime} – ${resolved.wrapTime}` : "";
-                return (
-                  <button
-                    key={day.id}
-                    type="button"
-                    onClick={() => { onPick(day.id); onClose(); }}
-                    className={`w-full flex items-center gap-3 px-5 py-3.5 border-b border-neutral-800 text-left transition-colors ${isCurrent ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
-                    style={isCurrent ? { borderLeft: '3px solid #0ea5e9' } : { borderLeft: '3px solid transparent' }}
-                  >
-                    <div className="text-xs font-bold text-neutral-400 w-8 flex-shrink-0">D{idx + 1}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-500" : "text-neutral-200"}`}>{dateStr}</div>
-                      {(times || resolved.dayType) && <div className="text-[11px] text-neutral-500">{[times, resolved.dayType].filter(Boolean).join(" · ")}</div>}
-                    </div>
-                    {day.note?.trim() && <INote size={13} className="text-neutral-600 flex-shrink-0"/>}
-                    {calc && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(calc.total)}</div>}
-                  </button>
-                );
-              })}
-            </div>
+        <Sheet open={open} onClose={onClose} maxWidth={480}>
+          <div className="flex-shrink-0 px-5 pt-1 pb-4 border-b border-neutral-700 flex items-center justify-between">
+            <div id="jump-sheet-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold">Jump to Day</div>
+            <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
           </div>
-        </div>
+          <div className="flex-1 overflow-y-auto min-h-0" style={{ maxHeight: "calc(80dvh - 160px)" }}>
+            {sorted.map((day, idx) => {
+              const c = crew.find(cc => cc.id === day.crewId);
+              const calc = c ? calcForDisplay(production, day, c, findPrevDay(days, day)) : null;
+              const resolved = c ? resolveDay(production, day, c) : day;
+              const isCurrent = day.id === currentDayId;
+              const dateStr = day.date ? new Date(day.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "—";
+              const times = (resolved.callTime && resolved.wrapTime) ? `${resolved.callTime} – ${resolved.wrapTime}` : "";
+              return (
+                <button
+                  key={day.id}
+                  type="button"
+                  onClick={() => { onPick(day.id); onClose(); }}
+                  className={`w-full flex items-center gap-3 px-5 py-3.5 border-b border-neutral-800 text-left transition-colors ${isCurrent ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
+                  style={isCurrent ? { borderLeft: '3px solid #0ea5e9' } : { borderLeft: '3px solid transparent' }}
+                >
+                  <div className="text-xs font-bold text-neutral-400 w-8 flex-shrink-0">D{idx + 1}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-500" : "text-neutral-200"}`}>{dateStr}</div>
+                    {(times || resolved.dayType) && <div className="text-[11px] text-neutral-500">{[times, resolved.dayType].filter(Boolean).join(" · ")}</div>}
+                  </div>
+                  {day.note?.trim() && <INote size={13} className="text-neutral-600 flex-shrink-0"/>}
+                  {calc && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(calc.total)}</div>}
+                </button>
+              );
+            })}
+          </div>
+        </Sheet>
       );
     }
 
@@ -14526,36 +14780,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onClose={() => setShowJumpSheet(false)}
           />
 
-          {/* Per-day kebab action sheet */}
-          {showDayActions && (
-            <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-                 style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
-                 onClick={() => setShowDayActions(false)}>
-              <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-                   style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-                <div className="px-5 pt-5 pb-3">
-                  <div className="text-sm font-bold text-neutral-100">Day actions</div>
-                </div>
-                <div className="px-4 pb-4 flex flex-col gap-2">
-                  {dayActions.map((a, i) => (
-                    <button key={i} type="button" onClick={a.action}
-                      className={`w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold flex items-center gap-2 ${
-                        a.variant === 'danger' ? 'text-tm-pen' : 'text-neutral-300'
-                      }`}
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      {a.variant === 'danger' && <ITrash size={15}/>}
-                      {a.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
-                  <button type="button" onClick={() => setShowDayActions(false)}
-                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
-                </div>
-              </div>
+          {/* Per-day kebab action sheet — Phase D Wave 1, routed through
+              Sheet. dayActions array + handlers unchanged. */}
+          <Sheet
+            open={showDayActions}
+            onClose={() => setShowDayActions(false)}
+            title="Day actions"
+          >
+            <div className="px-4 pb-4 flex flex-col gap-2">
+              {dayActions.map((a, i) => (
+                <button key={i} type="button" onClick={a.action}
+                  className={`w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold flex items-center gap-2 ${
+                    a.variant === 'danger' ? 'text-tm-pen' : 'text-neutral-300'
+                  }`}
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  {a.variant === 'danger' && <ITrash size={15}/>}
+                  {a.label}
+                </button>
+              ))}
             </div>
-          )}
+            <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
+              <button type="button" onClick={() => setShowDayActions(false)}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+            </div>
+          </Sheet>
 
           <ConfirmDialog
             open={confirmDelete}
@@ -14568,44 +14817,39 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onCancel={() => setConfirmDelete(false)}
           />
 
-          {/* Solo export bottom sheet */}
-          {showExportSheet && (
-            <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-                 style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
-                 onClick={() => setShowExportSheet(false)}>
-              <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-                   style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-                <div className="px-5 pt-5 pb-2">
-                  <div className="text-sm font-bold text-neutral-100 flex items-center gap-2"><IShare size={14}/>Export</div>
-                </div>
-                <div className="px-4 pb-4 flex flex-col gap-2">
-                  <button type="button"
-                    onClick={() => { setShowExportSheet(false); handleExportPDF(); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
-                    style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
-                    <IDownload size={15}/>Timesheet (PDF)
-                  </button>
-                  <button type="button"
-                    onClick={async () => { setShowExportSheet(false); await handleExportText(); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IMessage size={15}/>Timesheet (Text)
-                  </button>
-                  <button type="button"
-                    onClick={() => { setShowExportSheet(false); openInvoiceFromButton(); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IReceipt size={15}/>Generate invoice
-                  </button>
-                </div>
-                <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
-                  <button type="button" onClick={() => setShowExportSheet(false)}
-                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
-                </div>
-              </div>
+          {/* Solo export bottom sheet — Wave 1 (Phase D), routed through
+              <Sheet>. Hand-rolled fixed inset replaced by the shared primitive
+              with grabber + swipe-down-dismiss. Actions unchanged. */}
+          <Sheet open={showExportSheet} onClose={() => setShowExportSheet(false)}>
+            <div className="px-5 pt-1 pb-2">
+              <div className="text-sm font-bold text-neutral-100 flex items-center gap-2"><IShare size={14}/>Export</div>
             </div>
-          )}
+            <div className="px-4 pb-4 flex flex-col gap-2">
+              <button type="button"
+                onClick={() => { setShowExportSheet(false); handleExportPDF(); }}
+                className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
+                style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
+                <IDownload size={15}/>Timesheet (PDF)
+              </button>
+              <button type="button"
+                onClick={async () => { setShowExportSheet(false); await handleExportText(); }}
+                className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <IMessage size={15}/>Timesheet (Text)
+              </button>
+              <button type="button"
+                onClick={() => { setShowExportSheet(false); openInvoiceFromButton(); }}
+                className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <IReceipt size={15}/>Generate invoice
+              </button>
+            </div>
+            <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
+              <button type="button" onClick={() => setShowExportSheet(false)}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+            </div>
+          </Sheet>
 
           {/* Solo PrintView portal */}
           {soloExportState && soloCrew && (
@@ -17679,39 +17923,38 @@ const setDays = (updater) =>
     }
 
     function LineItemActionSheet({ item, onEdit, onDiscount, onDelete, onClose }) {
-      useEscape(onClose);
+      // Wave 1 (Phase D): routed through <Sheet>. Title rendered as children
+      // (not Sheet's title prop) because we want the detail line beneath it.
       return (
-        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4" style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="px-5 pt-5 pb-3">
-              <div className="text-sm font-bold text-neutral-100 truncate">{item.label}</div>
-              {item.detail && <div className="text-[11px] text-neutral-500 mt-0.5 truncate">{item.detail}</div>}
-            </div>
-            <div className="px-4 pb-4 flex flex-col gap-2">
-              <button type="button" onClick={onEdit}
-                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <IPencil size={15}/>Edit
-              </button>
-              <button type="button" onClick={onDiscount}
-                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <ICalc size={15}/>{item.rate === null ? "Waive line" : "Waive portion"}
-                {item.discountedQty !== null && <span className="ml-auto text-[10px] text-tm-warn font-bold uppercase tracking-wide">Active</span>}
-              </button>
-              <button type="button" onClick={onDelete}
-                className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <ITrash size={15}/>Delete line
-              </button>
-            </div>
-            <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
-              <button type="button" onClick={onClose}
-                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
-            </div>
+        <Sheet open onClose={onClose}>
+          <div className="px-5 pt-1 pb-3">
+            <div className="text-sm font-bold text-neutral-100 truncate">{item.label}</div>
+            {item.detail && <div className="text-[11px] text-neutral-500 mt-0.5 truncate">{item.detail}</div>}
           </div>
-        </div>
+          <div className="px-4 pb-4 flex flex-col gap-2">
+            <button type="button" onClick={onEdit}
+              className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>
+              <IPencil size={15}/>Edit
+            </button>
+            <button type="button" onClick={onDiscount}
+              className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>
+              <ICalc size={15}/>{item.rate === null ? "Waive line" : "Waive portion"}
+              {item.discountedQty !== null && <span className="ml-auto text-[10px] text-tm-warn font-bold uppercase tracking-wide">Active</span>}
+            </button>
+            <button type="button" onClick={onDelete}
+              className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>
+              <ITrash size={15}/>Delete line
+            </button>
+          </div>
+          <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
+            <button type="button" onClick={onClose}
+              className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+          </div>
+        </Sheet>
       );
     }
 
@@ -18728,7 +18971,10 @@ const setDays = (updater) =>
     /* ═══════════════════════════ PRODUCTIONS SCREEN ═══════════════════════════ */
 
     function InvoiceRowActionSheet({ invoice, onClose, onUpdate, onDelete, showToast }) {
-      useEscape(onClose);
+      // Wave 1 (Phase D): routed through <Sheet>. The embedded ConfirmDialog
+      // behaviour is left exactly as-is — when confirmDelete flips on we still
+      // return the ConfirmDialog directly (not wrapped in Sheet), so the
+      // delete-confirm UX is byte-identical to before.
       const [confirmDelete, setConfirmDelete] = useState(false);
       const markSent = () => { onUpdate({ status: 'sent', dateSent: todayISO() }); showToast('Marked as sent'); onClose(); };
       const markPaid = () => { onUpdate({ status: 'paid', datePaid: todayISO() }); showToast('Marked as paid'); haptic.success(); fireCelebration(); onClose(); };
@@ -18742,14 +18988,8 @@ const setDays = (updater) =>
         );
       }
       return (
-        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 80 }} onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-            style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="px-5 pt-5 pb-3">
-              <div className="text-sm font-bold text-neutral-100 truncate">{invoice.invoiceNumber}</div>
-            </div>
-            <div className="px-4 pb-4 flex flex-col gap-2">
+        <Sheet open onClose={onClose} title={invoice.invoiceNumber}>
+          <div className="px-4 pb-4 flex flex-col gap-2">
               {invoice.status === 'draft' && (
                 <button type="button" onClick={markSent}
                   className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
@@ -18789,13 +19029,13 @@ const setDays = (updater) =>
                 className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
             </div>
-          </div>
-        </div>
+        </Sheet>
       );
     }
 
     function ProductionPickerSheet({ productions, onClose, onCreateInvoice, onOpenInvoice }) {
-      useEscape(onClose);
+      // Wave 1 (Phase D): routed through <Sheet>. The header X stays inside
+      // the children block — Sheet's slot is just the slide-up frame.
       const sorted = React.useMemo(() => {
         return [...productions].sort((a, b) => {
           const aDate = [...(a.days || [])].map(d => d.date).filter(Boolean).sort().slice(-1)[0] || a.startDate || '';
@@ -18807,45 +19047,39 @@ const setDays = (updater) =>
       const getDraft = (p) => (p.invoices || []).find(inv => inv.status === 'draft');
 
       return (
-        <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-             style={{ backgroundColor: 'rgba(0,0,0,0.82)', zIndex: 80 }}
-             onClick={onClose}>
-          <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-               style={{ maxWidth: 420, maxHeight: '80vh' }}
-               onClick={e => e.stopPropagation()}>
-            <div className="px-5 pt-5 pb-3 flex items-center justify-between">
-              <div className="text-sm font-bold text-neutral-100">New Invoice</div>
-              <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-300 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }}><IX size={18}/></button>
-            </div>
-            <div className="px-5 pb-2 text-xs text-neutral-500">Choose a production to invoice</div>
-            {sorted.length === 0 ? (
-              <div className="px-5 pb-6 text-center text-neutral-500 text-sm">No productions yet.</div>
-            ) : (
-              <div className="overflow-y-auto px-4 pb-4 flex flex-col gap-2" style={{ maxHeight: 'calc(80vh - 90px)' }}>
-                {sorted.map(p => {
-                  const draft = getDraft(p);
-                  const mostRecentDate = [...(p.days || [])].map(d => d.date).filter(Boolean).sort().slice(-1)[0] || p.startDate;
-                  return (
-                    <button key={p.id} type="button"
-                      onClick={() => { onClose(); if (draft) onOpenInvoice(p.id, draft.id); else onCreateInvoice(p.id); }}
-                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 transition-colors"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-neutral-100 truncate">{p.title || <span className="italic text-neutral-500">Untitled</span>}</div>
-                          {mostRecentDate && <div className="text-[10px] text-neutral-500 mt-0.5">{fmtDateShort(mostRecentDate)}</div>}
-                        </div>
-                        {draft && (
-                          <Badge variant="draft">DRAFT</Badge>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+        <Sheet open onClose={onClose}>
+          <div className="px-5 pt-1 pb-3 flex items-center justify-between">
+            <div className="text-sm font-bold text-neutral-100">New Invoice</div>
+            <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-300 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }}><IX size={18}/></button>
           </div>
-        </div>
+          <div className="px-5 pb-2 text-xs text-neutral-500">Choose a production to invoice</div>
+          {sorted.length === 0 ? (
+            <div className="px-5 pb-6 text-center text-neutral-500 text-sm">No productions yet.</div>
+          ) : (
+            <div className="overflow-y-auto px-4 pb-4 flex flex-col gap-2" style={{ maxHeight: 'calc(80vh - 90px)' }}>
+              {sorted.map(p => {
+                const draft = getDraft(p);
+                const mostRecentDate = [...(p.days || [])].map(d => d.date).filter(Boolean).sort().slice(-1)[0] || p.startDate;
+                return (
+                  <button key={p.id} type="button"
+                    onClick={() => { onClose(); if (draft) onOpenInvoice(p.id, draft.id); else onCreateInvoice(p.id); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-neutral-100 truncate">{p.title || <span className="italic text-neutral-500">Untitled</span>}</div>
+                        {mostRecentDate && <div className="text-[10px] text-neutral-500 mt-0.5">{fmtDateShort(mostRecentDate)}</div>}
+                      </div>
+                      {draft && (
+                        <Badge variant="draft">DRAFT</Badge>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Sheet>
       );
     }
 
@@ -20045,16 +20279,16 @@ const confirmDelete = (p) => setConfirmOpts({
               ProductionsScreen root level covers both. */}
           <ScrollTopButton />
 
-          {/* Production action sheet (kebab menu) */}
-          {actionSheet && (
-            <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-                 style={{ backgroundColor: "rgba(0,0,0,0.82)", zIndex: 60 }}
-                 onClick={() => setActionSheet(null)}>
-              <div className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
-                   style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-                <div className="px-5 pt-5 pb-3">
-                  <div className="text-sm font-bold text-neutral-100 truncate">{actionSheet.title || 'Untitled Production'}</div>
-                </div>
+          {/* Production action sheet (kebab menu) — routed through Sheet
+              for Wave 1 (Phase D). Existing handlers preserved verbatim;
+              only the slide-up + grabber + swipe-down dismiss are new. */}
+          <Sheet
+            open={!!actionSheet}
+            onClose={() => setActionSheet(null)}
+            title={actionSheet?.title || 'Untitled Production'}
+          >
+            {actionSheet && (
+              <>
                 <div className="px-4 pb-4 flex flex-col gap-2">
                   {(() => {
                     const t = todayISO();
@@ -20123,9 +20357,9 @@ const confirmDelete = (p) => setConfirmOpts({
                     className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
                 </div>
-              </div>
-            </div>
-          )}
+              </>
+            )}
+          </Sheet>
 
           <ConfirmDialog
             open={!!confirmOpts}

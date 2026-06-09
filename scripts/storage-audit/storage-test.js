@@ -4531,6 +4531,118 @@ async function main() {
       /animateAddDay: \(\) => \{[\s\S]{0,500}if \(typeof onAddDay !== 'function'\) return;[\s\S]{0,300}pendingAddDayRef\.current = true/.test(html));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // II — Phase D Wave 1 (Sheet primitive + 8 routed overlays)
+  //
+  // A single reusable bottom-Sheet replaces the eight hand-rolled
+  // `fixed inset-0 flex items-end sm:items-center` overlays. The sheet
+  // provides: slide-up transform, grabber, swipe-down dismiss with
+  // ~1/3-height threshold + downward-flick (~500 px/s) shortcut,
+  // backdrop tap-to-dismiss, Escape close (topmost only), per-instance
+  // z-index stacking (no fight when overlays layer), prefers-reduced-
+  // motion fallback, lockBodyScroll while mounted, dismiss-guard prop
+  // (Wave-2 forms), and safe-area-inset-bottom padding.
+  //
+  // These assertions are SOURCE-PRESENCE — they don't render the React
+  // tree; they grep index.html for the structural markers that prove
+  // each piece is still wired. If a refactor breaks any of them the
+  // audit fails loudly before a commit lands.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ II1: Sheet primitive itself ─
+    check('II1a Sheet component is defined',
+      /function Sheet\(\{ open, onClose,[^}]{0,300}\}\) \{/.test(html));
+    check('II1b _sheetStack module-scoped array tracks open sheets',
+      /const _sheetStack = \[\];/.test(html));
+    check('II1c SHEET_BASE_Z constant 60 + zSlot * 10 z-index slotting',
+      /const SHEET_BASE_Z = 60;/.test(html) &&
+      /SHEET_BASE_Z \+ zSlot \* 10/.test(html));
+    check('II1d spring easing constant for open/close transition',
+      /SHEET_OPEN_TRANSITION = 'transform 320ms cubic-bezier\(0\.32, 0\.72, 0, 1\)'/.test(html));
+    check('II1e ~1/3-height dismiss threshold constant',
+      /SHEET_DISMISS_HEIGHT_FRACTION = 1 \/ 3/.test(html));
+    check('II1f downward-flick velocity threshold ≈ 500 px/s',
+      /SHEET_FLICK_VELOCITY = 0\.5; \/\/ px\/ms downward = 500 px\/s/.test(html));
+    check('II1g axis-lock distance constant (matches SwipeableRow pattern)',
+      /SHEET_DRAG_AXIS_PX = 6;/.test(html));
+
+    // ─ II2: behaviour wiring inside Sheet ─
+    check('II2a Sheet calls lockBodyScroll/unlockBodyScroll while mounted',
+      /function Sheet\([\s\S]{0,4000}lockBodyScroll\(\);[\s\S]{0,200}return \(\) => \{ unlockBodyScroll\(\); \};/.test(html));
+    check('II2b Sheet registers prefers-reduced-motion via matchMedia',
+      /function Sheet\([\s\S]{0,4000}matchMedia\(['"]\(prefers-reduced-motion: reduce\)['"]\)/.test(html));
+    check('II2c Sheet uses translate3d on the card (GPU layer)',
+      /function Sheet\([\s\S]{0,8000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
+    check('II2d Sheet escape handler gated on topmost stack id (no double-close on stacked sheets)',
+      /function Sheet\([\s\S]{0,8000}_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current/.test(html));
+    check('II2e Sheet backdrop tap dismisses via tryDismiss (honours onBeforeDismiss)',
+      /function Sheet\([\s\S]{0,8000}tryDismiss = React\.useCallback/.test(html) &&
+      /if \(typeof onBeforeDismiss === 'function'\)/.test(html));
+    check('II2f Sheet sets touchAction pan-y only when swipeDismiss',
+      // Anchor inside the Sheet function (it's ~9.4KB so widen the window).
+      /function Sheet\([\s\S]{0,12000}touchAction: swipeDismiss \? 'pan-y' : undefined/.test(html));
+    check('II2g Sheet card pads safe-area-inset-bottom',
+      /function Sheet\([\s\S]{0,12000}calc\(env\(safe-area-inset-bottom\) \+ 16px\)/.test(html));
+    check('II2h Sheet stack push/splice in mount/unmount effect (per-instance id)',
+      /function Sheet\([\s\S]{0,4000}_sheetStack\.push\(id\)/.test(html) &&
+      /_sheetStack\.splice\([\s\S]{0,80}1\)/.test(html));
+
+    // ─ II3: the 8 overlays now render through <Sheet> ─
+    //   Each check confirms (a) the Sheet wrapper is present at the
+    //   overlay's call-site and (b) the legacy "fixed inset-0 flex
+    //   items-end sm:items-center" + manual backdrop scaffold was
+    //   removed at that site (so future refactors can't silently
+    //   regress to the hand-rolled overlay).
+    check('II3a Production kebab action sheet routes through <Sheet>',
+      /<Sheet\s+open=\{!!actionSheet\}\s+onClose=\{\(\) => setActionSheet\(null\)\}/.test(html));
+    check('II3b SoloDayPage day-actions sheet routes through <Sheet>',
+      /<Sheet\s+open=\{showDayActions\}\s+onClose=\{\(\) => setShowDayActions\(false\)\}\s+title="Day actions"/.test(html));
+    check('II3c InvoiceRowActionSheet routes through <Sheet> (embedded ConfirmDialog left intact)',
+      /function InvoiceRowActionSheet\([\s\S]{0,3000}<Sheet open onClose=\{onClose\} title=\{invoice\.invoiceNumber\}>/.test(html) &&
+      // Confirm-delete branch still renders ConfirmDialog directly — not
+      // through Sheet — so the delete-confirm UX is unchanged from before.
+      /function InvoiceRowActionSheet\([\s\S]{0,2000}if \(confirmDelete\) \{[\s\S]{0,500}<ConfirmDialog open/.test(html));
+    check('II3d LineItemActionSheet routes through <Sheet>',
+      /function LineItemActionSheet\([\s\S]{0,1500}<Sheet open onClose=\{onClose\}>/.test(html));
+    check('II3e DayJumpSheet routes through <Sheet> (maxWidth 480)',
+      /function DayJumpSheet\([\s\S]{0,2000}<Sheet open=\{open\} onClose=\{onClose\} maxWidth=\{480\}>/.test(html));
+    check('II3f ProductionPickerSheet routes through <Sheet>',
+      /function ProductionPickerSheet\([\s\S]{0,2500}<Sheet open onClose=\{onClose\}>/.test(html));
+    check('II3g CalcBreakdownView share/export menu routes through <Sheet>',
+      /<Sheet open=\{showShareMenu\} onClose=\{\(\) => setShowShareMenu\(false\)\}>/.test(html));
+    check('II3h SoloDayPage export sheet routes through <Sheet>',
+      /<Sheet open=\{showExportSheet\} onClose=\{\(\) => setShowExportSheet\(false\)\}>/.test(html));
+
+    // ─ II4: regression guards — hand-rolled overlay markers gone from
+    //   the 8 wrapped sites. We can't blanket-ban the
+    //   "items-end sm:items-center" pattern because Wave-2 forms +
+    //   ConfirmDialog + ProductionSettingsSheet legitimately keep
+    //   theirs for now. Instead we check the unique state-name pairs
+    //   that anchored each wrapped site's old wrapper.
+    check('II4a Production kebab no longer wraps {actionSheet && (<div className="fixed inset-0...">)}',
+      !/\{actionSheet && \(\s*<div className="fixed inset-0/.test(html));
+    check('II4b SoloDayPage day-actions sheet no longer hand-rolls a backdrop',
+      !/\{showDayActions && \(\s*<div className="fixed inset-0/.test(html));
+    check('II4c CalcBreakdownView share menu no longer hand-rolls a backdrop',
+      !/\{showShareMenu && \(\s*<div className="fixed inset-0/.test(html));
+    check('II4d SoloDayPage export sheet no longer hand-rolls a backdrop',
+      !/\{showExportSheet && \(\s*<div className="fixed inset-0/.test(html));
+
+    // ─ II5: forward-compat wiring for Wave 2 / Wave 3 ─
+    //   The Sheet props that Wave 2 forms (edit/cancel guard) and
+    //   Wave 3 (stacked pickers inside ProductionSettingsSheet) need
+    //   must already be wired in Wave 1 so the later commits are
+    //   additive, not a rebuild of the primitive.
+    check('II5a Sheet exposes onBeforeDismiss prop (Wave-2 dismiss guard hook)',
+      /function Sheet\(\{ open, onClose, onBeforeDismiss/.test(html));
+    check('II5b Sheet exposes swipeDismiss prop (default true, opt-out for sticky forms)',
+      /function Sheet\([^)]{0,400}swipeDismiss = true/.test(html));
+    check('II5c Sheet uses per-instance idRef + zSlot — stack-safe (Wave-3 layered sheets)',
+      /function Sheet\([\s\S]{0,4000}const idRef = React\.useRef\(null\)/.test(html) &&
+      /function Sheet\([\s\S]{0,4000}const \[zSlot, setZSlot\] = React\.useState\(0\)/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
