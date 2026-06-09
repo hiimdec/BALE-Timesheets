@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  App-target entitlements. The App Group lets the app and the widget extension
+  share storage (used in Stage 2 for the App-Intent event round-trip; harmless
+  to add now). When you add the "App Groups" capability to the App target in
+  Xcode, Xcode will point Code Signing Entitlements at this file (or generate
+  its own) — make sure the group id matches the one on the widget target.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.co.uk.timemachineapp.shared</string>
+	</array>
+</dict>
+</plist>

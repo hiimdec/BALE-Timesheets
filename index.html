@@ -916,6 +916,32 @@
       await App.openUrl({ url });
     }
 
+    // ── iOS Live Activity bridge (Stage 1 — display-only) ───────────────────
+    // Drives the Lock Screen / Dynamic Island card for the active solo shoot day
+    // via our app-embedded LiveActivityPlugin. EVERY method is a safe no-op on
+    // web and when the plugin is absent: each returns before touching the
+    // Capacitor bridge unless IS_NATIVE, so the web build never references it
+    // (audit:web). Display-only — it echoes whatever the calc produced; it never
+    // changes a value or its formatting.
+    const LiveActivity = {
+      async isAvailable() {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().LiveActivity; if (!p || !p.isAvailable) return false; const r = await p.isAvailable(); return !!(r && r.available); } catch (_) { return false; }
+      },
+      async start(opts) {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.startActivity) await p.startActivity(opts || {}); } catch (_) {}
+      },
+      async update(opts) {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.updateActivity) await p.updateActivity(opts || {}); } catch (_) {}
+      },
+      async end() {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.endActivity) await p.endActivity(); } catch (_) {}
+      },
+    };
+
     // Match the iOS status bar to the app's dark theme (light text on dark).
     async function nativeSetupStatusBar() {
       const { StatusBar } = _capPlugins();
@@ -14566,6 +14592,85 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ SOLO DAY PAGE (full-page editor for solo mode) ═══════════════════════════ */
 
+    // ── Live Activity controller (solo only, display-only) ─────────────────
+    // Derives TODAY's solo-day descriptor — production name, last-computed day
+    // total (via the existing calcForDisplay; recomputes nothing new), the
+    // call-time epoch that anchors the native zero-update elapsed timer, and the
+    // state chip (oncall / lunch / wrapped). It never reads which day is being
+    // *viewed* — the Activity always tracks today's day on the open solo shoot.
+    function liveActivityDescriptor(production, soloCrew, days) {
+      if (!soloCrew) return null;
+      const today = todayISO();
+      const rec = (days || []).find(d => d.date === today && d.crewId === soloCrew.id)
+               || (days || []).find(d => d.date === today);
+      if (!rec) return null;
+      const callTime = rec.callTime
+        || (production.dayDefaults && production.dayDefaults[today] && production.dayDefaults[today].callTime)
+        || null;
+      if (!callTime) return null;
+      let total = 0;
+      try { total = calcForDisplay(production, rec, soloCrew, findPrevDay(days, rec)).total || 0; } catch (_) {}
+      const wrapped = rec.wrapped === true || !!(rec.wrapTime && String(rec.wrapTime).length);
+      let state = 'oncall';
+      if (wrapped) {
+        state = 'wrapped';
+      } else {
+        const lunchH = parseHHMM(rec.lunchStartTime);
+        const dur = Number(rec.lunchDurationMins != null ? rec.lunchDurationMins : 60);
+        if (lunchH != null && dur > 0) {
+          const now = new Date();
+          const nowMins = now.getHours() * 60 + now.getMinutes();
+          const lunchMins = Math.round(lunchH * 60);
+          if (nowMins >= lunchMins && nowMins < lunchMins + dur) state = 'lunch';
+        }
+      }
+      // Today's date + call time → epoch seconds, for Text(timerInterval:).
+      const callH = parseHHMM(callTime);
+      let callEpoch = 0;
+      if (callH != null) {
+        const d = new Date();
+        d.setHours(Math.floor(callH), Math.round((callH % 1) * 60), 0, 0);
+        callEpoch = Math.floor(d.getTime() / 1000);
+      }
+      // Safety auto-end ~16h after call so a forgotten Activity self-clears.
+      const staleEpoch = callEpoch ? callEpoch + 16 * 3600 : 0;
+      return { productionId: production.id, name: production.name || 'Shoot', totalText: fmtGBP(total), callEpoch, staleEpoch, state, wrapped };
+    }
+
+    // Mounted inside SoloDayPage. START when today's call time is set; debounced
+    // UPDATE on recompute / state change; END on wrap. All native calls behind
+    // IS_NATIVE (no-op on web). Renders nothing.
+    function SoloLiveActivity({ production, soloCrew, days }) {
+      const startedKeyRef = React.useRef(null);
+      const lastSentRef = React.useRef('');
+      const desc = IS_NATIVE ? liveActivityDescriptor(production, soloCrew, days) : null;
+      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, w: desc.wrapped }) : '';
+      React.useEffect(() => {
+        if (!IS_NATIVE || !desc) return;
+        const timer = setTimeout(() => {
+          const key = desc.productionId + '|' + todayISO();
+          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, state: desc.state, staleEpoch: desc.staleEpoch };
+          if (desc.wrapped) {
+            LiveActivity.update(payload);   // reflect WRAPPED…
+            LiveActivity.end();             // …then end (native lets it linger briefly)
+            startedKeyRef.current = null;
+            lastSentRef.current = '';
+            return;
+          }
+          if (startedKeyRef.current !== key) {
+            startedKeyRef.current = key;
+            lastSentRef.current = sig;
+            LiveActivity.start(payload);
+          } else if (sig !== lastSentRef.current) {
+            lastSentRef.current = sig;
+            LiveActivity.update(payload);
+          }
+        }, 600);
+        return () => clearTimeout(timer);
+      }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
+      return null;
+    }
+
     function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs, initialInvoiceId }) {
       const crew = production.crew ?? [];
       const days = production.days ?? [];
@@ -15039,6 +15144,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               );
             }}
           />
+
+          <SoloLiveActivity production={production} soloCrew={soloCrew} days={days} />
 
           <SoloDayPill
             total={totalShoot}

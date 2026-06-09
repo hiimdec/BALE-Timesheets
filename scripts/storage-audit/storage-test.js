@@ -5362,6 +5362,55 @@ async function main() {
       /reduce = !!\(window\.matchMedia && window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches\)/.test(html));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // TT — iOS Live Activity Stage 1 (display-only, solo). The WEB build must never
+  // touch the LiveActivity native bridge (audit:web also proves this); every JS
+  // path is IS_NATIVE-guarded. The controller is display-only: it reuses
+  // calcForDisplay for today's day total and NEVER writes stored data (no
+  // setProduction/setDays). The native Swift/SwiftUI lives outside index.html
+  // (ios/App/…) so it can't affect any audit. Source-presence only.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const descFn = (html.match(/function liveActivityDescriptor\([\s\S]*?\n    \}/) || [''])[0];
+    const ctrlFn = (html.match(/function SoloLiveActivity\([\s\S]*?return null;\s*\}/) || [''])[0];
+
+    // ─ TT1: the bridge — four methods, each a no-op before touching Capacitor ─
+    check('TT1a LiveActivity bridge defines isAvailable/start/update/end',
+      /const LiveActivity = \{/.test(html) &&
+      /async isAvailable\(\)/.test(html) && /async start\(opts\)/.test(html) &&
+      /async update\(opts\)/.test(html) && /async end\(\)/.test(html));
+    check('TT1b every bridge method returns BEFORE touching _capPlugins() unless IS_NATIVE (web never references the plugin)',
+      /async isAvailable\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
+      /async start\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /async update\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /async end\(\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /_capPlugins\(\)\.LiveActivity/.test(html));
+
+    // ─ TT2: descriptor reuses the calc + derives state; controller is guarded ─
+    check('TT2a liveActivityDescriptor reuses calcForDisplay for today total (recomputes nothing) + derives oncall/lunch/wrapped',
+      /function liveActivityDescriptor\(production, soloCrew, days\)/.test(html) &&
+      /calcForDisplay\(production, rec, soloCrew, findPrevDay\(days, rec\)\)\.total/.test(html) &&
+      /let state = 'oncall';/.test(html) && /state = 'wrapped';/.test(html) && /state = 'lunch';/.test(html));
+    check('TT2b SoloLiveActivity computes desc only when IS_NATIVE and bails on web',
+      /function SoloLiveActivity\(\{ production, soloCrew, days \}\)/.test(html) &&
+      /const desc = IS_NATIVE \? liveActivityDescriptor\(production, soloCrew, days\) : null;/.test(html) &&
+      /if \(!IS_NATIVE \|\| !desc\) return;/.test(html));
+    check('TT2c controller mounted in SoloDayPage with production/soloCrew/days',
+      /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} \/>/.test(html));
+
+    // ─ TT3: start / update / end wired at the right transitions (debounced) ─
+    check('TT3a start on (production,today) key change; update on signature change; end on wrap; 600ms debounce',
+      /if \(startedKeyRef\.current !== key\) \{[\s\S]{0,160}LiveActivity\.start\(payload\)/.test(html) &&
+      /\} else if \(sig !== lastSentRef\.current\) \{[\s\S]{0,120}LiveActivity\.update\(payload\)/.test(html) &&
+      /if \(desc\.wrapped\) \{[\s\S]{0,160}LiveActivity\.update\(payload\);[\s\S]{0,80}LiveActivity\.end\(\);/.test(html) &&
+      /\}, 600\);/.test(html));
+
+    // ─ TT4: display-only — the controller never writes stored data ─
+    check('TT4a neither liveActivityDescriptor nor SoloLiveActivity writes stored data (no setProduction/setDays — display-only)',
+      descFn.length > 0 && ctrlFn.length > 0 &&
+      !/setProduction|setDays/.test(descFn) && !/setProduction|setDays/.test(ctrlFn));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
