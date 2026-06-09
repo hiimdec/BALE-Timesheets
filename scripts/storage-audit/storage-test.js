@@ -5039,11 +5039,8 @@ async function main() {
     check('NN2b export rounding is constrained to apa|exact only — favourable is intentionally absent',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       /INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'apa'/.test(html));
-    check('NN2c favourable is never an offered export-rounding value (scoped to the export option list)',
-      (() => {
-        const m = html.match(/const INVOICE_EXPORT_ROUNDINGS = \[([\s\S]*?)\];/);
-        return m ? !/favourable/.test(m[1]) : false;
-      })() &&
+    check('NN2c favourable is never a SELECTABLE export rounding — values list is apa/exact (picker greys it out; see OO)',
+      /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       !/INVOICE_EXPORT_ROUNDING_VALUES = \[[^\]]*favourable/.test(html));
     check('NN2d subtotal/VAT for export come from invoiceSubtotal + invoiceVAT (VAT 0 unless vatRegistered)',
       /function invoiceExportFigures\([\s\S]{0,400}invoiceSubtotal\(lines\)[\s\S]{0,120}invoiceVAT\(invoice, subtotal\)/.test(html));
@@ -5090,11 +5087,47 @@ async function main() {
       /async function deliverTextFile\([\s\S]{0,200}IS_NATIVE\) return nativeSaveAndShare\(filename, content, \{ encoding: 'utf8'[\s\S]{0,200}new Blob\(\[content\][\s\S]{0,200}a\.download = filename/.test(html));
     check('NN6c sensible per-format filenames (TM-INV-…-xero.csv etc.)',
       /-xero\.csv`/.test(html) && /-quickbooks\.csv`/.test(html) && /-ledger\.csv`/.test(html));
-    check('NN6d Settings → Invoicing has format + rounding selects wired to userPrefs',
+    check('NN6d Settings → Invoicing: format Select + ExportRoundingSelect wired to userPrefs',
       /set\(\{ invoiceExportFormat: e\.target\.value \}\)/.test(html) &&
-      /set\(\{ invoiceExportRounding: e\.target\.value \}\)/.test(html) &&
       /INVOICE_EXPORT_FORMATS\.map\(/.test(html) &&
-      /INVOICE_EXPORT_ROUNDINGS\.map\(/.test(html));
+      /<ExportRoundingSelect value=\{userPrefs\.invoiceExportRounding \|\| 'apa'\} onChange=\{\(m\) => set\(\{ invoiceExportRounding: m \}\)\}/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // OO — Export rounding picker restyled to the rich radio (favourable greyed)
+  //
+  // The plain <Select> export-rounding control is now the same rich radio
+  // style as RoundingModeSelect, via a shared RoundingOptionCard. Favourable
+  // is shown but permanently DISABLED (TimeMachine-PDF only). RoundingModeSelect
+  // and its two existing sites must be visually + behaviourally unchanged.
+  // Source-presence only.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ OO1: shared presentational radio-card; RoundingModeSelect renders via it ─
+    check('OO1a RoundingOptionCard shared component defined (radio dot + label + desc + disabled + note)',
+      /const RoundingOptionCard = \(\{ label, desc, note, active, disabled = false, onClick \}\) =>/.test(html) &&
+      /disabled \? undefined : onClick/.test(html) &&
+      /\{note && <div className="text-\[10px\]/.test(html));
+    check('OO1b RoundingModeSelect renders through RoundingOptionCard over ROUNDING_OPTIONS (no inline button markup left)',
+      /const RoundingModeSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,400}ROUNDING_OPTIONS\.map\(\(opt\) => \(\s*<RoundingOptionCard/.test(html) &&
+      // the old inline <button aria-pressed …> markup is gone from RoundingModeSelect
+      !/const RoundingModeSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,500}<button\b/.test(html));
+    check('OO1c RoundingModeSelect byte-identical at its two existing sites (per-shoot + userPrefs default)',
+      /<RoundingModeSelect value=\{roundingModeOf\(production\)\} onChange=\{\(m\) => setProduction\(p => \(\{ \.\.\.p, roundingMode: m \}\)\)\}/.test(html) &&
+      /<RoundingModeSelect value=\{roundingModeOf\(userPrefs\)\} onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}/.test(html));
+
+    // ─ OO2: ExportRoundingSelect — rich radio, favourable disabled + note ─
+    check('OO2a ExportRoundingSelect reuses RoundingOptionCard over ROUNDING_OPTIONS (all three options shown)',
+      /const ExportRoundingSelect = \(\{ value, onChange \}\) => \{[\s\S]{0,500}ROUNDING_OPTIONS\.map\(\(opt\) => \{[\s\S]{0,300}<RoundingOptionCard/.test(html));
+    check('OO2b Favourable is permanently disabled here, with the TimeMachine-PDF-only note',
+      /const isFav = opt\.value === 'favourable';/.test(html) &&
+      /disabled=\{isFav\}/.test(html) &&
+      /note=\{isFav \? 'TimeMachine-PDF only — never applied to a CSV \/ accounting export\.' : undefined\}/.test(html));
+    check('OO2c only apa/exact can be active (favourable never highlighted)',
+      /const cur = value === 'exact' \? 'exact' : 'apa';/.test(html));
+    check('OO2d the old plain <Select> export-rounding control is gone',
+      !/<Select value=\{userPrefs\.invoiceExportRounding/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

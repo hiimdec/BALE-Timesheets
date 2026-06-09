@@ -5924,29 +5924,77 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       { value: 'favourable', label: 'Favourable', desc: 'Round each line amount up to the next whole pound, in your favour.' },
       { value: 'apa',        label: 'APA',        desc: "Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR)." },
     ];
+    // Shared presentational radio-card for the rounding pickers: a full-width
+    // button with a radio dot, bold label, and description. `disabled` greys it
+    // out + makes it unselectable; `note` adds a small caption line. With
+    // disabled=false and no note it renders byte-identically to the original
+    // inline RoundingModeSelect markup, so RoundingModeSelect's two existing
+    // sites are visually + behaviourally unchanged.
+    const RoundingOptionCard = ({ label, desc, note, active, disabled = false, onClick }) => (
+      <button
+        type="button"
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
+        aria-pressed={active}
+        className={`w-full text-left rounded-xl border px-3.5 py-2.5 transition-colors ${
+          disabled
+            ? 'bg-neutral-950 border-neutral-800/60 opacity-50 cursor-not-allowed'
+            : active
+            ? 'bg-sky-500/10 border-sky-500/50'
+            : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'
+        }`}
+        style={{ WebkitTapHighlightColor: 'transparent' }}
+      >
+        <div className="flex items-center gap-2">
+          <span className={`w-3.5 h-3.5 rounded-full border flex-shrink-0 flex items-center justify-center ${active && !disabled ? 'border-sky-400' : 'border-neutral-600'}`}>
+            {active && !disabled && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+          </span>
+          <span className={`text-[13px] font-bold ${active && !disabled ? 'text-sky-300' : 'text-neutral-200'}`}>{label}</span>
+        </div>
+        <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight pl-[22px]">{desc}</div>
+        {note && <div className="text-[10px] text-neutral-600 mt-1 leading-tight pl-[22px] italic">{note}</div>}
+      </button>
+    );
+
     const RoundingModeSelect = ({ value, onChange }) => {
       const cur = ROUNDING_MODES.includes(value) ? value : 'exact';
       return (
         <div className="space-y-1.5">
+          {ROUNDING_OPTIONS.map((opt) => (
+            <RoundingOptionCard
+              key={opt.value}
+              label={opt.label}
+              desc={opt.desc}
+              active={cur === opt.value}
+              onClick={() => onChange(opt.value)}
+            />
+          ))}
+        </div>
+      );
+    };
+
+    // Export rounding picker (Settings → Invoicing → Accounting export). Same
+    // rich radio style as RoundingModeSelect, reusing ROUNDING_OPTIONS, but
+    // Favourable is permanently DISABLED here — favourable rounding is
+    // TimeMachine-PDF-only and never applies to a CSV / accounting export. Only
+    // apa|exact are selectable; invoiceExportRounding stays apa|exact.
+    const ExportRoundingSelect = ({ value, onChange }) => {
+      // Favourable can't be active; anything that isn't 'exact' highlights APA.
+      const cur = value === 'exact' ? 'exact' : 'apa';
+      return (
+        <div className="space-y-1.5">
           {ROUNDING_OPTIONS.map((opt) => {
-            const active = cur === opt.value;
+            const isFav = opt.value === 'favourable';
             return (
-              <button
+              <RoundingOptionCard
                 key={opt.value}
-                type="button"
+                label={opt.label}
+                desc={opt.desc}
+                active={cur === opt.value}
+                disabled={isFav}
+                note={isFav ? 'TimeMachine-PDF only — never applied to a CSV / accounting export.' : undefined}
                 onClick={() => onChange(opt.value)}
-                aria-pressed={active}
-                className={`w-full text-left rounded-xl border px-3.5 py-2.5 transition-colors ${active ? 'bg-sky-500/10 border-sky-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`w-3.5 h-3.5 rounded-full border flex-shrink-0 flex items-center justify-center ${active ? 'border-sky-400' : 'border-neutral-600'}`}>
-                    {active && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
-                  </span>
-                  <span className={`text-[13px] font-bold ${active ? 'text-sky-300' : 'text-neutral-200'}`}>{opt.label}</span>
-                </div>
-                <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight pl-[22px]">{opt.desc}</div>
-              </button>
+              />
             );
           })}
         </div>
@@ -16391,10 +16439,8 @@ const setDays = (updater) =>
                     {INVOICE_EXPORT_FORMATS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
                 </Field>
-                <Field label="Export rounding" hint="Figures in Xero / QuickBooks / CSV exports are computed at this rounding. (Favourable rounding stays TimeMachine-PDF only.)">
-                  <Select value={userPrefs.invoiceExportRounding || 'apa'} onChange={(e) => set({ invoiceExportRounding: e.target.value })}>
-                    {INVOICE_EXPORT_ROUNDINGS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </Select>
+                <Field label="Export rounding" hint="Figures in Xero / QuickBooks / CSV exports are computed at this rounding.">
+                  <ExportRoundingSelect value={userPrefs.invoiceExportRounding || 'apa'} onChange={(m) => set({ invoiceExportRounding: m })} />
                 </Field>
               </div>
 
@@ -17800,11 +17846,10 @@ const setDays = (updater) =>
       { value: 'quickbooks',  label: 'QuickBooks' },
       { value: 'csv',         label: 'CSV' },
     ];
-    const INVOICE_EXPORT_ROUNDINGS = [
-      { value: 'apa',   label: 'APA' },
-      { value: 'exact', label: 'Exact' },
-    ];
-    // The ONLY rounding modes an export may use — favourable is intentionally absent.
+    // The ONLY rounding modes an export may use — favourable is intentionally
+    // absent (it's TimeMachine-PDF-only). The Settings picker (ExportRoundingSelect)
+    // renders Favourable greyed-out + unselectable; this list is the source of
+    // truth for what invoiceExportRounding may hold.
     const INVOICE_EXPORT_ROUNDING_VALUES = ['apa', 'exact'];
 
     // ISO YYYY-MM-DD → DD/MM/YYYY (empty/invalid → "").
