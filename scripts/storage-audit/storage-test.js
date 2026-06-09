@@ -4409,10 +4409,18 @@ async function main() {
       /<DayCarousel[\s\S]{0,300}onAddDay=\{addDay\}/.test(html));
     check('HH2c addDay handler unchanged — still appends current+1 and flips setCurrentDayId',
       /const addDay = \(\) => \{[\s\S]{0,1500}setDays\(prev => \[\.\.\.prev, augmented\]\);\s*setCurrentDayId\(augmented\.id\);/.test(html));
-    check('HH2d the SoloDayPill\'s onAdd still uses the SAME handler (one source of truth)',
-      // Both the bottom-pill + button and the over-pull gesture call
-      // addDay — no parallel implementation.
-      html.includes('onAdd={addDay}'));
+    check('HH2d the SoloDayPill\'s onAdd still reaches the SAME addDay (one source of truth)',
+      // Direct `onAdd={addDay}` was replaced with an arrow that routes
+      // through carouselRef.current.animateAddDay() (FIX 2 — for the
+      // animated slide) and falls back to addDay() if the ref isn't
+      // ready. animateAddDay's transitionend calls onAddDay (which
+      // SoloDayPage passes as addDay). So both surfaces still reach
+      // the same handler — no parallel add path was introduced. The
+      // fallback's direct addDay() call AND the animateAddDay path
+      // (via onAddDay → addDay) both end at the same function.
+      html.includes('carouselRef.current.animateAddDay()') &&
+      html.includes('addDay();') &&
+      html.includes('onAddDay={addDay}'));
 
     // ─ HH3: arm + commit logic only fires for last-day-forward pull. ─
     check('HH3a isLastForwardPull guard (atLast && delta < 0 && typeof onAddDay === "function")',
@@ -4421,8 +4429,17 @@ async function main() {
       /atFirst && delta > 0\) \{\s*delta = delta \* DAY_CAROUSEL_EDGE_RESIST/.test(html));
     check('HH3c last-day forward uses softer ADD_DAY_RESIST (not edge rubber-band)',
       /isLastForwardPull\) \{\s*delta = delta \* DAY_CAROUSEL_ADD_DAY_RESIST/.test(html));
-    check('HH3d arm fires only when isLastForwardPull AND |delta| > armThreshold',
-      /if \(isLastForwardPull && Math\.abs\(delta\) > addArmThresholdPx\)/.test(html));
+    check('HH3d arm fires only when isLastForwardPull AND RAW pull > armThreshold',
+      // The arm check measures the RAW finger distance (|ddx|), NOT the
+      // post-resistance dragDelta. Measuring on |delta| with the 0.5
+      // resistance would require ~1.16 × trackW of finger travel to arm,
+      // which is unreachable in a single swipe (the bug the fix
+      // addressed).
+      /const rawPull = Math\.abs\(ddx\);\s*if \(isLastForwardPull && rawPull > addArmThresholdPx\)/.test(html));
+    check('HH3d2 arm threshold is NOT measured against post-resistance delta (regression guard)',
+      // The previous bug: arm gated on |delta| > addArmThresholdPx. After
+      // the fix, no such pattern should exist anywhere in the source.
+      !/Math\.abs\(delta\) > addArmThresholdPx/.test(html));
 
     // ─ HH4: commit only fires on release WHILE ARMED. A pull that crosses
     //   the threshold but is dragged back below it before release must
@@ -4476,6 +4493,30 @@ async function main() {
     //   transitions are also gated on reduceMotion. ─
     check('HH8a affordance inner transform/transitions skip when reduceMotion',
       /reduceMotion \? 'none' : 'transform 140ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease'/.test(html));
+
+    // ─ HH9: programmatic +1 add via animateAddDay() — the carousel
+    //   exposes an imperative method that mirrors the armed-swipe
+    //   commit path (snap to -trackW, transitionend fires onAddDay).
+    //   This is what makes the SoloDayPill's + button slide the new
+    //   day in instead of instant-jumping. Both triggers reuse the
+    //   same handler (no parallel add). ─
+    check('HH9a DayCarousel imperative API exposes animateAddDay',
+      /animateAddDay: \(\) => \{[\s\S]{0,400}pendingAddDayRef\.current = true;\s*armedRef\.current = false;\s*setAnimating\(true\);\s*setDragDelta\(-trackW\)/.test(html));
+    check('HH9b animateAddDay falls back to instant onAddDay when trackW not measured (no animation drop)',
+      /if \(!trackW\) \{ onAddDay\(\); return; \}/.test(html));
+    check('HH9c useImperativeHandle deps include trackW and onAddDay (animateAddDay closure stays current)',
+      /\}\), \[safeIdx, days, animateSnap, setCurrentDayId, trackW, onAddDay\]\)/.test(html));
+    check('HH9d SoloDayPill onAdd no longer calls addDay directly — routes through animateAddDay (animated slide)',
+      // The pill's onAdd now triggers carouselRef.current.animateAddDay()
+      // first, with a fallback to direct addDay only if the ref isn't
+      // ready. Catches a regression where someone reverts to onAdd={addDay}.
+      /onAdd=\{\(\) => \{[\s\S]{0,800}carouselRef\.current\.animateAddDay\(\)[\s\S]{0,150}addDay\(\);[\s\S]{0,80}\}\}/.test(html) &&
+      !/onAdd=\{addDay\}/.test(html));
+    check('HH9e animateAddDay reuses the EXISTING onAddDay handler (no parallel add path)',
+      // animateAddDay sets pendingAddDayRef and lets transitionend call
+      // onAddDay() — same code path as the armed-swipe release. No
+      // separate setDays/setCurrentDayId logic.
+      /animateAddDay: \(\) => \{[\s\S]{0,500}if \(typeof onAddDay !== 'function'\) return;[\s\S]{0,300}pendingAddDayRef\.current = true/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

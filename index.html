@@ -13774,10 +13774,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           // original rubber-band so the list still feels bounded.
           delta = delta * DAY_CAROUSEL_EDGE_RESIST;
         }
-        // Arm detection for the add-day affordance. Crossing the
-        // threshold fires haptic.light once; un-crossing resets the
-        // flag (no haptic on un-arm, just visual de-fill).
-        if (isLastForwardPull && Math.abs(delta) > addArmThresholdPx) {
+        // Arm detection — measured on the RAW finger pull, NOT the
+        // post-resistance dragDelta. The previous implementation gated
+        // on |delta| > 0.58 × trackW, which (with the 0.5 resistance)
+        // required ~1.16 × container width of finger travel — more
+        // than a single swipe can produce, so the affordance never
+        // armed in practice. Now: arm at |ddx| (raw) > 0.58 × trackW,
+        // i.e. a deliberate ~60%-of-screen finger pull. The 0.5
+        // resistance still drives the affordance's visual slide-in
+        // via dragDelta.
+        const rawPull = Math.abs(ddx);
+        if (isLastForwardPull && rawPull > addArmThresholdPx) {
           if (!armedRef.current) {
             armedRef.current = true;
             haptic.light();
@@ -13899,7 +13906,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           setDragDelta(0);
           setCurrentDayId(newDayId);
         },
-      }), [safeIdx, days, animateSnap, setCurrentDayId]);
+        // Programmatic +1 add — used by the SoloDayPill's + button so
+        // pressing + animates the same forward slide the armed-swipe
+        // release does, instead of instant-jumping to the new day.
+        // Reuses the existing onAddDay handler (which itself reuses
+        // SoloDayPage's addDay — no parallel add logic). The + button
+        // only appears on the last day in the pill, so this is always
+        // a true +1 step from the current day. Falls back to an
+        // instant onAddDay when trackW hasn't measured yet.
+        animateAddDay: () => {
+          if (typeof onAddDay !== 'function') return;
+          if (!trackW) { onAddDay(); return; }
+          pendingAddDayRef.current = true;
+          armedRef.current = false;
+          setAnimating(true);
+          setDragDelta(-trackW);
+        },
+      }), [safeIdx, days, animateSnap, setCurrentDayId, trackW, onAddDay]);
 
       // Compose the track transform. base is percentage-based (so the
       // current slot lands at visual x=0); dragDelta is px-based (finger
@@ -14442,7 +14465,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             hasNext={!isLast}
             onPrev={goPrev}
             onNext={goNext}
-            onAdd={addDay}
+            onAdd={() => {
+              // Route the + button through the carousel's animateAddDay
+              // so adding a day visibly slides the new day in from the
+              // right (rather than instant-jumping the current day's
+              // form to the new one). Falls back to direct addDay if
+              // the carousel ref isn't ready yet — same behaviour as
+              // before, no regression.
+              if (carouselRef.current && carouselRef.current.animateAddDay) carouselRef.current.animateAddDay();
+              else addDay();
+            }}
             onViewCalc={() => setShowCalc(true)}
             isToday={currentDay?.date === todayISO()}
             comparisonUnit={userPrefs?.comparisonUnit}
