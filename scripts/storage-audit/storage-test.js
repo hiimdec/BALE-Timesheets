@@ -4242,6 +4242,8 @@ async function main() {
       /const onPointerDown = \(e\) => \{[\s\S]{0,1200}e\.target\.closest\('button, a, input, select, textarea, label'\)\)\s*\{[\s\S]{0,80}dragRef\.current\.active = false;[\s\S]{0,40}return;/.test(html));
     check('FF13b the guard bails BEFORE the drag-start assignment (tap passes straight through, no swipe)',
       /closest\('button, a, input, select, textarea, label'\)[\s\S]{0,120}return;\s*\}\s*dragRef\.current = \{\s*startX: e\.clientX/.test(html));
+    check('FF13c guarded branch only does active=false + return — never setDx, so a control tap leaves translate at 0',
+      /closest\('button, a, input, select, textarea, label'\)\)\s*\{\s*dragRef\.current\.active = false;\s*return;\s*\}/.test(html));
 
     // ─ FF14: SHEET-OPEN CLOSES AN OPEN SWIPE ROW — opening either action
     //   sheet first clears openSwipeRowId so a row left swiped open from a
@@ -4265,6 +4267,30 @@ async function main() {
     //   left, looking lopsided. rounded-l-xl rounds the left to match. ─
     check('FF15 swipe Delete button has rounded-l-xl (consistently rounded, not square-on-the-left)',
       /className="absolute right-0 top-0 bottom-0 rounded-l-xl bg-red-600 text-white text-\[12px\]/.test(html));
+
+    // ─ FF16: ACTION HIDDEN AT REST — the real fix for the "red peeking at
+    //   rest" bleed. The red button is permanently in the DOM behind the
+    //   foreground; relying on the rounded, GPU-promoted card to *cover* it
+    //   left a sub-pixel red fringe at the clipped rounded right corners that
+    //   showed with no drag at all (so the kebab tap "revealed" it and it
+    //   "stayed peeking" after a swipe). The button is now fully hidden
+    //   (visibility:hidden + pointer-events:none) at rest and only painted in
+    //   the gap a leftward translate opens (dx < 0). Combined with the
+    //   useEffect that resets dx→0 whenever the row is not open, clearing
+    //   openSwipeRowId on sheet-open force-closes the row immediately. ─
+    check('FF16a actionVisible derived strictly from a leftward translate (dx < 0)',
+      /const actionVisible = dx < 0;/.test(html));
+    check('FF16b Delete button is visibility:hidden at rest, visible only when actionVisible',
+      /visibility: actionVisible \? 'visible' : 'hidden'/.test(html));
+    check('FF16c Delete button is non-interactive at rest (pointer-events gated on actionVisible)',
+      /pointerEvents: actionVisible \? 'auto' : 'none'/.test(html));
+    check('FF16d sheet-open force-closes the row: useEffect resets dx→0 whenever the row is not open',
+      /React\.useEffect\(\(\) => \{\s*if \(!dragRef\.current\.active\) setDx\(isOpen \? -SWIPE_DELETE_WIDTH : 0\);\s*\}, \[isOpen\]\)/.test(html));
+    check('FF16e the at-rest hide is gated on dx (not on isOpen alone) — a residual/partial offset can never strand red',
+      // actionVisible MUST track dx, so any dx===0 (the only at-rest value)
+      // hides the button regardless of stale open state.
+      /const actionVisible = dx < 0;/.test(html) &&
+      !/const actionVisible = isOpen/.test(html));
   }
 
   // ===== GG. DAY CAROUSEL — source presence =====

@@ -19329,6 +19329,17 @@ const setDays = (updater) =>
         ? 'none'
         : (reduceMotion ? 'none' : 'transform 180ms ease');
 
+      // The red action layer is ONLY ever visible in the gap a leftward
+      // translate opens. At rest (dx === 0) it must be FULLY HIDDEN, not
+      // merely "covered" by the foreground: the foreground is a rounded,
+      // GPU-promoted (willChange:transform) card whose clipped rounded right
+      // corners leave a sub-pixel red fringe over the always-present button
+      // behind it — that hairline is the at-rest bleed, and it shows with no
+      // drag at all (so a control tap that never moves the card still "reveals"
+      // it). Gating visibility on dx < 0 means there is literally nothing to
+      // paint until the card actually slides and a real gap exists.
+      const actionVisible = dx < 0;
+
       return (
         <div className={`relative overflow-hidden ${className}`}>
           {/* Red Delete button — revealed behind the content layer.
@@ -19338,7 +19349,14 @@ const setDays = (updater) =>
           <button
             type="button"
             className="absolute right-0 top-0 bottom-0 rounded-l-xl bg-red-600 text-white text-[12px] font-bold uppercase tracking-wide flex flex-col items-center justify-center gap-1"
-            style={{ width: SWIPE_DELETE_WIDTH, WebkitTapHighlightColor: 'transparent' }}
+            style={{
+              width: SWIPE_DELETE_WIDTH,
+              WebkitTapHighlightColor: 'transparent',
+              // Fully concealed at rest — no paint, no fringe, not tabbable —
+              // until the card translates left and the gap opens (dx < 0).
+              visibility: actionVisible ? 'visible' : 'hidden',
+              pointerEvents: actionVisible ? 'auto' : 'none',
+            }}
             onClick={(e) => {
               e.stopPropagation();
               setOpenRowId(null);
