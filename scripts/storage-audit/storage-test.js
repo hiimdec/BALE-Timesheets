@@ -4208,8 +4208,8 @@ async function main() {
     //   replacement). ─
     check('FF9a production kebab still wired to setActionSheet',
       html.includes("setActionSheet(p)"));
-    check('FF9b invoice kebab still wired to setActionSheetTarget',
-      html.includes("setActionSheetTarget({ invoice, production })"));
+    check('FF9b invoice kebab still opens the action sheet (now via openInvoiceActionSheet → setActionSheetTarget)',
+      html.includes("openInvoiceActionSheet({ invoice, production })"));
     check('FF9c InvoiceRowActionSheet still uses its internal confirmDelete state (no behavioural change to the menu path)',
       html.includes('const [confirmDelete, setConfirmDelete] = useState(false);') &&
       html.includes('onConfirm={doDelete}'));
@@ -4230,6 +4230,41 @@ async function main() {
       /const \[openSwipeRowId, setOpenSwipeRowId\] = useState\(null\);[\s\S]{0,2000}confirmDelete = \(p\)/.test(html));
     check('FF12b AllInvoicesView owns openSwipeRowId + swipeConfirmDelete state',
       /const \[openSwipeRowId, setOpenSwipeRowId\] = useState\(null\);\s*const \[swipeConfirmDelete, setSwipeConfirmDelete\] = useState\(null\);/.test(html));
+
+    // ─ FF13: INTERACTIVE-CONTROL GUARD — a pointerdown that originates on
+    //   a nested control (the ⋯ kebab, Lunch/Wrap Now, links, form fields)
+    //   must NOT engage the swipe. Root cause of the kebab/swipe conflict:
+    //   stopPropagation on the control's onClick does nothing to the
+    //   pointerdown stream, so the swipe machinery on the content layer
+    //   still armed and the slightest jitter revealed the red Delete. The
+    //   guard bails (active=false + return) before drag tracking starts. ─
+    check('FF13a onPointerDown bails when the pointer starts on an interactive control',
+      /const onPointerDown = \(e\) => \{[\s\S]{0,1200}e\.target\.closest\('button, a, input, select, textarea, label'\)\)\s*\{[\s\S]{0,80}dragRef\.current\.active = false;[\s\S]{0,40}return;/.test(html));
+    check('FF13b the guard bails BEFORE the drag-start assignment (tap passes straight through, no swipe)',
+      /closest\('button, a, input, select, textarea, label'\)[\s\S]{0,120}return;\s*\}\s*dragRef\.current = \{\s*startX: e\.clientX/.test(html));
+
+    // ─ FF14: SHEET-OPEN CLOSES AN OPEN SWIPE ROW — opening either action
+    //   sheet first clears openSwipeRowId so a row left swiped open from a
+    //   prior gesture is never stranded half-revealed behind the sheet.
+    //   Both list screens route every kebab through a helper that does
+    //   setOpenSwipeRowId(null) before showing the sheet. ─
+    check('FF14a productions: openActionSheet clears the swipe row before opening the sheet',
+      /const openActionSheet = \(p\) => \{ setOpenSwipeRowId\(null\); setActionSheet\(p\); \};/.test(html));
+    check('FF14b all 3 production kebabs route through openActionSheet (no direct setActionSheet(p) at a kebab)',
+      (html.match(/openActionSheet\(p\)/g) || []).length >= 3 &&
+      !/e\.stopPropagation\(\); setActionSheet\(p\)/.test(html),
+      `openActionSheet(p) sites=${(html.match(/openActionSheet\(p\)/g) || []).length}`);
+    check('FF14c invoices: openInvoiceActionSheet clears the swipe row before opening the sheet',
+      /const openInvoiceActionSheet = \(target\) => \{ setOpenSwipeRowId\(null\); setActionSheetTarget\(target\); \};/.test(html));
+    check('FF14d invoice kebab routes through openInvoiceActionSheet (not a direct setActionSheetTarget)',
+      html.includes('openInvoiceActionSheet({ invoice, production })') &&
+      !/e\.stopPropagation\(\); setActionSheetTarget\(\{ invoice, production \}\)/.test(html));
+
+    // ─ FF15: DELETE BUTTON LEFT-CORNER RADIUS — the red reveal was rounded
+    //   on its right (container overflow-hidden clip) but square on the
+    //   left, looking lopsided. rounded-l-xl rounds the left to match. ─
+    check('FF15 swipe Delete button has rounded-l-xl (consistently rounded, not square-on-the-left)',
+      /className="absolute right-0 top-0 bottom-0 rounded-l-xl bg-red-600 text-white text-\[12px\]/.test(html));
   }
 
   // ===== GG. DAY CAROUSEL — source presence =====

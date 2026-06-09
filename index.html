@@ -19236,6 +19236,18 @@ const setDays = (updater) =>
 
       const onPointerDown = (e) => {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
+        // Interactive controls inside the row (the ⋯ kebab, Lunch/Wrap Now,
+        // links, form fields) own their own tap. A pointerdown that
+        // originates on one of them must NOT engage the swipe — otherwise the
+        // slightest finger jitter axis-locks to 'x' and reveals the red
+        // Delete button behind the very sheet the control just opened.
+        // `closest` on element-type selectors never matches the content layer
+        // itself (it's a <div role="button">, not a real <button>), so plain
+        // card taps still start the swipe normally.
+        if (e.target && e.target.closest && e.target.closest('button, a, input, select, textarea, label')) {
+          dragRef.current.active = false;
+          return;
+        }
         dragRef.current = {
           startX: e.clientX, startY: e.clientY, startDx: dx,
           active: true, axis: null, movedHorz: false, pointerId: e.pointerId,
@@ -19325,7 +19337,7 @@ const setDays = (updater) =>
               its own. */}
           <button
             type="button"
-            className="absolute right-0 top-0 bottom-0 bg-red-600 text-white text-[12px] font-bold uppercase tracking-wide flex flex-col items-center justify-center gap-1"
+            className="absolute right-0 top-0 bottom-0 rounded-l-xl bg-red-600 text-white text-[12px] font-bold uppercase tracking-wide flex flex-col items-center justify-center gap-1"
             style={{ width: SWIPE_DELETE_WIDTH, WebkitTapHighlightColor: 'transparent' }}
             onClick={(e) => {
               e.stopPropagation();
@@ -19384,6 +19396,9 @@ const setDays = (updater) =>
       // delete path uses — no new delete logic, just a second trigger.
       const [openSwipeRowId, setOpenSwipeRowId] = useState(null);
       const [swipeConfirmDelete, setSwipeConfirmDelete] = useState(null);
+      // Opening the invoice action sheet closes any swiped-open row so the
+      // red Delete reveal is never stranded behind the sheet.
+      const openInvoiceActionSheet = (target) => { setOpenSwipeRowId(null); setActionSheetTarget(target); };
 
       const todayMs = React.useMemo(() => new Date(todayISO() + 'T12:00:00').getTime(), []);
 
@@ -19547,7 +19562,7 @@ const setDays = (updater) =>
                         )}
                       </div>
                       <button
-                        onClick={e => { e.stopPropagation(); setActionSheetTarget({ invoice, production }); }}
+                        onClick={e => { e.stopPropagation(); openInvoiceActionSheet({ invoice, production }); }}
                         className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center flex-shrink-0 -mr-1 -mb-1"
                         style={{ minWidth: 28, minHeight: 28, WebkitTapHighlightColor: 'transparent' }}
                         aria-label="Invoice options">
@@ -19661,6 +19676,9 @@ const setDays = (updater) =>
       // owns the ConfirmDialog rendering — swipe simply hands it the row's
       // p just like the kebab → action sheet → Delete path does.
       const [openSwipeRowId, setOpenSwipeRowId] = useState(null);
+      // Opening the kebab action sheet always closes any row left swiped open,
+      // so the red Delete reveal is never stranded behind the sheet.
+      const openActionSheet = (p) => { setOpenSwipeRowId(null); setActionSheet(p); };
       const [showProductionPicker, setShowProductionPicker] = useState(false);
       const [showWizard, setShowWizard] = useState(false);
       const [searchOpen, setSearchOpen] = useState(false);
@@ -20000,7 +20018,7 @@ const confirmDelete = (p) => setConfirmOpts({
                     <LunchNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} variant="hero" className="flex-1" />
                     <WrapNowBtn days={p.days ?? []} setDays={cardSetDays} showToast={showToast} variant="hero" className="flex-1" />
                     <button
-                      onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
+                      onClick={(e) => { e.stopPropagation(); openActionSheet(p); }}
                       className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center flex-shrink-0"
                       style={{ minWidth: 44, minHeight: 44 }}
                       aria-label="Production options"
@@ -20010,7 +20028,7 @@ const confirmDelete = (p) => setConfirmOpts({
                 ) : (
                   <div className="flex justify-end mt-2" onClick={e => e.stopPropagation()}>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
+                      onClick={(e) => { e.stopPropagation(); openActionSheet(p); }}
                       className="text-neutral-600 hover:text-neutral-400 transition-colors rounded-lg hover:bg-neutral-800 flex items-center justify-center"
                       style={{ minWidth: 44, minHeight: 44 }}
                       aria-label="Production options"
@@ -20064,7 +20082,7 @@ const confirmDelete = (p) => setConfirmOpts({
               )}
               <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
               <button
-                onClick={(e) => { e.stopPropagation(); setActionSheet(p); }}
+                onClick={(e) => { e.stopPropagation(); openActionSheet(p); }}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800 flex-shrink-0 transition-colors"
                 aria-label="Production options"
                 title="Production options"
