@@ -13634,8 +13634,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const DAY_CAROUSEL_DRAG_AXIS_PX = 6;       // axis-lock threshold
     const DAY_CAROUSEL_FLICK_VELOCITY = 0.5;   // px/ms → 500 px/s
     const DAY_CAROUSEL_SNAP_DURATION = 220;    // ms (matches mock)
-    const DAY_CAROUSEL_EDGE_RESIST = 0.3;      // rubber-band factor at list edges
-    const DayCarousel = React.forwardRef(function DayCarousel({ days, currentDayId, setCurrentDayId, renderDay }, ref) {
+    const DAY_CAROUSEL_EDGE_RESIST = 0.3;      // rubber-band factor at list edges (first-day backward pull)
+    // Add-day over-pull: softer than the first-day rubber-band so the
+    // "+ Add day" affordance reveals with the finger rather than feeling
+    // like wading through molasses, but the ARM threshold is DELIBERATELY
+    // beyond a normal swipe (0.58 vs 0.33 — well over 2× the snap-forward
+    // threshold) so a casual swipe at the end still just rubber-bands back.
+    const DAY_CAROUSEL_ADD_DAY_RESIST = 0.5;
+    const DAY_CAROUSEL_ADD_ARM_FRACTION = 0.58; // fraction of container width on POST-resistance dragDelta
+    const DayCarousel = React.forwardRef(function DayCarousel({ days, currentDayId, setCurrentDayId, onAddDay, renderDay }, ref) {
       const currentIdx = days.findIndex(d => d.id === currentDayId);
       const safeIdx = currentIdx < 0 ? 0 : currentIdx;
 
@@ -13681,6 +13688,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         history: [],
       });
       const pendingCommitRef = React.useRef(null);
+      // Add-day over-pull: the affordance arms when the post-resistance
+      // dragDelta crosses the threshold; haptic.light() fires on the
+      // arm transition; pendingAddDayRef gates the commit at transition
+      // end (separate path from pendingCommitRef so the existing snap
+      // commit doesn't accidentally try to setCurrentDayId with a non-
+      // -existent day id).
+      const [addDayArmed, setAddDayArmed] = React.useState(false);
+      const pendingAddDayRef = React.useRef(false);
+      const armedRef = React.useRef(false);
+
+      // Add-day arm threshold in px. Derived from container width: 58%
+      // of the container after applying the 0.5 resistance — about 1.16×
+      // a full finger-drag of the container width, which is hard to do
+      // accidentally during a quick day-to-day swipe.
+      const addArmThresholdPx = trackW * DAY_CAROUSEL_ADD_ARM_FRACTION;
 
       const reduceMotion = React.useMemo(() => {
         if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -13736,11 +13758,35 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (d.axis !== 'x') return;
         d.movedHorz = true;
         e.preventDefault();
-        // Edge resistance — rubber band when swiping past first/last day.
+        // Edge handling — rubber band on first-day-backward (no add path),
+        // softer "stretchy pull" on last-day-forward (reveals the add-day
+        // affordance for a deliberate add-day gesture).
         let delta = ddx;
         const atFirst = safeIdx === 0;
         const atLast = safeIdx === days.length - 1;
-        if ((atFirst && delta > 0) || (atLast && delta < 0)) delta = delta * DAY_CAROUSEL_EDGE_RESIST;
+        const isLastForwardPull = atLast && delta < 0 && typeof onAddDay === 'function';
+        if (atFirst && delta > 0) {
+          delta = delta * DAY_CAROUSEL_EDGE_RESIST;
+        } else if (isLastForwardPull) {
+          delta = delta * DAY_CAROUSEL_ADD_DAY_RESIST;
+        } else if (atLast && delta < 0) {
+          // Last-day-forward but no onAddDay handler — fall back to the
+          // original rubber-band so the list still feels bounded.
+          delta = delta * DAY_CAROUSEL_EDGE_RESIST;
+        }
+        // Arm detection for the add-day affordance. Crossing the
+        // threshold fires haptic.light once; un-crossing resets the
+        // flag (no haptic on un-arm, just visual de-fill).
+        if (isLastForwardPull && Math.abs(delta) > addArmThresholdPx) {
+          if (!armedRef.current) {
+            armedRef.current = true;
+            haptic.light();
+            setAddDayArmed(true);
+          }
+        } else if (armedRef.current) {
+          armedRef.current = false;
+          setAddDayArmed(false);
+        }
         // Track velocity sample window (last ~80ms).
         d.history.push({ t: e.timeStamp, x: e.clientX });
         while (d.history.length > 1 && e.timeStamp - d.history[0].t > 80) d.history.shift();
@@ -13751,7 +13797,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const d = dragRef.current;
         if (!d.active || e.pointerId !== d.pointerId) return;
         d.active = false;
-        if (d.axis !== 'x' || !trackW) { setDragDelta(0); return; }
+        if (d.axis !== 'x' || !trackW) {
+          setDragDelta(0);
+          if (armedRef.current) { armedRef.current = false; setAddDayArmed(false); }
+          return;
+        }
         // Velocity over the recent sample window.
         let velocity = 0;
         if (d.history.length >= 2) {
@@ -13763,17 +13813,35 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const distanceThreshold = trackW / 3;
         const atFirst = safeIdx === 0;
         const atLast = safeIdx === days.length - 1;
+        // PRIORITY 1: add-day commit. Only at last day, forward pull,
+        // armed (i.e. user pulled past the deliberate add threshold).
+        // Snap-advance the carousel (animate dragDelta to -trackW so the
+        // affordance sweeps fully into view); the existing addDay handler
+        // fires in onTransitionEnd, append-and-focus-new-day in a single
+        // state batch. medium impact fires on commit; armed flag clears.
+        if (atLast && armedRef.current && typeof onAddDay === 'function') {
+          pendingAddDayRef.current = true;
+          armedRef.current = false;
+          setAnimating(true);
+          setDragDelta(-trackW);
+          return;
+        }
+        // PRIORITY 2: normal day-to-day snap (forward/backward).
         let targetId = null;
-        // Forward swipe: drag left or flick left.
         if ((velocity < -DAY_CAROUSEL_FLICK_VELOCITY || dragDelta < -distanceThreshold) && !atLast) {
           targetId = days[safeIdx + 1].id;
-        }
-        // Backward swipe: drag right or flick right.
-        else if ((velocity > DAY_CAROUSEL_FLICK_VELOCITY || dragDelta > distanceThreshold) && !atFirst) {
+        } else if ((velocity > DAY_CAROUSEL_FLICK_VELOCITY || dragDelta > distanceThreshold) && !atFirst) {
           targetId = days[safeIdx - 1].id;
         }
-        if (targetId != null) animateSnap(targetId);
-        else animateSpringBack();
+        if (targetId != null) {
+          animateSnap(targetId);
+        } else {
+          animateSpringBack();
+        }
+        // Clear the visual armed state on any non-armed release (a small
+        // over-pull that didn't reach the threshold rubber-bands cleanly).
+        if (armedRef.current) { armedRef.current = false; }
+        if (addDayArmed) setAddDayArmed(false);
       };
 
       const onPointerCancel = (e) => {
@@ -13782,6 +13850,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         d.active = false;
         if (d.axis === 'x') animateSpringBack();
         else setDragDelta(0);
+        // Always reset the armed flag on cancel — there's no commit path
+        // from a cancelled pointer.
+        if (armedRef.current) armedRef.current = false;
+        if (addDayArmed) setAddDayArmed(false);
       };
 
       // On transitionend (snap finished), commit AND zero the dragDelta in
@@ -13790,7 +13862,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // exact visible position the swipe released to. No flicker.
       const onTransitionEnd = (e) => {
         if (e.propertyName !== 'transform') return;
-        if (pendingCommitRef.current) {
+        if (pendingAddDayRef.current) {
+          // Add-day commit. Same atomic-batch pattern as the regular snap
+          // commit: zero dragDelta, stop animating, call the EXISTING
+          // addDay handler (which appends a new day + flips
+          // setCurrentDayId to it). Once React re-renders, the new day is
+          // current, the window is [oldCurrent, newDay], currentSlotIdx is
+          // 1 again, basePercent is -50% — visually the freshly added day
+          // lands at the same x=0 the affordance was sweeping into. The
+          // medium impact fires alongside.
+          pendingAddDayRef.current = false;
+          setAnimating(false);
+          setDragDelta(0);
+          setAddDayArmed(false);
+          haptic.medium();
+          if (typeof onAddDay === 'function') onAddDay();
+        } else if (pendingCommitRef.current) {
           const newDayId = pendingCommitRef.current;
           pendingCommitRef.current = null;
           setAnimating(false);
@@ -13871,6 +13958,47 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               );
             })}
           </div>
+          {/* + Add day affordance — only at the last day, only forward
+              pull, only when onAddDay is wired. Lives as an absolute
+              sibling of the track at left:100% (off-screen right by one
+              container width) and translates LEFT with dragDelta as the
+              user pulls past the end. pointer-events:none so it never
+              intercepts the gesture itself; the carousel root owns the
+              pointer handlers. Visual state — fill, ring, label, scale
+              — flips at the armed threshold (also synced with the
+              haptic.light marker fired in onPointerMove). */}
+          {safeIdx === days.length - 1 && typeof onAddDay === 'function' && (
+            <div
+              className="absolute top-0 bottom-0 flex items-center justify-center pointer-events-none"
+              style={{
+                left: '100%',
+                width: '100%',
+                transform: `translate3d(${dragDelta}px, 0, 0)`,
+                transition: transitionStyle,
+                willChange: 'transform',
+              }}
+              aria-hidden="true"
+            >
+              <div
+                className={`flex flex-col items-center gap-2 px-6 py-8 rounded-2xl border-2 transition-colors ${
+                  addDayArmed
+                    ? 'border-sky-500 bg-sky-500/10 text-sky-300'
+                    : 'border-neutral-700 bg-neutral-900/40 text-neutral-500'
+                }`}
+                style={{
+                  // Subtle scale-up at armed for tactile feedback. Skip
+                  // the transform transition under reduce-motion.
+                  transform: addDayArmed ? 'scale(1.04)' : 'scale(1)',
+                  transition: reduceMotion ? 'none' : 'transform 140ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+                }}
+              >
+                <IPlus size={22} strokeWidth={2.4} />
+                <div className="text-[11px] uppercase tracking-[0.18em] font-bold">
+                  {addDayArmed ? 'Release to add day' : 'Pull to add day'}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     });
@@ -14201,6 +14329,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             days={sortedDays}
             currentDayId={currentDayId}
             setCurrentDayId={setCurrentDayId}
+            onAddDay={addDay}
             renderDay={(day, dayIdxInList) => {
               const dayOnChange = (updatedDay) => {
                 setDays(prev => prev.map(d => d.id === day.id ? updatedDay : d));

@@ -4242,8 +4242,8 @@ async function main() {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
 
     // ─ GG1: component declared with forwardRef + imperative API. ─
-    check('GG1a DayCarousel declared as React.forwardRef',
-      /const DayCarousel\s*=\s*React\.forwardRef\(function DayCarousel\(\{ days, currentDayId, setCurrentDayId, renderDay \}, ref\)/.test(html));
+    check('GG1a DayCarousel declared as React.forwardRef (with onAddDay added in HH)',
+      /const DayCarousel\s*=\s*React\.forwardRef\(function DayCarousel\(\{ days, currentDayId, setCurrentDayId,\s*onAddDay,\s*renderDay \}, ref\)/.test(html));
     check('GG1b DayCarousel exposes snapPrev / snapNext / jumpTo via useImperativeHandle',
       /React\.useImperativeHandle\(ref,\s*\(\) => \(\{[\s\S]{0,500}snapPrev[\s\S]{0,500}snapNext[\s\S]{0,500}jumpTo/.test(html));
 
@@ -4278,8 +4278,13 @@ async function main() {
       /velocity > DAY_CAROUSEL_FLICK_VELOCITY \|\| dragDelta > distanceThreshold/.test(html));
     check('GG5b distanceThreshold = trackW / 3',
       /const distanceThreshold = trackW \/ 3/.test(html));
-    check('GG5c edge rubber-band when swiping past first/last',
-      /if \(\(atFirst && delta > 0\) \|\| \(atLast && delta < 0\)\) delta = delta \* DAY_CAROUSEL_EDGE_RESIST/.test(html));
+    check('GG5c edge rubber-band when swiping past first/last (first-back still uses EDGE_RESIST; last-fwd now uses ADD_DAY_RESIST when onAddDay is wired, EDGE_RESIST otherwise)',
+      // The single OR'd condition was split into branches when add-day
+      // over-pull arrived (HH). The first-day backward still uses
+      // EDGE_RESIST, and there's still a last-day-forward EDGE_RESIST
+      // fallback path when no onAddDay is wired.
+      /atFirst && delta > 0\) \{\s*delta = delta \* DAY_CAROUSEL_EDGE_RESIST/.test(html) &&
+      /atLast && delta < 0\) \{[\s\S]{0,200}delta = delta \* DAY_CAROUSEL_EDGE_RESIST/.test(html));
     check('GG5d DAY_CAROUSEL constants declared (FLICK_VELOCITY, EDGE_RESIST, SNAP_DURATION)',
       /const DAY_CAROUSEL_FLICK_VELOCITY[\s\S]{0,200}const DAY_CAROUSEL_SNAP_DURATION[\s\S]{0,200}const DAY_CAROUSEL_EDGE_RESIST/.test(html));
 
@@ -4288,7 +4293,9 @@ async function main() {
     check('GG6a animateSnap stages targetDayId in pendingCommitRef, NOT calling setCurrentDayId',
       /animateSnap[\s\S]{0,400}pendingCommitRef\.current = targetDayId[\s\S]{0,200}setAnimating\(true\)[\s\S]{0,100}setDragDelta\(dir \* trackW\)/.test(html));
     check('GG6b transitionend commits currentDayId AFTER the snap finishes (commit-after-settle)',
-      /onTransitionEnd = \(e\) => \{[\s\S]{0,400}pendingCommitRef\.current[\s\S]{0,400}setCurrentDayId\(newDayId\)/.test(html));
+      // The HH add-day branch was added BEFORE the existing
+      // pendingCommitRef branch — bump the window to clear it.
+      /onTransitionEnd = \(e\) => \{[\s\S]{0,1500}pendingCommitRef\.current[\s\S]{0,400}setCurrentDayId\(newDayId\)/.test(html));
     check('GG6c onPointerMove does NOT call setCurrentDayId (no mid-gesture commit)',
       // The only setCurrentDayId call inside the carousel comes from
       // onTransitionEnd or jumpTo. Movement just updates dragDelta.
@@ -4327,8 +4334,8 @@ async function main() {
       /const goNext = \(\) => carouselRef\.current && carouselRef\.current\.snapNext\(\)/.test(html));
     check('GG8c handleDayJump uses snapPrev/Next for adjacent + jumpTo for far',
       /handleDayJump = \(newDayId\) =>[\s\S]{0,400}carouselRef\.current\.snapNext\(\)[\s\S]{0,200}carouselRef\.current\.snapPrev\(\)[\s\S]{0,200}carouselRef\.current\.jumpTo\(newDayId\)/.test(html));
-    check('GG8d <DayCarousel ref={carouselRef} ... /> rendered in SoloDayPage with renderDay',
-      /<DayCarousel\s+ref=\{carouselRef\}\s+days=\{sortedDays\}\s+currentDayId=\{currentDayId\}\s+setCurrentDayId=\{setCurrentDayId\}\s+renderDay=\{/.test(html));
+    check('GG8d <DayCarousel ref={carouselRef} ... /> rendered in SoloDayPage with renderDay (onAddDay added in HH)',
+      /<DayCarousel\s+ref=\{carouselRef\}\s+days=\{sortedDays\}\s+currentDayId=\{currentDayId\}\s+setCurrentDayId=\{setCurrentDayId\}\s+onAddDay=\{addDay\}\s+renderDay=\{/.test(html));
 
     // ─ GG9: prefers-reduced-motion respected on snap transition. ─
     check('GG9 reduce-motion read + applied to snap transition (transition:none when set)',
@@ -4371,6 +4378,107 @@ async function main() {
       // would never see.
       /minHeight:\s*'calc\(100dvh\s*-\s*11rem\)'\s*\}\}[\s\S]{0,200}onPointerDown=\{onPointerDown\}/.test(html));
   }
+
+  // ===== HH. DAY CAROUSEL ADD-DAY (over-pull) — source presence =====
+  // A NEW trigger for the existing addDay handler. The deliberate arm
+  // threshold + commit-only-when-armed ensures a casual swipe at the
+  // end can't accidentally add a day. Source presence verifies the
+  // gesture surface is wired correctly AND that no parallel add path
+  // was introduced — the swipe just calls SoloDayPage's existing
+  // addDay (which appends current+1 + flips setCurrentDayId).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ HH1: tuning constants exist, AND the arm threshold is
+    //   DELIBERATELY larger than the normal snap threshold (1/3 width).
+    //   Without this gap, a quick swipe at the last day could fire add. ─
+    check('HH1a DAY_CAROUSEL_ADD_DAY_RESIST constant declared',
+      /const DAY_CAROUSEL_ADD_DAY_RESIST\s*=\s*0\.5/.test(html));
+    check('HH1b DAY_CAROUSEL_ADD_ARM_FRACTION constant declared (0.58)',
+      /const DAY_CAROUSEL_ADD_ARM_FRACTION\s*=\s*0\.58/.test(html));
+    check('HH1c arm fraction is DELIBERATELY > normal snap threshold (1/3)',
+      // 0.58 vs the existing distanceThreshold of trackW / 3 (~0.333).
+      0.58 > 1 / 3);
+
+    // ─ HH2: the swipe reuses SoloDayPage's EXISTING addDay handler.
+    //   The carousel accepts it as the `onAddDay` prop and SoloDayPage
+    //   passes its existing addDay function. NO parallel add path. ─
+    check('HH2a DayCarousel signature accepts onAddDay prop',
+      /function DayCarousel\(\{ days, currentDayId, setCurrentDayId,\s*onAddDay,\s*renderDay \},\s*ref\)/.test(html));
+    check('HH2b SoloDayPage passes existing addDay as onAddDay',
+      /<DayCarousel[\s\S]{0,300}onAddDay=\{addDay\}/.test(html));
+    check('HH2c addDay handler unchanged — still appends current+1 and flips setCurrentDayId',
+      /const addDay = \(\) => \{[\s\S]{0,1500}setDays\(prev => \[\.\.\.prev, augmented\]\);\s*setCurrentDayId\(augmented\.id\);/.test(html));
+    check('HH2d the SoloDayPill\'s onAdd still uses the SAME handler (one source of truth)',
+      // Both the bottom-pill + button and the over-pull gesture call
+      // addDay — no parallel implementation.
+      html.includes('onAdd={addDay}'));
+
+    // ─ HH3: arm + commit logic only fires for last-day-forward pull. ─
+    check('HH3a isLastForwardPull guard (atLast && delta < 0 && typeof onAddDay === "function")',
+      /const isLastForwardPull = atLast && delta < 0 && typeof onAddDay === 'function'/.test(html));
+    check('HH3b first-day backward pull keeps original rubber-band (EDGE_RESIST)',
+      /atFirst && delta > 0\) \{\s*delta = delta \* DAY_CAROUSEL_EDGE_RESIST/.test(html));
+    check('HH3c last-day forward uses softer ADD_DAY_RESIST (not edge rubber-band)',
+      /isLastForwardPull\) \{\s*delta = delta \* DAY_CAROUSEL_ADD_DAY_RESIST/.test(html));
+    check('HH3d arm fires only when isLastForwardPull AND |delta| > armThreshold',
+      /if \(isLastForwardPull && Math\.abs\(delta\) > addArmThresholdPx\)/.test(html));
+
+    // ─ HH4: commit only fires on release WHILE ARMED. A pull that crosses
+    //   the threshold but is dragged back below it before release must
+    //   spring back, not add. armedRef is reset when |delta| drops below
+    //   the threshold in onPointerMove. ─
+    check('HH4a armedRef tracks arm transitions; haptic.light() once per arm',
+      /if \(!armedRef\.current\) \{\s*armedRef\.current = true;\s*haptic\.light\(\);\s*setAddDayArmed\(true\);/.test(html));
+    check('HH4b armedRef resets when dragged back below the threshold',
+      /\} else if \(armedRef\.current\) \{\s*armedRef\.current = false;\s*setAddDayArmed\(false\)/.test(html));
+    check('HH4c onPointerUp commits ONLY when armedRef.current at release time',
+      /if \(atLast && armedRef\.current && typeof onAddDay === 'function'\) \{[\s\S]{0,400}pendingAddDayRef\.current = true/.test(html));
+    check('HH4d non-armed release at last-day-forward falls through to spring-back (no add)',
+      // The normal-snap branch is gated on !atLast for forward, so an
+      // unarmed forward release on the LAST day reaches the
+      // "else animateSpringBack()" branch.
+      /\&\& !atLast/.test(html));
+
+    // ─ HH5: snap-to-new-day is a deferred commit at transitionend.
+    //   Sequencing: pendingAddDayRef set → dragDelta animates to -trackW
+    //   → transitionend fires haptic.medium() and calls onAddDay(). The
+    //   addDay handler then setDays appends the new day and
+    //   setCurrentDayId flips to it; window recomputes to put the new
+    //   (now-last) day at currentSlotIdx=1, basePercent=-50%, the
+    //   freshly-zeroed dragDelta lands the new day at x=0. ─
+    check('HH5a armed release sets pendingAddDayRef + animates dragDelta to -trackW',
+      /pendingAddDayRef\.current = true;\s*armedRef\.current = false;\s*setAnimating\(true\);\s*setDragDelta\(-trackW\)/.test(html));
+    check('HH5b transitionend handles pendingAddDayRef → calls onAddDay() + haptic.medium()',
+      /if \(pendingAddDayRef\.current\) \{[\s\S]{0,1500}haptic\.medium\(\);[\s\S]{0,200}if \(typeof onAddDay === 'function'\) onAddDay\(\)/.test(html));
+    check('HH5c commit batch zeroes dragDelta + clears armed visual state',
+      /pendingAddDayRef\.current = false;\s*setAnimating\(false\);\s*setDragDelta\(0\);\s*setAddDayArmed\(false\)/.test(html));
+
+    // ─ HH6: arm + commit haptics (the user feels both moments). ─
+    check('HH6a haptic.light() fires on arm transition',
+      /armedRef\.current = true;\s*haptic\.light\(\);/.test(html));
+    check('HH6b haptic.medium() fires on commit (inside transitionend\'s pendingAddDayRef branch)',
+      /pendingAddDayRef\.current = false;[\s\S]{0,200}haptic\.medium\(\)/.test(html));
+
+    // ─ HH7: the affordance is rendered ONLY at the last day. ─
+    check('HH7a affordance renders only when safeIdx === days.length - 1',
+      /safeIdx === days\.length - 1 && typeof onAddDay === 'function' && \(/.test(html));
+    check('HH7b affordance sits off-screen right via left:100% + translates with dragDelta',
+      /left:\s*'100%',[\s\S]{0,150}transform: `translate3d\(\$\{dragDelta\}px, 0, 0\)`/.test(html));
+    check('HH7c affordance has pointer-events:none (never intercepts the gesture)',
+      /className="absolute top-0 bottom-0 flex items-center justify-center pointer-events-none"/.test(html));
+    check('HH7d affordance label flips between "Pull to add day" and "Release to add day"',
+      html.includes("'Release to add day'") && html.includes("'Pull to add day'"));
+
+    // ─ HH8: prefers-reduced-motion. The carousel's existing reduceMotion
+    //   computation drives BOTH the spring-back and the snap-to-new-day
+    //   (same transitionStyle); the affordance's inner scale + colour
+    //   transitions are also gated on reduceMotion. ─
+    check('HH8a affordance inner transform/transitions skip when reduceMotion',
+      /reduceMotion \? 'none' : 'transform 140ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease'/.test(html));
+  }
+
+  // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
