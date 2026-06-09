@@ -3463,7 +3463,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
       setProduction(p => ({ ...p, invoices: [...(p.invoices || []), invoice] }));
       setUserPrefs(prev => ({ ...prev, invoiceNextNumber: num + 1 }));
-      return newId;
+      // Return the invoice OBJECT (not just the id) so callers that need to act
+      // on it in the same tick — e.g. the solo skip-editor CSV export — can,
+      // without reading back through the async setProduction. Existing callers
+      // use `.id`. The object IS the one pushed into production.invoices.
+      return invoice;
     }
 
     function resolveCrewForDay(resolvedDay, crewMember) {
@@ -13470,6 +13474,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay, onGenerateInvoice, userPrefs }) {
+      // Format-aware "Generate Invoice" CTA (solo skip-editor export): the
+      // two-line pill label reflects userPrefs.invoiceExportFormat. The action
+      // itself is supplied by the caller (onGenerateInvoice → generateOrExport).
+      const _genFmt = (userPrefs && userPrefs.invoiceExportFormat) || 'timemachine';
+      const genTop = _genFmt === 'timemachine' ? 'GENERATE' : _genFmt === 'csv' ? 'EXPORT' : 'EXPORT TO';
+      const genBottom = _genFmt === 'timemachine' ? 'INVOICE' : _genFmt === 'xero' ? 'XERO' : _genFmt === 'quickbooks' ? 'QUICKBOOKS' : 'CSV';
+      const genAria = _genFmt === 'timemachine' ? 'Generate invoice' : _genFmt === 'xero' ? 'Export to Xero' : _genFmt === 'quickbooks' ? 'Export to QuickBooks' : 'Export CSV';
       const sorted = useMemo(() => [...days].sort((a, b) => {
         const dc = (a.date || '').localeCompare(b.date || '');
         return dc !== 0 ? dc : (a.crewId > b.crewId ? 1 : -1);
@@ -13753,12 +13764,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   icon: <IFile size={16} strokeWidth={2.5} />,
                   onClick: onGenerateInvoice,
                   variant: 'add',
-                  ariaLabel: 'Generate invoice',
+                  ariaLabel: genAria,
                 } : null}
                 onCenterClick={onGenerateInvoice}
               >
-                <div className="tm-pill-topline">GENERATE</div>
-                <div className="tm-pill-amount">INVOICE</div>
+                <div className="tm-pill-topline">{genTop}</div>
+                <div className="tm-pill-amount">{genBottom}</div>
                 <div className="tm-pill-compare">→ {fmtGBP(total)} · {uniqueDayCount} {uniqueDayCount === 1 ? 'day' : 'days'}</div>
               </Pill>
             </div>
@@ -14606,6 +14617,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [pendingDeepLink] = useState(() => initialInvoiceId || null);
       const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
       const [soloExportState, setSoloExportState] = useState(null);
+      // Skip-editor CSV export (solo only): the resolved invoice awaiting the
+      // export confirm, and (rarely) one whose recompute diverges from its
+      // stored lines (fidelity guard). Both hold the invoice OBJECT or null.
+      const [exportConfirm, setExportConfirm] = useState(null);
+      const [exportWarn, setExportWarn] = useState(null);
 
       // Deep-link: open specific invoice on mount when launched from AllInvoicesView
       useEffect(() => {
@@ -14659,10 +14675,50 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (target) {
           setInvoiceNav(target.id);
         } else {
-          const newId = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, soloCrew?.id);
-          setInvoiceNav(newId);
+          const inv = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, soloCrew?.id);
+          setInvoiceNav(inv.id);
         }
       };
+
+      // Skip-editor CSV export (solo). The "Generate Invoice" CTA branches on
+      // the chosen export format:
+      //   'timemachine' → openInvoiceFromButton() (open the editor) — UNCHANGED.
+      //   xero/quickbooks/csv → resolve the shoot's invoice with the SAME
+      //     reuse-first logic as openInvoiceFromButton (reuse latest draft, else
+      //     last invoice, else create one — never mints an extra invoice / burns
+      //     a number on repeat exports), then show the export confirm. The
+      //     invoice's status is NOT touched (no freeze/send) — deliberately
+      //     manual; the user tracks their own.
+      const resolveInvoiceForExport = () => {
+        const invoices = production.invoices || [];
+        const latestDraft = [...invoices].reverse().find(inv => inv.status === "draft");
+        return latestDraft
+          || invoices[invoices.length - 1]
+          || createNewInvoice(production, setProduction, userPrefs, setUserPrefs, soloCrew?.id);
+      };
+      // Write the file via the EXISTING export functions — same path
+      // handleExport uses (artifact → formatters → figures → deliver).
+      const runExport = (inv) => {
+        const art = invoiceExportArtifact(inv, production, userPrefs);
+        if (!art) return; // 'timemachine' has no artifact — handled before here
+        deliverTextFile(art.filename, art.content, art.mime)
+          .then(() => showToast(`Exported ${art.filename}`))
+          .catch((e) => { try { console.error('Invoice export failed', e); } catch (_) {} });
+      };
+      const generateOrExport = () => {
+        const fmt = (userPrefs && userPrefs.invoiceExportFormat) || 'timemachine';
+        if (fmt === 'timemachine') { openInvoiceFromButton(); return; }
+        setExportConfirm(resolveInvoiceForExport());
+      };
+      // Format-aware label for the export-sheet "Generate invoice" button.
+      // (The CalcBreakdownView pill computes its own two-line label internally.)
+      const exportSheetCtaLabel = (() => {
+        const fmt = (userPrefs && userPrefs.invoiceExportFormat) || 'timemachine';
+        return fmt === 'xero' ? 'Export to Xero'
+          : fmt === 'quickbooks' ? 'Export to QuickBooks'
+          : fmt === 'csv' ? 'Export CSV'
+          : 'Generate invoice';
+      })();
 
       const totalShoot = useMemo(() => {
         return days.reduce((sum, d) => {
@@ -14924,7 +14980,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               crew={crew}
               total={totalShoot}
               onClose={() => setShowCalc(false)}
-              onGenerateInvoice={() => { setShowCalc(false); openInvoiceFromButton(); }}
+              onGenerateInvoice={() => { setShowCalc(false); generateOrExport(); }}
               onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
               onExportText={async () => { setShowCalc(false); await handleExportText(); }}
               onPickDay={(dayId) => setCurrentDayId(dayId)}
@@ -15000,10 +15056,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <IMessage size={15}/>Timesheet (Text)
               </button>
               <button type="button"
-                onClick={() => { setShowExportSheet(false); openInvoiceFromButton(); }}
+                onClick={() => { setShowExportSheet(false); generateOrExport(); }}
                 className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <IReceipt size={15}/>Generate invoice
+                <IReceipt size={15}/>{exportSheetCtaLabel}
               </button>
             </div>
             <div className="px-4 pb-4 pt-1 border-t border-neutral-800">
@@ -15012,6 +15068,48 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
             </div>
           </Sheet>
+
+          {/* Skip-editor CSV export — confirm (number · client · total at the
+              export rounding · format). Export writes the file; Cancel aborts.
+              The invoice's status is NOT changed (no freeze/send). */}
+          {exportConfirm && (() => {
+            const fmt = (userPrefs && userPrefs.invoiceExportFormat) || 'timemachine';
+            const fmtName = fmt === 'xero' ? 'Xero' : fmt === 'quickbooks' ? 'QuickBooks' : 'CSV';
+            const title = fmt === 'csv' ? 'Export CSV' : `Export to ${fmtName}`;
+            const clientLine = (exportConfirm.toName || '').trim()
+              || ((fmt === 'xero' || fmt === 'quickbooks') ? `No client set — add it in ${fmtName}` : 'No client set');
+            const total = fmtGBP(invoiceExportFigures(exportConfirm, production, userPrefs).total);
+            return (
+              <ConfirmDialog
+                open
+                title={title}
+                message={`${exportConfirm.invoiceNumber} · ${clientLine} · ${total}`}
+                confirmLabel="Export" confirmTone="primary" cancelLabel="Cancel"
+                onConfirm={() => {
+                  const inv = exportConfirm;
+                  setExportConfirm(null);
+                  // Same fidelity guard handleExport uses — surfaces a diverging
+                  // (hand-edited) invoice before writing instead of silently exporting.
+                  if (!invoiceExportReproducesSent(inv, production, userPrefs)) { setExportWarn(inv); return; }
+                  runExport(inv);
+                }}
+                onCancel={() => setExportConfirm(null)}
+              />
+            );
+          })()}
+
+          {/* Fidelity guard for the reused draft (rare): its stored lines don't
+              match the recompute (hand-edited). Surfaced, not silently exported. */}
+          {exportWarn && (
+            <ConfirmDialog
+              open
+              title="Invoice was hand-edited"
+              message="This invoice's lines were edited in the editor, so the export is recomputed from current shoot data and may not match. Export anyway?"
+              confirmLabel="Export anyway" confirmTone="primary" cancelLabel="Cancel"
+              onConfirm={() => { const inv = exportWarn; setExportWarn(null); runExport(inv); }}
+              onCancel={() => setExportWarn(null)}
+            />
+          )}
 
           {/* Solo PrintView portal */}
           {soloExportState && soloCrew && (
@@ -19248,8 +19346,8 @@ const setDays = (updater) =>
 
       const handleNewInvoice = () => {
         if (!userCrewId) { showToast("No crew member — check Settings → My Setup"); return; }
-        const newId = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
-        onOpenInvoice(newId);
+        const inv = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
+        onOpenInvoice(inv.id);
       };
 
       return (
@@ -20947,8 +21045,8 @@ const confirmDelete = (p) => setConfirmOpts({
         // bail if the shoot has no crew at all.
         const userCrewId = userCrewIdsInProduction(production, userPrefs)[0] ?? production.crew?.[0]?.id ?? null;
         if (!userCrewId) return;
-        const newInvoiceId = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
-        openProduction(productionId, { invoiceId: newInvoiceId });
+        const newInvoice = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
+        openProduction(productionId, { invoiceId: newInvoice.id });
       };
       const deleteProduction = (id) => {
         setProductions((prev) => prev.filter((p) => p.id !== id));

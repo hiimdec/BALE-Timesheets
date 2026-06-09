@@ -5130,6 +5130,75 @@ async function main() {
       !/<Select value=\{userPrefs\.invoiceExportRounding/.test(html));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // PP — Skip-the-editor CSV export (SOLO only)
+  //
+  // The solo "Generate Invoice" CTA branches on userPrefs.invoiceExportFormat:
+  // 'timemachine' opens the editor exactly as before; xero/quickbooks/csv
+  // resolve the shoot's invoice (reuse-first, no extra number burn), show a
+  // confirm, then export via the EXISTING export functions — leaving the
+  // invoice's status untouched (no freeze/send). Reuses createNewInvoice
+  // (now returns the object) + invoiceExportArtifact/Figures/guard/deliver.
+  // Best Boy is out of scope. Source-presence only.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    // ─ PP1: createNewInvoice returns the OBJECT; callers use .id ─
+    check('PP1a createNewInvoice returns the invoice object (not just the id)',
+      /function createNewInvoice\([\s\S]{0,3200}setUserPrefs\(prev => \(\{ \.\.\.prev, invoiceNextNumber: num \+ 1 \}\)\);[\s\S]{0,500}return invoice;/.test(html) &&
+      !/function createNewInvoice\([\s\S]{0,3600}return newId;/.test(html));
+    check('PP1b the three existing callers read .id off the returned object',
+      /createNewInvoice\(production, setProduction, userPrefs, setUserPrefs, soloCrew\?\.id\);\s*setInvoiceNav\(inv\.id\)/.test(html) &&
+      /const inv = createNewInvoice\([^)]*userCrewId\);\s*onOpenInvoice\(inv\.id\)/.test(html) &&
+      /const newInvoice = createNewInvoice\([^)]*userCrewId\);\s*openProduction\(productionId, \{ invoiceId: newInvoice\.id \}\)/.test(html));
+
+    // ─ PP2: generate action branches on invoiceExportFormat ─
+    check('PP2a generateOrExport: timemachine → openInvoiceFromButton; else resolve + confirm',
+      /const generateOrExport = \(\) => \{\s*const fmt = \(userPrefs && userPrefs\.invoiceExportFormat\) \|\| 'timemachine';\s*if \(fmt === 'timemachine'\) \{ openInvoiceFromButton\(\); return; \}\s*setExportConfirm\(resolveInvoiceForExport\(\)\);/.test(html));
+    check('PP2b CalcBreakdownView CTA routes through generateOrExport (not openInvoiceFromButton directly)',
+      /onGenerateInvoice=\{\(\) => \{ setShowCalc\(false\); generateOrExport\(\); \}\}/.test(html));
+    check('PP2c export-sheet "Generate invoice" button routes through generateOrExport',
+      /onClick=\{\(\) => \{ setShowExportSheet\(false\); generateOrExport\(\); \}\}/.test(html));
+
+    // ─ PP3: reuse-first resolve — no extra invoice / no extra number burn ─
+    check('PP3a resolveInvoiceForExport mirrors openInvoiceFromButton (latest draft → last → createNewInvoice)',
+      /const resolveInvoiceForExport = \(\) => \{[\s\S]{0,400}\.reverse\(\)\.find\(inv => inv\.status === "draft"\);\s*return latestDraft\s*\|\| invoices\[invoices\.length - 1\]\s*\|\| createNewInvoice\(/.test(html));
+
+    // ─ PP4: confirm fires before any file is written ─
+    check('PP4a export confirm shows number · client · total · format with Export/Cancel',
+      /\{exportConfirm && \(\(\) => \{[\s\S]{0,600}<ConfirmDialog\s*open\s*title=\{title\}\s*message=\{`\$\{exportConfirm\.invoiceNumber\} · \$\{clientLine\} · \$\{total\}`\}\s*confirmLabel="Export" confirmTone="primary" cancelLabel="Cancel"/.test(html));
+    check('PP4b confirm total is computed at the export rounding (invoiceExportFigures); blank client guarded for Xero/QBO',
+      /const total = fmtGBP\(invoiceExportFigures\(exportConfirm, production, userPrefs\)\.total\);/.test(html) &&
+      /No client set — add it in \$\{fmtName\}/.test(html));
+    check('PP4c the file is written ONLY from a confirm path (runExport in onConfirm), never directly in generateOrExport',
+      /onConfirm=\{\(\) => \{\s*const inv = exportConfirm;\s*setExportConfirm\(null\);[\s\S]{0,400}runExport\(inv\);/.test(html) &&
+      !/const generateOrExport = \(\) => \{[\s\S]{0,300}runExport\(/.test(html));
+    check('PP4d runExport reuses the existing export functions (artifact → deliverTextFile)',
+      /const runExport = \(inv\) => \{\s*const art = invoiceExportArtifact\(inv, production, userPrefs\);[\s\S]{0,120}deliverTextFile\(art\.filename, art\.content, art\.mime\)/.test(html));
+
+    // ─ PP5: status untouched — no freeze / no send ─
+    check('PP5a the skip-editor export never sends/freezes the invoice (no sendInvoice/freezeOnSend/status flip in the export helpers)',
+      /const runExport = \(inv\) => \{[\s\S]{0,400}\};/.test(html) &&
+      !/const runExport = \(inv\) => \{[\s\S]{0,400}(sendInvoice|freezeOnSend|status:)/.test(html) &&
+      !/const generateOrExport = \(\) => \{[\s\S]{0,300}(sendInvoice|freezeOnSend|status:)/.test(html) &&
+      !/\{exportConfirm && \(\(\) => \{[\s\S]{0,700}(sendInvoice|freezeOnSend)/.test(html));
+
+    // ─ PP6: format-aware CTA labels ─
+    check('PP6a CalcBreakdownView derives the two-line label from invoiceExportFormat',
+      /const genTop = _genFmt === 'timemachine' \? 'GENERATE' : _genFmt === 'csv' \? 'EXPORT' : 'EXPORT TO';/.test(html) &&
+      /const genBottom = _genFmt === 'timemachine' \? 'INVOICE' : _genFmt === 'xero' \? 'XERO' : _genFmt === 'quickbooks' \? 'QUICKBOOKS' : 'CSV';/.test(html));
+    check('PP6b the CTA pill renders the format-aware label',
+      /<div className="tm-pill-topline">\{genTop\}<\/div>\s*<div className="tm-pill-amount">\{genBottom\}<\/div>/.test(html));
+    check('PP6c export-sheet button label branches on format (Export to Xero / QuickBooks / Export CSV / Generate invoice)',
+      /const exportSheetCtaLabel = \(\(\) => \{[\s\S]{0,300}'Export to Xero'[\s\S]{0,120}'Export to QuickBooks'[\s\S]{0,120}'Export CSV'[\s\S]{0,80}'Generate invoice';/.test(html) &&
+      /<IReceipt size=\{15\}\/>\{exportSheetCtaLabel\}/.test(html));
+
+    // ─ PP7: timemachine / editor flow unchanged ─
+    check('PP7a timemachine still calls openInvoiceFromButton(), and the reuse-first editor opener is intact',
+      /if \(fmt === 'timemachine'\) \{ openInvoiceFromButton\(\); return; \}/.test(html) &&
+      /const openInvoiceFromButton = \(\) => \{[\s\S]{0,400}const latestDraft = \[\.\.\.invoices\]\.reverse\(\)\.find\(inv => inv\.status === "draft"\);[\s\S]{0,200}setInvoiceNav\(target\.id\)/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
