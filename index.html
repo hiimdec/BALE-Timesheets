@@ -938,10 +938,27 @@
         try { const p = _capPlugins().LiveActivity; if (p && p.updateActivity) await p.updateActivity(opts || {}); }
         catch (e) { try { console.warn('[LiveActivity] update failed', (e && e.message) || e); } catch (_) {} }
       },
-      async end() {
+      // end({ immediate: true }) dismisses the card NOW (disqualified day /
+      // toggle off); no arg keeps the brief wrapped-card linger.
+      async end(opts) {
         if (!IS_NATIVE) return;
-        try { const p = _capPlugins().LiveActivity; if (p && p.endActivity) await p.endActivity(); }
+        try { const p = _capPlugins().LiveActivity; if (p && p.endActivity) await p.endActivity(opts || {}); }
         catch (e) { try { console.warn('[LiveActivity] end failed', (e && e.message) || e); } catch (_) {} }
+      },
+      // Round 3 reconcile sweep support. list() returns every system-registered
+      // Activity [{ id, productionId }] straight from ActivityKit — NOT the
+      // plugin's single tracked handle, so it survives app restarts.
+      // endForProduction ends by productionId the same way (handle-loss-proof).
+      async list() {
+        if (!IS_NATIVE) return [];
+        try { const p = _capPlugins().LiveActivity; if (p && p.listActivities) { const r = await p.listActivities(); return (r && r.activities) || []; } }
+        catch (e) { try { console.warn('[LiveActivity] list failed', (e && e.message) || e); } catch (_) {} }
+        return [];
+      },
+      async endForProduction(productionId) {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.endForProduction) await p.endForProduction({ productionId, immediate: true }); }
+        catch (e) { try { console.warn('[LiveActivity] endForProduction failed', (e && e.message) || e); } catch (_) {} }
       },
       // Stage 2: atomic read-and-clear of the App-Group event queue the widget's
       // Lunch/Wrap App Intents append to. Returns [] on web / pre-plugin. Each
@@ -1652,6 +1669,13 @@
       // any existing user's stored value (none yet — this is the first
       // build that writes it).
       hapticsEnabled: true,
+      // Live Activity master switch (round 3). Default true; fresh pref with
+      // no legacy interaction — merge-over-defaults simply adds it for
+      // existing users. OFF = never start the Lock Screen / Dynamic Island
+      // card and END any running one (the reconcile sweep treats disabled as
+      // not-qualifying). Native-only feature: every consumer is IS_NATIVE-
+      // gated, so the pref is inert on web.
+      liveActivityEnabled: true,
     };
 
     // One-way road-miles approximation from W1F 9SE (APA standard origin) per UK outcode district.
@@ -14696,15 +14720,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Once wrapped, the actual wrap time (now written to the record) freezes the
       // timer at its final elapsed value; 0 while the day is live.
       const endEpoch = wrapped ? hhmmToEpochToday(rec.wrapTime) : 0;
-      // L1 / CWD warning chips — computed from the SAME break-state family that
-      // drives the in-app chips (deriveBreakState on the resolved day, with the
+      // CWD warning chip — computed from the SAME break-state family that drives
+      // the in-app chips (deriveBreakState on the resolved day, with the
       // BWD-effective day type mirrored verbatim from DayEntryForm). NO threshold
-      // maths re-derived here or in Swift: bs.lunchLate / bs.continuousDay are the
-      // in-app historical flags, and the live terms only compare wall-clock "now"
-      // (in the same absTime coordinates) against bs's OWN lateThreshold /
-      // cwdThreshold — covering the window where the planned lunch hasn't started
-      // yet but the day is already past a threshold. Display-only booleans.
-      let l1 = false, cwd = false;
+      // maths re-derived here or in Swift: bs.continuousDay is the in-app
+      // historical flag, and the live term only compares wall-clock "now" (in the
+      // same absTime coordinates) against bs's OWN cwdThreshold — covering the
+      // window where the planned lunch hasn't started yet but the day is already
+      // past the CWD threshold. Display-only boolean. (An L1 chip was tried and
+      // removed: the pre-filled-lunch model makes its window too narrow/confusing
+      // for a glanceable card — the in-app day view keeps proper L1 signalling.)
+      let cwd = false;
       try {
         const vr = resolveDay(production, rec, soloCrew);
         const effectiveRole = rec.stepUpRole ? rec.stepUpRole : (soloCrew.role || "");
@@ -14718,18 +14744,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const nowAbs = absTime(nowH, bs.callH);
           const lunchPending = bs.lunchMissed || (bs.lunchStartAbs != null && nowAbs < bs.lunchStartAbs);
           cwd = bs.continuousDay || (nowAbs > bs.cwdThreshold && lunchPending);
-          l1 = !cwd && (bs.lunchLate || (nowAbs > bs.lateThreshold && nowAbs <= bs.cwdThreshold && lunchPending));
         }
       } catch (_) {}
       // Safety auto-end ~16h after the anchor so a forgotten Activity self-clears.
       const staleEpoch = callEpoch ? callEpoch + 16 * 3600 : 0;
-      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, l1, cwd };
+      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd };
     }
 
     // Mounted inside SoloDayPage. START when today's call time is set; debounced
     // UPDATE on recompute / state change; END on wrap. All native calls behind
     // IS_NATIVE (no-op on web). Renders nothing.
-    function SoloLiveActivity({ production, soloCrew, days }) {
+    function SoloLiveActivity({ production, soloCrew, days, enabled = true }) {
       const startedKeyRef = React.useRef(null);
       const lastSentRef = React.useRef('');
       // Minute tick: the descriptor's time-derived outputs (AT LUNCH state, the
@@ -14744,17 +14769,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const t = setInterval(laTick, 60000);
         return () => clearInterval(t);
       }, []);
-      const desc = IS_NATIVE ? liveActivityDescriptor(production, soloCrew, days) : null;
-      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, l: desc.l1, d: desc.cwd }) : '';
+      const desc = (IS_NATIVE && enabled) ? liveActivityDescriptor(production, soloCrew, days) : null;
+      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd }) : '';
       React.useEffect(() => {
         if (!IS_NATIVE) return;
-        // END on day-invalid: no today-dated, called day. If one is running, end
-        // it; a fresh mount with no valid day is a no-op. (Leaving the page just
-        // unmounts via the cleanup below and deliberately keeps it alive.)
+        // END on DISQUALIFICATION: the still-mounted controller re-renders and
+        // the descriptor flips non-null → null (day deleted, date moved off
+        // today, call cleared, or the Live Activity pref switched off) while
+        // startedKeyRef proves THIS mount owns a started card. That is distinct
+        // from normal page unmount, which runs only the cleanup below (clears
+        // the debounce timer, never ends) — so navigating away deliberately
+        // keeps the card alive. A disqualified card ends IMMEDIATELY (no 5-min
+        // linger — that dismissal window is for the wrapped send-off only). A
+        // fresh mount with no valid day is a no-op here; the App-level reconcile
+        // sweep owns anything that changed while no controller was mounted.
         if (!desc) {
           if (startedKeyRef.current) {
-            console.log('[LiveActivity] day no longer valid → end');
-            LiveActivity.end();
+            console.log('[LiveActivity] day no longer qualifies → end (immediate)');
+            LiveActivity.end({ immediate: true });
             startedKeyRef.current = null;
             lastSentRef.current = '';
           }
@@ -14762,7 +14794,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
-          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, l1: desc.l1, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId };
+          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId };
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…
@@ -15261,7 +15293,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             }}
           />
 
-          <SoloLiveActivity production={production} soloCrew={soloCrew} days={days} />
+          <SoloLiveActivity production={production} soloCrew={soloCrew} days={days} enabled={!userPrefs || userPrefs.liveActivityEnabled !== false} />
 
           <SoloDayPill
             total={totalShoot}
@@ -17167,6 +17199,20 @@ const setDays = (updater) =>
                     <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Subtle taps on selections, toggles, time stamps, and completions. Native only — silent on web.</div>
                   </div>
                   <Toggle value={userPrefs.hapticsEnabled !== false} onChange={(v) => set({ hapticsEnabled: v })} ariaLabel="Haptic feedback" />
+                </div>
+              </div>
+              {/* Live Activity — round 3 master switch. Lives beside Haptics
+                  because both are native feel-layer affordances; rendered on
+                  web too (matching Haptics' treatment) with a native-only
+                  note. Off → SoloLiveActivity never starts a card and the
+                  reconcile sweep ends any running one within ~1s. */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Live Activity</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Lock Screen / Dynamic Island card with the live day total and Lunch/Wrap buttons on shoot days. iOS only — has no effect on web.</div>
+                  </div>
+                  <Toggle value={userPrefs.liveActivityEnabled !== false} onChange={(v) => set({ liveActivityEnabled: v })} ariaLabel="Live Activity" />
                 </div>
               </div>
               {/* Celebration — was its own "Celebration" top-level disclosure.
@@ -21298,6 +21344,49 @@ const confirmDelete = (p) => setConfirmOpts({
       // so there is ONE write path into day records, no parallel path. Idempotent
       // via a persisted appliedEventIds set; today-dated (UTC, matches todayISO) only.
       // Entirely IS_NATIVE-gated, so the web build never touches the bridge.
+      //
+      // ── Live Activity reconcile sweep (round 3) ──────────────────────────────
+      // Ends any system-registered Activity whose production no longer has a
+      // valid, today-qualifying solo day — catching changes made while no
+      // SoloLiveActivity controller was mounted (day deleted, date moved off
+      // today, production deleted or flipped to Best Boy, or the Live Activity
+      // setting switched OFF — disabled counts as not-qualifying). Qualify
+      // conditions mirror liveActivityDescriptor's null checks. Reads through a
+      // render-refreshed ref so the mount-time foreground listener and the
+      // debounced change-sweep both see CURRENT state. Wrapped days still
+      // qualify — the wrap flow owns its own linger-then-end. Uses list()/
+      // endForProduction (ActivityKit-backed), so it also clears cards orphaned
+      // by an app restart, which the plugin's single tracked handle cannot end.
+      const laSweepStateRef = React.useRef({ productions: [], enabled: true });
+      laSweepStateRef.current = { productions, enabled: !userPrefs || userPrefs.liveActivityEnabled !== false };
+      const liveActivityReconcile = React.useCallback(async () => {
+        if (!IS_NATIVE) return;
+        const acts = await LiveActivity.list();
+        if (!acts || !acts.length) return;
+        const { productions: prods, enabled } = laSweepStateRef.current;
+        const today = todayISO();
+        for (const a of acts) {
+          if (!a || !a.productionId) continue;
+          const pr = (prods || []).find(p => p.id === a.productionId);
+          const soloCrew = pr && !pr.bestBoyMode ? (pr.crew || [])[0] : null;
+          const rec = soloCrew ? ((pr.days || []).find(d => d.date === today && d.crewId === soloCrew.id)
+                              || (pr.days || []).find(d => d.date === today)) : null;
+          const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
+          const qualifies = enabled && !!rec && !!(rec.callTime || (dd && dd.callTime));
+          if (!qualifies) {
+            console.log('[LiveActivity] reconcile → end (no qualifying day)', a.productionId);
+            LiveActivity.endForProduction(a.productionId);
+          }
+        }
+      }, []);
+      // Change-sweep: production edits (delete day/production, date moves) and
+      // the Settings toggle reconcile within ~1s while the app is open; launch +
+      // foreground sweeps live in the ingestion effect below.
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        const t = setTimeout(liveActivityReconcile, 1000);
+        return () => clearTimeout(t);
+      }, [productions, userPrefs && userPrefs.liveActivityEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
       const liveActivityAppliedRef = React.useRef(null);
       useEffect(() => {
         if (!IS_NATIVE) return;
@@ -21336,12 +21425,13 @@ const confirmDelete = (p) => setConfirmOpts({
           }));
         };
         ingest(); // launch drain
+        liveActivityReconcile(); // launch sweep — clears orphaned/disqualified cards
         let handle = null;
         let laHandle = null;
         try {
           const AppPlg = _capPlugins().App;
           if (AppPlg && AppPlg.addListener) {
-            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && s.isActive) ingest(); }))
+            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && s.isActive) { ingest(); liveActivityReconcile(); } }))
               .then(h => { handle = h; }).catch(() => {});
           }
           // Issue C — best-effort background apply. The LiveActivityIntent runs in

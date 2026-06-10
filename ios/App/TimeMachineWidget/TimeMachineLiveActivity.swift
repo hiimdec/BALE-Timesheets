@@ -9,9 +9,9 @@
 //    • near-black chrome (#0a0a0a), no gradients
 //    • ALL figures in a monospaced font with tabular figures
 //    • the £ glyph + brand accents in sky-500 (#0ea5e9)
-//    • chip slot (top-right): WRAPPED (green) > AT LUNCH (amber) > CWD / L1
-//      penalty warnings (tm-pen red, flags computed by the web layer) — empty
-//      while ON CALL with no warnings
+//    • chip slot (top-right): WRAPPED (green) > CWD (tm-pen red, flag computed
+//      by the web layer — the money-relevant state outranks AT LUNCH) >
+//      AT LUNCH (amber) — empty while ON CALL with no warning
 //    • uppercase, letter-spaced micro-labels (DAY TOTAL, CALL 08:00 / PRE-CALL …)
 //    • system font for non-numeric text; data is the hero
 //    • elapsed timer = ActivityKit's native Text(timerInterval:) — ticks
@@ -102,9 +102,9 @@ private func stateChip(_ state: String) -> some View {
         .clipShape(Capsule())
 }
 
-// Penalty warning chip (L1 / CWD) — tm-pen, matching the in-app day-row pills.
-// The flags arrive pre-computed from the web layer (deriveBreakState family);
-// this renders them only.
+// Penalty warning chip (CWD) — tm-pen, matching the in-app day-row pills. The
+// flag arrives pre-computed from the web layer (deriveBreakState family); this
+// renders it only.
 private func warnChip(_ label: String) -> some View {
     Text(label)
         .font(.system(size: 9, weight: .bold))
@@ -116,17 +116,18 @@ private func warnChip(_ label: String) -> some View {
         .clipShape(Capsule())
 }
 
-// The single chip slot. Priority: WRAPPED > AT LUNCH > CWD > L1 — mirroring the
-// in-app lunch-chip precedence (CWD wins over LATE; they are near-mutually
-// exclusive by construction). ON CALL with no warnings renders no chip.
+// The single chip slot. Priority: WRAPPED > CWD > AT LUNCH — the money-relevant
+// state wins: a lunch logged in CWD territory shows CWD (what the pay is
+// computing), not AT LUNCH. Display-only ordering; lunch/CWD data semantics and
+// the engine's treatment are untouched. ON CALL with no warning renders no chip.
 @ViewBuilder
-private func chipSlot(state: String, l1: Bool, cwd: Bool) -> some View {
-    if state != "oncall" {
+private func chipSlot(state: String, cwd: Bool) -> some View {
+    if state == "wrapped" {
         stateChip(state)
     } else if cwd {
         warnChip("CWD")
-    } else if l1 {
-        warnChip("L1")
+    } else if state == "lunch" {
+        stateChip(state)
     }
 }
 
@@ -238,7 +239,7 @@ struct TimeMachineLockScreenView: View {
                     .foregroundColor(.tmMuted)
                     .lineLimit(1)
                 Spacer()
-                chipSlot(state: context.state.state, l1: context.state.l1, cwd: context.state.cwd)
+                chipSlot(state: context.state.state, cwd: context.state.cwd)
             }
             HStack(alignment: .lastTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -276,7 +277,7 @@ struct TimeMachineLiveActivity: Widget {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.tmMuted)
                             .lineLimit(1)
-                        chipSlot(state: context.state.state, l1: context.state.l1, cwd: context.state.cwd)
+                        chipSlot(state: context.state.state, cwd: context.state.cwd)
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {

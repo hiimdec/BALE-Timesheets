@@ -38,6 +38,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "startActivity", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateActivity", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endActivity", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "listActivities", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "endForProduction", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "drainPendingEvents", returnType: CAPPluginReturnPromise)
     ]
 
@@ -94,7 +96,6 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let totalText = call.getString("totalText") ?? ""
         let state = call.getString("state") ?? "oncall"
         let endEpoch = call.getDouble("endEpoch") ?? 0
-        let l1 = call.getBool("l1") ?? false
         let cwd = call.getBool("cwd") ?? false
         let productionId = call.getString("productionId") ?? ""
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
@@ -103,7 +104,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             self.endCurrentActivity()
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
             let content = ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, l1: l1, cwd: cwd),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd),
                 staleDate: staleDate
             )
             do {
@@ -126,7 +127,6 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let callEpoch = call.getDouble("callEpoch") ?? 0
         let anchorLabel = call.getString("anchorLabel") ?? ""
         let endEpoch = call.getDouble("endEpoch") ?? 0
-        let l1 = call.getBool("l1") ?? false
         let cwd = call.getBool("cwd") ?? false
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
         Task {
@@ -136,7 +136,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             // update always clears any pending two-tap arm (the app never sends a
             // non-empty armed): the backstop reset for an arm that never confirmed.
             await activity.update(ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, l1: l1, cwd: cwd),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd),
                 staleDate: staleDate
             ))
             call.resolve()
@@ -149,14 +149,50 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         guard #available(iOS 16.2, *) else { call.resolve(); return }
         guard let activity = currentActivity as? Activity<TimeMachineActivityAttributes> else { call.resolve(); return }
         self.currentActivity = nil
+        // immediate:true (disqualified day / setting off) dismisses NOW; the
+        // default keeps the brief linger so a wrapped card gets its send-off.
+        // The JS controller also sets a staleDate as a wider safety net.
+        let immediate = call.getBool("immediate") ?? false
         Task {
-            // Keep the last shown content; let the wrapped card linger briefly,
-            // then dismiss. The JS controller also sets a staleDate as a wider
-            // safety net for a forgotten Activity.
             await activity.end(
                 ActivityContent(state: activity.content.state, staleDate: nil),
-                dismissalPolicy: .after(Date().addingTimeInterval(5 * 60))
+                dismissalPolicy: immediate ? .immediate : .after(Date().addingTimeInterval(5 * 60))
             )
+            call.resolve()
+        }
+    }
+
+    // MARK: - listActivities / endForProduction (round 3 reconcile sweep)
+
+    // Backed by ActivityKit's own registry (Activity.activities), NOT the
+    // plugin's single tracked handle — so the sweep can see and end a card that
+    // outlived an app restart (where currentActivity was lost and endActivity
+    // would silently no-op).
+    @objc func listActivities(_ call: CAPPluginCall) {
+        guard #available(iOS 16.2, *) else { call.resolve(["activities": []]); return }
+        let acts = Activity<TimeMachineActivityAttributes>.activities.map {
+            ["id": $0.id, "productionId": $0.attributes.productionId]
+        }
+        call.resolve(["activities": acts])
+    }
+
+    @objc func endForProduction(_ call: CAPPluginCall) {
+        guard #available(iOS 16.2, *) else { call.resolve(); return }
+        let productionId = call.getString("productionId") ?? ""
+        let immediate = call.getBool("immediate") ?? true
+        guard !productionId.isEmpty else { call.resolve(); return }
+        if let tracked = currentActivity as? Activity<TimeMachineActivityAttributes>,
+           tracked.attributes.productionId == productionId {
+            currentActivity = nil
+        }
+        Task {
+            for activity in Activity<TimeMachineActivityAttributes>.activities
+            where activity.attributes.productionId == productionId {
+                await activity.end(
+                    ActivityContent(state: activity.content.state, staleDate: nil),
+                    dismissalPolicy: immediate ? .immediate : .after(Date().addingTimeInterval(5 * 60))
+                )
+            }
             call.resolve()
         }
     }

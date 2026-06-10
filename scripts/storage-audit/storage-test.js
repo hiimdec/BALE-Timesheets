@@ -5375,15 +5375,18 @@ async function main() {
     const ctrlFn = (html.match(/function SoloLiveActivity\([\s\S]*?return null;\s*\}/) || [''])[0];
 
     // ─ TT1: the bridge — four methods, each a no-op before touching Capacitor ─
-    check('TT1a LiveActivity bridge defines isAvailable/start/update/end',
+    check('TT1a LiveActivity bridge defines isAvailable/start/update/end + round-3 list/endForProduction',
       /const LiveActivity = \{/.test(html) &&
       /async isAvailable\(\)/.test(html) && /async start\(opts\)/.test(html) &&
-      /async update\(opts\)/.test(html) && /async end\(\)/.test(html));
+      /async update\(opts\)/.test(html) && /async end\(opts\)/.test(html) &&
+      /async list\(\)/.test(html) && /async endForProduction\(productionId\)/.test(html));
     check('TT1b every bridge method returns BEFORE touching _capPlugins() unless IS_NATIVE (web never references the plugin)',
       /async isAvailable\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
       /async start\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async update\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
-      /async end\(\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /async end\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /async list\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
+      /async endForProduction\(productionId\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /_capPlugins\(\)\.LiveActivity/.test(html));
 
     // ─ TT2: descriptor reuses the calc + derives state; controller is guarded ─
@@ -5395,13 +5398,13 @@ async function main() {
       /const wrapped = rec\.wrapped === true;/.test(html) &&
       !/const wrapped = rec\.wrapped === true \|\| !!\(rec\.wrapTime/.test(html) &&
       /name: production\.title \|\| 'Shoot'/.test(html));
-    check('TT2b SoloLiveActivity computes desc only when IS_NATIVE and bails on web; ends on day-invalid',
-      /function SoloLiveActivity\(\{ production, soloCrew, days \}\)/.test(html) &&
-      /const desc = IS_NATIVE \? liveActivityDescriptor\(production, soloCrew, days\) : null;/.test(html) &&
+    check('TT2b SoloLiveActivity computes desc only when IS_NATIVE AND the pref is enabled, bails on web; a disqualified (or disabled) day ends the card IMMEDIATELY (no 5-min linger)',
+      /function SoloLiveActivity\(\{ production, soloCrew, days, enabled = true \}\)/.test(html) &&
+      /const desc = \(IS_NATIVE && enabled\) \? liveActivityDescriptor\(production, soloCrew, days\) : null;/.test(html) &&
       /if \(!IS_NATIVE\) return;/.test(html) &&
-      /if \(!desc\) \{[\s\S]{0,220}LiveActivity\.end\(\);/.test(html));
-    check('TT2c controller mounted in SoloDayPage with production/soloCrew/days',
-      /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} \/>/.test(html));
+      /if \(!desc\) \{[\s\S]{0,220}LiveActivity\.end\(\{ immediate: true \}\);/.test(html));
+    check('TT2c controller mounted in SoloDayPage with production/soloCrew/days + the round-3 enabled pref',
+      /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
 
     // ─ TT3: start / update / end wired at the right transitions (debounced) ─
     check('TT3a start on (production,today) key change; update on signature change; end on wrap; 600ms debounce',
@@ -5441,11 +5444,12 @@ async function main() {
       /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
       /if \(ev\.date !== today\) \{[\s\S]{0,140}continue; \}/.test(html) &&
       /const today = todayISO\(\);/.test(html));
-    check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive)',
+    check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — and both triggers ALSO run the reconcile sweep',
       /const liveActivityAppliedRef = React\.useRef\(null\);\s*useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /LiveActivity\.drainPendingEvents\(\)/.test(html) &&
-      /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) ingest\(\); \}\)/.test(html) &&
-      /ingest\(\); \/\/ launch drain/.test(html));
+      /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) \{ ingest\(\); liveActivityReconcile\(\); \} \}\)/.test(html) &&
+      /ingest\(\); \/\/ launch drain/.test(html) &&
+      /liveActivityReconcile\(\); \/\/ launch sweep/.test(html));
 
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
@@ -5469,24 +5473,40 @@ async function main() {
       /const anchorLabel = preCall \? `PRE-CALL \$\{preCall\}` : `CALL \$\{callTime\}`;/.test(html) &&
       /const callEpoch = hhmmToEpochToday\(anchorTime\);/.test(html) &&
       /const endEpoch = wrapped \? hhmmToEpochToday\(rec\.wrapTime\) : 0;/.test(html));
-    check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload',
+    check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
-      /anchorLabel, endEpoch, staleEpoch, state, wrapped, l1, cwd \}/.test(html));
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd \}/.test(html) &&
+      !/desc\.l1/.test(html));
     check('TT8d Issue C — ingestion ALSO re-runs on the plugin drainRequest event (best-effort background apply), via the SAME idempotent ingest()',
       /const LAPlg = _capPlugins\(\)\.LiveActivity;/.test(html) &&
       /LAPlg\.addListener\('drainRequest', \(\) => ingest\(\)\)/.test(html));
-    check('TT8e L1/CWD card flags come from the EXISTING break-state family ONLY — resolveDay + deriveBreakState (BWD-effective type mirrored from DayEntryForm), live terms compare now against bs\'s OWN thresholds; no threshold maths re-derived (and none in Swift); flags flow into sig + payload',
+    check('TT8e CWD card flag comes from the EXISTING break-state family ONLY — resolveDay + deriveBreakState (BWD-effective type mirrored from DayEntryForm), live term compares now against bs\'s OWN cwdThreshold; no threshold maths re-derived (and none in Swift); flag flows into sig + payload',
       /const vr = resolveDay\(production, rec, soloCrew\);/.test(html) &&
       /const bs = deriveBreakState\(vr, bwdOverrideApplies \? "Shoot" : vr\.dayType\);/.test(html) &&
       /const nowAbs = absTime\(nowH, bs\.callH\);/.test(html) &&
       /cwd = bs\.continuousDay \|\| \(nowAbs > bs\.cwdThreshold && lunchPending\);/.test(html) &&
-      /l1 = !cwd && \(bs\.lunchLate \|\| \(nowAbs > bs\.lateThreshold && nowAbs <= bs\.cwdThreshold && lunchPending\)\);/.test(html) &&
-      /w: desc\.wrapped, l: desc\.l1, d: desc\.cwd/.test(html) &&
-      /l1: desc\.l1, cwd: desc\.cwd/.test(html));
-    check('TT8f SoloLiveActivity minute tick — recomputes the time-derived descriptor outputs (AT LUNCH window, L1/CWD live terms) while the app is foregrounded; sig still gates native updates to real changes',
+      /w: desc\.wrapped, d: desc\.cwd/.test(html) &&
+      /state: desc\.state, cwd: desc\.cwd/.test(html));
+    check('TT8f SoloLiveActivity minute tick — recomputes the time-derived descriptor outputs (AT LUNCH window, CWD live term) while the app is foregrounded; sig still gates native updates to real changes',
       /const \[, laTick\] = React\.useReducer\(x => x \+ 1, 0\);/.test(html) &&
       /const t = setInterval\(laTick, 60000\);/.test(html));
+
+    // ─ TT9: round 3 — lifecycle reconcile + the Live Activity master switch ─
+    check('TT9a unmount-persists vs disqualification — the effect cleanup ONLY clears the debounce timer (never ends), so navigating away keeps the card; ends happen solely inside the effect body (disqualify/wrap) or via the sweep',
+      /return \(\) => clearTimeout\(timer\);/.test(html) &&
+      !/return \(\) => \{[^}]{0,160}LiveActivity\.end/.test(html));
+    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, pref enabled) and ends non-qualifying productions via the ActivityKit-backed endForProduction',
+      /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
+      /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
+      /const qualifies = enabled && !!rec && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
+      /if \(!qualifies\) \{[\s\S]{0,180}LiveActivity\.endForProduction\(a\.productionId\);/.test(html));
+    check('TT9c change-sweep — productions edits and the Settings toggle reconcile within ~1s while the app is open (debounced IS_NATIVE-gated effect)',
+      /useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;\s*const t = setTimeout\(liveActivityReconcile, 1000\);\s*return \(\) => clearTimeout\(t\);\s*\}, \[productions, userPrefs && userPrefs\.liveActivityEnabled\]\);/.test(html));
+    check('TT9d Live Activity master switch — fresh pref default ON in DEFAULT_USER_PREFS; Appearance toggle row (rendered on web with a native-only note, matching Haptics); mount site passes enabled; controller short-circuits when disabled',
+      /liveActivityEnabled: true,/.test(html) &&
+      /<Toggle value=\{userPrefs\.liveActivityEnabled !== false\} onChange=\{\(v\) => set\(\{ liveActivityEnabled: v \}\)\} ariaLabel="Live Activity" \/>/.test(html) &&
+      /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

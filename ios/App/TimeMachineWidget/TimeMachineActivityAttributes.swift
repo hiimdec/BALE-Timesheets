@@ -51,13 +51,13 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
         /// missed because iOS suspended the process) can never confirm — the
         /// intent treats an expired arm as a fresh ARM, not a confirm.
         public var armedAt: Double
-        /// L1 / CWD warning flags, computed by the WEB layer from the same
+        /// CWD warning flag, computed by the WEB layer from the same
         /// deriveBreakState family that drives the in-app chips — the native side
-        /// renders them only; no APA threshold maths lives in Swift.
-        public var l1: Bool
+        /// renders it only; no APA threshold maths lives in Swift. (L1 was tried
+        /// and removed in round 3 — too narrow/confusing for a glanceable card.)
         public var cwd: Bool
 
-        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, l1: Bool = false, cwd: Bool = false) {
+        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false) {
             self.totalText = totalText
             self.state = state
             self.callEpoch = callEpoch
@@ -65,7 +65,6 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
             self.endEpoch = endEpoch
             self.armed = armed
             self.armedAt = armedAt
-            self.l1 = l1
             self.cwd = cwd
         }
     }
