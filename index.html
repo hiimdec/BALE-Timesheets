@@ -930,15 +930,18 @@
       },
       async start(opts) {
         if (!IS_NATIVE) return;
-        try { const p = _capPlugins().LiveActivity; if (p && p.startActivity) await p.startActivity(opts || {}); } catch (_) {}
+        try { const p = _capPlugins().LiveActivity; if (p && p.startActivity) await p.startActivity(opts || {}); }
+        catch (e) { try { console.warn('[LiveActivity] start failed', (e && e.message) || e); } catch (_) {} }
       },
       async update(opts) {
         if (!IS_NATIVE) return;
-        try { const p = _capPlugins().LiveActivity; if (p && p.updateActivity) await p.updateActivity(opts || {}); } catch (_) {}
+        try { const p = _capPlugins().LiveActivity; if (p && p.updateActivity) await p.updateActivity(opts || {}); }
+        catch (e) { try { console.warn('[LiveActivity] update failed', (e && e.message) || e); } catch (_) {} }
       },
       async end() {
         if (!IS_NATIVE) return;
-        try { const p = _capPlugins().LiveActivity; if (p && p.endActivity) await p.endActivity(); } catch (_) {}
+        try { const p = _capPlugins().LiveActivity; if (p && p.endActivity) await p.endActivity(); }
+        catch (e) { try { console.warn('[LiveActivity] end failed', (e && e.message) || e); } catch (_) {} }
       },
     };
 
@@ -10504,7 +10507,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               const handleWrapNow = () => {
                 haptic.stamp();
                 const t = nowHHMM();
-                setProduction(p => setDayDefault(p, currentDate, 'wrapTime', t));
+                // Set the planned wrapTime (dayDefaults overlay, as before) AND flag
+                // the day record wrapped:true — matching the hero WrapNowBtn. The flag
+                // is the canonical "wrapped" signal (Home status + the Live Activity
+                // read it); it never feeds the pay engine, so figures are unchanged.
+                // Without it a solo wrap couldn't end the Live Activity.
+                setProduction(p => {
+                  const next = setDayDefault(p, currentDate, 'wrapTime', t);
+                  const uid0 = next.crew && next.crew[0] && next.crew[0].id;
+                  return { ...next, days: (next.days || []).map(d =>
+                    d.date === currentDate && (!uid0 || d.crewId === uid0)
+                      ? { ...d, wrapped: true } : d) };
+                });
                 showToast?.(`Wrap set to ${t}`);
               };
               const btnCls = "flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 text-[10px] font-bold uppercase tracking-[0.14em] hover:bg-sky-500/15 transition-colors";
@@ -14610,7 +14624,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (!callTime) return null;
       let total = 0;
       try { total = calcForDisplay(production, rec, soloCrew, findPrevDay(days, rec)).total || 0; } catch (_) {}
-      const wrapped = rec.wrapped === true || !!(rec.wrapTime && String(rec.wrapTime).length);
+      // WRAPPED is the explicit user flag ONLY. Every fresh day inherits a
+      // PLANNED wrapTime (DEFAULT_PRODUCTION_DAY.wrapTime = "19:00"), so keying
+      // off wrapTime-presence misread every new day as already wrapped — the
+      // controller then ran update→end and NEVER started.
+      const wrapped = rec.wrapped === true;
       let state = 'oncall';
       if (wrapped) {
         state = 'wrapped';
@@ -14634,7 +14652,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       // Safety auto-end ~16h after call so a forgotten Activity self-clears.
       const staleEpoch = callEpoch ? callEpoch + 16 * 3600 : 0;
-      return { productionId: production.id, name: production.name || 'Shoot', totalText: fmtGBP(total), callEpoch, staleEpoch, state, wrapped };
+      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, staleEpoch, state, wrapped };
     }
 
     // Mounted inside SoloDayPage. START when today's call time is set; debounced
@@ -14646,11 +14664,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const desc = IS_NATIVE ? liveActivityDescriptor(production, soloCrew, days) : null;
       const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, w: desc.wrapped }) : '';
       React.useEffect(() => {
-        if (!IS_NATIVE || !desc) return;
+        if (!IS_NATIVE) return;
+        // END on day-invalid: no today-dated, called day. If one is running, end
+        // it; a fresh mount with no valid day is a no-op. (Leaving the page just
+        // unmounts via the cleanup below and deliberately keeps it alive.)
+        if (!desc) {
+          if (startedKeyRef.current) {
+            console.log('[LiveActivity] day no longer valid → end');
+            LiveActivity.end();
+            startedKeyRef.current = null;
+            lastSentRef.current = '';
+          }
+          return;
+        }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
           const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, state: desc.state, staleEpoch: desc.staleEpoch };
           if (desc.wrapped) {
+            console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…
             LiveActivity.end();             // …then end (native lets it linger briefly)
             startedKeyRef.current = null;
@@ -14658,11 +14689,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             return;
           }
           if (startedKeyRef.current !== key) {
-            startedKeyRef.current = key;
+            startedKeyRef.current = key;     // FIRST valid descriptor → START
             lastSentRef.current = sig;
+            console.log('[LiveActivity] start', desc.totalText, desc.state);
             LiveActivity.start(payload);
           } else if (sig !== lastSentRef.current) {
-            lastSentRef.current = sig;
+            lastSentRef.current = sig;       // same Activity, changed data → UPDATE
+            console.log('[LiveActivity] update', desc.totalText, desc.state);
             LiveActivity.update(payload);
           }
         }, 600);

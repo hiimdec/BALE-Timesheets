@@ -5387,28 +5387,47 @@ async function main() {
       /_capPlugins\(\)\.LiveActivity/.test(html));
 
     // ─ TT2: descriptor reuses the calc + derives state; controller is guarded ─
-    check('TT2a liveActivityDescriptor reuses calcForDisplay for today total (recomputes nothing) + derives oncall/lunch/wrapped',
+    check('TT2a liveActivityDescriptor reuses calcForDisplay for today total (recomputes nothing) + derives oncall/lunch/wrapped; wrapped is the EXPLICIT flag; name from production.title',
       /function liveActivityDescriptor\(production, soloCrew, days\)/.test(html) &&
       /calcForDisplay\(production, rec, soloCrew, findPrevDay\(days, rec\)\)\.total/.test(html) &&
-      /let state = 'oncall';/.test(html) && /state = 'wrapped';/.test(html) && /state = 'lunch';/.test(html));
-    check('TT2b SoloLiveActivity computes desc only when IS_NATIVE and bails on web',
+      /let state = 'oncall';/.test(html) && /state = 'wrapped';/.test(html) && /state = 'lunch';/.test(html) &&
+      // root-cause fix: planned wrapTime no longer counts as wrapped
+      /const wrapped = rec\.wrapped === true;/.test(html) &&
+      !/const wrapped = rec\.wrapped === true \|\| !!\(rec\.wrapTime/.test(html) &&
+      /name: production\.title \|\| 'Shoot'/.test(html));
+    check('TT2b SoloLiveActivity computes desc only when IS_NATIVE and bails on web; ends on day-invalid',
       /function SoloLiveActivity\(\{ production, soloCrew, days \}\)/.test(html) &&
       /const desc = IS_NATIVE \? liveActivityDescriptor\(production, soloCrew, days\) : null;/.test(html) &&
-      /if \(!IS_NATIVE \|\| !desc\) return;/.test(html));
+      /if \(!IS_NATIVE\) return;/.test(html) &&
+      /if \(!desc\) \{[\s\S]{0,220}LiveActivity\.end\(\);/.test(html));
     check('TT2c controller mounted in SoloDayPage with production/soloCrew/days',
       /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} \/>/.test(html));
 
     // ─ TT3: start / update / end wired at the right transitions (debounced) ─
     check('TT3a start on (production,today) key change; update on signature change; end on wrap; 600ms debounce',
-      /if \(startedKeyRef\.current !== key\) \{[\s\S]{0,160}LiveActivity\.start\(payload\)/.test(html) &&
-      /\} else if \(sig !== lastSentRef\.current\) \{[\s\S]{0,120}LiveActivity\.update\(payload\)/.test(html) &&
-      /if \(desc\.wrapped\) \{[\s\S]{0,160}LiveActivity\.update\(payload\);[\s\S]{0,80}LiveActivity\.end\(\);/.test(html) &&
+      /if \(startedKeyRef\.current !== key\) \{[\s\S]{0,300}LiveActivity\.start\(payload\)/.test(html) &&
+      /\} else if \(sig !== lastSentRef\.current\) \{[\s\S]{0,260}LiveActivity\.update\(payload\)/.test(html) &&
+      /if \(desc\.wrapped\) \{[\s\S]{0,200}LiveActivity\.update\(payload\);[\s\S]{0,120}LiveActivity\.end\(\);/.test(html) &&
       /\}, 600\);/.test(html));
 
     // ─ TT4: display-only — the controller never writes stored data ─
     check('TT4a neither liveActivityDescriptor nor SoloLiveActivity writes stored data (no setProduction/setDays — display-only)',
       descFn.length > 0 && ctrlFn.length > 0 &&
       !/setProduction|setDays/.test(descFn) && !/setProduction|setDays/.test(ctrlFn));
+
+    // ─ TT5: Stage-1 start-bug fix + loggable, non-silent lifecycle ─
+    check('TT5a solo "Wrap now" flags the day record wrapped:true so the Activity ends on wrap (calc-neutral — wrapped is status only, never read by the engine)',
+      /const handleWrapNow = \(\) => \{/.test(html) &&
+      /d\.date === currentDate && \(!uid0 \|\| d\.crewId === uid0\)\s*\? \{ \.\.\.d, wrapped: true \} : d\)/.test(html));
+    check('TT5b lifecycle decisions are loggable on native (start / update / wrapped→end), not silent',
+      /console\.log\('\[LiveActivity\] start'/.test(html) &&
+      /console\.log\('\[LiveActivity\] update'/.test(html) &&
+      /console\.log\('\[LiveActivity\] wrapped → update \+ end'\)/.test(html));
+    check('TT5c bridge surfaces native start/update/end failures via console.warn instead of a silent catch',
+      /console\.warn\('\[LiveActivity\] start failed'/.test(html) &&
+      /console\.warn\('\[LiveActivity\] update failed'/.test(html) &&
+      /console\.warn\('\[LiveActivity\] end failed'/.test(html) &&
+      !/p\.startActivity\(opts \|\| \{\}\); \} catch \(_\) \{\}/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
