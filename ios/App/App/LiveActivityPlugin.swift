@@ -51,6 +51,25 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // class isn't availability-gated; cast inside `if #available` blocks.
     private var currentActivity: Any?
 
+    // MARK: - load (Issue C — background-drain bridge)
+
+    // Capacitor calls load() when the plugin is registered (i.e. the webview
+    // booted). We (1) flag the process as webview-alive so a LiveActivityIntent
+    // running in THIS app process knows JS can be nudged, and (2) observe an
+    // in-process notification the intent posts on a lock-screen confirm, relaying
+    // it to JS via notifyListeners so JS can drain + apply + recompute +
+    // updateActivity in the background window. Idempotent on the JS side.
+    override public func load() {
+        TMLiveActivity.webviewObserving = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(onDrainRequest),
+            name: Notification.Name("TMLiveActivityDrainRequest"), object: nil)
+    }
+
+    @objc private func onDrainRequest() {
+        notifyListeners("drainRequest", data: [:])
+    }
+
     // MARK: - isAvailable
 
     @objc func isAvailable(_ call: CAPPluginCall) {
@@ -80,9 +99,9 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 
         DispatchQueue.main.async {
             self.endCurrentActivity()
-            let attributes = TimeMachineActivityAttributes(productionName: name, callEpoch: callEpoch, anchorLabel: anchorLabel, productionId: productionId)
+            let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
             let content = ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, endEpoch: endEpoch, armed: ""),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: ""),
                 staleDate: staleDate
             )
             do {
@@ -102,14 +121,18 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let activity = currentActivity as? Activity<TimeMachineActivityAttributes> else { call.resolve(); return }
         let totalText = call.getString("totalText") ?? ""
         let state = call.getString("state") ?? "oncall"
+        let callEpoch = call.getDouble("callEpoch") ?? 0
+        let anchorLabel = call.getString("anchorLabel") ?? ""
         let endEpoch = call.getDouble("endEpoch") ?? 0
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
         Task {
-            // armed:"" — an app-driven content update always clears any pending
-            // two-tap arm (the app never sends a non-empty armed). This is the
-            // reset path for a confirm that was armed but never tapped twice.
+            // The anchor (callEpoch + anchorLabel) is carried on EVERY update so a
+            // mid-day call/pre-call edit re-anchors the live card (it lives in
+            // ContentState, not the start-fixed Attributes). armed:"" — an app-driven
+            // update always clears any pending two-tap arm (the app never sends a
+            // non-empty armed): the reset path for a confirm armed but never tapped twice.
             await activity.update(ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, endEpoch: endEpoch, armed: ""),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: ""),
                 staleDate: staleDate
             ))
             call.resolve()

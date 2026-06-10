@@ -21300,14 +21300,30 @@ const confirmDelete = (p) => setConfirmOpts({
         };
         ingest(); // launch drain
         let handle = null;
+        let laHandle = null;
         try {
           const AppPlg = _capPlugins().App;
           if (AppPlg && AppPlg.addListener) {
             Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && s.isActive) ingest(); }))
               .then(h => { handle = h; }).catch(() => {});
           }
+          // Issue C — best-effort background apply. The LiveActivityIntent runs in
+          // THIS app process; on a lock-screen confirm it posts a native notification
+          // that the plugin relays as a 'drainRequest' event, so we re-ingest (drain
+          // + apply + recompute → SoloLiveActivity updates the card total) inside the
+          // background window iOS grants the intent — no need to wait for foreground.
+          // ingest() is idempotent (appliedEventIds) + today-only, so a background
+          // apply can never double-apply on the next foreground drain.
+          const LAPlg = _capPlugins().LiveActivity;
+          if (LAPlg && LAPlg.addListener) {
+            Promise.resolve(LAPlg.addListener('drainRequest', () => ingest()))
+              .then(h => { laHandle = h; }).catch(() => {});
+          }
         } catch (_) {}
-        return () => { try { if (handle && handle.remove) handle.remove(); } catch (_) {} };
+        return () => {
+          try { if (handle && handle.remove) handle.remove(); } catch (_) {}
+          try { if (laHandle && laHandle.remove) laHandle.remove(); } catch (_) {}
+        };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       const [showSettings, setShowSettings] = useState(false);

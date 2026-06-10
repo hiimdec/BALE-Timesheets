@@ -5473,6 +5473,9 @@ async function main() {
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
       /anchorLabel, endEpoch, staleEpoch, state, wrapped \}/.test(html));
+    check('TT8d Issue C — ingestion ALSO re-runs on the plugin drainRequest event (best-effort background apply), via the SAME idempotent ingest()',
+      /const LAPlg = _capPlugins\(\)\.LiveActivity;/.test(html) &&
+      /LAPlg\.addListener\('drainRequest', \(\) => ingest\(\)\)/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

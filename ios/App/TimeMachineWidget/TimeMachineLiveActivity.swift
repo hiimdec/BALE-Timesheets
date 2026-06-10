@@ -126,25 +126,32 @@ private func elapsedTimer(anchor: Double, end: Double) -> some View {
 
 // MARK: - Action buttons (Stage 2, iOS 17+)
 
-// Two-tap confirm (item 8). At rest: Lunch = amber outline (.bordered), Wrap =
-// sky filled (.borderedProminent). When armed, the button flips to the INVERSE
-// treatment + "✓ CONFIRM?" (Lunch → filled, Wrap → outline) so the confirming
-// second tap is visually distinct. Each fires its App Intent in the widget
-// process (no app launch). Callers gate on `#available(iOS 17.0, *)` AND a
-// non-wrapped state, so on 16.2 — or once wrapped — the card stays display-only.
+// App-pill geometry to match the in-app solo Lunch/Wrap buttons: a rounded
+// RECTANGLE (not a capsule) with a checkmark + uppercase, letter-spaced label.
+// Rest = calm OUTLINE (.bordered) — Lunch amber, Wrap sky. Armed = LOUD inverse
+// FILL (.borderedProminent, solid) + "CONFIRM?" so a half-done two-tap reads
+// unmistakably as pending, never as done — a slow (background-launched) arm must
+// not be mistaken for a completed log. Each fires its App Intent in the APP
+// process (LiveActivityIntent). Callers gate on iOS 17 + a non-wrapped state.
+private func actionContent(_ text: String) -> some View {
+    HStack(spacing: 5) {
+        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
+        Text(text).font(.system(size: 11, weight: .bold)).tracking(0.9)
+    }
+    .frame(maxWidth: .infinity)
+}
+
 @available(iOS 17.0, *)
 @ViewBuilder
 private func lunchButton(_ productionId: String, armed: Bool) -> some View {
     if armed {
-        Button(intent: LunchNowIntent(productionId: productionId)) {
-            Text("✓ CONFIRM?").font(.system(size: 12, weight: .bold)).frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent).tint(.tmAmber)
+        Button(intent: LunchNowIntent(productionId: productionId)) { actionContent("CONFIRM?") }
+            .buttonStyle(.borderedProminent).tint(.tmAmber)
+            .buttonBorderShape(.roundedRectangle(radius: 10))
     } else {
-        Button(intent: LunchNowIntent(productionId: productionId)) {
-            Text("Lunch now").font(.system(size: 12, weight: .semibold)).frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered).tint(.tmAmber)
+        Button(intent: LunchNowIntent(productionId: productionId)) { actionContent("LUNCH NOW") }
+            .buttonStyle(.bordered).tint(.tmAmber)
+            .buttonBorderShape(.roundedRectangle(radius: 10))
     }
 }
 
@@ -152,15 +159,13 @@ private func lunchButton(_ productionId: String, armed: Bool) -> some View {
 @ViewBuilder
 private func wrapButton(_ productionId: String, armed: Bool) -> some View {
     if armed {
-        Button(intent: WrapNowIntent(productionId: productionId)) {
-            Text("✓ CONFIRM?").font(.system(size: 12, weight: .bold)).frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered).tint(.tmSky)
+        Button(intent: WrapNowIntent(productionId: productionId)) { actionContent("CONFIRM?") }
+            .buttonStyle(.borderedProminent).tint(.tmSky)
+            .buttonBorderShape(.roundedRectangle(radius: 10))
     } else {
-        Button(intent: WrapNowIntent(productionId: productionId)) {
-            Text("Wrap now").font(.system(size: 12, weight: .semibold)).frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent).tint(.tmSky)
+        Button(intent: WrapNowIntent(productionId: productionId)) { actionContent("WRAP NOW") }
+            .buttonStyle(.bordered).tint(.tmSky)
+            .buttonBorderShape(.roundedRectangle(radius: 10))
     }
 }
 
@@ -195,8 +200,8 @@ struct TimeMachineLockScreenView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    microLabel(context.attributes.anchorLabel)
-                    elapsedTimer(anchor: context.attributes.callEpoch, end: context.state.endEpoch)
+                    microLabel(context.state.anchorLabel)
+                    elapsedTimer(anchor: context.state.callEpoch, end: context.state.endEpoch)
                 }
             }
             if #available(iOS 17.0, *), context.state.state != "wrapped" {
@@ -236,9 +241,9 @@ struct TimeMachineLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {
                         HStack {
-                            microLabel(context.attributes.anchorLabel)
+                            microLabel(context.state.anchorLabel)
                             Spacer()
-                            elapsedTimer(anchor: context.attributes.callEpoch, end: context.state.endEpoch)
+                            elapsedTimer(anchor: context.state.callEpoch, end: context.state.endEpoch)
                         }
                         if #available(iOS 17.0, *), context.state.state != "wrapped" {
                             actionButtons(context.attributes.productionId, armed: context.state.armed)

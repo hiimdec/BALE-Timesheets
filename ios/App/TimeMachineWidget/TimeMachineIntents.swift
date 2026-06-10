@@ -44,6 +44,14 @@ enum TMLiveActivity {
     static let appGroupSuite = "group.co.uk.timemachineapp.shared"
     static let pendingEventsKey = "pendingEvents"
 
+    /// Set true by LiveActivityPlugin.load() when the app's webview/JS booted in
+    /// THIS process. A LiveActivityIntent that RESUMES a suspended app still sees
+    /// it true (process memory survives suspend); a COLD intent-launch (no webview)
+    /// sees false → requestBackgroundDrain no-ops and the event waits for the
+    /// normal foreground drain. The discriminator that keeps Issue-C's background
+    /// nudge from wastefully holding a cold process.
+    static var webviewObserving = false
+
     /// CRITICAL PATH — append one event to the App-Group queue. Must be
     /// rock-solid and independent of the chip flip. Matches the in-app "Now"
     /// writers exactly: `at` = LOCAL HH:MM (no rounding); `date` = UTC
@@ -98,6 +106,8 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText,
             state: state ?? cur.state,
+            callEpoch: cur.callEpoch,
+            anchorLabel: cur.anchorLabel,
             endEpoch: cur.endEpoch,
             armed: armed ?? cur.armed
         )
@@ -114,6 +124,8 @@ enum TMLiveActivity {
             state: TimeMachineActivityAttributes.ContentState(
                 totalText: cur.totalText,
                 state: "wrapped",
+                callEpoch: cur.callEpoch,
+                anchorLabel: cur.anchorLabel,
                 endEpoch: Date().timeIntervalSince1970,
                 armed: ""
             ),
@@ -121,6 +133,20 @@ enum TMLiveActivity {
         )
         await activity.update(wrapped)
         await activity.end(wrapped, dismissalPolicy: .after(Date().addingTimeInterval(5 * 60)))
+    }
+
+    /// BEST-EFFORT (Issue C) — if the app's WKWebView/JS is alive in this process
+    /// (app suspended, not terminated), nudge it to re-run ingestion (drain +
+    /// apply + recompute + updateActivity) so a lock-screen log reflects on the
+    /// card's TOTAL without opening the app — then hold the process briefly so that
+    /// async round-trip can finish before iOS re-suspends. Cold (no webview) →
+    /// no-op; the event waits for the normal foreground drain. Exactly-once holds:
+    /// JS re-uses the SAME idempotency set + atomic queue clear as the foreground
+    /// path, so a background apply can never double-apply on the next foreground.
+    static func requestBackgroundDrain() async {
+        guard webviewObserving else { return }   // cold launch → leave it for foreground
+        NotificationCenter.default.post(name: Notification.Name("TMLiveActivityDrainRequest"), object: nil)
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
     }
 }
 
@@ -138,16 +164,19 @@ struct LunchNowIntent: LiveActivityIntent {
     init(productionId: String) { self.productionId = productionId }
 
     func perform() async throws -> some IntentResult {
-        // Two-tap: first tap ARMS (no event written), the confirming second tap
-        // (already armed) writes the event. So a single stray tap never logs.
+        // Two-tap: first tap ARMS, the confirming second tap writes the event.
         let armed = TMLiveActivity.armedAction(productionId)
-        NSLog("[LiveActivity] LunchNowIntent.perform (app process) armed=%@ pid=%@", armed, productionId)
         if armed == "lunch" {
-            TMLiveActivity.appendEvent(type: "lunchNow", productionId: productionId) // CRITICAL (confirm only)
-            await TMLiveActivity.update(productionId, state: "lunch", armed: "")      // best-effort chip + disarm
+            // CONFIRM: the App-Group append is the critical, direct write.
+            TMLiveActivity.appendEvent(type: "lunchNow", productionId: productionId)
+            await TMLiveActivity.update(productionId, state: "lunch", armed: "")     // immediate chip + disarm
+            await TMLiveActivity.requestBackgroundDrain()                           // best-effort live total
         } else {
-            await TMLiveActivity.update(productionId, armed: "lunch")                 // arm → button shows ✓ CONFIRM?
+            // ARM: the Activity update is the FIRST op — nothing (logging, queue
+            // work) precedes it, to minimise the visible arm latency.
+            await TMLiveActivity.update(productionId, armed: "lunch")
         }
+        NSLog("[LiveActivity] LunchNowIntent.perform (app process) armed=%@ pid=%@", armed, productionId)
         return .result()
     }
 }
@@ -163,16 +192,19 @@ struct WrapNowIntent: LiveActivityIntent {
     init(productionId: String) { self.productionId = productionId }
 
     func perform() async throws -> some IntentResult {
-        // Two-tap: first tap ARMS (no event written), the confirming second tap
-        // (already armed) writes the event + freezes/ends the card.
+        // Two-tap: first tap ARMS, the confirming second tap writes the event.
         let armed = TMLiveActivity.armedAction(productionId)
-        NSLog("[LiveActivity] WrapNowIntent.perform (app process) armed=%@ pid=%@", armed, productionId)
         if armed == "wrap" {
-            TMLiveActivity.appendEvent(type: "wrapNow", productionId: productionId)  // CRITICAL (confirm only)
-            await TMLiveActivity.endWrapped(productionId)                            // best-effort wrap + freeze + end
+            // CONFIRM: critical direct write, then freeze + end the card. No
+            // background-drain nudge — the card is ending and the total freezes
+            // at wrap; the wrap write reaches records on the normal foreground drain.
+            TMLiveActivity.appendEvent(type: "wrapNow", productionId: productionId)
+            await TMLiveActivity.endWrapped(productionId)
         } else {
-            await TMLiveActivity.update(productionId, armed: "wrap")                 // arm → button shows ✓ CONFIRM?
+            // ARM: the Activity update is the FIRST op — nothing precedes it.
+            await TMLiveActivity.update(productionId, armed: "wrap")
         }
+        NSLog("[LiveActivity] WrapNowIntent.perform (app process) armed=%@ pid=%@", armed, productionId)
         return .result()
     }
 }
