@@ -37,8 +37,15 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "isAvailable", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startActivity", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateActivity", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "endActivity", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "endActivity", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "drainPendingEvents", returnType: CAPPluginReturnPromise)
     ]
+
+    // App Group shared with the widget extension. The Stage-2 App Intents
+    // (LunchNowIntent / WrapNowIntent) APPEND events here from the widget
+    // process; this method (app process) reads-and-clears them on foreground.
+    private static let appGroupSuite = "group.co.uk.timemachineapp.shared"
+    private static let pendingEventsKey = "pendingEvents"
 
     // Held as Any? because Activity<…> is only available on iOS 16.2+ and this
     // class isn't availability-gated; cast inside `if #available` blocks.
@@ -66,11 +73,12 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let callEpoch = call.getDouble("callEpoch") ?? 0
         let totalText = call.getString("totalText") ?? ""
         let state = call.getString("state") ?? "oncall"
+        let productionId = call.getString("productionId") ?? ""
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
 
         DispatchQueue.main.async {
             self.endCurrentActivity()
-            let attributes = TimeMachineActivityAttributes(productionName: name, callEpoch: callEpoch)
+            let attributes = TimeMachineActivityAttributes(productionName: name, callEpoch: callEpoch, productionId: productionId)
             let content = ActivityContent(
                 state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state),
                 staleDate: staleDate
@@ -118,6 +126,26 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             )
             call.resolve()
         }
+    }
+
+    // MARK: - drainPendingEvents (Stage 2)
+
+    // Atomic-ish read-and-clear of the App-Group event queue the App Intents
+    // append to. Returns the events to JS and clears the key in one go so each
+    // event is handed over exactly once. The app + extension never write/drain
+    // simultaneously in practice (a human tap vs a foreground), and the JS side
+    // keeps an appliedEventIds set as a belt-and-braces guard against a double
+    // hand-over. Available on all OS versions (plain UserDefaults; no ActivityKit).
+    @objc func drainPendingEvents(_ call: CAPPluginCall) {
+        guard let defaults = UserDefaults(suiteName: Self.appGroupSuite) else {
+            call.resolve(["events": []])
+            return
+        }
+        let events = defaults.array(forKey: Self.pendingEventsKey) as? [[String: Any]] ?? []
+        if !events.isEmpty {
+            defaults.removeObject(forKey: Self.pendingEventsKey)
+        }
+        call.resolve(["events": events])
     }
 
     // MARK: - helpers

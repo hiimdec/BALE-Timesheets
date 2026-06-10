@@ -19,6 +19,7 @@
 import SwiftUI
 import WidgetKit
 import ActivityKit
+import AppIntents
 
 // MARK: - Palette
 
@@ -113,6 +114,34 @@ private func elapsedTimer(_ epoch: Double) -> some View {
     }
 }
 
+// MARK: - Action buttons (Stage 2, iOS 17+)
+
+// Lunch now = secondary (amber outline); Wrap now = sky primary. Each fires its
+// App Intent in the widget process (no app launch). Callers gate on
+// `#available(iOS 17.0, *)` AND a non-wrapped state, so on 16.2 — or once the day
+// is wrapped — the card stays display-only.
+@available(iOS 17.0, *)
+private func actionButtons(_ productionId: String) -> some View {
+    HStack(spacing: 8) {
+        Button(intent: LunchNowIntent(productionId: productionId)) {
+            Text("Lunch now")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .tint(.tmAmber)
+
+        Button(intent: WrapNowIntent(productionId: productionId)) {
+            Text("Wrap now")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.tmSky)
+    }
+    .controlSize(.small)
+}
+
 // MARK: - Lock Screen / banner
 
 struct TimeMachineLockScreenView: View {
@@ -138,6 +167,9 @@ struct TimeMachineLockScreenView: View {
                     microLabel(sinceLabel(context.attributes.callEpoch))
                     elapsedTimer(context.attributes.callEpoch)
                 }
+            }
+            if #available(iOS 17.0, *), context.state.state != "wrapped" {
+                actionButtons(context.attributes.productionId)
             }
         }
         .padding(16)
@@ -171,10 +203,15 @@ struct TimeMachineLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack {
-                        microLabel(sinceLabel(context.attributes.callEpoch))
-                        Spacer()
-                        elapsedTimer(context.attributes.callEpoch)
+                    VStack(spacing: 8) {
+                        HStack {
+                            microLabel(sinceLabel(context.attributes.callEpoch))
+                            Spacer()
+                            elapsedTimer(context.attributes.callEpoch)
+                        }
+                        if #available(iOS 17.0, *), context.state.state != "wrapped" {
+                            actionButtons(context.attributes.productionId)
+                        }
                     }
                 }
             } compactLeading: {

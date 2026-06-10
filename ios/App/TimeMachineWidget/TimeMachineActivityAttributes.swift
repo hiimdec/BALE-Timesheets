@@ -41,9 +41,15 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
     /// native `Text(timerInterval:)` elapsed counter (ticks on-device, no
     /// updates needed). 0 if unknown.
     public var callEpoch: Double
+    /// Production id (Stage 2). Carried so a Lunch-now / Wrap-now App Intent can
+    /// tag its App-Group event with the exact shoot the card belongs to — the
+    /// app's ingestion applies the lunch/wrap write to THIS production, never a
+    /// guessed one.
+    public var productionId: String
 
-    public init(productionName: String, callEpoch: Double) {
+    public init(productionName: String, callEpoch: Double, productionId: String) {
         self.productionName = productionName
         self.callEpoch = callEpoch
+        self.productionId = productionId
     }
 }

@@ -5416,9 +5416,9 @@ async function main() {
       !/setProduction|setDays/.test(descFn) && !/setProduction|setDays/.test(ctrlFn));
 
     // ─ TT5: Stage-1 start-bug fix + loggable, non-silent lifecycle ─
-    check('TT5a solo "Wrap now" flags the day record wrapped:true so the Activity ends on wrap (calc-neutral — wrapped is status only, never read by the engine)',
-      /const handleWrapNow = \(\) => \{/.test(html) &&
-      /d\.date === currentDate && \(!uid0 \|\| d\.crewId === uid0\)\s*\? \{ \.\.\.d, wrapped: true \} : d\)/.test(html));
+    check('TT5a applyWrapNow flags the day record wrapped:true so the Activity ends on wrap (calc-neutral — wrapped is status only, never read by the engine); handleWrapNow routes through it',
+      /function applyWrapNow\(production, date, t\) \{[\s\S]{0,260}\? \{ \.\.\.d, wrapped: true \} : d\)/.test(html) &&
+      /setProduction\(p => applyWrapNow\(p, currentDate, t\)\)/.test(html));
     check('TT5b lifecycle decisions are loggable on native (start / update / wrapped→end), not silent',
       /console\.log\('\[LiveActivity\] start'/.test(html) &&
       /console\.log\('\[LiveActivity\] update'/.test(html) &&
@@ -5428,6 +5428,34 @@ async function main() {
       /console\.warn\('\[LiveActivity\] update failed'/.test(html) &&
       /console\.warn\('\[LiveActivity\] end failed'/.test(html) &&
       !/p\.startActivity\(opts \|\| \{\}\); \} catch \(_\) \{\}/.test(html));
+
+    // ─ TT6: Stage-2 interactive buttons — App-Group event queue + ingestion ─
+    check('TT6a bridge.drainPendingEvents is IS_NATIVE-guarded (returns [] before touching the plugin on web)',
+      /async drainPendingEvents\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
+      /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
+    check('TT6b ingestion applies through the EXISTING setters ONLY — lunch via setDayDefault, wrap via shared applyWrapNow (no parallel day-record write)',
+      /next = ev\.type === 'lunchNow'\s*\? setDayDefault\(next, ev\.date, 'lunchStartTime', ev\.at\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
+    check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
+      /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,140}continue; \}/.test(html) &&
+      /applied\.add\(ev\.id\);/.test(html) &&
+      /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
+      /if \(ev\.date !== today\) \{[\s\S]{0,140}continue; \}/.test(html) &&
+      /const today = todayISO\(\);/.test(html));
+    check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive)',
+      /const liveActivityAppliedRef = React\.useRef\(null\);\s*useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /LiveActivity\.drainPendingEvents\(\)/.test(html) &&
+      /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) ingest\(\); \}\)/.test(html) &&
+      /ingest\(\); \/\/ launch drain/.test(html));
+
+    // ─ TT7: productionId targeting + the single shared wrap path ─
+    check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
+      /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
+      /const payload = \{ name: desc\.name,[\s\S]{0,180}productionId: desc\.productionId \};/.test(html));
+    check('TT7b applyWrapNow is the SINGLE wrap write path — defined once, used by handleWrapNow AND ingestion; handleWrapNow has no inline wrapped-map',
+      /function applyWrapNow\(production, date, t\) \{/.test(html) &&
+      /const handleWrapNow = \(\) => \{[\s\S]{0,400}setProduction\(p => applyWrapNow\(p, currentDate, t\)\);/.test(html) &&
+      (html.match(/applyWrapNow\(/g) || []).length >= 3 &&
+      !/const handleWrapNow = \(\) => \{[\s\S]{0,400}\? \{ \.\.\.d, wrapped: true \} : d\)/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

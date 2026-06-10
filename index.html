@@ -943,6 +943,15 @@
         try { const p = _capPlugins().LiveActivity; if (p && p.endActivity) await p.endActivity(); }
         catch (e) { try { console.warn('[LiveActivity] end failed', (e && e.message) || e); } catch (_) {} }
       },
+      // Stage 2: atomic read-and-clear of the App-Group event queue the widget's
+      // Lunch/Wrap App Intents append to. Returns [] on web / pre-plugin. Each
+      // event: { id, type, at, date, ts, productionId }.
+      async drainPendingEvents() {
+        if (!IS_NATIVE) return [];
+        try { const p = _capPlugins().LiveActivity; if (p && p.drainPendingEvents) { const r = await p.drainPendingEvents(); return (r && r.events) || []; } }
+        catch (e) { try { console.warn('[LiveActivity] drain failed', (e && e.message) || e); } catch (_) {} }
+        return [];
+      },
     };
 
     // Match the iOS status bar to the app's dark theme (light text on dark).
@@ -3637,6 +3646,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         dayDefaults: { ...(production.dayDefaults || {}), [date]: newDefaults },
         days: newDays,
       };
+    }
+
+    // Shared "wrap now" transform: set the planned wrapTime (dayDefaults overlay,
+    // via setDayDefault) AND flag the day record wrapped:true — the canonical
+    // wrapped signal (read by Home status + the Live Activity; never by the pay
+    // engine, so figures are unchanged). The ONE wrap write path — used by BOTH
+    // the solo editor's handleWrapNow AND Live Activity event ingestion. Pure.
+    function applyWrapNow(production, date, t) {
+      const next = setDayDefault(production, date, 'wrapTime', t);
+      const uid0 = next.crew && next.crew[0] && next.crew[0].id;
+      return { ...next, days: (next.days || []).map(d =>
+        d.date === date && (!uid0 || d.crewId === uid0)
+          ? { ...d, wrapped: true } : d) };
     }
 
     // V4-5h-11: applyDayDefaultsToAllCrew removed. Time-field cascade now happens
@@ -10507,18 +10529,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               const handleWrapNow = () => {
                 haptic.stamp();
                 const t = nowHHMM();
-                // Set the planned wrapTime (dayDefaults overlay, as before) AND flag
-                // the day record wrapped:true — matching the hero WrapNowBtn. The flag
-                // is the canonical "wrapped" signal (Home status + the Live Activity
-                // read it); it never feeds the pay engine, so figures are unchanged.
-                // Without it a solo wrap couldn't end the Live Activity.
-                setProduction(p => {
-                  const next = setDayDefault(p, currentDate, 'wrapTime', t);
-                  const uid0 = next.crew && next.crew[0] && next.crew[0].id;
-                  return { ...next, days: (next.days || []).map(d =>
-                    d.date === currentDate && (!uid0 || d.crewId === uid0)
-                      ? { ...d, wrapped: true } : d) };
-                });
+                // Shared wrap write (also used by Live Activity ingestion) — sets
+                // the planned wrapTime + flags the record wrapped:true. Calc-neutral.
+                setProduction(p => applyWrapNow(p, currentDate, t));
                 showToast?.(`Wrap set to ${t}`);
               };
               const btnCls = "flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 text-[10px] font-bold uppercase tracking-[0.14em] hover:bg-sky-500/15 transition-colors";
@@ -14679,7 +14692,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
-          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, state: desc.state, staleEpoch: desc.staleEpoch };
+          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, state: desc.state, staleEpoch: desc.staleEpoch, productionId: desc.productionId };
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…
@@ -21206,6 +21219,64 @@ const confirmDelete = (p) => setConfirmOpts({
       }, [userPrefs && userPrefs.hapticsEnabled]);
       const storageError = prodError || prefsError || nativeStorageError || null;
       const [openId, setOpenId] = useState(null);
+
+      // ── Live Activity Stage 2 — ingest queued Lunch/Wrap events ─────────────
+      // The widget's App Intents append { id, type, at, date, ts, productionId }
+      // to the App Group. We drain on launch and on every foreground (isActive),
+      // then apply each through the SAME setters the in-app Now buttons use —
+      // lunchNow → setDayDefault(...'lunchStartTime'); wrapNow → applyWrapNow(...)
+      // — so there is NO parallel write path into day records. Idempotent via a
+      // persisted appliedEventIds set; today-dated (UTC, matches todayISO) only.
+      // Entirely IS_NATIVE-gated, so the web build never touches the bridge.
+      const liveActivityAppliedRef = React.useRef(null);
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        const APPLIED_KEY = 'bigals_la_applied_events';
+        if (!liveActivityAppliedRef.current) {
+          let seed = [];
+          try { seed = JSON.parse(storage.get(APPLIED_KEY) || '[]') || []; } catch (_) {}
+          liveActivityAppliedRef.current = new Set(seed);
+        }
+        const applied = liveActivityAppliedRef.current;
+        const ingest = async () => {
+          const events = await LiveActivity.drainPendingEvents();
+          if (!events || !events.length) return;
+          const today = todayISO();
+          const toApply = [];
+          for (const ev of events) {
+            if (!ev || !ev.id) continue;
+            if (applied.has(ev.id)) { console.log('[LiveActivity] ingest skip (already applied)', ev.id); continue; }
+            applied.add(ev.id); // mark seen once, today or stale — never reprocessed
+            if (ev.date !== today) { console.log('[LiveActivity] ingest discard (stale date)', ev.date, ev.id); continue; }
+            if (ev.type !== 'lunchNow' && ev.type !== 'wrapNow') continue;
+            toApply.push(ev);
+            console.log('[LiveActivity] ingest apply', ev.type, ev.at, '→', ev.productionId);
+          }
+          try { storage.set(APPLIED_KEY, JSON.stringify([...applied].slice(-200))); } catch (_) {}
+          if (!toApply.length) return;
+          setProductions(prevProds => prevProds.map(pr => {
+            let next = pr;
+            for (const ev of toApply) {
+              if (ev.productionId !== pr.id) continue;
+              next = ev.type === 'lunchNow'
+                ? setDayDefault(next, ev.date, 'lunchStartTime', ev.at)
+                : applyWrapNow(next, ev.date, ev.at);
+            }
+            return next;
+          }));
+        };
+        ingest(); // launch drain
+        let handle = null;
+        try {
+          const AppPlg = _capPlugins().App;
+          if (AppPlg && AppPlg.addListener) {
+            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && s.isActive) ingest(); }))
+              .then(h => { handle = h; }).catch(() => {});
+          }
+        } catch (_) {}
+        return () => { try { if (handle && handle.remove) handle.remove(); } catch (_) {} };
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
       const [showSettings, setShowSettings] = useState(false);
       const [showStats, setShowStats] = useState(false);
       const [showNewProduction, setShowNewProduction] = useState(false);
