@@ -4,29 +4,34 @@
 //
 //  Stage 2 — interactive Live Activity buttons (Lunch now / Wrap now).
 //
-//  Process model (decided): these App Intents run in the WIDGET-EXTENSION
-//  process — they do NOT open or background-launch the (Capacitor/WKWebView)
-//  app. Two-tap confirm: the FIRST tap ARMS (writes `armed` into the running
+//  Process model: these conform to `LiveActivityIntent`, so the system runs
+//  perform() in the APP process (background-launched, NOT foregrounded —
+//  openAppWhenRun=false), which is where ActivityKit can reliably mutate the
+//  app-owned Activity. (Stage 2 first shipped them as plain `AppIntent`s, which
+//  iOS runs in the WIDGET-EXTENSION process while the app is backgrounded; from
+//  there `Activity.update` silently no-ops, so the arm never rendered and — since
+//  the event writes only on the confirming tap — `armedAction` never flipped, so
+//  no event was ever appended. Switching to LiveActivityIntent fixed both.)
+//
+//  Two-tap confirm: the FIRST tap ARMS (writes `armed` into the running
 //  Activity's ContentState so the button flips to "✓ CONFIRM?"); the confirming
 //  SECOND tap (already armed) (1) APPENDS an event to the App-Group queue — the
-//  CRITICAL path — and (2) flips the chip / freezes+ends the card — BEST-EFFORT.
-//  The app drains + applies the queue on next foreground through the shared
-//  record-write transform; the chip flip is not relied upon. The arm RESETS to
-//  "" on confirm, on tapping the other button, or on the next app-driven content
-//  update (the app never sends a non-empty `armed`).
+//  CRITICAL path, a direct UserDefaults write that never depends on the arm
+//  render — and (2) flips the chip / freezes+ends the card. The app drains +
+//  applies the queue on next foreground through the shared record-write
+//  transform, idempotent + today-only. The arm RESETS to "" on confirm, on
+//  tapping the other button, or on the next app-driven content update (the app
+//  never sends a non-empty `armed`).
 //
-//  Note: two-tap depends on the extension-process content update persisting
-//  `armed` between taps (the only cross-tap state a widget has). The event
-//  write itself stays a direct App-Group append on confirm.
+//  Target membership: because perform() must run in the APP process, this file
+//  is a member of BOTH the TimeMachineWidget extension (where Button(intent:)
+//  references the type) AND the App target (where perform() executes) — wired in
+//  project.pbxproj via the App-target membershipExceptions, same as the shared
+//  TimeMachineActivityAttributes.swift.
 //
-//  Contained fallback: if extension-process Activity updates prove unreliable
-//  on device, the ONLY change needed is to make these conform to
-//  `LiveActivityIntent` (app-process) and tick App-target membership on this
-//  file — `appendEvent` (the critical path) stays exactly as-is.
-//
-//  iOS gate: Live Activity buttons require iOS 17. These intents are
-//  @available(iOS 17.0, *); the SwiftUI gates the buttons behind the same
-//  check, so on 16.2 the card stays display-only.
+//  iOS gate: Live Activity buttons + LiveActivityIntent require iOS 17. These
+//  intents are @available(iOS 17.0, *); the SwiftUI gates the buttons behind the
+//  same check, so on 16.2 the card stays display-only.
 //
 
 import AppIntents
@@ -122,7 +127,7 @@ enum TMLiveActivity {
 // MARK: - Intents
 
 @available(iOS 17.0, *)
-struct LunchNowIntent: AppIntent {
+struct LunchNowIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Lunch now"
     // Runs in the widget process without surfacing the app.
     static var openAppWhenRun: Bool = false
@@ -135,7 +140,9 @@ struct LunchNowIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         // Two-tap: first tap ARMS (no event written), the confirming second tap
         // (already armed) writes the event. So a single stray tap never logs.
-        if TMLiveActivity.armedAction(productionId) == "lunch" {
+        let armed = TMLiveActivity.armedAction(productionId)
+        NSLog("[LiveActivity] LunchNowIntent.perform (app process) armed=%@ pid=%@", armed, productionId)
+        if armed == "lunch" {
             TMLiveActivity.appendEvent(type: "lunchNow", productionId: productionId) // CRITICAL (confirm only)
             await TMLiveActivity.update(productionId, state: "lunch", armed: "")      // best-effort chip + disarm
         } else {
@@ -146,7 +153,7 @@ struct LunchNowIntent: AppIntent {
 }
 
 @available(iOS 17.0, *)
-struct WrapNowIntent: AppIntent {
+struct WrapNowIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Wrap now"
     static var openAppWhenRun: Bool = false
 
@@ -158,7 +165,9 @@ struct WrapNowIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         // Two-tap: first tap ARMS (no event written), the confirming second tap
         // (already armed) writes the event + freezes/ends the card.
-        if TMLiveActivity.armedAction(productionId) == "wrap" {
+        let armed = TMLiveActivity.armedAction(productionId)
+        NSLog("[LiveActivity] WrapNowIntent.perform (app process) armed=%@ pid=%@", armed, productionId)
+        if armed == "wrap" {
             TMLiveActivity.appendEvent(type: "wrapNow", productionId: productionId)  // CRITICAL (confirm only)
             await TMLiveActivity.endWrapped(productionId)                            // best-effort wrap + freeze + end
         } else {
