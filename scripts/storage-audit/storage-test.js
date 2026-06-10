@@ -5509,6 +5509,39 @@ async function main() {
       /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
   }
 
+  // UU — AI call-sheet reader, Stage 1 (display-only, native-gated). The WEB
+  // build must never touch the CallSheet native bridge (audit:web also proves
+  // this); every JS path is IS_NATIVE-guarded. Stage 1 writes NOTHING — the
+  // dev panel only displays extraction results. The Swift pipeline lives
+  // outside index.html (ios/App/App/CallSheetPlugin.swift) so it can't affect
+  // any audit. Source-presence only.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const panelFn = (html.match(/function CallSheetDevPanel\(\)[\s\S]*?\n    \}\n\n    function SettingsScreen/) || [''])[0];
+
+    check('UU1a CallSheet bridge defines isAvailable/pickDocument/extract, each returning BEFORE touching _capPlugins() unless IS_NATIVE',
+      /const CallSheet = \{/.test(html) &&
+      /async isAvailable\(\) \{\s*if \(!IS_NATIVE\) return \{ available: false, reason: 'web' \};/.test(html) &&
+      /async pickDocument\(\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
+      /async extract\(path\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
+      /_capPlugins\(\)\.CallSheet/.test(html));
+    check('UU1b dev panel self-gates — IS_NATIVE + availability (available / appleIntelligenceNotEnabled / modelNotReady); web and ineligible devices render null',
+      /function CallSheetDevPanel\(\)/.test(html) &&
+      /const visible = IS_NATIVE && avail && \(avail\.available \|\| avail\.reason === 'appleIntelligenceNotEnabled' \|\| avail\.reason === 'modelNotReady'\);/.test(html) &&
+      /if \(!visible\) return null;/.test(html));
+    check('UU1c Stage 1 is display-only — the dev panel never writes stored data (no setProduction/setProductions/setUserPrefs/storage.set)',
+      panelFn.length > 0 &&
+      !/setProduction|setProductions|setUserPrefs|storage\.set/.test(panelFn));
+    check('UU1d the three per-field states are visibly distinct (Verified / Unverified + locate flag / Missing + not-found)',
+      /Verified<\/span>/.test(html) &&
+      /Unverified<\/span>/.test(html) &&
+      /Missing<\/span>/.test(html) &&
+      /Couldn't locate on document/.test(html) &&
+      /'not found'/.test(html));
+    check('UU1e the dev panel is mounted in SettingsScreen',
+      /<CallSheetDevPanel \/>/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

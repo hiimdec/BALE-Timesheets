@@ -971,6 +971,36 @@
       },
     };
 
+    // ── AI call-sheet reader (Stage 1) — bridge to CallSheetPlugin ──────────
+    // ON-DEVICE extraction (Apple Foundation Models + Vision/PDFKit): nothing
+    // leaves the phone. EVERY method is IS_NATIVE-guarded and returns before
+    // touching the Capacitor bridge on web (audit:web). Stage 1 is strictly
+    // display-only — extraction results feed a dev panel; nothing here (or in
+    // that panel) writes userPrefs or productions.
+    const CallSheet = {
+      async isAvailable() {
+        if (!IS_NATIVE) return { available: false, reason: 'web' };
+        try { const p = _capPlugins().CallSheet; if (p && p.isAvailable) { const r = await p.isAvailable(); return r || { available: false, reason: 'unknown' }; } }
+        catch (e) { try { console.warn('[CallSheet] isAvailable failed', (e && e.message) || e); } catch (_) {} }
+        return { available: false, reason: 'unavailable' };
+      },
+      async pickDocument() {
+        if (!IS_NATIVE) return null;
+        try { const p = _capPlugins().CallSheet; if (p && p.pickDocument) return await p.pickDocument(); }
+        catch (e) { /* user cancelled or picker failed — treat as no selection */ }
+        return null;
+      },
+      async extract(path) {
+        if (!IS_NATIVE) return null;
+        try { const p = _capPlugins().CallSheet; if (p && p.extract) return await p.extract({ path }); }
+        catch (e) {
+          try { console.warn('[CallSheet] extract failed', (e && e.message) || e); } catch (_) {}
+          return { error: (e && e.message) || 'Extraction failed' };
+        }
+        return null;
+      },
+    };
+
     // Match the iOS status bar to the app's dark theme (light text on dark).
     async function nativeSetupStatusBar() {
       const { StatusBar } = _capPlugins();
@@ -16637,6 +16667,102 @@ const setDays = (updater) =>
       );
     }
 
+    // ── Call-sheet reader — Stage 1 dev panel (display-only) ────────────────
+    // Proves the on-device extraction pipeline end-to-end: pick a PDF/image →
+    // native CallSheetPlugin extracts the five invoicing fields → this panel
+    // shows value / state / page / crop per field. The three per-field states
+    // are visibly distinct: VERIFIED (matched back into the source text —
+    // green, with a zoomed source crop), UNVERIFIED (value returned but no
+    // source match — amber, "couldn't locate on document"), MISSING (nil —
+    // neutral "not found"). No editing, no saving, no production creation in
+    // Stage 1 — this component never writes stored data. Renders ONLY on
+    // native where the on-device model is available (or could be after the
+    // user enables Apple Intelligence / the model finishes downloading);
+    // web and deviceNotEligible/osTooOld never see it.
+    function CallSheetDevPanel() {
+      const [avail, setAvail] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [error, setError] = useState('');
+      const [result, setResult] = useState(null);
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        let on = true;
+        CallSheet.isAvailable().then(r => { if (on) setAvail(r); }).catch(() => {});
+        return () => { on = false; };
+      }, []);
+      const visible = IS_NATIVE && avail && (avail.available || avail.reason === 'appleIntelligenceNotEnabled' || avail.reason === 'modelNotReady');
+      if (!visible) return null;
+      const run = async () => {
+        setError(''); setResult(null);
+        const picked = await CallSheet.pickDocument();
+        if (!picked || !picked.path) return; // cancelled
+        setBusy(true);
+        try {
+          const r = await CallSheet.extract(picked.path);
+          if (r && r.perField) setResult(r);
+          else setError((r && r.error) || 'Extraction returned nothing');
+        } catch (e) { setError((e && e.message) || 'Extraction failed'); }
+        setBusy(false);
+      };
+      const FIELDS = [
+        ['title', 'Title'], ['prodCo', 'Production company'], ['jobReference', 'Job reference'],
+        ['invoicingEmail', 'Invoicing email'], ['invoicingAddress', 'Invoicing address'],
+      ];
+      const stateChip = (state) => state === 'verified'
+        ? <span className="text-[9px] font-bold uppercase tracking-wider text-tm-good bg-tm-good/10 border border-tm-good/25 rounded px-1.5 py-0.5">Verified</span>
+        : state === 'unverified'
+          ? <span className="text-[9px] font-bold uppercase tracking-wider text-tm-warn bg-tm-warn/10 border border-tm-warn/25 rounded px-1.5 py-0.5">Unverified</span>
+          : <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-500 bg-neutral-800/60 border border-neutral-700 rounded px-1.5 py-0.5">Missing</span>;
+      return (
+        <Disclosure label="Call-sheet reader (dev)" summary="Stage 1">
+          {!avail.available ? (
+            <p className="text-[11px] text-neutral-500">
+              {avail.reason === 'appleIntelligenceNotEnabled'
+                ? 'Apple Intelligence is off — enable it in iOS Settings to test extraction.'
+                : 'The on-device model is still downloading — try again shortly.'}
+            </p>
+          ) : (
+            <>
+              <p className="text-[11px] text-neutral-500 mb-3">On-device extraction test — nothing leaves the phone, nothing is saved. Pick a call sheet (PDF or photo).</p>
+              <Btn onClick={run} disabled={busy} className="w-full justify-center">{busy ? 'Extracting…' : 'Pick a call sheet'}</Btn>
+              {error && <p className="text-[11px] text-tm-pen mt-2">{error}</p>}
+              {result && (
+                <div className="mt-4 space-y-3">
+                  {result.pages && (
+                    <p className="text-[10px] text-neutral-500 font-mono">
+                      {`${result.pages.count} page${result.pages.count === 1 ? '' : 's'} · ran on ${(result.pages.selected || []).join(', ')}${(result.pages.invoicPages || []).length ? ` · "invoic" on ${result.pages.invoicPages.join(', ')}` : ' · no "invoic" match'}`}
+                    </p>
+                  )}
+                  {FIELDS.map(([key, label]) => {
+                    const f = (result.perField && result.perField[key]) || { state: 'missing' };
+                    return (
+                      <div key={key} className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">{label}</span>
+                          <span className="flex items-center gap-1.5">
+                            {f.page ? <span className="text-[9px] text-neutral-600 font-mono">p.{f.page}</span> : null}
+                            {stateChip(f.state)}
+                          </span>
+                        </div>
+                        <div className={`mt-1.5 text-[13px] ${f.state === 'missing' ? 'text-neutral-600 italic' : 'text-neutral-100'}`}>
+                          {f.state === 'missing' ? 'not found' : f.value}
+                        </div>
+                        {f.state === 'unverified' && <div className="text-[10px] text-tm-warn mt-1">Couldn't locate on document</div>}
+                        {f.crop && (
+                          <img src={`data:image/png;base64,${f.crop}`} alt={`${label} source crop`}
+                            className="mt-2 w-full rounded-lg border border-neutral-800" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </Disclosure>
+      );
+    }
+
     function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0 }) {
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
@@ -17301,6 +17427,12 @@ const setDays = (updater) =>
                 </div>
               </div>
             </Disclosure>
+
+            {/* Dev-only — Stage 1 of the AI call-sheet reader. The panel
+                self-gates: renders ONLY on native devices where the on-device
+                model is (or could become) available; web and ineligible
+                devices never see it. Display-only — writes nothing. */}
+            <CallSheetDevPanel />
 
             {/* §8 — About & help: re-run setup, APA terms link, What's new,
                 About metadata, Privacy text. Stacked as sub-sections inside
