@@ -14696,9 +14696,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Once wrapped, the actual wrap time (now written to the record) freezes the
       // timer at its final elapsed value; 0 while the day is live.
       const endEpoch = wrapped ? hhmmToEpochToday(rec.wrapTime) : 0;
+      // L1 / CWD warning chips — computed from the SAME break-state family that
+      // drives the in-app chips (deriveBreakState on the resolved day, with the
+      // BWD-effective day type mirrored verbatim from DayEntryForm). NO threshold
+      // maths re-derived here or in Swift: bs.lunchLate / bs.continuousDay are the
+      // in-app historical flags, and the live terms only compare wall-clock "now"
+      // (in the same absTime coordinates) against bs's OWN lateThreshold /
+      // cwdThreshold — covering the window where the planned lunch hasn't started
+      // yet but the day is already past a threshold. Display-only booleans.
+      let l1 = false, cwd = false;
+      try {
+        const vr = resolveDay(production, rec, soloCrew);
+        const effectiveRole = rec.stepUpRole ? rec.stepUpRole : (soloCrew.role || "");
+        const isPmpa = ROLE_DEFAULTS[effectiveRole]?.pmpa === true;
+        const bwdOverrideApplies = !isPmpa && ROLES_WITH_BWD_OVERRIDE.includes(effectiveRole) &&
+          ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(vr.dayType);
+        const bs = deriveBreakState(vr, bwdOverrideApplies ? "Shoot" : vr.dayType);
+        if (bs && bs.cwdApplies) {
+          const nowD = new Date();
+          const nowH = nowD.getHours() + nowD.getMinutes() / 60;
+          const nowAbs = absTime(nowH, bs.callH);
+          const lunchPending = bs.lunchMissed || (bs.lunchStartAbs != null && nowAbs < bs.lunchStartAbs);
+          cwd = bs.continuousDay || (nowAbs > bs.cwdThreshold && lunchPending);
+          l1 = !cwd && (bs.lunchLate || (nowAbs > bs.lateThreshold && nowAbs <= bs.cwdThreshold && lunchPending));
+        }
+      } catch (_) {}
       // Safety auto-end ~16h after the anchor so a forgotten Activity self-clears.
       const staleEpoch = callEpoch ? callEpoch + 16 * 3600 : 0;
-      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped };
+      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, l1, cwd };
     }
 
     // Mounted inside SoloDayPage. START when today's call time is set; debounced
@@ -14707,8 +14732,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function SoloLiveActivity({ production, soloCrew, days }) {
       const startedKeyRef = React.useRef(null);
       const lastSentRef = React.useRef('');
+      // Minute tick: the descriptor's time-derived outputs (AT LUNCH state, the
+      // L1/CWD live-window terms) depend on wall-clock "now", but nothing in
+      // SoloDayPage re-renders on a timer — so without this, a threshold crossing
+      // while the app is foregrounded would never reach the card until the next
+      // data change. The tick only forces a recompute; the sig comparison still
+      // gates the actual native update to real content changes.
+      const [, laTick] = React.useReducer(x => x + 1, 0);
+      React.useEffect(() => {
+        if (!IS_NATIVE) return;
+        const t = setInterval(laTick, 60000);
+        return () => clearInterval(t);
+      }, []);
       const desc = IS_NATIVE ? liveActivityDescriptor(production, soloCrew, days) : null;
-      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped }) : '';
+      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, l: desc.l1, d: desc.cwd }) : '';
       React.useEffect(() => {
         if (!IS_NATIVE) return;
         // END on day-invalid: no today-dated, called day. If one is running, end
@@ -14725,7 +14762,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
-          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, staleEpoch: desc.staleEpoch, productionId: desc.productionId };
+          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, l1: desc.l1, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId };
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…

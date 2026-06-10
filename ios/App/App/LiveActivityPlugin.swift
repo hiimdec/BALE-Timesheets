@@ -94,6 +94,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let totalText = call.getString("totalText") ?? ""
         let state = call.getString("state") ?? "oncall"
         let endEpoch = call.getDouble("endEpoch") ?? 0
+        let l1 = call.getBool("l1") ?? false
+        let cwd = call.getBool("cwd") ?? false
         let productionId = call.getString("productionId") ?? ""
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
 
@@ -101,7 +103,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             self.endCurrentActivity()
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
             let content = ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: ""),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, l1: l1, cwd: cwd),
                 staleDate: staleDate
             )
             do {
@@ -124,15 +126,17 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let callEpoch = call.getDouble("callEpoch") ?? 0
         let anchorLabel = call.getString("anchorLabel") ?? ""
         let endEpoch = call.getDouble("endEpoch") ?? 0
+        let l1 = call.getBool("l1") ?? false
+        let cwd = call.getBool("cwd") ?? false
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
         Task {
             // The anchor (callEpoch + anchorLabel) is carried on EVERY update so a
             // mid-day call/pre-call edit re-anchors the live card (it lives in
             // ContentState, not the start-fixed Attributes). armed:"" — an app-driven
             // update always clears any pending two-tap arm (the app never sends a
-            // non-empty armed): the reset path for a confirm armed but never tapped twice.
+            // non-empty armed): the backstop reset for an arm that never confirmed.
             await activity.update(ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: ""),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, l1: l1, cwd: cwd),
                 staleDate: staleDate
             ))
             call.resolve()

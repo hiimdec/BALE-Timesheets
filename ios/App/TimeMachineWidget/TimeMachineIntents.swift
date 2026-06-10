@@ -13,15 +13,24 @@
 //  the event writes only on the confirming tap — `armedAction` never flipped, so
 //  no event was ever appended. Switching to LiveActivityIntent fixed both.)
 //
-//  Two-tap confirm: the FIRST tap ARMS (writes `armed` into the running
-//  Activity's ContentState so the button flips to "✓ CONFIRM?"); the confirming
-//  SECOND tap (already armed) (1) APPENDS an event to the App-Group queue — the
-//  CRITICAL path, a direct UserDefaults write that never depends on the arm
-//  render — and (2) flips the chip / freezes+ends the card. The app drains +
-//  applies the queue on next foreground through the shared record-write
-//  transform, idempotent + today-only. The arm RESETS to "" on confirm, on
-//  tapping the other button, or on the next app-driven content update (the app
-//  never sends a non-empty `armed`).
+//  Two-tap confirm: the FIRST tap ARMS (writes `armed` + an `armedAt` stamp into
+//  the running Activity's ContentState so the button flips to "✓ Confirm?"); the
+//  confirming SECOND tap (armed and FRESH — within armWindow) (1) APPENDS an
+//  event to the App-Group queue — the CRITICAL path, a direct UserDefaults write
+//  that never depends on the arm render — and (2) flips the chip / freezes+ends
+//  the card. The app drains + applies the queue on next foreground through the
+//  shared record-write transform, idempotent + today-only.
+//
+//  Arm lifecycle: the arm AUTO-RESETS after ~4s — the arming perform() stays
+//  open for the window (the system holds the app process while an intent is in
+//  flight; observed perform() budget is ~20-30s, so 4s is comfortably inside)
+//  and then clears the arm IF it is still the same instance (stamp check), so a
+//  confirm or a newer arm is never cancelled or doubled. Further resets: confirm,
+//  tapping the other button (re-arms to it), any app-driven content update (the
+//  app never sends a non-empty `armed`), and — if iOS suspended the process
+//  before the delayed reset fired — armedAction's freshness gate refuses to
+//  confirm off an expired arm (the tap re-arms instead), so a visually stuck
+//  CONFIRM? can never instantly log.
 //
 //  Target membership: because perform() must run in the APP process, this file
 //  is a member of BOTH the TimeMachineWidget extension (where Button(intent:)
@@ -83,24 +92,67 @@ enum TMLiveActivity {
         defaults.set(queue, forKey: pendingEventsKey)
     }
 
+    /// The two-tap confirm window. An arm older than this is EXPIRED: the view's
+    /// auto-reset clears it visually, and armedAction refuses to confirm off it.
+    static let armWindow: TimeInterval = 4.0
+
     /// The running Activity for this production (if any).
     @available(iOS 16.2, *)
     static func current(_ productionId: String) -> Activity<TimeMachineActivityAttributes>? {
         Activity<TimeMachineActivityAttributes>.activities.first { $0.attributes.productionId == productionId }
     }
 
-    /// Current two-tap arm state ("" | "lunch" | "wrap"). Read synchronously so
-    /// an Intent can decide arm-vs-confirm without awaiting.
+    /// Current two-tap arm state ("" | "lunch" | "wrap"), gated on FRESHNESS:
+    /// an arm older than armWindow returns "" so a stale CONFIRM? (auto-reset
+    /// missed because iOS suspended the process mid-hold) can never confirm —
+    /// the tap re-arms instead. Keeps the intent's decision aligned with what
+    /// the card visually promises.
     @available(iOS 16.2, *)
     static func armedAction(_ productionId: String) -> String {
-        current(productionId)?.content.state.armed ?? ""
+        guard let cur = current(productionId)?.content.state else { return "" }
+        guard cur.armed != "",
+              Date().timeIntervalSince1970 - cur.armedAt < armWindow else { return "" }
+        return cur.armed
     }
 
-    /// BEST-EFFORT — update the matching Activity's content from this (extension)
-    /// process, preserving any field not overridden. Isolated so the fallback to
-    /// app-process is a one-spot change.
+    /// ARM — write the armed state stamped with its instant. Returns the stamp so
+    /// the caller's delayed auto-reset can clear exactly THIS arm and never a
+    /// newer one. The FIRST operation of an arm tap; nothing precedes it.
     @available(iOS 16.2, *)
-    static func update(_ productionId: String, state: String? = nil, armed: String? = nil) async {
+    static func arm(_ productionId: String, action: String) async -> Double {
+        guard let activity = current(productionId) else { return 0 }
+        let cur = activity.content.state
+        let stamp = Date().timeIntervalSince1970
+        let next = TimeMachineActivityAttributes.ContentState(
+            totalText: cur.totalText, state: cur.state,
+            callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
+            armed: action, armedAt: stamp, l1: cur.l1, cwd: cur.cwd
+        )
+        await activity.update(ActivityContent(state: next, staleDate: nil))
+        return stamp
+    }
+
+    /// Delayed auto-reset — clears the arm IF it is still the exact instance the
+    /// caller created (same action + same stamp). A confirm (armed→"") or a newer
+    /// arm (different stamp) makes this a no-op, so it can never cancel or double
+    /// a confirmed action — it only ever un-arms its own stale CONFIRM?.
+    @available(iOS 16.2, *)
+    static func disarmIfStillArmed(_ productionId: String, action: String, stamp: Double) async {
+        guard let activity = current(productionId) else { return }
+        let cur = activity.content.state
+        guard cur.armed == action, cur.armedAt == stamp else { return }
+        let next = TimeMachineActivityAttributes.ContentState(
+            totalText: cur.totalText, state: cur.state,
+            callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
+            armed: "", armedAt: 0, l1: cur.l1, cwd: cur.cwd
+        )
+        await activity.update(ActivityContent(state: next, staleDate: nil))
+    }
+
+    /// CONFIRM-side update — flips the chip state and clears the arm, preserving
+    /// everything else (anchor, endEpoch, warning flags).
+    @available(iOS 16.2, *)
+    static func update(_ productionId: String, state: String? = nil) async {
         guard let activity = current(productionId) else { return }
         let cur = activity.content.state
         let next = TimeMachineActivityAttributes.ContentState(
@@ -109,7 +161,7 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: cur.endEpoch,
-            armed: armed ?? cur.armed
+            armed: "", armedAt: 0, l1: cur.l1, cwd: cur.cwd
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
     }
@@ -127,7 +179,7 @@ enum TMLiveActivity {
                 callEpoch: cur.callEpoch,
                 anchorLabel: cur.anchorLabel,
                 endEpoch: Date().timeIntervalSince1970,
-                armed: ""
+                armed: "", armedAt: 0, l1: cur.l1, cwd: cur.cwd
             ),
             staleDate: nil
         )
@@ -169,14 +221,21 @@ struct LunchNowIntent: LiveActivityIntent {
         if armed == "lunch" {
             // CONFIRM: the App-Group append is the critical, direct write.
             TMLiveActivity.appendEvent(type: "lunchNow", productionId: productionId)
-            await TMLiveActivity.update(productionId, state: "lunch", armed: "")     // immediate chip + disarm
+            await TMLiveActivity.update(productionId, state: "lunch")               // immediate chip + disarm
             await TMLiveActivity.requestBackgroundDrain()                           // best-effort live total
         } else {
             // ARM: the Activity update is the FIRST op — nothing (logging, queue
-            // work) precedes it, to minimise the visible arm latency.
-            await TMLiveActivity.update(productionId, armed: "lunch")
+            // work) precedes it, to minimise the visible arm latency. Then HOLD
+            // perform() open for the confirm window (the system keeps the app
+            // process alive while an intent is in flight; the button stays
+            // tappable — intent taps are not serialised behind this) and
+            // auto-reset the arm if it was never confirmed. The stamp check makes
+            // a confirm or a newer arm turn the reset into a no-op.
+            let stamp = await TMLiveActivity.arm(productionId, action: "lunch")
+            NSLog("[LiveActivity] LunchNowIntent armed (app process) pid=%@", productionId)
+            try? await Task.sleep(nanoseconds: UInt64(TMLiveActivity.armWindow * 1_000_000_000))
+            await TMLiveActivity.disarmIfStillArmed(productionId, action: "lunch", stamp: stamp)
         }
-        NSLog("[LiveActivity] LunchNowIntent.perform (app process) armed=%@ pid=%@", armed, productionId)
         return .result()
     }
 }
@@ -201,10 +260,13 @@ struct WrapNowIntent: LiveActivityIntent {
             TMLiveActivity.appendEvent(type: "wrapNow", productionId: productionId)
             await TMLiveActivity.endWrapped(productionId)
         } else {
-            // ARM: the Activity update is the FIRST op — nothing precedes it.
-            await TMLiveActivity.update(productionId, armed: "wrap")
+            // ARM first, then hold the confirm window open and auto-reset if
+            // never confirmed (see LunchNowIntent for the full rationale).
+            let stamp = await TMLiveActivity.arm(productionId, action: "wrap")
+            NSLog("[LiveActivity] WrapNowIntent armed (app process) pid=%@", productionId)
+            try? await Task.sleep(nanoseconds: UInt64(TMLiveActivity.armWindow * 1_000_000_000))
+            await TMLiveActivity.disarmIfStillArmed(productionId, action: "wrap", stamp: stamp)
         }
-        NSLog("[LiveActivity] WrapNowIntent.perform (app process) armed=%@ pid=%@", armed, productionId)
         return .result()
     }
 }

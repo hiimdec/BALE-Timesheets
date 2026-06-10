@@ -41,17 +41,32 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
         /// final value (anchor…endEpoch). 0 while the day is live (timer runs).
         public var endEpoch: Double
         /// Two-tap arm state (Stage 2): "" idle, "lunch" / "wrap" awaiting the
-        /// confirming second tap. Reset to "" on confirm OR on the next app-driven
-        /// content update (the app never sends a non-empty armed).
+        /// confirming second tap. Reset to "" on confirm, by the in-perform delayed
+        /// auto-reset (~4s), or on the next app-driven content update (the app
+        /// never sends a non-empty armed).
         public var armed: String
+        /// Epoch (seconds) when the current arm was written; 0 when idle. Stamps
+        /// the arm INSTANCE so (a) the delayed auto-reset only clears the arm it
+        /// created, never a newer one, and (b) a stale armed value (auto-reset
+        /// missed because iOS suspended the process) can never confirm — the
+        /// intent treats an expired arm as a fresh ARM, not a confirm.
+        public var armedAt: Double
+        /// L1 / CWD warning flags, computed by the WEB layer from the same
+        /// deriveBreakState family that drives the in-app chips — the native side
+        /// renders them only; no APA threshold maths lives in Swift.
+        public var l1: Bool
+        public var cwd: Bool
 
-        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "") {
+        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, l1: Bool = false, cwd: Bool = false) {
             self.totalText = totalText
             self.state = state
             self.callEpoch = callEpoch
             self.anchorLabel = anchorLabel
             self.endEpoch = endEpoch
             self.armed = armed
+            self.armedAt = armedAt
+            self.l1 = l1
+            self.cwd = cwd
         }
     }
 

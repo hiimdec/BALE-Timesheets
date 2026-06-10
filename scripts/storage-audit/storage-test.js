@@ -5472,10 +5472,21 @@ async function main() {
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
-      /anchorLabel, endEpoch, staleEpoch, state, wrapped \}/.test(html));
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped, l1, cwd \}/.test(html));
     check('TT8d Issue C — ingestion ALSO re-runs on the plugin drainRequest event (best-effort background apply), via the SAME idempotent ingest()',
       /const LAPlg = _capPlugins\(\)\.LiveActivity;/.test(html) &&
       /LAPlg\.addListener\('drainRequest', \(\) => ingest\(\)\)/.test(html));
+    check('TT8e L1/CWD card flags come from the EXISTING break-state family ONLY — resolveDay + deriveBreakState (BWD-effective type mirrored from DayEntryForm), live terms compare now against bs\'s OWN thresholds; no threshold maths re-derived (and none in Swift); flags flow into sig + payload',
+      /const vr = resolveDay\(production, rec, soloCrew\);/.test(html) &&
+      /const bs = deriveBreakState\(vr, bwdOverrideApplies \? "Shoot" : vr\.dayType\);/.test(html) &&
+      /const nowAbs = absTime\(nowH, bs\.callH\);/.test(html) &&
+      /cwd = bs\.continuousDay \|\| \(nowAbs > bs\.cwdThreshold && lunchPending\);/.test(html) &&
+      /l1 = !cwd && \(bs\.lunchLate \|\| \(nowAbs > bs\.lateThreshold && nowAbs <= bs\.cwdThreshold && lunchPending\)\);/.test(html) &&
+      /w: desc\.wrapped, l: desc\.l1, d: desc\.cwd/.test(html) &&
+      /l1: desc\.l1, cwd: desc\.cwd/.test(html));
+    check('TT8f SoloLiveActivity minute tick — recomputes the time-derived descriptor outputs (AT LUNCH window, L1/CWD live terms) while the app is foregrounded; sig still gates native updates to real changes',
+      /const \[, laTick\] = React\.useReducer\(x => x \+ 1, 0\);/.test(html) &&
+      /const t = setInterval\(laTick, 60000\);/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

@@ -9,14 +9,17 @@
 //    • near-black chrome (#0a0a0a), no gradients
 //    • ALL figures in a monospaced font with tabular figures
 //    • the £ glyph + brand accents in sky-500 (#0ea5e9)
-//    • state chip: shown ONLY AT LUNCH (amber) / WRAPPED (green) — hidden while
-//      ON CALL (the default state needs no chip)
+//    • chip slot (top-right): WRAPPED (green) > AT LUNCH (amber) > CWD / L1
+//      penalty warnings (tm-pen red, flags computed by the web layer) — empty
+//      while ON CALL with no warnings
 //    • uppercase, letter-spaced micro-labels (DAY TOTAL, CALL 08:00 / PRE-CALL …)
 //    • system font for non-numeric text; data is the hero
 //    • elapsed timer = ActivityKit's native Text(timerInterval:) — ticks
 //      on-device with zero updates; FREEZES at wrap (range ends at endEpoch,
 //      in the past, so it renders the final elapsed statically).
-//    • two-tap buttons: first tap arms (button → "✓ CONFIRM?"), second confirms.
+//    • buttons: native-iOS pills (continuous-corner rounded rects, SF sentence
+//      case); two-tap — first tap arms ("✓ Confirm?", auto-resets ~4s), second
+//      confirms.
 //
 
 import SwiftUI
@@ -43,6 +46,7 @@ private extension Color {
     static let tmSky     = Color(hex: 0x0EA5E9)   // sky-500
     static let tmAmber   = Color(hex: 0xF59E0B)   // tm-warn
     static let tmGood    = Color(hex: 0x22C55E)   // tm-good
+    static let tmPen     = Color(hex: 0xF43F5E)   // tm-pen — penalties (L1 / CWD)
 }
 
 // MARK: - State helpers
@@ -98,12 +102,31 @@ private func stateChip(_ state: String) -> some View {
         .clipShape(Capsule())
 }
 
-// Item 6: the chip is shown ONLY for AT LUNCH / WRAPPED. ON CALL (the default)
-// renders no chip — the card is calmer at rest.
+// Penalty warning chip (L1 / CWD) — tm-pen, matching the in-app day-row pills.
+// The flags arrive pre-computed from the web layer (deriveBreakState family);
+// this renders them only.
+private func warnChip(_ label: String) -> some View {
+    Text(label)
+        .font(.system(size: 9, weight: .bold))
+        .tracking(1.2)
+        .foregroundColor(.tmPen)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Color.tmPen.opacity(0.14))
+        .clipShape(Capsule())
+}
+
+// The single chip slot. Priority: WRAPPED > AT LUNCH > CWD > L1 — mirroring the
+// in-app lunch-chip precedence (CWD wins over LATE; they are near-mutually
+// exclusive by construction). ON CALL with no warnings renders no chip.
 @ViewBuilder
-private func stateChipIfActive(_ state: String) -> some View {
+private func chipSlot(state: String, l1: Bool, cwd: Bool) -> some View {
     if state != "oncall" {
         stateChip(state)
+    } else if cwd {
+        warnChip("CWD")
+    } else if l1 {
+        warnChip("L1")
     }
 }
 
@@ -126,47 +149,71 @@ private func elapsedTimer(anchor: Double, end: Double) -> some View {
 
 // MARK: - Action buttons (Stage 2, iOS 17+)
 
-// App-pill geometry to match the in-app solo Lunch/Wrap buttons: a rounded
-// RECTANGLE (not a capsule) with a checkmark + uppercase, letter-spaced label.
-// Rest = calm OUTLINE (.bordered) — Lunch amber, Wrap sky. Armed = LOUD inverse
-// FILL (.borderedProminent, solid) + "CONFIRM?" so a half-done two-tap reads
-// unmistakably as pending, never as done — a slow (background-launched) arm must
-// not be mistaken for a completed log. Each fires its App Intent in the APP
-// process (LiveActivityIntent). Callers gate on iOS 17 + a non-wrapped state.
-private func actionContent(_ text: String) -> some View {
-    HStack(spacing: 5) {
-        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
-        Text(text).font(.system(size: 11, weight: .bold)).tracking(0.9)
+// Native-iOS pill: an explicit RoundedRectangle(cornerRadius: 14, style:
+// .continuous) — Apple's continuous-curvature corners — drawn as a custom
+// background on a PLAIN button style (the bordered styles ignore shape control
+// in Live Activities). Typography is native system: SF semibold, sentence case,
+// no tracking — the card's caption labels keep the uppercase brand style; only
+// the buttons go native. Colour coding kept: lunch = amber family, wrap = sky
+// primary; armed = the loud inverse treatment + "✓ Confirm?" so a half-done
+// two-tap can't read as done. The flip animates with .snappy (honoured in Live
+// Activities on iOS 17+, 2s cap) instead of the slow default blurred crossfade.
+// Each fires its App Intent in the APP process (LiveActivityIntent). Callers
+// gate on iOS 17 + a non-wrapped state.
+private struct ActionPill: View {
+    let text: String
+    let confirm: Bool
+    let fill: Color
+    let stroke: Color?
+    let textColor: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if confirm {
+                Image(systemName: "checkmark").font(.system(size: 13, weight: .semibold))
+            }
+            Text(text).font(.system(size: 14, weight: .semibold))
+        }
+        .foregroundColor(textColor)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(fill))
+        .overlay {
+            if let stroke {
+                RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(stroke, lineWidth: 1.5)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
-    .frame(maxWidth: .infinity)
 }
 
 @available(iOS 17.0, *)
 @ViewBuilder
 private func lunchButton(_ productionId: String, armed: Bool) -> some View {
-    if armed {
-        Button(intent: LunchNowIntent(productionId: productionId)) { actionContent("CONFIRM?") }
-            .buttonStyle(.borderedProminent).tint(.tmAmber)
-            .buttonBorderShape(.roundedRectangle(radius: 10))
-    } else {
-        Button(intent: LunchNowIntent(productionId: productionId)) { actionContent("LUNCH NOW") }
-            .buttonStyle(.bordered).tint(.tmAmber)
-            .buttonBorderShape(.roundedRectangle(radius: 10))
+    Button(intent: LunchNowIntent(productionId: productionId)) {
+        if armed {
+            // Loud inverse: solid amber fill (rest is the tinted outline).
+            ActionPill(text: "Confirm?", confirm: true, fill: .tmAmber, stroke: nil, textColor: .black)
+        } else {
+            ActionPill(text: "Lunch now", confirm: false, fill: Color.tmAmber.opacity(0.14), stroke: Color.tmAmber.opacity(0.4), textColor: .tmAmber)
+        }
     }
+    .buttonStyle(.plain)
 }
 
 @available(iOS 17.0, *)
 @ViewBuilder
 private func wrapButton(_ productionId: String, armed: Bool) -> some View {
-    if armed {
-        Button(intent: WrapNowIntent(productionId: productionId)) { actionContent("CONFIRM?") }
-            .buttonStyle(.borderedProminent).tint(.tmSky)
-            .buttonBorderShape(.roundedRectangle(radius: 10))
-    } else {
-        Button(intent: WrapNowIntent(productionId: productionId)) { actionContent("WRAP NOW") }
-            .buttonStyle(.bordered).tint(.tmSky)
-            .buttonBorderShape(.roundedRectangle(radius: 10))
+    Button(intent: WrapNowIntent(productionId: productionId)) {
+        if armed {
+            // Loud inverse: rest is the solid sky primary, so armed flips to the
+            // tinted-outline treatment (mirrors the in-app Wrap confirm state).
+            ActionPill(text: "Confirm?", confirm: true, fill: Color.tmSky.opacity(0.2), stroke: .tmSky, textColor: .tmInk)
+        } else {
+            ActionPill(text: "Wrap now", confirm: false, fill: .tmSky, stroke: nil, textColor: .black)
+        }
     }
+    .buttonStyle(.plain)
 }
 
 @available(iOS 17.0, *)
@@ -175,7 +222,7 @@ private func actionButtons(_ productionId: String, armed: String) -> some View {
         lunchButton(productionId, armed: armed == "lunch")
         wrapButton(productionId, armed: armed == "wrap")
     }
-    .controlSize(.small)
+    .animation(.snappy(duration: 0.25), value: armed)
 }
 
 // MARK: - Lock Screen / banner
@@ -191,7 +238,7 @@ struct TimeMachineLockScreenView: View {
                     .foregroundColor(.tmMuted)
                     .lineLimit(1)
                 Spacer()
-                stateChipIfActive(context.state.state)
+                chipSlot(state: context.state.state, l1: context.state.l1, cwd: context.state.cwd)
             }
             HStack(alignment: .lastTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -229,7 +276,7 @@ struct TimeMachineLiveActivity: Widget {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.tmMuted)
                             .lineLimit(1)
-                        stateChipIfActive(context.state.state)
+                        chipSlot(state: context.state.state, l1: context.state.l1, cwd: context.state.cwd)
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
