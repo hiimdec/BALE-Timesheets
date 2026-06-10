@@ -5416,9 +5416,9 @@ async function main() {
       !/setProduction|setDays/.test(descFn) && !/setProduction|setDays/.test(ctrlFn));
 
     // ─ TT5: Stage-1 start-bug fix + loggable, non-silent lifecycle ─
-    check('TT5a applyWrapNow flags the day record wrapped:true so the Activity ends on wrap (calc-neutral — wrapped is status only, never read by the engine); handleWrapNow routes through it',
-      /function applyWrapNow\(production, date, t\) \{[\s\S]{0,260}\? \{ \.\.\.d, wrapped: true \} : d\)/.test(html) &&
-      /setProduction\(p => applyWrapNow\(p, currentDate, t\)\)/.test(html));
+    check('TT5a applyWrapNow record-writes wrapTime+wrapped:true via the shared mapDayNow (calc-neutral — wrapped is status only, never read by the engine); Live Activity ingestion routes through it',
+      /function applyWrapNow\(production, date, t\) \{[\s\S]{0,200}mapDayNow\(production\.days, date, uid0, \{ wrapTime: t, wrapped: true \}\)/.test(html) &&
+      /: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
     check('TT5b lifecycle decisions are loggable on native (start / update / wrapped→end), not silent',
       /console\.log\('\[LiveActivity\] start'/.test(html) &&
       /console\.log\('\[LiveActivity\] update'/.test(html) &&
@@ -5433,8 +5433,8 @@ async function main() {
     check('TT6a bridge.drainPendingEvents is IS_NATIVE-guarded (returns [] before touching the plugin on web)',
       /async drainPendingEvents\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
       /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
-    check('TT6b ingestion applies through the EXISTING setters ONLY — lunch via setDayDefault, wrap via shared applyWrapNow (no parallel day-record write)',
-      /next = ev\.type === 'lunchNow'\s*\? setDayDefault\(next, ev\.date, 'lunchStartTime', ev\.at\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
+    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow (one mapDayNow path; no parallel day-record write)',
+      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
     check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
       /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,140}continue; \}/.test(html) &&
       /applied\.add\(ev\.id\);/.test(html) &&
@@ -5450,12 +5450,29 @@ async function main() {
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
       /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
-      /const payload = \{ name: desc\.name,[\s\S]{0,180}productionId: desc\.productionId \};/.test(html));
-    check('TT7b applyWrapNow is the SINGLE wrap write path — defined once, used by handleWrapNow AND ingestion; handleWrapNow has no inline wrapped-map',
+      /const payload = \{ name: desc\.name,[\s\S]{0,260}productionId: desc\.productionId \};/.test(html));
+    check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
-      /const handleWrapNow = \(\) => \{[\s\S]{0,400}setProduction\(p => applyWrapNow\(p, currentDate, t\)\);/.test(html) &&
-      (html.match(/applyWrapNow\(/g) || []).length >= 3 &&
-      !/const handleWrapNow = \(\) => \{[\s\S]{0,400}\? \{ \.\.\.d, wrapped: true \} : d\)/.test(html));
+      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
+      /const handleWrapNow = \(\) => \{[\s\S]{0,560}setDayDefault\(p, currentDate, 'wrapTime', t\)/.test(html) &&
+      !/const handleWrapNow = \(\) => \{[\s\S]{0,560}applyWrapNow\(/.test(html));
+
+    // ─ TT8: shared record-write transform + Stage-2 design-pass descriptor ─
+    check('TT8a mapDayNow is the ONE day-record mutation — defined once, used by applyLunchNow, applyWrapNow, AND the solo Lunch/Wrap Now buttons',
+      /function mapDayNow\(days, date, uid, patch\) \{[\s\S]{0,160}d\.date === date && \(!uid \|\| d\.crewId === uid\) \? \{ \.\.\.d, \.\.\.patch \} : d/.test(html) &&
+      /function applyLunchNow\(production, date, t\) \{[\s\S]{0,160}mapDayNow\(production\.days, date, uid0, \{ lunchStartTime: t \}\)/.test(html) &&
+      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ lunchStartTime: lunchStr \}\)\)/.test(html) &&
+      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html));
+    check('TT8b descriptor derives the pre-call/call anchor + anchorLabel + endEpoch (frozen-timer on wrap); timer anchors on pre-call when set',
+      /const preCall = rec\.preCallTime \|\| rec\.truckCallTime \|\| dd\.preCallTime \|\| '';/.test(html) &&
+      /const anchorTime = preCall \|\| callTime;/.test(html) &&
+      /const anchorLabel = preCall \? `PRE-CALL \$\{preCall\}` : `CALL \$\{callTime\}`;/.test(html) &&
+      /const callEpoch = hhmmToEpochToday\(anchorTime\);/.test(html) &&
+      /const endEpoch = wrapped \? hhmmToEpochToday\(rec\.wrapTime\) : 0;/.test(html));
+    check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload',
+      /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
+      /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped \}/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

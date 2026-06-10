@@ -71,16 +71,18 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let name = call.getString("name") ?? "Shoot"
         let callEpoch = call.getDouble("callEpoch") ?? 0
+        let anchorLabel = call.getString("anchorLabel") ?? ""
         let totalText = call.getString("totalText") ?? ""
         let state = call.getString("state") ?? "oncall"
+        let endEpoch = call.getDouble("endEpoch") ?? 0
         let productionId = call.getString("productionId") ?? ""
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
 
         DispatchQueue.main.async {
             self.endCurrentActivity()
-            let attributes = TimeMachineActivityAttributes(productionName: name, callEpoch: callEpoch, productionId: productionId)
+            let attributes = TimeMachineActivityAttributes(productionName: name, callEpoch: callEpoch, anchorLabel: anchorLabel, productionId: productionId)
             let content = ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, endEpoch: endEpoch, armed: ""),
                 staleDate: staleDate
             )
             do {
@@ -100,10 +102,14 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let activity = currentActivity as? Activity<TimeMachineActivityAttributes> else { call.resolve(); return }
         let totalText = call.getString("totalText") ?? ""
         let state = call.getString("state") ?? "oncall"
+        let endEpoch = call.getDouble("endEpoch") ?? 0
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
         Task {
+            // armed:"" — an app-driven content update always clears any pending
+            // two-tap arm (the app never sends a non-empty armed). This is the
+            // reset path for a confirm that was armed but never tapped twice.
             await activity.update(ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, endEpoch: endEpoch, armed: ""),
                 staleDate: staleDate
             ))
             call.resolve()

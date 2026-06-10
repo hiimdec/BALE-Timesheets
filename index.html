@@ -3648,17 +3648,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
-    // Shared "wrap now" transform: set the planned wrapTime (dayDefaults overlay,
-    // via setDayDefault) AND flag the day record wrapped:true — the canonical
-    // wrapped signal (read by Home status + the Live Activity; never by the pay
-    // engine, so figures are unchanged). The ONE wrap write path — used by BOTH
-    // the solo editor's handleWrapNow AND Live Activity event ingestion. Pure.
+    // The ONE day-record mutation for solo "now" actions — patches the matched
+    // today record(s). Used by BOTH the solo LunchNowBtn/WrapNowBtn (uid=null →
+    // every today entry, preserving their existing all-entries semantics) AND
+    // Live Activity ingestion (uid=crew[0] → the solo record). Pure.
+    function mapDayNow(days, date, uid, patch) {
+      return (days || []).map(d =>
+        d.date === date && (!uid || d.crewId === uid) ? { ...d, ...patch } : d);
+    }
+    // Live Activity ingestion transforms — write the actual time onto the DAY
+    // RECORD, NOT the dayDefaults overlay. resolveDay is record-wins (overlay
+    // only cascades when the record field is undefined), and every solo record
+    // bakes call/wrap/lunch defaults + migrateDay always backfills lunchStartTime
+    // — so a setDayDefault overlay write is ALWAYS shadowed for lunch (never
+    // surfaced) and shadowed for wrap whenever the record's wrapTime is defined
+    // (landed only intermittently). Writing the record makes the actuals surface
+    // in the solo editor AND reach the pay engine — the product model: pre-filled
+    // defaults are overwritten with actuals on tap. The Best Boy dept view keeps
+    // its OWN overlay (setDayDefault) writes — different data model, no Live
+    // Activity, deliberately not routed through here.
+    function applyLunchNow(production, date, t) {
+      const uid0 = production.crew && production.crew[0] && production.crew[0].id;
+      return { ...production, days: mapDayNow(production.days, date, uid0, { lunchStartTime: t }) };
+    }
     function applyWrapNow(production, date, t) {
-      const next = setDayDefault(production, date, 'wrapTime', t);
-      const uid0 = next.crew && next.crew[0] && next.crew[0].id;
-      return { ...next, days: (next.days || []).map(d =>
-        d.date === date && (!uid0 || d.crewId === uid0)
-          ? { ...d, wrapped: true } : d) };
+      const uid0 = production.crew && production.crew[0] && production.crew[0].id;
+      return { ...production, days: mapDayNow(production.days, date, uid0, { wrapTime: t, wrapped: true }) };
     }
 
     // V4-5h-11: applyDayDefaultsToAllCrew removed. Time-field cascade now happens
@@ -9610,7 +9625,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         haptic.stamp();
         const now = new Date();
         const wrapStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        setDays(prev => prev.map(d => d.date === todayStr ? { ...d, wrapTime: wrapStr, wrapped: true } : d));
+        setDays(prev => mapDayNow(prev, todayStr, null, { wrapTime: wrapStr, wrapped: true }));
         showToast(`Wrapped ${todayEntries.length} entr${todayEntries.length === 1 ? 'y' : 'ies'} at ${wrapStr}`);
         setConfirming(false);
       };
@@ -9660,7 +9675,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         haptic.heavy();
         const now = new Date();
         const lunchStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        setDays(prev => prev.map(d => d.date === todayStr ? { ...d, lunchStartTime: lunchStr } : d));
+        setDays(prev => mapDayNow(prev, todayStr, null, { lunchStartTime: lunchStr }));
         showToast(`Lunch logged at ${lunchStr}`);
         setConfirming(false);
       };
@@ -10529,9 +10544,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               const handleWrapNow = () => {
                 haptic.stamp();
                 const t = nowHHMM();
-                // Shared wrap write (also used by Live Activity ingestion) — sets
-                // the planned wrapTime + flags the record wrapped:true. Calc-neutral.
-                setProduction(p => applyWrapNow(p, currentDate, t));
+                // Best Boy dept view is OVERLAY-based (deptWrap reads dayDefaults),
+                // so this writes the dayDefaults overlay wrapTime + flags the record
+                // wrapped:true (canonical wrapped signal). Deliberately NOT the solo
+                // record-write path (applyWrapNow) — different data model, no Live
+                // Activity in Best Boy mode. Calc-neutral.
+                setProduction(p => {
+                  const next = setDayDefault(p, currentDate, 'wrapTime', t);
+                  const uid0 = next.crew && next.crew[0] && next.crew[0].id;
+                  return { ...next, days: (next.days || []).map(d =>
+                    d.date === currentDate && (!uid0 || d.crewId === uid0)
+                      ? { ...d, wrapped: true } : d) };
+                });
                 showToast?.(`Wrap set to ${t}`);
               };
               const btnCls = "flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 text-[10px] font-bold uppercase tracking-[0.14em] hover:bg-sky-500/15 transition-colors";
@@ -14631,10 +14655,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const rec = (days || []).find(d => d.date === today && d.crewId === soloCrew.id)
                || (days || []).find(d => d.date === today);
       if (!rec) return null;
-      const callTime = rec.callTime
-        || (production.dayDefaults && production.dayDefaults[today] && production.dayDefaults[today].callTime)
-        || null;
+      const dd = (production.dayDefaults && production.dayDefaults[today]) || {};
+      const callTime = rec.callTime || dd.callTime || null;
       if (!callTime) return null;
+      // Anchor the elapsed timer at pre-call if one is set (record-wins, then the
+      // dayDefaults overlay — mirrors resolveDay), else at call. truckCallTime is
+      // the legacy pre-call back-compat field.
+      const preCall = rec.preCallTime || rec.truckCallTime || dd.preCallTime || '';
+      const anchorTime = preCall || callTime;
+      const anchorLabel = preCall ? `PRE-CALL ${preCall}` : `CALL ${callTime}`;
       let total = 0;
       try { total = calcForDisplay(production, rec, soloCrew, findPrevDay(days, rec)).total || 0; } catch (_) {}
       // WRAPPED is the explicit user flag ONLY. Every fresh day inherits a
@@ -14655,17 +14684,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (nowMins >= lunchMins && nowMins < lunchMins + dur) state = 'lunch';
         }
       }
-      // Today's date + call time → epoch seconds, for Text(timerInterval:).
-      const callH = parseHHMM(callTime);
-      let callEpoch = 0;
-      if (callH != null) {
+      // Today's date + an HH:MM → epoch seconds, for Text(timerInterval:).
+      const hhmmToEpochToday = (t) => {
+        const h = parseHHMM(t);
+        if (h == null) return 0;
         const d = new Date();
-        d.setHours(Math.floor(callH), Math.round((callH % 1) * 60), 0, 0);
-        callEpoch = Math.floor(d.getTime() / 1000);
-      }
-      // Safety auto-end ~16h after call so a forgotten Activity self-clears.
+        d.setHours(Math.floor(h), Math.round((h % 1) * 60), 0, 0);
+        return Math.floor(d.getTime() / 1000);
+      };
+      const callEpoch = hhmmToEpochToday(anchorTime);
+      // Once wrapped, the actual wrap time (now written to the record) freezes the
+      // timer at its final elapsed value; 0 while the day is live.
+      const endEpoch = wrapped ? hhmmToEpochToday(rec.wrapTime) : 0;
+      // Safety auto-end ~16h after the anchor so a forgotten Activity self-clears.
       const staleEpoch = callEpoch ? callEpoch + 16 * 3600 : 0;
-      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, staleEpoch, state, wrapped };
+      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped };
     }
 
     // Mounted inside SoloDayPage. START when today's call time is set; debounced
@@ -14675,7 +14708,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const startedKeyRef = React.useRef(null);
       const lastSentRef = React.useRef('');
       const desc = IS_NATIVE ? liveActivityDescriptor(production, soloCrew, days) : null;
-      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, w: desc.wrapped }) : '';
+      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped }) : '';
       React.useEffect(() => {
         if (!IS_NATIVE) return;
         // END on day-invalid: no today-dated, called day. If one is running, end
@@ -14692,7 +14725,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
-          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, state: desc.state, staleEpoch: desc.staleEpoch, productionId: desc.productionId };
+          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, staleEpoch: desc.staleEpoch, productionId: desc.productionId };
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…
@@ -21223,10 +21256,10 @@ const confirmDelete = (p) => setConfirmOpts({
       // ── Live Activity Stage 2 — ingest queued Lunch/Wrap events ─────────────
       // The widget's App Intents append { id, type, at, date, ts, productionId }
       // to the App Group. We drain on launch and on every foreground (isActive),
-      // then apply each through the SAME setters the in-app Now buttons use —
-      // lunchNow → setDayDefault(...'lunchStartTime'); wrapNow → applyWrapNow(...)
-      // — so there is NO parallel write path into day records. Idempotent via a
-      // persisted appliedEventIds set; today-dated (UTC, matches todayISO) only.
+      // then apply each through the SAME record-write transform (mapDayNow) the
+      // solo Now buttons use — lunchNow → applyLunchNow; wrapNow → applyWrapNow —
+      // so there is ONE write path into day records, no parallel path. Idempotent
+      // via a persisted appliedEventIds set; today-dated (UTC, matches todayISO) only.
       // Entirely IS_NATIVE-gated, so the web build never touches the bridge.
       const liveActivityAppliedRef = React.useRef(null);
       useEffect(() => {
@@ -21259,7 +21292,7 @@ const confirmDelete = (p) => setConfirmOpts({
             for (const ev of toApply) {
               if (ev.productionId !== pr.id) continue;
               next = ev.type === 'lunchNow'
-                ? setDayDefault(next, ev.date, 'lunchStartTime', ev.at)
+                ? applyLunchNow(next, ev.date, ev.at)
                 : applyWrapNow(next, ev.date, ev.at);
             }
             return next;
