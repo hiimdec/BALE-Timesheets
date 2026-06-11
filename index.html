@@ -12613,6 +12613,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </SectionCard>
 
             <Disclosure label="Invoicing details" summary={invoicingDetailsSummary}>
+              {/* Stage 2 — AI call-sheet import. Sits adjacent to the fields it
+                  fills; self-gates on native + model availability (web and
+                  ineligible devices render nothing). Apply routes through the
+                  same setProduction merge the inputs below use. */}
+              <CallSheetImport production={production} setProduction={setProduction} userPrefs={userPrefs} />
               <Field label="Company address" hint="Where the invoice is addressed to">
                 <textarea
                   value={production.toAddress || ""}
@@ -16667,23 +16672,41 @@ const setDays = (updater) =>
       );
     }
 
-    // ── Call-sheet reader — Stage 1 dev panel (display-only) ────────────────
-    // Proves the on-device extraction pipeline end-to-end: pick a PDF/image →
-    // native CallSheetPlugin extracts the five invoicing fields → this panel
-    // shows value / state / page / crop per field. The three per-field states
-    // are visibly distinct: VERIFIED (matched back into the source text —
-    // green, with a zoomed source crop), UNVERIFIED (value returned but no
-    // source match — amber, "couldn't locate on document"), MISSING (nil —
-    // neutral "not found"). No editing, no saving, no production creation in
-    // Stage 1 — this component never writes stored data. Renders ONLY on
-    // native where the on-device model is available (or could be after the
-    // user enables Apple Intelligence / the model finishes downloading);
-    // web and deviceNotEligible/osTooOld never see it.
-    function CallSheetDevPanel() {
+    // ── Call-sheet import (Stage 2) — shoot-level review-sheet UX ───────────
+    // The entry row lives INSIDE ProductionSettingsSheet's "Invoicing details"
+    // section, adjacent to the fields it fills. CORE PRINCIPLE — no new write
+    // path: "Apply to shoot" routes every value through the SAME
+    // setProduction merge the form's own inputs use on change (this form
+    // commits live on keystroke; it has no separate Save step), so applying
+    // is exactly what typing the values would have done. The importer itself
+    // never touches storage or userPrefs.
+    //
+    // Availability gating is identical to Stage 1: web, deviceNotEligible and
+    // osTooOld render nothing; appleIntelligenceNotEnabled / modelNotReady get
+    // one-line hints instead of the button.
+    //
+    // Review sheet (one screen, all five fields):
+    //   VERIFIED   → value shown quietly + a small "p.N" page ref — quiet IS
+    //                the signal (no badges; tm-good stays reserved).
+    //   UNVERIFIED → tm-warn accent + "Couldn't locate on document — check
+    //                before applying".
+    //   MISSING    → dashed "Not found — tap to enter" row.
+    // Tapping any row opens the verify view: highlighted source crop
+    // (verified) / text snippet or modest page preview (unverified) / plain
+    // editor (missing), plus an editable value and Confirm. A "replaces:"
+    // line surfaces the diff up front when a target field already holds a
+    // different value. prodCo matching an existing saved client (via the
+    // existing matchClientsByPrefix helper) is indicated on the row and sets
+    // clientId on apply — the same linkage manual ClientPicker selection
+    // writes; unmatched companies are left to the existing
+    // save-on-send / update-nudge machinery.
+    function CallSheetImport({ production, setProduction, userPrefs }) {
       const [avail, setAvail] = useState(null);
-      const [busy, setBusy] = useState(false);
+      const [phase, setPhase] = useState('idle'); // idle | extracting | review
       const [error, setError] = useState('');
       const [result, setResult] = useState(null);
+      const [edits, setEdits] = useState({});
+      const [verifyKey, setVerifyKey] = useState(null);
       useEffect(() => {
         if (!IS_NATIVE) return;
         let on = true;
@@ -16692,74 +16715,167 @@ const setDays = (updater) =>
       }, []);
       const visible = IS_NATIVE && avail && (avail.available || avail.reason === 'appleIntelligenceNotEnabled' || avail.reason === 'modelNotReady');
       if (!visible) return null;
-      const run = async () => {
-        setError(''); setResult(null);
+
+      const FIELDS = [
+        { key: 'title', label: 'Production title', target: 'title' },
+        { key: 'prodCo', label: 'Production company', target: 'prodCo' },
+        { key: 'jobReference', label: 'Job reference', target: 'jobReference' },
+        { key: 'invoicingEmail', label: 'Invoicing email', target: 'invoicingEmail' },
+        { key: 'invoicingAddress', label: 'Company address', target: 'toAddress' },
+      ];
+      const fieldState = (key) => (result && result.perField && result.perField[key]) || { state: 'missing' };
+      const liveValue = (key) => (edits[key] !== undefined ? edits[key] : (fieldState(key).value || ''));
+      // Saved-client match via the EXISTING matcher: exact name (ci) among prefix matches.
+      const matchedClient = (() => {
+        const v = ((liveValue('prodCo') || '') + '').trim().toLowerCase();
+        if (!v) return null;
+        return matchClientsByPrefix((userPrefs && userPrefs.clients) || [], v)
+          .find(c => (((c.name || '') + '').trim().toLowerCase() === v)) || null;
+      })();
+
+      const closeReview = () => { setPhase('idle'); setResult(null); setEdits({}); setVerifyKey(null); };
+
+      const runImport = async () => {
+        setError('');
         const picked = await CallSheet.pickDocument();
         if (!picked || !picked.path) return; // cancelled
-        setBusy(true);
+        setPhase('extracting');
         try {
           const r = await CallSheet.extract(picked.path);
-          if (r && r.perField) setResult(r);
-          else setError((r && r.error) || 'Extraction returned nothing');
-        } catch (e) { setError((e && e.message) || 'Extraction failed'); }
-        setBusy(false);
+          if (r && r.perField) { setResult(r); setEdits({}); setPhase('review'); }
+          else { setError((r && r.error) || 'Extraction returned nothing'); setPhase('idle'); }
+        } catch (e) {
+          setError((e && e.message) || 'Extraction failed');
+          setPhase('idle');
+        }
       };
-      const FIELDS = [
-        ['title', 'Title'], ['prodCo', 'Production company'], ['jobReference', 'Job reference'],
-        ['invoicingEmail', 'Invoicing email'], ['invoicingAddress', 'Invoicing address'],
-      ];
-      const stateChip = (state) => state === 'verified'
-        ? <span className="text-[9px] font-bold uppercase tracking-wider text-tm-good bg-tm-good/10 border border-tm-good/25 rounded px-1.5 py-0.5">Verified</span>
-        : state === 'unverified'
-          ? <span className="text-[9px] font-bold uppercase tracking-wider text-tm-warn bg-tm-warn/10 border border-tm-warn/25 rounded px-1.5 py-0.5">Unverified</span>
-          : <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-500 bg-neutral-800/60 border border-neutral-700 rounded px-1.5 py-0.5">Missing</span>;
+
+      // Apply = the form's own write path, once: a single setProduction merge,
+      // exactly like the inputs' onChange handlers. Missing-and-unedited
+      // fields apply nothing.
+      const apply = () => {
+        const patch = {};
+        for (const f of FIELDS) {
+          const st = fieldState(f.key);
+          if (st.state === 'missing' && edits[f.key] === undefined) continue;
+          const v = ((edits[f.key] !== undefined ? edits[f.key] : st.value) || '') + '';
+          if (!v.trim()) continue;
+          patch[f.target] = v.trim();
+        }
+        if (matchedClient) {
+          patch.clientId = matchedClient.id;
+          if (patch.prodCo) patch.prodCo = matchedClient.name; // canonical capitalisation, like manual selection
+        }
+        if (Object.keys(patch).length) setProduction(p => ({ ...p, ...patch }));
+        closeReview();
+      };
+
+      const reviewRow = (f) => {
+        const st = fieldState(f.key);
+        const edited = edits[f.key] !== undefined;
+        const v = liveValue(f.key);
+        const current = ((production && production[f.target]) || '').trim();
+        const replaces = current && v && String(v).trim() && current !== String(v).trim();
+        if (st.state === 'missing' && !edited) {
+          return (
+            <button type="button" key={f.key} onClick={() => setVerifyKey(f.key)}
+              className="w-full text-left border border-dashed border-neutral-700 rounded-xl px-3.5 py-3 hover:border-neutral-600 transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>
+              <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">{f.label}</div>
+              <div className="text-[13px] text-neutral-500 italic mt-1">Not found — tap to enter</div>
+            </button>
+          );
+        }
+        const unverified = st.state === 'unverified' && !edited; // a user edit is deliberate — quiet again
+        return (
+          <button type="button" key={f.key} onClick={() => setVerifyKey(f.key)}
+            className={`w-full text-left bg-neutral-900 border rounded-xl px-3.5 py-3 transition-colors ${unverified ? 'border-tm-warn/35 hover:border-tm-warn/55' : 'border-neutral-800 hover:border-neutral-700'}`}
+            style={{ WebkitTapHighlightColor: 'transparent' }}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">{f.label}</span>
+              {st.page ? <span className="text-[9px] text-neutral-600 font-mono">p.{st.page}</span> : null}
+            </div>
+            <div className={`mt-1 text-[13px] whitespace-pre-wrap ${unverified ? 'text-tm-warn' : 'text-neutral-100'}`}>{v}</div>
+            {unverified && <div className="text-[10px] text-tm-warn mt-1">Couldn't locate on document — check before applying</div>}
+            {f.key === 'prodCo' && matchedClient && (
+              <div className="text-[10px] text-neutral-400 mt-1">Matches saved client · {matchedClient.name}</div>
+            )}
+            {replaces && <div className="text-[10px] text-neutral-500 mt-1">replaces: {current}</div>}
+          </button>
+        );
+      };
+
+      const verifyField = verifyKey ? FIELDS.find(f => f.key === verifyKey) : null;
+      const verifySt = verifyKey ? fieldState(verifyKey) : null;
+
       return (
-        <Disclosure label="Call-sheet reader (dev)" summary="Stage 1">
-          {!avail.available ? (
+        <>
+          {avail.available ? (
+            <div>
+              <Btn variant="ghost" onClick={runImport} disabled={phase === 'extracting'} className="w-full justify-center">
+                {phase === 'extracting' ? 'Reading call sheet…' : 'Import from call sheet'}
+              </Btn>
+              {phase === 'extracting' && (
+                <p className="text-[10px] text-neutral-500 mt-1 text-center">Extracting on-device — this takes a few seconds.</p>
+              )}
+              {error && <p className="text-[11px] text-tm-pen mt-1">{error}</p>}
+            </div>
+          ) : (
             <p className="text-[11px] text-neutral-500">
               {avail.reason === 'appleIntelligenceNotEnabled'
-                ? 'Apple Intelligence is off — enable it in iOS Settings to test extraction.'
-                : 'The on-device model is still downloading — try again shortly.'}
+                ? 'Call-sheet import: turn on Apple Intelligence in Settings.'
+                : 'Call-sheet import: preparing — try again shortly.'}
             </p>
-          ) : (
-            <>
-              <p className="text-[11px] text-neutral-500 mb-3">On-device extraction test — nothing leaves the phone, nothing is saved. Pick a call sheet (PDF or photo).</p>
-              <Btn onClick={run} disabled={busy} className="w-full justify-center">{busy ? 'Extracting…' : 'Pick a call sheet'}</Btn>
-              {error && <p className="text-[11px] text-tm-pen mt-2">{error}</p>}
-              {result && (
-                <div className="mt-4 space-y-3">
-                  {result.pages && (
-                    <p className="text-[10px] text-neutral-500 font-mono">
-                      {`${result.pages.count} page${result.pages.count === 1 ? '' : 's'} · ran on ${(result.pages.selected || []).join(', ')}${(result.pages.invoicPages || []).length ? ` · "invoic" on ${result.pages.invoicPages.join(', ')}` : ' · no "invoic" match'}`}
-                    </p>
-                  )}
-                  {FIELDS.map(([key, label]) => {
-                    const f = (result.perField && result.perField[key]) || { state: 'missing' };
-                    return (
-                      <div key={key} className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">{label}</span>
-                          <span className="flex items-center gap-1.5">
-                            {f.page ? <span className="text-[9px] text-neutral-600 font-mono">p.{f.page}</span> : null}
-                            {stateChip(f.state)}
-                          </span>
-                        </div>
-                        <div className={`mt-1.5 text-[13px] ${f.state === 'missing' ? 'text-neutral-600 italic' : 'text-neutral-100'}`}>
-                          {f.state === 'missing' ? 'not found' : f.value}
-                        </div>
-                        {f.state === 'unverified' && <div className="text-[10px] text-tm-warn mt-1">Couldn't locate on document</div>}
-                        {f.crop && (
-                          <img src={`data:image/png;base64,${f.crop}`} alt={`${label} source crop`}
-                            className="mt-2 w-full rounded-lg border border-neutral-800" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
           )}
-        </Disclosure>
+
+          <Sheet open={phase === 'review'} onClose={closeReview} title="Review import">
+            <div className="space-y-2.5 pb-1">
+              {FIELDS.map(reviewRow)}
+              <Btn onClick={apply} className="w-full justify-center mt-1">Apply to shoot</Btn>
+              <p className="text-[10px] text-neutral-500 text-center leading-snug">
+                Extracted on-device by Apple Intelligence — verify each field.
+              </p>
+            </div>
+          </Sheet>
+
+          <Sheet open={!!verifyKey} onClose={() => setVerifyKey(null)} title={verifyField ? verifyField.label : ''}>
+            {verifyKey && (
+              <div className="space-y-3">
+                {verifySt.crop && (
+                  <img src={`data:image/png;base64,${verifySt.crop}`} alt="Source crop"
+                    className="w-full rounded-lg border border-neutral-800" />
+                )}
+                {!verifySt.crop && verifySt.snippet && (
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] font-mono text-neutral-300 leading-relaxed">
+                    {verifySt.snippet}
+                  </div>
+                )}
+                {!verifySt.crop && !verifySt.snippet && verifySt.pagePreview && (
+                  <img src={`data:image/jpeg;base64,${verifySt.pagePreview}`} alt="Page preview"
+                    className="w-full rounded-lg border border-neutral-800" />
+                )}
+                {verifyKey === 'invoicingAddress' ? (
+                  <textarea
+                    value={liveValue(verifyKey)}
+                    onChange={(e) => setEdits(prev => ({ ...prev, [verifyKey]: e.target.value }))}
+                    rows={3}
+                    placeholder="Enter value"
+                    aria-label={verifyField.label}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none"
+                  />
+                ) : (
+                  <Input
+                    value={liveValue(verifyKey)}
+                    onChange={(e) => setEdits(prev => ({ ...prev, [verifyKey]: e.target.value }))}
+                    placeholder="Enter value"
+                    aria-label={verifyField.label}
+                  />
+                )}
+                <Btn onClick={() => setVerifyKey(null)} className="w-full justify-center">Confirm</Btn>
+              </div>
+            )}
+          </Sheet>
+        </>
       );
     }
 
@@ -17427,12 +17543,6 @@ const setDays = (updater) =>
                 </div>
               </div>
             </Disclosure>
-
-            {/* Dev-only — Stage 1 of the AI call-sheet reader. The panel
-                self-gates: renders ONLY on native devices where the on-device
-                model is (or could become) available; web and ineligible
-                devices never see it. Display-only — writes nothing. */}
-            <CallSheetDevPanel />
 
             {/* §8 — About & help: re-run setup, APA terms link, What's new,
                 About metadata, Privacy text. Stacked as sub-sections inside

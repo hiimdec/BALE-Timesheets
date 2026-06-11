@@ -249,7 +249,11 @@ enum CallSheetPipeline {
             }
         }
 
-        // Merge per field, then build the bridge payload (+ crops for verified winners).
+        // Merge per field, then build the bridge payload. Stage 2 verify-view
+        // material per state: VERIFIED → highlighted crop (+ text snippet);
+        // UNVERIFIED with a match range (e.g. address that failed the postcode
+        // rule) → snippet only; UNVERIFIED with no match → a modest full-page
+        // preview of the page the value came from. MISSING → nothing.
         var fields: [String: Any] = [:]
         var perField: [String: Any] = [:]
         for key in fieldKeys {
@@ -264,10 +268,14 @@ enum CallSheetPipeline {
                 "state": w.verified ? "verified" : "unverified",
                 "page": w.pageIndex + 1,
             ]
-            if w.verified, let r = w.matchRange,
-               let pg = pages.first(where: { $0.index == w.pageIndex }),
-               let crop = cropImage(for: r, on: pg) {
-                entry["crop"] = crop
+            let pg = pages.first(where: { $0.index == w.pageIndex })
+            if let r = w.matchRange, let pg = pg {
+                entry["snippet"] = snippet(of: pg.text, around: r)
+                if w.verified, let crop = cropImage(for: r, on: pg) {
+                    entry["crop"] = crop
+                }
+            } else if let pg = pg, let preview = pagePreview(of: pg) {
+                entry["pagePreview"] = preview
             }
             perField[key] = entry
         }
@@ -496,7 +504,11 @@ enum CallSheetPipeline {
         return s.range(of: pattern, options: .regularExpression) != nil
     }
 
-    // ── 6. Crops (verified fields only) ─────────────────────────────────────
+    // ── 6. Crops (verified fields — matched value visibly highlighted),
+    //       snippets and page previews (verify-view material) ────────────────
+
+    /// Highlight stroke colour — tm sky (#0EA5E9), matching the app accent.
+    static var highlightColor: UIColor { UIColor(red: 0x0E/255, green: 0xA5/255, blue: 0xE9/255, alpha: 0.9) }
 
     static func cropImage(for range: NSRange, on page: SourcePage) -> String? {
         switch page.target {
@@ -507,7 +519,7 @@ enum CallSheetPipeline {
             guard !hit.isEmpty else { return nil }
             var union = hit[0].rectPx
             for l in hit.dropFirst() { union = union.union(l.rectPx) }
-            return bitmapCrop(image: image, rectPx: union)
+            return bitmapCrop(image: image, rectPx: union, highlightPx: union)
         }
     }
 
@@ -534,25 +546,66 @@ enum CallSheetPipeline {
             c.scaleBy(x: scale, y: -scale)
             c.translateBy(x: -padded.minX, y: -padded.minY)
             pdfPage.draw(with: .mediaBox, to: c)
+            // Highlight the matched value inside the crop.
+            c.setStrokeColor(highlightColor.cgColor)
+            c.setLineWidth(2 / scale)
+            c.stroke(rect.insetBy(dx: -3, dy: -3))
         }
         return img.pngData()?.base64EncodedString()
     }
 
-    static func bitmapCrop(image: UIImage, rectPx: CGRect) -> String? {
+    static func bitmapCrop(image: UIImage, rectPx: CGRect, highlightPx: CGRect?) -> String? {
         guard let cg = image.cgImage else { return nil }
         let bounds = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
         let padded = pad(rectPx, by: 0.15, min: 24).intersection(bounds)
         guard !padded.isEmpty, let cut = cg.cropping(to: padded) else { return nil }
-        var out = UIImage(cgImage: cut)
-        let maxDim = max(out.size.width, out.size.height)
-        if maxDim > 800 {
-            let s = 800 / maxDim
-            let size = CGSize(width: out.size.width * s, height: out.size.height * s)
-            out = UIGraphicsImageRenderer(size: size).image { _ in
-                out.draw(in: CGRect(origin: .zero, size: size))
+        let cutImage = UIImage(cgImage: cut)
+        let maxDim = max(cutImage.size.width, cutImage.size.height)
+        let s = maxDim > 800 ? 800 / maxDim : 1
+        let size = CGSize(width: cutImage.size.width * s, height: cutImage.size.height * s)
+        let out = UIGraphicsImageRenderer(size: size).image { ctx in
+            cutImage.draw(in: CGRect(origin: .zero, size: size))
+            if let h = highlightPx {
+                // Convert from full-bitmap space → crop space → output scale.
+                let local = CGRect(x: (h.minX - padded.minX) * s, y: (h.minY - padded.minY) * s,
+                                   width: h.width * s, height: h.height * s).insetBy(dx: -3, dy: -3)
+                let c = ctx.cgContext
+                c.setStrokeColor(highlightColor.cgColor)
+                c.setLineWidth(2)
+                c.stroke(local)
             }
         }
         return out.pngData()?.base64EncodedString()
+    }
+
+    /// ±120 chars of page text around a match, whitespace-collapsed — the
+    /// verify-view context for fields with a match but no (or failed) crop.
+    static func snippet(of text: String, around range: NSRange) -> String {
+        let ns = text as NSString
+        let lo = max(0, range.location - 120)
+        let hi = min(ns.length, range.location + range.length + 120)
+        let raw = ns.substring(with: NSRange(location: lo, length: hi - lo))
+        let collapsed = raw.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (lo > 0 ? "…" : "") + collapsed + (hi < ns.length ? "…" : "")
+    }
+
+    /// Modest full-page preview (~500px wide JPEG) for unverified fields with
+    /// no match location — enough to eyeball the page without a big payload.
+    static func pagePreview(of page: SourcePage) -> String? {
+        let image: UIImage
+        switch page.target {
+        case .pdfLayer(let pdfPage):
+            image = render(page: pdfPage, maxWidth: 500)
+        case .ocr(_, let bitmap):
+            let maxDim = max(bitmap.size.width, 1)
+            let s = min(500 / maxDim, 1)
+            let size = CGSize(width: bitmap.size.width * s, height: bitmap.size.height * s)
+            image = UIGraphicsImageRenderer(size: size).image { _ in
+                bitmap.draw(in: CGRect(origin: .zero, size: size))
+            }
+        }
+        return image.jpegData(compressionQuality: 0.7)?.base64EncodedString()
     }
 
     static func pad(_ r: CGRect, by fraction: CGFloat, min minPad: CGFloat) -> CGRect {

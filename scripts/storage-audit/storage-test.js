@@ -5509,15 +5509,17 @@ async function main() {
       /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
   }
 
-  // UU — AI call-sheet reader, Stage 1 (display-only, native-gated). The WEB
+  // UU — AI call-sheet reader, Stage 2 (shoot-level review-sheet UX). The WEB
   // build must never touch the CallSheet native bridge (audit:web also proves
-  // this); every JS path is IS_NATIVE-guarded. Stage 1 writes NOTHING — the
-  // dev panel only displays extraction results. The Swift pipeline lives
-  // outside index.html (ios/App/App/CallSheetPlugin.swift) so it can't affect
-  // any audit. Source-presence only.
+  // this); every JS path is IS_NATIVE-guarded. CORE PRINCIPLE — no new write
+  // path: "Apply to shoot" routes through the SAME setProduction merge the
+  // production-settings inputs use on change; the importer never touches
+  // storage/userPrefs. The Swift pipeline lives outside index.html
+  // (ios/App/App/CallSheetPlugin.swift) so it can't affect any audit.
+  // Source-presence only.
   {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
-    const panelFn = (html.match(/function CallSheetDevPanel\(\)[\s\S]*?\n    \}\n\n    function SettingsScreen/) || [''])[0];
+    const importFn = (html.match(/function CallSheetImport\(\{ production, setProduction, userPrefs \}\)[\s\S]*?\n    \}\n\n    function SettingsScreen/) || [''])[0];
 
     check('UU1a CallSheet bridge defines isAvailable/pickDocument/extract, each returning BEFORE touching _capPlugins() unless IS_NATIVE',
       /const CallSheet = \{/.test(html) &&
@@ -5525,21 +5527,31 @@ async function main() {
       /async pickDocument\(\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
       /async extract\(path\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
       /_capPlugins\(\)\.CallSheet/.test(html));
-    check('UU1b dev panel self-gates — IS_NATIVE + availability (available / appleIntelligenceNotEnabled / modelNotReady); web and ineligible devices render null',
-      /function CallSheetDevPanel\(\)/.test(html) &&
+    check('UU1b importer self-gates — IS_NATIVE + availability (available / appleIntelligenceNotEnabled / modelNotReady); web and ineligible devices render null; not-enabled/not-ready get hint lines',
+      /function CallSheetImport\(\{ production, setProduction, userPrefs \}\)/.test(html) &&
       /const visible = IS_NATIVE && avail && \(avail\.available \|\| avail\.reason === 'appleIntelligenceNotEnabled' \|\| avail\.reason === 'modelNotReady'\);/.test(html) &&
-      /if \(!visible\) return null;/.test(html));
-    check('UU1c Stage 1 is display-only — the dev panel never writes stored data (no setProduction/setProductions/setUserPrefs/storage.set)',
-      panelFn.length > 0 &&
-      !/setProduction|setProductions|setUserPrefs|storage\.set/.test(panelFn));
-    check('UU1d the three per-field states are visibly distinct (Verified / Unverified + locate flag / Missing + not-found)',
-      /Verified<\/span>/.test(html) &&
-      /Unverified<\/span>/.test(html) &&
-      /Missing<\/span>/.test(html) &&
-      /Couldn't locate on document/.test(html) &&
-      /'not found'/.test(html));
-    check('UU1e the dev panel is mounted in SettingsScreen',
-      /<CallSheetDevPanel \/>/.test(html));
+      /if \(!visible\) return null;/.test(html) &&
+      /turn on Apple Intelligence in Settings\./.test(html) &&
+      /preparing — try again shortly\./.test(html));
+    check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
+      importFn.length > 0 &&
+      /setProduction\(p => \(\{ \.\.\.p, \.\.\.patch \}\)\)/.test(importFn) &&
+      (importFn.match(/setProduction\(/g) || []).length === 1 &&
+      !/storage\.set|setUserPrefs\(|setProductions\(/.test(importFn));
+    check('UU1d review-sheet states — quiet verified with p.N page ref; amber unverified with the check-before-applying reason; dashed missing tap-to-enter; replaces diff line shown up front',
+      /Couldn't locate on document — check before applying/.test(html) &&
+      /Not found — tap to enter/.test(html) &&
+      /p\.\{st\.page\}/.test(html) &&
+      /replaces: \{current\}/.test(html) &&
+      /border-dashed/.test(importFn));
+    check('UU1e saved-client linkage via the EXISTING matcher — exact-name match through matchClientsByPrefix, clientId + canonical name applied like manual ClientPicker selection; match indicated on the prodCo row',
+      /matchClientsByPrefix\(\(userPrefs && userPrefs\.clients\) \|\| \[\], v\)/.test(importFn) &&
+      /patch\.clientId = matchedClient\.id;/.test(importFn) &&
+      /Matches saved client · \{matchedClient\.name\}/.test(importFn));
+    check('UU1f Stage 2 entry lives at SHOOT level and the dev panel is fully retired — mounted inside ProductionSettingsSheet\'s invoicing section; no CallSheetDevPanel anywhere; AI-extraction footer present',
+      /<CallSheetImport production=\{production\} setProduction=\{setProduction\} userPrefs=\{userPrefs\} \/>/.test(html) &&
+      !/CallSheetDevPanel/.test(html) &&
+      /Extracted on-device by Apple Intelligence — verify each field\./.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
