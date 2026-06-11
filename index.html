@@ -16756,6 +16756,43 @@ const setDays = (updater) =>
         CallSheet.isAvailable().then(r => { if (on) setAvail(r); }).catch(() => {});
         return () => { on = false; };
       }, []);
+
+      // Shared by every source (Files / Photos / Camera / share-in autoFile):
+      // pathsArg is a single tmp path or an array of image paths (pages).
+      // Defined BEFORE the visibility gate so the share-in effect below can
+      // reference it on every render path.
+      const runExtract = async (pathsArg) => {
+        setError('');
+        setPhase('extracting');
+        try {
+          const r = await CallSheet.extract(pathsArg);
+          if (r && r.perField) { setResult(r); setEdits({}); setPhase('review'); }
+          else { setError((r && r.error) || 'Extraction returned nothing'); setPhase('idle'); }
+        } catch (e) {
+          setError((e && e.message) || 'Extraction failed');
+          setPhase('idle');
+        }
+      };
+
+      // Stage 3 share-in: a file handed over by the App-level chooser. Consume
+      // exactly once; { result } skips straight to review (already extracted
+      // for the New-shoot title pre-fill), { path } runs extraction here. When
+      // the model is unavailable the file is deliberately dropped — the entry
+      // row renders the availability hint instead of running.
+      // HOOKS RULE (#310): this effect MUST be registered before the
+      // `if (!visible) return null` gate below — every hook in this component
+      // runs unconditionally on every render; ALL gating happens in (or after)
+      // the returned JSX. The first render has avail === null (gate returns
+      // null); registering any hook after that gate would change the hook
+      // count when avail resolves — exactly React error #310.
+      useEffect(() => {
+        if (!IS_NATIVE || !autoFile || autoConsumedRef.current) return;
+        if (!(avail && avail.available)) return;
+        autoConsumedRef.current = true;
+        if (autoFile.result) { setResult(autoFile.result); setEdits({}); setPhase('review'); }
+        else if (autoFile.path) { runExtract(autoFile.path); }
+      }, [avail, autoFile]); // eslint-disable-line react-hooks/exhaustive-deps
+
       const visible = IS_NATIVE && avail && (avail.available || avail.reason === 'appleIntelligenceNotEnabled' || avail.reason === 'modelNotReady');
       if (!visible) return null;
 
@@ -16778,21 +16815,6 @@ const setDays = (updater) =>
 
       const closeReview = () => { setPhase('idle'); setResult(null); setEdits({}); setVerifyKey(null); };
 
-      // Shared by every source (Files / Photos / Camera / share-in autoFile):
-      // pathsArg is a single tmp path or an array of image paths (pages).
-      const runExtract = async (pathsArg) => {
-        setError('');
-        setPhase('extracting');
-        try {
-          const r = await CallSheet.extract(pathsArg);
-          if (r && r.perField) { setResult(r); setEdits({}); setPhase('review'); }
-          else { setError((r && r.error) || 'Extraction returned nothing'); setPhase('idle'); }
-        } catch (e) {
-          setError((e && e.message) || 'Extraction failed');
-          setPhase('idle');
-        }
-      };
-
       const pickFrom = async (source) => {
         setChooser(false);
         let paths = null;
@@ -16809,19 +16831,6 @@ const setDays = (updater) =>
         if (!paths) return; // cancelled
         await runExtract(paths);
       };
-
-      // Stage 3 share-in: a file handed over by the App-level chooser. Consume
-      // exactly once; { result } skips straight to review (already extracted
-      // for the New-shoot title pre-fill), { path } runs extraction here. When
-      // the model is unavailable the file is deliberately dropped — the entry
-      // row above renders the availability hint instead of running.
-      useEffect(() => {
-        if (!IS_NATIVE || !autoFile || autoConsumedRef.current) return;
-        if (!(avail && avail.available)) return;
-        autoConsumedRef.current = true;
-        if (autoFile.result) { setResult(autoFile.result); setEdits({}); setPhase('review'); }
-        else if (autoFile.path) { runExtract(autoFile.path); }
-      }, [avail, autoFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
       // Apply = the form's own write path, once: a single setProduction merge,
       // exactly like the inputs' onChange handlers. Missing-and-unedited

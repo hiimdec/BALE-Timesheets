@@ -5589,6 +5589,16 @@ async function main() {
           /LSSupportsOpeningDocumentsInPlace/.test(plist);
       })() &&
       (importFn.match(/setProduction\(/g) || []).length === 1);
+    check('UU1k hooks-order guard (React #310) — every hook in CallSheetImport registers BEFORE the `if (!visible) return null` gate (positional: last useState/useEffect/useRef index < gate index), so the hook count never changes between the gated first render and the post-availability render',
+      (() => {
+        const gate = importFn.indexOf('if (!visible) return null;');
+        const lastHook = Math.max(
+          importFn.lastIndexOf('useState('),
+          importFn.lastIndexOf('useEffect('),
+          importFn.lastIndexOf('useRef(')
+        );
+        return gate !== -1 && lastHook !== -1 && lastHook < gate;
+      })());
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
