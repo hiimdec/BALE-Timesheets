@@ -53,6 +53,8 @@ import Capacitor
 import UIKit
 import PDFKit
 import Vision
+import VisionKit
+import PhotosUI
 import UniformTypeIdentifiers
 import FoundationModels
 
@@ -82,30 +84,36 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "isAvailable", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pickDocument", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pickPhotos", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "scanDocument", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "ingestSharedFile", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "extract", returnType: CAPPluginReturnPromise)
     ]
 
     private var pendingPickCall: CAPPluginCall?
     private var pickerDelegate: CallSheetPickerDelegate?
+    private var photoDelegate: CallSheetPhotoDelegate?
+    private var scanDelegate: CallSheetScanDelegate?
 
-    // MARK: isAvailable — the four documented cases (+ osTooOld)
+    // MARK: isAvailable — the four documented cases (+ osTooOld) + scanner flag
 
     @objc func isAvailable(_ call: CAPPluginCall) {
+        let scanner = VNDocumentCameraViewController.isSupported
         guard #available(iOS 26.0, *) else {
-            call.resolve(["available": false, "reason": "osTooOld"])
+            call.resolve(["available": false, "reason": "osTooOld", "scanner": scanner])
             return
         }
         switch SystemLanguageModel.default.availability {
         case .available:
-            call.resolve(["available": true, "reason": ""])
+            call.resolve(["available": true, "reason": "", "scanner": scanner])
         case .unavailable(.deviceNotEligible):
-            call.resolve(["available": false, "reason": "deviceNotEligible"])
+            call.resolve(["available": false, "reason": "deviceNotEligible", "scanner": scanner])
         case .unavailable(.appleIntelligenceNotEnabled):
-            call.resolve(["available": false, "reason": "appleIntelligenceNotEnabled"])
+            call.resolve(["available": false, "reason": "appleIntelligenceNotEnabled", "scanner": scanner])
         case .unavailable(.modelNotReady):
-            call.resolve(["available": false, "reason": "modelNotReady"])
+            call.resolve(["available": false, "reason": "modelNotReady", "scanner": scanner])
         case .unavailable(_):
-            call.resolve(["available": false, "reason": "unavailable"])
+            call.resolve(["available": false, "reason": "unavailable", "scanner": scanner])
         }
     }
 
@@ -141,7 +149,85 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    // MARK: extract — the pipeline
+    // MARK: pickPhotos — PHPicker, multi-select (≤5), each image = a page.
+    // Out-of-process picker: no photo-library usage description required.
+
+    @objc func pickPhotos(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            var config = PHPickerConfiguration()
+            config.selectionLimit = 5
+            config.filter = .images
+            let picker = PHPickerViewController(configuration: config)
+            let delegate = CallSheetPhotoDelegate { [weak self] paths in
+                guard let self = self else { return }
+                defer { self.photoDelegate = nil; self.pendingPickCall = nil }
+                guard let paths = paths, !paths.isEmpty else {
+                    self.pendingPickCall?.reject("cancelled")
+                    return
+                }
+                self.pendingPickCall?.resolve(["paths": paths, "kind": "image"])
+            }
+            self.photoDelegate = delegate
+            self.pendingPickCall = call
+            picker.delegate = delegate
+            self.bridge?.viewController?.present(picker, animated: true)
+        }
+    }
+
+    // MARK: scanDocument — VisionKit document camera (auto-crop/deskew).
+    // Needs NSCameraUsageDescription (Info.plist). Multi-page scans = pages.
+
+    @objc func scanDocument(_ call: CAPPluginCall) {
+        guard VNDocumentCameraViewController.isSupported else {
+            call.reject("Document scanning not supported on this device")
+            return
+        }
+        DispatchQueue.main.async {
+            let scanner = VNDocumentCameraViewController()
+            let delegate = CallSheetScanDelegate { [weak self] paths in
+                guard let self = self else { return }
+                defer { self.scanDelegate = nil; self.pendingPickCall = nil }
+                guard let paths = paths, !paths.isEmpty else {
+                    self.pendingPickCall?.reject("cancelled")
+                    return
+                }
+                self.pendingPickCall?.resolve(["paths": paths, "kind": "image"])
+            }
+            self.scanDelegate = delegate
+            self.pendingPickCall = call
+            scanner.delegate = delegate
+            self.bridge?.viewController?.present(scanner, animated: true)
+        }
+    }
+
+    // MARK: ingestSharedFile — share-in route (CFBundleDocumentTypes →
+    // appUrlOpen). Copies the incoming file into our tmp immediately, with
+    // security-scoped access when the source URL demands it (harmless no-op
+    // for sandbox-Inbox copies).
+
+    @objc func ingestSharedFile(_ call: CAPPluginCall) {
+        guard let urlString = call.getString("url"), let url = URL(string: urlString), url.isFileURL else {
+            call.reject("file url required")
+            return
+        }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let ext = url.pathExtension.isEmpty ? "pdf" : url.pathExtension
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("callsheet-\(UUID().uuidString).\(ext)")
+        do {
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.copyItem(at: url, to: dest)
+        } catch {
+            call.reject("copy failed: \(error.localizedDescription)")
+            return
+        }
+        let isPdf = UTType(filenameExtension: ext)?.conforms(to: .pdf) ?? (ext.lowercased() == "pdf")
+        call.resolve(["path": dest.path, "kind": isPdf ? "pdf" : "image"])
+    }
+
+    // MARK: extract — the pipeline (single path OR multiple image paths,
+    // each image acting as a page of one document)
 
     @objc func extract(_ call: CAPPluginCall) {
         guard #available(iOS 26.0, *) else { call.reject("Requires iOS 26"); return }
@@ -149,13 +235,15 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Apple Intelligence model unavailable")
             return
         }
-        guard let path = call.getString("path"), !path.isEmpty else {
+        var paths = (call.getArray("paths", String.self) ?? []).filter { !$0.isEmpty }
+        if paths.isEmpty, let single = call.getString("path"), !single.isEmpty { paths = [single] }
+        guard !paths.isEmpty else {
             call.reject("path required")
             return
         }
         Task {
             do {
-                let result = try await CallSheetPipeline.run(path: path)
+                let result = try await CallSheetPipeline.run(paths: paths)
                 call.resolve(result)
             } catch {
                 call.reject("extract failed: \(error.localizedDescription)")
@@ -173,6 +261,68 @@ private final class CallSheetPickerDelegate: NSObject, UIDocumentPickerDelegate 
         completion(urls.first)
     }
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        completion(nil)
+    }
+}
+
+// MARK: - Photo picker delegate (multi-select, order-preserving)
+
+private final class CallSheetPhotoDelegate: NSObject, PHPickerViewControllerDelegate {
+    private let completion: ([String]?) -> Void
+    init(completion: @escaping ([String]?) -> Void) { self.completion = completion }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard !results.isEmpty else { completion(nil); return }
+        // loadFileRepresentation hands us a TEMPORARY url — copy inside the
+        // callback. Indexed slots keep the user's selection order.
+        var slots: [String?] = Array(repeating: nil, count: results.count)
+        let group = DispatchGroup()
+        for (i, result) in results.enumerated() {
+            group.enter()
+            result.itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
+                defer { group.leave() }
+                guard let url = url else { return }
+                let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
+                let dest = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("callsheet-\(UUID().uuidString).\(ext)")
+                try? FileManager.default.removeItem(at: dest)
+                if (try? FileManager.default.copyItem(at: url, to: dest)) != nil {
+                    slots[i] = dest.path
+                }
+            }
+        }
+        group.notify(queue: .main) {
+            let paths = slots.compactMap { $0 }
+            self.completion(paths.isEmpty ? nil : paths)
+        }
+    }
+}
+
+// MARK: - Document camera delegate (multi-page scan → page images)
+
+private final class CallSheetScanDelegate: NSObject, VNDocumentCameraViewControllerDelegate {
+    private let completion: ([String]?) -> Void
+    init(completion: @escaping ([String]?) -> Void) { self.completion = completion }
+
+    func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
+        controller.dismiss(animated: true)
+        var paths: [String] = []
+        for i in 0..<scan.pageCount {
+            let image = scan.imageOfPage(at: i)
+            guard let data = image.jpegData(compressionQuality: 0.85) else { continue }
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent("callsheet-\(UUID().uuidString).jpg")
+            if (try? data.write(to: dest)) != nil { paths.append(dest.path) }
+        }
+        completion(paths.isEmpty ? nil : paths)
+    }
+    func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
+        controller.dismiss(animated: true)
+        completion(nil)
+    }
+    func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
+        controller.dismiss(animated: true)
         completion(nil)
     }
 }
@@ -215,9 +365,9 @@ enum CallSheetPipeline {
 
     // ── Entry ───────────────────────────────────────────────────────────────
 
-    static func run(path: String) async throws -> [String: Any] {
-        let url = URL(fileURLWithPath: path)
-        let pages = try loadPages(url: url)
+    static func run(paths: [String]) async throws -> [String: Any] {
+        let urls = paths.map { URL(fileURLWithPath: $0) }
+        let pages = try loadPages(urls: urls)
         guard !pages.isEmpty else { throw err("no readable pages") }
 
         // Page selection: page 1 + every "invoic" page; sequential fallback.
@@ -291,10 +441,14 @@ enum CallSheetPipeline {
         ]
     }
 
-    // ── 1. Page text (PDF layer, OCR fallback; images straight to OCR) ──────
+    // ── 1. Page text (PDF layer, OCR fallback; images straight to OCR).
+    //       Multiple paths (photo multi-select / multi-page scans) act as the
+    //       pages of ONE document, in selection/scan order — so a masthead
+    //       screenshot + an invoicing-page screenshot behave exactly like a
+    //       two-page PDF through page selection and merge. ─────────────────────
 
-    static func loadPages(url: URL) throws -> [SourcePage] {
-        if let pdf = PDFDocument(url: url) {
+    static func loadPages(urls: [URL]) throws -> [SourcePage] {
+        if urls.count == 1, let pdf = PDFDocument(url: urls[0]) {
             var out: [SourcePage] = []
             for i in 0..<pdf.pageCount {
                 guard let page = pdf.page(at: i) else { continue }
@@ -309,9 +463,14 @@ enum CallSheetPipeline {
             }
             return out
         }
-        guard let image = UIImage(contentsOfFile: url.path) else { throw err("unreadable file") }
-        let (lines, text) = try ocr(image)
-        return [SourcePage(index: 0, text: text, target: .ocr(lines: lines, image: image))]
+        var out: [SourcePage] = []
+        for (i, url) in urls.enumerated() {
+            guard let image = UIImage(contentsOfFile: url.path) else { continue }
+            guard let (lines, text) = try? ocr(image) else { continue }
+            out.append(SourcePage(index: i, text: text, target: .ocr(lines: lines, image: image)))
+        }
+        if out.isEmpty { throw err("unreadable file") }
+        return out
     }
 
     static func render(page: PDFPage, maxWidth: CGFloat) -> UIImage {

@@ -990,9 +990,33 @@
         catch (e) { /* user cancelled or picker failed — treat as no selection */ }
         return null;
       },
+      // Stage 3 sources. pickPhotos → PHPicker multi-select (≤5, each image a
+      // page); scanDocument → VisionKit document camera (multi-page scans);
+      // ingestShared → copies a share-in file:// URL into our tmp.
+      async pickPhotos() {
+        if (!IS_NATIVE) return null;
+        try { const p = _capPlugins().CallSheet; if (p && p.pickPhotos) return await p.pickPhotos(); }
+        catch (e) { /* cancelled */ }
+        return null;
+      },
+      async scanDocument() {
+        if (!IS_NATIVE) return null;
+        try { const p = _capPlugins().CallSheet; if (p && p.scanDocument) return await p.scanDocument(); }
+        catch (e) { /* cancelled */ }
+        return null;
+      },
+      async ingestShared(url) {
+        if (!IS_NATIVE) return null;
+        try { const p = _capPlugins().CallSheet; if (p && p.ingestSharedFile) return await p.ingestSharedFile({ url }); }
+        catch (e) { try { console.warn('[CallSheet] ingest failed', (e && e.message) || e); } catch (_) {} }
+        return null;
+      },
+      // path may be a single tmp path OR an array of image paths (photo
+      // multi-select / multi-page scan) — the native side treats an array as
+      // the pages of one document.
       async extract(path) {
         if (!IS_NATIVE) return null;
-        try { const p = _capPlugins().CallSheet; if (p && p.extract) return await p.extract({ path }); }
+        try { const p = _capPlugins().CallSheet; if (p && p.extract) return await p.extract(Array.isArray(path) ? { paths: path } : { path }); }
         catch (e) {
           try { console.warn('[CallSheet] extract failed', (e && e.message) || e); } catch (_) {}
           return { error: (e && e.message) || 'Extraction failed' };
@@ -12502,7 +12526,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION SETTINGS SHEET ═══════════════════════════ */
 
-    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs }) {
+    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile }) {
       const set = (k) => (e) => setProduction(p => ({ ...p, [k]: e.target.value }));
       const setNum = (k) => (e) => setProduction(p => ({ ...p, [k]: Number(e.target.value) }));
       // Saved Clients Stage 4 — nudge for the Basics "Invoicing details"
@@ -12617,7 +12641,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   fills; self-gates on native + model availability (web and
                   ineligible devices render nothing). Apply routes through the
                   same setProduction merge the inputs below use. */}
-              <CallSheetImport production={production} setProduction={setProduction} userPrefs={userPrefs} />
+              <CallSheetImport production={production} setProduction={setProduction} userPrefs={userPrefs} autoFile={importFile} />
               <Field label="Company address" hint="Where the invoice is addressed to">
                 <textarea
                   value={production.toAddress || ""}
@@ -14854,7 +14878,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return null;
     }
 
-    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs, initialInvoiceId }) {
+    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs, initialInvoiceId, initialImportFile }) {
       const crew = production.crew ?? [];
       const days = production.days ?? [];
 
@@ -15007,6 +15031,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (pendingDeepLink) setInvoiceNav(pendingDeepLink);
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+      // Deep-link (Stage 3 share-in): a shared call sheet targeted at this
+      // shoot — open settings with the import flow armed (the one-shot file
+      // rides down to CallSheetImport via ProductionSettingsSheet).
+      const [pendingImportFile] = useState(() => initialImportFile || null);
+      useEffect(() => {
+        if (pendingImportFile) setShowSettings(true);
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
       const handleEditorClose = () => {
         if (pendingDeepLink && invoiceNav === pendingDeepLink) {
           onBack(); // arrived via deep-link — close all the way home
@@ -15116,6 +15148,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onClose={() => setShowSettings(false)}
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
+            importFile={pendingImportFile}
           />
         );
       }
@@ -15513,7 +15546,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
-    function ProductionApp({ production, setProduction, onBack, userPrefs, setUserPrefs, initialInvoiceId }) {
+    function ProductionApp({ production, setProduction, onBack, userPrefs, setUserPrefs, initialInvoiceId, initialImportFile }) {
 
 // Convenience aliases — child components keep receiving crew/days as before
 const crew = production.crew ?? [];
@@ -15546,6 +15579,13 @@ const setDays = (updater) =>
       // Deep-link: open specific invoice on mount when launched from AllInvoicesView
       useEffect(() => {
         if (pendingDeepLink) setInvoiceNav(pendingDeepLink);
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      // Deep-link (Stage 3 share-in): a shared call sheet targeted at this
+      // shoot — open production settings with the import flow armed.
+      const [pendingImportFile] = useState(() => initialImportFile || null);
+      useEffect(() => {
+        if (pendingImportFile) setShowProdSettings(true);
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       const handleEditorClose = () => {
@@ -15700,6 +15740,7 @@ const setDays = (updater) =>
             onClose={() => setShowProdSettings(false)}
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
+            importFile={pendingImportFile}
           />
         );
       }
@@ -16101,8 +16142,8 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ NEW PRODUCTION SCREEN ═══════════════════════════ */
 
-    function NewProductionScreen({ userPrefs, onCreate, onCancel }) {
-      const [title, setTitle] = useState("");
+    function NewProductionScreen({ userPrefs, onCreate, onCancel, initialTitle }) {
+      const [title, setTitle] = useState(initialTitle || "");
       const [bestBoyMode, setBestBoyMode] = useState(false);
       const inputRef = useRef(null);
 
@@ -16700,13 +16741,15 @@ const setDays = (updater) =>
     // clientId on apply — the same linkage manual ClientPicker selection
     // writes; unmatched companies are left to the existing
     // save-on-send / update-nudge machinery.
-    function CallSheetImport({ production, setProduction, userPrefs }) {
+    function CallSheetImport({ production, setProduction, userPrefs, autoFile }) {
       const [avail, setAvail] = useState(null);
       const [phase, setPhase] = useState('idle'); // idle | extracting | review
+      const [chooser, setChooser] = useState(false); // Stage 3 source chooser
       const [error, setError] = useState('');
       const [result, setResult] = useState(null);
       const [edits, setEdits] = useState({});
       const [verifyKey, setVerifyKey] = useState(null);
+      const autoConsumedRef = React.useRef(false);
       useEffect(() => {
         if (!IS_NATIVE) return;
         let on = true;
@@ -16735,13 +16778,13 @@ const setDays = (updater) =>
 
       const closeReview = () => { setPhase('idle'); setResult(null); setEdits({}); setVerifyKey(null); };
 
-      const runImport = async () => {
+      // Shared by every source (Files / Photos / Camera / share-in autoFile):
+      // pathsArg is a single tmp path or an array of image paths (pages).
+      const runExtract = async (pathsArg) => {
         setError('');
-        const picked = await CallSheet.pickDocument();
-        if (!picked || !picked.path) return; // cancelled
         setPhase('extracting');
         try {
-          const r = await CallSheet.extract(picked.path);
+          const r = await CallSheet.extract(pathsArg);
           if (r && r.perField) { setResult(r); setEdits({}); setPhase('review'); }
           else { setError((r && r.error) || 'Extraction returned nothing'); setPhase('idle'); }
         } catch (e) {
@@ -16749,6 +16792,36 @@ const setDays = (updater) =>
           setPhase('idle');
         }
       };
+
+      const pickFrom = async (source) => {
+        setChooser(false);
+        let paths = null;
+        if (source === 'files') {
+          const picked = await CallSheet.pickDocument();
+          paths = picked && picked.path ? picked.path : null;
+        } else if (source === 'photos') {
+          const picked = await CallSheet.pickPhotos();
+          paths = picked && picked.paths && picked.paths.length ? picked.paths : null;
+        } else {
+          const picked = await CallSheet.scanDocument();
+          paths = picked && picked.paths && picked.paths.length ? picked.paths : null;
+        }
+        if (!paths) return; // cancelled
+        await runExtract(paths);
+      };
+
+      // Stage 3 share-in: a file handed over by the App-level chooser. Consume
+      // exactly once; { result } skips straight to review (already extracted
+      // for the New-shoot title pre-fill), { path } runs extraction here. When
+      // the model is unavailable the file is deliberately dropped — the entry
+      // row above renders the availability hint instead of running.
+      useEffect(() => {
+        if (!IS_NATIVE || !autoFile || autoConsumedRef.current) return;
+        if (!(avail && avail.available)) return;
+        autoConsumedRef.current = true;
+        if (autoFile.result) { setResult(autoFile.result); setEdits({}); setPhase('review'); }
+        else if (autoFile.path) { runExtract(autoFile.path); }
+      }, [avail, autoFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
       // Apply = the form's own write path, once: a single setProduction merge,
       // exactly like the inputs' onChange handlers. Missing-and-unedited
@@ -16812,7 +16885,7 @@ const setDays = (updater) =>
         <>
           {avail.available ? (
             <div>
-              <Btn variant="ghost" onClick={runImport} disabled={phase === 'extracting'} className="w-full justify-center">
+              <Btn variant="ghost" onClick={() => setChooser(true)} disabled={phase === 'extracting'} className="w-full justify-center">
                 {phase === 'extracting' ? 'Reading call sheet…' : 'Import from call sheet'}
               </Btn>
               {phase === 'extracting' && (
@@ -16827,6 +16900,25 @@ const setDays = (updater) =>
                 : 'Call-sheet import: preparing — try again shortly.'}
             </p>
           )}
+
+          {/* Stage 3 — compact source chooser: one tap extra, three sources.
+              Camera renders only where VisionKit's scanner is supported. */}
+          <Sheet open={chooser} onClose={() => setChooser(false)} title="Import from…">
+            <div className="space-y-2.5 pb-1">
+              {[
+                { key: 'files', label: 'Files', desc: 'PDF or image from the Files app' },
+                { key: 'photos', label: 'Photos', desc: 'Up to 5 screenshots or photos — each becomes a page' },
+                ...(avail.scanner ? [{ key: 'camera', label: 'Camera', desc: 'Scan a printed call sheet' }] : []),
+              ].map(s => (
+                <button key={s.key} type="button" onClick={() => pickFrom(s.key)}
+                  className="w-full text-left bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-3.5 py-3 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <div className="text-[13px] text-neutral-100 font-semibold">{s.label}</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5">{s.desc}</div>
+                </button>
+              ))}
+            </div>
+          </Sheet>
 
           <Sheet open={phase === 'review'} onClose={closeReview} title="Review import">
             <div className="space-y-2.5 pb-1">
@@ -21695,6 +21787,90 @@ const confirmDelete = (p) => setConfirmOpts({
         };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+      // ── Call-sheet share-in (Stage 3) ────────────────────────────────────────
+      // CFBundleDocumentTypes makes TimeMachine a "Copy to / Open in" target for
+      // PDFs and images; arrival fires the Capacitor App plugin's appUrlOpen
+      // (plus getLaunchUrl for cold starts, where the event can beat the
+      // listener). The file is copied to tmp IMMEDIATELY (native, security-
+      // scoped as needed), then a chooser asks which shoot to import into.
+      // Existing shoot → openProduction(id, { importFile }) deep-links straight
+      // into that production's settings with the import flow armed. New shoot →
+      // extraction runs first (for the title pre-fill), then the EXISTING
+      // new-production flow creates + opens, and the cached result is attached.
+      // Entirely IS_NATIVE-gated; if the model is unavailable the chooser still
+      // works and the settings entry row shows the availability hint instead of
+      // running — a share never dead-ends.
+      const [sharedImport, setSharedImport] = useState(null);   // { path, kind } | null — chooser open while set
+      const [shareAvail, setShareAvail] = useState(null);
+      const [sharePhase, setSharePhase] = useState('idle');     // idle | extracting (New-shoot pre-extract)
+      const [pendingNewImport, setPendingNewImport] = useState(null); // { result } awaiting creation
+      const lastShareRef = React.useRef('');
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        const SHARE_EXTS = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp'];
+        const handleUrl = async (url) => {
+          try {
+            if (!url || !/^file:/i.test(url)) return;
+            const ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
+            if (!SHARE_EXTS.includes(ext)) return;
+            if (lastShareRef.current === url) return; // launch-url + event double-fire
+            lastShareRef.current = url;
+            const ingested = await CallSheet.ingestShared(url);
+            if (!ingested || !ingested.path) return;
+            const a = await CallSheet.isAvailable();
+            setShareAvail(a);
+            setSharedImport(ingested);
+          } catch (_) {}
+        };
+        let urlHandle = null;
+        try {
+          const AppPlg = _capPlugins().App;
+          if (AppPlg && AppPlg.addListener) {
+            Promise.resolve(AppPlg.addListener('appUrlOpen', (d) => { if (d && d.url) handleUrl(d.url); }))
+              .then(h => { urlHandle = h; }).catch(() => {});
+          }
+          if (AppPlg && AppPlg.getLaunchUrl) {
+            Promise.resolve(AppPlg.getLaunchUrl()).then(r => { if (r && r.url) handleUrl(r.url); }).catch(() => {});
+          }
+        } catch (_) {}
+        return () => { try { if (urlHandle && urlHandle.remove) urlHandle.remove(); } catch (_) {} };
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      const chooseImportTarget = (productionId) => {
+        const file = sharedImport;
+        setSharedImport(null);
+        if (!file) return;
+        openProduction(productionId, { importFile: { path: file.path } });
+      };
+      const chooseImportNew = async () => {
+        const file = sharedImport;
+        if (!file) { setSharedImport(null); return; }
+        if (!(shareAvail && shareAvail.available)) {
+          // Model unavailable: honour the tap with the plain new-shoot flow —
+          // the settings entry row will show the availability hint.
+          setSharedImport(null);
+          closeProduction();
+          setPendingNewImport(null);
+          setShowNewProduction(true);
+          return;
+        }
+        setSharePhase('extracting');
+        let r = null;
+        try { r = await CallSheet.extract(file.path); } catch (_) {}
+        setSharePhase('idle');
+        setSharedImport(null);
+        closeProduction(); // openId → null, so the attach effect below fires only for the NEW shoot
+        setPendingNewImport(r && r.perField ? { result: r } : null);
+        setShowNewProduction(true);
+      };
+      // After handleNewProduction creates + opens the new shoot, attach the
+      // cached extraction so its settings open with the review sheet armed.
+      useEffect(() => {
+        if (pendingNewImport && openId) {
+          setOpenImportFile({ result: pendingNewImport.result });
+          setPendingNewImport(null);
+        }
+      }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
+
       const [showSettings, setShowSettings] = useState(false);
       const [showStats, setShowStats] = useState(false);
       const [showNewProduction, setShowNewProduction] = useState(false);
@@ -21747,6 +21923,10 @@ const confirmDelete = (p) => setConfirmOpts({
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       const [openInvoiceId, setOpenInvoiceId] = useState(null);
+      // Stage 3 share-in deep-link payload ({ path } or pre-extracted
+      // { result }) — one-shot, consumed by CallSheetImport via the
+      // initialImportFile → pendingImportFile chain (the openInvoiceId pattern).
+      const [openImportFile, setOpenImportFile] = useState(null);
       const [homeTab, setHomeTab] = useState("productions");
       // Invoicing visibility can drop (master toggle off, or export format switched
       // to a CSV type) while homeTab is 'invoices'; redirect to Shoots so the hidden
@@ -21754,8 +21934,8 @@ const confirmDelete = (p) => setConfirmOpts({
       useEffect(() => {
         if (homeTab === 'invoices' && !invoicesTabVisible(userPrefs)) setHomeTab('productions');
       }, [homeTab, userPrefs]);
-      const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); };
-      const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); };
+      const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); setOpenImportFile(options.importFile || null); };
+      const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); setOpenImportFile(null); };
       const handleUpdateInvoice = (productionId, invoiceId, patch) => {
         // Saved Clients Stage 2: kebab-action-sheet send path. Derive the
         // auto-save BEFORE the setProductions updater so the React state
@@ -21957,7 +22137,8 @@ const confirmDelete = (p) => setConfirmOpts({
           <NewProductionScreen
             userPrefs={userPrefs}
             onCreate={handleNewProduction}
-            onCancel={() => setShowNewProduction(false)}
+            onCancel={() => { setPendingNewImport(null); setShowNewProduction(false); }}
+            initialTitle={(pendingNewImport && pendingNewImport.result && pendingNewImport.result.fields && pendingNewImport.result.fields.title) || ''}
           />
         );
       } else if (!openId || !currentProduction) {
@@ -21974,14 +22155,53 @@ const confirmDelete = (p) => setConfirmOpts({
           userPrefs={userPrefs}
           setUserPrefs={setUserPrefs}
           initialInvoiceId={openInvoiceId}
+          initialImportFile={openImportFile}
         />;
       } else {
-        screen = <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} initialInvoiceId={openInvoiceId} />;
+        screen = <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} initialInvoiceId={openInvoiceId} initialImportFile={openImportFile} />;
       }
 
       return (
         <>
           {screen}
+          {/* Stage 3 share-in chooser — a shared file has no shoot context, so
+              ask. Existing shoot rows are most-recent-first; "New shoot" runs
+              extraction first (title pre-fill) then the EXISTING creation flow.
+              Renders only while a share is pending (never on web — the share
+              effect that sets sharedImport is IS_NATIVE-gated). */}
+          <Sheet open={!!sharedImport} onClose={() => { setSharedImport(null); setSharePhase('idle'); }} title="Import call sheet into…">
+            <div className="space-y-2.5 pb-1">
+              {shareAvail && !shareAvail.available && (
+                <p className="text-[11px] text-neutral-500">
+                  {shareAvail.reason === 'appleIntelligenceNotEnabled'
+                    ? 'Call-sheet import: turn on Apple Intelligence in Settings.'
+                    : shareAvail.reason === 'modelNotReady'
+                      ? 'Call-sheet import: preparing — try again shortly.'
+                      : "Call-sheet import isn't available on this device — choosing a shoot just opens it."}
+                </p>
+              )}
+              {sharePhase === 'extracting' ? (
+                <p className="text-[11px] text-neutral-500 text-center py-4">Reading call sheet…</p>
+              ) : (
+                <>
+                  <button type="button" onClick={chooseImportNew}
+                    className="w-full text-left bg-neutral-900 border border-sky-500/40 hover:border-sky-500 rounded-xl px-3.5 py-3 transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <div className="text-[13px] text-sky-400 font-semibold">New shoot</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5">Create a shoot from this call sheet</div>
+                  </button>
+                  {[...productions].reverse().map(p => (
+                    <button key={p.id} type="button" onClick={() => chooseImportTarget(p.id)}
+                      className="w-full text-left bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-3.5 py-3 transition-colors"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      <div className="text-[13px] text-neutral-100 font-semibold">{p.title || 'Untitled'}</div>
+                      {p.prodCo ? <div className="text-[11px] text-neutral-500 mt-0.5">{p.prodCo}</div> : null}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          </Sheet>
           {storageError && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#7f1d1d', color: '#fca5a5', padding: '8px 16px', fontSize: 12, fontFamily: 'ui-sans-serif, system-ui', textAlign: 'center' }}>
               ⚠ Storage error — data may not be saved: {storageError}
