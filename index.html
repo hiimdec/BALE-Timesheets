@@ -21812,7 +21812,6 @@ const confirmDelete = (p) => setConfirmOpts({
       const [sharedImport, setSharedImport] = useState(null);   // { path, kind } | null — chooser open while set
       const [shareAvail, setShareAvail] = useState(null);
       const [sharePhase, setSharePhase] = useState('idle');     // idle | extracting (New-shoot pre-extract)
-      const [pendingNewImport, setPendingNewImport] = useState(null); // { result } awaiting creation
       const lastShareRef = React.useRef('');
       useEffect(() => {
         if (!IS_NATIVE) return;
@@ -21858,7 +21857,6 @@ const confirmDelete = (p) => setConfirmOpts({
           // the settings entry row will show the availability hint.
           setSharedImport(null);
           closeProduction();
-          setPendingNewImport(null);
           setShowNewProduction(true);
           return;
         }
@@ -21867,18 +21865,20 @@ const confirmDelete = (p) => setConfirmOpts({
         try { r = await CallSheet.extract(file.path); } catch (_) {}
         setSharePhase('idle');
         setSharedImport(null);
-        closeProduction(); // openId → null, so the attach effect below fires only for the NEW shoot
-        setPendingNewImport(r && r.perField ? { result: r } : null);
+        // SAME mechanism as the existing-shoot path: the deep-link payload is
+        // set BEFORE openId becomes the new shoot's id, so SoloDayPage /
+        // ProductionApp mount with initialImportFile already present and their
+        // one-shot useState captures it. (closeProduction first — it clears
+        // openImportFile, so order matters.) handleNewProduction sets openId
+        // directly and never touches openImportFile, so the payload survives
+        // creation. A late attach effect keyed on [openId] was the original
+        // design and raced: the page mounted in the SAME commit that set
+        // openId, one render BEFORE the effect could attach the payload — the
+        // one-shot captured null and the review sheet never opened.
+        closeProduction();
+        setOpenImportFile(r && r.perField ? { result: r } : null);
         setShowNewProduction(true);
       };
-      // After handleNewProduction creates + opens the new shoot, attach the
-      // cached extraction so its settings open with the review sheet armed.
-      useEffect(() => {
-        if (pendingNewImport && openId) {
-          setOpenImportFile({ result: pendingNewImport.result });
-          setPendingNewImport(null);
-        }
-      }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
       const [showSettings, setShowSettings] = useState(false);
       const [showStats, setShowStats] = useState(false);
@@ -22146,8 +22146,8 @@ const confirmDelete = (p) => setConfirmOpts({
           <NewProductionScreen
             userPrefs={userPrefs}
             onCreate={handleNewProduction}
-            onCancel={() => { setPendingNewImport(null); setShowNewProduction(false); }}
-            initialTitle={(pendingNewImport && pendingNewImport.result && pendingNewImport.result.fields && pendingNewImport.result.fields.title) || ''}
+            onCancel={() => { setOpenImportFile(null); setShowNewProduction(false); }}
+            initialTitle={(openImportFile && openImportFile.result && openImportFile.result.fields && openImportFile.result.fields.title) || ''}
           />
         );
       } else if (!openId || !currentProduction) {

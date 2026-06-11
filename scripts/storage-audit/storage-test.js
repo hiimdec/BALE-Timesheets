@@ -5574,7 +5574,14 @@ async function main() {
       /await CallSheet\.ingestShared\(url\)/.test(html) &&
       /title="Import call sheet into…"/.test(html) &&
       /openProduction\(productionId, \{ importFile: \{ path: file\.path \} \}\)/.test(html) &&
-      /setOpenImportFile\(\{ result: pendingNewImport\.result \}\)/.test(html) &&
+      // New-shoot path: the cached result is staged BEFORE creation (after
+      // closeProduction, which clears it — order matters) so the new page
+      // mounts with initialImportFile already present, exactly like the
+      // existing-shoot openProduction path. A late [openId]-keyed attach
+      // effect raced the one-shot prop capture and is asserted ABSENT.
+      /closeProduction\(\);\s*setOpenImportFile\(r && r\.perField \? \{ result: r \} : null\);\s*setShowNewProduction\(true\);/.test(html) &&
+      !/setOpenImportFile\(\{ result: pendingNewImport\.result \}\)/.test(html) &&
+      /initialTitle=\{\(openImportFile && openImportFile\.result && openImportFile\.result\.fields && openImportFile\.result\.fields\.title\) \|\| ''\}/.test(html) &&
       /initialImportFile=\{openImportFile\}/.test(html) &&
       /const \[pendingImportFile\] = useState\(\(\) => initialImportFile \|\| null\);/.test(html) &&
       /autoConsumedRef\.current = true;/.test(importFn));
