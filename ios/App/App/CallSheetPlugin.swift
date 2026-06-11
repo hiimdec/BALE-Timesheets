@@ -87,13 +87,17 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "pickPhotos", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "scanDocument", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "ingestSharedFile", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "extract", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "extract", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPageRuns", returnType: CAPPluginReturnPromise)
     ]
 
     private var pendingPickCall: CAPPluginCall?
     private var pickerDelegate: CallSheetPickerDelegate?
     private var photoDelegate: CallSheetPhotoDelegate?
     private var scanDelegate: CallSheetScanDelegate?
+    // Select-on-sheet page cache (path(s)+page → rendered image + runs) so
+    // reopening a page doesn't re-render/re-OCR. Tiny and bounded.
+    private var pageRunsCache: [String: [String: Any]] = [:]
 
     // MARK: isAvailable — the four documented cases (+ osTooOld) + scanner flag
 
@@ -226,6 +230,35 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["path": dest.path, "kind": isPdf ? "pdf" : "image"])
     }
 
+    // MARK: getPageRuns — select-on-sheet support (Stage 3.5). READ-ONLY: a
+    // full-page display image (tmp JPEG; JS loads it via convertFileSrc) plus
+    // the page's text line runs with rects in that image's pixel space, so the
+    // verify view can overlay tappable regions. No iOS 26 gate — Vision/PDFKit
+    // only — and no behaviour change anywhere else.
+
+    @objc func getPageRuns(_ call: CAPPluginCall) {
+        // Same gate as extract — not because Vision needs it, but because the
+        // pipeline namespace is availability-scoped and select-on-sheet is
+        // only reachable after a successful (iOS 26+) extraction anyway.
+        guard #available(iOS 26.0, *) else { call.reject("Requires iOS 26"); return }
+        var paths = (call.getArray("paths", String.self) ?? []).filter { !$0.isEmpty }
+        if paths.isEmpty, let single = call.getString("path"), !single.isEmpty { paths = [single] }
+        let page = call.getInt("page") ?? 1
+        guard !paths.isEmpty else { call.reject("path required"); return }
+        let key = paths.joined(separator: "|") + "#\(page)"
+        if let cached = pageRunsCache[key] { call.resolve(cached); return }
+        Task {
+            do {
+                let result = try CallSheetPipeline.pageRuns(paths: paths, page: page)
+                if self.pageRunsCache.count > 6 { self.pageRunsCache.removeAll() }
+                self.pageRunsCache[key] = result
+                call.resolve(result)
+            } catch {
+                call.reject("pageRuns failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: extract — the pipeline (single path OR multiple image paths,
     // each image acting as a page of one document)
 
@@ -349,6 +382,17 @@ enum CallSheetPipeline {
         let index: Int          // 0-based
         let text: String
         let target: MatchTarget
+        // OCR quality metrics (nil for PDF text-layer pages). Drives the
+        // non-blocking "hard to read" banner — thresholds chosen from a
+        // degraded-input A/B (see Stage 3.5): mean Vision confidence < 0.5
+        // or < 200 recognised chars ⇒ the page read badly.
+        var ocrMeanConf: Double? = nil
+        var ocrChars: Int? = nil
+    }
+
+    static func isWeak(_ p: SourcePage) -> Bool {
+        guard let conf = p.ocrMeanConf, let chars = p.ocrChars else { return false }
+        return conf < 0.5 || chars < 200
     }
 
     struct Candidate {
@@ -438,6 +482,12 @@ enum CallSheetPipeline {
                 "selected": selected.map { $0.index + 1 },
                 "invoicPages": invoicSet.sorted().map { $0 + 1 },
             ],
+            // Image-sourced pages whose OCR read weakly (mean Vision confidence
+            // < 0.5 or < 200 recognised chars) — drives the review sheet's
+            // non-blocking "hard to read" banner. Always [] for text-layer PDFs.
+            "quality": [
+                "weakPages": pages.filter { isWeak($0) }.map { $0.index + 1 },
+            ],
         ]
     }
 
@@ -457,17 +507,20 @@ enum CallSheetPipeline {
                     out.append(SourcePage(index: i, text: page.string ?? "", target: .pdfLayer(page)))
                 } else {
                     let image = render(page: page, maxWidth: 1600)
-                    let (lines, text) = (try? ocr(image)) ?? ([], "")
-                    out.append(SourcePage(index: i, text: text, target: .ocr(lines: lines, image: image)))
+                    let r = (try? ocr(image)) ?? OcrResult(lines: [], text: "", meanConf: 0, chars: 0)
+                    out.append(SourcePage(index: i, text: r.text, target: .ocr(lines: r.lines, image: image),
+                                          ocrMeanConf: r.meanConf, ocrChars: r.chars))
                 }
             }
             return out
         }
         var out: [SourcePage] = []
         for (i, url) in urls.enumerated() {
-            guard let image = UIImage(contentsOfFile: url.path) else { continue }
-            guard let (lines, text) = try? ocr(image) else { continue }
-            out.append(SourcePage(index: i, text: text, target: .ocr(lines: lines, image: image)))
+            guard let raw = UIImage(contentsOfFile: url.path) else { continue }
+            let image = upscaleIfSmall(raw) // 2× bicubic for small screenshots — see upscaleIfSmall
+            guard let r = try? ocr(image) else { continue }
+            out.append(SourcePage(index: i, text: r.text, target: .ocr(lines: r.lines, image: image),
+                                  ocrMeanConf: r.meanConf, ocrChars: r.chars))
         }
         if out.isEmpty { throw err("unreadable file") }
         return out
@@ -480,7 +533,31 @@ enum CallSheetPipeline {
         return page.thumbnail(of: size, for: .mediaBox)
     }
 
-    static func ocr(_ image: UIImage) throws -> ([OcrLine], String) {
+    struct OcrResult {
+        let lines: [OcrLine]
+        let text: String
+        let meanConf: Double
+        let chars: Int
+    }
+
+    /// 2× bicubic upscale for small image inputs before OCR. Measured on
+    /// degraded synthetic call-sheet pages (hard downscale + JPEG):
+    /// 616px-wide input went 45%→97% char accuracy, 504px went 0%→78%,
+    /// 784px 90%→99%, with NO regression on clean/large inputs — so this is
+    /// kept, gated to images narrower than 1200px (where the win shows).
+    /// PDF page renders are already 1600px wide and skip this naturally.
+    static func upscaleIfSmall(_ image: UIImage) -> UIImage {
+        guard let cg = image.cgImage, cg.width > 0, cg.width < 1200 else { return image }
+        let size = CGSize(width: cg.width * 2, height: cg.height * 2)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            ctx.cgContext.interpolationQuality = .high
+            UIImage(cgImage: cg).draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    static func ocr(_ image: UIImage) throws -> OcrResult {
         guard let cg = image.cgImage else { throw err("no bitmap") }
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
@@ -497,17 +574,21 @@ enum CallSheetPipeline {
         let W = CGFloat(cg.width), H = CGFloat(cg.height)
         var text = ""
         var lines: [OcrLine] = []
+        var confSum = 0.0
         for obs in sorted {
             guard let cand = obs.topCandidates(1).first else { continue }
             let start = (text as NSString).length
             text += cand.string + "\n"
+            confSum += Double(cand.confidence)
             let bb = obs.boundingBox
             let rect = CGRect(x: bb.minX * W, y: (1 - bb.maxY) * H, width: bb.width * W, height: bb.height * H)
             lines.append(OcrLine(text: cand.string,
                                  range: NSRange(location: start, length: (cand.string as NSString).length),
                                  rectPx: rect))
         }
-        return (lines, text)
+        let meanConf = lines.isEmpty ? 0 : confSum / Double(lines.count)
+        return OcrResult(lines: lines, text: text, meanConf: meanConf,
+                         chars: text.filter { !$0.isWhitespace }.count)
     }
 
     // ── 2/3. Guided generation (greedy, no-guess rule, chunk-safe) ─────────
@@ -771,6 +852,52 @@ enum CallSheetPipeline {
         let dx = Swift.max(r.width * fraction, minPad)
         let dy = Swift.max(r.height * fraction, minPad)
         return r.insetBy(dx: -dx, dy: -dy)
+    }
+
+    // ── 7. Select-on-sheet (Stage 3.5, READ-ONLY) ───────────────────────────
+    // One uniform path for every source: render the requested page to a
+    // display image, then OCR that image for line runs — exact pixel
+    // alignment between what the user sees and the tappable rects, with no
+    // PDF-coordinate flipping. (Deviation from the spec's "PDFKit selections
+    // per line": Vision-on-the-render keeps a single code path and pixel-true
+    // overlays; the UX is identical.)
+
+    static func downscale(_ image: UIImage, maxWidth: CGFloat) -> UIImage {
+        guard let cg = image.cgImage, CGFloat(cg.width) > maxWidth else { return image }
+        let s = maxWidth / CGFloat(cg.width)
+        let size = CGSize(width: CGFloat(cg.width) * s, height: CGFloat(cg.height) * s)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            ctx.cgContext.interpolationQuality = .high
+            UIImage(cgImage: cg).draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    static func pageRuns(paths: [String], page: Int) throws -> [String: Any] {
+        let urls = paths.map { URL(fileURLWithPath: $0) }
+        let display: UIImage
+        if urls.count == 1, let pdf = PDFDocument(url: urls[0]) {
+            guard page >= 1, page <= pdf.pageCount, let p = pdf.page(at: page - 1) else { throw err("page out of range") }
+            display = render(page: p, maxWidth: 1200)
+        } else {
+            guard page >= 1, page <= urls.count else { throw err("page out of range") }
+            guard let raw = UIImage(contentsOfFile: urls[page - 1].path) else { throw err("unreadable image") }
+            display = downscale(upscaleIfSmall(raw), maxWidth: 1600)
+        }
+        let r = try ocr(display)
+        guard let data = display.jpegData(compressionQuality: 0.8) else { throw err("encode failed") }
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("callsheet-page-\(UUID().uuidString).jpg")
+        try data.write(to: dest)
+        let W = display.cgImage.map { Double($0.width) } ?? Double(display.size.width)
+        let H = display.cgImage.map { Double($0.height) } ?? Double(display.size.height)
+        let runs: [[String: Any]] = r.lines.map {
+            ["text": $0.text,
+             "x": Double($0.rectPx.minX), "y": Double($0.rectPx.minY),
+             "w": Double($0.rectPx.width), "h": Double($0.rectPx.height)]
+        }
+        return ["imagePath": dest.path, "width": W, "height": H, "runs": runs]
     }
 
     static func err(_ message: String) -> NSError {

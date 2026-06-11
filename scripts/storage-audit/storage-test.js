@@ -5579,7 +5579,7 @@ async function main() {
       // mounts with initialImportFile already present, exactly like the
       // existing-shoot openProduction path. A late [openId]-keyed attach
       // effect raced the one-shot prop capture and is asserted ABSENT.
-      /closeProduction\(\);\s*setOpenImportFile\(r && r\.perField \? \{ result: r \} : null\);\s*setShowNewProduction\(true\);/.test(html) &&
+      /closeProduction\(\);[\s\S]{0,120}setOpenImportFile\(r && r\.perField \? \{ result: r, path: file\.path \} : null\);\s*setShowNewProduction\(true\);/.test(html) &&
       !/setOpenImportFile\(\{ result: pendingNewImport\.result \}\)/.test(html) &&
       /initialTitle=\{\(openImportFile && openImportFile\.result && openImportFile\.result\.fields && openImportFile\.result\.fields\.title\) \|\| ''\}/.test(html) &&
       /initialImportFile=\{openImportFile\}/.test(html) &&
@@ -5606,6 +5606,24 @@ async function main() {
         );
         return gate !== -1 && lastHook !== -1 && lastHook < gate;
       })());
+
+    // ── Stage 3.5 — input-quality honesty + correction UX ──
+    check('UU1l weak-OCR banner is present and NON-BLOCKING — exact copy, gated only on native quality metrics, and the field rows render unconditionally after it (banner index < rows index)',
+      /This image was hard to read — text may be too small\. Zoomed screenshots \(e\.g\. the invoicing section\) or sharing the PDF itself work best\./.test(importFn) &&
+      /result && result\.quality && result\.quality\.weakPages && result\.quality\.weakPages\.length > 0/.test(importFn) &&
+      /\{FIELDS\.map\(reviewRow\)\}/.test(importFn) &&
+      importFn.indexOf('This image was hard to read') < importFn.indexOf('{FIELDS.map(reviewRow)}'));
+    check('UU1m select-on-sheet — pageRuns bridge is IS_NATIVE-guarded and READ-ONLY (loads via convertFileSrc, no storage verbs); replace-then-append join rule (newline for the address, space otherwise); email plausibility re-checked on Done; commits via setEdits only (the single-merge Apply is untouched — UU1j re-proves one setProduction)',
+      /async pageRuns\(path, page\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
+      /window\.Capacitor\.convertFileSrc/.test(importFn) &&
+      /const joinFor = \(key\) => \(key === 'invoicingAddress' \? '\\n' : ' '\);/.test(importFn) &&
+      /const verified = verifyKey === 'invoicingEmail' \? plausibleEmail\(v\) : true;/.test(importFn) &&
+      /Select on sheet/.test(importFn) &&
+      /const plausibleEmail = \(s\) =>/.test(importFn) &&
+      !/storage\.set|setUserPrefs\(|setProductions\(/.test(importFn));
+    check('UU1n photos tip caption + explicit edit affordance in the verify view',
+      /Tip: zoomed screenshots read best — try one of the masthead and one of the invoicing section\./.test(importFn) &&
+      /Value — tap to edit/.test(importFn));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

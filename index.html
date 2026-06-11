@@ -1023,6 +1023,15 @@
         }
         return null;
       },
+      // Stage 3.5 select-on-sheet: READ-ONLY. Returns a full-page display
+      // image (tmp path — load via Capacitor.convertFileSrc, not base64) plus
+      // the page's text line runs with rects in that image's pixel space.
+      async pageRuns(path, page) {
+        if (!IS_NATIVE) return null;
+        try { const p = _capPlugins().CallSheet; if (p && p.getPageRuns) return await p.getPageRuns(Array.isArray(path) ? { paths: path, page } : { path, page }); }
+        catch (e) { try { console.warn('[CallSheet] pageRuns failed', (e && e.message) || e); } catch (_) {} }
+        return null;
+      },
     };
 
     // Match the iOS status bar to the app's dark theme (light text on dark).
@@ -16749,7 +16758,16 @@ const setDays = (updater) =>
       const [result, setResult] = useState(null);
       const [edits, setEdits] = useState({});
       const [verifyKey, setVerifyKey] = useState(null);
+      // Stage 3.5 select-on-sheet state. lastPaths = source path(s) of the
+      // current result so the page can be re-opened; selectMode drives the
+      // full-page tappable view; manual holds per-field overrides (state /
+      // page / client-side crop) after a Done. All display-only.
+      const [lastPaths, setLastPaths] = useState(null);
+      const [selectMode, setSelectMode] = useState(null); // null | 'loading' | { page, src, natural, runs, sel, scale }
+      const [manual, setManual] = useState({});
       const autoConsumedRef = React.useRef(false);
+      const pinchRef = React.useRef({ pts: new Map(), startDist: 0, startScale: 1, moved: 0 });
+      const selScrollRef = React.useRef(null);
       useEffect(() => {
         if (!IS_NATIVE) return;
         let on = true;
@@ -16764,6 +16782,8 @@ const setDays = (updater) =>
       const runExtract = async (pathsArg) => {
         setError('');
         setPhase('extracting');
+        setLastPaths(pathsArg);
+        setManual({});
         try {
           const r = await CallSheet.extract(pathsArg);
           if (r && r.perField) { setResult(r); setEdits({}); setPhase('review'); }
@@ -16789,7 +16809,11 @@ const setDays = (updater) =>
         if (!IS_NATIVE || !autoFile || autoConsumedRef.current) return;
         if (!(avail && avail.available)) return;
         autoConsumedRef.current = true;
-        if (autoFile.result) { setResult(autoFile.result); setEdits({}); setPhase('review'); }
+        if (autoFile.result) {
+          setResult(autoFile.result); setEdits({}); setManual({});
+          setLastPaths(autoFile.path || null); // select-on-sheet source, when the share carried it
+          setPhase('review');
+        }
         else if (autoFile.path) { runExtract(autoFile.path); }
       }, [avail, autoFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -16813,7 +16837,90 @@ const setDays = (updater) =>
           .find(c => (((c.name || '') + '').trim().toLowerCase() === v)) || null;
       })();
 
-      const closeReview = () => { setPhase('idle'); setResult(null); setEdits({}); setVerifyKey(null); };
+      const closeReview = () => { setPhase('idle'); setResult(null); setEdits({}); setVerifyKey(null); setSelectMode(null); setManual({}); setLastPaths(null); };
+
+      // ── Select-on-sheet helpers (Stage 3.5 — display-only; Apply untouched) ──
+      const invoicingTargets = new Set(['jobReference', 'invoicingEmail', 'invoicingAddress']);
+      // Same plausibility rule as the native verifier: single @, no
+      // whitespace, dotted domain. An implausible selection keeps the
+      // unverified flag (value still shown).
+      const plausibleEmail = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(((s || '') + '').trim());
+      const joinFor = (key) => (key === 'invoicingAddress' ? '\n' : ' ');
+      const defaultPageFor = (key) => {
+        const st = fieldState(key);
+        if (st.page) return st.page;
+        const inv = result && result.pages && result.pages.invoicPages;
+        if (invoicingTargets.has(key) && inv && inv.length) return inv[0];
+        return 1;
+      };
+      const openSelect = async () => {
+        if (!verifyKey || !lastPaths) return;
+        const page = defaultPageFor(verifyKey);
+        setSelectMode('loading');
+        const r = await CallSheet.pageRuns(lastPaths, page);
+        if (!r || !r.imagePath || !r.runs || !r.runs.length) { setSelectMode(null); setError('Could not read that page'); return; }
+        const src = (window.Capacitor && window.Capacitor.convertFileSrc) ? window.Capacitor.convertFileSrc(r.imagePath) : r.imagePath;
+        setSelectMode({ page, src, natural: { w: r.width, h: r.height }, runs: r.runs, sel: [], scale: 1 });
+      };
+      const toggleRun = (i) => setSelectMode(sm => {
+        if (!sm || sm === 'loading') return sm;
+        // First tap replaces (starts the selection); further taps append in
+        // tap order; tapping a chosen line again removes it.
+        const sel = sm.sel.includes(i) ? sm.sel.filter(x => x !== i) : [...sm.sel, i];
+        return { ...sm, sel };
+      });
+      const selectionValue = (sm) => (sm && sm !== 'loading' && sm.sel.length)
+        ? sm.sel.map(i => (sm.runs[i] && sm.runs[i].text) || '').join(joinFor(verifyKey)).trim()
+        : '';
+      const confirmSelection = () => {
+        const sm = selectMode;
+        if (!sm || sm === 'loading' || !sm.sel.length) { setSelectMode(null); return; }
+        const v = selectionValue(sm);
+        let u = null; // union rect of the chosen runs → the field's highlight/crop
+        for (const i of sm.sel) {
+          const r = sm.runs[i];
+          if (!r) continue;
+          u = u ? { x: Math.min(u.x, r.x), y: Math.min(u.y, r.y), x2: Math.max(u.x2, r.x + r.w), y2: Math.max(u.y2, r.y + r.h) }
+                : { x: r.x, y: r.y, x2: r.x + r.w, y2: r.y + r.h };
+        }
+        const rect = u ? { x: u.x, y: u.y, w: u.x2 - u.x, h: u.y2 - u.y } : null;
+        const verified = verifyKey === 'invoicingEmail' ? plausibleEmail(v) : true;
+        setEdits(prev => ({ ...prev, [verifyKey]: v }));
+        setManual(prev => ({ ...prev, [verifyKey]: { page: sm.page, rect, natural: sm.natural, src: sm.src, verified } }));
+        setSelectMode(null);
+      };
+      // Pinch-zoom + pan on the page view: two pointers scale (1–4×), one
+      // pointer pans the scroller; `moved` lets run taps ignore drags.
+      const onSelPointerDown = (e) => {
+        const m = pinchRef.current;
+        m.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        m.moved = 0;
+        if (m.pts.size === 2) {
+          const [a, b] = [...m.pts.values()];
+          m.startDist = Math.hypot(a.x - b.x, a.y - b.y);
+          m.startScale = (selectMode && selectMode !== 'loading') ? selectMode.scale : 1;
+        }
+      };
+      const onSelPointerMove = (e) => {
+        const m = pinchRef.current;
+        if (!m.pts.has(e.pointerId)) return;
+        const prev = m.pts.get(e.pointerId);
+        m.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (m.pts.size === 2 && m.startDist > 0) {
+          const [a, b] = [...m.pts.values()];
+          const s = Math.min(4, Math.max(1, m.startScale * (Math.hypot(a.x - b.x, a.y - b.y) / m.startDist)));
+          setSelectMode(sm => (sm && sm !== 'loading') ? { ...sm, scale: s } : sm);
+        } else if (m.pts.size === 1 && selScrollRef.current) {
+          m.moved += Math.abs(e.clientX - prev.x) + Math.abs(e.clientY - prev.y);
+          selScrollRef.current.scrollLeft -= (e.clientX - prev.x);
+          selScrollRef.current.scrollTop -= (e.clientY - prev.y);
+        }
+      };
+      const onSelPointerUp = (e) => {
+        const m = pinchRef.current;
+        m.pts.delete(e.pointerId);
+        if (m.pts.size < 2) m.startDist = 0;
+      };
 
       const pickFrom = async (source) => {
         setChooser(false);
@@ -16853,7 +16960,12 @@ const setDays = (updater) =>
       };
 
       const reviewRow = (f) => {
-        const st = fieldState(f.key);
+        const base = fieldState(f.key);
+        const m = manual[f.key];
+        // A select-on-sheet choice overrides state/page: it came straight off
+        // the document, so it counts as verified — except an implausible
+        // email, which keeps the unverified flag (value still shown).
+        const st = m ? { ...base, state: m.verified ? 'verified' : 'unverified', page: m.page } : base;
         const edited = edits[f.key] !== undefined;
         const v = liveValue(f.key);
         const current = ((production && production[f.target]) || '').trim();
@@ -16868,7 +16980,7 @@ const setDays = (updater) =>
             </button>
           );
         }
-        const unverified = st.state === 'unverified' && !edited; // a user edit is deliberate — quiet again
+        const unverified = m ? !m.verified : (st.state === 'unverified' && !edited); // a typed edit is deliberate — quiet again; an implausible selection stays flagged
         return (
           <button type="button" key={f.key} onClick={() => setVerifyKey(f.key)}
             className={`w-full text-left bg-neutral-900 border rounded-xl px-3.5 py-3 transition-colors ${unverified ? 'border-tm-warn/35 hover:border-tm-warn/55' : 'border-neutral-800 hover:border-neutral-700'}`}
@@ -16916,7 +17028,7 @@ const setDays = (updater) =>
             <div className="space-y-2.5 pb-1">
               {[
                 { key: 'files', label: 'Files', desc: 'PDF or image from the Files app' },
-                { key: 'photos', label: 'Photos', desc: 'Up to 5 screenshots or photos — each becomes a page' },
+                { key: 'photos', label: 'Photos', desc: 'Up to 5 screenshots or photos — each becomes a page', tip: 'Tip: zoomed screenshots read best — try one of the masthead and one of the invoicing section.' },
                 ...(avail.scanner ? [{ key: 'camera', label: 'Camera', desc: 'Scan a printed call sheet' }] : []),
               ].map(s => (
                 <button key={s.key} type="button" onClick={() => pickFrom(s.key)}
@@ -16924,6 +17036,7 @@ const setDays = (updater) =>
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
                   <div className="text-[13px] text-neutral-100 font-semibold">{s.label}</div>
                   <div className="text-[11px] text-neutral-500 mt-0.5">{s.desc}</div>
+                  {s.tip && <div className="text-[10px] text-neutral-500 mt-1">{s.tip}</div>}
                 </button>
               ))}
             </div>
@@ -16931,6 +17044,16 @@ const setDays = (updater) =>
 
           <Sheet open={phase === 'review'} onClose={closeReview} title="Review import">
             <div className="space-y-2.5 pb-1">
+              {/* Low-quality input banner (Stage 3.5) — NON-BLOCKING: purely
+                  informational, neutral styling (amber stays reserved for the
+                  unverified field state); the field rows always render below.
+                  Driven by native OCR metrics on image-sourced pages (mean
+                  Vision confidence < 0.5 or < 200 recognised chars). */}
+              {result && result.quality && result.quality.weakPages && result.quality.weakPages.length > 0 && (
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+                  <p className="text-[11px] text-neutral-400 leading-snug">This image was hard to read — text may be too small. Zoomed screenshots (e.g. the invoicing section) or sharing the PDF itself work best.</p>
+                </div>
+              )}
               {FIELDS.map(reviewRow)}
               <Btn onClick={apply} className="w-full justify-center mt-1">Apply to shoot</Btn>
               <p className="text-[10px] text-neutral-500 text-center leading-snug">
@@ -16939,39 +17062,116 @@ const setDays = (updater) =>
             </div>
           </Sheet>
 
-          <Sheet open={!!verifyKey} onClose={() => setVerifyKey(null)} title={verifyField ? verifyField.label : ''}>
-            {verifyKey && (
-              <div className="space-y-3">
-                {verifySt.crop && (
-                  <img src={`data:image/png;base64,${verifySt.crop}`} alt="Source crop"
-                    className="w-full rounded-lg border border-neutral-800" />
-                )}
-                {!verifySt.crop && verifySt.snippet && (
-                  <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] font-mono text-neutral-300 leading-relaxed">
-                    {verifySt.snippet}
+          <Sheet open={!!verifyKey} onClose={() => { setVerifyKey(null); setSelectMode(null); }} title={verifyField ? verifyField.label : ''}>
+            {/* SELECT-ON-SHEET mode (Stage 3.5): full page, pinch-zoom + pan,
+                tappable text runs. First tap starts the selection, further
+                taps append (newline-joined for the address, space otherwise),
+                tapping again removes. Done commits via setEdits — display
+                state only; Apply remains the single write. */}
+            {verifyKey && selectMode && (
+              selectMode === 'loading' ? (
+                <p className="text-[11px] text-neutral-500 text-center py-6">Loading page…</p>
+              ) : (
+                <div className="space-y-3">
+                  <div
+                    ref={selScrollRef}
+                    className="overflow-auto rounded-lg border border-neutral-800 bg-neutral-900"
+                    style={{ maxHeight: '55vh', touchAction: 'none', overscrollBehavior: 'contain' }}
+                    onPointerDown={onSelPointerDown}
+                    onPointerMove={onSelPointerMove}
+                    onPointerUp={onSelPointerUp}
+                    onPointerCancel={onSelPointerUp}
+                  >
+                    <div className="relative" style={{ width: `${selectMode.scale * 100}%` }}>
+                      <img src={selectMode.src} alt={`Page ${selectMode.page}`} className="w-full block" draggable={false} />
+                      {selectMode.runs.map((r, i) => (
+                        <button key={i} type="button"
+                          onClick={() => { if (pinchRef.current.moved > 8) return; toggleRun(i); }}
+                          className={`absolute rounded-[3px] border ${selectMode.sel.includes(i) ? 'border-sky-500 bg-sky-500/25' : 'border-sky-500/25'}`}
+                          style={{
+                            left: `${(r.x / selectMode.natural.w) * 100}%`,
+                            top: `${(r.y / selectMode.natural.h) * 100}%`,
+                            width: `${(r.w / selectMode.natural.w) * 100}%`,
+                            height: `${(r.h / selectMode.natural.h) * 100}%`,
+                            WebkitTapHighlightColor: 'transparent',
+                          }}
+                          aria-label={r.text}
+                        />
+                      ))}
+                    </div>
                   </div>
-                )}
-                {!verifySt.crop && !verifySt.snippet && verifySt.pagePreview && (
-                  <img src={`data:image/jpeg;base64,${verifySt.pagePreview}`} alt="Page preview"
-                    className="w-full rounded-lg border border-neutral-800" />
-                )}
-                {verifyKey === 'invoicingAddress' ? (
-                  <textarea
-                    value={liveValue(verifyKey)}
-                    onChange={(e) => setEdits(prev => ({ ...prev, [verifyKey]: e.target.value }))}
-                    rows={3}
-                    placeholder="Enter value"
-                    aria-label={verifyField.label}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none"
-                  />
-                ) : (
-                  <Input
-                    value={liveValue(verifyKey)}
-                    onChange={(e) => setEdits(prev => ({ ...prev, [verifyKey]: e.target.value }))}
-                    placeholder="Enter value"
-                    aria-label={verifyField.label}
-                  />
-                )}
+                  <p className="text-[10px] text-neutral-500">Tap a line to use it; tap more lines to add them. Pinch to zoom.</p>
+                  {selectionValue(selectMode) ? (
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-[12px] text-neutral-100 whitespace-pre-wrap">{selectionValue(selectMode)}</div>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <Btn variant="ghost" onClick={() => setSelectMode(null)} className="flex-1 justify-center">Cancel</Btn>
+                    <Btn onClick={confirmSelection} disabled={!selectMode.sel.length} className="flex-1 justify-center">Done</Btn>
+                  </div>
+                </div>
+              )
+            )}
+            {verifyKey && !selectMode && (
+              <div className="space-y-3">
+                {(() => {
+                  const m = manual[verifyKey];
+                  if (m && m.rect) {
+                    // Client-side crop of the user's chosen region (padded) —
+                    // replaces the native crop after a select-on-sheet Done.
+                    const padX = Math.max(16, m.rect.w * 0.15), padY = Math.max(16, m.rect.h * 0.15);
+                    const x = Math.max(0, m.rect.x - padX), y = Math.max(0, m.rect.y - padY);
+                    const w = Math.min(m.natural.w - x, m.rect.w + padX * 2), h = Math.min(m.natural.h - y, m.rect.h + padY * 2);
+                    return (
+                      <div className="relative overflow-hidden rounded-lg border border-sky-500/40" style={{ width: '100%', aspectRatio: `${w} / ${h}` }}>
+                        <img src={m.src} alt="Selected region" draggable={false} className="absolute max-w-none"
+                          style={{ width: `${(m.natural.w / w) * 100}%`, left: `${-(x / w) * 100}%`, top: `${-(y / h) * 100}%` }} />
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      {verifySt.crop && (
+                        <img src={`data:image/png;base64,${verifySt.crop}`} alt="Source crop"
+                          className="w-full rounded-lg border border-neutral-800" />
+                      )}
+                      {!verifySt.crop && verifySt.snippet && (
+                        <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] font-mono text-neutral-300 leading-relaxed">
+                          {verifySt.snippet}
+                        </div>
+                      )}
+                      {!verifySt.crop && !verifySt.snippet && verifySt.pagePreview && (
+                        <img src={`data:image/jpeg;base64,${verifySt.pagePreview}`} alt="Page preview"
+                          className="w-full rounded-lg border border-neutral-800" />
+                      )}
+                    </>
+                  );
+                })()}
+                {/* Edit affordance (Stage 3.5): the value is explicitly labelled
+                    as editable — a visible form field, not a label that secretly
+                    accepts input. */}
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">Value — tap to edit</div>
+                  {verifyKey === 'invoicingAddress' ? (
+                    <textarea
+                      value={liveValue(verifyKey)}
+                      onChange={(e) => setEdits(prev => ({ ...prev, [verifyKey]: e.target.value }))}
+                      rows={3}
+                      placeholder="Enter value"
+                      aria-label={verifyField.label}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none"
+                    />
+                  ) : (
+                    <Input
+                      value={liveValue(verifyKey)}
+                      onChange={(e) => setEdits(prev => ({ ...prev, [verifyKey]: e.target.value }))}
+                      placeholder="Enter value"
+                      aria-label={verifyField.label}
+                    />
+                  )}
+                </div>
+                {lastPaths ? (
+                  <Btn variant="ghost" onClick={openSelect} className="w-full justify-center">Select on sheet</Btn>
+                ) : null}
                 <Btn onClick={() => setVerifyKey(null)} className="w-full justify-center">Confirm</Btn>
               </div>
             )}
@@ -21876,7 +22076,8 @@ const confirmDelete = (p) => setConfirmOpts({
         // openId, one render BEFORE the effect could attach the payload — the
         // one-shot captured null and the review sheet never opened.
         closeProduction();
-        setOpenImportFile(r && r.perField ? { result: r } : null);
+        // path rides along so select-on-sheet can re-open the source pages
+        setOpenImportFile(r && r.perField ? { result: r, path: file.path } : null);
         setShowNewProduction(true);
       };
 
