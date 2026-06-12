@@ -1,0 +1,117 @@
+//
+//  TimeMachineAppShortcuts.swift
+//
+//  Siri Stage A — voice verbs via App Shortcuts. Plain App Intents + App
+//  Shortcuts (no AI, no Apple Intelligence): "Hey Siri, wrap now in
+//  TimeMachine" works with zero user setup on iOS 17+ (the Live Activity
+//  floor), and both verbs appear in the Shortcuts app / Spotlight.
+//
+//  APP TARGET ONLY. AppShortcutsProvider metadata is read from the app
+//  bundle, and keeping this file out of the widget target avoids duplicate
+//  App Intents metadata extraction. The types it leans on are already
+//  compiled into the App target: TMLiveActivity + the Live Activity button
+//  intents (TimeMachineIntents.swift, dual-membership) and
+//  TimeMachineActivityAttributes (shared type).
+//
+//  WHY SEPARATE VOICE INTENTS instead of exposing the button intents:
+//    1. LunchNowIntent/WrapNowIntent take a REQUIRED productionId — App
+//       Shortcut phrases can't supply an arbitrary String, and Siri would
+//       prompt for it. The voice intents resolve the production from the
+//       RUNNING Live Activity instead (it exists exactly when there's an
+//       active, started, unwrapped day today).
+//    2. The buttons are deliberately TWO-TAP (arm → confirm) because lock
+//       screen taps are accident-prone. A spoken command is deliberate, so
+//       the voice intents stamp in ONE step. The button intents and their
+//       arming behaviour are untouched.
+//
+//  STAMPING IS REUSED VERBATIM: the voice confirm calls the SAME
+//  TMLiveActivity.appendEvent — current local HH:mm into the App-Group
+//  pending-events queue, drained by the app through the existing ingestion
+//  (idempotent, today-only, record-write via applyLunchNow/applyWrapNow).
+//  No new write path; nothing is stamped when no day qualifies.
+//
+//  NO-ACTIVE-DAY: the button path never hits this (buttons only render on a
+//  live card), and the underlying helpers silently no-op without an
+//  Activity. Voice CAN hit it, so the guard lives here: no running,
+//  unwrapped Activity → spoken "No active day in TimeMachine." and ZERO
+//  writes — nothing stamped, nothing created.
+//
+
+import Foundation
+import AppIntents
+import ActivityKit
+
+// MARK: - Voice intents (single-step; Activity-derived target)
+
+@available(iOS 17.0, *)
+private func activeUnwrappedActivity() -> Activity<TimeMachineActivityAttributes>? {
+    // "Active day" = a running Live Activity that hasn't wrapped. A wrapped
+    // card lingering in its 5-minute dismissal window does NOT count — the
+    // day is already wrapped, so voice should say "no active day".
+    Activity<TimeMachineActivityAttributes>.activities.first { $0.content.state.state != "wrapped" }
+}
+
+@available(iOS 17.0, *)
+struct WrapNowVoiceIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Wrap Now"
+    static var description = IntentDescription("Stamps the current time as today's wrap on the active shoot.")
+    static var openAppWhenRun: Bool = false
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let activity = activeUnwrappedActivity() else {
+            return .result(dialog: "No active day in TimeMachine.")
+        }
+        let pid = activity.attributes.productionId
+        let at = TMLiveActivity.appendEvent(type: "wrapNow", productionId: pid)  // CRITICAL — same write as the button confirm
+        await TMLiveActivity.endWrapped(pid)                                      // best-effort wrap + freeze + end, same as button
+        return .result(dialog: at.isEmpty ? "Wrapped." : "Wrapped at \(at).")
+    }
+}
+
+@available(iOS 17.0, *)
+struct LunchNowVoiceIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Lunch Now"
+    static var description = IntentDescription("Stamps the current time as today's lunch on the active shoot.")
+    static var openAppWhenRun: Bool = false
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let activity = activeUnwrappedActivity() else {
+            return .result(dialog: "No active day in TimeMachine.")
+        }
+        let pid = activity.attributes.productionId
+        let at = TMLiveActivity.appendEvent(type: "lunchNow", productionId: pid) // CRITICAL — same write as the button confirm
+        await TMLiveActivity.update(pid, state: "lunch")                          // best-effort chip, same as button
+        await TMLiveActivity.requestBackgroundDrain()                             // best-effort live total, same as button
+        return .result(dialog: at.isEmpty ? "Lunch logged." : "Lunch logged at \(at).")
+    }
+}
+
+// MARK: - App Shortcuts (zero-setup Siri phrases + Shortcuts/Spotlight tiles)
+
+@available(iOS 17.0, *)
+struct TimeMachineAppShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: WrapNowVoiceIntent(),
+            phrases: [
+                "wrap now in \(.applicationName)",
+                "wrap in \(.applicationName)",
+                "wrap me in \(.applicationName)",
+                "wrap the day in \(.applicationName)",
+            ],
+            shortTitle: "Wrap Now",
+            systemImageName: "checkmark.circle.fill"
+        )
+        AppShortcut(
+            intent: LunchNowVoiceIntent(),
+            phrases: [
+                "lunch in \(.applicationName)",
+                "lunch now in \(.applicationName)",
+                "going to lunch in \(.applicationName)",
+                "break for lunch in \(.applicationName)",
+            ],
+            shortTitle: "Lunch Now",
+            systemImageName: "fork.knife"
+        )
+    }
+}

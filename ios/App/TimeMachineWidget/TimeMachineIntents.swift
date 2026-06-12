@@ -66,8 +66,14 @@ enum TMLiveActivity {
     /// writers exactly: `at` = LOCAL HH:MM (no rounding); `date` = UTC
     /// YYYY-MM-DD to match the web's todayISO() (`toISOString().slice(0,10)`)
     /// so ingestion lands on the same day record.
-    static func appendEvent(type: String, productionId: String) {
-        guard let defaults = UserDefaults(suiteName: appGroupSuite) else { return }
+    ///
+    /// Returns the stamped `at` (HH:mm) so callers that speak a confirmation
+    /// (the Siri voice intents) can echo the EXACT stamped time; the Live
+    /// Activity button intents ignore it (@discardableResult) — their
+    /// behaviour is unchanged. "" only if the App Group is unreachable.
+    @discardableResult
+    static func appendEvent(type: String, productionId: String) -> String {
+        guard let defaults = UserDefaults(suiteName: appGroupSuite) else { return "" }
         let now = Date()
 
         let timeFmt = DateFormatter()
@@ -79,10 +85,11 @@ enum TMLiveActivity {
         dateFmt.timeZone = TimeZone(identifier: "UTC")
         dateFmt.dateFormat = "yyyy-MM-dd"       // UTC, to match todayISO()
 
+        let at = timeFmt.string(from: now)
         let event: [String: Any] = [
             "id": UUID().uuidString,
             "type": type,
-            "at": timeFmt.string(from: now),
+            "at": at,
             "date": dateFmt.string(from: now),
             "ts": Int(now.timeIntervalSince1970 * 1000),
             "productionId": productionId,
@@ -90,6 +97,7 @@ enum TMLiveActivity {
         var queue = defaults.array(forKey: pendingEventsKey) as? [[String: Any]] ?? []
         queue.append(event)
         defaults.set(queue, forKey: pendingEventsKey)
+        return at
     }
 
     /// The two-tap confirm window. An arm older than this is EXPIRED: the view's
