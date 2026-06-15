@@ -476,11 +476,11 @@ enum CallSheetPipeline {
             perField[key] = entry
         }
 
-        // EMAIL EXTRACTION (deterministic; no model). The value that landed in
-        // invoicingEmail/ccEmail may be a whole line carrying one or two
-        // addresses. Pull the token(s): first → invoicingEmail; a distinct
-        // second on the primary's line → ccEmail (when empty). A field with at
-        // least one valid token is VERIFIED and shows the clean address.
+        // EMAIL FIELDS — deterministic harvest FIRST, model only as fallback.
+        // The harvest (regex every address + proximity scoring) is the primary
+        // source: it provably exists in the text, so it's VERIFIED with a crop
+        // from its known position. Only when nothing scores as an invoicing
+        // email do we fall back to the model's email value (cleaned the same way).
         func setEmail(_ key: String, _ token: String, page: Int) {
             fields[key] = token
             var e = (perField[key] as? [String: Any]) ?? [:]
@@ -489,24 +489,48 @@ enum CallSheetPipeline {
             e["page"] = page
             perField[key] = e
         }
-        let primaryRaw = (fields["invoicingEmail"] as? String) ?? ""
-        let primaryTokens = extractEmails(primaryRaw)
-        let primaryPage = ((perField["invoicingEmail"] as? [String: Any])?["page"] as? Int) ?? 1
-        if primaryTokens.count >= 2, ((fields["ccEmail"] as? String) ?? "").isEmpty {
-            setEmail("ccEmail", primaryTokens[1], page: primaryPage)  // second address on the same line
+        func setHarvested(_ key: String, _ hit: EmailHit) {
+            fields[key] = hit.token
+            var e: [String: Any] = ["value": hit.token, "state": "verified", "page": hit.pageIndex + 1]
+            if let page = pages.first(where: { $0.index == hit.pageIndex }) {
+                e["snippet"] = snippet(of: page.text, around: hit.range)
+                if let crop = cropImage(for: hit.range, on: page) { e["crop"] = crop }
+            }
+            perField[key] = e
         }
-        if let first = primaryTokens.first {
-            setEmail("invoicingEmail", first, page: primaryPage)
-        } else if fields["invoicingEmail"] != nil {
-            var e = (perField["invoicingEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["invoicingEmail"] = e
-        }
-        let ccRaw = (fields["ccEmail"] as? String) ?? ""
-        let ccTokens = extractEmails(ccRaw)
-        let ccPage = ((perField["ccEmail"] as? [String: Any])?["page"] as? Int) ?? primaryPage
-        if let firstCc = ccTokens.first {
-            setEmail("ccEmail", firstCc, page: ccPage)
-        } else if fields["ccEmail"] != nil {
-            var e = (perField["ccEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["ccEmail"] = e
+        let harvest = harvestInvoicingEmails(pages)
+        if let primary = harvest.primary {
+            setHarvested("invoicingEmail", primary)
+            if let cc = harvest.cc {
+                setHarvested("ccEmail", cc)
+            } else {
+                // No second invoicing email on the line/block — empty is honest;
+                // never backfill CC with a low-scored crew/model address.
+                fields["ccEmail"] = nil
+                perField["ccEmail"] = ["state": "missing"]
+            }
+        } else {
+            // FALLBACK — no scored invoicing email. Keep the model's value(s),
+            // cleaned with token extraction (a model line may carry two addrs).
+            let primaryRaw = (fields["invoicingEmail"] as? String) ?? ""
+            let primaryTokens = extractEmails(primaryRaw)
+            let primaryPage = ((perField["invoicingEmail"] as? [String: Any])?["page"] as? Int) ?? 1
+            if primaryTokens.count >= 2, ((fields["ccEmail"] as? String) ?? "").isEmpty {
+                setEmail("ccEmail", primaryTokens[1], page: primaryPage)
+            }
+            if let first = primaryTokens.first {
+                setEmail("invoicingEmail", first, page: primaryPage)
+            } else if fields["invoicingEmail"] != nil {
+                var e = (perField["invoicingEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["invoicingEmail"] = e
+            }
+            let ccRaw = (fields["ccEmail"] as? String) ?? ""
+            let ccTokens = extractEmails(ccRaw)
+            let ccPage = ((perField["ccEmail"] as? [String: Any])?["page"] as? Int) ?? primaryPage
+            if let firstCc = ccTokens.first {
+                setEmail("ccEmail", firstCc, page: ccPage)
+            } else if fields["ccEmail"] != nil {
+                var e = (perField["ccEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["ccEmail"] = e
+            }
         }
 
         // HARD RULE — CC must never duplicate the primary invoicing email.
@@ -798,6 +822,63 @@ enum CallSheetPipeline {
             if seen.insert(tok.lowercased()).inserted { out.append(tok) }
         }
         return out
+    }
+
+    // ── Invoicing-email harvest + proximity scoring (deterministic, no model) ──
+    // Email fields are unreliable when the 3B model leads, so we regex EVERY
+    // address across all page text and score each by PROXIMITY to invoicing
+    // intent rather than model opinion. Only an email with explicit invoicing
+    // intent near it is a candidate — so a crew/agent address is never promoted.
+
+    struct EmailHit { let token: String; let pageIndex: Int; let range: NSRange; let lineRange: NSRange; let score: Int }
+
+    // Positive: the email's line or the line above carries invoicing intent.
+    // ("invoice" matches "invoices/invoiced"; "account" matches "accounts".)
+    static let invoiceIntentKeywords = ["invoice", "invoicing", "account", "billing", "please email", "send to", "send invoices", "email invoices", "remittance", "pay to"]
+    // Demote: crew/contact-list context around the email.
+    static let crewContextKeywords = ["crew", "unit list", "call sheet", "runner", "gaffer", "best boy", "electrician", "rigger", "trainee", "daily", "mobile", "diary", "director", "producer", "1st ad", "2nd ad", "stand-by", "standby"]
+
+    static func harvestInvoicingEmails(_ pages: [SourcePage]) -> (primary: EmailHit?, cc: EmailHit?) {
+        guard let emailRe = try? NSRegularExpression(pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}") else { return (nil, nil) }
+        let phonePattern = "(\\+44\\s?7|\\b07)\\d{2,3}[\\s.\\-]?\\d{3}[\\s.\\-]?\\d{3}"
+        var candidates: [EmailHit] = []
+        for page in pages {
+            let ns = page.text as NSString
+            let matches = emailRe.matches(in: page.text, range: NSRange(location: 0, length: ns.length))
+            let emailLocs = matches.map { $0.range.location }
+            for m in matches {
+                let lineRange = ns.lineRange(for: m.range)
+                let line = ns.substring(with: lineRange).lowercased()
+                var prev = ""
+                if lineRange.location > 0 {
+                    let pr = ns.lineRange(for: NSRange(location: lineRange.location - 1, length: 0))
+                    prev = ns.substring(with: pr).lowercased()
+                }
+                let lineHit = invoiceIntentKeywords.contains { line.contains($0) }
+                let prevHit = invoiceIntentKeywords.contains { prev.contains($0) }
+                let positive = (lineHit ? 10 : 0) + (prevHit ? 5 : 0)
+                if positive == 0 { continue }  // no invoicing intent → never a candidate (crew-safe)
+                var score = positive
+                if crewContextKeywords.contains(where: { line.contains($0) }) { score -= 6 }
+                if crewContextKeywords.contains(where: { prev.contains($0) }) { score -= 4 }
+                if (line + " " + prev).range(of: phonePattern, options: .regularExpression) != nil { score -= 4 }
+                let clustered = emailLocs.filter { abs($0 - m.range.location) <= 220 }.count
+                if clustered >= 4 { score -= 5 }  // dense email rows = a list, not an invoicing block
+                candidates.append(EmailHit(token: ns.substring(with: m.range), pageIndex: page.index, range: m.range, lineRange: lineRange, score: score))
+            }
+        }
+        let sorted = candidates.sorted {
+            $0.score != $1.score ? $0.score > $1.score
+            : ($0.pageIndex != $1.pageIndex ? $0.pageIndex < $1.pageIndex : $0.range.location < $1.range.location)
+        }
+        guard let best = sorted.first else { return (nil, nil) }
+        // CC = a distinct invoicing-intent address on the SAME line or the same
+        // block (an adjacent line, ~within 120 chars).
+        let cc = sorted.first {
+            $0.token.lowercased() != best.token.lowercased() && $0.pageIndex == best.pageIndex &&
+            (NSEqualRanges($0.lineRange, best.lineRange) || abs($0.lineRange.location - best.lineRange.location) <= 120)
+        }
+        return (best, cc)
     }
 
     static func containsUKPostcode(_ s: String) -> Bool {

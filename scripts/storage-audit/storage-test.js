@@ -5664,6 +5664,19 @@ async function main() {
       /if \(e\.touches\.length === 2 && P\.startDist > 0\) \{\s*e\.preventDefault\(\);/.test(importFn) &&
       /touchAction: 'pan-x pan-y'/.test(importFn) &&
       !/onPointerDown=\{onSelPointerDown\}/.test(importFn));
+    // ── Prompt (2c) — deterministic invoicing-email harvest with proximity scoring ──
+    check('UU1u email fields use the deterministic harvest as the PRIMARY source (regex every address + proximity scoring: invoicing-intent keywords positive, crew-context/phone/cluster demotions); model is fallback-only; harvested email verified with a crop from its position',
+      (() => {
+        const sw = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetPlugin.swift'), 'utf8');
+        return /static func harvestInvoicingEmails\(_ pages: \[SourcePage\]\) -> \(primary: EmailHit\?, cc: EmailHit\?\)/.test(sw) &&
+          /static let invoiceIntentKeywords =/.test(sw) &&
+          /static let crewContextKeywords =/.test(sw) &&
+          /if positive == 0 \{ continue \}/.test(sw) &&                       // crew-safe: no invoicing intent → not a candidate
+          /let harvest = harvestInvoicingEmails\(pages\)/.test(sw) &&         // used in run()
+          /if let primary = harvest\.primary \{\s*setHarvested\("invoicingEmail", primary\)/.test(sw) && // primary source
+          /\} else \{[\s\S]{0,200}FALLBACK — no scored invoicing email/.test(sw) &&  // model is fallback-only
+          /if let crop = cropImage\(for: hit\.range, on: page\) \{ e\["crop"\] = crop \}/.test(sw); // crop from position
+      })());
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
