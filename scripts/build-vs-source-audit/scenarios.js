@@ -5,7 +5,7 @@
  * (production, day, crewMember, prevDay) quadruple. The audit harness calls
  * calcForDisplay on both the SOURCE engine and the BUILT engine and compares.
  *
- * Coverage groups (>= 50 scenarios, currently 66):
+ * Coverage groups (>= 50 scenarios, currently 87):
  *   A. Continuous shoot days, various lengths
  *   B. Pre-light (incl. Saturday Pre-light)
  *   C. Prep / Recce / Build / De-rig
