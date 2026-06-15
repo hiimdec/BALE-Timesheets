@@ -476,8 +476,40 @@ enum CallSheetPipeline {
             perField[key] = entry
         }
 
+        // EMAIL EXTRACTION (deterministic; no model). The value that landed in
+        // invoicingEmail/ccEmail may be a whole line carrying one or two
+        // addresses. Pull the token(s): first → invoicingEmail; a distinct
+        // second on the primary's line → ccEmail (when empty). A field with at
+        // least one valid token is VERIFIED and shows the clean address.
+        func setEmail(_ key: String, _ token: String, page: Int) {
+            fields[key] = token
+            var e = (perField[key] as? [String: Any]) ?? [:]
+            e["value"] = token
+            e["state"] = "verified"
+            e["page"] = page
+            perField[key] = e
+        }
+        let primaryRaw = (fields["invoicingEmail"] as? String) ?? ""
+        let primaryTokens = extractEmails(primaryRaw)
+        let primaryPage = ((perField["invoicingEmail"] as? [String: Any])?["page"] as? Int) ?? 1
+        if primaryTokens.count >= 2, ((fields["ccEmail"] as? String) ?? "").isEmpty {
+            setEmail("ccEmail", primaryTokens[1], page: primaryPage)  // second address on the same line
+        }
+        if let first = primaryTokens.first {
+            setEmail("invoicingEmail", first, page: primaryPage)
+        } else if fields["invoicingEmail"] != nil {
+            var e = (perField["invoicingEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["invoicingEmail"] = e
+        }
+        let ccRaw = (fields["ccEmail"] as? String) ?? ""
+        let ccTokens = extractEmails(ccRaw)
+        let ccPage = ((perField["ccEmail"] as? [String: Any])?["page"] as? Int) ?? primaryPage
+        if let firstCc = ccTokens.first {
+            setEmail("ccEmail", firstCc, page: ccPage)
+        } else if fields["ccEmail"] != nil {
+            var e = (perField["ccEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["ccEmail"] = e
+        }
+
         // HARD RULE — CC must never duplicate the primary invoicing email.
-        // If the model echoed the same address into both, drop CC entirely.
         if let cc = (fields["ccEmail"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
            let primary = (fields["invoicingEmail"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
            cc == primary {
@@ -749,6 +781,23 @@ enum CallSheetPipeline {
     static func isPlausibleEmail(_ s: String) -> Bool {
         let pattern = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}$"
         return s.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// Pull every valid email TOKEN out of a string, in order, case-insensitively
+    /// de-duplicated. An invoicing email is often printed on a shared line — e.g.
+    /// "EMAIL INVOICES TO: a@x.com & b@y.com" — so the right operation is to
+    /// EXTRACT the address(es) from the value, not validate the whole line as one.
+    static func extractEmails(_ s: String) -> [String] {
+        let pattern = "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let ns = s as NSString
+        var out: [String] = []
+        var seen = Set<String>()
+        for m in re.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
+            let tok = ns.substring(with: m.range)
+            if seen.insert(tok.lowercased()).inserted { out.append(tok) }
+        }
+        return out
     }
 
     static func containsUKPostcode(_ s: String) -> Bool {

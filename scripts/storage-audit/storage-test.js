@@ -5644,6 +5644,26 @@ async function main() {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         return /case "lunch":\s*return "ON LUNCH"/.test(la) && !/return "AT LUNCH"/.test(la);
       })());
+    // ── Prompt (2b) — email extraction regression + select-on-sheet gaps ──
+    check('UU1r email extraction is deterministic (regex, no model) — a shared extractEmails helper pulls address token(s); used by select-on-sheet (line → token; a 2nd distinct address → ccEmail) AND by the email shape check; the native extraction path post-processes the same way',
+      /const extractEmails = \(s\) => \{/.test(importFn) &&
+      /if \(EMAIL_KEYS\.has\(verifyKey\)\) \{\s*const tokens = extractEmails\(v\);/.test(importFn) &&
+      /editUpd\.ccEmail = tokens\[1\];/.test(importFn) &&
+      /extractEmails\(v\)\.length >= 1/.test(importFn) &&
+      (() => {
+        const sw = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetPlugin.swift'), 'utf8');
+        return /static func extractEmails\(_ s: String\) -> \[String\]/.test(sw) && /let primaryTokens = extractEmails\(primaryRaw\)/.test(sw);
+      })());
+    check('UU1s select-on-sheet covers ALL pages — loadPage/gotoPage keyed on pageCount, opens on the field\'s detected page (defaultPageFor), Prev/Next nav with "Page X of N"',
+      /const loadPage = async \(page\) => \{/.test(importFn) &&
+      /const gotoPage = \(p\) => \{ if \(selectMode && selectMode !== 'loading' && p >= 1 && p <= selectMode\.pageCount\) loadPage\(p\); \};/.test(importFn) &&
+      /await loadPage\(defaultPageFor\(verifyKey\)\);/.test(importFn) &&
+      /Page \{selectMode\.page\} of \{selectMode\.pageCount\}/.test(importFn));
+    check('UU1t pinch restored alongside native scroll — a NON-PASSIVE touchmove listener (React onTouchMove is passive) preventDefaults during a two-finger pinch and scales 1–4×, while one finger scrolls natively (touch-action pan-x pan-y); pointer-event pinch removed',
+      /el\.addEventListener\('touchmove', onMove, \{ passive: false \}\)/.test(importFn) &&
+      /if \(e\.touches\.length === 2 && P\.startDist > 0\) \{\s*e\.preventDefault\(\);/.test(importFn) &&
+      /touchAction: 'pan-x pan-y'/.test(importFn) &&
+      !/onPointerDown=\{onSelPointerDown\}/.test(importFn));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

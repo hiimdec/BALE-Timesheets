@@ -16773,7 +16773,7 @@ const setDays = (updater) =>
       const [selectMode, setSelectMode] = useState(null); // null | 'loading' | { page, src, natural, runs, sel, scale }
       const [manual, setManual] = useState({});
       const autoConsumedRef = React.useRef(false);
-      const pinchRef = React.useRef({ pts: new Map(), startDist: 0, startScale: 1, moved: 0 });
+      const pinchRef = React.useRef({ startDist: 0, startScale: 1, scale: 1, moved: 0 });
       const selScrollRef = React.useRef(null);
       useEffect(() => {
         if (!IS_NATIVE) return;
@@ -16824,6 +16824,47 @@ const setDays = (updater) =>
         else if (autoFile.path) { runExtract(autoFile.path); }
       }, [avail, autoFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
+      // Select-on-sheet gestures (Item 2 — restore pinch alongside native
+      // scroll). One finger scrolls/pans NATIVELY (the scroller's touch-action
+      // is pan-x pan-y). TWO fingers pinch-zoom our content 1–4×: a NON-PASSIVE
+      // touchmove listener (React's synthetic onTouchMove is passive, so it
+      // can't preventDefault) calls preventDefault during the pinch to suspend
+      // native scroll, and scales selectMode. Re-attached when the page view
+      // (re)mounts. Hook lives ABOVE the visibility gate (single hook order).
+      const selPageKey = (selectMode && selectMode !== 'loading') ? ('p' + selectMode.page) : '';
+      React.useEffect(() => {
+        if (!IS_NATIVE || !selPageKey) return;
+        const el = selScrollRef.current;
+        if (!el) return;
+        const P = pinchRef.current;
+        const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+        const onStart = (e) => {
+          P.moved = 0;
+          if (e.touches.length === 2) { P.startDist = dist(e.touches); P.startScale = P.scale || 1; }
+        };
+        const onMove = (e) => {
+          if (e.touches.length === 2 && P.startDist > 0) {
+            e.preventDefault(); // suspend native scroll for the duration of the pinch
+            const s = Math.min(4, Math.max(1, P.startScale * (dist(e.touches) / P.startDist)));
+            P.scale = s;
+            setSelectMode(sm => (sm && sm !== 'loading') ? { ...sm, scale: s } : sm);
+          } else if (e.touches.length === 1) {
+            P.moved += 4; // any one-finger move = a scroll, so a run tap is suppressed
+          }
+        };
+        const onEnd = (e) => { if (!e.touches || e.touches.length < 2) P.startDist = 0; };
+        el.addEventListener('touchstart', onStart, { passive: false });
+        el.addEventListener('touchmove', onMove, { passive: false });
+        el.addEventListener('touchend', onEnd, { passive: true });
+        el.addEventListener('touchcancel', onEnd, { passive: true });
+        return () => {
+          el.removeEventListener('touchstart', onStart);
+          el.removeEventListener('touchmove', onMove);
+          el.removeEventListener('touchend', onEnd);
+          el.removeEventListener('touchcancel', onEnd);
+        };
+      }, [selPageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
       const visible = IS_NATIVE && avail && (avail.available || avail.reason === 'appleIntelligenceNotEnabled' || avail.reason === 'modelNotReady');
       if (!visible) return null;
 
@@ -16835,15 +16876,33 @@ const setDays = (updater) =>
         { key: 'ccEmail', label: 'CC email', target: 'ccEmail' },
         { key: 'invoicingAddress', label: 'Company address', target: 'toAddress' },
       ];
+      // Deterministic email extraction (no model) — pull every valid address
+      // TOKEN out of a value, in order, case-insensitively de-duped. An
+      // invoicing email is often on a shared line ("EMAIL INVOICES TO: a@x &
+      // b@y"), so the right operation is to EXTRACT addresses, not validate the
+      // whole string. Used by the native extraction path AND select-on-sheet.
+      const EMAIL_TOKEN_RE = /[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g;
+      const extractEmails = (s) => {
+        const out = [], seen = new Set();
+        const str = ((s || '') + '');
+        let mm; EMAIL_TOKEN_RE.lastIndex = 0;
+        while ((mm = EMAIL_TOKEN_RE.exec(str)) !== null) {
+          const t = mm[0]; const k = t.toLowerCase();
+          if (!seen.has(k)) { seen.add(k); out.push(t); }
+        }
+        return out;
+      };
       // Field-SHAPE validation (Item 3) — extends, never replaces, the native
       // match-back: a value can be located on the sheet yet still fail its
       // shape, in which case it shows but stays UNVERIFIED with a short reason.
+      // For email keys the test is "contains at least one valid address" (the
+      // value may carry a line + address), per the deterministic-extraction model.
       const EMAIL_KEYS = new Set(['invoicingEmail', 'ccEmail']);
       const UK_POSTCODE_RE = /[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\s*[0-9][A-Za-z]{2}/;
       const shapeCheck = (key, value) => {
         const v = ((value || '') + '').trim();
         if (!v) return { ok: true, reason: null };
-        if (EMAIL_KEYS.has(key)) return /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(v) ? { ok: true, reason: null } : { ok: false, reason: "Doesn't look like an email" };
+        if (EMAIL_KEYS.has(key)) return extractEmails(v).length >= 1 ? { ok: true, reason: null } : { ok: false, reason: "Doesn't look like an email" };
         if (key === 'invoicingAddress') return UK_POSTCODE_RE.test(v) ? { ok: true, reason: null } : { ok: false, reason: 'No postcode found — check the address' };
         return { ok: true, reason: null };
       };
@@ -16869,15 +16928,24 @@ const setDays = (updater) =>
         if (invoicingTargets.has(key) && inv && inv.length) return inv[0];
         return 1;
       };
-      const openSelect = async () => {
-        if (!verifyKey || !lastPaths) return;
-        const page = defaultPageFor(verifyKey);
+      // Load one page of the source into the select view. Multi-page (Item 3):
+      // pageCount comes from extraction; the view opens on the field's detected
+      // page and the nav lets the user move to any page — invoicing details are
+      // often on a LATER page than 1. A blank page still shows (runs may be []).
+      const loadPage = async (page) => {
         setSelectMode('loading');
         const r = await CallSheet.pageRuns(lastPaths, page);
-        if (!r || !r.imagePath || !r.runs || !r.runs.length) { setSelectMode(null); setError('Could not read that page'); return; }
+        if (!r || !r.imagePath) { setSelectMode(null); setError('Could not read that page'); return; }
         const src = (window.Capacitor && window.Capacitor.convertFileSrc) ? window.Capacitor.convertFileSrc(r.imagePath) : r.imagePath;
-        setSelectMode({ page, src, natural: { w: r.width, h: r.height }, runs: r.runs, sel: [], scale: 1 });
+        const pageCount = (result && result.pages && result.pages.count) || 1;
+        pinchRef.current.scale = 1;
+        setSelectMode({ page, pageCount, src, natural: { w: r.width, h: r.height }, runs: r.runs || [], sel: [], scale: 1 });
       };
+      const openSelect = async () => {
+        if (!verifyKey || !lastPaths) return;
+        await loadPage(defaultPageFor(verifyKey));
+      };
+      const gotoPage = (p) => { if (selectMode && selectMode !== 'loading' && p >= 1 && p <= selectMode.pageCount) loadPage(p); };
       const toggleRun = (i) => setSelectMode(sm => {
         if (!sm || sm === 'loading') return sm;
         // First tap replaces (starts the selection); further taps append in
@@ -16900,51 +16968,34 @@ const setDays = (updater) =>
                 : { x: r.x, y: r.y, x2: r.x + r.w, y2: r.y + r.h };
         }
         const rect = u ? { x: u.x, y: u.y, w: u.x2 - u.x, h: u.y2 - u.y } : null;
-        // A selection came off the sheet, so it's verified — UNLESS it fails its
-        // field shape (an email that isn't email-shaped, an address with no
-        // postcode), which keeps it unverified per Item 3.
+        const man = { page: sm.page, rect, natural: sm.natural, src: sm.src };
+        // EMAIL FIELDS (Item 4): Vision returns LINE runs, so a selected
+        // invoicing line is "EMAIL INVOICES TO: a@x & b@y" whole. Extract the
+        // address token(s): one → this field; two on the line → primary +
+        // (when selecting the primary field) cc. The shown value is the clean
+        // address, not the line.
+        if (EMAIL_KEYS.has(verifyKey)) {
+          const tokens = extractEmails(v);
+          if (tokens.length) {
+            const editUpd = { [verifyKey]: tokens[0] };
+            const manUpd = { [verifyKey]: { ...man, verified: true } };
+            if (verifyKey === 'invoicingEmail' && tokens.length >= 2 && tokens[1].toLowerCase() !== tokens[0].toLowerCase()) {
+              editUpd.ccEmail = tokens[1];
+              manUpd.ccEmail = { ...man, verified: true };
+            }
+            setEdits(prev => ({ ...prev, ...editUpd }));
+            setManual(prev => ({ ...prev, ...manUpd }));
+            setSelectMode(null);
+            return;
+          }
+          // no address in the selection → fall through; shapeCheck flags it amber
+        }
+        // A non-email selection came off the sheet → verified unless it fails
+        // its field shape (e.g. an address with no postcode).
         const verified = shapeCheck(verifyKey, v).ok;
         setEdits(prev => ({ ...prev, [verifyKey]: v }));
-        setManual(prev => ({ ...prev, [verifyKey]: { page: sm.page, rect, natural: sm.natural, src: sm.src, verified } }));
+        setManual(prev => ({ ...prev, [verifyKey]: { ...man, verified } }));
         setSelectMode(null);
-      };
-      // Page view interaction: ONE finger scrolls/pans NATIVELY (the scroller
-      // has touch-action: pan-x pan-y, so content taller than the viewport at
-      // 1× and the off-screen parts when zoomed are reachable); TWO fingers
-      // pinch-zoom our content scale (1–4×) — the browser's own pinch-zoom is
-      // excluded by the touch-action, so we own it. `moved` lets a scroll-drag
-      // that happens to start on a run overlay not register as a tap. The
-      // overlays live inside the scaled image, so they stay aligned through
-      // scroll and zoom.
-      const onSelPointerDown = (e) => {
-        const m = pinchRef.current;
-        m.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        m.moved = 0;
-        if (m.pts.size === 2) {
-          const [a, b] = [...m.pts.values()];
-          m.startDist = Math.hypot(a.x - b.x, a.y - b.y);
-          m.startScale = (selectMode && selectMode !== 'loading') ? selectMode.scale : 1;
-        }
-      };
-      const onSelPointerMove = (e) => {
-        const m = pinchRef.current;
-        if (!m.pts.has(e.pointerId)) return;
-        const prev = m.pts.get(e.pointerId);
-        m.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (m.pts.size === 2 && m.startDist > 0) {
-          e.preventDefault();
-          const [a, b] = [...m.pts.values()];
-          const s = Math.min(4, Math.max(1, m.startScale * (Math.hypot(a.x - b.x, a.y - b.y) / m.startDist)));
-          setSelectMode(sm => (sm && sm !== 'loading') ? { ...sm, scale: s } : sm);
-        } else if (m.pts.size === 1) {
-          // native scroll handles the pan; just track distance for tap-vs-drag
-          m.moved += Math.abs(e.clientX - prev.x) + Math.abs(e.clientY - prev.y);
-        }
-      };
-      const onSelPointerUp = (e) => {
-        const m = pinchRef.current;
-        m.pts.delete(e.pointerId);
-        if (m.pts.size < 2) m.startDist = 0;
       };
 
       const pickFrom = async (source) => {
@@ -17104,14 +17155,20 @@ const setDays = (updater) =>
                 <p className="text-[11px] text-neutral-500 text-center py-6">Loading page…</p>
               ) : (
                 <div className="space-y-3">
+                  {/* Multi-page nav (Item 3) — only when the source has >1 page.
+                      The view opens on the field's detected page; every page's
+                      runs are selectable. */}
+                  {selectMode.pageCount > 1 && (
+                    <div className="flex items-center justify-between gap-2">
+                      <Btn variant="ghost" disabled={selectMode.page <= 1} onClick={() => gotoPage(selectMode.page - 1)} className="px-3">Prev</Btn>
+                      <span className="text-[11px] text-neutral-400 font-mono">Page {selectMode.page} of {selectMode.pageCount}</span>
+                      <Btn variant="ghost" disabled={selectMode.page >= selectMode.pageCount} onClick={() => gotoPage(selectMode.page + 1)} className="px-3">Next</Btn>
+                    </div>
+                  )}
                   <div
                     ref={selScrollRef}
                     className="overflow-auto rounded-lg border border-neutral-800 bg-neutral-900"
                     style={{ maxHeight: '60vh', touchAction: 'pan-x pan-y', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
-                    onPointerDown={onSelPointerDown}
-                    onPointerMove={onSelPointerMove}
-                    onPointerUp={onSelPointerUp}
-                    onPointerCancel={onSelPointerUp}
                   >
                     <div className="relative" style={{ width: `${selectMode.scale * 100}%` }}>
                       <img src={selectMode.src} alt={`Page ${selectMode.page}`} className="w-full block" draggable={false} />
@@ -17131,7 +17188,7 @@ const setDays = (updater) =>
                       ))}
                     </div>
                   </div>
-                  <p className="text-[10px] text-neutral-500">Tap a line to use it; tap more lines to add them. Pinch to zoom.</p>
+                  <p className="text-[10px] text-neutral-500">Tap a line to use it; tap more lines to add them. Pinch to zoom{selectMode.pageCount > 1 ? '; use Prev/Next for other pages' : ''}.</p>
                   {selectionValue(selectMode) ? (
                     <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-[12px] text-neutral-100 whitespace-pre-wrap">{selectionValue(selectMode)}</div>
                   ) : null}
