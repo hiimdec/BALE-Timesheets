@@ -107,6 +107,36 @@ enum TMLiveActivity {
         return at
     }
 
+    /// Stage B — today's-active-shoot snapshot key, written by the app (plugin
+    /// setActiveShoot) and READ by the "log my times" voice intent to resolve the
+    /// production with no running Live Activity. Must match LiveActivityPlugin's.
+    static let activeShootKey = "activeShoot"
+
+    /// Stage B — append a STRUCTURED "setTimes" event from the "log my times" voice
+    /// intent. Unlike appendEvent, the times come from the PARSER (not "now"), and
+    /// the `date` is the active-shoot date (already == today). Same queue, same
+    /// idempotent today-only ingestion; a new event type, NOT a new channel — JS
+    /// applies it through the SAME mapDayNow record-write the now-stamps use.
+    static func appendSetTimesEvent(productionId: String, date: String,
+                                    call: String?, lunch: String?, wrap: String?,
+                                    lunchDurationMins: Int?) {
+        guard let defaults = UserDefaults(suiteName: appGroupSuite) else { return }
+        var event: [String: Any] = [
+            "id": UUID().uuidString,
+            "type": "setTimes",
+            "date": date,
+            "ts": Int(Date().timeIntervalSince1970 * 1000),
+            "productionId": productionId,
+        ]
+        if let call { event["call"] = call }
+        if let lunch { event["lunch"] = lunch }
+        if let wrap { event["wrap"] = wrap }
+        if let lunchDurationMins { event["lunchDurationMins"] = lunchDurationMins }
+        var queue = defaults.array(forKey: pendingEventsKey) as? [[String: Any]] ?? []
+        queue.append(event)
+        defaults.set(queue, forKey: pendingEventsKey)
+    }
+
     /// The curtail undo window (Group B). After a "Curtailed?" tap the button
     /// shows "Undo · NNm" for this long; the curtail is WRITTEN only if the window
     /// lapses untapped (a second tap inside it cancels, writing nothing) — so the

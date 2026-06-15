@@ -3911,6 +3911,44 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const uid0 = production.crew && production.crew[0] && production.crew[0].id;
       return { ...production, days: mapDayNow(production.days, date, uid0, { lunchDurationMins: mins }) };
     }
+    // Siri "log my times" ingestion (Stage B): write the parsed call/lunch/wrap
+    // onto the day RECORD via the SAME mapDayNow transform the now-stamps use —
+    // never a bespoke write, so resolveDay → calculateDay → augmentCalc all apply.
+    // Targets the USER's crew (getEffectiveUserCrewId — BB-correct; crew[0] in
+    // solo). Only TIME fields are written (like typing them in) — never wrapped /
+    // lunchLogged, which are reserved for the deliberate Wrap-now / Lunch-now
+    // actions. Call-only mirrors onCallChange's derivations (lunch=call+5h, 2nd
+    // break=call+11h, wrap if it was auto/missing) so voice == typing; a field
+    // spoken explicitly is set verbatim and overrides the derivation.
+    function applySetTimes(production, date, ev, userPrefs) {
+      const crewList = production.crew || [];
+      const uid0 = getEffectiveUserCrewId(production, userPrefs) || (crewList[0] && crewList[0].id);
+      if (!uid0) return production;
+      const crewMember = crewList.find(c => c.id === uid0) || crewList[0] || null;
+      const dayRecord = (production.days || []).find(d => d.date === date && d.crewId === uid0);
+      if (!dayRecord) return production;   // no day for this crew/date — nothing to write
+      const vr = resolveDay(production, dayRecord, crewMember);
+      const patch = {};
+      if (ev.call) {
+        patch.callTime = ev.call;
+        const newCallH = parseHHMM(ev.call);
+        if (newCallH !== null) {
+          const hrs = DEFAULT_HOURS[vr.dayType] ?? 11;
+          if (!ev.lunch) patch.lunchStartTime = toHHMM(newCallH + 5);
+          if (!ev.wrap) {
+            const oldCallH = parseHHMM(vr.callTime);
+            const wrapAuto = parseHHMM(vr.wrapTime) === null ||
+              (oldCallH !== null && vr.wrapTime === toHHMM(oldCallH + hrs));
+            if (wrapAuto) patch.wrapTime = toHHMM(newCallH + hrs);
+          }
+          patch.secondBreakStartTime = toHHMM(newCallH + 11);
+        }
+      }
+      if (ev.lunch) patch.lunchStartTime = ev.lunch;          // explicit overrides the derivation
+      if (ev.wrap) patch.wrapTime = ev.wrap;
+      if (ev.lunchDurationMins != null) patch.lunchDurationMins = Number(ev.lunchDurationMins);
+      return { ...production, days: mapDayNow(production.days, date, uid0, patch) };
+    }
 
     // V4-5h-11: applyDayDefaultsToAllCrew removed. Time-field cascade now happens
     // automatically via resolveDay when day record field is undefined. Editing a
@@ -22293,7 +22331,7 @@ const confirmDelete = (p) => setConfirmOpts({
             if (applied.has(ev.id)) { console.log('[LiveActivity] ingest skip (already applied)', ev.id); continue; }
             applied.add(ev.id); // mark seen once, today or stale — never reprocessed
             if (ev.date !== today) { console.log('[LiveActivity] ingest discard (stale date)', ev.date, ev.id); continue; }
-            if (ev.type !== 'lunchNow' && ev.type !== 'wrapNow' && ev.type !== 'lunchCurtail') continue;
+            if (ev.type !== 'lunchNow' && ev.type !== 'wrapNow' && ev.type !== 'lunchCurtail' && ev.type !== 'setTimes') continue;
             toApply.push(ev);
             console.log('[LiveActivity] ingest apply', ev.type, ev.at, '→', ev.productionId);
           }
@@ -22305,6 +22343,7 @@ const confirmDelete = (p) => setConfirmOpts({
               if (ev.productionId !== pr.id) continue;
               next = ev.type === 'lunchNow'    ? applyLunchNow(next, ev.date, ev.at)
                    : ev.type === 'lunchCurtail' ? applyLunchCurtail(next, ev.date, ev.durationMins)
+                   : ev.type === 'setTimes'     ? applySetTimes(next, ev.date, ev, userPrefs)
                    : applyWrapNow(next, ev.date, ev.at);
             }
             return next;

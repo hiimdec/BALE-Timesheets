@@ -5627,8 +5627,9 @@ async function main() {
     check('TT6a bridge.drainPendingEvents is IS_NATIVE-guarded (returns [] before touching the plugin on web)',
       /async drainPendingEvents\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
       /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
-    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail (one mapDayNow path; no parallel day-record write)',
-      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
+    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail, Siri times via applySetTimes (one mapDayNow path; no parallel day-record write)',
+      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html) &&
+      /return \{ \.\.\.production, days: mapDayNow\(production\.days, date, uid0, patch\) \};/.test(html));
     check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
       /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,140}continue; \}/.test(html) &&
       /applied\.add\(ev\.id\);/.test(html) &&
@@ -5910,6 +5911,27 @@ async function main() {
         const wiredOk = /await TMLiveActivity\.confirmLunch\(productionId\)/.test(intents) &&
           !/update\(productionId, state: "lunch"\)/.test(intents);
         return helperOk && wiredOk;
+      })());
+
+    // ─ TT13: Siri Stage B — activeShoot snapshot + "log my times" ingestion (JS) ─
+    check('TT13a activeShoot snapshot — LiveActivity.setActiveShoot/clearActiveShoot are IS_NATIVE-gated bridges; the App effect writes {productionId,date:today} when the open shoot has a today day and clears otherwise (openId disambiguates multi-shoot-today)',
+      /async setActiveShoot\(productionId, date\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /async clearActiveShoot\(\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /const prod = productions\.find\(p => p\.id === openId\);/.test(html) &&
+      /if \(openId && prod && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{\s*LiveActivity\.setActiveShoot\(openId, today\);\s*\} else \{\s*LiveActivity\.clearActiveShoot\(\);/.test(html));
+    check('TT13b applySetTimes — Siri "log my times" rides the SHARED mapDayNow write (resolveDay→calc apply), targets the user crew (getEffectiveUserCrewId), writes TIME fields ONLY (never wrapped/lunchLogged), call-only mirrors onCallChange derivations (lunch=call+5h, 2nd break=call+11h, wrapAuto); ingest filter + dispatch include setTimes',
+      (() => {
+        const fn = (html.match(/function applySetTimes\(production, date, ev, userPrefs\)[\s\S]*?\n    \}/) || [''])[0];
+        const coreOk = /const uid0 = getEffectiveUserCrewId\(production, userPrefs\) \|\|/.test(fn) &&
+          /const vr = resolveDay\(production, dayRecord, crewMember\);/.test(fn) &&
+          /if \(!ev\.lunch\) patch\.lunchStartTime = toHHMM\(newCallH \+ 5\);/.test(fn) &&
+          /patch\.secondBreakStartTime = toHHMM\(newCallH \+ 11\);/.test(fn) &&
+          /const wrapAuto = parseHHMM\(vr\.wrapTime\) === null \|\|/.test(fn) &&
+          /mapDayNow\(production\.days, date, uid0, patch\)/.test(fn);
+        const timeOnly = !/wrapped/.test(fn) && !/lunchLogged/.test(fn);   // never the deliberate-action flags
+        const wiredOk = /ev\.type !== 'setTimes'/.test(html) &&
+          /ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)/.test(html);
+        return coreOk && timeOnly && wiredOk;
       })());
   }
 

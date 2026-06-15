@@ -86,6 +86,76 @@ struct LunchNowVoiceIntent: LiveActivityIntent {
     }
 }
 
+// MARK: - Log my times (dictation → parse → confirm → structured queue event)
+
+// Today's-active-shoot snapshot, written by the app (plugin setActiveShoot) when
+// the user opens/works a shoot with a today day — lets this intent resolve the
+// production with NO Live Activity running (BB mode, or solo pre-start).
+@available(iOS 17.0, *)
+private func activeShootSnapshot() -> (productionId: String, date: String)? {
+    guard let dict = UserDefaults(suiteName: TMLiveActivity.appGroupSuite)?
+            .dictionary(forKey: TMLiveActivity.activeShootKey),
+          let pid = dict["productionId"] as? String, !pid.isEmpty,
+          let date = dict["date"] as? String, !date.isEmpty
+    else { return nil }
+    return (pid, date)
+}
+
+// UTC yyyy-MM-dd — matches appendEvent's `date` and the web's todayISO().
+private func todayUTCString() -> String {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = TimeZone(identifier: "UTC")
+    f.dateFormat = "yyyy-MM-dd"
+    return f.string(from: Date())
+}
+
+private func timesReadback(_ p: ParsedTimes) -> String {
+    var parts: [String] = []
+    if let c = p.call { parts.append("call \(c)") }
+    if let l = p.lunch {
+        if let d = p.lunchDurationMins { parts.append("lunch \(l) for \(d) minutes") }
+        else { parts.append("lunch \(l)") }
+    }
+    if let w = p.wrap { parts.append("wrap \(w)") }
+    let joined = parts.joined(separator: ", ")
+    return joined.isEmpty ? joined : joined.prefix(1).uppercased() + joined.dropFirst()
+}
+
+@available(iOS 17.0, *)
+struct LogMyTimesVoiceIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Log My Times"
+    static var description = IntentDescription("Dictate today's call, lunch and wrap times for the active shoot.")
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Times", requestValueDialog: "What are your times?")
+    var spoken: String
+
+    init() {}
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        // Resolve the shoot from the snapshot; stale (date != today) or absent → no write.
+        guard let shoot = activeShootSnapshot(), shoot.date == todayUTCString() else {
+            return .result(dialog: "No active shoot in TimeMachine.")
+        }
+        let parsed = parseSpokenTimes(spoken)
+        if parsed.call == nil, parsed.lunch == nil, parsed.wrap == nil {
+            return .result(dialog: "I didn't catch your times.")
+        }
+        let readback = timesReadback(parsed)
+        // Read back + CONFIRM before any write. A declined confirmation throws,
+        // so nothing is appended — zero writes on "no".
+        try await requestConfirmation(result: .result(dialog: "\(readback) — log it?"))
+        TMLiveActivity.appendSetTimesEvent(
+            productionId: shoot.productionId, date: shoot.date,
+            call: parsed.call, lunch: parsed.lunch, wrap: parsed.wrap,
+            lunchDurationMins: parsed.lunchDurationMins
+        )
+        await TMLiveActivity.requestBackgroundDrain()   // best-effort live apply, same as the now-stamps
+        return .result(dialog: "\(readback) — logged.")
+    }
+}
+
 // MARK: - App Shortcuts (zero-setup Siri phrases + Shortcuts/Spotlight tiles)
 
 @available(iOS 17.0, *)
@@ -98,6 +168,8 @@ struct TimeMachineAppShortcuts: AppShortcutsProvider {
                 "wrap in \(.applicationName)",
                 "wrap me in \(.applicationName)",
                 "wrap the day in \(.applicationName)",
+                "\(.applicationName) wrap now",
+                "\(.applicationName) wrap",
             ],
             shortTitle: "Wrap Now",
             systemImageName: "checkmark.circle.fill"
@@ -109,9 +181,25 @@ struct TimeMachineAppShortcuts: AppShortcutsProvider {
                 "lunch now in \(.applicationName)",
                 "going to lunch in \(.applicationName)",
                 "break for lunch in \(.applicationName)",
+                "\(.applicationName) lunch",
+                "\(.applicationName) lunch now",
             ],
             shortTitle: "Lunch Now",
             systemImageName: "fork.knife"
+        )
+        AppShortcut(
+            intent: LogMyTimesVoiceIntent(),
+            phrases: [
+                "log my times in \(.applicationName)",
+                "log times in \(.applicationName)",
+                "log my hours in \(.applicationName)",
+                "log my day in \(.applicationName)",
+                "set my times in \(.applicationName)",
+                "\(.applicationName) log my times",
+                "\(.applicationName) log times",
+            ],
+            shortTitle: "Log My Times",
+            systemImageName: "clock.fill"
         )
     }
 }
