@@ -60,7 +60,7 @@ private func chipColor(_ state: String) -> Color {
 }
 private func chipLabel(_ state: String) -> String {
     switch state {
-    case "lunch":   return "AT LUNCH"
+    case "lunch":   return "ON LUNCH"
     case "wrapped": return "WRAPPED"
     default:        return "ON CALL"
     }

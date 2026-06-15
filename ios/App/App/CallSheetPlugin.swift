@@ -69,9 +69,11 @@ struct CallSheetFields {
     var prodCo: String?
     @Guide(description: "Job number, job reference or code that must be quoted on the invoice, e.g. 9627, SERV56, BFC#0032, BARKER03, NU684")
     var jobReference: String?
-    @Guide(description: "The email address invoices should be sent to. If several are listed, the primary 'send to' address.")
+    @Guide(description: "The primary email address invoices are sent to, in name@domain.tld form. If several are listed, the main 'send to' / accounts address.")
     var invoicingEmail: String?
-    @Guide(description: "The postal address invoices should be addressed to, including postcode")
+    @Guide(description: "A SECOND invoicing email in name@domain.tld form — ONLY when the sheet plainly addresses invoices to more than one person (e.g. a 'cc' recipient). Must differ from the primary, and must be an invoicing recipient, not a crew or agent address. Leave empty if only one invoicing recipient is listed.")
+    var ccEmail: String?
+    @Guide(description: "The UK postal address invoices are addressed to — street line(s) plus postcode, multi-line.")
     var invoicingAddress: String?
 }
 
@@ -404,8 +406,8 @@ enum CallSheetPipeline {
         let matchRange: NSRange?  // in page text, when matched
     }
 
-    static let fieldKeys = ["title", "prodCo", "jobReference", "invoicingEmail", "invoicingAddress"]
-    static let invoicingKeys: Set<String> = ["jobReference", "invoicingEmail", "invoicingAddress"]
+    static let fieldKeys = ["title", "prodCo", "jobReference", "invoicingEmail", "ccEmail", "invoicingAddress"]
+    static let invoicingKeys: Set<String> = ["jobReference", "invoicingEmail", "ccEmail", "invoicingAddress"]
 
     // ── Entry ───────────────────────────────────────────────────────────────
 
@@ -472,6 +474,15 @@ enum CallSheetPipeline {
                 entry["pagePreview"] = preview
             }
             perField[key] = entry
+        }
+
+        // HARD RULE — CC must never duplicate the primary invoicing email.
+        // If the model echoed the same address into both, drop CC entirely.
+        if let cc = (fields["ccEmail"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           let primary = (fields["invoicingEmail"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           cc == primary {
+            fields["ccEmail"] = nil
+            perField["ccEmail"] = ["state": "missing"]
         }
 
         return [
@@ -650,13 +661,14 @@ enum CallSheetPipeline {
         m.prodCo = m.prodCo ?? b.prodCo
         m.jobReference = m.jobReference ?? b.jobReference
         m.invoicingEmail = m.invoicingEmail ?? b.invoicingEmail
+        m.ccEmail = m.ccEmail ?? b.ccEmail
         m.invoicingAddress = m.invoicingAddress ?? b.invoicingAddress
         return m
     }
 
     static func fieldValues(_ f: CallSheetFields) -> [(String, String?)] {
         [("title", f.title), ("prodCo", f.prodCo), ("jobReference", f.jobReference),
-         ("invoicingEmail", f.invoicingEmail), ("invoicingAddress", f.invoicingAddress)]
+         ("invoicingEmail", f.invoicingEmail), ("ccEmail", f.ccEmail), ("invoicingAddress", f.invoicingAddress)]
     }
 
     // ── 4. Merge rules ──────────────────────────────────────────────────────
@@ -722,7 +734,7 @@ enum CallSheetPipeline {
     ///   postcode (out-of-order address lines must surface as unverified).
     static func verify(key: String, value: String, match: NSRange?, pageText: String) -> Bool {
         switch key {
-        case "invoicingEmail":
+        case "invoicingEmail", "ccEmail":
             guard isPlausibleEmail(value) else { return false }
             return match != nil
         case "invoicingAddress":

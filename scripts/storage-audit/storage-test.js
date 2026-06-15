@@ -5618,17 +5618,32 @@ async function main() {
       /result && result\.quality && result\.quality\.weakPages && result\.quality\.weakPages\.length > 0/.test(importFn) &&
       /\{FIELDS\.map\(reviewRow\)\}/.test(importFn) &&
       importFn.indexOf('This image was hard to read') < importFn.indexOf('{FIELDS.map(reviewRow)}'));
-    check('UU1m select-on-sheet — pageRuns bridge is IS_NATIVE-guarded and READ-ONLY (loads via convertFileSrc, no storage verbs); replace-then-append join rule (newline for the address, space otherwise); email plausibility re-checked on Done; commits via setEdits only (the single-merge Apply is untouched — UU1j re-proves one setProduction)',
+    check('UU1m select-on-sheet — pageRuns bridge is IS_NATIVE-guarded and READ-ONLY (loads via convertFileSrc, no storage verbs); native one-finger scroll (touch-action pan-x pan-y) + two-finger pinch; replace-then-append join rule (newline for the address, space otherwise); field-shape re-checked on Done; commits via setEdits only (the single-merge Apply is untouched — UU1j re-proves one setProduction)',
       /async pageRuns\(path, page\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
       /window\.Capacitor\.convertFileSrc/.test(importFn) &&
       /const joinFor = \(key\) => \(key === 'invoicingAddress' \? '\\n' : ' '\);/.test(importFn) &&
-      /const verified = verifyKey === 'invoicingEmail' \? plausibleEmail\(v\) : true;/.test(importFn) &&
+      /const verified = shapeCheck\(verifyKey, v\)\.ok;/.test(importFn) &&
+      /touchAction: 'pan-x pan-y'/.test(importFn) &&
       /Select on sheet/.test(importFn) &&
-      /const plausibleEmail = \(s\) =>/.test(importFn) &&
       !/storage\.set|setUserPrefs\(|setProductions\(/.test(importFn));
     check('UU1n photos tip caption + explicit edit affordance in the verify view',
       /Tip: zoomed screenshots read best — try one of the masthead and one of the invoicing section\./.test(importFn) &&
       /Value — tap to edit/.test(importFn));
+    // ── Prompt (2) — CC secondary email + field-shape validation + LA wording ──
+    check('UU1o CC secondary invoicing email maps to the EXISTING ccEmail field (no schema change), through the SAME single-merge Apply (one setProduction in the importer)',
+      /\{ key: 'ccEmail', label: 'CC email', target: 'ccEmail' \},/.test(importFn) &&
+      (importFn.match(/setProduction\(/g) || []).length === 1);
+    check('UU1p field-shape validation EXTENDS match-back — email keys checked for name@domain.tld, address for a UK postcode; a shape failure shows the value but stays UNVERIFIED (amber) with a reason; verified-via-shape on select/typed',
+      /const EMAIL_KEYS = new Set\(\['invoicingEmail', 'ccEmail'\]\);/.test(importFn) &&
+      /const UK_POSTCODE_RE = /.test(importFn) &&
+      /Doesn't look like an email/.test(importFn) &&
+      /No postcode found — check the address/.test(importFn) &&
+      /const unverified = hasVal && \(!shape\.ok \|\| /.test(importFn));
+    check('UU1q Live Activity lunch label is "ON LUNCH" (not "AT LUNCH") in the widget chip',
+      (() => {
+        const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
+        return /case "lunch":\s*return "ON LUNCH"/.test(la) && !/return "AT LUNCH"/.test(la);
+      })());
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken

@@ -16832,8 +16832,21 @@ const setDays = (updater) =>
         { key: 'prodCo', label: 'Production company', target: 'prodCo' },
         { key: 'jobReference', label: 'Job reference', target: 'jobReference' },
         { key: 'invoicingEmail', label: 'Invoicing email', target: 'invoicingEmail' },
+        { key: 'ccEmail', label: 'CC email', target: 'ccEmail' },
         { key: 'invoicingAddress', label: 'Company address', target: 'toAddress' },
       ];
+      // Field-SHAPE validation (Item 3) — extends, never replaces, the native
+      // match-back: a value can be located on the sheet yet still fail its
+      // shape, in which case it shows but stays UNVERIFIED with a short reason.
+      const EMAIL_KEYS = new Set(['invoicingEmail', 'ccEmail']);
+      const UK_POSTCODE_RE = /[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\s*[0-9][A-Za-z]{2}/;
+      const shapeCheck = (key, value) => {
+        const v = ((value || '') + '').trim();
+        if (!v) return { ok: true, reason: null };
+        if (EMAIL_KEYS.has(key)) return /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(v) ? { ok: true, reason: null } : { ok: false, reason: "Doesn't look like an email" };
+        if (key === 'invoicingAddress') return UK_POSTCODE_RE.test(v) ? { ok: true, reason: null } : { ok: false, reason: 'No postcode found — check the address' };
+        return { ok: true, reason: null };
+      };
       const fieldState = (key) => (result && result.perField && result.perField[key]) || { state: 'missing' };
       const liveValue = (key) => (edits[key] !== undefined ? edits[key] : (fieldState(key).value || ''));
       // Saved-client match via the EXISTING matcher: exact name (ci) among prefix matches.
@@ -16847,11 +16860,7 @@ const setDays = (updater) =>
       const closeReview = () => { setPhase('idle'); setResult(null); setEdits({}); setVerifyKey(null); setSelectMode(null); setManual({}); setLastPaths(null); };
 
       // ── Select-on-sheet helpers (Stage 3.5 — display-only; Apply untouched) ──
-      const invoicingTargets = new Set(['jobReference', 'invoicingEmail', 'invoicingAddress']);
-      // Same plausibility rule as the native verifier: single @, no
-      // whitespace, dotted domain. An implausible selection keeps the
-      // unverified flag (value still shown).
-      const plausibleEmail = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(((s || '') + '').trim());
+      const invoicingTargets = new Set(['jobReference', 'invoicingEmail', 'ccEmail', 'invoicingAddress']);
       const joinFor = (key) => (key === 'invoicingAddress' ? '\n' : ' ');
       const defaultPageFor = (key) => {
         const st = fieldState(key);
@@ -16891,13 +16900,22 @@ const setDays = (updater) =>
                 : { x: r.x, y: r.y, x2: r.x + r.w, y2: r.y + r.h };
         }
         const rect = u ? { x: u.x, y: u.y, w: u.x2 - u.x, h: u.y2 - u.y } : null;
-        const verified = verifyKey === 'invoicingEmail' ? plausibleEmail(v) : true;
+        // A selection came off the sheet, so it's verified — UNLESS it fails its
+        // field shape (an email that isn't email-shaped, an address with no
+        // postcode), which keeps it unverified per Item 3.
+        const verified = shapeCheck(verifyKey, v).ok;
         setEdits(prev => ({ ...prev, [verifyKey]: v }));
         setManual(prev => ({ ...prev, [verifyKey]: { page: sm.page, rect, natural: sm.natural, src: sm.src, verified } }));
         setSelectMode(null);
       };
-      // Pinch-zoom + pan on the page view: two pointers scale (1–4×), one
-      // pointer pans the scroller; `moved` lets run taps ignore drags.
+      // Page view interaction: ONE finger scrolls/pans NATIVELY (the scroller
+      // has touch-action: pan-x pan-y, so content taller than the viewport at
+      // 1× and the off-screen parts when zoomed are reachable); TWO fingers
+      // pinch-zoom our content scale (1–4×) — the browser's own pinch-zoom is
+      // excluded by the touch-action, so we own it. `moved` lets a scroll-drag
+      // that happens to start on a run overlay not register as a tap. The
+      // overlays live inside the scaled image, so they stay aligned through
+      // scroll and zoom.
       const onSelPointerDown = (e) => {
         const m = pinchRef.current;
         m.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -16914,13 +16932,13 @@ const setDays = (updater) =>
         const prev = m.pts.get(e.pointerId);
         m.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (m.pts.size === 2 && m.startDist > 0) {
+          e.preventDefault();
           const [a, b] = [...m.pts.values()];
           const s = Math.min(4, Math.max(1, m.startScale * (Math.hypot(a.x - b.x, a.y - b.y) / m.startDist)));
           setSelectMode(sm => (sm && sm !== 'loading') ? { ...sm, scale: s } : sm);
-        } else if (m.pts.size === 1 && selScrollRef.current) {
+        } else if (m.pts.size === 1) {
+          // native scroll handles the pan; just track distance for tap-vs-drag
           m.moved += Math.abs(e.clientX - prev.x) + Math.abs(e.clientY - prev.y);
-          selScrollRef.current.scrollLeft -= (e.clientX - prev.x);
-          selScrollRef.current.scrollTop -= (e.clientY - prev.y);
         }
       };
       const onSelPointerUp = (e) => {
@@ -16987,7 +17005,13 @@ const setDays = (updater) =>
             </button>
           );
         }
-        const unverified = m ? !m.verified : (st.state === 'unverified' && !edited); // a typed edit is deliberate — quiet again; an implausible selection stays flagged
+        // Amber if the value fails its field SHAPE (email/address — even when
+        // typed or selected), else the match-back verdict (a typed edit is
+        // deliberate → quiet). Shape reason wins over the generic locate reason.
+        const shape = shapeCheck(f.key, v);
+        const hasVal = !!(v && String(v).trim());
+        const unverified = hasVal && (!shape.ok || (m ? !m.verified : (st.state === 'unverified' && !edited)));
+        const reason = !shape.ok ? shape.reason : "Couldn't locate on document — check before applying";
         return (
           <button type="button" key={f.key} onClick={() => setVerifyKey(f.key)}
             className={`w-full text-left bg-neutral-900 border rounded-xl px-3.5 py-3 transition-colors ${unverified ? 'border-tm-warn/35 hover:border-tm-warn/55' : 'border-neutral-800 hover:border-neutral-700'}`}
@@ -16997,7 +17021,7 @@ const setDays = (updater) =>
               {st.page ? <span className="text-[9px] text-neutral-600 font-mono">p.{st.page}</span> : null}
             </div>
             <div className={`mt-1 text-[13px] whitespace-pre-wrap ${unverified ? 'text-tm-warn' : 'text-neutral-100'}`}>{v}</div>
-            {unverified && <div className="text-[10px] text-tm-warn mt-1">Couldn't locate on document — check before applying</div>}
+            {unverified && <div className="text-[10px] text-tm-warn mt-1">{reason}</div>}
             {f.key === 'prodCo' && matchedClient && (
               <div className="text-[10px] text-neutral-400 mt-1">Matches saved client · {matchedClient.name}</div>
             )}
@@ -17083,7 +17107,7 @@ const setDays = (updater) =>
                   <div
                     ref={selScrollRef}
                     className="overflow-auto rounded-lg border border-neutral-800 bg-neutral-900"
-                    style={{ maxHeight: '55vh', touchAction: 'none', overscrollBehavior: 'contain' }}
+                    style={{ maxHeight: '60vh', touchAction: 'pan-x pan-y', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
                     onPointerDown={onSelPointerDown}
                     onPointerMove={onSelPointerMove}
                     onPointerUp={onSelPointerUp}
@@ -17175,6 +17199,7 @@ const setDays = (updater) =>
                       aria-label={verifyField.label}
                     />
                   )}
+                  {(() => { const sh = shapeCheck(verifyKey, liveValue(verifyKey)); return !sh.ok ? <div className="text-[10px] text-tm-warn mt-1.5">{sh.reason}</div> : null; })()}
                 </div>
                 {lastPaths ? (
                   <Btn variant="ghost" onClick={openSelect} className="w-full justify-center">Select on sheet</Btn>
