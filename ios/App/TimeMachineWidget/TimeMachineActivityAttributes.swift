@@ -67,8 +67,18 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
         /// (wrapped, no call time, or a day type with no hourly OT). The card
         /// never computes this — display-only, same discipline as totalText.
         public var otFrom: String
+        /// Curtailed-lunch minutes (Group B). During the 5s undo PENDING window
+        /// (armed == "curtail") this is the native-captured duration for the
+        /// "Undo · NNm" label; once a curtail is RECORDED it's the day's
+        /// lunchDurationMins (0 < NN < 60), pushed by the descriptor so the button
+        /// settles to "Lunch NNm ✓". 0 when no curtail is pending or recorded.
+        public var curtailMins: Int
+        /// True when the 60-min lunch window has fully elapsed UNCURTAILED (lunch
+        /// started, now ≥ lunchStart + 60, duration still 60) — the button shows
+        /// the disabled "Full hour". Descriptor-computed from the record; display-only.
+        public var lunchedFull: Bool
 
-        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchEndEpoch: Double = 0, otFrom: String = "") {
+        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchEndEpoch: Double = 0, otFrom: String = "", curtailMins: Int = 0, lunchedFull: Bool = false) {
             self.totalText = totalText
             self.state = state
             self.callEpoch = callEpoch
@@ -79,6 +89,8 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
             self.cwd = cwd
             self.lunchEndEpoch = lunchEndEpoch
             self.otFrom = otFrom
+            self.curtailMins = curtailMins
+            self.lunchedFull = lunchedFull
         }
     }
 

@@ -71,8 +71,14 @@ enum TMLiveActivity {
     /// (the Siri voice intents) can echo the EXACT stamped time; the Live
     /// Activity button intents ignore it (@discardableResult) — their
     /// behaviour is unchanged. "" only if the App Group is unreachable.
+    ///
+    /// `durationMins` (Group B) is carried ONLY by the curtailed-lunch event
+    /// ("lunchCurtail"): the whole-minute lunch duration the card captured
+    /// (now − lunchStart). Omitted (nil) for every existing event type, so their
+    /// payload — and the JS ingestion of them — is byte-for-byte unchanged. Same
+    /// queue, same idempotent today-only ingestion; a new field, not a new channel.
     @discardableResult
-    static func appendEvent(type: String, productionId: String) -> String {
+    static func appendEvent(type: String, productionId: String, durationMins: Int? = nil) -> String {
         guard let defaults = UserDefaults(suiteName: appGroupSuite) else { return "" }
         let now = Date()
 
@@ -86,7 +92,7 @@ enum TMLiveActivity {
         dateFmt.dateFormat = "yyyy-MM-dd"       // UTC, to match todayISO()
 
         let at = timeFmt.string(from: now)
-        let event: [String: Any] = [
+        var event: [String: Any] = [
             "id": UUID().uuidString,
             "type": type,
             "at": at,
@@ -94,10 +100,28 @@ enum TMLiveActivity {
             "ts": Int(now.timeIntervalSince1970 * 1000),
             "productionId": productionId,
         ]
+        if let durationMins { event["durationMins"] = durationMins }
         var queue = defaults.array(forKey: pendingEventsKey) as? [[String: Any]] ?? []
         queue.append(event)
         defaults.set(queue, forKey: pendingEventsKey)
         return at
+    }
+
+    /// The curtail undo window (Group B). After a "Curtailed?" tap the button
+    /// shows "Undo · NNm" for this long; the curtail is WRITTEN only if the window
+    /// lapses untapped (a second tap inside it cancels, writing nothing) — so the
+    /// calc never sees a value that's about to be undone.
+    static let curtailUndoWindow: TimeInterval = 5.0
+
+    /// Whole-minute lunch duration captured at the curtail tap: now − lunchStart,
+    /// where lunchStart = lunchEndEpoch − 3600 (Group A.5). Rounded to the nearest
+    /// minute to match the integer lunchDurationMins used everywhere else; the JS
+    /// calc then owns all curtailed-break pay logic. 0 if no lunch-end is known.
+    static func curtailMinutes(lunchEndEpoch: Double) -> Int {
+        guard lunchEndEpoch > 0 else { return 0 }
+        let lunchStart = lunchEndEpoch - 3600
+        let elapsed = Date().timeIntervalSince1970 - lunchStart
+        return Int((elapsed / 60).rounded())
     }
 
     /// The two-tap confirm window. An arm older than this is EXPIRED: the view's
@@ -134,7 +158,7 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom
+            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
         return stamp
@@ -152,7 +176,7 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
     }
@@ -169,7 +193,7 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
     }
@@ -187,12 +211,72 @@ enum TMLiveActivity {
                 callEpoch: cur.callEpoch,
                 anchorLabel: cur.anchorLabel,
                 endEpoch: Date().timeIntervalSince1970,
-                armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom
+                armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
             ),
             staleDate: nil
         )
         await activity.update(wrapped)
         await activity.end(wrapped, dismissalPolicy: .after(Date().addingTimeInterval(5 * 60)))
+    }
+
+    /// ARM a curtail (Group B) — single-tap PENDING. Writes armed="curtail" + a
+    /// stamp and the captured whole-minute duration (for the "Undo · NNm" label).
+    /// NOTHING reaches records yet; the commit only happens if the undo window
+    /// lapses untapped. Returns the stamp so the held perform() commits exactly
+    /// THIS instance and never a newer one.
+    @available(iOS 16.2, *)
+    static func armCurtail(_ productionId: String, mins: Int) async -> Double {
+        guard let activity = current(productionId) else { return 0 }
+        let cur = activity.content.state
+        let stamp = Date().timeIntervalSince1970
+        let next = TimeMachineActivityAttributes.ContentState(
+            totalText: cur.totalText, state: cur.state,
+            callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
+            armed: "curtail", armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
+            otFrom: cur.otFrom, curtailMins: mins, lunchedFull: cur.lunchedFull
+        )
+        await activity.update(ActivityContent(state: next, staleDate: nil))
+        return stamp
+    }
+
+    /// UNDO a pending curtail — clear the arm + the captured minutes, write
+    /// NOTHING. The second tap inside the undo window lands here.
+    @available(iOS 16.2, *)
+    static func cancelCurtail(_ productionId: String) async {
+        guard let activity = current(productionId) else { return }
+        let cur = activity.content.state
+        let next = TimeMachineActivityAttributes.ContentState(
+            totalText: cur.totalText, state: cur.state,
+            callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
+            otFrom: cur.otFrom, curtailMins: 0, lunchedFull: cur.lunchedFull
+        )
+        await activity.update(ActivityContent(state: next, staleDate: nil))
+    }
+
+    /// COMMIT a pending curtail IF it is still the exact armed instance — the
+    /// CRITICAL App-Group write (appends "lunchCurtail" with the captured minutes),
+    /// then clears the arm but KEEPS curtailMins so the button settles to "Lunch
+    /// NNm ✓" until the descriptor re-confirms it from the record. A second tap
+    /// (Undo), a Wrap-flush, or a newer arm changes armed/armedAt and makes this a
+    /// no-op — so a cancelled curtail can never be written, and a Wrap-flushed one
+    /// can never be double-written. Best-effort background drain so the OT-from /
+    /// total update without foregrounding.
+    @available(iOS 16.2, *)
+    static func commitCurtailIfStillArmed(_ productionId: String, stamp: Double) async {
+        guard let activity = current(productionId) else { return }
+        let cur = activity.content.state
+        guard cur.armed == "curtail", cur.armedAt == stamp,
+              cur.curtailMins > 0, cur.curtailMins < 60 else { return }
+        appendEvent(type: "lunchCurtail", productionId: productionId, durationMins: cur.curtailMins)
+        let next = TimeMachineActivityAttributes.ContentState(
+            totalText: cur.totalText, state: cur.state,
+            callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
+            otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
+        )
+        await activity.update(ActivityContent(state: next, staleDate: nil))
+        await requestBackgroundDrain()
     }
 
     /// BEST-EFFORT (Issue C) — if the app's WKWebView/JS is alive in this process
@@ -268,6 +352,18 @@ struct WrapNowIntent: LiveActivityIntent {
             TMLiveActivity.appendEvent(type: "wrapNow", productionId: productionId)
             await TMLiveActivity.endWrapped(productionId)
         } else {
+            // Commit-then-wrap (Group B): if a curtail is mid-undo (armed=="curtail"
+            // and fresh), committing it now — BEFORE we re-arm to wrap — flushes the
+            // pending curtail so Wrap is never blocked and the curtail is never lost.
+            // arm(wrap) below overwrites armed→"wrap", so the CurtailIntent's own
+            // delayed commit then no-ops (armed/stamp guard) — exactly one write.
+            if let cur = TMLiveActivity.current(productionId)?.content.state,
+               cur.armed == "curtail",
+               Date().timeIntervalSince1970 - cur.armedAt < TMLiveActivity.curtailUndoWindow,
+               cur.curtailMins > 0, cur.curtailMins < 60 {
+                TMLiveActivity.appendEvent(type: "lunchCurtail", productionId: productionId, durationMins: cur.curtailMins)
+                NSLog("[LiveActivity] WrapNowIntent flushed pending curtail %dm pid=%@", cur.curtailMins, productionId)
+            }
             // ARM first, then hold the confirm window open and auto-reset if
             // never confirmed (see LunchNowIntent for the full rationale).
             let stamp = await TMLiveActivity.arm(productionId, action: "wrap")
@@ -275,6 +371,41 @@ struct WrapNowIntent: LiveActivityIntent {
             try? await Task.sleep(nanoseconds: UInt64(TMLiveActivity.armWindow * 1_000_000_000))
             await TMLiveActivity.disarmIfStillArmed(productionId, action: "wrap", stamp: stamp)
         }
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
+struct CurtailIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Curtail lunch"
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Production") var productionId: String
+
+    init() {}
+    init(productionId: String) { self.productionId = productionId }
+
+    func perform() async throws -> some IntentResult {
+        // Single-tap with a 5s undo window. If a curtail is ALREADY pending
+        // (armed=="curtail" and fresh), THIS tap is the Undo → cancel, write
+        // nothing. Otherwise capture the whole-minute duration (now − lunchStart)
+        // and ARM; hold perform() open for the window, then COMMIT (the append is
+        // the only write) unless it was undone/flushed. A duration ≥60 or ≤0 is
+        // not a curtailment → no-op (the distracted min-70 tap, etc.).
+        if let cur = TMLiveActivity.current(productionId)?.content.state,
+           cur.armed == "curtail",
+           Date().timeIntervalSince1970 - cur.armedAt < TMLiveActivity.curtailUndoWindow {
+            await TMLiveActivity.cancelCurtail(productionId)        // UNDO — no write
+            NSLog("[LiveActivity] CurtailIntent undo (app process) pid=%@", productionId)
+            return .result()
+        }
+        let mins = TMLiveActivity.curtailMinutes(
+            lunchEndEpoch: TMLiveActivity.current(productionId)?.content.state.lunchEndEpoch ?? 0)
+        guard mins > 0, mins < 60 else { return .result() }        // ≥60 / ≤0 → no-op
+        let stamp = await TMLiveActivity.armCurtail(productionId, mins: mins)
+        NSLog("[LiveActivity] CurtailIntent armed %dm (app process) pid=%@", mins, productionId)
+        try? await Task.sleep(nanoseconds: UInt64(TMLiveActivity.curtailUndoWindow * 1_000_000_000))
+        await TMLiveActivity.commitCurtailIfStillArmed(productionId, stamp: stamp)
         return .result()
     }
 }

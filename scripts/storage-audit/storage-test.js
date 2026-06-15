@@ -5436,8 +5436,8 @@ async function main() {
     check('TT6a bridge.drainPendingEvents is IS_NATIVE-guarded (returns [] before touching the plugin on web)',
       /async drainPendingEvents\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
       /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
-    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow (one mapDayNow path; no parallel day-record write)',
-      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
+    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail (one mapDayNow path; no parallel day-record write)',
+      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
     check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
       /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,140}continue; \}/.test(html) &&
       /applied\.add\(ev\.id\);/.test(html) &&
@@ -5454,7 +5454,7 @@ async function main() {
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
       /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
-      /const payload = \{ name: desc\.name,[\s\S]{0,260}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom \};/.test(html));
+      /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchedFull: desc\.lunchedFull \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
@@ -5476,7 +5476,7 @@ async function main() {
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
-      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom \}/.test(html) &&
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchedFull \}/.test(html) &&
       !/desc\.l1/.test(html));
     check('TT8d Issue C — ingestion ALSO re-runs on the plugin drainRequest event (best-effort background apply), via the SAME idempotent ingest()',
       /const LAPlg = _capPlugins\(\)\.LiveActivity;/.test(html) &&
@@ -5519,7 +5519,7 @@ async function main() {
       /ls\.setHours\(Math\.floor\(lunchH\), Math\.round\(\(lunchH % 1\) \* 60\), 0, 0\);/.test(descFn) &&
       /lunchEndEpoch = Math\.floor\(ls\.getTime\(\) \/ 1000\) \+ 3600;/.test(descFn) &&
       (descFn.match(/lunchEndEpoch = Math\.floor/g) || []).length === 1 &&
-      /state, wrapped, cwd, lunchEndEpoch, otFrom \};/.test(descFn));
+      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchedFull \};/.test(descFn));
     check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
       /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
       /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: '02:00', wrapNextDay: true \}, soloCrew, null\)/.test(descFn) &&
@@ -5529,8 +5529,8 @@ async function main() {
       // engine maths re-derived here — it only reads the rendered OT line).
       !/otStartAbs\s*=[^=]/.test(descFn) && !/basicHrs\s*=/.test(descFn));
     check('TT10c sig + payload carry lunchEndEpoch + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getDouble/getString reads)',
-      /l: desc\.lunchEndEpoch, o: desc\.otFrom \}/.test(html) &&
-      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom \}/.test(html));
+      /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, lf: desc\.lunchedFull \}/.test(html) &&
+      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchedFull: desc\.lunchedFull \}/.test(html));
     check('TT10d ContentState schema — lunchEndEpoch: Double + otFrom: String (display-only, init-defaulted); the plugin reads both (getDouble/getString) on start AND update; the intent process preserves both across all 4 reconstructions (arm/disarm/update/endWrapped)',
       (() => {
         const attr = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift'), 'utf8');
@@ -5586,6 +5586,88 @@ async function main() {
           /compactLeading: \{\s*Circle\(\)\.fill\(chipColor/.test(la);
         const placedOk = (la.match(/timerProjectionRow\(state: context\.state\.state/g) || []).length === 2;
         return gone && rowOk && lockOk && diOk && placedOk;
+      })());
+
+    // ─ TT11: Group B — "Curtailed?" button (new write path, reuses the queue) ─
+    check('TT11a descriptor pushes the record-derived lunch-button phases — curtailMins (recorded 0<dur<60, once lunch started) and lunchedFull (uncurtailed, 60-min window fully elapsed); both flow into the return/sig/payload (the live Undo/pending state is owned natively)',
+      /let curtailMins = 0;/.test(descFn) && /let lunchedFull = false;/.test(descFn) &&
+      /const started = nowMins >= lunchMins;/.test(descFn) &&
+      /if \(started && dur > 0 && dur < 60\) curtailMins = dur;/.test(descFn) &&
+      /else if \(started && dur === 60 && nowMins >= lunchMins \+ 60\) lunchedFull = true;/.test(descFn) &&
+      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchedFull \};/.test(descFn));
+    check('TT11b ingest reuses the SAME queue — lunchCurtail added to the today-only idempotent type filter + dispatched to applyLunchCurtail, which writes lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
+      /ev\.type !== 'lunchNow' && ev\.type !== 'wrapNow' && ev\.type !== 'lunchCurtail'/.test(html) &&
+      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)/.test(html) &&
+      /function applyLunchCurtail\(production, date, durationMins\) \{/.test(html) &&
+      /if \(!\(mins > 0 && mins < 60\)\) return production;/.test(html) &&
+      /mapDayNow\(production\.days, date, uid0, \{ lunchDurationMins: mins \}\)/.test(html));
+    check('TT11c ContentState schema — curtailMins: Int + lunchedFull: Bool (init-defaulted); the plugin reads both (getInt/getBool) on start AND update; the intent process preserves both across all 4 reconstructions',
+      (() => {
+        const attr = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift'), 'utf8');
+        const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
+        const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
+        const schemaOk = /public var curtailMins: Int/.test(attr) && /public var lunchedFull: Bool/.test(attr) &&
+          /curtailMins: Int = 0, lunchedFull: Bool = false/.test(attr) &&
+          /self\.curtailMins = curtailMins/.test(attr) && /self\.lunchedFull = lunchedFull/.test(attr);
+        const pluginOk = (plugin.match(/call\.getInt\("curtailMins"\)/g) || []).length >= 2 &&
+          (plugin.match(/call\.getBool\("lunchedFull"\)/g) || []).length >= 2 &&
+          (plugin.match(/curtailMins: curtailMins, lunchedFull: lunchedFull/g) || []).length >= 2;
+        const intentsOk = (intents.match(/curtailMins: cur\.curtailMins, lunchedFull: cur\.lunchedFull/g) || []).length >= 4;
+        return schemaOk && pluginOk && intentsOk;
+      })());
+    check('TT11d CurtailIntent — single tap arms (native whole-minute now−lunchStart), holds the 5s undo window, then COMMITS; the lunchCurtail append happens ONLY in commitCurtailIfStillArmed (stamp+armed gated) — never on the arm and never on undo; a 2nd tap cancels (no write); duration ≥60/≤0 is a no-op',
+      (() => {
+        const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
+        const append = /static func appendEvent\(type: String, productionId: String, durationMins: Int\? = nil\)/.test(intents) &&
+          /if let durationMins \{ event\["durationMins"\] = durationMins \}/.test(intents);
+        const helper = /static let curtailUndoWindow: TimeInterval = 5\.0/.test(intents) &&
+          /let lunchStart = lunchEndEpoch - 3600/.test(intents) &&
+          /return Int\(\(elapsed \/ 60\)\.rounded\(\)\)/.test(intents);
+        const arm = (intents.match(/static func armCurtail[\s\S]*?\n    \}/) || [''])[0];
+        const cancel = (intents.match(/static func cancelCurtail[\s\S]*?\n    \}/) || [''])[0];
+        const commit = (intents.match(/static func commitCurtailIfStillArmed[\s\S]*?\n    \}/) || [''])[0];
+        // the write is ONLY in commit, gated; arm + cancel never append.
+        const writeOnlyInCommit = !/appendEvent/.test(arm) && !/appendEvent/.test(cancel) &&
+          /guard cur\.armed == "curtail", cur\.armedAt == stamp,/.test(commit) &&
+          /appendEvent\(type: "lunchCurtail", productionId: productionId, durationMins: cur\.curtailMins\)/.test(commit);
+        const intent = /struct CurtailIntent: LiveActivityIntent/.test(intents) &&
+          /cur\.armed == "curtail",[\s\S]{0,140}cancelCurtail\(productionId\)/.test(intents) &&  // 2nd tap = undo
+          /guard mins > 0, mins < 60 else \{ return \.result\(\) \}/.test(intents) &&             // ≥60/≤0 no-op
+          /armCurtail\(productionId, mins: mins\)/.test(intents) &&
+          /Task\.sleep\(nanoseconds: UInt64\(TMLiveActivity\.curtailUndoWindow/.test(intents) &&
+          /commitCurtailIfStillArmed\(productionId, stamp: stamp\)/.test(intents);
+        return append && helper && writeOnlyInCommit && intent;
+      })());
+    check('TT11e WrapNowIntent commit-then-wrap — a fresh pending curtail (armed=="curtail") is FLUSHED (appendEvent lunchCurtail) before re-arming to wrap, so Wrap is never blocked and the curtail is never lost; the held CurtailIntent commit then no-ops (armed flips to wrap)',
+      (() => {
+        const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
+        const wrap = (intents.match(/struct WrapNowIntent: LiveActivityIntent[\s\S]*?\n\}/) || [''])[0];
+        return /cur\.armed == "curtail",[\s\S]{0,200}appendEvent\(type: "lunchCurtail", productionId: productionId, durationMins: cur\.curtailMins\)/.test(wrap) &&
+          /arm\(productionId, action: "wrap"\)/.test(wrap) &&
+          // the flush precedes the wrap arm
+          wrap.indexOf('appendEvent(type: "lunchCurtail"') < wrap.indexOf('arm(productionId, action: "wrap")');
+      })());
+    check('TT11f SwiftUI lunchSlot — five-phase left button: Undo·NNm (CurtailIntent) > Confirm?/Lunch now (LunchNowIntent) > Curtailed? (CurtailIntent) active; "Lunch NNm ✓" + "Full hour" are DISABLED plain pills (exactly 4 Button(intent:) in the slot); wrap button unchanged; old lunchButton gone',
+      (() => {
+        const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
+        const slot = (la.match(/private func lunchSlot[\s\S]*?\n\}/) || [''])[0];
+        const sigOk = /private func lunchSlot\(_ productionId: String, state: String, armed: String, curtailMins: Int, lunchedFull: Bool\)/.test(la) &&
+          !/private func lunchButton/.test(la);
+        const phasesOk = /if armed == "curtail" \{/.test(slot) && /"Undo · \\\(curtailMins\)m"/.test(slot) &&
+          /else if armed == "lunch" \{/.test(slot) &&
+          /else if curtailMins > 0 \{/.test(slot) && /ActionPill\(text: "Lunch \\\(curtailMins\)m ✓"/.test(slot) &&
+          /else if state == "lunch" \{/.test(slot) && /"Curtailed\?"/.test(slot) &&
+          /else if lunchedFull \{/.test(slot) && /ActionPill\(text: "Full hour"/.test(slot) &&
+          /"Lunch now"/.test(slot);
+        // exactly 4 tappable phases (Undo, Confirm?, Curtailed?, Lunch now); the 2
+        // disabled phases are plain ActionPills with no intent.
+        const tappableOk = (slot.match(/Button\(intent:/g) || []).length === 4 &&
+          (slot.match(/CurtailIntent\(productionId: productionId\)/g) || []).length === 2 &&
+          (slot.match(/LunchNowIntent\(productionId: productionId\)/g) || []).length === 2;
+        const wiredOk = /lunchSlot\(productionId, state: state, armed: armed, curtailMins: curtailMins, lunchedFull: lunchedFull\)/.test(la) &&
+          /private func actionButtons\(_ productionId: String, armed: String, state: String, curtailMins: Int, lunchedFull: Bool\)/.test(la) &&
+          /wrapButton\(productionId, armed: armed == "wrap"\)/.test(la);
+        return sigOk && phasesOk && tappableOk && wiredOk;
       })());
   }
 

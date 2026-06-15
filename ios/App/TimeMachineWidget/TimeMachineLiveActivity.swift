@@ -188,18 +188,47 @@ private struct ActionPill: View {
     }
 }
 
+// The lunch-slot button (Group B) — a five-phase state machine on the LEFT
+// button only (Wrap is unaffected). Display-only: the curtail PENDING/Undo state
+// is driven by the native `armed` slot ("curtail"); "Lunch NNm ✓" and "Full hour"
+// are pushed by the descriptor from the record. Order matters — pending and the
+// existing lunch-confirm two-tap outrank the record-derived phases. Active phases
+// use saturated text (amber / black-on-amber); the two disabled/informational
+// phases are plain pills (no Button) with muted grey text.
 @available(iOS 17.0, *)
 @ViewBuilder
-private func lunchButton(_ productionId: String, armed: Bool) -> some View {
-    Button(intent: LunchNowIntent(productionId: productionId)) {
-        if armed {
-            // Loud inverse: solid amber fill (rest is the tinted outline).
+private func lunchSlot(_ productionId: String, state: String, armed: String, curtailMins: Int, lunchedFull: Bool) -> some View {
+    if armed == "curtail" {
+        // PENDING — single tap = Undo (cancels, writes nothing); auto-commits at 5s.
+        Button(intent: CurtailIntent(productionId: productionId)) {
+            ActionPill(text: "Undo · \(curtailMins)m", confirm: false, fill: .tmAmber, stroke: nil, textColor: .black)
+        }
+        .buttonStyle(.plain)
+    } else if armed == "lunch" {
+        // Lunch-now two-tap mid-confirm (unchanged).
+        Button(intent: LunchNowIntent(productionId: productionId)) {
             ActionPill(text: "Confirm?", confirm: true, fill: .tmAmber, stroke: nil, textColor: .black)
-        } else {
+        }
+        .buttonStyle(.plain)
+    } else if curtailMins > 0 {
+        // COMMITTED curtail — informational, not tappable.
+        ActionPill(text: "Lunch \(curtailMins)m ✓", confirm: false, fill: Color.tmAmber.opacity(0.12), stroke: nil, textColor: .tmMuted)
+    } else if state == "lunch" {
+        // ON LUNCH within the hour — single tap arms the curtail.
+        Button(intent: CurtailIntent(productionId: productionId)) {
+            ActionPill(text: "Curtailed?", confirm: false, fill: Color.tmAmber.opacity(0.14), stroke: Color.tmAmber.opacity(0.4), textColor: .tmAmber)
+        }
+        .buttonStyle(.plain)
+    } else if lunchedFull {
+        // Lunch ran the full hour, uncurtailed — nothing to do.
+        ActionPill(text: "Full hour", confirm: false, fill: Color.tmFaint.opacity(0.12), stroke: Color.tmFaint.opacity(0.35), textColor: .tmFaint)
+    } else {
+        // Off lunch — log lunch start (unchanged).
+        Button(intent: LunchNowIntent(productionId: productionId)) {
             ActionPill(text: "Lunch now", confirm: false, fill: Color.tmAmber.opacity(0.14), stroke: Color.tmAmber.opacity(0.4), textColor: .tmAmber)
         }
+        .buttonStyle(.plain)
     }
-    .buttonStyle(.plain)
 }
 
 @available(iOS 17.0, *)
@@ -218,9 +247,9 @@ private func wrapButton(_ productionId: String, armed: Bool) -> some View {
 }
 
 @available(iOS 17.0, *)
-private func actionButtons(_ productionId: String, armed: String) -> some View {
+private func actionButtons(_ productionId: String, armed: String, state: String, curtailMins: Int, lunchedFull: Bool) -> some View {
     HStack(spacing: 8) {
-        lunchButton(productionId, armed: armed == "lunch")
+        lunchSlot(productionId, state: state, armed: armed, curtailMins: curtailMins, lunchedFull: lunchedFull)
         wrapButton(productionId, armed: armed == "wrap")
     }
     .animation(.snappy(duration: 0.25), value: armed)
@@ -308,7 +337,7 @@ struct TimeMachineLockScreenView: View {
             // separates it from the total above (no divider).
             timerProjectionRow(state: context.state.state, anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
             if #available(iOS 17.0, *), context.state.state != "wrapped" {
-                actionButtons(context.attributes.productionId, armed: context.state.armed)
+                actionButtons(context.attributes.productionId, armed: context.state.armed, state: context.state.state, curtailMins: context.state.curtailMins, lunchedFull: context.state.lunchedFull)
             }
         }
         .padding(16)
@@ -346,7 +375,7 @@ struct TimeMachineLiveActivity: Widget {
                     VStack(spacing: 8) {
                         timerProjectionRow(state: context.state.state, anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
                         if #available(iOS 17.0, *), context.state.state != "wrapped" {
-                            actionButtons(context.attributes.productionId, armed: context.state.armed)
+                            actionButtons(context.attributes.productionId, armed: context.state.armed, state: context.state.state, curtailMins: context.state.curtailMins, lunchedFull: context.state.lunchedFull)
                         }
                     }
                 }

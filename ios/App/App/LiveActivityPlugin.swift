@@ -100,13 +100,15 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let cwd = call.getBool("cwd") ?? false
         let lunchEndEpoch = call.getDouble("lunchEndEpoch") ?? 0
         let otFrom = call.getString("otFrom") ?? ""
+        let curtailMins = call.getInt("curtailMins") ?? 0
+        let lunchedFull = call.getBool("lunchedFull") ?? false
         let productionId = call.getString("productionId") ?? ""
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
 
         DispatchQueue.main.async {
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
             let content = ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchedFull: lunchedFull),
                 staleDate: staleDate
             )
             // SINGLE-ACTIVITY INVARIANT (duplicate-card fix). "Start" is issued
@@ -152,6 +154,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let cwd = call.getBool("cwd") ?? false
         let lunchEndEpoch = call.getDouble("lunchEndEpoch") ?? 0
         let otFrom = call.getString("otFrom") ?? ""
+        let curtailMins = call.getInt("curtailMins") ?? 0
+        let lunchedFull = call.getBool("lunchedFull") ?? false
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
         Task {
             // The anchor (callEpoch + anchorLabel) is carried on EVERY update so a
@@ -160,7 +164,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             // update always clears any pending two-tap arm (the app never sends a
             // non-empty armed): the backstop reset for an arm that never confirmed.
             await activity.update(ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchedFull: lunchedFull),
                 staleDate: staleDate
             ))
             call.resolve()
