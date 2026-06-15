@@ -5496,11 +5496,16 @@ async function main() {
     check('TT9a unmount-persists vs disqualification — the effect cleanup ONLY clears the debounce timer (never ends), so navigating away keeps the card; ends happen solely inside the effect body (disqualify/wrap) or via the sweep',
       /return \(\) => clearTimeout\(timer\);/.test(html) &&
       !/return \(\) => \{[^}]{0,160}LiveActivity\.end/.test(html));
-    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, pref enabled) and ends non-qualifying productions via the ActivityKit-backed endForProduction',
+    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, pref enabled), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
       /const qualifies = enabled && !!rec && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
-      /if \(!qualifies\) \{[\s\S]{0,180}LiveActivity\.endForProduction\(a\.productionId\);/.test(html));
+      /if \(!qualifies\) \{[\s\S]{0,120}LiveActivity\.endForProduction\(pid\);/.test(html) &&
+      /\} else if \(ids\.length > 1\) \{[\s\S]{0,160}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
+      /if \(dupeIds\.length\) LiveActivity\.endActivityIds\(dupeIds\);/.test(html));
+    check('TT9e single-activity invariant — the endActivityIds bridge method is IS_NATIVE-guarded (the sweep\'s by-id duplicate-converge; native startActivity adopt-or-update is the primary dedupe, compile-verified)',
+      /async endActivityIds\(ids\) \{\s*if \(!IS_NATIVE \|\| !ids \|\| !ids\.length\) return;/.test(html) &&
+      /_capPlugins\(\)\.LiveActivity; if \(p && p\.endActivityIds\)/.test(html));
     check('TT9c change-sweep — productions edits and the Settings toggle reconcile within ~1s while the app is open (debounced IS_NATIVE-gated effect)',
       /useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;\s*const t = setTimeout\(liveActivityReconcile, 1000\);\s*return \(\) => clearTimeout\(t\);\s*\}, \[productions, userPrefs && userPrefs\.liveActivityEnabled\]\);/.test(html));
     check('TT9d Live Activity master switch — fresh pref default ON in DEFAULT_USER_PREFS; Appearance toggle row (rendered on web with a native-only note, matching Haptics); mount site passes enabled; controller short-circuits when disabled',

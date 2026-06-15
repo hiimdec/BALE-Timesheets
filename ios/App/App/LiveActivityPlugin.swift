@@ -40,6 +40,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "endActivity", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "listActivities", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endForProduction", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "endActivityIds", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "drainPendingEvents", returnType: CAPPluginReturnPromise)
     ]
 
@@ -101,18 +102,37 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
 
         DispatchQueue.main.async {
-            self.endCurrentActivity()
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
             let content = ActivityContent(
                 state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd),
                 staleDate: staleDate
             )
-            do {
-                let activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
-                self.currentActivity = activity
-                call.resolve(["id": activity.id])
-            } catch {
-                call.reject("Failed to start Live Activity: \(error.localizedDescription)")
+            // SINGLE-ACTIVITY INVARIANT (duplicate-card fix). "Start" is issued
+            // by the controller on every fresh mount (its startedKeyRef is
+            // mount-local) and on cold relaunch — where the in-memory
+            // currentActivity handle is LOST but the system card survives. So
+            // dedupe against the system registry, not the handle: if a card for
+            // THIS production already exists, ADOPT + UPDATE it (never request a
+            // second); end every other TimeMachine card so exactly one remains.
+            let all = Activity<TimeMachineActivityAttributes>.activities
+            let adopt = all.first { $0.attributes.productionId == productionId }
+            let strays = all.filter { $0.id != adopt?.id }
+            if let adopt = adopt {
+                self.currentActivity = adopt
+                Task {
+                    await adopt.update(content)
+                    for s in strays { await s.end(nil, dismissalPolicy: .immediate) }
+                    call.resolve(["id": adopt.id, "adopted": true])
+                }
+            } else {
+                do {
+                    let activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
+                    self.currentActivity = activity
+                    call.resolve(["id": activity.id])
+                    Task { for s in strays { await s.end(nil, dismissalPolicy: .immediate) } }
+                } catch {
+                    call.reject("Failed to start Live Activity: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -197,6 +217,24 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    // End specific activities by id — the reconcile sweep's duplicate-converge
+    // backstop: it keeps ONE card per qualifying production and ends the rest by
+    // id (endForProduction would wrongly end the kept one too). Immediate.
+    @objc func endActivityIds(_ call: CAPPluginCall) {
+        guard #available(iOS 16.2, *) else { call.resolve(); return }
+        let ids = Set(call.getArray("ids", String.self) ?? [])
+        guard !ids.isEmpty else { call.resolve(); return }
+        if let tracked = currentActivity as? Activity<TimeMachineActivityAttributes>, ids.contains(tracked.id) {
+            currentActivity = nil
+        }
+        Task {
+            for activity in Activity<TimeMachineActivityAttributes>.activities where ids.contains(activity.id) {
+                await activity.end(ActivityContent(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
+            }
+            call.resolve()
+        }
+    }
+
     // MARK: - drainPendingEvents (Stage 2)
 
     // Atomic-ish read-and-clear of the App-Group event queue the App Intents
@@ -215,15 +253,5 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             defaults.removeObject(forKey: Self.pendingEventsKey)
         }
         call.resolve(["events": events])
-    }
-
-    // MARK: - helpers
-
-    @available(iOS 16.2, *)
-    private func endCurrentActivity() {
-        if let activity = currentActivity as? Activity<TimeMachineActivityAttributes> {
-            Task { await activity.end(nil, dismissalPolicy: .immediate) }
-        }
-        currentActivity = nil
     }
 }

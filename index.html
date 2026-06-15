@@ -960,6 +960,13 @@
         try { const p = _capPlugins().LiveActivity; if (p && p.endForProduction) await p.endForProduction({ productionId, immediate: true }); }
         catch (e) { try { console.warn('[LiveActivity] endForProduction failed', (e && e.message) || e); } catch (_) {} }
       },
+      // End specific activities by id — the reconcile sweep's duplicate-converge
+      // backstop (keeps one card per qualifying production, ends the rest).
+      async endActivityIds(ids) {
+        if (!IS_NATIVE || !ids || !ids.length) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.endActivityIds) await p.endActivityIds({ ids }); }
+        catch (e) { try { console.warn('[LiveActivity] endActivityIds failed', (e && e.message) || e); } catch (_) {} }
+      },
       // Stage 2: atomic read-and-clear of the App-Group event queue the widget's
       // Lunch/Wrap App Intents append to. Returns [] on web / pre-plugin. Each
       // event: { id, type, at, date, ts, productionId }.
@@ -21908,19 +21915,35 @@ const confirmDelete = (p) => setConfirmOpts({
         if (!acts || !acts.length) return;
         const { productions: prods, enabled } = laSweepStateRef.current;
         const today = todayISO();
+        // Group by productionId so the sweep can converge DUPLICATES of a
+        // qualifying production (Bug 1 backstop) as well as end non-qualifying
+        // ones. Per production: not-qualifying → end ALL its cards; qualifying →
+        // keep the FIRST card, end the rest by id (the single-activity
+        // invariant; startActivity's adopt-or-update normally prevents a second,
+        // this catches any that slip past, e.g. a race before adopt).
+        const byPid = new Map();
         for (const a of acts) {
           if (!a || !a.productionId) continue;
-          const pr = (prods || []).find(p => p.id === a.productionId);
+          if (!byPid.has(a.productionId)) byPid.set(a.productionId, []);
+          byPid.get(a.productionId).push(a.id);
+        }
+        const dupeIds = [];
+        for (const [pid, ids] of byPid) {
+          const pr = (prods || []).find(p => p.id === pid);
           const soloCrew = pr && !pr.bestBoyMode ? (pr.crew || [])[0] : null;
           const rec = soloCrew ? ((pr.days || []).find(d => d.date === today && d.crewId === soloCrew.id)
                               || (pr.days || []).find(d => d.date === today)) : null;
           const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
           const qualifies = enabled && !!rec && !!(rec.callTime || (dd && dd.callTime));
           if (!qualifies) {
-            console.log('[LiveActivity] reconcile → end (no qualifying day)', a.productionId);
-            LiveActivity.endForProduction(a.productionId);
+            console.log('[LiveActivity] reconcile → end (no qualifying day)', pid);
+            LiveActivity.endForProduction(pid);
+          } else if (ids.length > 1) {
+            console.log('[LiveActivity] reconcile → converge duplicates', pid, ids.length);
+            for (let i = 1; i < ids.length; i++) dupeIds.push(ids[i]);
           }
         }
+        if (dupeIds.length) LiveActivity.endActivityIds(dupeIds);
       }, []);
       // Change-sweep: production edits (delete day/production, date moves) and
       // the Settings toggle reconcile within ~1s while the app is open; launch +
