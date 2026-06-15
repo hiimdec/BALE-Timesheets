@@ -1705,6 +1705,21 @@
       // Same merge-over-DEFAULT_USER_PREFS pattern as kitInventory: no
       // migration, no schema bump.
       clients: [],
+      // Expense presets — reusable user-level expense templates (the Rate-style
+      // Included/Available picker mirrors kitInventory). Each preset:
+      // { id, name, defaultAmount, defaultOn, isBuiltIn }. Built-ins ship with
+      // FIXED stable ids (so per-day instances + augmentCalc can reference them),
+      // locked names, editable amounts, defaultOn:false (user adds each day).
+      // Per Diem is modelled as a preset but still renders as its own "Per Diem"
+      // invoice line. Additive via merge-over-DEFAULT_USER_PREFS — no migration,
+      // no schema bump (same as kitInventory / clients). The DAY model migration
+      // (MIGRATIONS[4]) is separate and DOES bump the schema.
+      expensePresets: [
+        { id: 'builtin-perdiem',    name: 'Per Diem',          defaultAmount: 35, defaultOn: false, isBuiltIn: true },
+        { id: 'builtin-parking',    name: 'Parking',           defaultAmount: 0,  defaultOn: false, isBuiltIn: true },
+        { id: 'builtin-congestion', name: 'Congestion Charge', defaultAmount: 18, defaultOn: false, isBuiltIn: true },
+        { id: 'builtin-food',       name: 'Food',              defaultAmount: 0,  defaultOn: false, isBuiltIn: true },
+      ],
       onboardingComplete: false,
       lastSeenAppVersion: "",
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off'
@@ -16800,6 +16815,86 @@ const setDays = (updater) =>
       );
     }
 
+    // Expense Presets editor (Settings) — mirrors KitRoomEditor's card layout for
+    // the reusable expense templates the per-day Included/Available picker offers.
+    // Built-ins (isBuiltIn) have LOCKED names and can't be deleted (Per Diem also
+    // drives the dedicated "Per Diem" invoice line); their default amount +
+    // default-on are editable. Custom presets are fully editable + removable. No
+    // drag-reorder — order isn't load-bearing for expenses. Bindings: onChange
+    // writes the whole expensePresets array through the same set() helper as every
+    // other userPrefs field.
+    function ExpensePresetsEditor({ items, onChange }) {
+      const updatePreset = (id, patch) =>
+        onChange(items.map(it => it.id === id ? { ...it, ...patch } : it));
+      const removePreset = (id) =>
+        onChange(items.filter(it => it.id !== id));
+      const addPreset = () =>
+        onChange([...items, { id: uid(), name: "", defaultAmount: 0, defaultOn: false, isBuiltIn: false }]);
+
+      return (
+        <div className="flex flex-col gap-2">
+          {items.length === 0 && (
+            <div className="text-[11px] text-neutral-600 italic py-2">No presets yet — tap "Add preset" to start.</div>
+          )}
+          {items.map((item) => (
+            <div key={item.id} data-expense-preset="1" className="bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3">
+              {/* Line 1 — name (locked for built-ins). */}
+              <div className="flex items-center gap-2">
+                {item.isBuiltIn ? (
+                  <div className="flex-1 min-w-0 text-sm font-semibold text-neutral-100 flex items-center gap-2">
+                    {item.name}
+                    <span className="text-[9px] uppercase tracking-wide text-neutral-500 border border-neutral-700 rounded px-1 py-0.5 flex-shrink-0">Built-in</span>
+                  </div>
+                ) : (
+                  <Input
+                    type="text"
+                    placeholder="Preset name"
+                    value={item.name ?? ""}
+                    onChange={(e) => updatePreset(item.id, { name: e.target.value })}
+                    aria-label="Expense preset name"
+                    className="flex-1 min-w-0 text-sm font-semibold"
+                  />
+                )}
+              </div>
+              {/* Line 2 — default-on toggle (left) + £ amount + × delete (custom only). */}
+              <div className="flex items-center gap-3 mt-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Toggle
+                    value={!!item.defaultOn}
+                    onChange={(v) => updatePreset(item.id, { defaultOn: v })}
+                    ariaLabel={`Default on new shoots — ${item.name || 'preset'}`}
+                  />
+                  <span className="text-[11px] text-neutral-400 leading-tight">Default on new shoots</span>
+                </div>
+                <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] text-neutral-500 font-mono">£</span>
+                    <Input
+                      type="number" min="0" step="0.01" placeholder="0"
+                      value={Number.isFinite(item.defaultAmount) ? item.defaultAmount : 0}
+                      onChange={(e) => { const raw = e.target.value; const n = raw === '' ? 0 : Number(raw); updatePreset(item.id, { defaultAmount: Number.isFinite(n) ? n : 0 }); }}
+                      aria-label={`Default amount for ${item.name || 'preset'}`}
+                      style={{ width: 84 }} className="text-sm"
+                    />
+                  </div>
+                  {!item.isBuiltIn && (
+                    <button type="button" onClick={() => removePreset(item.id)}
+                      className="text-neutral-600 hover:text-tm-pen transition-colors p-1 flex-shrink-0"
+                      aria-label={`Remove ${item.name || 'preset'}`}>
+                      <IX size={14}/>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          <Btn variant="ghost" onClick={addPreset} className="mt-1.5 self-start">
+            <IPlus size={13}/>Add preset
+          </Btn>
+        </div>
+      );
+    }
+
     // ── Call-sheet import (Stage 2) — shoot-level review-sheet UX ───────────
     // The entry row lives INSIDE ProductionSettingsSheet's "Invoicing details"
     // section, adjacent to the fields it fills. CORE PRINCIPLE — no new write
@@ -17776,6 +17871,23 @@ const setDays = (updater) =>
               <KitRoomEditor
                 items={userPrefs.kitInventory || []}
                 onChange={(newItems) => set({ kitInventory: newItems })}
+              />
+            </Disclosure>
+
+            {/* §4b — Expense Presets: reusable expense templates offered by the
+                per-day Included/Available picker. Built-in names locked; amounts
+                editable. onChange writes the expensePresets array through the same
+                set() helper as every other userPrefs field. */}
+            <Disclosure
+              label="Expense Presets"
+              summary={(() => {
+                const n = (userPrefs.expensePresets || []).length;
+                return n ? `${n} preset${n === 1 ? '' : 's'}` : '—';
+              })()}
+            >
+              <ExpensePresetsEditor
+                items={userPrefs.expensePresets || []}
+                onChange={(newItems) => set({ expensePresets: newItems })}
               />
             </Disclosure>
 

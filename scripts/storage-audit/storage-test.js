@@ -998,6 +998,80 @@ async function main() {
       `kitInventory=${JSON.stringify(stored && stored.kitInventory)}`);
   }
 
+  // ===== EP. EXPENSE PRESETS — additive prefs store (no schema bump) =====
+  // userPrefs.expensePresets is a new top-level DEFAULT_USER_PREFS field, additive
+  // via merge-over-defaults (same guard as kitInventory / clients). Unlike those,
+  // the default is NON-EMPTY — it ships 4 built-ins (Per Diem £35, Parking £0,
+  // Congestion Charge £18, Food £0) with FIXED ids + locked names. A backup WITH
+  // presets restores them verbatim; a pre-rework backup (no key) imports cleanly to
+  // the built-in defaults WITHOUT wiping other prefs.
+  {
+    // EP1 — DEFAULT_USER_PREFS exposes the key with the 4 built-ins.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const eps = sb.__DEFAULT_USER_PREFS && sb.__DEFAULT_USER_PREFS.expensePresets;
+    check('EP1 prefs: DEFAULT_USER_PREFS has an expensePresets array',
+      Array.isArray(eps), `expensePresets=${eps}`);
+    check('EP1 prefs: ships exactly 4 built-ins (all isBuiltIn, all defaultOn:false)',
+      Array.isArray(eps) && eps.length === 4 && eps.every(p => p.isBuiltIn === true && p.defaultOn === false),
+      `len=${eps && eps.length}`);
+    check('EP1 prefs: built-ins have fixed ids + locked names + the seeded amounts',
+      Array.isArray(eps) &&
+      eps[0].id === 'builtin-perdiem'    && eps[0].name === 'Per Diem'          && eps[0].defaultAmount === 35 &&
+      eps[1].id === 'builtin-parking'    && eps[1].name === 'Parking'           && eps[1].defaultAmount === 0  &&
+      eps[2].id === 'builtin-congestion' && eps[2].name === 'Congestion Charge' && eps[2].defaultAmount === 18 &&
+      eps[3].id === 'builtin-food'       && eps[3].name === 'Food'              && eps[3].defaultAmount === 0,
+      `eps=${JSON.stringify(eps)}`);
+  }
+  {
+    // EP2 — Backup WITH presets (edited built-in amount + a custom) restores
+    // verbatim AND does not wipe other prefs.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const payload = JSON.stringify({
+      version: 1, schemaVersion: 3, productions: [],
+      userPrefs: {
+        displayName: 'Test User', defaultBDR: 444,
+        expensePresets: [
+          { id: 'builtin-perdiem', name: 'Per Diem', defaultAmount: 50, defaultOn: true, isBuiltIn: true },
+          { id: 'custom-x', name: 'Tolls', defaultAmount: 9.5, defaultOn: false, isBuiltIn: false },
+        ],
+      },
+    });
+    const r = sb.__importBackup(payload);
+    check('EP2 import-with-presets: importBackup ok', r && r.ok === true, `result=${JSON.stringify(r)}`);
+    const stored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('EP2 import-with-presets: array restored verbatim (edited built-in amount + custom)',
+      stored && Array.isArray(stored.expensePresets) && stored.expensePresets.length === 2 &&
+      stored.expensePresets[0].id === 'builtin-perdiem' && stored.expensePresets[0].defaultAmount === 50 && stored.expensePresets[0].defaultOn === true &&
+      stored.expensePresets[1].id === 'custom-x' && stored.expensePresets[1].name === 'Tolls' && stored.expensePresets[1].defaultAmount === 9.5,
+      `eps=${JSON.stringify(stored && stored.expensePresets)}`);
+    check('EP2 import-with-presets: NO prefs wipe — other userPrefs survived the merge',
+      stored && stored.displayName === 'Test User' && stored.defaultBDR === 444);
+  }
+  {
+    // EP3 — Pre-rework backup (no expensePresets key) imports to the built-in
+    // defaults via merge-over-defaults, without wiping legacy prefs.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const legacy = JSON.stringify({
+      version: 1, schemaVersion: 3, productions: [],
+      userPrefs: { displayName: 'Legacy User', defaultBDR: 500 },
+    });
+    const r = sb.__importBackup(legacy);
+    check('EP3 pre-rework: importBackup ok', r && r.ok === true, `result=${JSON.stringify(r)}`);
+    const stored = JSON.parse(sb.__storage.get('bigals_user_prefs') || 'null');
+    check('EP3 pre-rework: expensePresets defaults to the 4 built-ins (merge-over-defaults)',
+      stored && Array.isArray(stored.expensePresets) && stored.expensePresets.length === 4 &&
+      stored.expensePresets[0].id === 'builtin-perdiem',
+      `eps=${JSON.stringify(stored && stored.expensePresets)}`);
+    check('EP3 pre-rework: legacy fields preserved (no wipe)',
+      stored && stored.displayName === 'Legacy User' && stored.defaultBDR === 500);
+  }
+
   // ===== N. SAVED CLIENTS STAGE-2 AUTO-SAVE ON SEND =====
   // Exercises the pure derivation `deriveClientFromSentInvoice` against
   // the user's Stage-2 spec (a)–(e). Each assertion simulates the
