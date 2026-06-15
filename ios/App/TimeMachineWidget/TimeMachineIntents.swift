@@ -134,7 +134,7 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: action, armedAt: stamp, cwd: cur.cwd, lunchLeft: cur.lunchLeft, otFrom: cur.otFrom
+            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
         return stamp
@@ -152,7 +152,7 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchLeft: cur.lunchLeft, otFrom: cur.otFrom
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
     }
@@ -169,7 +169,7 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchLeft: cur.lunchLeft, otFrom: cur.otFrom
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
     }
@@ -187,7 +187,7 @@ enum TMLiveActivity {
                 callEpoch: cur.callEpoch,
                 anchorLabel: cur.anchorLabel,
                 endEpoch: Date().timeIntervalSince1970,
-                armed: "", armedAt: 0, cwd: cur.cwd, lunchLeft: cur.lunchLeft, otFrom: cur.otFrom
+                armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom
             ),
             staleDate: nil
         )

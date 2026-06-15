@@ -226,32 +226,54 @@ private func actionButtons(_ productionId: String, armed: String) -> some View {
     .animation(.snappy(duration: 0.25), value: armed)
 }
 
-// MARK: - Secondary readout (Group A — display-only)
+// MARK: - Line-4 timer slot + OT-from (Group A.5 — display-only)
 
-// A thin neutral row beneath the total/timer: the lunch countdown ("32 min left",
-// ON LUNCH only) on the left and the OT-from projection ("OT from 19:00", any
-// non-wrapped state) on the right. Both are INFORMATIONAL — muted, never a
-// penalty/warning colour. Renders nothing when neither applies, so the card
-// stays calm on call with no projected OT. Values are pushed by the JS layer;
-// this view never computes pay or time.
+// Native countdown to lunch-end (= lunchStart + 60min), mirroring elapsedTimer so
+// it ticks DOWN on the LOCKED screen with zero pushed updates — fixing the old
+// pushed-integer "N min left" that only refreshed on foreground. The interval
+// starts 60min before the end so the readout reads as minutes-left (MM:SS,
+// showsHours:false); once "now" passes the end the system clamps it to 00:00.
+// Amber echoes the ON LUNCH chip; rendered only while state == "lunch".
+private func lunchCountdown(end: Double) -> some View {
+    HStack(spacing: 4) {
+        Image(systemName: "fork.knife").font(.system(size: 12, weight: .semibold))
+        Text(timerInterval: callDate(end).addingTimeInterval(-3600)...callDate(end),
+             countsDown: true, showsHours: false)
+            .font(timerFont)
+            .monospacedDigit()
+        Text("left").font(.system(size: 12, weight: .medium)).foregroundColor(.tmMuted)
+    }
+    .foregroundColor(.tmAmber)
+    .lineLimit(1)
+}
+
+// The Line-4 timer slot — ONE slot, two modes. ON LUNCH: the native lunch
+// countdown (ticks down on-device). Otherwise: the elapsed count-up since the
+// anchor (the existing native timer, moved here off the total's line so the
+// total reads clean). lunchEnd > 0 only while ON LUNCH (JS-pushed); a curtailed
+// lunch flips state back and restores the elapsed timer automatically.
 @ViewBuilder
-private func secondaryReadout(state: String, lunchLeft: Int, otFrom: String) -> some View {
-    let showLunch = state == "lunch" && lunchLeft > 0
-    let showOt = state != "wrapped" && !otFrom.isEmpty
-    if showLunch || showOt {
-        HStack(spacing: 8) {
-            if showLunch {
-                Label("\(lunchLeft) min left", systemImage: "fork.knife")
-                    .labelStyle(.titleAndIcon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.tmMuted)
-            }
-            Spacer(minLength: 0)
-            if showOt {
-                Text("OT from \(otFrom)")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.tmFaint)
-            }
+private func timerSlot(state: String, anchor: Double, end: Double, lunchEnd: Double) -> some View {
+    if state == "lunch" && lunchEnd > 0 {
+        lunchCountdown(end: lunchEnd)
+    } else {
+        elapsedTimer(anchor: anchor, end: end)
+    }
+}
+
+// Line 4: the timer slot (left) and the OT-from projection (right). OT-from is
+// INFORMATIONAL — neutral tmFaint, never a penalty/warning colour — and hidden
+// when wrapped or absent (Group A logic, unchanged). Both are display-only.
+@ViewBuilder
+private func timerProjectionRow(state: String, anchor: Double, end: Double, lunchEnd: Double, otFrom: String) -> some View {
+    HStack(alignment: .firstTextBaseline) {
+        timerSlot(state: state, anchor: anchor, end: end, lunchEnd: lunchEnd)
+        Spacer(minLength: 8)
+        if state != "wrapped" && !otFrom.isEmpty {
+            Text("OT from \(otFrom)")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.tmFaint)
+                .lineLimit(1)
         }
     }
 }
@@ -262,7 +284,8 @@ struct TimeMachineLockScreenView: View {
     let context: ActivityViewContext<TimeMachineActivityAttributes>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
+            // Line 1: production name · state chip
             HStack {
                 Text(context.attributes.productionName)
                     .font(.system(size: 13, weight: .semibold))
@@ -271,18 +294,19 @@ struct TimeMachineLockScreenView: View {
                 Spacer()
                 chipSlot(state: context.state.state, cwd: context.state.cwd)
             }
-            HStack(alignment: .lastTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    microLabel("DAY TOTAL")
-                    moneyText(context.state.totalText, font: moneyFont)
-                }
+            // Line 2: the two micro-labels — DAY TOTAL (left) · CALL anchor (right)
+            HStack {
+                microLabel("DAY TOTAL")
                 Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    microLabel(context.state.anchorLabel)
-                    elapsedTimer(anchor: context.state.callEpoch, end: context.state.endEpoch)
-                }
+                microLabel(context.state.anchorLabel)
             }
-            secondaryReadout(state: context.state.state, lunchLeft: context.state.lunchLeft, otFrom: context.state.otFrom)
+            // Line 3: the total alone, large and clean (elapsed timer moved off
+            // this line so the figure reads at a glance)
+            moneyText(context.state.totalText, font: moneyFont)
+            // Line 4 (under a hairline): timer slot — elapsed count-up, or the
+            // native lunch countdown ON LUNCH — on the left; OT-from on the right
+            Rectangle().fill(Color.tmFaint.opacity(0.18)).frame(height: 0.5).padding(.top, 2)
+            timerProjectionRow(state: context.state.state, anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
             if #available(iOS 17.0, *), context.state.state != "wrapped" {
                 actionButtons(context.attributes.productionId, armed: context.state.armed)
             }
@@ -315,16 +339,12 @@ struct TimeMachineLiveActivity: Widget {
                     VStack(alignment: .trailing, spacing: 2) {
                         microLabel("DAY TOTAL")
                         moneyText(context.state.totalText, font: moneyFontSmall)
+                        microLabel(context.state.anchorLabel)
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {
-                        HStack {
-                            microLabel(context.state.anchorLabel)
-                            Spacer()
-                            elapsedTimer(anchor: context.state.callEpoch, end: context.state.endEpoch)
-                        }
-                        secondaryReadout(state: context.state.state, lunchLeft: context.state.lunchLeft, otFrom: context.state.otFrom)
+                        timerProjectionRow(state: context.state.state, anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
                         if #available(iOS 17.0, *), context.state.state != "wrapped" {
                             actionButtons(context.attributes.productionId, armed: context.state.armed)
                         }

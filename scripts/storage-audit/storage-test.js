@@ -5454,7 +5454,7 @@ async function main() {
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
       /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
-      /const payload = \{ name: desc\.name,[\s\S]{0,260}productionId: desc\.productionId, lunchLeft: desc\.lunchLeft, otFrom: desc\.otFrom \};/.test(html));
+      /const payload = \{ name: desc\.name,[\s\S]{0,260}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
@@ -5476,7 +5476,7 @@ async function main() {
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
-      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchLeft, otFrom \}/.test(html) &&
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom \}/.test(html) &&
       !/desc\.l1/.test(html));
     check('TT8d Issue C — ingestion ALSO re-runs on the plugin drainRequest event (best-effort background apply), via the SAME idempotent ingest()',
       /const LAPlg = _capPlugins\(\)\.LiveActivity;/.test(html) &&
@@ -5513,11 +5513,13 @@ async function main() {
       /<Toggle value=\{userPrefs\.liveActivityEnabled !== false\} onChange=\{\(v\) => set\(\{ liveActivityEnabled: v \}\)\} ariaLabel="Live Activity" \/>/.test(html) &&
       /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
 
-    // ─ TT10: Group A — lunch countdown + OT-from readout (display-only) ─
-    check('TT10a descriptor lunchLeft — 60-min countdown set ONLY inside the lunch window (60 − minutes-since-lunch-start, floored at 0 so it CLEARS at/after zero); stays 0 elsewhere; flows into the return',
-      /let lunchLeft = 0;/.test(descFn) &&
-      /state = 'lunch';\s*lunchLeft = Math\.max\(0, 60 - \(nowMins - lunchMins\)\);/.test(descFn) &&
-      /state, wrapped, cwd, lunchLeft, otFrom \};/.test(descFn));
+    // ─ TT10: Group A / A.5 — lunch countdown + OT-from + card layout (display-only) ─
+    check('TT10a descriptor lunchEndEpoch — lunch-END epoch (= lunchStart + 60min) set ONLY inside the lunch window (single assignment, today-anchored like hhmmToEpochToday + 3600); 0 elsewhere; flows into the return for the native countdown',
+      /let lunchEndEpoch = 0;/.test(descFn) &&
+      /ls\.setHours\(Math\.floor\(lunchH\), Math\.round\(\(lunchH % 1\) \* 60\), 0, 0\);/.test(descFn) &&
+      /lunchEndEpoch = Math\.floor\(ls\.getTime\(\) \/ 1000\) \+ 3600;/.test(descFn) &&
+      (descFn.match(/lunchEndEpoch = Math\.floor/g) || []).length === 1 &&
+      /state, wrapped, cwd, lunchEndEpoch, otFrom \};/.test(descFn));
     check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
       /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
       /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: '02:00', wrapNextDay: true \}, soloCrew, null\)/.test(descFn) &&
@@ -5526,37 +5528,63 @@ async function main() {
       // display-only: the descriptor never assigns otStartAbs/basicHrs itself (no
       // engine maths re-derived here — it only reads the rendered OT line).
       !/otStartAbs\s*=[^=]/.test(descFn) && !/basicHrs\s*=/.test(descFn));
-    check('TT10c sig + payload carry lunchLeft + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getInt/getString reads)',
-      /l: desc\.lunchLeft, o: desc\.otFrom \}/.test(html) &&
-      /lunchLeft: desc\.lunchLeft, otFrom: desc\.otFrom \}/.test(html));
-    check('TT10d ContentState schema — lunchLeft: Int + otFrom: String (display-only, init-defaulted); the plugin reads both on start AND update; the intent process preserves both across all 4 reconstructions (arm/disarm/update/endWrapped)',
+    check('TT10c sig + payload carry lunchEndEpoch + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getDouble/getString reads)',
+      /l: desc\.lunchEndEpoch, o: desc\.otFrom \}/.test(html) &&
+      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom \}/.test(html));
+    check('TT10d ContentState schema — lunchEndEpoch: Double + otFrom: String (display-only, init-defaulted); the plugin reads both (getDouble/getString) on start AND update; the intent process preserves both across all 4 reconstructions (arm/disarm/update/endWrapped)',
       (() => {
         const attr = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift'), 'utf8');
         const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
         const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
-        const schemaOk = /public var lunchLeft: Int/.test(attr) && /public var otFrom: String/.test(attr) &&
-          /lunchLeft: Int = 0, otFrom: String = ""/.test(attr) &&
-          /self\.lunchLeft = lunchLeft/.test(attr) && /self\.otFrom = otFrom/.test(attr);
-        const pluginOk = (plugin.match(/call\.getInt\("lunchLeft"\)/g) || []).length >= 2 &&
+        const schemaOk = /public var lunchEndEpoch: Double/.test(attr) && /public var otFrom: String/.test(attr) &&
+          /lunchEndEpoch: Double = 0, otFrom: String = ""/.test(attr) &&
+          /self\.lunchEndEpoch = lunchEndEpoch/.test(attr) && /self\.otFrom = otFrom/.test(attr) &&
+          !/lunchLeft/.test(attr);
+        const pluginOk = (plugin.match(/call\.getDouble\("lunchEndEpoch"\)/g) || []).length >= 2 &&
           (plugin.match(/call\.getString\("otFrom"\)/g) || []).length >= 2 &&
-          (plugin.match(/lunchLeft: lunchLeft, otFrom: otFrom/g) || []).length >= 2;
-        const intentsOk = (intents.match(/lunchLeft: cur\.lunchLeft, otFrom: cur\.otFrom/g) || []).length >= 4;
+          (plugin.match(/lunchEndEpoch: lunchEndEpoch, otFrom: otFrom/g) || []).length >= 2 &&
+          !/lunchLeft/.test(plugin);
+        const intentsOk = (intents.match(/lunchEndEpoch: cur\.lunchEndEpoch, otFrom: cur\.otFrom/g) || []).length >= 4 &&
+          !/lunchLeft/.test(intents);
         return schemaOk && pluginOk && intentsOk;
       })());
-    check('TT10e SwiftUI readout — secondaryReadout(state/lunchLeft/otFrom): lunch line shows ONLY on lunch AND clears at zero (lunchLeft > 0), OT-from hidden when wrapped; INFORMATIONAL neutrals only (tmMuted/tmFaint — never tmPen/tmAmber/tmGood); placed on lock screen + DI expanded (×2), DI compact untouched',
+    check('TT10e SwiftUI lunch countdown is a NATIVE ticking view — lunchCountdown renders Text(timerInterval: lunchStart…lunchEnd, countsDown: true, showsHours: false) so it advances DOWN on the locked screen with zero pushes (fork.knife + "left", amber); timerSlot picks the countdown ON LUNCH (lunchEnd > 0) else the elapsed count-up; elapsedTimer stays the native Text(timerInterval:) too',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
-        const sr = (la.match(/private func secondaryReadout[\s\S]*?\n\}/) || [''])[0];
-        const sigOk = /private func secondaryReadout\(state: String, lunchLeft: Int, otFrom: String\)/.test(la);
-        const gatesOk = /let showLunch = state == "lunch" && lunchLeft > 0/.test(sr) &&
-          /let showOt = state != "wrapped" && !otFrom\.isEmpty/.test(sr);
-        const textOk = /\\\(lunchLeft\) min left/.test(sr) && /systemImage: "fork\.knife"/.test(sr) &&
-          /OT from \\\(otFrom\)/.test(sr);
-        const neutralOk = /\.tmMuted/.test(sr) && /\.tmFaint/.test(sr) &&
-          !/\.tmPen/.test(sr) && !/\.tmAmber/.test(sr) && !/\.tmGood/.test(sr) && !/\.tmSky/.test(sr);
-        const placedOk = (la.match(/secondaryReadout\(state: context\.state\.state/g) || []).length === 2 &&
-          /compactTrailing: \{\s*moneyText\(context\.state\.totalText/.test(la);
-        return sigOk && gatesOk && textOk && neutralOk && placedOk;
+        const cd = (la.match(/private func lunchCountdown[\s\S]*?\n\}/) || [''])[0];
+        const countdownOk = /Text\(timerInterval: callDate\(end\)\.addingTimeInterval\(-3600\)\.\.\.callDate\(end\),/.test(cd) &&
+          /countsDown: true, showsHours: false\)/.test(cd) &&
+          /Image\(systemName: "fork\.knife"\)/.test(cd) && /Text\("left"\)/.test(cd) &&
+          /\.foregroundColor\(\.tmAmber\)/.test(cd);
+        const ts = (la.match(/private func timerSlot[\s\S]*?\n\}/) || [''])[0];
+        const slotOk = /if state == "lunch" && lunchEnd > 0 \{/.test(ts) &&
+          /lunchCountdown\(end: lunchEnd\)/.test(ts) &&
+          /elapsedTimer\(anchor: anchor, end: end\)/.test(ts);
+        const elapsedNativeOk = /private func elapsedTimer[\s\S]*?Text\(timerInterval: callDate\(anchor\)/.test(la);
+        // the elapsed timer is now invoked ONLY through timerSlot (moved off the
+        // total's line) — exactly one call site.
+        const movedOk = (la.match(/elapsedTimer\(anchor: anchor/g) || []).length === 1;
+        return countdownOk && slotOk && elapsedNativeOk && movedOk;
+      })());
+    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow (timer slot + OT-from in tmFaint, hidden when wrapped) under a hairline, placed on lock screen + DI expanded (×2); DI compact untouched (dot + money); the old secondaryReadout row is GONE',
+      (() => {
+        const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
+        const gone = !/secondaryReadout/.test(la);
+        const pr = (la.match(/private func timerProjectionRow[\s\S]*?\n\}/) || [''])[0];
+        const rowOk = /timerSlot\(state: state, anchor: anchor, end: end, lunchEnd: lunchEnd\)/.test(pr) &&
+          /if state != "wrapped" && !otFrom\.isEmpty \{/.test(pr) &&
+          /Text\("OT from \\\(otFrom\)"\)/.test(pr) && /\.foregroundColor\(\.tmFaint\)/.test(pr);
+        // lock screen: DAY TOTAL + anchor are micro-labels on one row, the total is
+        // alone (moneyFont), a hairline precedes Line 4.
+        const lockOk = /microLabel\("DAY TOTAL"\)\s*Spacer\(\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
+          /moneyText\(context\.state\.totalText, font: moneyFont\)/.test(la) &&
+          /Rectangle\(\)\.fill\(Color\.tmFaint\.opacity\(0\.18\)\)\.frame\(height: 0\.5\)/.test(la);
+        // DI expanded: anchor relocated under the total (trailing); compact intact.
+        const diOk = /moneyText\(context\.state\.totalText, font: moneyFontSmall\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
+          /compactTrailing: \{\s*moneyText\(context\.state\.totalText/.test(la) &&
+          /compactLeading: \{\s*Circle\(\)\.fill\(chipColor/.test(la);
+        const placedOk = (la.match(/timerProjectionRow\(state: context\.state\.state/g) || []).length === 2;
+        return gone && rowOk && lockOk && diOk && placedOk;
       })());
   }
 
