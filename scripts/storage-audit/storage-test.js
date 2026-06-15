@@ -5670,6 +5670,26 @@ async function main() {
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
       /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \}/.test(html) &&
       !/desc\.l1/.test(html));
+    // ─ TT8c-LA: lunch-exit fix — the activity refresh wake is aimed at lunch-end ─
+    check('TT8c2 descriptor staleEpoch is LUNCH-AWARE — ON LUNCH (lunchLogged && curtailMins===0 && lunchEndEpoch>now) points the activity stale wake at lunchEndEpoch so the LOCKED card refreshes at lunch-end and the native isOnLunch flips false; else the ~16h-after-anchor safety sentinel; the OLD flat unconditional call+16h form is GONE (guards the LA lunch-exit fix against a silent regress)',
+      /const nowEpoch = Math\.floor\(Date\.now\(\) \/ 1000\);/.test(html) &&
+      /const onLunchNow = lunchLogged && curtailMins === 0 && lunchEndEpoch > nowEpoch;/.test(html) &&
+      /const staleEpoch = onLunchNow \? lunchEndEpoch : \(callEpoch \? callEpoch \+ 16 \* 3600 : 0\);/.test(html) &&
+      // the pre-fix flat form must be gone — this is the regression the bug was
+      !/const staleEpoch = callEpoch \? callEpoch \+ 16 \* 3600 : 0;/.test(html));
+    check('TT8c3 native lunch-end wake — TMLiveActivity.lunchStaleDate mirrors the SwiftUI isOnLunch (lunchLogged && curtailMins==0 && lunchEndEpoch>now → Date(lunchEndEpoch), else nil); confirmLunch + EVERY intent-side activity.update routes staleDate through it — no staleDate: nil left to clobber the wake',
+      (() => {
+        const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
+        const helperOk = /static func lunchStaleDate\(_ s: TimeMachineActivityAttributes\.ContentState\) -> Date\? \{/.test(intents) &&
+          /guard s\.lunchLogged, s\.curtailMins == 0,\s*s\.lunchEndEpoch > Date\(\)\.timeIntervalSince1970 else \{ return nil \}/.test(intents) &&
+          /return Date\(timeIntervalSince1970: s\.lunchEndEpoch\)/.test(intents);
+        // confirmLunch (the primary fix path) routes through the helper, not nil
+        const confirmOk = /static func confirmLunch[\s\S]*?await activity\.update\(ActivityContent\(state: next, staleDate: lunchStaleDate\(next\)\)\)/.test(intents);
+        // applied broadly, and NO bare staleDate: nil remains in the intents file
+        const appliedCount = (intents.match(/staleDate: lunchStaleDate\(next\)\)/g) || []).length;
+        const noNil = !/staleDate: nil/.test(intents);
+        return helperOk && confirmOk && appliedCount >= 8 && noNil;
+      })());
     check('TT8d Issue C — ingestion ALSO re-runs on the plugin drainRequest event (best-effort background apply), via the SAME idempotent ingest()',
       /const LAPlg = _capPlugins\(\)\.LiveActivity;/.test(html) &&
       /LAPlg\.addListener\('drainRequest', \(\) => ingest\(\)\)/.test(html));

@@ -164,6 +164,25 @@ enum TMLiveActivity {
         Activity<TimeMachineActivityAttributes>.activities.first { $0.attributes.productionId == productionId }
     }
 
+    /// The lunch-end refresh wake (LA lunch-exit fix). `isOnLunch` on the card is a
+    /// Date()-vs-lunchEndEpoch predicate the SwiftUI view FREEZES between content
+    /// updates — Text(timerInterval:) self-ticks without recomputing `body` — so the
+    /// card never leaves AT-LUNCH on the locked screen until something refreshes it.
+    /// Pointing the ActivityContent staleDate at lunchEndEpoch makes the system
+    /// refresh the card AT lunch-end → `body` recomputes → isOnLunch flips false and
+    /// the chip / timer slot / Curtailed?-Full-hour button (all on that one
+    /// predicate) resolve together, with no foreground. Mirrors the view's isOnLunch
+    /// EXACTLY: a still-on-lunch state (logged, uncurtailed, hour-end still ahead) →
+    /// the lunch-end Date; anything else → nil (the prior behaviour, so a curtail /
+    /// wrap / post-lunch update carries no wake). Every intent-side update routes its
+    /// staleDate through this, so a mid-lunch tap can never clobber the wake.
+    @available(iOS 16.2, *)
+    static func lunchStaleDate(_ s: TimeMachineActivityAttributes.ContentState) -> Date? {
+        guard s.lunchLogged, s.curtailMins == 0,
+              s.lunchEndEpoch > Date().timeIntervalSince1970 else { return nil }
+        return Date(timeIntervalSince1970: s.lunchEndEpoch)
+    }
+
     /// Current two-tap arm state ("" | "lunch" | "wrap"), gated on FRESHNESS:
     /// an arm older than armWindow returns "" so a stale CONFIRM? (auto-reset
     /// missed because iOS suspended the process mid-hold) can never confirm —
@@ -190,7 +209,7 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
-        await activity.update(ActivityContent(state: next, staleDate: nil))
+        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
         return stamp
     }
 
@@ -208,7 +227,7 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
-        await activity.update(ActivityContent(state: next, staleDate: nil))
+        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
 
     /// CONFIRM-side update — flips the chip state and clears the arm, preserving
@@ -225,7 +244,7 @@ enum TMLiveActivity {
             endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
-        await activity.update(ActivityContent(state: next, staleDate: nil))
+        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
 
     /// BEST-EFFORT — flip to WRAPPED, freeze the timer (endEpoch = now), clear
@@ -234,17 +253,19 @@ enum TMLiveActivity {
     static func endWrapped(_ productionId: String) async {
         guard let activity = current(productionId) else { return }
         let cur = activity.content.state
-        let wrapped = ActivityContent(
-            state: TimeMachineActivityAttributes.ContentState(
-                totalText: cur.totalText,
-                state: "wrapped",
-                callEpoch: cur.callEpoch,
-                anchorLabel: cur.anchorLabel,
-                endEpoch: Date().timeIntervalSince1970,
-                armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
-            ),
-            staleDate: nil
+        let next = TimeMachineActivityAttributes.ContentState(
+            totalText: cur.totalText,
+            state: "wrapped",
+            callEpoch: cur.callEpoch,
+            anchorLabel: cur.anchorLabel,
+            endEpoch: Date().timeIntervalSince1970,
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
+        // A normal end-of-day wrap is post-lunch (or curtailed) → helper returns
+        // nil, behaviour unchanged. A rare wrap DURING the lunch hour keeps the
+        // wake so the lingering wrapped card refreshes at lunch-end (drops the
+        // stuck lunch countdown for the frozen day timer).
+        let wrapped = ActivityContent(state: next, staleDate: lunchStaleDate(next))
         await activity.update(wrapped)
         await activity.end(wrapped, dismissalPolicy: .after(Date().addingTimeInterval(5 * 60)))
     }
@@ -265,7 +286,7 @@ enum TMLiveActivity {
             armed: "curtail", armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
             otFrom: cur.otFrom, curtailMins: mins, lunchLogged: cur.lunchLogged
         )
-        await activity.update(ActivityContent(state: next, staleDate: nil))
+        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
         return stamp
     }
 
@@ -281,7 +302,7 @@ enum TMLiveActivity {
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
             otFrom: cur.otFrom, curtailMins: 0, lunchLogged: cur.lunchLogged
         )
-        await activity.update(ActivityContent(state: next, staleDate: nil))
+        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
 
     /// COMMIT a pending curtail IF it is still the exact armed instance — the
@@ -305,7 +326,7 @@ enum TMLiveActivity {
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
             otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
-        await activity.update(ActivityContent(state: next, staleDate: nil))
+        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
         await requestBackgroundDrain()
     }
 
@@ -327,7 +348,7 @@ enum TMLiveActivity {
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: flooredMin + 3600,
             otFrom: cur.otFrom, curtailMins: 0, lunchLogged: true
         )
-        await activity.update(ActivityContent(state: next, staleDate: nil))
+        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
 
     /// BEST-EFFORT (Issue C) — if the app's WKWebView/JS is alive in this process

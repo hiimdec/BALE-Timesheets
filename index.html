@@ -15095,8 +15095,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (m) otFrom = m[1];
         } catch (_) {}
       }
-      // Safety auto-end ~16h after the anchor so a forgotten Activity self-clears.
-      const staleEpoch = callEpoch ? callEpoch + 16 * 3600 : 0;
+      // Activity stale wake. While ON LUNCH — mirroring the native isOnLunch
+      // predicate (lunchLogged, uncurtailed, hour-end still ahead of now) — point
+      // staleDate at lunchEndEpoch so a foreground push carries the lunch-end wake
+      // and the LOCKED card refreshes AT lunch-end (the system re-renders, native
+      // isOnLunch flips false with no foreground — the LA lunch-exit fix). Else the
+      // ~16h-after-anchor freshness sentinel that flags a forgotten Activity stale
+      // (staleDate only MARKS content old — it never ends/dismisses the card; the
+      // JS controller + reconcile sweep own ending). After lunch-end (or a curtail)
+      // onLunchNow is false so it reverts to that sentinel.
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const onLunchNow = lunchLogged && curtailMins === 0 && lunchEndEpoch > nowEpoch;
+      const staleEpoch = onLunchNow ? lunchEndEpoch : (callEpoch ? callEpoch + 16 * 3600 : 0);
       return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged };
     }
 
