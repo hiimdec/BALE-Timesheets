@@ -541,6 +541,33 @@ enum CallSheetPipeline {
             perField["ccEmail"] = ["state": "missing"]
         }
 
+        // TITLE — deterministic label harvest FIRST, then masthead / model
+        // fallback, ALWAYS rejecting call-sheet boilerplate so a header line
+        // ("CALL SHEET DAY 6 OF 7 …") never lands as the title.
+        func setHarvestedTitle(_ t: (value: String, pageIndex: Int, range: NSRange)) {
+            fields["title"] = t.value
+            var e: [String: Any] = ["value": t.value, "state": "verified", "page": t.pageIndex + 1]
+            if let page = pages.first(where: { $0.index == t.pageIndex }) {
+                e["snippet"] = snippet(of: page.text, around: t.range)
+                if let crop = cropImage(for: t.range, on: page) { e["crop"] = crop }
+            }
+            perField["title"] = e
+        }
+        if let labelled = harvestTitle(pages) {
+            setHarvestedTitle(labelled)                                   // brand/production label wins
+        } else {
+            let modelTitle = (fields["title"] as? String) ?? ""
+            if modelTitle.isEmpty || isTitleBoilerplate(modelTitle) {
+                if let masthead = mastheadTitle(pages) {
+                    setHarvestedTitle(masthead)                          // label-less masthead (music videos)
+                } else {
+                    fields["title"] = nil                               // boilerplate-only → honest empty
+                    perField["title"] = ["state": "missing"]
+                }
+            }
+            // else: a non-boilerplate model title (e.g. a masthead the model read) stays as-is
+        }
+
         return [
             "fields": fields,
             "perField": perField,
@@ -879,6 +906,82 @@ enum CallSheetPipeline {
             (NSEqualRanges($0.lineRange, best.lineRange) || abs($0.lineRange.location - best.lineRange.location) <= 120)
         }
         return (best, cc)
+    }
+
+    // ── Title harvest (deterministic, no model) ──────────────────────────────
+    // The 3B model often grabs the page header ("CALL SHEET DAY 6 OF 7 …")
+    // instead of the production title. So: prefer a value next to a title LABEL
+    // (production/brand labels rank above campaign/project — the PRODUCTION name
+    // is how the user recognises the job), reject call-sheet boilerplate, and
+    // keep the model / masthead top line only as fallback.
+
+    static let titleLabels = ["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"]
+    static let titleTrimSet = CharacterSet(charactersIn: " \t\r\n:-–—|")
+
+    static func isTitleBoilerplate(_ s: String) -> Bool {
+        let v = s.lowercased()
+        if v.contains("call sheet") || v.contains("shoot day") || v.contains("unit list") || v.contains("movement order") { return true }
+        if v.range(of: "day\\s+\\d+\\s+of\\s+\\d+", options: .regularExpression) != nil { return true }                       // "DAY 6 OF 7"
+        if v.range(of: "^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b.*\\d", options: .regularExpression) != nil { return true } // weekday + date
+        if v.range(of: "\\d{1,2}(st|nd|rd|th)?\\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", options: .regularExpression) != nil { return true }
+        if v.range(of: "\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4}", options: .regularExpression) != nil { return true }          // 14/07/26
+        return false
+    }
+
+    static func leadingWhitespace(_ s: String) -> Int { s.prefix(while: { $0 == " " || $0 == "\t" }).count }
+
+    /// Value next to the highest-priority title label present (same line, else
+    /// the following non-empty line), rejecting boilerplate.
+    static func harvestTitle(_ pages: [SourcePage]) -> (value: String, pageIndex: Int, range: NSRange)? {
+        for label in titleLabels {
+            for page in pages {
+                let ns = page.text as NSString
+                var idx = 0
+                while idx < ns.length {
+                    let lr = ns.lineRange(for: NSRange(location: idx, length: 0))
+                    idx = lr.location + lr.length
+                    let lineNS = ns.substring(with: lr) as NSString
+                    let lbl = lineNS.range(of: label, options: .caseInsensitive)
+                    if lbl.location == NSNotFound { continue }
+                    let after = lbl.location + lbl.length
+                    var value = lineNS.substring(from: after).trimmingCharacters(in: titleTrimSet)
+                    var valRange = NSRange(location: lr.location + after, length: (value as NSString).length)
+                    if value.isEmpty, idx < ns.length {
+                        // label alone → take the next non-empty line as the value
+                        let nlr = ns.lineRange(for: NSRange(location: idx, length: 0))
+                        let nRaw = ns.substring(with: nlr)
+                        value = nRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+                        valRange = NSRange(location: nlr.location + leadingWhitespace(nRaw), length: (value as NSString).length)
+                    } else if !value.isEmpty {
+                        let afterNS = lineNS.substring(from: after) as NSString
+                        let vr = afterNS.range(of: value)
+                        if vr.location != NSNotFound { valRange = NSRange(location: lr.location + after + vr.location, length: vr.length) }
+                    }
+                    if !value.isEmpty, !isTitleBoilerplate(value) {
+                        return (value, page.index, valRange)
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Masthead fallback — the first substantial, non-boilerplate line of page 1.
+    /// Keeps label-less sheets (music videos: "KASABIAN - GREAT PRETENDER") working.
+    static func mastheadTitle(_ pages: [SourcePage]) -> (value: String, pageIndex: Int, range: NSRange)? {
+        guard let page = pages.first else { return nil }
+        let ns = page.text as NSString
+        var idx = 0
+        while idx < ns.length {
+            let lr = ns.lineRange(for: NSRange(location: idx, length: 0))
+            idx = lr.location + lr.length
+            let raw = ns.substring(with: lr)
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.count >= 3, line.rangeOfCharacter(from: .letters) != nil, !isTitleBoilerplate(line) {
+                return (line, page.index, NSRange(location: lr.location + leadingWhitespace(raw), length: (line as NSString).length))
+            }
+        }
+        return nil
     }
 
     static func containsUKPostcode(_ s: String) -> Bool {

@@ -5677,6 +5677,19 @@ async function main() {
           /\} else \{[\s\S]{0,200}FALLBACK — no scored invoicing email/.test(sw) &&  // model is fallback-only
           /if let crop = cropImage\(for: hit\.range, on: page\) \{ e\["crop"\] = crop \}/.test(sw); // crop from position
       })());
+    // ── Prompt (2d) — title prefers the labelled production field, rejects boilerplate ──
+    check('UU1v title uses a deterministic LABEL harvest first (production/brand labels rank above campaign/project), rejects call-sheet boilerplate (call sheet / shoot day / DAY N OF N / weekday+date), masthead-line fallback for label-less sheets, model only when non-boilerplate — used as the title source in run()',
+      (() => {
+        const sw = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetPlugin.swift'), 'utf8');
+        return /static let titleLabels = \["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"\]/.test(sw) && // priority order, brand above campaign
+          /static func isTitleBoilerplate\(_ s: String\) -> Bool/.test(sw) &&
+          /v\.contains\("call sheet"\)/.test(sw) &&
+          /"day\\\\s\+\\\\d\+\\\\s\+of\\\\s\+\\\\d\+"/.test(sw) &&                       // DAY N OF N
+          /static func harvestTitle\(_ pages: \[SourcePage\]\)/.test(sw) &&
+          /static func mastheadTitle\(_ pages: \[SourcePage\]\)/.test(sw) &&
+          /if let labelled = harvestTitle\(pages\) \{\s*setHarvestedTitle\(labelled\)/.test(sw) &&  // label harvest is primary
+          /if modelTitle\.isEmpty \|\| isTitleBoilerplate\(modelTitle\)/.test(sw);          // model kept only if non-boilerplate
+      })());
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
