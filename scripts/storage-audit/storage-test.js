@@ -2996,6 +2996,28 @@ async function main() {
         Array.isArray(aggregateMonthly(undefined, [], { displayName: 'U' })) &&
         aggregateMonthly(undefined, [], { displayName: 'U' }).length === 0);
     }
+
+    // ─ X15: all-time earnings month-LIST is timezone-safe (bug fix). ─
+    // The stats month-breakdown range (allMonthsInRange → monthBreakdown table)
+    // must be built from "YYYY-MM" STRING arithmetic, never
+    // new Date(y,m,1).toISOString().slice(0,7): that reads a LOCAL-midnight
+    // 1st-of-month back as the PREVIOUS month in any zone east of UTC (e.g. BST),
+    // which duplicated the earliest month ("May listed twice") and dropped the
+    // last ("current month missing"). Presentation only — earningsByMonth amounts
+    // key on day.date.slice(0,7) (string-safe) and the pay calc is untouched.
+    {
+      const srcHtml = fs.readFileSync(SRC_HTML, 'utf8');
+      check('X15a no UTC month-key construction remains — toISOString().slice(0,7) is gone from index.html (the BST month-shift bug pattern)',
+        !/toISOString\(\)\.slice\(0, ?7\)/.test(srcHtml));
+      check('X15b all-time range walks "YYYY-MM" string keys via nextMo, bounded by the earliest/latest earning-month keys (no Date-wrapped bounds)',
+        /const nextMo = \(mo\) => \{\s*const \[y, m\] = mo\.split\('-'\)\.map\(Number\);\s*return m === 12 \? `\$\{y \+ 1\}-01` : `\$\{y\}-\$\{String\(m \+ 1\)\.padStart\(2, '0'\)\}`;/.test(srcHtml) &&
+        /let cur = moKeys\[0\];\s*const end = moKeys\[moKeys\.length - 1\];\s*while \(cur <= end\) \{ months\.push\(cur\); cur = nextMo\(cur\); \}/.test(srcHtml) &&
+        !/new Date\(moKeys\[0\] \+ '-01/.test(srcHtml));
+      check('X15c tax-year month list is string-built too (same defect class, same view)',
+        /let cur = `\$\{yr\}-04`;\s*for \(let i = 0; i < 12; i\+\+\) \{ months\.push\(cur\); cur = nextMo\(cur\); \}/.test(srcHtml));
+      check('X15d month label keeps the year (month:long + year:numeric) so two different Mays never read identically',
+        /const fmtMonth = \(yyyymm\) => new Date\(yyyymm \+ '-01T12:00:00'\)\.toLocaleString\('en-GB', \{ month: 'long', year: 'numeric' \}\)/.test(srcHtml));
+    }
   }
 
   // ===== Y. MONTHLY EARNINGS CHART — windowing + vs-last-year =====

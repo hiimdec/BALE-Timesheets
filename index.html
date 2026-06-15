@@ -18613,19 +18613,35 @@ const setDays = (updater) =>
         const daysByType = Object.entries(dayTypeMap).map(([type, set]) => ({ type, count: set.size })).sort((a, b) => b.count - a.count);
 
         const now2 = new Date();
+        // Month-range list for the breakdown table. Built with STRING arithmetic on
+        // "YYYY-MM" keys — NEVER by formatting a local-midnight `new Date(y, m, 1)`
+        // through UTC ISO and month-slicing it, which reads back the PREVIOUS month
+        // in any zone east of UTC (e.g. BST: local midnight on the 1st is 23:00 the
+        // prior day in UTC). That shift duplicated the earliest month ("May listed
+        // twice") and dropped the last ("current month missing"). Mirrors
+        // aggregateMonthly's TZ-safe walker. Presentation only — earningsByMonth
+        // amounts are keyed on day.date.slice(0,7) (already string-safe) and the
+        // pay calc is untouched.
+        const nextMo = (mo) => {
+          const [y, m] = mo.split('-').map(Number);
+          return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+        };
         let allMonthsInRange;
         if (filter === 'taxyear') {
           const yr = (now2.getMonth() < 3 || (now2.getMonth() === 3 && now2.getDate() < 6)) ? now2.getFullYear() - 1 : now2.getFullYear();
-          allMonthsInRange = Array.from({ length: 12 }, (_, i) => new Date(yr, 3 + i, 1).toISOString().slice(0, 7)).reverse();
+          const months = [];
+          let cur = `${yr}-04`;
+          for (let i = 0; i < 12; i++) { months.push(cur); cur = nextMo(cur); }
+          allMonthsInRange = months.reverse();
         } else if (filter === 'ytd') {
           allMonthsInRange = Array.from({ length: now2.getMonth() + 1 }, (_, i) => `${now2.getFullYear()}-${String(i + 1).padStart(2, '0')}`).reverse();
         } else {
           const moKeys = Object.keys(earningsByMonth).sort();
           if (moKeys.length > 0) {
             const months = [];
-            let cur = new Date(moKeys[0] + '-01T12:00:00');
-            const end = new Date(moKeys[moKeys.length - 1] + '-01T12:00:00');
-            while (cur <= end) { months.push(cur.toISOString().slice(0, 7)); cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); }
+            let cur = moKeys[0];
+            const end = moKeys[moKeys.length - 1];
+            while (cur <= end) { months.push(cur); cur = nextMo(cur); }
             allMonthsInRange = months.reverse();
           } else { allMonthsInRange = []; }
         }
