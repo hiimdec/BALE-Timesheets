@@ -233,7 +233,8 @@ private func actionButtons(_ productionId: String, armed: String) -> some View {
 // pushed-integer "N min left" that only refreshed on foreground. The interval
 // starts 60min before the end so the readout reads as minutes-left (MM:SS,
 // showsHours:false); once "now" passes the end the system clamps it to 00:00.
-// Amber echoes the ON LUNCH chip; rendered only while state == "lunch".
+// Just the fork.knife glyph + the ticking figure — no trailing label. Amber
+// echoes the ON LUNCH chip; rendered only while state == "lunch".
 private func lunchCountdown(end: Double) -> some View {
     HStack(spacing: 4) {
         Image(systemName: "fork.knife").font(.system(size: 12, weight: .semibold))
@@ -241,7 +242,6 @@ private func lunchCountdown(end: Double) -> some View {
              countsDown: true, showsHours: false)
             .font(timerFont)
             .monospacedDigit()
-        Text("left").font(.system(size: 12, weight: .medium)).foregroundColor(.tmMuted)
     }
     .foregroundColor(.tmAmber)
     .lineLimit(1)
@@ -303,9 +303,9 @@ struct TimeMachineLockScreenView: View {
             // Line 3: the total alone, large and clean (elapsed timer moved off
             // this line so the figure reads at a glance)
             moneyText(context.state.totalText, font: moneyFont)
-            // Line 4 (under a hairline): timer slot — elapsed count-up, or the
-            // native lunch countdown ON LUNCH — on the left; OT-from on the right
-            Rectangle().fill(Color.tmFaint.opacity(0.18)).frame(height: 0.5).padding(.top, 2)
+            // Line 4: timer slot — elapsed count-up, or the native lunch countdown
+            // ON LUNCH — on the left; OT-from on the right. The VStack spacing alone
+            // separates it from the total above (no divider).
             timerProjectionRow(state: context.state.state, anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
             if #available(iOS 17.0, *), context.state.state != "wrapped" {
                 actionButtons(context.attributes.productionId, armed: context.state.armed)

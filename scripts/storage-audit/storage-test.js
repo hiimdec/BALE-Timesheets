@@ -5548,13 +5548,13 @@ async function main() {
           !/lunchLeft/.test(intents);
         return schemaOk && pluginOk && intentsOk;
       })());
-    check('TT10e SwiftUI lunch countdown is a NATIVE ticking view — lunchCountdown renders Text(timerInterval: lunchStart…lunchEnd, countsDown: true, showsHours: false) so it advances DOWN on the locked screen with zero pushes (fork.knife + "left", amber); timerSlot picks the countdown ON LUNCH (lunchEnd > 0) else the elapsed count-up; elapsedTimer stays the native Text(timerInterval:) too',
+    check('TT10e SwiftUI lunch countdown is a NATIVE ticking view — lunchCountdown renders Text(timerInterval: lunchStart…lunchEnd, countsDown: true, showsHours: false) so it advances DOWN on the locked screen with zero pushes (fork.knife + the figure only — no trailing "left" label — amber); timerSlot picks the countdown ON LUNCH (lunchEnd > 0) else the elapsed count-up; elapsedTimer stays the native Text(timerInterval:) too',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const cd = (la.match(/private func lunchCountdown[\s\S]*?\n\}/) || [''])[0];
         const countdownOk = /Text\(timerInterval: callDate\(end\)\.addingTimeInterval\(-3600\)\.\.\.callDate\(end\),/.test(cd) &&
           /countsDown: true, showsHours: false\)/.test(cd) &&
-          /Image\(systemName: "fork\.knife"\)/.test(cd) && /Text\("left"\)/.test(cd) &&
+          /Image\(systemName: "fork\.knife"\)/.test(cd) && !/Text\("left"\)/.test(cd) &&
           /\.foregroundColor\(\.tmAmber\)/.test(cd);
         const ts = (la.match(/private func timerSlot[\s\S]*?\n\}/) || [''])[0];
         const slotOk = /if state == "lunch" && lunchEnd > 0 \{/.test(ts) &&
@@ -5566,7 +5566,7 @@ async function main() {
         const movedOk = (la.match(/elapsedTimer\(anchor: anchor/g) || []).length === 1;
         return countdownOk && slotOk && elapsedNativeOk && movedOk;
       })());
-    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow (timer slot + OT-from in tmFaint, hidden when wrapped) under a hairline, placed on lock screen + DI expanded (×2); DI compact untouched (dot + money); the old secondaryReadout row is GONE',
+    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow (timer slot + OT-from in tmFaint, hidden when wrapped) separated by spacing only (NO divider), placed on lock screen + DI expanded (×2); DI compact untouched (dot + money); the old secondaryReadout row is GONE',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const gone = !/secondaryReadout/.test(la);
@@ -5575,10 +5575,11 @@ async function main() {
           /if state != "wrapped" && !otFrom\.isEmpty \{/.test(pr) &&
           /Text\("OT from \\\(otFrom\)"\)/.test(pr) && /\.foregroundColor\(\.tmFaint\)/.test(pr);
         // lock screen: DAY TOTAL + anchor are micro-labels on one row, the total is
-        // alone (moneyFont), a hairline precedes Line 4.
+        // alone (moneyFont), and the divider that used to precede Line 4 is GONE —
+        // the VStack spacing separates them.
         const lockOk = /microLabel\("DAY TOTAL"\)\s*Spacer\(\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
           /moneyText\(context\.state\.totalText, font: moneyFont\)/.test(la) &&
-          /Rectangle\(\)\.fill\(Color\.tmFaint\.opacity\(0\.18\)\)\.frame\(height: 0\.5\)/.test(la);
+          !/Rectangle\(\)\.fill\(Color\.tmFaint\.opacity\(0\.18\)\)/.test(la);
         // DI expanded: anchor relocated under the total (trailing); compact intact.
         const diOk = /moneyText\(context\.state\.totalText, font: moneyFontSmall\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
           /compactTrailing: \{\s*moneyText\(context\.state\.totalText/.test(la) &&
