@@ -272,6 +272,12 @@ async function transformedAppCode() {
     'try { globalThis.__categorizeBreakdownLine = categorizeBreakdownLine; } catch (_) {}\n' +
     'try { globalThis.__computeProductionKitDiscount = computeProductionKitDiscount; } catch (_) {}\n' +
     'try { globalThis.__todayISO = todayISO; } catch (_) {}\n' +
+    // Expenses rework (EX-suite): expose calcForDisplay + the pure expense-entry
+    // migration helpers so the suite can prove migration-invariance (calcForDisplay
+    // byte-identical pre/post migrate) and the old→new / perDiem→instance mapping.
+    'try { globalThis.__calcForDisplay = calcForDisplay; } catch (_) {}\n' +
+    'try { globalThis.__migrateDayExpenses = migrateDayExpenses; } catch (_) {}\n' +
+    'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
     // suite can verify the chart's data layer without rendering.
@@ -356,7 +362,7 @@ async function main() {
     check('C1 upgrade: productions copied to Preferences', Preferences._store.get('bigals_productions') === seededProductions,
       `prefs=${Preferences._store.get('bigals_productions')}`);
     check('C2 upgrade: prefs copied to Preferences', Preferences._store.get('bigals_user_prefs') === seededPrefs);
-    check('C3 upgrade: schema version copied', Preferences._store.get('bigals_schema_version') === '3');
+    check('C3 upgrade: schema version copied then migrated to current (v4 — expenses rework)', Preferences._store.get('bigals_schema_version') === '4');
     check('C4 upgrade: synchronous read returns copied data', storage.get('bigals_productions') === seededProductions);
     check('C5 upgrade: migrated flag set', Preferences._store.get('bigals_native_migrated') === '1');
     check('C6 upgrade: localStorage left intact as fallback', localStorage._store.get('bigals_productions') === seededProductions);
@@ -419,7 +425,7 @@ async function main() {
     const stalePrefsBackup = JSON.stringify({ productions: '[]', schemaVersion: '2' });
     const Preferences = makePreferences({
       bigals_productions: '[]',
-      bigals_schema_version: '3',
+      bigals_schema_version: '4',   // current → genuine no-op launch (prune fires)
       bigals_native_migrated: '1',
       bigals_pre_migration_backup: stalePrefsBackup,
     });
@@ -434,7 +440,7 @@ async function main() {
     check('F1 prune: productions data untouched',
       Preferences._store.get('bigals_productions') === '[]');
     check('F1 prune: schema_version unchanged',
-      Preferences._store.get('bigals_schema_version') === '3');
+      Preferences._store.get('bigals_schema_version') === '4');
   }
   {
     // F2 — MIGRATION LAUNCH WITH STALE BACKUP (native): backup is REFRESHED
@@ -466,13 +472,13 @@ async function main() {
       parsedBackup && parsedBackup.schemaVersion === '2',
       `parsed.schemaVersion=${parsedBackup && parsedBackup.schemaVersion}`);
     check('F2 prune: migration ran (schema bumped to current)',
-      Preferences._store.get('bigals_schema_version') === '3');
+      Preferences._store.get('bigals_schema_version') === '4');
   }
   {
     // F3 — NO-OP LAUNCH WITH NO BACKUP (native): no-op, no error.
     const Preferences = makePreferences({
       bigals_productions: '[]',
-      bigals_schema_version: '3',
+      bigals_schema_version: '4',   // current → no-op launch, no backup written
       bigals_native_migrated: '1',
       // no pre_migration_backup key
     });
@@ -490,7 +496,7 @@ async function main() {
     // F4 — WEB: same prune behaviour through localStorage.
     const localStorage = makeLocalStorage({
       bigals_productions: '[]',
-      bigals_schema_version: '3',
+      bigals_schema_version: '4',   // current → no-op launch (prune fires)
       bigals_pre_migration_backup: '{"productions":"[]","schemaVersion":"2"}',
     });
     await runApp({ capacitor: undefined, localStorage });
@@ -623,7 +629,7 @@ async function main() {
         const db = req.result;
         const tx = db.transaction('kv', 'readwrite');
         tx.objectStore('kv').put(seededProductions, 'bigals_productions');
-        tx.objectStore('kv').put('3', 'bigals_schema_version');
+        tx.objectStore('kv').put('4', 'bigals_schema_version');
         tx.objectStore('kv').put('1', '__idb_ls_import_complete');
         tx.oncomplete = () => { db.close(); resolve(); };
         tx.onerror = () => reject(tx.error);
@@ -641,7 +647,7 @@ async function main() {
       storage.get('bigals_productions') === seededProductions,
       `got=${storage.get('bigals_productions')}`);
     check('J1 boot-order: schema_version untouched (no spurious migration)',
-      storage.get('bigals_schema_version') === '3',
+      storage.get('bigals_schema_version') === '4',
       `schema=${storage.get('bigals_schema_version')}`);
     const mr = sb.__migrationResult;
     check('J1 boot-order: runMigrations took no-op (early return)',
@@ -1070,6 +1076,90 @@ async function main() {
       `eps=${JSON.stringify(stored && stored.expensePresets)}`);
     check('EP3 pre-rework: legacy fields preserved (no wipe)',
       stored && stored.displayName === 'Legacy User' && stored.defaultBDR === 500);
+  }
+
+  // ===== EX. EXPENSES REWORK — day-model migration invariance (lossless) =====
+  // The day-model migration must be value-preserving: calcForDisplay byte-identical
+  // pre/post migrate. Per-diem + ordinary expenses are SELF-COMPARING (augmentCalc
+  // read-compat makes old-shape and migrated-shape render identically — no golden);
+  // the cascade case asserts MIGRATIONS[4]'s materialisation reproduces the (removed)
+  // resolveDay cascade total. Plus: perDiemAmount→instance, old→new field mapping,
+  // idempotency (presetId-key discriminator). The build-vs-source 87-scenario audit
+  // (L07/L08/L09) independently confirms source==built for the new code.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const calcForDisplay = sb.__calcForDisplay;
+    const migrateDayExpenses = sb.__migrateDayExpenses;
+    const migrateExpenseEntry = sb.__migrateExpenseEntry;
+    check('EX0 helpers exposed in sandbox',
+      typeof calcForDisplay === 'function' && typeof migrateDayExpenses === 'function' && typeof migrateExpenseEntry === 'function');
+
+    const crew = { id: 'c1', role: 'Spark', bdr: 444, otCoef: 1.5, noOT: false, pmpa: false };
+    const prod = (days, dayDefaults = {}) => ({ id: 'p1', crew: [crew], iAmCrewId: 'c1', dayDefaults, days });
+    const baseDay = { id: 'd1', crewId: 'c1', date: '2026-06-15', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60 };
+    const expLines = (r) => r.lines.filter(l => /per diem/i.test(l.label) || /^Expense:/.test(l.label)).map(l => `${l.label}|${l.detail}|${l.amount}`);
+    const cfd = (day) => calcForDisplay(prod([day]), day, crew, null);
+    const sameCalc = (a, b) => { const ra = cfd(a), rb = cfd(b); return Math.abs(ra.total - rb.total) < 1e-9 && JSON.stringify(expLines(ra)) === JSON.stringify(expLines(rb)); };
+
+    // EX1 — old expense entry: calcForDisplay(old) ≡ calcForDisplay(migrate(old)).
+    {
+      const old = { ...baseDay, expenses: [{ id: 'e1', amount: 12, category: 'Parking', description: 'NCP' }] };
+      const mig = migrateDayExpenses(old);
+      check('EX1 old-expense: migrate is invariant under calcForDisplay (byte-identical lines + total)',
+        sameCalc(old, mig), `old=${JSON.stringify(expLines(cfd(old)))} mig=${JSON.stringify(expLines(cfd(mig)))}`);
+      check('EX1 old→new field mapping: category→name, description→detail, presetId:null, amount kept',
+        mig.expenses[0].name === 'Parking' && mig.expenses[0].detail === 'NCP' && mig.expenses[0].presetId === null && mig.expenses[0].amount === 12);
+    }
+    // EX2 — perDiemAmount scalar → 'builtin-perdiem' instance; calc invariant.
+    {
+      const old = { ...baseDay, perDiemAmount: 30, expenses: [] };
+      const mig = migrateDayExpenses(old);
+      check('EX2 per-diem scalar→instance: calcForDisplay invariant', sameCalc(old, mig));
+      check('EX2 per-diem conversion: one builtin-perdiem instance amount 30, scalar zeroed',
+        mig.expenses.length === 1 && mig.expenses[0].presetId === 'builtin-perdiem' && mig.expenses[0].name === 'Per Diem' && mig.expenses[0].amount === 30 && mig.perDiemAmount === 0);
+    }
+    // EX3 — mixed (per-diem scalar + old expense): per-diem prepended (emitted first).
+    {
+      const old = { ...baseDay, perDiemAmount: 30, expenses: [{ id: 'e1', amount: 12, category: 'Parking', description: 'NCP' }] };
+      const mig = migrateDayExpenses(old);
+      const lines = expLines(cfd(mig));
+      check('EX3 mixed: calcForDisplay invariant + per-diem instance prepended (emitted first)',
+        sameCalc(old, mig) && lines[0].startsWith('Per Diem') && lines[1].startsWith('Expense: Parking'),
+        `lines=${JSON.stringify(lines)}`);
+    }
+    // EX4 — idempotency via the presetId-key discriminator.
+    {
+      const old = { ...baseDay, perDiemAmount: 30, expenses: [{ id: 'e1', amount: 12, category: 'Parking', description: 'NCP' }] };
+      const once = migrateDayExpenses(old);
+      const twice = migrateDayExpenses(once);
+      check('EX4 idempotent: re-migrate is a no-op (calc identical, same entry count, scalar stays 0)',
+        sameCalc(once, twice) && twice.expenses.length === once.expenses.length && twice.perDiemAmount === 0);
+      check('EX4 idempotent: migrateExpenseEntry no-ops a new-shape entry (presetId key present → same ref)',
+        migrateExpenseEntry(once.expenses[0]) === once.expenses[0]);
+    }
+    // EX5 — CASCADE total-preservation: the MIGRATIONS[4] materialise step (replicated
+    // inline, since the resolveDay cascade is now removed) reproduces the removed
+    // cascade's total + lines, and an un-materialised empty day no longer inherits.
+    {
+      const def = { expenses: [{ category: 'Parking', description: 'NCP', amount: 12 }], perDiemAmount: 25 };
+      const emptyDay = { ...baseDay, expenses: [], perDiemAmount: 0 };
+      const base = cfd(emptyDay).total;   // post-removal: no inheritance
+      check('EX5 cascade REMOVED: an empty day no longer inherits at calc time (no expense lines)',
+        expLines(cfd(emptyDay)).length === 0);
+      let day = emptyDay;
+      if ((day.expenses?.length ?? 0) === 0 && (def.expenses?.length ?? 0) > 0) day = { ...day, expenses: def.expenses };
+      if ((Number(day.perDiemAmount) || 0) === 0 && Number(def.perDiemAmount) > 0) day = { ...day, perDiemAmount: def.perDiemAmount };
+      const mig = migrateDayExpenses(day);
+      const migTotal = cfd(mig).total;
+      check('EX5 cascade materialise: total = base + inherited (12 + 25) — pre-cascade total preserved',
+        Math.abs(migTotal - (base + 12 + 25)) < 1e-9, `base=${base} migTotal=${migTotal} expected=${base + 37}`);
+      const lines = expLines(cfd(mig));
+      check('EX5 cascade materialise: inherited per-diem (25, first) + Parking expense (12, mapped) land on the day',
+        lines[0] === 'Per Diem||25' && lines.some(l => l === 'Expense: Parking|NCP|12'),
+        `lines=${JSON.stringify(lines)}`);
+    }
   }
 
   // ===== N. SAVED CLIENTS STAGE-2 AUTO-SAVE ON SEND =====
@@ -2097,11 +2187,13 @@ async function main() {
         sb2.__validCustomComparison(stored) === null);
     }
 
-    // U9 — schemaVersion in stored snapshot stays 3 (no migration ran).
+    // U9 — importing a v3 backup migrates the stored snapshot to current (v4 —
+    // the expenses day-model migration). The customComparison field itself is
+    // additive (no bump); the schema is 4 because of the day-model migration.
     {
       const storedVer = sb.__storage.get('bigals_schema_version');
-      check('U9 SCHEMA_VERSION unchanged (stored version is 3)',
-        storedVer === '3' || storedVer === 3,
+      check('U9 SCHEMA_VERSION is current after import (v4 — day-model migration)',
+        storedVer === '4' || storedVer === 4,
         `stored=${storedVer}`);
     }
   }

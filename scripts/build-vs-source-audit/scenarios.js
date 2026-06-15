@@ -219,6 +219,11 @@ const scenarios = [
   // L08 exercises a custom (presetId:null, name) + a non-per-diem preset instance.
   mk('L07', 'Shoot + per-diem PRESET INSTANCE £30 (new shape — matches L02)', {}, { perDiemAmount: 0, expenses: [{ id: 'pd1', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 30, detail: '' }] }),
   mk('L08', 'Shoot + new-shape expenses (custom + congestion preset)', {}, { expenses: [{ id: 'x1', presetId: null, name: 'Parking', amount: 12, detail: 'NCP' }, { id: 'x2', presetId: 'builtin-congestion', name: 'Congestion Charge', amount: 18, detail: '' }] }),
+  // Cascade REMOVED (strictly per-day): an empty day.expenses + a populated
+  // dayDefaults[date] must NOT inherit any more — calcForDisplay shows base only,
+  // and source==built agree (the materialisation happens in MIGRATIONS[4], proven
+  // by the EX-suite, not by resolveDay at calc time).
+  mk('L09', 'Cascade removed — empty day.expenses + dayDefaults set → no inheritance', {}, { expenses: [] }, { dayDefaults: { '2026-06-01': { expenses: [{ category: 'Parking', description: 'NCP', amount: 12 }], perDiemAmount: 25 } } }),
 
   // M. Step-up
   mk('M01', 'Spark stepping up to Gaffer (higher BDR)', {}, { stepUpRole: 'Gaffer', stepUpBDR: 600, stepUpOTCoef: 1.5 }),

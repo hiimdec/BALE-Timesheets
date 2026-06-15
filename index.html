@@ -1304,7 +1304,7 @@
 
     /* ─── Schema version & storage-safety helpers ─── */
 
-    const SCHEMA_VERSION = 3;
+    const SCHEMA_VERSION = 4;
     const SCHEMA_VERSION_KEY = 'bigals_schema_version';
     const PRE_MIGRATION_BACKUP_KEY = 'bigals_pre_migration_backup';
 
@@ -2206,12 +2206,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         merged.travelOutMins = dateDefaults.travelOutMins ?? 0;
         merged.travelBackMins = dateDefaults.travelBackMins ?? 0;
       }
-      if ((Number(day.perDiemAmount) || 0) === 0 && Number(dateDefaults.perDiemAmount) > 0) {
-        merged.perDiemAmount = dateDefaults.perDiemAmount;
-      }
-      if ((day.expenses?.length ?? 0) === 0 && (dateDefaults.expenses?.length ?? 0) > 0) {
-        merged.expenses = dateDefaults.expenses;
-      }
+      // Expenses rework: per-diem + expenses are STRICTLY per-day now — no
+      // dayDefaults value-presence cascade. MIGRATIONS[4] materialised any
+      // previously-inherited expenses/per-diem onto each day's own array before
+      // this cascade was removed, so no existing total changed.
       return merged;
     }
 
@@ -2758,8 +2756,46 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ MIGRATION + STORAGE ═══════════════════════════ */
 
+    // Expense-entry migration (expenses rework). Idempotent — new-vs-old is
+    // discriminated by the PRESENCE of a `presetId` key (new entries always carry
+    // it, null or set; old never do; a custom's name can be empty so name-presence
+    // is NOT a safe discriminator). Old {id?, amount, category, description} →
+    // {id, presetId:null, name:category, amount, detail:description}. Maps
+    // category→name (NOT description→name) so augmentCalc's "Expense: ${name}" stays
+    // byte-identical; the description is preserved as detail.
+    function migrateExpenseEntry(e) {
+      if (!e || typeof e !== 'object') return e;
+      if ('presetId' in e) return e;                 // already new-shape — no-op
+      return {
+        id: e.id || uid(),
+        presetId: null,
+        name: e.category || 'Other',
+        amount: Number(e.amount) || 0,
+        detail: e.description || '',
+      };
+    }
+
+    // Per-day expense + per-diem shape migration (NO cascade — the dayDefaults-aware
+    // materialisation lives in MIGRATIONS[4]). Converts every entry, and folds a
+    // legacy perDiemAmount scalar into a 'builtin-perdiem' instance PREPENDED to the
+    // array (so augmentCalc still emits "Per Diem" first), then zeroes the scalar.
+    // Idempotent: a day already carrying a per-diem instance gets no second one;
+    // new-shape entries pass through migrateExpenseEntry untouched.
+    function migrateDayExpenses(day) {
+      if (!day || typeof day !== 'object') return day;
+      const src = Array.isArray(day.expenses) ? day.expenses : [];
+      let mapped = src.map(migrateExpenseEntry);
+      const hasPdInstance = mapped.some(e => e && e.presetId === 'builtin-perdiem');
+      const legacyPd = Number(day.perDiemAmount) || 0;
+      if (legacyPd > 0 && !hasPdInstance) {
+        mapped = [{ id: uid(), presetId: 'builtin-perdiem', name: 'Per Diem', amount: legacyPd, detail: '' }, ...mapped];
+      }
+      return { ...day, expenses: mapped, perDiemAmount: 0 };
+    }
+
     function migrateDay(d) {
       d = { note: "", expenses: [], ...d };
+      d = migrateDayExpenses(d);   // expenses rework — idempotent normalise-on-touch
       // Normalise a corrupt/legacy dayType: a present-but-unknown value (or blank)
       // would otherwise throw in the calc engine. undefined is left for the cascade.
       if (d.dayType !== undefined && !DAY_TYPES.includes(d.dayType)) d = { ...d, dayType: "Shoot" };
@@ -3041,6 +3077,44 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 return rest;
               }
               return c;
+            }),
+          };
+        });
+        storage.set('bigals_productions', JSON.stringify(updated));
+      },
+      // v4: expenses rework. Rewrite every day's expense entries to the new shape
+      // ({id, presetId, name, amount, detail}), fold the legacy perDiemAmount scalar
+      // into a 'builtin-perdiem' instance, and MATERIALISE the (about-to-be-removed)
+      // resolveDay expenses/per-diem value-presence cascade onto each day's OWN array
+      // — using the production's dayDefaults — BEFORE the cascade is gone, so no day
+      // total changes. Lossless + byte-identical (the EX-suite migration-invariance
+      // assertions prove it). Sent-invoice lineItems are frozen snapshots, untouched.
+      4: () => {
+        const raw = storage.get('bigals_productions');
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return;
+        const updated = arr.map(p => {
+          if (!p || !Array.isArray(p.days)) return p;
+          const dd = p.dayDefaults || {};
+          return {
+            ...p,
+            days: p.days.map(d => {
+              if (!d) return d;
+              let day = d;
+              // Materialise cascade-inherited expenses/per-diem onto the day's OWN
+              // fields (mirrors the resolveDay rule being removed), reading the
+              // dayDefaults overlay. Old-shape inherited entries are converted below.
+              const def = dd[d.date];
+              if (def) {
+                if ((day.expenses?.length ?? 0) === 0 && (def.expenses?.length ?? 0) > 0) {
+                  day = { ...day, expenses: def.expenses };
+                }
+                if ((Number(day.perDiemAmount) || 0) === 0 && Number(def.perDiemAmount) > 0) {
+                  day = { ...day, perDiemAmount: def.perDiemAmount };
+                }
+              }
+              return migrateDayExpenses(day);
             }),
           };
         });
