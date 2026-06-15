@@ -993,11 +993,11 @@
     };
 
     // ── Local notifications bridge — overdue-invoice reminders (iOS-only) ──────
-    // @capacitor/local-notifications. Stage 1 exposes permission helpers; the
-    // schedule/cancel methods land in Stage 2. Every method is IS_NATIVE-gated
-    // and returns a web-safe default (never touches the Capacitor bridge on web
-    // — audit:web). The permission string mirrors the plugin's `display`:
-    // 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale'.
+    // @capacitor/local-notifications. Permission helpers + schedule/getPending/
+    // cancel for the reconcile sweep. Every method is IS_NATIVE-gated and returns
+    // a web-safe default (never touches the Capacitor bridge on web — audit:web).
+    // The permission string mirrors the plugin's `display`: 'granted' | 'denied'
+    // | 'prompt' | 'prompt-with-rationale'.
     const Notifications = {
       async checkPermission() {
         if (!IS_NATIVE) return 'denied';
@@ -1010,6 +1010,26 @@
         try { const p = _capPlugins().LocalNotifications; if (p && p.requestPermissions) { const r = await p.requestPermissions(); return (r && r.display) || 'denied'; } }
         catch (e) { try { console.warn('[Notifications] request failed', (e && e.message) || e); } catch (_) {} }
         return 'denied';
+      },
+      // Currently-scheduled notifications ([] off-native / on error) so the sweep
+      // can reconcile the WHOLE set — schedule what's missing, cancel what's stale.
+      async getPending() {
+        if (!IS_NATIVE) return [];
+        try { const p = _capPlugins().LocalNotifications; if (p && p.getPending) { const r = await p.getPending(); return (r && r.notifications) || []; } }
+        catch (e) { try { console.warn('[Notifications] getPending failed', (e && e.message) || e); } catch (_) {} }
+        return [];
+      },
+      // Schedule a batch. Each item: { id:int, title, body, schedule:{at:Date}, extra }.
+      async schedule(notifications) {
+        if (!IS_NATIVE || !notifications || !notifications.length) return;
+        try { const p = _capPlugins().LocalNotifications; if (p && p.schedule) await p.schedule({ notifications }); }
+        catch (e) { try { console.warn('[Notifications] schedule failed', (e && e.message) || e); } catch (_) {} }
+      },
+      // Cancel by integer-id list.
+      async cancel(ids) {
+        if (!IS_NATIVE || !ids || !ids.length) return;
+        try { const p = _capPlugins().LocalNotifications; if (p && p.cancel) await p.cancel({ notifications: ids.map(id => ({ id })) }); }
+        catch (e) { try { console.warn('[Notifications] cancel failed', (e && e.message) || e); } catch (_) {} }
       },
       // Best-effort: open the app's iOS Settings page so the user can re-enable
       // notifications after a denial. The Capacitor WKWebView navigation layer
@@ -2112,6 +2132,37 @@
     const uid = () => Math.random().toString(36).slice(2, 10);
     const addDays = (isoDate, n) => { const d = new Date(isoDate + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
     const roleRank = (role) => { const r = role === "Spark" ? "Lighting Technician" : role; const i = ROLE_ORDER.indexOf(r); return i === -1 ? 99 : i; };
+
+    // ── Overdue-invoice reminder helpers (Stage 2) ─────────────────────────────
+    // Pure + module-scoped so the storage harness can pin them; used only by the
+    // notification reconcile sweep. No effect on calc/day records.
+    //
+    // Stable 31-bit positive integer id from the STRING invoice id (djb2 ×33).
+    // The LocalNotifications plugin keys notifications by integer id, but invoice
+    // ids are uid() strings — so we hash deterministically: the sweep maps each
+    // invoice to the SAME id every run, enabling find-or-schedule and cancel with
+    // no churn. The 31-bit mask keeps it positive and inside Int32 (both iOS and
+    // Android store the id as a 32-bit int). Collisions are negligible for the
+    // handful of live invoices a user holds; a collision would at worst make one
+    // invoice reuse another's slot (one missed reminder) — never a crash or a
+    // wrong-invoice deep-link, since the tap reads extra.invoiceId, not the id.
+    const overdueNotifId = (invoiceId) => {
+      const s = String(invoiceId || "");
+      let h = 5381;
+      for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; // h*33 + c, kept 32-bit
+      return (h & 0x7fffffff) || 1; // 31-bit positive; never 0 (avoid platform edge cases)
+    };
+    // 08:00 LOCAL on the morning AFTER dueDate — the first morning the invoice is
+    // genuinely overdue. TIMEZONE-SAFE: built from the dueDate's Y/M/D parts via
+    // the LOCAL Date(y, monthIndex, day, hour) constructor — NEVER new Date("ISO")
+    // (parsed as UTC midnight) or a toISOString slice, either of which would drift
+    // the fire time by the device's UTC offset (the stats-bug trap). day+1
+    // overflow rolls the month/year correctly. null for a malformed dueDate.
+    const overdueFireDate = (dueDateISO) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dueDateISO || ""));
+      if (!m) return null;
+      return new Date(+m[1], +m[2] - 1, +m[3] + 1, 8, 0, 0, 0);
+    };
 
     // Travel time UX copy — caption shows inline, explainer expands on ⓘ tap.
     const TRAVEL_TIME_CAPTION = "Enter your full door-to-door travel time — the app handles the APA deductions for you.";
@@ -22442,6 +22493,97 @@ const confirmDelete = (p) => setConfirmOpts({
           try { if (handle && handle.remove) handle.remove(); } catch (_) {}
           try { if (laHandle && laHandle.remove) laHandle.remove(); } catch (_) {}
         };
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      // ── Overdue-invoice reminders reconcile sweep (Stage 2) ───────────────────
+      // Mirrors the Live Activity reconcile: one sweep reconciles the WHOLE
+      // notification set against current productions. Every invoice that is
+      // sent && !datePaid && has a dueDate (with the toggle on AND OS permission
+      // granted) gets exactly ONE local notification scheduled to fire at 08:00
+      // local the morning after its dueDate; any scheduled reminder whose invoice
+      // no longer qualifies (marked paid, deleted, reverted to draft, due date
+      // cleared, toggle off, or permission revoked) is cancelled. Idempotent — a
+      // reminder already pending for a still-qualifying invoice is left untouched
+      // (no churn). Reads through a render-refreshed ref so the debounced change-
+      // sweep and the launch/foreground sweep both see CURRENT state. Touches NO
+      // calc/day-record state — a pure notification side-channel. IS_NATIVE-gated.
+      const notifSweepStateRef = React.useRef({ productions: [], enabled: true });
+      notifSweepStateRef.current = {
+        productions,
+        enabled: !userPrefs || userPrefs.overdueRemindersEnabled !== false,
+      };
+      const overdueReconcile = React.useCallback(async () => {
+        if (!IS_NATIVE) return;
+        const { productions: prods, enabled } = notifSweepStateRef.current;
+        // Permission is re-read each sweep (cheap, local) so a grant or revocation
+        // made in iOS Settings is honoured on the next launch/foreground pass.
+        const granted = enabled && (await Notifications.checkPermission()) === 'granted';
+        // Desired schedule: notifId → { production, invoice, fireAt }.
+        const desired = new Map();
+        if (granted) {
+          for (const p of (prods || [])) {
+            for (const inv of (p.invoices || [])) {
+              if (!inv || inv.status !== 'sent' || inv.datePaid || !inv.dueDate) continue;
+              const fireAt = overdueFireDate(inv.dueDate);
+              if (!fireAt) continue;
+              desired.set(overdueNotifId(inv.id), { p, inv, fireAt });
+            }
+          }
+        }
+        // Reconcile the whole set against what's actually pending. Only OUR
+        // reminders (extra carries invoiceId) are ever touched — defensive
+        // scoping, though the app schedules nothing else.
+        const pending = await Notifications.getPending();
+        const pendingOurs = new Set();
+        const toCancel = [];
+        for (const n of (pending || [])) {
+          if (!n || typeof n.id !== 'number' || !(n.extra && n.extra.invoiceId)) continue;
+          pendingOurs.add(n.id);
+          if (!desired.has(n.id)) toCancel.push(n.id);
+        }
+        const NOW = Date.now();
+        const toSchedule = [];
+        for (const [id, { p, inv, fireAt }] of desired) {
+          if (pendingOurs.has(id)) continue; // already scheduled — no churn
+          // Already-overdue at reconcile time (went overdue while the app was
+          // closed, or reconciled later that day) → fire once ~1 min out so the
+          // single nudge still lands; otherwise the 08:00 day-after fire date.
+          const at = fireAt.getTime() > NOW + 1000 ? fireAt : new Date(NOW + 60 * 1000);
+          toSchedule.push({
+            id,
+            title: 'Invoice overdue',
+            // Exact copy (job name inline, NO amount, NO invoice number) as the
+            // body so it wraps on the lock screen rather than truncating.
+            body: `${p.name || 'Your'} invoice is now overdue. Chase it?`,
+            schedule: { at },
+            extra: { productionId: p.id, invoiceId: inv.id },
+          });
+        }
+        if (toCancel.length) await Notifications.cancel(toCancel);
+        if (toSchedule.length) await Notifications.schedule(toSchedule);
+      }, []);
+      // Debounced change-sweep: invoice edits (send, mark paid, delete, due-date
+      // change) and the Settings toggle reconcile within ~1s while the app is open.
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        const t = setTimeout(overdueReconcile, 1000);
+        return () => clearTimeout(t);
+      }, [productions, userPrefs && userPrefs.overdueRemindersEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+      // Launch + foreground sweep. Permission can change while backgrounded (user
+      // toggles it in iOS Settings), and an invoice can roll overdue overnight, so
+      // re-reconcile on resume — a fresh grant schedules, a revocation cancels.
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        overdueReconcile(); // launch
+        let handle = null;
+        try {
+          const AppPlg = _capPlugins().App;
+          if (AppPlg && AppPlg.addListener) {
+            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && s.isActive) overdueReconcile(); }))
+              .then(h => { handle = h; }).catch(() => {});
+          }
+        } catch (_) {}
+        return () => { try { if (handle && handle.remove) handle.remove(); } catch (_) {} };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       // ── Stage B: today's-active-shoot snapshot ────────────────────────────────
