@@ -20,6 +20,7 @@
 		B144A1832FD8CA2C00FE2310 /* TimeMachineWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B144A1912FD8CECE00FE2310 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */; };
 		B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */; };
+		A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */; };
 		B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */; };
 		B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */; };
 		B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */; };
@@ -67,6 +68,7 @@
 		B144A1732FD8CA2B00FE2310 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
 		B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSheetPlugin.swift; sourceTree = "<group>"; };
+		A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconPlugin.swift; sourceTree = "<group>"; };
 		B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineAppShortcuts.swift; sourceTree = "<group>"; };
 		B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineTimesParser.swift; sourceTree = "<group>"; };
 		B144A1922FD8CF1300FE2310 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
@@ -146,6 +148,7 @@
 				B144A1922FD8CF1300FE2310 /* App.entitlements */,
 				B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */,
 				B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */,
+				A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */,
 				B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */,
 				B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
@@ -294,6 +297,7 @@
 				B41A0E1A2E1B000100000003 /* MainViewController.swift in Sources */,
 				B144A1912FD8CECE00FE2310 /* LiveActivityPlugin.swift in Sources */,
 				B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */,
+				A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */,
 				B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */,
 				B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */,
 			);
@@ -449,7 +453,9 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = Scribble;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -473,7 +479,9 @@
 		504EC3181FED79650016851F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = Scribble;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

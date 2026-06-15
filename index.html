@@ -1040,6 +1040,28 @@
       },
     };
 
+    // ── App icon bridge — alternate "Scribble" icon (iOS-only) ─────────────────
+    // Wraps the in-app AppIconPlugin. get() reads the live alternate-icon name
+    // ('default' when the primary is active); set(name) switches (null/'default'
+    // → primary). NO stored pref — iOS persists the choice itself, so the Settings
+    // picker just mirrors the live name. Both methods IS_NATIVE-gated and web-safe
+    // (audit:web). A successful set triggers iOS's own unavoidable "changed the
+    // icon" alert (no public suppression API).
+    const AppIcon = {
+      async get() {
+        if (!IS_NATIVE) return 'default';
+        try { const p = _capPlugins().AppIcon; if (p && p.getAppIcon) { const r = await p.getAppIcon(); return (r && r.name) || 'default'; } }
+        catch (e) { try { console.warn('[AppIcon] get failed', (e && e.message) || e); } catch (_) {} }
+        return 'default';
+      },
+      async set(name) {
+        if (!IS_NATIVE) return 'default';
+        try { const p = _capPlugins().AppIcon; if (p && p.setAppIcon) { const r = await p.setAppIcon({ name: name || 'default' }); return (r && r.name) || 'default'; } }
+        catch (e) { try { console.warn('[AppIcon] set failed', (e && e.message) || e); } catch (_) {} }
+        return 'default';
+      },
+    };
+
     // ── AI call-sheet reader (Stage 1) — bridge to CallSheetPlugin ──────────
     // ON-DEVICE extraction (Apple Foundation Models + Vision/PDFKit): nothing
     // leaves the phone. EVERY method is IS_NATIVE-guarded and returns before
@@ -17619,6 +17641,10 @@ const setDays = (updater) =>
       // after a toggle-on request, so the toggle can surface a denied state.
       const [notifPerm, setNotifPerm] = useState('prompt');
       useEffect(() => { if (IS_NATIVE) Notifications.checkPermission().then(setNotifPerm); }, []);
+      // App icon (iOS) — reflects the LIVE alternate-icon name ('default' |
+      // 'Scribble'); no stored pref (iOS persists the choice). Read on mount.
+      const [iconName, setIconName] = useState('default');
+      useEffect(() => { if (IS_NATIVE) AppIcon.get().then(setIconName); }, []);
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -18222,6 +18248,30 @@ const setDays = (updater) =>
                   <Toggle value={userPrefs.liveActivityEnabled !== false} onChange={(v) => set({ liveActivityEnabled: v })} ariaLabel="Live Activity" />
                 </div>
               </div>
+              {/* App icon — alternate "Scribble" icon picker. iOS-only (alternate
+                  app icons are a UIKit feature); hidden on web. Mirrors the LIVE
+                  alternate-icon name via the AppIcon bridge — NO stored pref, iOS
+                  persists the choice. Reads on mount, sets on choice. */}
+              {IS_NATIVE && (
+                <div className="mt-4 pt-4 border-t border-neutral-800">
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2.5">App icon</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { key: 'default', label: 'Default', desc: 'The original TimeMachine icon.' },
+                      { key: 'Scribble', label: 'Scribble', desc: 'Hand-drawn alternate icon.' },
+                    ].map((opt) => (
+                      <RoundingOptionCard
+                        key={opt.key}
+                        label={opt.label}
+                        desc={opt.desc}
+                        active={iconName === opt.key}
+                        onClick={() => { setIconName(opt.key); AppIcon.set(opt.key).then(setIconName); }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-neutral-500 mt-2 leading-tight">iOS shows a confirmation alert when the icon changes.</p>
+                </div>
+              )}
               {/* Celebration — was its own "Celebration" top-level disclosure.
                   Toggle + sub-controls + Preview unchanged. */}
               <div className="mt-4 pt-4 border-t border-neutral-800">

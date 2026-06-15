@@ -29,5 +29,6 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(NativePdfPlugin())
         bridge?.registerPluginInstance(LiveActivityPlugin())
         bridge?.registerPluginInstance(CallSheetPlugin())
+        bridge?.registerPluginInstance(AppIconPlugin())
     }
 }
