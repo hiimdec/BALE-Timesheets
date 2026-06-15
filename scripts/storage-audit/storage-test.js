@@ -5454,7 +5454,7 @@ async function main() {
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
       /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
-      /const payload = \{ name: desc\.name,[\s\S]{0,260}productionId: desc\.productionId \};/.test(html));
+      /const payload = \{ name: desc\.name,[\s\S]{0,260}productionId: desc\.productionId, lunchLeft: desc\.lunchLeft, otFrom: desc\.otFrom \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
@@ -5476,7 +5476,7 @@ async function main() {
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
-      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd \}/.test(html) &&
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchLeft, otFrom \}/.test(html) &&
       !/desc\.l1/.test(html));
     check('TT8d Issue C — ingestion ALSO re-runs on the plugin drainRequest event (best-effort background apply), via the SAME idempotent ingest()',
       /const LAPlg = _capPlugins\(\)\.LiveActivity;/.test(html) &&
@@ -5512,6 +5512,52 @@ async function main() {
       /liveActivityEnabled: true,/.test(html) &&
       /<Toggle value=\{userPrefs\.liveActivityEnabled !== false\} onChange=\{\(v\) => set\(\{ liveActivityEnabled: v \}\)\} ariaLabel="Live Activity" \/>/.test(html) &&
       /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
+
+    // ─ TT10: Group A — lunch countdown + OT-from readout (display-only) ─
+    check('TT10a descriptor lunchLeft — 60-min countdown set ONLY inside the lunch window (60 − minutes-since-lunch-start, floored at 0 so it CLEARS at/after zero); stays 0 elsewhere; flows into the return',
+      /let lunchLeft = 0;/.test(descFn) &&
+      /state = 'lunch';\s*lunchLeft = Math\.max\(0, 60 - \(nowMins - lunchMins\)\);/.test(descFn) &&
+      /state, wrapped, cwd, lunchLeft, otFrom \};/.test(descFn));
+    check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
+      /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
+      /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: '02:00', wrapNextDay: true \}, soloCrew, null\)/.test(descFn) &&
+      /\.find\(l =>/.test(descFn) && /l\.label === 'OT'/.test(descFn) && /\/\^Saturday OT\//.test(descFn) &&
+      /if \(m\) otFrom = m\[1\];/.test(descFn) &&
+      // display-only: the descriptor never assigns otStartAbs/basicHrs itself (no
+      // engine maths re-derived here — it only reads the rendered OT line).
+      !/otStartAbs\s*=[^=]/.test(descFn) && !/basicHrs\s*=/.test(descFn));
+    check('TT10c sig + payload carry lunchLeft + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getInt/getString reads)',
+      /l: desc\.lunchLeft, o: desc\.otFrom \}/.test(html) &&
+      /lunchLeft: desc\.lunchLeft, otFrom: desc\.otFrom \}/.test(html));
+    check('TT10d ContentState schema — lunchLeft: Int + otFrom: String (display-only, init-defaulted); the plugin reads both on start AND update; the intent process preserves both across all 4 reconstructions (arm/disarm/update/endWrapped)',
+      (() => {
+        const attr = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift'), 'utf8');
+        const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
+        const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
+        const schemaOk = /public var lunchLeft: Int/.test(attr) && /public var otFrom: String/.test(attr) &&
+          /lunchLeft: Int = 0, otFrom: String = ""/.test(attr) &&
+          /self\.lunchLeft = lunchLeft/.test(attr) && /self\.otFrom = otFrom/.test(attr);
+        const pluginOk = (plugin.match(/call\.getInt\("lunchLeft"\)/g) || []).length >= 2 &&
+          (plugin.match(/call\.getString\("otFrom"\)/g) || []).length >= 2 &&
+          (plugin.match(/lunchLeft: lunchLeft, otFrom: otFrom/g) || []).length >= 2;
+        const intentsOk = (intents.match(/lunchLeft: cur\.lunchLeft, otFrom: cur\.otFrom/g) || []).length >= 4;
+        return schemaOk && pluginOk && intentsOk;
+      })());
+    check('TT10e SwiftUI readout — secondaryReadout(state/lunchLeft/otFrom): lunch line shows ONLY on lunch AND clears at zero (lunchLeft > 0), OT-from hidden when wrapped; INFORMATIONAL neutrals only (tmMuted/tmFaint — never tmPen/tmAmber/tmGood); placed on lock screen + DI expanded (×2), DI compact untouched',
+      (() => {
+        const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
+        const sr = (la.match(/private func secondaryReadout[\s\S]*?\n\}/) || [''])[0];
+        const sigOk = /private func secondaryReadout\(state: String, lunchLeft: Int, otFrom: String\)/.test(la);
+        const gatesOk = /let showLunch = state == "lunch" && lunchLeft > 0/.test(sr) &&
+          /let showOt = state != "wrapped" && !otFrom\.isEmpty/.test(sr);
+        const textOk = /\\\(lunchLeft\) min left/.test(sr) && /systemImage: "fork\.knife"/.test(sr) &&
+          /OT from \\\(otFrom\)/.test(sr);
+        const neutralOk = /\.tmMuted/.test(sr) && /\.tmFaint/.test(sr) &&
+          !/\.tmPen/.test(sr) && !/\.tmAmber/.test(sr) && !/\.tmGood/.test(sr) && !/\.tmSky/.test(sr);
+        const placedOk = (la.match(/secondaryReadout\(state: context\.state\.state/g) || []).length === 2 &&
+          /compactTrailing: \{\s*moneyText\(context\.state\.totalText/.test(la);
+        return sigOk && gatesOk && textOk && neutralOk && placedOk;
+      })());
   }
 
   // UU — AI call-sheet reader, Stage 2 (shoot-level review-sheet UX). The WEB

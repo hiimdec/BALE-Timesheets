@@ -226,6 +226,36 @@ private func actionButtons(_ productionId: String, armed: String) -> some View {
     .animation(.snappy(duration: 0.25), value: armed)
 }
 
+// MARK: - Secondary readout (Group A — display-only)
+
+// A thin neutral row beneath the total/timer: the lunch countdown ("32 min left",
+// ON LUNCH only) on the left and the OT-from projection ("OT from 19:00", any
+// non-wrapped state) on the right. Both are INFORMATIONAL — muted, never a
+// penalty/warning colour. Renders nothing when neither applies, so the card
+// stays calm on call with no projected OT. Values are pushed by the JS layer;
+// this view never computes pay or time.
+@ViewBuilder
+private func secondaryReadout(state: String, lunchLeft: Int, otFrom: String) -> some View {
+    let showLunch = state == "lunch" && lunchLeft > 0
+    let showOt = state != "wrapped" && !otFrom.isEmpty
+    if showLunch || showOt {
+        HStack(spacing: 8) {
+            if showLunch {
+                Label("\(lunchLeft) min left", systemImage: "fork.knife")
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.tmMuted)
+            }
+            Spacer(minLength: 0)
+            if showOt {
+                Text("OT from \(otFrom)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.tmFaint)
+            }
+        }
+    }
+}
+
 // MARK: - Lock Screen / banner
 
 struct TimeMachineLockScreenView: View {
@@ -252,6 +282,7 @@ struct TimeMachineLockScreenView: View {
                     elapsedTimer(anchor: context.state.callEpoch, end: context.state.endEpoch)
                 }
             }
+            secondaryReadout(state: context.state.state, lunchLeft: context.state.lunchLeft, otFrom: context.state.otFrom)
             if #available(iOS 17.0, *), context.state.state != "wrapped" {
                 actionButtons(context.attributes.productionId, armed: context.state.armed)
             }
@@ -293,6 +324,7 @@ struct TimeMachineLiveActivity: Widget {
                             Spacer()
                             elapsedTimer(anchor: context.state.callEpoch, end: context.state.endEpoch)
                         }
+                        secondaryReadout(state: context.state.state, lunchLeft: context.state.lunchLeft, otFrom: context.state.otFrom)
                         if #available(iOS 17.0, *), context.state.state != "wrapped" {
                             actionButtons(context.attributes.productionId, armed: context.state.armed)
                         }

@@ -56,8 +56,17 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
         /// renders it only; no APA threshold maths lives in Swift. (L1 was tried
         /// and removed in round 3 — too narrow/confusing for a glanceable card.)
         public var cwd: Bool
+        /// Lunch countdown (Group A, display-only): minutes left in the 60-min
+        /// lunch window, computed by the web layer. > 0 only while ON LUNCH; 0
+        /// clears the readout (no "lunch over" prompt — the day returns to normal).
+        public var lunchLeft: Int
+        /// Projected clock time the day goes into OT, preformatted "HH:mm" by the
+        /// JS calc engine (shifts with CWD / curtailed lunch). "" hides the line
+        /// (wrapped, no call time, or a day type with no hourly OT). The card
+        /// never computes this — display-only, same discipline as totalText.
+        public var otFrom: String
 
-        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false) {
+        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchLeft: Int = 0, otFrom: String = "") {
             self.totalText = totalText
             self.state = state
             self.callEpoch = callEpoch
@@ -66,6 +75,8 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
             self.armed = armed
             self.armedAt = armedAt
             self.cwd = cwd
+            self.lunchLeft = lunchLeft
+            self.otFrom = otFrom
         }
     }
 
