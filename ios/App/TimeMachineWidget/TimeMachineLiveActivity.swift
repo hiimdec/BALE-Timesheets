@@ -116,18 +116,31 @@ private func warnChip(_ label: String) -> some View {
         .clipShape(Capsule())
 }
 
-// The single chip slot. Priority: WRAPPED > CWD > AT LUNCH — the money-relevant
+// The shared on-lunch predicate (Group C) — derived NATIVELY from Date() vs the
+// pushed lunchEndEpoch so the on-lunch→full-hour boundary resolves at the deadline
+// on the next render/wake with NO background push. Gated by lunchLogged (lunch was
+// actually started, not just a seeded plan) and cleared on a curtail (curtailMins
+// > 0, incl. the native pending preview). Drives the chip, the timer slot, and the
+// Curtailed?/Full-hour split — display-state only, never pay (all money/durations
+// stay pushed; identical discipline to the native countdown that already compares
+// Date() to lunchEndEpoch).
+private func isOnLunch(_ s: TimeMachineActivityAttributes.ContentState) -> Bool {
+    s.lunchLogged && s.curtailMins == 0 && s.lunchEndEpoch > 0 &&
+        Date().timeIntervalSince1970 < s.lunchEndEpoch
+}
+
+// The single chip slot. Priority: WRAPPED > CWD > ON LUNCH — the money-relevant
 // state wins: a lunch logged in CWD territory shows CWD (what the pay is
-// computing), not AT LUNCH. Display-only ordering; lunch/CWD data semantics and
-// the engine's treatment are untouched. ON CALL with no warning renders no chip.
+// computing), not ON LUNCH. The ON-LUNCH term is the native onLunch predicate, so
+// it clears at the hour-end (and on a curtail) without a push. ON CALL renders no chip.
 @ViewBuilder
-private func chipSlot(state: String, cwd: Bool) -> some View {
+private func chipSlot(state: String, cwd: Bool, onLunch: Bool) -> some View {
     if state == "wrapped" {
         stateChip(state)
     } else if cwd {
         warnChip("CWD")
-    } else if state == "lunch" {
-        stateChip(state)
+    } else if onLunch {
+        stateChip("lunch")
     }
 }
 
@@ -188,46 +201,50 @@ private struct ActionPill: View {
     }
 }
 
-// The lunch-slot button (Group B) — a five-phase state machine on the LEFT
-// button only (Wrap is unaffected). Display-only: the curtail PENDING/Undo state
-// is driven by the native `armed` slot ("curtail"); "Lunch NNm ✓" and "Full hour"
-// are pushed by the descriptor from the record. Order matters — pending and the
-// existing lunch-confirm two-tap outrank the record-derived phases. Active phases
-// use saturated text (amber / black-on-amber); the two disabled/informational
-// phases are plain pills (no Button) with muted grey text.
+// The lunch-slot button (Group C) — the LEFT button only (Wrap is unaffected).
+// ENTRY is gated on lunchLogged: until lunch is ACTUALLY started it stays "Lunch
+// now" regardless of the clock or any planned/seeded lunch. Once logged, the
+// on-lunch→full-hour boundary is the NATIVE onLunch predicate (Date() vs
+// lunchEndEpoch), so "Curtailed?" resolves to "Full hour" at the deadline on the
+// next render — no push. The curtail PENDING/Undo state rides the native `armed`
+// slot. Active phases use saturated text (amber / black-on-amber); the two
+// disabled/informational phases are plain pills (no Button) with muted grey text.
 @available(iOS 17.0, *)
 @ViewBuilder
-private func lunchSlot(_ productionId: String, state: String, armed: String, curtailMins: Int, lunchedFull: Bool) -> some View {
-    if armed == "curtail" {
+private func lunchSlot(_ productionId: String, armed: String, lunchLogged: Bool, curtailMins: Int, onLunch: Bool) -> some View {
+    if !lunchLogged {
+        // ENTRY GATE — lunch not started. A planned/seeded lunch never gets past here.
+        if armed == "lunch" {
+            // Lunch-now two-tap mid-confirm.
+            Button(intent: LunchNowIntent(productionId: productionId)) {
+                ActionPill(text: "Confirm?", confirm: true, fill: .tmAmber, stroke: nil, textColor: .black)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Button(intent: LunchNowIntent(productionId: productionId)) {
+                ActionPill(text: "Lunch now", confirm: false, fill: Color.tmAmber.opacity(0.14), stroke: Color.tmAmber.opacity(0.4), textColor: .tmAmber)
+            }
+            .buttonStyle(.plain)
+        }
+    } else if armed == "curtail" {
         // PENDING — single tap = Undo (cancels, writes nothing); auto-commits at 5s.
         Button(intent: CurtailIntent(productionId: productionId)) {
             ActionPill(text: "Undo · \(curtailMins)m", confirm: false, fill: .tmAmber, stroke: nil, textColor: .black)
         }
         .buttonStyle(.plain)
-    } else if armed == "lunch" {
-        // Lunch-now two-tap mid-confirm (unchanged).
-        Button(intent: LunchNowIntent(productionId: productionId)) {
-            ActionPill(text: "Confirm?", confirm: true, fill: .tmAmber, stroke: nil, textColor: .black)
-        }
-        .buttonStyle(.plain)
     } else if curtailMins > 0 {
         // COMMITTED curtail — informational, not tappable.
         ActionPill(text: "Lunch \(curtailMins)m ✓", confirm: false, fill: Color.tmAmber.opacity(0.12), stroke: nil, textColor: .tmMuted)
-    } else if state == "lunch" {
-        // ON LUNCH within the hour — single tap arms the curtail.
+    } else if onLunch {
+        // Logged, within the statutory hour — single tap arms the curtail.
         Button(intent: CurtailIntent(productionId: productionId)) {
             ActionPill(text: "Curtailed?", confirm: false, fill: Color.tmAmber.opacity(0.14), stroke: Color.tmAmber.opacity(0.4), textColor: .tmAmber)
         }
         .buttonStyle(.plain)
-    } else if lunchedFull {
-        // Lunch ran the full hour, uncurtailed — nothing to do.
-        ActionPill(text: "Full hour", confirm: false, fill: Color.tmFaint.opacity(0.12), stroke: Color.tmFaint.opacity(0.35), textColor: .tmFaint)
     } else {
-        // Off lunch — log lunch start (unchanged).
-        Button(intent: LunchNowIntent(productionId: productionId)) {
-            ActionPill(text: "Lunch now", confirm: false, fill: Color.tmAmber.opacity(0.14), stroke: Color.tmAmber.opacity(0.4), textColor: .tmAmber)
-        }
-        .buttonStyle(.plain)
+        // Logged, the statutory hour has elapsed uncurtailed (native Date() ≥
+        // lunchEnd) — full lunch stands; informational, not tappable.
+        ActionPill(text: "Full hour", confirm: false, fill: Color.tmFaint.opacity(0.12), stroke: Color.tmFaint.opacity(0.35), textColor: .tmFaint)
     }
 }
 
@@ -247,9 +264,9 @@ private func wrapButton(_ productionId: String, armed: Bool) -> some View {
 }
 
 @available(iOS 17.0, *)
-private func actionButtons(_ productionId: String, armed: String, state: String, curtailMins: Int, lunchedFull: Bool) -> some View {
+private func actionButtons(_ productionId: String, armed: String, lunchLogged: Bool, curtailMins: Int, onLunch: Bool) -> some View {
     HStack(spacing: 8) {
-        lunchSlot(productionId, state: state, armed: armed, curtailMins: curtailMins, lunchedFull: lunchedFull)
+        lunchSlot(productionId, armed: armed, lunchLogged: lunchLogged, curtailMins: curtailMins, onLunch: onLunch)
         wrapButton(productionId, armed: armed == "wrap")
     }
     .animation(.snappy(duration: 0.25), value: armed)
@@ -263,7 +280,7 @@ private func actionButtons(_ productionId: String, armed: String, state: String,
 // starts 60min before the end so the readout reads as minutes-left (MM:SS,
 // showsHours:false); once "now" passes the end the system clamps it to 00:00.
 // Just the fork.knife glyph + the ticking figure — no trailing label. Amber
-// echoes the ON LUNCH chip; rendered only while state == "lunch".
+// echoes the ON LUNCH chip; rendered only while the native onLunch predicate holds.
 private func lunchCountdown(end: Double) -> some View {
     HStack(spacing: 4) {
         Image(systemName: "fork.knife").font(.system(size: 12, weight: .semibold))
@@ -276,14 +293,14 @@ private func lunchCountdown(end: Double) -> some View {
     .lineLimit(1)
 }
 
-// The Line-4 timer slot — ONE slot, two modes. ON LUNCH: the native lunch
-// countdown (ticks down on-device). Otherwise: the elapsed count-up since the
-// anchor (the existing native timer, moved here off the total's line so the
-// total reads clean). lunchEnd > 0 only while ON LUNCH (JS-pushed); a curtailed
-// lunch flips state back and restores the elapsed timer automatically.
+// The Line-4 timer slot — ONE slot, two modes. ON LUNCH (the native onLunch
+// predicate): the lunch countdown (ticks down on-device). Otherwise: the elapsed
+// count-up since the anchor. Because onLunch is Date()-vs-lunchEndEpoch, the slot
+// switches back to elapsed at the hour-end (and on a curtail) on the next render,
+// with no push.
 @ViewBuilder
-private func timerSlot(state: String, anchor: Double, end: Double, lunchEnd: Double) -> some View {
-    if state == "lunch" && lunchEnd > 0 {
+private func timerSlot(onLunch: Bool, anchor: Double, end: Double, lunchEnd: Double) -> some View {
+    if onLunch {
         lunchCountdown(end: lunchEnd)
     } else {
         elapsedTimer(anchor: anchor, end: end)
@@ -294,9 +311,9 @@ private func timerSlot(state: String, anchor: Double, end: Double, lunchEnd: Dou
 // INFORMATIONAL — neutral tmFaint, never a penalty/warning colour — and hidden
 // when wrapped or absent (Group A logic, unchanged). Both are display-only.
 @ViewBuilder
-private func timerProjectionRow(state: String, anchor: Double, end: Double, lunchEnd: Double, otFrom: String) -> some View {
+private func timerProjectionRow(state: String, onLunch: Bool, anchor: Double, end: Double, lunchEnd: Double, otFrom: String) -> some View {
     HStack(alignment: .firstTextBaseline) {
-        timerSlot(state: state, anchor: anchor, end: end, lunchEnd: lunchEnd)
+        timerSlot(onLunch: onLunch, anchor: anchor, end: end, lunchEnd: lunchEnd)
         Spacer(minLength: 8)
         if state != "wrapped" && !otFrom.isEmpty {
             Text("OT from \(otFrom)")
@@ -321,7 +338,7 @@ struct TimeMachineLockScreenView: View {
                     .foregroundColor(.tmMuted)
                     .lineLimit(1)
                 Spacer()
-                chipSlot(state: context.state.state, cwd: context.state.cwd)
+                chipSlot(state: context.state.state, cwd: context.state.cwd, onLunch: isOnLunch(context.state))
             }
             // Line 2: the two micro-labels — DAY TOTAL (left) · CALL anchor (right)
             HStack {
@@ -335,9 +352,9 @@ struct TimeMachineLockScreenView: View {
             // Line 4: timer slot — elapsed count-up, or the native lunch countdown
             // ON LUNCH — on the left; OT-from on the right. The VStack spacing alone
             // separates it from the total above (no divider).
-            timerProjectionRow(state: context.state.state, anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
+            timerProjectionRow(state: context.state.state, onLunch: isOnLunch(context.state), anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
             if #available(iOS 17.0, *), context.state.state != "wrapped" {
-                actionButtons(context.attributes.productionId, armed: context.state.armed, state: context.state.state, curtailMins: context.state.curtailMins, lunchedFull: context.state.lunchedFull)
+                actionButtons(context.attributes.productionId, armed: context.state.armed, lunchLogged: context.state.lunchLogged, curtailMins: context.state.curtailMins, onLunch: isOnLunch(context.state))
             }
         }
         .padding(16)
@@ -361,7 +378,7 @@ struct TimeMachineLiveActivity: Widget {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.tmMuted)
                             .lineLimit(1)
-                        chipSlot(state: context.state.state, cwd: context.state.cwd)
+                        chipSlot(state: context.state.state, cwd: context.state.cwd, onLunch: isOnLunch(context.state))
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -373,18 +390,18 @@ struct TimeMachineLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {
-                        timerProjectionRow(state: context.state.state, anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
+                        timerProjectionRow(state: context.state.state, onLunch: isOnLunch(context.state), anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
                         if #available(iOS 17.0, *), context.state.state != "wrapped" {
-                            actionButtons(context.attributes.productionId, armed: context.state.armed, state: context.state.state, curtailMins: context.state.curtailMins, lunchedFull: context.state.lunchedFull)
+                            actionButtons(context.attributes.productionId, armed: context.state.armed, lunchLogged: context.state.lunchLogged, curtailMins: context.state.curtailMins, onLunch: isOnLunch(context.state))
                         }
                     }
                 }
             } compactLeading: {
-                Circle().fill(chipColor(context.state.state)).frame(width: 8, height: 8)
+                Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
             } compactTrailing: {
                 moneyText(context.state.totalText, font: Font.system(size: 14, weight: .bold, design: .monospaced))
             } minimal: {
-                Circle().fill(chipColor(context.state.state)).frame(width: 8, height: 8)
+                Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
             }
             .widgetURL(URL(string: "timemachine://today"))
             .keylineTint(.tmSky)

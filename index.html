@@ -2787,6 +2787,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (typeof d.wrapped !== 'boolean') {
         d = { ...d, wrapped: !!(d.date && d.date < todayISO()) };
       }
+      // lunchLogged backfill (mirrors `wrapped`): whether lunch was ACTUALLY
+      // started vs the seeded planned start. Existing records can't tell, so use
+      // the same date-based default — past = treated as logged, today/future =
+      // not (so the Live Activity card on a today record correctly waits for a
+      // real Lunch-now press). Additive + idempotent; the calc never reads it.
+      if (typeof d.lunchLogged !== 'boolean') {
+        d = { ...d, lunchLogged: !!(d.date && d.date < todayISO()) };
+      }
       // Migrate legacy truckCallTime → preCallTime (keep truckCallTime for safe rollback)
       if (d.truckCallTime && !d.preCallTime) d = { ...d, preCallTime: d.truckCallTime };
       if (d.lunchStartTime !== undefined) return d;
@@ -3763,7 +3771,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // Activity, deliberately not routed through here.
     function applyLunchNow(production, date, t) {
       const uid0 = production.crew && production.crew[0] && production.crew[0].id;
-      return { ...production, days: mapDayNow(production.days, date, uid0, { lunchStartTime: t }) };
+      // lunchLogged:true marks lunch ACTUALLY started (vs the seeded planned start)
+      // — the Live Activity card gates its on-lunch/Curtailed?/Full-hour states on
+      // this, and the press overwrites the seeded default start (old behaviour).
+      return { ...production, days: mapDayNow(production.days, date, uid0, { lunchStartTime: t, lunchLogged: true }) };
     }
     function applyWrapNow(production, date, t) {
       const uid0 = production.crew && production.crew[0] && production.crew[0].id;
@@ -8058,7 +8069,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           {isToday && dur !== 0 ? (
                             <button
                               type="button"
-                              onClick={() => { haptic.heavy(); const t = computeNowHHMM(); set({ lunchStartTime: t }); showToast?.(`Lunch ${t}`); }}
+                              onClick={() => { haptic.heavy(); const t = computeNowHHMM(); set({ lunchStartTime: t, lunchLogged: true }); showToast?.(`Lunch ${t}`); }}
                               className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded"
                             >NOW</button>
                           ) : <span />}
@@ -9699,6 +9710,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         id: uid(), crewId, date: todayISO(),
         wrapNextDay: false,
         wrapped: false,
+        lunchLogged: false,
         preCallTime: "",
         noMealProvided: false, secondBreakDurationMins: 0, secondBreakLogged: false,
         cwdBreak1Given: true, cwdBreak2Given: true,
@@ -9782,7 +9794,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         haptic.heavy();
         const now = new Date();
         const lunchStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        setDays(prev => mapDayNow(prev, todayStr, null, { lunchStartTime: lunchStr }));
+        setDays(prev => mapDayNow(prev, todayStr, null, { lunchStartTime: lunchStr, lunchLogged: true }));
         showToast(`Lunch logged at ${lunchStr}`);
         setConfirming(false);
       };
@@ -14783,47 +14795,39 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // off wrapTime-presence misread every new day as already wrapped — the
       // controller then ran update→end and NEVER started.
       const wrapped = rec.wrapped === true;
+      // state is now just oncall / wrapped — the on-lunch / full-hour boundary is
+      // derived NATIVELY on the card from Date() vs lunchEndEpoch (so it resolves
+      // at the deadline on the next render, with no background push), gated by
+      // lunchLogged. The descriptor no longer pushes a time-derived 'lunch' state.
       let state = 'oncall';
-      // Group A.5 (display-only): lunch-END as an epoch (= lunchStart + 60min),
-      // pushed ONLY while ON LUNCH so the card renders a NATIVE Text(timerInterval:)
-      // counting DOWN to it — ticking on the locked screen with zero further
-      // updates (replaces the old pushed "N min left" integer that froze when
-      // backgrounded). 0 in every other state (the card restores the elapsed
-      // timer). A curtailed lunch (dur < 60) flips state back to 'oncall' before
-      // 60min elapses, which also restores it.
+      // Lunch button/state is gated on lunchLogged — whether lunch was ACTUALLY
+      // started (card/in-app "Lunch now"), NOT the presence of the planned/seeded
+      // lunchStartTime. Until then the card stays "Lunch now" and writes nothing.
+      // (The OT-from projection is INDEPENDENT — its probe reads the planned
+      // lunchStartTime/dur regardless — so planned lunch still feeds the OT line.)
       let lunchEndEpoch = 0;
-      // Group B (display-only) — the left button's record-derived phases. The live
-      // curtail-pending / "Undo · NNm" state is owned NATIVELY (the armed slot);
-      // these two are the post-write phases the descriptor pushes: a curtailed
-      // lunch already on the record (0 < dur < 60) → "Lunch NNm ✓"; an uncurtailed
-      // lunch whose 60-min window has fully elapsed → disabled "Full hour".
       let curtailMins = 0;
-      let lunchedFull = false;
+      let lunchLogged = false;
       if (wrapped) {
         state = 'wrapped';
-      } else {
+      } else if (rec.lunchLogged === true) {
+        lunchLogged = true;
         const lunchH = parseHHMM(rec.lunchStartTime);
-        const dur = Number(rec.lunchDurationMins != null ? rec.lunchDurationMins : 60);
-        if (lunchH != null && dur > 0) {
-          const now = new Date();
-          const nowMins = now.getHours() * 60 + now.getMinutes();
-          const lunchMins = Math.round(lunchH * 60);
-          const started = nowMins >= lunchMins;
-          if (started && nowMins < lunchMins + dur) {
-            state = 'lunch';
-            // lunchStart epoch (today) + 60min. Same today-anchored HH:MM→epoch
-            // conversion as hhmmToEpochToday below, inlined because that helper is
-            // declared a few lines later.
-            const ls = new Date();
-            ls.setHours(Math.floor(lunchH), Math.round((lunchH % 1) * 60), 0, 0);
-            lunchEndEpoch = Math.floor(ls.getTime() / 1000) + 3600;
-          }
-          // Recorded-curtail vs full-hour (mutually exclusive; only once lunch has
-          // started). Read straight off the record's lunchDurationMins — the calc's
-          // own curtailed-break logic is driven by the same field.
-          if (started && dur > 0 && dur < 60) curtailMins = dur;
-          else if (started && dur === 60 && nowMins >= lunchMins + 60) lunchedFull = true;
+        if (lunchH != null) {
+          // Statutory 60-min hour-end (lunchStart epoch + 3600). The native card
+          // derives on-lunch vs full-hour from Date() vs this; the window is always
+          // the hour (matches the Group A countdown). Same today-anchored HH:MM→epoch
+          // conversion as hhmmToEpochToday below, inlined because it's declared later.
+          const ls = new Date();
+          ls.setHours(Math.floor(lunchH), Math.round((lunchH % 1) * 60), 0, 0);
+          lunchEndEpoch = Math.floor(ls.getTime() / 1000) + 3600;
         }
+        // A recorded curtailed lunch (0 < dur < 60) settles the button to
+        // "Lunch NNm ✓"; the live pending/Undo state is owned natively. Read
+        // straight off lunchDurationMins — the calc's curtailed-break logic uses
+        // the same field; pay is unaffected by this display read.
+        const dur = Number(rec.lunchDurationMins != null ? rec.lunchDurationMins : 60);
+        if (dur > 0 && dur < 60) curtailMins = dur;
       }
       // Today's date + an HH:MM → epoch seconds, for Text(timerInterval:).
       const hhmmToEpochToday = (t) => {
@@ -14890,7 +14894,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       // Safety auto-end ~16h after the anchor so a forgotten Activity self-clears.
       const staleEpoch = callEpoch ? callEpoch + 16 * 3600 : 0;
-      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchedFull };
+      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged };
     }
 
     // Mounted inside SoloDayPage. START when today's call time is set; debounced
@@ -14912,7 +14916,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return () => clearInterval(t);
       }, []);
       const desc = (IS_NATIVE && enabled) ? liveActivityDescriptor(production, soloCrew, days) : null;
-      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd, l: desc.lunchEndEpoch, o: desc.otFrom, cm: desc.curtailMins, lf: desc.lunchedFull }) : '';
+      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd, l: desc.lunchEndEpoch, o: desc.otFrom, cm: desc.curtailMins, ll: desc.lunchLogged }) : '';
       React.useEffect(() => {
         if (!IS_NATIVE) return;
         // END on DISQUALIFICATION: the still-mounted controller re-renders and
@@ -14936,7 +14940,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
-          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId, lunchEndEpoch: desc.lunchEndEpoch, otFrom: desc.otFrom, curtailMins: desc.curtailMins, lunchedFull: desc.lunchedFull };
+          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId, lunchEndEpoch: desc.lunchEndEpoch, otFrom: desc.otFrom, curtailMins: desc.curtailMins, lunchLogged: desc.lunchLogged };
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…

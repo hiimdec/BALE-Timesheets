@@ -73,12 +73,16 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
         /// lunchDurationMins (0 < NN < 60), pushed by the descriptor so the button
         /// settles to "Lunch NNm ✓". 0 when no curtail is pending or recorded.
         public var curtailMins: Int
-        /// True when the 60-min lunch window has fully elapsed UNCURTAILED (lunch
-        /// started, now ≥ lunchStart + 60, duration still 60) — the button shows
-        /// the disabled "Full hour". Descriptor-computed from the record; display-only.
-        public var lunchedFull: Bool
+        /// Whether lunch was ACTUALLY started (card/in-app "Lunch now"), as opposed
+        /// to the planned/seeded lunchStartTime every day carries. The entry gate
+        /// for the whole lunch state machine: until true the card stays "Lunch now"
+        /// and the on-lunch / Curtailed? / Full-hour phases (derived natively from
+        /// Date() vs lunchEndEpoch) are unreachable. Pushed by the descriptor from
+        /// rec.lunchLogged, and set on the spot by the Lunch-now confirm intent for
+        /// an instant flip. Display-only — the calc never reads it.
+        public var lunchLogged: Bool
 
-        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchEndEpoch: Double = 0, otFrom: String = "", curtailMins: Int = 0, lunchedFull: Bool = false) {
+        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchEndEpoch: Double = 0, otFrom: String = "", curtailMins: Int = 0, lunchLogged: Bool = false) {
             self.totalText = totalText
             self.state = state
             self.callEpoch = callEpoch
@@ -90,7 +94,7 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
             self.lunchEndEpoch = lunchEndEpoch
             self.otFrom = otFrom
             self.curtailMins = curtailMins
-            self.lunchedFull = lunchedFull
+            self.lunchLogged = lunchLogged
         }
     }
 

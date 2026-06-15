@@ -4024,8 +4024,8 @@ async function main() {
       html.includes('haptic.heavy(); const t = computeNowHHMM(); onCallChange(t);'));
     check('DD4p solo editor Wrap NOW fires haptic.stamp()',
       html.includes("haptic.stamp(); const t = computeNowHHMM(); set({ wrapTime: t });"));
-    check('DD4q solo editor Lunch NOW fires haptic.heavy()',
-      html.includes("haptic.heavy(); const t = computeNowHHMM(); set({ lunchStartTime: t });"));
+    check('DD4q solo editor Lunch NOW fires haptic.heavy() + marks lunchLogged',
+      html.includes("haptic.heavy(); const t = computeNowHHMM(); set({ lunchStartTime: t, lunchLogged: true });"));
 
     // 4d3 — every Wrap site uses stamp() (cross-check: no Wrap site
     //   leaks back to plain heavy()). The 3 Wrap sites are the only
@@ -5390,10 +5390,13 @@ async function main() {
       /_capPlugins\(\)\.LiveActivity/.test(html));
 
     // ─ TT2: descriptor reuses the calc + derives state; controller is guarded ─
-    check('TT2a liveActivityDescriptor reuses calcForDisplay for today total (recomputes nothing) + derives oncall/lunch/wrapped; wrapped is the EXPLICIT flag; name from production.title',
+    check('TT2a liveActivityDescriptor reuses calcForDisplay for today total (recomputes nothing) + derives oncall/wrapped; the lunch phase is gated on lunchLogged + native (no time-derived "lunch" state); wrapped is the EXPLICIT flag; name from production.title',
       /function liveActivityDescriptor\(production, soloCrew, days\)/.test(html) &&
       /calcForDisplay\(production, rec, soloCrew, findPrevDay\(days, rec\)\)\.total/.test(html) &&
-      /let state = 'oncall';/.test(html) && /state = 'wrapped';/.test(html) && /state = 'lunch';/.test(html) &&
+      /let state = 'oncall';/.test(html) && /state = 'wrapped';/.test(html) &&
+      // Group C: lunch is gated on lunchLogged and the on-lunch boundary is native —
+      // the descriptor no longer assigns a time-derived 'lunch' state.
+      /} else if \(rec\.lunchLogged === true\) \{/.test(html) && !/state = 'lunch'/.test(html) &&
       // root-cause fix: planned wrapTime no longer counts as wrapped
       /const wrapped = rec\.wrapped === true;/.test(html) &&
       !/const wrapped = rec\.wrapped === true \|\| !!\(rec\.wrapTime/.test(html) &&
@@ -5454,7 +5457,7 @@ async function main() {
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
       /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
-      /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchedFull: desc\.lunchedFull \};/.test(html));
+      /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
@@ -5464,8 +5467,8 @@ async function main() {
     // ─ TT8: shared record-write transform + Stage-2 design-pass descriptor ─
     check('TT8a mapDayNow is the ONE day-record mutation — defined once, used by applyLunchNow, applyWrapNow, AND the solo Lunch/Wrap Now buttons',
       /function mapDayNow\(days, date, uid, patch\) \{[\s\S]{0,160}d\.date === date && \(!uid \|\| d\.crewId === uid\) \? \{ \.\.\.d, \.\.\.patch \} : d/.test(html) &&
-      /function applyLunchNow\(production, date, t\) \{[\s\S]{0,160}mapDayNow\(production\.days, date, uid0, \{ lunchStartTime: t \}\)/.test(html) &&
-      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ lunchStartTime: lunchStr \}\)\)/.test(html) &&
+      /function applyLunchNow\(production, date, t\) \{[\s\S]{0,460}mapDayNow\(production\.days, date, uid0, \{ lunchStartTime: t, lunchLogged: true \}\)/.test(html) &&
+      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ lunchStartTime: lunchStr, lunchLogged: true \}\)\)/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html));
     check('TT8b descriptor derives the pre-call/call anchor + anchorLabel + endEpoch (frozen-timer on wrap); timer anchors on pre-call when set',
       /const preCall = rec\.preCallTime \|\| rec\.truckCallTime \|\| dd\.preCallTime \|\| '';/.test(html) &&
@@ -5476,7 +5479,7 @@ async function main() {
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
-      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchedFull \}/.test(html) &&
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \}/.test(html) &&
       !/desc\.l1/.test(html));
     check('TT8d Issue C — ingestion ALSO re-runs on the plugin drainRequest event (best-effort background apply), via the SAME idempotent ingest()',
       /const LAPlg = _capPlugins\(\)\.LiveActivity;/.test(html) &&
@@ -5514,12 +5517,12 @@ async function main() {
       /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
 
     // ─ TT10: Group A / A.5 — lunch countdown + OT-from + card layout (display-only) ─
-    check('TT10a descriptor lunchEndEpoch — lunch-END epoch (= lunchStart + 60min) set ONLY inside the lunch window (single assignment, today-anchored like hhmmToEpochToday + 3600); 0 elsewhere; flows into the return for the native countdown',
+    check('TT10a descriptor lunchEndEpoch — statutory hour-end (= loggedStart + 3600) set in the lunchLogged branch (single assignment, today-anchored like hhmmToEpochToday + 3600); 0 elsewhere; flows into the return for the native countdown',
       /let lunchEndEpoch = 0;/.test(descFn) &&
       /ls\.setHours\(Math\.floor\(lunchH\), Math\.round\(\(lunchH % 1\) \* 60\), 0, 0\);/.test(descFn) &&
       /lunchEndEpoch = Math\.floor\(ls\.getTime\(\) \/ 1000\) \+ 3600;/.test(descFn) &&
       (descFn.match(/lunchEndEpoch = Math\.floor/g) || []).length === 1 &&
-      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchedFull \};/.test(descFn));
+      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \};/.test(descFn));
     check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
       /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
       /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: '02:00', wrapNextDay: true \}, soloCrew, null\)/.test(descFn) &&
@@ -5529,8 +5532,8 @@ async function main() {
       // engine maths re-derived here — it only reads the rendered OT line).
       !/otStartAbs\s*=[^=]/.test(descFn) && !/basicHrs\s*=/.test(descFn));
     check('TT10c sig + payload carry lunchEndEpoch + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getDouble/getString reads)',
-      /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, lf: desc\.lunchedFull \}/.test(html) &&
-      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchedFull: desc\.lunchedFull \}/.test(html));
+      /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, ll: desc\.lunchLogged \}/.test(html) &&
+      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged \}/.test(html));
     check('TT10d ContentState schema — lunchEndEpoch: Double + otFrom: String (display-only, init-defaulted); the plugin reads both (getDouble/getString) on start AND update; the intent process preserves both across all 4 reconstructions (arm/disarm/update/endWrapped)',
       (() => {
         const attr = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift'), 'utf8');
@@ -5548,7 +5551,7 @@ async function main() {
           !/lunchLeft/.test(intents);
         return schemaOk && pluginOk && intentsOk;
       })());
-    check('TT10e SwiftUI lunch countdown is a NATIVE ticking view — lunchCountdown renders Text(timerInterval: lunchStart…lunchEnd, countsDown: true, showsHours: false) so it advances DOWN on the locked screen with zero pushes (fork.knife + the figure only — no trailing "left" label — amber); timerSlot picks the countdown ON LUNCH (lunchEnd > 0) else the elapsed count-up; elapsedTimer stays the native Text(timerInterval:) too',
+    check('TT10e SwiftUI lunch countdown is a NATIVE ticking view — lunchCountdown renders Text(timerInterval: lunchStart…lunchEnd, countsDown: true, showsHours: false) so it advances DOWN on the locked screen with zero pushes (fork.knife + the figure only — no trailing "left" label — amber); timerSlot picks the countdown by the native onLunch predicate else the elapsed count-up; elapsedTimer stays the native Text(timerInterval:) too',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const cd = (la.match(/private func lunchCountdown[\s\S]*?\n\}/) || [''])[0];
@@ -5557,7 +5560,7 @@ async function main() {
           /Image\(systemName: "fork\.knife"\)/.test(cd) && !/Text\("left"\)/.test(cd) &&
           /\.foregroundColor\(\.tmAmber\)/.test(cd);
         const ts = (la.match(/private func timerSlot[\s\S]*?\n\}/) || [''])[0];
-        const slotOk = /if state == "lunch" && lunchEnd > 0 \{/.test(ts) &&
+        const slotOk = /if onLunch \{/.test(ts) &&
           /lunchCountdown\(end: lunchEnd\)/.test(ts) &&
           /elapsedTimer\(anchor: anchor, end: end\)/.test(ts);
         const elapsedNativeOk = /private func elapsedTimer[\s\S]*?Text\(timerInterval: callDate\(anchor\)/.test(la);
@@ -5571,7 +5574,7 @@ async function main() {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const gone = !/secondaryReadout/.test(la);
         const pr = (la.match(/private func timerProjectionRow[\s\S]*?\n\}/) || [''])[0];
-        const rowOk = /timerSlot\(state: state, anchor: anchor, end: end, lunchEnd: lunchEnd\)/.test(pr) &&
+        const rowOk = /timerSlot\(onLunch: onLunch, anchor: anchor, end: end, lunchEnd: lunchEnd\)/.test(pr) &&
           /if state != "wrapped" && !otFrom\.isEmpty \{/.test(pr) &&
           /Text\("OT from \\\(otFrom\)"\)/.test(pr) && /\.foregroundColor\(\.tmFaint\)/.test(pr);
         // lock screen: DAY TOTAL + anchor are micro-labels on one row, the total is
@@ -5589,30 +5592,35 @@ async function main() {
       })());
 
     // ─ TT11: Group B — "Curtailed?" button (new write path, reuses the queue) ─
-    check('TT11a descriptor pushes the record-derived lunch-button phases — curtailMins (recorded 0<dur<60, once lunch started) and lunchedFull (uncurtailed, 60-min window fully elapsed); both flow into the return/sig/payload (the live Undo/pending state is owned natively)',
-      /let curtailMins = 0;/.test(descFn) && /let lunchedFull = false;/.test(descFn) &&
-      /const started = nowMins >= lunchMins;/.test(descFn) &&
-      /if \(started && dur > 0 && dur < 60\) curtailMins = dur;/.test(descFn) &&
-      /else if \(started && dur === 60 && nowMins >= lunchMins \+ 60\) lunchedFull = true;/.test(descFn) &&
-      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchedFull \};/.test(descFn));
+    check('TT11a descriptor GATES the lunch phases on lunchLogged (actually-started, NOT the seeded plan) — when rec.lunchLogged it pushes lunchEndEpoch (statutory hour) + curtailMins (recorded 0<dur<60); state never becomes a time-derived "lunch" (the on-lunch/full-hour boundary is native); the pushed lunchedFull boolean is GONE; all flow into return/sig/payload',
+      /} else if \(rec\.lunchLogged === true\) \{/.test(descFn) &&
+      /lunchLogged = true;/.test(descFn) &&
+      /let curtailMins = 0;/.test(descFn) && /let lunchLogged = false;/.test(descFn) &&
+      /if \(dur > 0 && dur < 60\) curtailMins = dur;/.test(descFn) &&
+      !/lunchedFull/.test(descFn) &&            // no pushed full-hour boolean
+      !/state = 'lunch'/.test(descFn) &&        // no time-derived lunch state
+      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \};/.test(descFn));
     check('TT11b ingest reuses the SAME queue — lunchCurtail added to the today-only idempotent type filter + dispatched to applyLunchCurtail, which writes lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
       /ev\.type !== 'lunchNow' && ev\.type !== 'wrapNow' && ev\.type !== 'lunchCurtail'/.test(html) &&
       /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)/.test(html) &&
       /function applyLunchCurtail\(production, date, durationMins\) \{/.test(html) &&
       /if \(!\(mins > 0 && mins < 60\)\) return production;/.test(html) &&
       /mapDayNow\(production\.days, date, uid0, \{ lunchDurationMins: mins \}\)/.test(html));
-    check('TT11c ContentState schema — curtailMins: Int + lunchedFull: Bool (init-defaulted); the plugin reads both (getInt/getBool) on start AND update; the intent process preserves both across all 4 reconstructions',
+    check('TT11c ContentState schema — curtailMins: Int + lunchLogged: Bool (init-defaulted, lunchedFull fully removed); the plugin reads both (getInt/getBool) on start AND update; the intent process preserves lunchLogged across its reconstructions',
       (() => {
         const attr = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift'), 'utf8');
         const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
         const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
-        const schemaOk = /public var curtailMins: Int/.test(attr) && /public var lunchedFull: Bool/.test(attr) &&
-          /curtailMins: Int = 0, lunchedFull: Bool = false/.test(attr) &&
-          /self\.curtailMins = curtailMins/.test(attr) && /self\.lunchedFull = lunchedFull/.test(attr);
+        const schemaOk = /public var curtailMins: Int/.test(attr) && /public var lunchLogged: Bool/.test(attr) &&
+          /curtailMins: Int = 0, lunchLogged: Bool = false/.test(attr) &&
+          /self\.curtailMins = curtailMins/.test(attr) && /self\.lunchLogged = lunchLogged/.test(attr) &&
+          !/lunchedFull/.test(attr);
         const pluginOk = (plugin.match(/call\.getInt\("curtailMins"\)/g) || []).length >= 2 &&
-          (plugin.match(/call\.getBool\("lunchedFull"\)/g) || []).length >= 2 &&
-          (plugin.match(/curtailMins: curtailMins, lunchedFull: lunchedFull/g) || []).length >= 2;
-        const intentsOk = (intents.match(/curtailMins: cur\.curtailMins, lunchedFull: cur\.lunchedFull/g) || []).length >= 4;
+          (plugin.match(/call\.getBool\("lunchLogged"\)/g) || []).length >= 2 &&
+          (plugin.match(/curtailMins: curtailMins, lunchLogged: lunchLogged/g) || []).length >= 2 &&
+          !/lunchedFull/.test(plugin);
+        const intentsOk = (intents.match(/lunchLogged: cur\.lunchLogged/g) || []).length >= 4 &&
+          !/lunchedFull/.test(intents);
         return schemaOk && pluginOk && intentsOk;
       })());
     check('TT11d CurtailIntent — single tap arms (native whole-minute now−lunchStart), holds the 5s undo window, then COMMITS; the lunchCurtail append happens ONLY in commitCurtailIfStillArmed (stamp+armed gated) — never on the arm and never on undo; a 2nd tap cancels (no write); duration ≥60/≤0 is a no-op',
@@ -5647,27 +5655,73 @@ async function main() {
           // the flush precedes the wrap arm
           wrap.indexOf('appendEvent(type: "lunchCurtail"') < wrap.indexOf('arm(productionId, action: "wrap")');
       })());
-    check('TT11f SwiftUI lunchSlot — five-phase left button: Undo·NNm (CurtailIntent) > Confirm?/Lunch now (LunchNowIntent) > Curtailed? (CurtailIntent) active; "Lunch NNm ✓" + "Full hour" are DISABLED plain pills (exactly 4 Button(intent:) in the slot); wrap button unchanged; old lunchButton gone',
+    check('TT11f SwiftUI lunchSlot — ENTRY gated on lunchLogged (stays Lunch now / Confirm? until lunch is started); then Undo·NNm (CurtailIntent) > Lunch NNm ✓ (disabled) > Curtailed? (CurtailIntent, native onLunch) > Full hour (disabled); exactly 4 Button(intent:) in the slot; wrap unchanged; lunchedFull/old signatures gone',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const slot = (la.match(/private func lunchSlot[\s\S]*?\n\}/) || [''])[0];
-        const sigOk = /private func lunchSlot\(_ productionId: String, state: String, armed: String, curtailMins: Int, lunchedFull: Bool\)/.test(la) &&
-          !/private func lunchButton/.test(la);
-        const phasesOk = /if armed == "curtail" \{/.test(slot) && /"Undo · \\\(curtailMins\)m"/.test(slot) &&
-          /else if armed == "lunch" \{/.test(slot) &&
+        const sigOk = /private func lunchSlot\(_ productionId: String, armed: String, lunchLogged: Bool, curtailMins: Int, onLunch: Bool\)/.test(la) &&
+          !/private func lunchButton/.test(la) && !/lunchedFull/.test(la);
+        const phasesOk = /if !lunchLogged \{/.test(slot) &&                     // entry gate first
+          /if armed == "lunch" \{/.test(slot) && /"Confirm\?"/.test(slot) && /"Lunch now"/.test(slot) &&
+          /else if armed == "curtail" \{/.test(slot) && /"Undo · \\\(curtailMins\)m"/.test(slot) &&
           /else if curtailMins > 0 \{/.test(slot) && /ActionPill\(text: "Lunch \\\(curtailMins\)m ✓"/.test(slot) &&
-          /else if state == "lunch" \{/.test(slot) && /"Curtailed\?"/.test(slot) &&
-          /else if lunchedFull \{/.test(slot) && /ActionPill\(text: "Full hour"/.test(slot) &&
-          /"Lunch now"/.test(slot);
-        // exactly 4 tappable phases (Undo, Confirm?, Curtailed?, Lunch now); the 2
-        // disabled phases are plain ActionPills with no intent.
+          /else if onLunch \{/.test(slot) && /"Curtailed\?"/.test(slot) &&
+          /ActionPill\(text: "Full hour"/.test(slot);
+        // exactly 4 tappable phases (Lunch now/Confirm?, Undo, Curtailed?); 2
+        // CurtailIntent (Undo + Curtailed?), 2 LunchNowIntent (Lunch now + Confirm?);
+        // the 2 disabled phases are plain ActionPills with no intent.
         const tappableOk = (slot.match(/Button\(intent:/g) || []).length === 4 &&
           (slot.match(/CurtailIntent\(productionId: productionId\)/g) || []).length === 2 &&
           (slot.match(/LunchNowIntent\(productionId: productionId\)/g) || []).length === 2;
-        const wiredOk = /lunchSlot\(productionId, state: state, armed: armed, curtailMins: curtailMins, lunchedFull: lunchedFull\)/.test(la) &&
-          /private func actionButtons\(_ productionId: String, armed: String, state: String, curtailMins: Int, lunchedFull: Bool\)/.test(la) &&
+        const wiredOk = /lunchSlot\(productionId, armed: armed, lunchLogged: lunchLogged, curtailMins: curtailMins, onLunch: onLunch\)/.test(la) &&
+          /private func actionButtons\(_ productionId: String, armed: String, lunchLogged: Bool, curtailMins: Int, onLunch: Bool\)/.test(la) &&
           /wrapButton\(productionId, armed: armed == "wrap"\)/.test(la);
         return sigOk && phasesOk && tappableOk && wiredOk;
+      })());
+
+    // ─ TT12: Group C — lunchLogged entry gate + native onLunch exit (planned≠logged) ─
+    check('TT12a lunchLogged:true is written ONLY on actual lunch starts — card applyLunchNow (which ALSO overwrites the seeded start), in-app doLunch, and the today-only in-field NOW stamp; plain lunch-field typing stays PLANNED (no lunchLogged)',
+      /mapDayNow\(production\.days, date, uid0, \{ lunchStartTime: t, lunchLogged: true \}\)/.test(html) &&
+      /mapDayNow\(prev, todayStr, null, \{ lunchStartTime: lunchStr, lunchLogged: true \}\)/.test(html) &&
+      /set\(\{ lunchStartTime: t, lunchLogged: true \}\); showToast\?\.\(`Lunch \$\{t\}`\)/.test(html) &&
+      // the two plain lunch-start field edits do NOT set lunchLogged
+      (html.match(/onChange=\{\(e\) => set\(\{ lunchStartTime: e\.target\.value \}\)\}/g) || []).length >= 2);
+    check('TT12b new field is migration-safe — makeBlankDay seeds lunchLogged:false; migrateDay backfills with the wrapped-style date rule (past=true, today/future=false), guarded idempotent; no DEFAULT_USER_PREFS change',
+      /wrapped: false,\s*lunchLogged: false,/.test(html) &&
+      /if \(typeof d\.lunchLogged !== 'boolean'\) \{\s*d = \{ \.\.\.d, lunchLogged: !!\(d\.date && d\.date < todayISO\(\)\) \};/.test(html));
+    check('TT12c calc NEVER reads lunchLogged — deriveBreakState, calculateDay and calculatePmpaDay (the pay engine) each contain no lunchLogged reference, so pay is driven by lunchStartTime/lunchDurationMins only (the byte-identical 84-scenario calc audit independently confirms zero drift)',
+      (() => {
+        // Capture each pay function up to the next top-level function — excludes the
+        // migration/ingestion code (migrateDay, applyLunchNow) that legitimately
+        // writes the flag.
+        const bs   = (html.match(/function deriveBreakState\([\s\S]*?\n    function /) || [''])[0];
+        const calc = (html.match(/function calculateDay\([\s\S]*?\n    function /) || [''])[0];
+        const pmpa = (html.match(/function calculatePmpaDay\([\s\S]*?\n    function /) || [''])[0];
+        return bs.length > 500 && calc.length > 500 && pmpa.length > 500 &&
+          !/lunchLogged/.test(bs) && !/lunchLogged/.test(calc) && !/lunchLogged/.test(pmpa);
+      })());
+    check('TT12d native onLunch is the shared Date()-derived predicate — isOnLunch = lunchLogged && curtailMins==0 && lunchEndEpoch>0 && Date()<lunchEndEpoch — driving the chip, the timer slot AND the Curtailed?/Full-hour split, so the deadline resolves on the next render with no push; fed isOnLunch(context.state) at every surface',
+      (() => {
+        const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
+        const predOk = /private func isOnLunch\(_ s: TimeMachineActivityAttributes\.ContentState\) -> Bool \{/.test(la) &&
+          /s\.lunchLogged && s\.curtailMins == 0 && s\.lunchEndEpoch > 0 &&/.test(la) &&
+          /Date\(\)\.timeIntervalSince1970 < s\.lunchEndEpoch/.test(la);
+        const chipOk = /private func chipSlot\(state: String, cwd: Bool, onLunch: Bool\)/.test(la) &&
+          /else if onLunch \{\s*stateChip\("lunch"\)/.test(la);
+        // chip (2) + timerProjectionRow (2) + actionButtons (2) + compact dot (2)
+        const fedOk = (la.match(/isOnLunch\(context\.state\)/g) || []).length >= 6;
+        return predOk && chipOk && fedOk;
+      })());
+    check('TT12e Lunch-now confirm flips the card instantly (kills the post-confirm flicker) — confirmLunch sets lunchLogged=true + lunchEndEpoch=minute-floored-now + 3600 (matches the JS write so nothing flips on drain) + curtailMins=0 + disarm; the LunchNowIntent confirm calls confirmLunch, not the old update(state:"lunch")',
+      (() => {
+        const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
+        const cl = (intents.match(/static func confirmLunch[\s\S]*?\n    \}/) || [''])[0];
+        const helperOk = /let flooredMin = \(Date\(\)\.timeIntervalSince1970 \/ 60\)\.rounded\(\.down\) \* 60/.test(cl) &&
+          /lunchEndEpoch: flooredMin \+ 3600/.test(cl) &&
+          /curtailMins: 0, lunchLogged: true/.test(cl);
+        const wiredOk = /await TMLiveActivity\.confirmLunch\(productionId\)/.test(intents) &&
+          !/update\(productionId, state: "lunch"\)/.test(intents);
+        return helperOk && wiredOk;
       })());
   }
 

@@ -158,7 +158,7 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
+            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
         return stamp
@@ -176,7 +176,7 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
     }
@@ -193,7 +193,7 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
     }
@@ -211,7 +211,7 @@ enum TMLiveActivity {
                 callEpoch: cur.callEpoch,
                 anchorLabel: cur.anchorLabel,
                 endEpoch: Date().timeIntervalSince1970,
-                armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
+                armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
             ),
             staleDate: nil
         )
@@ -233,7 +233,7 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "curtail", armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: mins, lunchedFull: cur.lunchedFull
+            otFrom: cur.otFrom, curtailMins: mins, lunchLogged: cur.lunchLogged
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
         return stamp
@@ -249,7 +249,7 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: 0, lunchedFull: cur.lunchedFull
+            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: cur.lunchLogged
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
     }
@@ -273,10 +273,31 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchedFull: cur.lunchedFull
+            otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
         )
         await activity.update(ActivityContent(state: next, staleDate: nil))
         await requestBackgroundDrain()
+    }
+
+    /// CONFIRM Lunch-now (Group C) — mark lunch ACTUALLY started on the card the
+    /// instant the confirming tap lands, so the on-lunch phases (ON-LUNCH chip /
+    /// countdown / Curtailed?) appear immediately instead of waiting for the JS
+    /// write to drain back (parity with how Wrap sets state="wrapped" on the spot).
+    /// lunchEndEpoch is the statutory hour-end from the SAME minute-floored "now"
+    /// the JS write uses (the event `at` is HH:mm), so nothing flips when the write
+    /// lands. curtailMins resets to 0 (a fresh lunch) and the arm clears.
+    @available(iOS 16.2, *)
+    static func confirmLunch(_ productionId: String) async {
+        guard let activity = current(productionId) else { return }
+        let cur = activity.content.state
+        let flooredMin = (Date().timeIntervalSince1970 / 60).rounded(.down) * 60
+        let next = TimeMachineActivityAttributes.ContentState(
+            totalText: cur.totalText, state: cur.state,
+            callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: flooredMin + 3600,
+            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: true
+        )
+        await activity.update(ActivityContent(state: next, staleDate: nil))
     }
 
     /// BEST-EFFORT (Issue C) — if the app's WKWebView/JS is alive in this process
@@ -313,7 +334,7 @@ struct LunchNowIntent: LiveActivityIntent {
         if armed == "lunch" {
             // CONFIRM: the App-Group append is the critical, direct write.
             TMLiveActivity.appendEvent(type: "lunchNow", productionId: productionId)
-            await TMLiveActivity.update(productionId, state: "lunch")               // immediate chip + disarm
+            await TMLiveActivity.confirmLunch(productionId)                         // instant lunchLogged + hour-end + disarm
             await TMLiveActivity.requestBackgroundDrain()                           // best-effort live total
         } else {
             // ARM: the Activity update is the FIRST op — nothing (logging, queue
