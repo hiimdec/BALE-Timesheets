@@ -5933,6 +5933,131 @@ async function main() {
           /ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)/.test(html);
         return coreOk && timeOnly && wiredOk;
       })());
+
+    // ─ TT14: Overdue-invoice reminders — pref + bridge + helpers + sweep + tap ─
+    // Pins the pure helpers (behavioural eval), the reconcile predicate, the
+    // schedule/cancel side-channel shape, the TZ-safe fire date, the stable id,
+    // the extra payload, and the deep-link tap (incl. the native retain that
+    // covers cold launch). NONE of this touches calc — the byte-identical
+    // 87-scenario calc audit independently confirms zero drift.
+    //
+    // Local extractors (the R-block's sliceBetween is out of scope here): pull a
+    // `const NAME = (args) => <block|expr>;` slice and compile it to a callable.
+    const sliceArrow = (src, startNeedle, endNeedle) => {
+      const i = src.indexOf(startNeedle);
+      if (i === -1) return null;
+      const j = src.indexOf(endNeedle, i);
+      if (j === -1) return null;
+      return src.slice(i, j + endNeedle.length);
+    };
+    const evalArrow = (src) => {
+      const expr = src.replace(/^const \w+ = /, '').replace(/;\s*$/, '');
+      return new Function(`return (${expr});`)();
+    };
+
+    check('TT14a Notifications bridge — checkPermission/requestPermission/getPending/schedule/cancel/openIOSSettings each return a web-safe default BEFORE touching _capPlugins() unless IS_NATIVE (audit:web independently proves no Capacitor on web)',
+      /const Notifications = \{/.test(html) &&
+      /async checkPermission\(\) \{\s*if \(!IS_NATIVE\) return 'denied';/.test(html) &&
+      /async requestPermission\(\) \{\s*if \(!IS_NATIVE\) return 'denied';/.test(html) &&
+      /async getPending\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
+      /async schedule\(notifications\) \{\s*if \(!IS_NATIVE \|\| !notifications \|\| !notifications\.length\) return;/.test(html) &&
+      /async cancel\(ids\) \{\s*if \(!IS_NATIVE \|\| !ids \|\| !ids\.length\) return;/.test(html) &&
+      /openIOSSettings\(\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /_capPlugins\(\)\.LocalNotifications/.test(html));
+
+    check('TT14b overdueRemindersEnabled — fresh default true in DEFAULT_USER_PREFS, additive merge-over-default (existing users inherit true via the useStoredState object merge; NO MIGRATIONS entry, NO SCHEMA_VERSION bump)',
+      /overdueRemindersEnabled: true,/.test(html) &&
+      /v = \{ \.\.\.initial, \.\.\.v \};/.test(html));
+
+    check('TT14c overdueNotifId — deterministic stable 31-bit positive int from the STRING invoice id (same id → same id every run; distinct ids differ; empty/undefined safe; never 0/negative/>2^31-1)',
+      (() => {
+        const src = sliceArrow(html, 'const overdueNotifId = (invoiceId) => {', '};');
+        if (!src) return false;
+        const fn = evalArrow(src);
+        const a = fn('inv-abc123'), b = fn('inv-abc123'), c = fn('inv-xyz789'), z = fn(''), u = fn(undefined);
+        const is31 = (x) => Number.isInteger(x) && x > 0 && x <= 0x7fffffff;
+        return a === b && a !== c && is31(a) && is31(c) && is31(z) && is31(u) && z === u;
+      })());
+
+    check('TT14d overdueFireDate — 08:00 LOCAL on dueDate+1, built from LOCAL Y/M/D components (TZ-safe: never UTC-parsed or toISOString-sliced); month + year rollover correct; malformed dueDate → null',
+      (() => {
+        const src = sliceArrow(html, 'const overdueFireDate = (dueDateISO) => {', '};');
+        if (!src) return false;
+        const fn = evalArrow(src);
+        const base = (() => { const d = fn('2026-06-15'); return d && d.getFullYear() === 2026 && d.getMonth() === 5 && d.getDate() === 16 && d.getHours() === 8 && d.getMinutes() === 0 && d.getSeconds() === 0; })();
+        const monthRoll = (() => { const d = fn('2026-06-30'); return d && d.getMonth() === 6 && d.getDate() === 1 && d.getHours() === 8; })();   // Jun 30 → Jul 1 08:00
+        const yearRoll = (() => { const d = fn('2026-12-31'); return d && d.getFullYear() === 2027 && d.getMonth() === 0 && d.getDate() === 1 && d.getHours() === 8; })();   // Dec 31 → Jan 1 08:00
+        const bad = fn('') === null && fn('not-a-date') === null && fn(undefined) === null;   // shape-gate (dueDate always comes from addDays)
+        // source: the LOCAL constructor, and NO UTC slicing in the helper body
+        const srcOk = /return new Date\(\+m\[1\], \+m\[2\] - 1, \+m\[3\] \+ 1, 8, 0, 0, 0\);/.test(src) && !/toISOString|getTimezoneOffset|Z'|T08:00/.test(src);
+        return base && monthRoll && yearRoll && bad && srcOk;
+      })());
+
+    check('TT14e invoiceNeedsOverdueReminder — true ONLY for status===sent && !datePaid && dueDate present; draft / paid / datePaid-set / no-dueDate / null all false',
+      (() => {
+        const src = sliceArrow(html, 'const invoiceNeedsOverdueReminder = (inv) =>', ';');
+        if (!src) return false;
+        const fn = evalArrow(src);
+        return fn({ status: 'sent', dueDate: '2026-06-01' }) === true &&
+          fn({ status: 'sent', dueDate: '2026-06-01', datePaid: '2026-06-05' }) === false &&
+          fn({ status: 'draft', dueDate: '2026-06-01' }) === false &&
+          fn({ status: 'paid', dueDate: '2026-06-01' }) === false &&
+          fn({ status: 'sent' }) === false &&
+          fn(null) === false && fn(undefined) === false;
+      })());
+
+    check('TT14f reconcile sweep — whole-set reconcile against getPending: schedules ONE per qualifying invoice (id=overdueNotifId, extra={productionId,invoiceId}, schedule.at), cancels stale (ours-but-not-desired), leaves already-pending untouched (no churn); already-overdue → ~1 min out else the 08:00 day-after; copy carries the job name, NO amount / invoice number; IS_NATIVE-gated; writes NO day records',
+      (() => {
+        const sweep = sliceArrow(html, 'const overdueReconcile = React.useCallback(async () => {', '}, []);');
+        if (!sweep) return false;
+        const gatedOk = /if \(!IS_NATIVE\) return;/.test(sweep);
+        const desiredOk = /if \(!invoiceNeedsOverdueReminder\(inv\)\) continue;/.test(sweep) &&
+          /const fireAt = overdueFireDate\(inv\.dueDate\);/.test(sweep) &&
+          /desired\.set\(overdueNotifId\(inv\.id\), \{ p, inv, fireAt \}\);/.test(sweep);
+        const reconcileOk = /const pending = await Notifications\.getPending\(\);/.test(sweep) &&
+          /if \(!n \|\| typeof n\.id !== 'number' \|\| !\(n\.extra && n\.extra\.invoiceId\)\) continue;/.test(sweep) &&
+          /if \(!desired\.has\(n\.id\)\) toCancel\.push\(n\.id\);/.test(sweep) &&
+          /if \(pendingOurs\.has\(id\)\) continue;/.test(sweep);
+        const fireOk = /const at = fireAt\.getTime\(\) > NOW \+ 1000 \? fireAt : new Date\(NOW \+ 60 \* 1000\);/.test(sweep);
+        // The EXACT title + body pins ARE the "no amount / no invoice number"
+        // guarantee — the only user-facing strings, and neither interpolates a
+        // figure or number (job name only).
+        const payloadOk = /extra: \{ productionId: p\.id, invoiceId: inv\.id \},/.test(sweep) &&
+          /schedule: \{ at \},/.test(sweep) &&
+          /title: 'Invoice overdue',/.test(sweep) &&
+          /body: `\$\{p\.name \|\| 'Your'\} invoice is now overdue\. Chase it\?`,/.test(sweep);
+        const applyOk = /if \(toCancel\.length\) await Notifications\.cancel\(toCancel\);/.test(sweep) &&
+          /if \(toSchedule\.length\) await Notifications\.schedule\(toSchedule\);/.test(sweep);
+        const calcNeutralOk = !/setProductions\(|setDays\(|setProduction\(/.test(sweep);
+        return gatedOk && desiredOk && reconcileOk && fireOk && payloadOk && applyOk && calcNeutralOk;
+      })());
+
+    check('TT14g tap → deep-link — localNotificationActionPerformed listener routes extra.{productionId,invoiceId} → openProduction(pid,{invoiceId}); dismiss ignored; IS_NATIVE-gated; cold launch covered by the SAME listener (native didReceive posts retainUntilConsumed:true, replayed on attach — no getLaunchNotification path needed)',
+      (() => {
+        const handlerOk = /if \(!ev \|\| ev\.actionId === 'dismiss'\) return;/.test(html) &&
+          /const extra = ev\.notification && ev\.notification\.extra;/.test(html) &&
+          /const pid = extra && extra\.productionId;/.test(html) &&
+          /openProduction\(pid, invoiceId \? \{ invoiceId \} : \{\}\);/.test(html);
+        const registerOk = /addListener\('localNotificationActionPerformed', onAction\)/.test(html) &&
+          /const p = _capPlugins\(\)\.LocalNotifications;/.test(html);
+        // The cold-launch guarantee is the plugin's retainUntilConsumed in
+        // didReceive — pin it so a dep bump that drops it trips this assertion
+        // (and we re-verify cold launch on device).
+        let nativeRetain = false;
+        try {
+          const handler = fs.readFileSync(path.join(ROOT, 'node_modules/@capacitor/local-notifications/ios/Sources/LocalNotificationsPlugin/LocalNotificationsHandler.swift'), 'utf8');
+          nativeRetain = /notifyListeners\("localNotificationActionPerformed", data: data, retainUntilConsumed: true\)/.test(handler);
+        } catch (_) {}
+        return handlerOk && registerOk && nativeRetain;
+      })());
+
+    check('TT14h Settings toggle + contextual permission — IS_NATIVE-gated "Overdue reminders" toggle bound to overdueRemindersEnabled (denied state → Open Settings); permission requested on toggle-on AND in BOTH send paths (editor sendInvoice + App handleUpdateInvoice), gated on status===sent && toggle on; SettingsScreen mount only CHECKS (never requests → never on launch)',
+      /value=\{userPrefs\.overdueRemindersEnabled !== false\}/.test(html) &&
+      /onChange=\{async \(v\) => \{ set\(\{ overdueRemindersEnabled: v \}\); if \(v\) setNotifPerm\(await Notifications\.requestPermission\(\)\); \}\}/.test(html) &&
+      /notifPerm === 'denied'/.test(html) &&
+      /onClick=\{\(\) => Notifications\.openIOSSettings\(\)\}/.test(html) &&
+      (html.match(/if \(frozenPatch && frozenPatch\.status === 'sent' && userPrefs\.overdueRemindersEnabled !== false\) \{\s*Notifications\.requestPermission\(\);/g) || []).length === 2 &&
+      /useEffect\(\(\) => \{ if \(IS_NATIVE\) Notifications\.checkPermission\(\)\.then\(setNotifPerm\); \}, \[\]\);/.test(html));
   }
 
   // UU — AI call-sheet reader, Stage 2 (shoot-level review-sheet UX). The WEB
