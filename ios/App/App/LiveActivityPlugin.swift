@@ -41,7 +41,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "listActivities", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endForProduction", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endActivityIds", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "drainPendingEvents", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "drainPendingEvents", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setActiveShoot", returnType: CAPPluginReturnPromise)
     ]
 
     // App Group shared with the widget extension. The Stage-2 App Intents
@@ -49,6 +50,11 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // process; this method (app process) reads-and-clears them on foreground.
     private static let appGroupSuite = "group.co.uk.timemachineapp.shared"
     private static let pendingEventsKey = "pendingEvents"
+    // Stage B: today's-active-shoot snapshot {productionId, date} written by the
+    // app when the user opens/works a shoot that has a today day, so the "log my
+    // times" voice intent can resolve the production with NO Live Activity running
+    // (works in Best Boy mode too — id + date only).
+    private static let activeShootKey = "activeShoot"
 
     // Held as Any? because Activity<…> is only available on iOS 16.2+ and this
     // class isn't availability-gated; cast inside `if #available` blocks.
@@ -261,5 +267,26 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             defaults.removeObject(forKey: Self.pendingEventsKey)
         }
         call.resolve(["events": events])
+    }
+
+    // MARK: - setActiveShoot (Stage B)
+
+    // JS->native write of the today's-active-shoot snapshot into the App Group, so
+    // the "log my times" App Intent can resolve the production WITHOUT a running
+    // Live Activity. Empty productionId or date CLEARS the key (closeProduction, or
+    // no qualifying today day). The intent re-checks date == today on read.
+    @objc func setActiveShoot(_ call: CAPPluginCall) {
+        guard let defaults = UserDefaults(suiteName: Self.appGroupSuite) else {
+            call.resolve(["ok": false])
+            return
+        }
+        let pid = call.getString("productionId") ?? ""
+        let date = call.getString("date") ?? ""
+        if pid.isEmpty || date.isEmpty {
+            defaults.removeObject(forKey: Self.activeShootKey)
+        } else {
+            defaults.set(["productionId": pid, "date": date], forKey: Self.activeShootKey)
+        }
+        call.resolve(["ok": true])
     }
 }

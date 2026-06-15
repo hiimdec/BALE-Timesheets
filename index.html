@@ -976,6 +976,20 @@
         catch (e) { try { console.warn('[LiveActivity] drain failed', (e && e.message) || e); } catch (_) {} }
         return [];
       },
+      // Stage B: write/clear the today's-active-shoot snapshot {productionId, date}
+      // in the App Group, so the "log my times" voice intent can resolve the
+      // production with NO Live Activity running (solo AND best-boy — id+date only).
+      // Empty args clear it. IS_NATIVE-gated; no-op on web.
+      async setActiveShoot(productionId, date) {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.setActiveShoot) await p.setActiveShoot({ productionId: productionId || '', date: date || '' }); }
+        catch (e) { try { console.warn('[LiveActivity] setActiveShoot failed', (e && e.message) || e); } catch (_) {} }
+      },
+      async clearActiveShoot() {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.setActiveShoot) await p.setActiveShoot({ productionId: '', date: '' }); }
+        catch (e) { try { console.warn('[LiveActivity] clearActiveShoot failed', (e && e.message) || e); } catch (_) {} }
+      },
     };
 
     // ── AI call-sheet reader (Stage 1) — bridge to CallSheetPlugin ──────────
@@ -22324,6 +22338,24 @@ const confirmDelete = (p) => setConfirmOpts({
           try { if (laHandle && laHandle.remove) laHandle.remove(); } catch (_) {}
         };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      // ── Stage B: today's-active-shoot snapshot ────────────────────────────────
+      // So the "log my times" voice intent can resolve the production with NO Live
+      // Activity running (solo AND best-boy — id+date only). When the user opens a
+      // shoot that has a today day, write {productionId, date:today} to the App
+      // Group; on close (openId null), switching shoots, or no today day → clear.
+      // Currently-open wins the multi-shoot-today case; the intent re-checks
+      // date === today on read. IS_NATIVE-gated (no-op on web).
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        const today = todayISO();
+        const prod = productions.find(p => p.id === openId);
+        if (openId && prod && (prod.days || []).some(d => d.date === today)) {
+          LiveActivity.setActiveShoot(openId, today);
+        } else {
+          LiveActivity.clearActiveShoot();
+        }
+      }, [openId, productions]); // eslint-disable-line react-hooks/exhaustive-deps
 
       // ── Call-sheet share-in (Stage 3) ────────────────────────────────────────
       // CFBundleDocumentTypes makes TimeMachine a "Copy to / Open in" target for
