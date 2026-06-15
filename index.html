@@ -3257,12 +3257,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       else if (!hasAnyKitItems) kmAmount = crewKmAmount;
       if (kmAmount > 0)
         extra.push({ label: "Kit", detail: "", rate: null, qty: 1, amount: kmAmount, bucket: 'kit' });
-      if (Number(resolvedDay?.perDiemAmount) > 0)
-        extra.push({ label: "Per Diem", detail: "", rate: null, qty: 1, amount: Number(resolvedDay.perDiemAmount) });
-      (resolvedDay?.expenses || []).forEach(exp => {
+      // Per diem + expenses (Stage 2). Per diem is now modelled as a preset
+      // instance (presetId 'builtin-perdiem') but STILL renders as its own
+      // "Per Diem" line (isExpense:false). Order is preserved — per diem FIRST
+      // (whether from an instance OR the legacy perDiemAmount scalar; the scalar
+      // is read-compat for un-migrated / rollback records), then the other
+      // expenses. Each expense is read with BOTH the new shape ({name, detail})
+      // and the old shape ({category, description}) so a record not yet through
+      // MIGRATIONS[4] renders byte-identical. amount<=0 stays unemitted.
+      const exps = resolvedDay?.expenses || [];
+      const isPerDiem = (e) => e && e.presetId === 'builtin-perdiem';
+      const pdInstance = exps.find(isPerDiem);
+      const perDiemAmt = pdInstance ? (Number(pdInstance.amount) || 0) : (Number(resolvedDay?.perDiemAmount) || 0);
+      if (perDiemAmt > 0)
+        extra.push({ label: "Per Diem", detail: "", rate: null, qty: 1, amount: perDiemAmt });
+      exps.forEach(exp => {
+        if (isPerDiem(exp)) return;                       // per diem handled above
         const amt = Number(exp.amount) || 0;
         if (amt <= 0) return;
-        extra.push({ label: `Expense: ${exp.category || "Other"}`, detail: exp.description || "", rate: null, qty: 1, amount: amt });
+        const nm = exp.name || exp.category || "Other";   // read-compat: old `category`
+        const dt = exp.detail || exp.description || "";    // read-compat: old `description`
+        extra.push({ label: `Expense: ${nm}`, detail: dt, rate: null, qty: 1, amount: amt });
       });
       if (!extra.length) return calc;
       const lines = [...calc.lines, ...extra];
@@ -8206,7 +8221,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {renderChip("mileage",    "Mileage",     mileageSet,    mileageSummary)}
                   {renderChip("kitMoney",   "Kit",         kitMoneySet,   kitMoneySummary)}
                   {!isTravelDay && renderChip("travelTime", "Travel time", travelTimeSet, travelTimeSummary)}
-                  {renderChip("perDiem",    "Per diem",    perDiemSet,    perDiemSummary)}
                   {renderChip("expenses",   "Expenses",    expensesSet,   expensesSummary)}
                 </>);
               })()}
@@ -8461,57 +8475,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           )}
 
           {/* ── Per diem (chip-gated) ── */}
-          {perDiemActive && (
-            <SectionCard title="Per diem" variant="condition" onClose={() => toggleChip("perDiem")}>
-              <Field label="Per Diem Amount (£)" hint="Added to day total">
-                <Input type="number" min="0" step="0.01" value={v.perDiemAmount ?? 0} onChange={(e) => set({ perDiemAmount: Number(e.target.value) })} />
-              </Field>
-            </SectionCard>
-          )}
-
-          {/* ── Expenses (chip-gated) ── */}
+          {/* ── Expenses (chip-gated) — the single home for per diem + expenses
+              now (the separate Per diem chip is gone; "Per Diem" is a built-in
+              preset offered by the shared editor). ── */}
           {expensesActive && (
             <SectionCard title="Expenses" variant="condition" onClose={() => toggleChip("expenses")}>
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => set({ expenses: [...(v.expenses || []), { id: uid(), amount: 0, category: "Other", description: "" }] })}
-                  className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1"
-                ><IPlus size={11}/>Add expense</button>
-                {(v.expenses || []).length > 0 && (
-                  <div className="space-y-2">
-                    {(v.expenses || []).map((exp) => (
-                      <div key={exp.id} className="flex flex-wrap items-center gap-2">
-                        <Select
-                          value={exp.category}
-                          onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, category: e.target.value } : x) })}
-                          className="flex-shrink-0" style={{ width: 116 }}
-                        >
-                          {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </Select>
-                        <Input
-                          type="number" min="0" step="0.01"
-                          value={exp.amount}
-                          onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, amount: Number(e.target.value) || 0 } : x) })}
-                          placeholder="0.00" className="flex-shrink-0" style={{ width: 84 }}
-                        />
-                        <Input
-                          type="text"
-                          value={exp.description}
-                          onChange={(e) => set({ expenses: v.expenses.map(x => x.id === exp.id ? { ...x, description: e.target.value } : x) })}
-                          placeholder="Description" className="flex-1 min-w-[80px]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => set({ expenses: v.expenses.filter(x => x.id !== exp.id) })}
-                          className="text-neutral-600 hover:text-tm-pen transition-colors flex-shrink-0 p-1"
-                          aria-label="Remove expense"
-                        ><IX size={14}/></button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ExpensesEditor
+                expenses={v.expenses || []}
+                presets={(userPrefs && userPrefs.expensePresets) || []}
+                onChange={(next) => set({ expenses: next })}
+              />
             </SectionCard>
           )}
 
@@ -9718,6 +9691,117 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const filtered = items.filter(it => !(it && it.auto === true));
       if (filtered.length === items.length) return day;
       return { ...day, kitItems: filtered };
+    }
+
+    // Expense auto-apply (mirrors applyKitAutoApply) — seeds the user's own day
+    // with the defaultOn expense presets when it has NO expenses yet. No day-type
+    // gate and no auto-remove counterpart (unlike kit, expenses aren't day-type-
+    // bearing). Built-ins ship defaultOn:false, so this is dormant unless the user
+    // opts a preset in. Idempotent: skips once any expense is present.
+    function applyExpenseAutoApply(day, userPrefs, userCrewId = null) {
+      if (!day) return day;
+      if (userCrewId == null || day.crewId !== userCrewId) return day;
+      if ((day.expenses || []).length > 0) return day;
+      const defaults = (userPrefs?.expensePresets || []).filter(p => p && p.defaultOn === true);
+      if (defaults.length === 0) return day;
+      return {
+        ...day,
+        expenses: defaults.map(p => ({
+          id: uid(), presetId: p.id, name: p.name || '', amount: Number(p.defaultAmount) || 0, detail: '',
+        })),
+      };
+    }
+
+    // Shared expenses editor — the Rate-style Included/Available picker (mirrors the
+    // kit picker) used by every per-day expense surface. Available = expensePresets
+    // not yet included (tap a chip to add an instance at the preset's default
+    // amount). Included = the day's expense entries: preset rows have a LOCKED name
+    // + editable amount; custom rows have editable name + amount + detail. A preset
+    // can be included only ONCE (singleton — once included it leaves Available;
+    // removal is the row's ×), so "Per Diem" can't be added twice. Read-compat:
+    // renders old-shape entries ({category, description}) via name||category /
+    // detail||description, so it works in the pre-migration window and a new-UI add
+    // before migration still renders. onChange(newExpenses) writes the array;
+    // optional onSavePreset(preset) persists a named custom as a reusable preset.
+    function ExpensesEditor({ expenses, presets, onChange, onSavePreset }) {
+      const exps = expenses || [];
+      const presetList = presets || [];
+      const includedIds = new Set(exps.map(e => e && e.presetId).filter(Boolean));
+      const dispName = (e) => e.name || e.category || "";          // read-compat
+      const dispDetail = (e) => e.detail || e.description || "";   // read-compat
+
+      const includePreset = (p) =>
+        onChange([...exps, { id: uid(), presetId: p.id, name: p.name, amount: Number(p.defaultAmount) || 0, detail: "" }]);
+      const addCustom = () =>
+        onChange([...exps, { id: uid(), presetId: null, name: "", amount: 0, detail: "" }]);
+      const updateEntry = (id, patch) =>
+        onChange(exps.map(e => e.id === id ? { ...e, ...patch } : e));
+      const removeEntry = (id) =>
+        onChange(exps.filter(e => e.id !== id));
+
+      const available = presetList.filter(p => !includedIds.has(p.id));
+
+      return (
+        <div className="space-y-3">
+          {available.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {available.map(p => (
+                <button key={p.id} type="button" onClick={() => includePreset(p)}
+                  className="text-[11px] px-2 py-1 rounded-lg border border-neutral-700 bg-neutral-900 text-neutral-300 hover:border-sky-500/50 hover:text-sky-300 transition-colors flex items-center gap-1"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IPlus size={10}/>{p.name}{Number(p.defaultAmount) > 0 ? ` · ${fmtGBP(p.defaultAmount)}` : ''}
+                </button>
+              ))}
+            </div>
+          )}
+          {exps.length > 0 && (
+            <div className="space-y-2">
+              {exps.map(exp => {
+                const isPreset = !!exp.presetId;
+                const stranded = isPreset && !presetList.find(p => p.id === exp.presetId);
+                return (
+                  <div key={exp.id} className="flex flex-wrap items-center gap-2">
+                    {isPreset ? (
+                      <div className="flex-1 min-w-[80px] text-sm text-neutral-200 flex items-center gap-1.5">
+                        {dispName(exp) || "Expense"}
+                        {stranded && <span className="text-[9px] uppercase tracking-wide text-neutral-500 flex-shrink-0">removed preset</span>}
+                      </div>
+                    ) : (
+                      <Input type="text" value={dispName(exp)} placeholder="Name"
+                        onChange={(e) => updateEntry(exp.id, { name: e.target.value })}
+                        className="flex-1 min-w-[80px]" />
+                    )}
+                    <Input type="number" min="0" step="0.01" value={exp.amount}
+                      onChange={(e) => updateEntry(exp.id, { amount: Number(e.target.value) || 0 })}
+                      placeholder="0.00" className="flex-shrink-0" style={{ width: 84 }} />
+                    <button type="button" onClick={() => removeEntry(exp.id)}
+                      className="text-neutral-600 hover:text-tm-pen transition-colors flex-shrink-0 p-1"
+                      aria-label="Remove expense"><IX size={14}/></button>
+                    {/* Custom rows: editable detail. Preset rows: detail shown as a
+                        subtitle when present, so migrated old customs stay legible. */}
+                    {!isPreset ? (
+                      <Input type="text" value={dispDetail(exp)} placeholder="Description"
+                        onChange={(e) => updateEntry(exp.id, { detail: e.target.value })}
+                        className="basis-full min-w-[80px]" />
+                    ) : (dispDetail(exp) ? (
+                      <div className="basis-full text-[11px] text-neutral-500 pl-0.5">{dispDetail(exp)}</div>
+                    ) : null)}
+                    {!isPreset && onSavePreset && dispName(exp).trim() && (
+                      <button type="button"
+                        onClick={() => onSavePreset({ id: uid(), name: dispName(exp).trim(), defaultAmount: Number(exp.amount) || 0, defaultOn: false, isBuiltIn: false })}
+                        className="basis-full text-left text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 transition-colors"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>Save as preset</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <button type="button" onClick={addCustom}
+            className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1"
+            style={{ WebkitTapHighlightColor: 'transparent' }}><IPlus size={11}/>Add custom expense</button>
+        </div>
+      );
     }
 
     function makeBlankDay(crewId = "") {
