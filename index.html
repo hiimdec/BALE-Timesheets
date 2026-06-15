@@ -7717,7 +7717,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // those are fresh closures per parent render but functionally
     // equivalent (each closes over the same day.id captured at the map
     // callback in SoloDayPage's DayCarousel).
-    const DayEntryForm = React.memo(function DayEntryFormImpl({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null, userPrefs = null }) {
+    const DayEntryForm = React.memo(function DayEntryFormImpl({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null, userPrefs = null, setUserPrefs = null }) {
       const v = value;
       // DISPLAY-ONLY resolved view: call/wrap/lunch/dayType can cascade from
       // dayDefaults, so the raw `v` may leave those fields undefined. Resolve
@@ -7788,8 +7788,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // means the user's defaults never bleed onto someone else's day.
         const myCrewId = getEffectiveUserCrewId(production, userPrefs);
         const removed = applyKitAutoRemove({ ...v, ...patch }, myCrewId);
-        const merged = applyKitAutoApply(removed, userPrefs, null, myCrewId);
+        const merged = applyExpenseAutoApply(applyKitAutoApply(removed, userPrefs, null, myCrewId), userPrefs, myCrewId);
         if (merged.kitItems !== v.kitItems) patch.kitItems = merged.kitItems;
+        if (merged.expenses !== v.expenses) patch.expenses = merged.expenses;
         set(patch);
       };
       const onCallChange = (callTime) => {
@@ -7872,7 +7873,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // the ad-hoc amount is positive — both contribute to the day total.
       const kitItemsCount = (v.kitItems || []).length;
       const kitMoneySet   = kitItemsCount > 0 || (Number(v.kitMoneyAmount) || 0) > 0;
-      const perDiemSet    = (Number(v.perDiemAmount) || 0) > 0;
       const preCallSet    = !!(v.preCallTime || v.truckCallTime);
       const mileageSet    = Number(v.miles) > 0 || !!v.mileagePostcode;
       const travelTimeSet = Number(v.travelOutMins) > 0 || Number(v.travelBackMins) > 0;
@@ -7882,7 +7882,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Chip tint reflects value-presence (*Set); panel open/closed is independent.
       const stepUpActive     = expandedChips.has("stepUp");
       const kitMoneyActive   = expandedChips.has("kitMoney");
-      const perDiemActive    = expandedChips.has("perDiem");
       const preCallActive    = expandedChips.has("preCall");
       const mileageActive    = expandedChips.has("mileage");
       const travelTimeActive = expandedChips.has("travelTime");
@@ -8287,7 +8286,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   return bits.join(' · ');
                 })();
                 const travelTimeSummary = travelTimeSet ? fmtMins(travelTotalMins) : null;
-                const perDiemSummary    = perDiemSet    ? fmtGBP(v.perDiemAmount) : null;
                 const expensesSummary   = expensesSet   ? `${(v.expenses || []).length}` : null;
                 return (<>
                   {renderChip("stepUp",     "Step-up",     stepUpSet,     stepUpSummary)}
@@ -8548,16 +8546,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </SectionCard>
           )}
 
-          {/* ── Per diem (chip-gated) ── */}
           {/* ── Expenses (chip-gated) — the single home for per diem + expenses
-              now (the separate Per diem chip is gone; "Per Diem" is a built-in
-              preset offered by the shared editor). ── */}
+              (the separate Per diem chip/panel are gone; "Per Diem" is a built-in
+              preset offered by the shared editor). onSavePreset persists a named
+              custom into userPrefs.expensePresets when setUserPrefs is in scope
+              (solo path); full-mode/BB omit it gracefully (Settings is the home). ── */}
           {expensesActive && (
             <SectionCard title="Expenses" variant="condition" onClose={() => toggleChip("expenses")}>
               <ExpensesEditor
                 expenses={v.expenses || []}
                 presets={(userPrefs && userPrefs.expensePresets) || []}
                 onChange={(next) => set({ expenses: next })}
+                onSavePreset={setUserPrefs ? (preset) => setUserPrefs(prev => ({ ...prev, expensePresets: [...(prev.expensePresets || []), preset] })) : undefined}
               />
             </SectionCard>
           )}
@@ -9194,58 +9194,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         </div>
                       </div>
                     )}
-                    <div className="space-y-3">
-                      <Field label="Per Diem Amount (£)" hint="Set 0 to deactivate. Added to day total.">
-                        <Input type="number" min="0" step="0.01" value={dateEdit.perDiemAmount ?? 0} onChange={e => setDateEdit(p => ({...p, perDiemAmount: Number(e.target.value)}))} />
-                      </Field>
-                    </div>
+                    {/* Expenses rework: per-diem + expenses are strictly per-day and
+                        edited via the per-day Expenses picker. The bulk-date-edit no
+                        longer offers them — bulk per-date expense/per-diem defaulting
+                        contradicts strictly-per-day, and the old bulk expense block
+                        was dead anyway (handleBulkEditDate never applied expenses). */}
                     <div className="space-y-3">
                       <Field label="Kit Money Amount (£)" hint="Set 0 to deactivate. Added to day total.">
                         <Input type="number" min="0" step="0.01" value={dateEdit.kitMoneyAmount ?? 0} onChange={e => setDateEdit(p => ({...p, kitMoneyAmount: Number(e.target.value)}))} />
                       </Field>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Expenses</span>
-                        <button
-                          type="button"
-                          onClick={() => setDateEdit(p => ({ ...p, expenses: [...(p.expenses || []), { id: uid(), amount: 0, category: "Other", description: "" }] }))}
-                          className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1"
-                        ><IPlus size={11}/>Add expense</button>
-                      </div>
-                      {(dateEdit.expenses || []).length > 0 && (
-                        <div className="space-y-2">
-                          {(dateEdit.expenses || []).map((exp) => (
-                            <div key={exp.id} className="flex flex-wrap items-center gap-2">
-                              <Select
-                                value={exp.category}
-                                onChange={(e) => setDateEdit(p => ({ ...p, expenses: p.expenses.map(x => x.id === exp.id ? { ...x, category: e.target.value } : x) }))}
-                                className="flex-shrink-0" style={{ width: 116 }}
-                              >
-                                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                              </Select>
-                              <Input
-                                type="number" min="0" step="0.01"
-                                value={exp.amount}
-                                onChange={(e) => setDateEdit(p => ({ ...p, expenses: p.expenses.map(x => x.id === exp.id ? { ...x, amount: Number(e.target.value) || 0 } : x) }))}
-                                placeholder="0.00" className="flex-shrink-0" style={{ width: 84 }}
-                              />
-                              <Input
-                                type="text"
-                                value={exp.description}
-                                onChange={(e) => setDateEdit(p => ({ ...p, expenses: p.expenses.map(x => x.id === exp.id ? { ...x, description: e.target.value } : x) }))}
-                                placeholder="Description" className="flex-1 min-w-[80px]"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setDateEdit(p => ({ ...p, expenses: p.expenses.filter(x => x.id !== exp.id) }))}
-                                className="text-neutral-600 hover:text-tm-pen transition-colors flex-shrink-0 p-1"
-                                aria-label="Remove expense"
-                              ><IX size={14}/></button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                     <div className="space-y-3">
                       <Field label="Step-Up Role for all crew" hint="Select — None — to disable.">
@@ -10080,11 +10037,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           secondBreakStartTime, secondBreakDurationMins,
           preCallTime,
           miles, travelOutMins, travelBackMins,
-          perDiemAmount,
           kitMoneyAmount,
           stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
           mileageMethod, mileagePostcode, mileageRoundTrip,
         } = overrides;
+        // Expenses rework: bulk-edit no longer sets per-diem (strictly per-day);
+        // each day's perDiemAmount/expenses are preserved via the ...d spread below.
         // Stage 2d: compute myCrewId ONCE for the bulk edit; each per-day
         // helper call skips rows that aren't the user's.
         const myCrewId = getEffectiveUserCrewId(production, userPrefs);
@@ -10096,14 +10054,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             secondBreakStartTime, secondBreakDurationMins,
             preCallTime,
             miles, travelOutMins, travelBackMins,
-            perDiemAmount,
             kitMoneyAmount,
             stepUpRole, stepUpBDR, stepUpOTCoef, stepUpOTRate,
             mileageMethod, mileagePostcode, mileageRoundTrip,
           };
-          // Auto-remove → auto-apply chain. Both helpers no-op on non-user
-          // rows, so other crew on this date pass through unmodified.
-          return applyKitAutoApply(applyKitAutoRemove(next, myCrewId), userPrefs, null, myCrewId);
+          // Auto-remove → auto-apply chain (kit + expense defaults). All no-op on
+          // non-user rows, so other crew on this date pass through unmodified.
+          return applyExpenseAutoApply(applyKitAutoApply(applyKitAutoRemove(next, myCrewId), userPrefs, null, myCrewId), userPrefs, myCrewId);
         }));
       };
       const handleAssignAllOnDate = (date, dayType = "Shoot") => {
@@ -10869,9 +10826,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             const preCallSet = !!dd.preCallTime;
             const mileageSet = (Number(dd.miles) || 0) > 0 || !!(dd.mileagePostcode || '').trim();
             const travelSet = (Number(dd.travelOutMins) || 0) > 0 || (Number(dd.travelBackMins) || 0) > 0;
-            const perDiemSet = (Number(dd.perDiemAmount) || 0) > 0;
-            const expensesSet = (dd.expenses?.length ?? 0) > 0;
-            const expensesTotalDD = (dd.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+            // Expenses rework: per-diem + expenses are STRICTLY per-day now — the
+            // dept-default cascade was removed in Stage 3, so these dept-default
+            // controls are gone (they'd write dayDefaults that no longer surface).
             return (
               <>
                 <div className="flex items-center gap-2 mt-2 mb-3 px-4">
@@ -10882,8 +10839,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <ExtraChip label="Pre-call" isSet={preCallSet} summary={preCallSet ? (dd.preCallTime || 'on') : null} onTap={() => toggleDeptExtra('preCall')}/>
                   <ExtraChip label="Mileage" isSet={mileageSet} summary={mileageSet ? `${Number(dd.miles) || 0} mi` : null} onTap={() => toggleDeptExtra('mileage')}/>
                   <ExtraChip label="Travel" isSet={travelSet} summary={travelSet ? `${Number(dd.travelOutMins) || 0}+${Number(dd.travelBackMins) || 0}m` : null} onTap={() => toggleDeptExtra('travel')}/>
-                  <ExtraChip label="Per diem" isSet={perDiemSet} summary={perDiemSet ? fmtGBP(Number(dd.perDiemAmount) || 0) : null} onTap={() => toggleDeptExtra('perDiem')}/>
-                  <ExtraChip label="Expenses" isSet={expensesSet} summary={expensesSet ? fmtGBP(expensesTotalDD) : null} onTap={() => toggleDeptExtra('expenses')}/>
                 </div>
 
                 {(() => {
@@ -10940,50 +10895,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               <input type="number" min="0" step="1" inputMode="numeric" value={numDisplay(Number(dd.travelBackMins) || 0)} placeholder="0" onChange={(e) => updateDeptDefault('travelBackMins', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
                             </div>
                           </div>
-                        </>
-                      );
-                    } else if (key === 'perDiem') {
-                      title = 'Per diem · Dept default';
-                      isSet = (Number(dd.perDiemAmount) || 0) > 0;
-                      onClear = () => updateDeptDefault('perDiemAmount', 0);
-                      body = (
-                        <>
-                          <div>
-                            <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                            <input type="number" min="0" step="0.01" inputMode="decimal" value={numDisplay(Number(dd.perDiemAmount) || 0)} placeholder="0" onChange={(e) => updateDeptDefault('perDiemAmount', Number(e.target.value) || 0)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                          </div>
-                          )}
-                        </>
-                      );
-                    } else if (key === 'expenses') {
-                      const expenses = dd.expenses || [];
-                      const addExp = () => updateDeptDefault('expenses', [...expenses, { id: uid(), amount: 0, category: 'Other', description: '' }]);
-                      const upExp = (id, patch) => updateDeptDefault('expenses', expenses.map(x => x.id === id ? { ...x, ...patch } : x));
-                      const rmExp = (id) => updateDeptDefault('expenses', expenses.filter(x => x.id !== id));
-                      title = 'Expenses · Dept default';
-                      isSet = expenses.length > 0;
-                      onClear = () => updateDeptDefault('expenses', []);
-                      body = (
-                        <>
-                          <button type="button" onClick={addExp} className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                            <IPlus size={11}/>Add expense
-                          </button>
-                          {expenses.length === 0 ? (
-                            <div className="text-[11px] text-neutral-500 italic">No expenses yet — tap Add expense.</div>
-                          ) : (
-                            <div className="space-y-2">
-                              {expenses.map(exp => (
-                                <div key={exp.id} className="flex flex-wrap items-center gap-2">
-                                  <select value={exp.category} onChange={(e) => upExp(exp.id, { category: e.target.value })} className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 116 }}>
-                                    {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                  </select>
-                                  <input type="number" min="0" step="0.01" inputMode="decimal" value={numDisplay(exp.amount)} onChange={(e) => upExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
-                                  <input type="text" value={exp.description} onChange={(e) => upExp(exp.id, { description: e.target.value })} placeholder="Description" className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                                  <button type="button" onClick={() => rmExp(exp.id)} className="text-neutral-600 hover:text-tm-pen transition-colors p-1" aria-label="Remove expense" style={{ WebkitTapHighlightColor: 'transparent' }}><IX size={14}/></button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </>
                       );
                     }
@@ -11787,7 +11698,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             // can only be theirs / manually set, never auto-added by us.)
             const myCrewId = getEffectiveUserCrewId(p, userPrefs);
             return field === 'dayType'
-              ? applyKitAutoApply(applyKitAutoRemove(next, myCrewId), userPrefs, null, myCrewId)
+              ? applyExpenseAutoApply(applyKitAutoApply(applyKitAutoRemove(next, myCrewId), userPrefs, null, myCrewId), userPrefs, myCrewId)
               : next;
           })
         }));
@@ -11936,7 +11847,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   // V4-5h-10: value-presence drives activation (no *Enabled flags).
                   const stepUpActive = !!dayRecord.stepUpRole;
                   const kitMoneyActive = (Number(dayRecord.kitMoneyAmount) || 0) > 0;
-                  const perDiemActive = (Number(dayRecord.perDiemAmount) || 0) > 0;
                   const preCallActive = !!(dayRecord.preCallTime || dayRecord.truckCallTime);
                   const mileageActive = Number(dayRecord.miles) > 0 || !!dayRecord.mileagePostcode;
                   const travelTimeActive = Number(dayRecord.travelOutMins) > 0 || Number(dayRecord.travelBackMins) > 0;
@@ -11961,12 +11871,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     travelOut !== (Number(dd.travelOutMins) || 0) ||
                     travelBack !== (Number(dd.travelBackMins) || 0)
                   );
-                  const perDiemOverridden = !!dd && (Number(dayRecord.perDiemAmount) || 0) > 0 &&
-                    (Number(dayRecord.perDiemAmount) || 0) !== (Number(dd.perDiemAmount) || 0);
-                  const expensesOverridden = !!dd && (dayRecord.expenses?.length ?? 0) > 0 && (
-                    (dayRecord.expenses?.length ?? 0) !== (dd.expenses?.length ?? 0) ||
-                    expensesTotal !== (dd.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0)
-                  );
+                  // Expenses rework: per-diem + expenses are strictly per-day — no
+                  // dept-default cascade, so no override/reset-to-default for them.
 
                   return (
                     <>
@@ -11980,8 +11886,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <ExtraChip label="Mileage" isSet={mileageActive} isOverridden={mileageOverridden} summary={mileageActive ? `${Number(dayRecord.miles) || 0} mi` : null} onTap={() => toggleExtra('mileage')}/>
                         <ExtraChip label="Kit" isSet={kitMoneyActive} summary={kitMoneyActive ? fmtGBP(Number(dayRecord.kitMoneyAmount) || 0) : null} onTap={() => toggleExtra('kit')}/>
                         {!isTravelDay && <ExtraChip label="Travel" isSet={travelTimeActive} isOverridden={travelOverridden} summary={travelTimeActive ? `${travelOut}+${travelBack}m` : null} onTap={() => toggleExtra('travel')}/>}
-                        <ExtraChip label="Per diem" isSet={perDiemActive} isOverridden={perDiemOverridden} summary={perDiemActive ? fmtGBP(Number(dayRecord.perDiemAmount) || 0) : null} onTap={() => toggleExtra('perDiem')}/>
-                        <ExtraChip label="Expenses" isSet={expensesActive} isOverridden={expensesOverridden} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => toggleExtra('expenses')}/>
+                        <ExtraChip label="Expenses" isSet={expensesActive} summary={expensesActive ? fmtGBP(expensesTotal) : null} onTap={() => toggleExtra('expenses')}/>
                         {show2ndBreakChip && (() => {
                           const logged = !!dayRecord.secondBreakLogged;
                           const sbMins = Number(dayRecord.secondBreakDurationMins) || 0;
@@ -12112,16 +12017,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                 <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Set 0 to deactivate. Crew-level default applies when day amount is 0.</div>
                               </div>
                             );
-                          } else if (key === 'perDiem') {
-                            title = 'Per diem';
-                            body = (
-                              <div>
-                                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Amount (£)</div>
-                                {numInput(dayRecord.perDiemAmount, (e) => updateField('perDiemAmount', Number(e.target.value) || 0))}
-                                <div className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">Set 0 to deactivate.</div>
-                              </div>
-                            );
-                            if (perDiemOverridden) resetEl = resetButton('Reset to default', () => resetFields('perDiem', 'perDiemAmount'));
                           } else if (key === 'mileage') {
                             const updateMulti = (patch) => setProduction(p => ({
                               ...p,
@@ -12215,47 +12110,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               </div>
                             );
                           } else if (key === 'expenses') {
-                            const expenses = dayRecord.expenses || [];
-                            const addExpense = () => setProduction(p => ({
+                            const setExpenses = (next) => setProduction(p => ({
                               ...p,
-                              days: p.days.map(d => d.id === dayRecord.id ? {
-                                ...d,
-                                expenses: [...(d.expenses || []), { id: uid(), amount: 0, category: 'Other', description: '' }],
-                              } : d),
-                            }));
-                            const updateExp = (expId, patch) => setProduction(p => ({
-                              ...p,
-                              days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: (d.expenses || []).map(x => x.id === expId ? { ...x, ...patch } : x) } : d),
-                            }));
-                            const removeExp = (expId) => setProduction(p => ({
-                              ...p,
-                              days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: (d.expenses || []).filter(x => x.id !== expId) } : d),
+                              days: p.days.map(d => d.id === dayRecord.id ? { ...d, expenses: next } : d),
                             }));
                             title = 'Expenses';
                             body = (
-                              <>
-                                <button type="button" onClick={addExpense} className="text-[10px] uppercase tracking-wide text-sky-500 hover:text-sky-300 font-bold flex items-center gap-1 mb-3" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                                  <IPlus size={11}/>Add expense
-                                </button>
-                                {expenses.length === 0 ? (
-                                  <div className="text-[11px] text-neutral-500 italic">No expenses yet — tap Add expense.</div>
-                                ) : (
-                                  <div className="space-y-2">
-                                    {expenses.map(exp => (
-                                      <div key={exp.id} className="flex flex-wrap items-center gap-2">
-                                        <select value={exp.category} onChange={(e) => updateExp(exp.id, { category: e.target.value })} className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 116 }}>
-                                          {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                        <input type="number" min="0" step="0.01" inputMode="decimal" value={numDisplay(exp.amount)} onChange={(e) => updateExp(exp.id, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm font-mono text-neutral-100 focus:outline-none focus:border-sky-500" style={{ width: 84 }}/>
-                                        <input type="text" value={exp.description} onChange={(e) => updateExp(exp.id, { description: e.target.value })} placeholder="Description" className="flex-1 min-w-[80px] bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-2 text-sm text-neutral-100 focus:outline-none focus:border-sky-500"/>
-                                        <button type="button" onClick={() => removeExp(exp.id)} className="text-neutral-600 hover:text-tm-pen transition-colors p-1" aria-label="Remove expense" style={{ WebkitTapHighlightColor: 'transparent' }}><IX size={14}/></button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </>
+                              <ExpensesEditor
+                                expenses={dayRecord.expenses || []}
+                                presets={(userPrefs && userPrefs.expensePresets) || []}
+                                onChange={setExpenses}
+                              />
                             );
-                            if (expensesOverridden) resetEl = resetButton('Reset to default', () => resetFields('expenses', 'expenses'));
                           } else if (key === 'secondBreak') {
                             title = '2nd break';
                             body = (
@@ -15614,6 +15480,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       isElevenHourDay={!!production?.isElevenHourDay}
                       production={production}
                       userPrefs={userPrefs}
+                      setUserPrefs={setUserPrefs}
                     />
                   </div>
                 </>
