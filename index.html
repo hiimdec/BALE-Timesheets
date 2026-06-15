@@ -992,6 +992,34 @@
       },
     };
 
+    // ── Local notifications bridge — overdue-invoice reminders (iOS-only) ──────
+    // @capacitor/local-notifications. Stage 1 exposes permission helpers; the
+    // schedule/cancel methods land in Stage 2. Every method is IS_NATIVE-gated
+    // and returns a web-safe default (never touches the Capacitor bridge on web
+    // — audit:web). The permission string mirrors the plugin's `display`:
+    // 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale'.
+    const Notifications = {
+      async checkPermission() {
+        if (!IS_NATIVE) return 'denied';
+        try { const p = _capPlugins().LocalNotifications; if (p && p.checkPermissions) { const r = await p.checkPermissions(); return (r && r.display) || 'prompt'; } }
+        catch (e) { try { console.warn('[Notifications] check failed', (e && e.message) || e); } catch (_) {} }
+        return 'prompt';
+      },
+      async requestPermission() {
+        if (!IS_NATIVE) return 'denied';
+        try { const p = _capPlugins().LocalNotifications; if (p && p.requestPermissions) { const r = await p.requestPermissions(); return (r && r.display) || 'denied'; } }
+        catch (e) { try { console.warn('[Notifications] request failed', (e && e.message) || e); } catch (_) {} }
+        return 'denied';
+      },
+      // Best-effort: open the app's iOS Settings page so the user can re-enable
+      // notifications after a denial. The Capacitor WKWebView navigation layer
+      // opens the app-settings: scheme externally.
+      openIOSSettings() {
+        if (!IS_NATIVE) return;
+        try { window.location.href = 'app-settings:'; } catch (_) {}
+      },
+    };
+
     // ── AI call-sheet reader (Stage 1) — bridge to CallSheetPlugin ──────────
     // ON-DEVICE extraction (Apple Foundation Models + Vision/PDFKit): nothing
     // leaves the phone. EVERY method is IS_NATIVE-guarded and returns before
@@ -1680,6 +1708,12 @@
       invoiceNextNumber: 1,
       // Invoicing — Payment terms
       paymentTermsDays: 30,
+      // Overdue reminders — iOS local notification at 08:00 the morning after an
+      // invoice's dueDate, for sent-and-unpaid invoices. Additive merge-over-
+      // DEFAULT_USER_PREFS (the expensePresets/clients pattern): existing users
+      // inherit `true` via the useStoredState read — NO migration, NO schema bump.
+      // iOS-only; the toggle is hidden on web and scheduling no-ops off-native.
+      overdueRemindersEnabled: true,
       // Invoicing — master visibility toggle (view-only). ON = invoicing visible
       // (Invoices tab in FULL mode + day-page Generate/Export CTA). OFF = hidden
       // (calculator only). Existing invoices are NOT deleted and reappear when
@@ -17525,6 +17559,10 @@ const setDays = (updater) =>
         if (!name) return [];
         return [{ id: uid(), name, role: userPrefs?.defaultRole || "Crew", bdr: Number(userPrefs?.defaultBDR) || 0, isDefaultUser: true }];
       });
+      // Overdue-reminders notification permission (iOS) — checked on mount and
+      // after a toggle-on request, so the toggle can surface a denied state.
+      const [notifPerm, setNotifPerm] = useState('prompt');
+      useEffect(() => { if (IS_NATIVE) Notifications.checkPermission().then(setNotifPerm); }, []);
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -17772,6 +17810,27 @@ const setDays = (updater) =>
                 <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
                   <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
                 </Field>
+                {IS_NATIVE && (
+                  <div className="mt-4 pt-4 border-t border-neutral-800">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Overdue reminders</div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">A notification at 8am the morning after an invoice's due date, for sent invoices not yet marked paid. iOS only.</div>
+                      </div>
+                      <Toggle
+                        value={userPrefs.overdueRemindersEnabled !== false}
+                        onChange={async (v) => { set({ overdueRemindersEnabled: v }); if (v) setNotifPerm(await Notifications.requestPermission()); }}
+                        ariaLabel="Overdue reminders"
+                      />
+                    </div>
+                    {userPrefs.overdueRemindersEnabled !== false && notifPerm === 'denied' && (
+                      <div className="text-[11px] text-tm-warn mt-2 leading-snug">
+                        Notifications are off for TimeMachine — reminders won't fire.{' '}
+                        <button type="button" onClick={() => Notifications.openIOSSettings()} className="underline text-sky-300">Open&nbsp;Settings</button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Sub: Accounting export — the format the invoice export buttons
@@ -19886,6 +19945,13 @@ const setDays = (updater) =>
         // for the satisfying "done" pulse. markPaid fires its own success
         // at the call site.
         if (frozenPatch && frozenPatch.status === 'sent') haptic.success();
+        // Overdue reminders — sending an invoice is the natural, contextual
+        // moment to ask for notification permission (never on launch). Fire-
+        // and-forget; the Stage-2 reconcile sweep does the scheduling once
+        // granted. requestPermission is idempotent + no-ops off-native.
+        if (frozenPatch && frozenPatch.status === 'sent' && userPrefs.overdueRemindersEnabled !== false) {
+          Notifications.requestPermission();
+        }
       };
 
       // Edit a shared client/job field. On a DRAFT, write THROUGH to the production
@@ -22568,6 +22634,13 @@ const confirmDelete = (p) => setConfirmOpts({
         }));
         if (clientId !== null && nextClients !== (userPrefs.clients || [])) {
           setUserPrefs(prev => ({ ...prev, clients: nextClients }));
+        }
+        // Overdue reminders — mirror the editor send path: this kebab/action-
+        // sheet send is the other place a sent invoice first comes into being,
+        // so ask for notification permission here too. Fire-and-forget; the
+        // Stage-2 sweep schedules once granted. No-ops off-native.
+        if (frozenPatch && frozenPatch.status === 'sent' && userPrefs.overdueRemindersEnabled !== false) {
+          Notifications.requestPermission();
         }
       };
       const handleDeleteInvoice = (productionId, invoiceId) => {
