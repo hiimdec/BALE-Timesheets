@@ -3716,14 +3716,15 @@ async function main() {
     check('Z7c Re-run-setup prompt preserved',
       body.includes('Re-run setup?'));
 
-    // ─ Z8: Storage status badge still computes the three backend labels.
-    //   (Visual feedback that audit:storage runs against the right adapter.) ─
-    check('Z8a Storage status badge — IndexedDB label',
-      body.includes("'IndexedDB'"));
-    check('Z8b Storage status badge — Native Preferences label',
-      body.includes("'Native Preferences'"));
-    check('Z8c Storage status badge — localStorage label',
-      body.includes("'localStorage'"));
+    // ─ Z8: Storage status card — plain-English persistence (the copy pass
+    //   dropped the dev-facing backend / reason readout; the persistent-vs-
+    //   best-effort condition and the private-browsing warning are unchanged). ─
+    check('Z8a Storage status card — "saved safely" copy for the persistent (granted) state',
+      body.includes("Your data's saved safely on this device."));
+    check('Z8b Storage status card — "browser could clear it" copy for the best-effort state',
+      body.includes("Your data's being saved, but this browser could clear it — keep a backup."));
+    check('Z8c Storage status card — private-browsing warning preserved',
+      body.includes('Private browsing detected — your data may not be saved when this tab closes. Export a backup before leaving.'));
 
     // ─ Z9: helpers / data the regroup still depends on — if any of these
     //   stopped being referenced the regroup would render but with empty

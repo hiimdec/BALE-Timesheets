@@ -17726,22 +17726,22 @@ const setDays = (updater) =>
           const rawText = ev.target.result;
           let parsed;
           try { parsed = JSON.parse(rawText); } catch {
-            showToast('Could not read file — is it a valid JSON backup?');
+            showToast("Couldn't read that file. Is it a TimeMachine backup?");
             return;
           }
           const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.productions) ? parsed.productions : null);
           if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
-            showToast('Invalid backup file — not a valid productions export.');
+            showToast("That file isn't a TimeMachine backup.");
             return;
           }
           const fileSchemaVersion = parsed?.schemaVersion ?? 0;
           if (fileSchemaVersion > SCHEMA_VERSION) {
-            showToast(`This backup needs a newer version of TimeMachine (schema v${fileSchemaVersion}). Please update the app.`);
+            showToast('This backup was made by a newer version of TimeMachine. Update the app and try again.');
             return;
           }
           const n = arr.length;
           const msg = productionCount > 0
-            ? `Restore ${n} production${n === 1 ? '' : 's'}? This will replace your ${productionCount} existing production${productionCount === 1 ? '' : 's'}. This cannot be undone.`
+            ? `Restore ${n} production${n === 1 ? '' : 's'}? This replaces your ${productionCount} existing production${productionCount === 1 ? '' : 's'}, and there's no getting those back.`
             : `Restore ${n} production${n === 1 ? '' : 's'} from backup?`;
           setConfirmOpts({
             title: "Restore from backup?",
@@ -17836,7 +17836,7 @@ const setDays = (updater) =>
                 </Field>
               )}
               {userPrefs.defaultRole && (
-                <Field label="Default BDR (£)" hint="Auto-filled from role; adjust if needed">
+                <Field label="Default BDR (£)" hint="Basic daily rate — auto-filled from your role; adjust if needed.">
                   <Input
                     type="number"
                     min="0"
@@ -17900,7 +17900,7 @@ const setDays = (updater) =>
                     style={{ fontFamily: 'inherit' }}
                   />
                 </Field>
-                <Field label="Email" hint="Where clients reply to about the invoice">
+                <Field label="Email" hint="Where clients reply about invoices.">
                   <Input type="email" value={userPrefs.fromEmail} onChange={(e) => set({ fromEmail: e.target.value })} placeholder="you@example.com" />
                 </Field>
               </div>
@@ -17991,7 +17991,7 @@ const setDays = (updater) =>
                         const file = e.target.files?.[0];
                         if (!file) return;
                         if (file.size > 500 * 1024) {
-                          showToast('Logo file too large — please use under 500KB.');
+                          showToast("That logo's too big — keep it under 500KB.");
                           e.target.value = '';
                           return;
                         }
@@ -18109,10 +18109,10 @@ const setDays = (updater) =>
                   return (
                     <div className="flex flex-col gap-2">
                       <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
-                        Your saved clients / production companies. Later stages will let invoices and new productions auto-fill from this list.
+                        Companies and clients you bill — invoices and new productions auto-fill from this list.
                       </div>
                       {items.length === 0 && (
-                        <div className="text-[11px] text-neutral-600 italic py-2">No clients yet — tap "Add client" to start.</div>
+                        <div className="text-[11px] text-neutral-600 italic py-2">No clients yet. Add your first and it's ready for every invoice.</div>
                       )}
                       {items.length > 0 && (
                         <div className="flex flex-col gap-2">
@@ -18418,22 +18418,15 @@ const setDays = (updater) =>
                 {(() => {
                   const s = (typeof storage.getStatus === 'function') ? storage.getStatus() : null;
                   if (!s) return null;
-                  const backendLabel = s.backend === 'indexeddb' ? 'IndexedDB'
-                    : s.backend === 'preferences' ? 'Native Preferences'
-                    : 'localStorage';
-                  const persistLabel = s.persistent === 'granted' ? 'Persistent ✓'
-                    : s.persistent === 'best-effort' ? 'Best-effort — keep backups'
+                  // Plain-English status from the SAME persistent-vs-best-effort
+                  // condition (the dev-facing backend / reason readout was dropped).
+                  const persistLabel = s.persistent === 'granted' ? "Your data's saved safely on this device."
+                    : s.persistent === 'best-effort' ? "Your data's being saved, but this browser could clear it — keep a backup."
                     : null;
-                  const showReason = s.backendReason
-                    && s.backendReason !== 'default'
-                    && s.backendReason !== 'native';
+                  if (!persistLabel && !s.privateBrowsingLikely) return null;
                   return (
                     <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] text-neutral-400 leading-relaxed">
-                      <div>Storage backend: <span className="text-neutral-200 font-semibold">{backendLabel}</span></div>
-                      {persistLabel && <div>Persistence: <span className="text-neutral-200">{persistLabel}</span></div>}
-                      {showReason && (
-                        <div className="text-tm-warn mt-1">{s.backendReason}</div>
-                      )}
+                      {persistLabel && <div>{persistLabel}</div>}
                       {s.privateBrowsingLikely && (
                         <div className="text-tm-warn mt-1">Private browsing detected — your data may not be saved when this tab closes. Export a backup before leaving.</div>
                       )}
@@ -18441,23 +18434,23 @@ const setDays = (updater) =>
                   );
                 })()}
                 <div>
-                  <Btn variant="ghost" onClick={onExport}><IDownload/>Export Backup</Btn>
-                  <p className="text-[10px] text-neutral-500 mt-1">Downloads all productions as a JSON file. This file contains your data — keep it private.</p>
+                  <Btn variant="ghost" onClick={onExport}><IDownload/>Export backup</Btn>
+                  <p className="text-[10px] text-neutral-500 mt-1">Downloads all your productions to a single backup file. It holds your data, so keep it somewhere private.</p>
                 </div>
                 <div>
-                  <Btn variant="ghost" onClick={() => importRef.current?.click()}><IUpload/>Restore from Backup</Btn>
+                  <Btn variant="ghost" onClick={() => importRef.current?.click()}><IUpload/>Restore from backup</Btn>
                   <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
                   <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with a previously exported backup file.</p>
                 </div>
                 <div className="border-t border-neutral-800 pt-3">
                   <Btn variant="danger" onClick={() => setConfirmOpts({
                     title: "Reset everything?",
-                    message: "This permanently deletes ALL productions, crew data, and settings from this device. Nothing is uploaded — it's a local delete only. Consider exporting a backup first.",
+                    message: "This permanently deletes every production, all your crew data, and your settings from this device. Nothing's uploaded — it's a local delete. Worth exporting a backup first.",
                     confirmLabel: "Reset everything",
                     confirmTone: "danger",
                     onConfirm: onResetAll,
                   })}><IReset/>Reset all data</Btn>
-                  <p className="text-[10px] text-neutral-500 mt-1">Clears all productions and settings. Cannot be undone.</p>
+                  <p className="text-[10px] text-neutral-500 mt-1">Clears all your productions and settings. There's no getting them back.</p>
                 </div>
               </div>
             </Disclosure>
@@ -18540,7 +18533,7 @@ const setDays = (updater) =>
                   <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
                   <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app bundles everything it needs (including its UI framework) and fetches nothing from outside services while you use it — there are no external CDNs and no third party ever sees your IP address. No data about you or your productions is sent.</p>
                   <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library — only when you upload a logo or attach an expense receipt. Files — only when you export a PDF or backup. Never accessed without your explicit action.</p>
-                  <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset All Data</span>.</p>
+                  <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset all data</span>.</p>
                   <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
                 </div>
               </div>
