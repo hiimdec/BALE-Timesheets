@@ -3531,8 +3531,9 @@ async function main() {
   }
 
   // ===== Z. SETTINGS SCREEN SOURCE PRESENCE — Stage 1 regroup =====
-  // After the Settings reorganise (You / Tools / Invoicing / Kit Room /
-  // New-production defaults / Appearance / Data & backup / About & help),
+  // After the Settings reorganise (You / Tools / Invoicing / Kit room /
+  // Expense presets / New-production defaults / Appearance / Data & backup /
+  // About & help),
   // assert every userPrefs binding from the pre-regroup inventory still
   // appears inside SettingsScreen, every new group / sub-area label is
   // rendered, every one-off action is still wired, and every old
@@ -3615,7 +3616,8 @@ async function main() {
       { label: 'You',                     form: 'SectionCard title="You"' },
       { label: 'Tools',                   form: 'SectionCard title="Tools"' },
       { label: 'Invoicing',               form: 'Disclosure label="Invoicing"' },
-      { label: 'Kit Room',                form: 'label="Kit Room"' },
+      { label: 'Kit room',                form: 'label="Kit room"' },
+      { label: 'Expense presets',         form: 'label="Expense presets"' },
       { label: 'New-production defaults', form: 'label="New-production defaults"' },
       { label: 'Appearance',              form: 'Disclosure label="Appearance"' },
       { label: 'Data & backup',           form: 'Disclosure label="Data & backup"' },
@@ -3627,16 +3629,19 @@ async function main() {
         `expected substring: ${g.form}`);
     }
 
-    // ─ Z3: the six in-page sub-areas of the Invoicing group are rendered
+    // ─ Z3: the in-page sub-areas of the Invoicing group are rendered
     //   as sky-uppercase sub-headers (text-sky-500 font-bold mb-2.5). Match
     //   on the exact sub-header markup pattern so we don't false-positive
     //   on incidental occurrences of the word "Logo" / "VAT" elsewhere. ─
     const INVOICING_SUBS = [
       'Your details',
-      'Bank details',
-      'Numbering & terms',
       'VAT',
+      'Bank details',
       'Logo',
+      'Numbering & terms',
+      'Sending & reminders',
+      'Send invoices via',
+      'Format & export',
       'Saved clients',
     ];
     for (const sub of INVOICING_SUBS) {
@@ -5448,14 +5453,16 @@ async function main() {
     check('QQ3c export-sheet "Generate invoice" button is gated on invoicingEnabled',
       /\{invoicingEnabled\(userPrefs\) && \(\s*<button type="button"\s*onClick=\{\(\) => \{ setShowExportSheet\(false\); generateOrExport\(\); \}\}/.test(html));
 
-    // ─ QQ4: Settings → Invoicing — toggle + Rounding always; the rest gated ─
-    check('QQ4a master Toggle on userPrefs.invoicingEnabled is present',
-      /<Toggle value=\{invoicingEnabled\(userPrefs\)\} onChange=\{\(v\) => set\(\{ invoicingEnabled: v \}\)\} ariaLabel="Invoicing" \/>/.test(html));
+    // ─ QQ4: Settings → Invoicing — master toggle + Rounding always visible; the
+    //   rest gated. (Post-reorg: Rounding lives UNGATED in "Format & export"; the
+    //   master toggle's visible label is "Show invoicing", pref key unchanged.) ─
+    check('QQ4a master Toggle on userPrefs.invoicingEnabled is present (label "Show invoicing"; pref key unchanged)',
+      /<Toggle value=\{invoicingEnabled\(userPrefs\)\} onChange=\{\(v\) => set\(\{ invoicingEnabled: v \}\)\} ariaLabel="Show invoicing" \/>/.test(html));
     check('QQ4b invoice-specific settings wrapped in an invoicingEnabled gate that closes before </Disclosure>',
       /\{invoicingEnabled\(userPrefs\) && \(<>/.test(html) &&
       /<\/>\)\}\s*<\/Disclosure>/.test(html));
-    check('QQ4c the Rounding control renders BEFORE that gate — stays visible when invoicing is OFF',
-      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}\s+disableFavourable=\{invoicingEnabled\(userPrefs\) && INVOICE_EXPORT_CSV_FORMATS\.includes\(userPrefs\.invoiceExportFormat\)\}[\s\S]{0,500}\{invoicingEnabled\(userPrefs\) && \(<>/.test(html));
+    check('QQ4c Rounding (RoundingModeSelect) renders in the UNGATED "Format & export" sub-section — so it stays visible when invoicing is OFF — while the export-format Select right after it is individually gated on invoicingEnabled',
+      /<RoundingModeSelect\s+value=\{roundingModeOf\(userPrefs\)\}\s+onChange=\{\(m\) => set\(\{ roundingMode: m \}\)\}[\s\S]{0,500}\{invoicingEnabled\(userPrefs\) && \(\s*<div className="mt-4">\s*<Field label="Invoice export format"/.test(html));
 
     // ─ QQ5: favourable greying now also requires invoicing ON (both controls) ─
     check('QQ5a favourable greying at BOTH rounding controls requires invoicing ON (invoicingEnabled && CSV); the old un-gated form is gone',

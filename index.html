@@ -1792,8 +1792,9 @@
       // (calculator only). Existing invoices are NOT deleted and reappear when
       // turned back on. Fresh key, no legacy interaction — safe to default here.
       invoicingEnabled: true,
-      // Invoicing — Accounting export. value-presence; gained by existing users
-      // via the merge-over-DEFAULT_USER_PREFS read in useStoredState — no
+      // Invoicing — Format & export (the export-format Select). value-presence;
+      // gained by existing users via the merge-over-DEFAULT_USER_PREFS read in
+      // useStoredState — no
       // migration, no SCHEMA_VERSION bump (same pattern as kitInventory /
       // clients). Default behaviour = the current TimeMachine PDF. Rounding is no
       // longer a separate export pref: the single userPrefs.roundingMode drives
@@ -17787,10 +17788,6 @@ const setDays = (updater) =>
         return bits.length ? bits.join(' · ') : '—';
       })();
 
-      const displaySummary = userPrefs.comparisonUnit === 'off'
-        ? 'Off'
-        : (userPrefs.comparisonUnit || 'Greggs sausage rolls');
-
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -17805,13 +17802,13 @@ const setDays = (updater) =>
 
           <div className="max-w-2xl mx-auto px-4 py-6">
 
-            {/* Settings Stage 1 — regroup. Eight top-level groups (You, Tools,
-                Invoicing, Kit Room, New-production defaults, Appearance,
-                Data & backup, About & help). UI restructure only — every
-                userPrefs.* binding, conditional visibility, modal flow, and
-                one-off action is preserved verbatim from the pre-Stage-1
-                layout. Stage 2 will reshape sub-sections (Kit Room rows,
-                etc.) — not in this commit. */}
+            {/* Settings — nine top-level groups, in order: You, Tools, Invoicing,
+                Kit room, Expense presets, New-production defaults, Appearance,
+                Data & backup, About & help. (You + Tools are always-open
+                SectionCards; the rest are collapsible Disclosures.) Presentation
+                only — every userPrefs.* binding, conditional visibility, modal
+                flow, and one-off action is preserved; iOS-only sub-sections
+                (Sending & reminders, App icon) are IS_NATIVE-gated. */}
 
             {/* §1 — You: identity + defaults for new shoots (display name,
                 dept, role, BDR). Always open. Role only shows when a dept is
@@ -17859,41 +17856,32 @@ const setDays = (updater) =>
               <p className="text-[10px] text-neutral-500 mt-1">Estimate APA cancellation fees for cancelled or curtailed shoots.</p>
             </SectionCard>
 
-            {/* §3 — Invoicing: ONE top-level group with six in-page sub-areas
-                (Your details, Bank details, Numbering & terms, VAT, Logo,
-                Saved clients). Sub-areas are inline blocks separated by
-                divider rules — not nested Disclosures, to keep the mobile
-                feel single-tap-to-open. Stays-on-your-device reassurance
-                lives at the bottom of the group. */}
+            {/* §3 — Invoicing: ONE top-level group. Order: master toggle, then the
+                identity cluster (Your details, VAT, Bank details, Logo), Numbering
+                & terms, Sending & reminders (iOS-only), Format & export, and Saved
+                clients. Sub-areas are inline blocks separated by divider rules —
+                not nested Disclosures, to keep the mobile feel single-tap-to-open.
+                Most sub-areas hide when invoicing is OFF; the master toggle and
+                Format & export (Rounding drives the calc breakdown too) stay
+                visible. Stays-on-your-device reassurance is the group footer. */}
             <Disclosure label="Invoicing" summary={yourDetailsSummary}>
-              {/* Master visibility toggle — always at the top of Invoicing. OFF
-                  hides invoices everywhere (Invoices tab, list/editor/PDF, and the
-                  day-page Generate/Export CTA) for a calculator-only app; existing
-                  invoices are KEPT and reappear when turned back on. */}
+              {/* 1. Master visibility toggle (ungated, always at the top). OFF hides
+                  invoices everywhere (Invoices tab, list/editor/PDF, and the day-page
+                  Generate/Export CTA) for a calculator-only app; existing invoices are
+                  KEPT and reappear when turned back on. (Label text only: the visible
+                  "Show invoicing" — the invoicingEnabled pref key is unchanged.) */}
               <div className="flex items-center justify-between gap-3">
                 <div className="pr-3">
-                  <span className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold">Invoicing</span>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold">Show invoicing</span>
                   <p className="text-[11px] text-neutral-500 mt-1 leading-tight">Show the Invoices tab and the day-page Generate/Export button. Turn off for a calculator-only app — your existing invoices are kept and return when you switch it back on.</p>
                 </div>
-                <Toggle value={invoicingEnabled(userPrefs)} onChange={(v) => set({ invoicingEnabled: v })} ariaLabel="Invoicing" />
+                <Toggle value={invoicingEnabled(userPrefs)} onChange={(v) => set({ invoicingEnabled: v })} ariaLabel="Show invoicing" />
               </div>
-              {/* Rounding — ALWAYS visible (drives the PDF, the on-screen calc
-                  breakdown, and the CSV export). Favourable greys only when
-                  invoicing is ON and the export format is a CSV type. */}
-              <div className="mt-5 pt-4 border-t border-neutral-800">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Rounding</div>
-                <RoundingModeSelect
-                  value={roundingModeOf(userPrefs)}
-                  onChange={(m) => set({ roundingMode: m })}
-                  disableFavourable={invoicingEnabled(userPrefs) && INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)}
-                />
-                <p className="text-[11px] text-neutral-500 mt-2 leading-tight">Sets the default for new shoots; override per shoot in that shoot's settings.</p>
-              </div>
-              {/* Invoice-specific settings — hidden when invoicing is OFF (the
-                  master toggle + Rounding above stay visible). */}
+              {/* 2–7: invoice-specific identity + delivery — hidden when invoicing is
+                  OFF (the master toggle above + Format & export below stay visible). */}
               {invoicingEnabled(userPrefs) && (<>
-              {/* Sub: Your details */}
-              <div>
+              {/* 2. Your details (first inside the gate → gets its own top divider). */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Your details</div>
                 <div className="text-[10px] text-neutral-500 mb-3">The legal name below appears as the invoice's "From" name. Leave it blank to use your display name (from You).</div>
                 <Field label="Legal name (for invoices)" hint="Formal name on generated invoices — distinct from the casual display name shown in the app. Falls back to display name if blank.">
@@ -17917,7 +17905,40 @@ const setDays = (updater) =>
                 </Field>
               </div>
 
-              {/* Sub: Bank details */}
+              {/* 3. VAT — rate + number gated on vatRegistered (preserved). Moved up
+                  to sit with the identity cluster. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">VAT</div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT registered?</span>
+                  <Toggle value={userPrefs.vatRegistered} onChange={(v) => set({ vatRegistered: v })} ariaLabel="VAT registered" />
+                </div>
+                {userPrefs.vatRegistered && (
+                  <Field label="VAT rate (%)" hint="Usually 20%">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      inputMode="numeric"
+                      value={userPrefs.vatRate}
+                      onChange={(e) => set({ vatRate: Number(e.target.value) })}
+                    />
+                  </Field>
+                )}
+                {userPrefs.vatRegistered && (
+                  <Field label="VAT number">
+                    <Input
+                      type="text"
+                      placeholder="GB123456789"
+                      value={userPrefs.vatNumber}
+                      onChange={(e) => set({ vatNumber: e.target.value })}
+                    />
+                  </Field>
+                )}
+              </div>
+
+              {/* 4. Bank details */}
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Bank details</div>
                 <Field label="Bank name">
@@ -17950,109 +17971,8 @@ const setDays = (updater) =>
                 </Field>
               </div>
 
-              {/* Sub: Numbering & terms */}
-              <div className="mt-5 pt-4 border-t border-neutral-800">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Numbering & terms</div>
-                <Field label="Invoice prefix" hint="Appears before the number on each invoice">
-                  <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
-                </Field>
-                <Field label="Next invoice number" hint="If you've been invoicing elsewhere, enter your last used number + 1 and we'll continue from there">
-                  <Input type="number" min="1" step="1" inputMode="numeric" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
-                </Field>
-                <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
-                  <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
-                </Field>
-                {IS_NATIVE && (
-                  <div className="mt-4 pt-4 border-t border-neutral-800">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Overdue reminders</div>
-                        <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">A notification at 8am the morning after an invoice's due date, for sent invoices not yet marked paid. iOS only.</div>
-                      </div>
-                      <Toggle
-                        value={userPrefs.overdueRemindersEnabled !== false}
-                        onChange={async (v) => { set({ overdueRemindersEnabled: v }); if (v) setNotifPerm(await Notifications.requestPermission()); }}
-                        ariaLabel="Overdue reminders"
-                      />
-                    </div>
-                    {userPrefs.overdueRemindersEnabled !== false && notifPerm === 'denied' && (
-                      <div className="text-[11px] text-tm-warn mt-2 leading-snug">
-                        Notifications are off for TimeMachine — reminders won't fire.{' '}
-                        <button type="button" onClick={() => Notifications.openIOSSettings()} className="underline text-sky-300">Open&nbsp;Settings</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {/* Invoice email method — iOS-only (the share path + clipboard are
-                    native; web keeps mailto, so this is hidden off-native). The two
-                    card descriptions ARE the explainer for the trade-off. */}
-                {IS_NATIVE && (
-                  <div className="mt-4 pt-4 border-t border-neutral-800">
-                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2.5">Send invoices via</div>
-                    <div className="space-y-2">
-                      <RoundingOptionCard
-                        label="Apple Mail"
-                        desc="Opens the Mail composer with everything prefilled — recipient, subject, body and the PDF attached."
-                        active={(userPrefs.invoiceEmailMethod || 'appleMail') === 'appleMail'}
-                        onClick={() => set({ invoiceEmailMethod: 'appleMail' })}
-                      />
-                      <RoundingOptionCard
-                        label="Another email app"
-                        desc="Sends via the share sheet (Gmail, Outlook, …) with the PDF, subject and body. The share sheet can't carry a recipient, so your To address is copied to the clipboard to paste into To."
-                        active={(userPrefs.invoiceEmailMethod || 'appleMail') === 'shareSheet'}
-                        onClick={() => set({ invoiceEmailMethod: 'shareSheet' })}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Sub: Accounting export — the format the invoice export buttons
-                  deliver. (Rounding moved to the always-visible block above so it
-                  stays available in calculator-only mode.) */}
-              <div className="mt-5 pt-4 border-t border-neutral-800">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Accounting export</div>
-                <Field label="Invoice export format" hint="What the invoice export button produces. TimeMachine keeps the PDF; the rest export a CSV for your accounting software.">
-                  <Select value={userPrefs.invoiceExportFormat || 'timemachine'} onChange={(e) => set({ invoiceExportFormat: e.target.value })}>
-                    {INVOICE_EXPORT_FORMATS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </Select>
-                </Field>
-              </div>
-
-              {/* Sub: VAT — rate + number gated on vatRegistered (preserved). */}
-              <div className="mt-5 pt-4 border-t border-neutral-800">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">VAT</div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">VAT registered?</span>
-                  <Toggle value={userPrefs.vatRegistered} onChange={(v) => set({ vatRegistered: v })} ariaLabel="VAT registered" />
-                </div>
-                {userPrefs.vatRegistered && (
-                  <Field label="VAT rate (%)" hint="Usually 20%">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      inputMode="numeric"
-                      value={userPrefs.vatRate}
-                      onChange={(e) => set({ vatRate: Number(e.target.value) })}
-                    />
-                  </Field>
-                )}
-                {userPrefs.vatRegistered && (
-                  <Field label="VAT number">
-                    <Input
-                      type="text"
-                      placeholder="GB123456789"
-                      value={userPrefs.vatNumber}
-                      onChange={(e) => set({ vatNumber: e.target.value })}
-                    />
-                  </Field>
-                )}
-              </div>
-
-              {/* Sub: Logo — upload / preview / remove. 500KB hard ceiling
-                  preserved; toast text unchanged. */}
+              {/* 5. Logo — upload / preview / remove. Moved up to sit with the
+                  identity cluster. 500KB hard ceiling preserved; toast unchanged. */}
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Logo</div>
                 <div className="text-[10px] text-neutral-500 mb-3">Recommended: square, under 200KB. Renders at ~100px on your invoices.</div>
@@ -18086,9 +18006,96 @@ const setDays = (updater) =>
                 )}
               </div>
 
-              {/* Sub: Saved clients — Stage 1 personal library. Stage 2+ wires
-                  typeahead on Bill-To / production-company fields. Editor
-                  internals unchanged. */}
+              {/* 6. Numbering & terms — prefix / next number / days until due only. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Numbering & terms</div>
+                <Field label="Invoice prefix" hint="Appears before the number on each invoice">
+                  <Input type="text" value={userPrefs.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="TM-INV-" />
+                </Field>
+                <Field label="Next invoice number" hint="If you've been invoicing elsewhere, enter your last used number + 1 and we'll continue from there">
+                  <Input type="number" min="1" step="1" inputMode="numeric" value={userPrefs.invoiceNextNumber} onChange={(e) => set({ invoiceNextNumber: Math.max(1, Number(e.target.value) || 1) })} />
+                </Field>
+                <Field label="Days until due" hint="From invoice date. Override per invoice as needed.">
+                  <Input type="number" min="0" step="1" inputMode="numeric" value={userPrefs.paymentTermsDays} onChange={(e) => set({ paymentTermsDays: Math.max(0, Number(e.target.value) || 0) })} />
+                </Field>
+              </div>
+
+              {/* 7. Sending & reminders — iOS-only (the share path + clipboard, and
+                  local notifications, are native; web has neither). The WHOLE
+                  sub-section — heading + contents — is IS_NATIVE-gated, so web shows
+                  nothing here (no empty heading). */}
+              {IS_NATIVE && (
+                <div className="mt-5 pt-4 border-t border-neutral-800">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Sending & reminders</div>
+                  {/* Send invoices via — the email-method picker. Heading uses the
+                      tracking-[0.18em] sub-heading style (matching the other
+                      sub-areas), so it reads as a sub-section, not a toggle peer.
+                      The two card descriptions ARE the trade-off explainer. */}
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Send invoices via</div>
+                  <div className="space-y-2">
+                    <RoundingOptionCard
+                      label="Apple Mail"
+                      desc="Opens the Mail composer with everything prefilled — recipient, subject, body and the PDF attached."
+                      active={(userPrefs.invoiceEmailMethod || 'appleMail') === 'appleMail'}
+                      onClick={() => set({ invoiceEmailMethod: 'appleMail' })}
+                    />
+                    <RoundingOptionCard
+                      label="Another email app"
+                      desc="Sends via the share sheet (Gmail, Outlook, …) with the PDF, subject and body. The share sheet can't carry a recipient, so your To address is copied to the clipboard to paste into To."
+                      active={(userPrefs.invoiceEmailMethod || 'appleMail') === 'shareSheet'}
+                      onClick={() => set({ invoiceEmailMethod: 'shareSheet' })}
+                    />
+                  </div>
+                  {/* Overdue reminders toggle (keeps its denied-state Open Settings link). */}
+                  <div className="mt-4 pt-4 border-t border-neutral-800">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Overdue reminders</div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">A notification at 8am the morning after an invoice's due date, for sent invoices not yet marked paid. iOS only.</div>
+                      </div>
+                      <Toggle
+                        value={userPrefs.overdueRemindersEnabled !== false}
+                        onChange={async (v) => { set({ overdueRemindersEnabled: v }); if (v) setNotifPerm(await Notifications.requestPermission()); }}
+                        ariaLabel="Overdue reminders"
+                      />
+                    </div>
+                    {userPrefs.overdueRemindersEnabled !== false && notifPerm === 'denied' && (
+                      <div className="text-[11px] text-tm-warn mt-2 leading-snug">
+                        Notifications are off for TimeMachine — reminders won't fire.{' '}
+                        <button type="button" onClick={() => Notifications.openIOSSettings()} className="underline text-sky-300">Open&nbsp;Settings</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              </>)}
+
+              {/* 8. Format & export. Rounding stays ALWAYS visible (it drives the
+                  on-screen calc breakdown + the CSV export too, not just invoices —
+                  its existing conditional logic), so this sub-section is UNGATED; the
+                  invoice export-format Select is invoice-specific so it stays gated
+                  on invoicingEnabled. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Format & export</div>
+                <RoundingModeSelect
+                  value={roundingModeOf(userPrefs)}
+                  onChange={(m) => set({ roundingMode: m })}
+                  disableFavourable={invoicingEnabled(userPrefs) && INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)}
+                />
+                <p className="text-[11px] text-neutral-500 mt-2 leading-tight">Sets the default for new shoots; override per shoot in that shoot's settings.</p>
+                {invoicingEnabled(userPrefs) && (
+                  <div className="mt-4">
+                    <Field label="Invoice export format" hint="What the invoice export button produces. TimeMachine keeps the PDF; the rest export a CSV for your accounting software.">
+                      <Select value={userPrefs.invoiceExportFormat || 'timemachine'} onChange={(e) => set({ invoiceExportFormat: e.target.value })}>
+                        {INVOICE_EXPORT_FORMATS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </Select>
+                    </Field>
+                  </div>
+                )}
+              </div>
+
+              {/* 9. Saved clients (gated) + the on-device privacy footer. */}
+              {invoicingEnabled(userPrefs) && (<>
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Saved clients</div>
                 {(() => {
@@ -18165,14 +18172,14 @@ const setDays = (updater) =>
               </>)}
             </Disclosure>
 
-            {/* §4 — Kit Room: roomier card layout (Stage 2) + drag-to-reorder
+            {/* §4 — Kit room: roomier card layout (Stage 2) + drag-to-reorder
                 (Stage 3). The editor moved out to the top-level KitRoomEditor
                 component so it can use real hooks (drag preview state, reduced
                 -motion read). Bindings unchanged: onChange writes the new
                 kitInventory array through the same set() helper as every
                 other userPrefs field. */}
             <Disclosure
-              label="Kit Room"
+              label="Kit room"
               summary={(() => {
                 const n = (userPrefs.kitInventory || []).length;
                 return n ? `${n} item${n === 1 ? '' : 's'}` : '—';
@@ -18184,12 +18191,12 @@ const setDays = (updater) =>
               />
             </Disclosure>
 
-            {/* §4b — Expense Presets: reusable expense templates offered by the
+            {/* §5 — Expense presets: reusable expense templates offered by the
                 per-day Included/Available picker. Built-in names locked; amounts
                 editable. onChange writes the expensePresets array through the same
                 set() helper as every other userPrefs field. */}
             <Disclosure
-              label="Expense Presets"
+              label="Expense presets"
               summary={(() => {
                 const n = (userPrefs.expensePresets || []).length;
                 return n ? `${n} preset${n === 1 ? '' : 's'}` : '—';
@@ -18201,10 +18208,10 @@ const setDays = (updater) =>
               />
             </Disclosure>
 
-            {/* §5 — New-production defaults: applied to NEW shoots only;
+            {/* §6 — New-production defaults: applied to NEW shoots only;
                 changing these does not retroactively rewrite anything. (Rounding
-                moved to Invoicing → Accounting export — it's now the single
-                rounding setting driving the PDF + the CSV export.) */}
+                lives in Invoicing → Format & export — the single rounding setting
+                driving the calc breakdown, the PDF, and the CSV export.) */}
             <Disclosure
               label="New-production defaults"
               summary={(() => {
@@ -18254,12 +18261,41 @@ const setDays = (updater) =>
               )}
             </Disclosure>
 
-            {/* §6 — Appearance: display-only options (pill comparison + custom
-                comparison label/price) and the mark-as-paid celebration set.
-                Celebration sub-controls (emoji/intensity/speed/preview) stay
-                gated on celebrationEnabled. */}
-            <Disclosure label="Appearance" summary={displaySummary}>
-              <div>
+            {/* §7 — Appearance: the VISUAL controls cluster first (app icon, pill
+                comparison, your own comparison), then the FEEDBACK layer (mark-as
+                -paid celebration, haptics, Live Activity). Celebration sub-controls
+                (emoji/intensity/speed/preview) stay gated on celebrationEnabled;
+                App icon is iOS-only. Disclosure summary dropped — it only showed the
+                pill-comparison value, which didn't represent the section. */}
+            <Disclosure label="Appearance">
+              {/* App icon — alternate "Scribble" icon picker. iOS-only (alternate
+                  app icons are a UIKit feature); hidden on web. Mirrors the LIVE
+                  alternate-icon name via the AppIcon bridge — NO stored pref, iOS
+                  persists the choice. Reads on mount, sets on choice. Heading uses
+                  the tracking-[0.18em] sub-heading style (reads as a sub-section,
+                  not a toggle peer). */}
+              {IS_NATIVE && (
+                <div className="mt-4 pt-4 border-t border-neutral-800">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">App icon</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { key: 'default', label: 'Default', desc: 'The original TimeMachine icon.' },
+                      { key: 'Scribble', label: 'Scribble', desc: 'Hand-drawn alternate icon.' },
+                    ].map((opt) => (
+                      <RoundingOptionCard
+                        key={opt.key}
+                        label={opt.label}
+                        desc={opt.desc}
+                        active={iconName === opt.key}
+                        onClick={() => { setIconName(opt.key); AppIcon.set(opt.key).then(setIconName); }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-neutral-500 mt-2 leading-tight">iOS shows a confirmation alert when the icon changes.</p>
+                </div>
+              )}
+              {/* Pill comparison */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Pill comparison</div>
                 <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Shown under the £ amount in the day pill.</div>
                 <div className="mt-2.5">
@@ -18312,60 +18348,9 @@ const setDays = (updater) =>
                   </div>
                 </div>
               </div>
-              {/* Haptic feedback — Phase B master switch. Off → every
-                  haptic.* call in the app silently no-ops (the helper
-                  short-circuits on _hapticsPrefs.enabled). Toggle is in
-                  Appearance because haptics are part of the feel layer
-                  alongside the celebration and pill display options. */}
-              <div className="mt-4 pt-4 border-t border-neutral-800">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Haptic feedback</div>
-                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Subtle taps on selections, toggles, time stamps, and completions. Native only — silent on web.</div>
-                  </div>
-                  <Toggle value={userPrefs.hapticsEnabled !== false} onChange={(v) => set({ hapticsEnabled: v })} ariaLabel="Haptic feedback" />
-                </div>
-              </div>
-              {/* Live Activity — round 3 master switch. Lives beside Haptics
-                  because both are native feel-layer affordances; rendered on
-                  web too (matching Haptics' treatment) with a native-only
-                  note. Off → SoloLiveActivity never starts a card and the
-                  reconcile sweep ends any running one within ~1s. */}
-              <div className="mt-4 pt-4 border-t border-neutral-800">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Live Activity</div>
-                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Lock Screen / Dynamic Island card with the live day total and Lunch/Wrap buttons on shoot days. iOS only — has no effect on web.</div>
-                  </div>
-                  <Toggle value={userPrefs.liveActivityEnabled !== false} onChange={(v) => set({ liveActivityEnabled: v })} ariaLabel="Live Activity" />
-                </div>
-              </div>
-              {/* App icon — alternate "Scribble" icon picker. iOS-only (alternate
-                  app icons are a UIKit feature); hidden on web. Mirrors the LIVE
-                  alternate-icon name via the AppIcon bridge — NO stored pref, iOS
-                  persists the choice. Reads on mount, sets on choice. */}
-              {IS_NATIVE && (
-                <div className="mt-4 pt-4 border-t border-neutral-800">
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2.5">App icon</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { key: 'default', label: 'Default', desc: 'The original TimeMachine icon.' },
-                      { key: 'Scribble', label: 'Scribble', desc: 'Hand-drawn alternate icon.' },
-                    ].map((opt) => (
-                      <RoundingOptionCard
-                        key={opt.key}
-                        label={opt.label}
-                        desc={opt.desc}
-                        active={iconName === opt.key}
-                        onClick={() => { setIconName(opt.key); AppIcon.set(opt.key).then(setIconName); }}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-[11px] text-neutral-500 mt-2 leading-tight">iOS shows a confirmation alert when the icon changes.</p>
-                </div>
-              )}
               {/* Celebration — was its own "Celebration" top-level disclosure.
-                  Toggle + sub-controls + Preview unchanged. */}
+                  Toggle + sub-controls + Preview unchanged. Heads the feedback
+                  cluster (celebration → haptics → Live Activity). */}
               <div className="mt-4 pt-4 border-t border-neutral-800">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -18397,9 +18382,35 @@ const setDays = (updater) =>
                   </div>
                 )}
               </div>
+              {/* Haptic feedback — Phase B master switch. Off → every haptic.* call
+                  in the app silently no-ops (the helper short-circuits on
+                  _hapticsPrefs.enabled). In the feedback cluster with celebration +
+                  Live Activity. */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Haptic feedback</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Subtle taps on selections, toggles, time stamps, and completions. Native only — silent on web.</div>
+                  </div>
+                  <Toggle value={userPrefs.hapticsEnabled !== false} onChange={(v) => set({ hapticsEnabled: v })} ariaLabel="Haptic feedback" />
+                </div>
+              </div>
+              {/* Live Activity — round 3 master switch. Native feel-layer affordance;
+                  rendered on web too (matching Haptics' treatment) with a native-only
+                  note. Off → SoloLiveActivity never starts a card and the reconcile
+                  sweep ends any running one within ~1s. */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Live Activity</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Lock Screen / Dynamic Island card with the live day total and Lunch/Wrap buttons on shoot days. iOS only — has no effect on web.</div>
+                  </div>
+                  <Toggle value={userPrefs.liveActivityEnabled !== false} onChange={(v) => set({ liveActivityEnabled: v })} ariaLabel="Live Activity" />
+                </div>
+              </div>
             </Disclosure>
 
-            {/* §7 — Data & backup: storage status + the three one-off actions
+            {/* §8 — Data & backup: storage status + the three one-off actions
                 (export, restore, reset). Reset and restore still go through
                 ConfirmDialog; flows unchanged. */}
             <Disclosure label="Data & backup">
@@ -18451,7 +18462,7 @@ const setDays = (updater) =>
               </div>
             </Disclosure>
 
-            {/* §8 — About & help: re-run setup, APA terms link, What's new,
+            {/* §9 — About & help: re-run setup, APA terms link, What's new,
                 About metadata, Privacy text. Stacked as sub-sections inside
                 a single Disclosure to cut top-level clutter. */}
             <Disclosure label="About & help" summary={`v${APP_VERSION}`}>
