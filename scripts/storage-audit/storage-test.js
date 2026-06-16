@@ -6133,6 +6133,43 @@ async function main() {
       })());
   }
 
+  // IM — Invoice email method ("Apple Mail" composer vs "Another app" / share
+  // sheet). The method pref + the share/clipboard path are native; the web build
+  // keeps the mailto: path (audit:web independently proves the web build stays
+  // clean — no Capacitor). Source-presence only.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    check('IM1 additive pref — invoiceEmailMethod defaults to appleMail in DEFAULT_USER_PREFS; inherited by existing users via the useStoredState object merge (NO MIGRATIONS entry, NO SCHEMA_VERSION bump)',
+      /invoiceEmailMethod: 'appleMail',/.test(html) &&
+      /v = \{ \.\.\.initial, \.\.\.v \};/.test(html));
+
+    check('IM2 shared subject/body builder — ONE buildInvoiceEmailContent feeds ALL send paths (web mailto + native composer/share-text) so the wording cannot drift; the body template now exists EXACTLY ONCE (in the builder, not re-inlined per path)',
+      /function buildInvoiceEmailContent\(invoice\) \{/.test(html) &&
+      /const \{ subject, body \} = buildInvoiceEmailContent\(invoice\);/.test(html) &&   // web mailto
+      /const \{ subject, body \} = buildInvoiceEmailContent\(inv\);/.test(html) &&       // native effect
+      (html.match(/Please find attached invoice/g) || []).length === 1);
+
+    check('IM3 method routing — appleMail (with a Mail account) → EmailComposer.open; shareSheet OR no Mail account → the share-sheet path; the chosen method is carried into nativeSendInvoiceEmail from a userPrefs-seeded ref',
+      /if \(method !== 'shareSheet' && hasAccount\) \{/.test(html) &&
+      /await EmailComposer\.open\(\{/.test(html) &&
+      /emailMethodRef\.current = userPrefs\.invoiceEmailMethod \|\| 'appleMail';/.test(html) &&
+      /subject, body, base64, filename, method,/.test(html));
+
+    check('IM4 share-sheet path — subject FOLDED into the share text (Share.share has no subject), recipient copied to the clipboard BEFORE the sheet presents (onShareFallback → navigator.clipboard.writeText), and Cc offered via a one-tap Copy Cc (clipboard write) on the post-share toast',
+      /const shareText = subject \? `\$\{subject\}\\n\\n\$\{body\}` : body;/.test(html) &&
+      /await nativeSaveAndShare\(filename, base64, \{ title: filename, text: shareText \}\)/.test(html) &&
+      /if \(onShareFallback\) \{ try \{ await onShareFallback\(\); \} catch \(_\) \{\} \}/.test(html) &&
+      /await navigator\.clipboard\.writeText\(recip\)/.test(html) &&
+      /await navigator\.clipboard\.writeText\(cc\)/.test(html));
+
+    check('IM5 Settings picker — IS_NATIVE-gated (hidden on web, which keeps mailto), two RoundingOptionCard options bound to invoiceEmailMethod (appleMail / shareSheet), the trade-off spelled out in the card descriptions',
+      /Send invoices via/.test(html) &&
+      /onClick=\{\(\) => set\(\{ invoiceEmailMethod: 'appleMail' \}\)\}/.test(html) &&
+      /onClick=\{\(\) => set\(\{ invoiceEmailMethod: 'shareSheet' \}\)\}/.test(html) &&
+      /The share sheet can't carry a recipient/.test(html));
+  }
+
   // UU — AI call-sheet reader, Stage 2 (shoot-level review-sheet UX). The WEB
   // build must never touch the CallSheet native bridge (audit:web also proves
   // this); every JS path is IS_NATIVE-guarded. CORE PRINCIPLE — no new write

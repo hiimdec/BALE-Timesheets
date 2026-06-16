@@ -1317,7 +1317,7 @@
     // or the plugin is unavailable, fall back to the share sheet with the PDF
     // attached so the user can still send it via Gmail / Outlook / Messages / etc.
     // Returns 'composer' on Mail-app delivery, 'shared' on fallback.
-    async function nativeSendInvoiceEmail({ to, cc, subject, body, base64, filename }) {
+    async function nativeSendInvoiceEmail({ to, cc, subject, body, base64, filename, method, onShareFallback }) {
       const { EmailComposer } = _capPlugins();
       const toList = (to || '').trim() ? [(to || '').trim()] : [];
       const ccList = (cc || '').trim() ? [(cc || '').trim()] : [];
@@ -1328,14 +1328,22 @@
           hasAccount = !!(r && r.hasAccount);
         }
       } catch (_) { hasAccount = false; }
-      if (hasAccount) {
+      // Apple Mail composer ONLY when the user chose it AND a Mail account exists.
+      // The user's "Another app" choice (method==='shareSheet'), OR no Mail
+      // account to compose with, routes to the share sheet instead.
+      if (method !== 'shareSheet' && hasAccount) {
         await EmailComposer.open({
           to: toList, cc: ccList, subject, body,
           attachments: [{ type: 'base64', path: base64, name: filename }],
         });
         return 'composer';
       }
-      await nativeSaveAndShare(filename, base64, { title: filename, text: body });
+      // Share-sheet path: the sheet carries no recipient and no subject. The
+      // caller's onShareFallback copies the To to the clipboard BEFORE the sheet
+      // presents; the subject is folded into the shared text. Attachment unchanged.
+      if (onShareFallback) { try { await onShareFallback(); } catch (_) {} }
+      const shareText = subject ? `${subject}\n\n${body}` : body;
+      await nativeSaveAndShare(filename, base64, { title: filename, text: shareText });
       return 'shared';
     }
 
@@ -1750,6 +1758,14 @@
       invoiceNextNumber: 1,
       // Invoicing — Payment terms
       paymentTermsDays: 30,
+      // Invoice email method (iOS) — 'appleMail' opens the Mail composer fully
+      // prefilled (recipient/subject/body/PDF); 'shareSheet' routes the PDF +
+      // subject-folded body via the iOS share sheet (Gmail/Outlook/…) and copies
+      // the recipient to the clipboard (the sheet can't carry a To). Additive
+      // merge-over-DEFAULT_USER_PREFS (the overdueRemindersEnabled/expensePresets
+      // precedent) — NO migration, NO SCHEMA_VERSION bump. Web ignores it (keeps
+      // the mailto: path); the Settings picker is hidden off-native.
+      invoiceEmailMethod: 'appleMail',
       // Overdue reminders — iOS local notification at 08:00 the morning after an
       // invoice's dueDate, for sent-and-unpaid invoices. Additive merge-over-
       // DEFAULT_USER_PREFS (the expensePresets/clients pattern): existing users
@@ -5699,19 +5715,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    /* ── mailto: email opener ── */
-    // cc is the invoice's persisted ccEmail (invoice.ccEmail); callers pass it in.
-    function openInvoiceMailto(invoice, cc = '') {
-      const recipient = (invoice.toEmail || '').trim();
+    /* ── invoice email subject + body — SINGLE source for all send paths ── */
+    // Used by the web mailto, the native Apple Mail composer, AND the native
+    // share-sheet text, so the wording can never drift between them. Pure string
+    // building — no I/O, no behaviour change (the strings are byte-identical to
+    // the templates each path used to inline). invoiceSubtotal/invoiceVAT are
+    // hoisted function declarations, so this runs fine despite being defined above them.
+    function buildInvoiceEmailContent(invoice) {
       const subjectBase = `Invoice ${invoice.invoiceNumber}`;
       const subject = invoice.jobTitle ? `${subjectBase} — ${invoice.jobTitle}` : subjectBase;
-
       const subtotal = invoiceSubtotal(invoice.lineItems);
       const { vatAmount } = invoiceVAT(invoice, subtotal);
       const totalStr = fmtGBP(subtotal + vatAmount);
       const fromName = invoice.fromName || invoice.fromCompanyName || '';
       const jobBit = invoice.jobTitle ? ` for ${invoice.jobTitle}` : '';
       const body = `Hi,\n\nPlease find attached invoice ${invoice.invoiceNumber}${jobBit}, total ${totalStr}.\n\nPlease quote ${invoice.invoiceNumber} when making payment.\n\nMany thanks,\n${fromName}`;
+      return { subject, body };
+    }
+
+    /* ── mailto: email opener ── */
+    // cc is the invoice's persisted ccEmail (invoice.ccEmail); callers pass it in.
+    function openInvoiceMailto(invoice, cc = '') {
+      const recipient = (invoice.toEmail || '').trim();
+      const { subject, body } = buildInvoiceEmailContent(invoice);
 
       const params = new URLSearchParams();
       const ccTrimmed = (cc || '').trim();
@@ -17923,6 +17949,28 @@ const setDays = (updater) =>
                     )}
                   </div>
                 )}
+                {/* Invoice email method — iOS-only (the share path + clipboard are
+                    native; web keeps mailto, so this is hidden off-native). The two
+                    card descriptions ARE the explainer for the trade-off. */}
+                {IS_NATIVE && (
+                  <div className="mt-4 pt-4 border-t border-neutral-800">
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2.5">Send invoices via</div>
+                    <div className="space-y-2">
+                      <RoundingOptionCard
+                        label="Apple Mail"
+                        desc="Opens the Mail composer with everything prefilled — recipient, subject, body and the PDF attached."
+                        active={(userPrefs.invoiceEmailMethod || 'appleMail') === 'appleMail'}
+                        onClick={() => set({ invoiceEmailMethod: 'appleMail' })}
+                      />
+                      <RoundingOptionCard
+                        label="Another email app"
+                        desc="Sends via the share sheet (Gmail, Outlook, …) with the PDF, subject and body. The share sheet can't carry a recipient, so your To address is copied to the clipboard to paste into To."
+                        active={(userPrefs.invoiceEmailMethod || 'appleMail') === 'shareSheet'}
+                        onClick={() => set({ invoiceEmailMethod: 'shareSheet' })}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Sub: Accounting export — the format the invoice export buttons
@@ -19905,6 +19953,9 @@ const setDays = (updater) =>
       // effect's IS_NATIVE branch never runs there).
       const printIntentRef = React.useRef('share');
       const emailCcRef = React.useRef('');
+      // Carries userPrefs.invoiceEmailMethod ('appleMail' | 'shareSheet') into the
+      // async print/email effect after setPrintTarget, mirroring emailCcRef.
+      const emailMethodRef = React.useRef('appleMail');
       // Accounting-export (Stage 1) confirm: shown when the chosen non-PDF
       // format's recompute does NOT reproduce what was sent (hand-edited /
       // source changed) — surface, don't silently export.
@@ -19916,7 +19967,11 @@ const setDays = (updater) =>
       const [bankOpen, setBankOpen] = React.useState(false);
       const [fromOpen, setFromOpen] = React.useState(false);
       const [toastMsg, setToastMsg] = React.useState(null);
-      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
+      // Track the dismissal timer so a re-fired toast (e.g. tapping Copy Cc on the
+      // share-sheet toast) clears the prior timer instead of letting it cut the new
+      // message short — the most-recent toast governs its own full duration.
+      const toastTimerRef = React.useRef(null);
+      const showToast = (msg, ms = 2000) => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); setToastMsg(msg); toastTimerRef.current = setTimeout(() => { setToastMsg(null); toastTimerRef.current = null; }, ms); };
 
       // Trigger print after InvoicePrintView mounts
       React.useEffect(() => {
@@ -19933,33 +19988,47 @@ const setDays = (updater) =>
             const intent = printIntentRef.current;
             if (intent === 'email') {
               const inv = printTarget;
-              const subjectBase = `Invoice ${inv.invoiceNumber}`;
-              const subject = inv.jobTitle ? `${subjectBase} — ${inv.jobTitle}` : subjectBase;
-              const subtotal = invoiceSubtotal(inv.lineItems);
-              const { vatAmount } = invoiceVAT(inv, subtotal);
-              const totalStr = fmtGBP(subtotal + vatAmount);
-              const fromName = inv.fromName || inv.fromCompanyName || '';
-              const jobBit = inv.jobTitle ? ` for ${inv.jobTitle}` : '';
-              const body = `Hi,\n\nPlease find attached invoice ${inv.invoiceNumber}${jobBit}, total ${totalStr}.\n\nPlease quote ${inv.invoiceNumber} when making payment.\n\nMany thanks,\n${fromName}`;
+              const { subject, body } = buildInvoiceEmailContent(inv);   // shared builder — one source for all paths
+              const method = emailMethodRef.current;
               const wasDraft = inv.status === 'draft';
               nativeRenderPrintViewPdfBase64Vector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 })
                 .then((base64) => nativeSendInvoiceEmail({
                   to: inv.toEmail || '', cc: emailCcRef.current || '',
-                  subject, body, base64, filename,
+                  subject, body, base64, filename, method,
+                  // Share-sheet path only: copy the To recipient(s) to the clipboard
+                  // BEFORE the sheet presents (the sheet carries no recipient).
+                  onShareFallback: async () => {
+                    const recip = (inv.toEmail || '').trim();
+                    if (recip) { try { await navigator.clipboard.writeText(recip); } catch (_) {} }
+                  },
                 }))
                 .then((mode) => {
                   if (wasDraft) {
                     sendInvoice(production, inv, { status: 'sent', dateSent: todayISO() });
-                    showToast(mode === 'composer' ? 'Email composer opened — marked as sent' : 'Share sheet opened — marked as sent');
                   } else {
                     // Re-sending an already-issued invoice: re-lock so the edit-sent
                     // UX ends in the same locked state as the web path. The setter is
                     // stable (no stale-read), and it's a no-op when not in edit mode.
                     setEditingSentFields(false);
                   }
+                  if (mode === 'shared') {
+                    // The recipient was copied pre-sheet; on return, remind to paste
+                    // it into To and — since the sheet drops cc too — offer one-tap
+                    // Copy Cc when a cc exists (the clipboard holds one value).
+                    const cc = (emailCcRef.current || '').trim();
+                    const lead = wasDraft ? 'Marked as sent · recipient copied — paste into To' : 'Recipient copied — paste into To';
+                    showToast(
+                      <span>{lead}{cc ? (
+                        <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(cc); } catch (_) {} showToast('Cc copied'); }} className="ml-2 underline">Copy Cc</button>
+                      ) : null}</span>,
+                      cc ? 6000 : 3000
+                    );
+                  } else if (wasDraft) {
+                    showToast('Email composer opened — marked as sent');
+                  }
                 })
                 .catch((e) => { try { console.error('Invoice email failed', e); } catch (_) {} })
-                .finally(() => { printIntentRef.current = 'share'; emailCcRef.current = ''; cleanup(); });
+                .finally(() => { printIntentRef.current = 'share'; emailCcRef.current = ''; emailMethodRef.current = 'appleMail'; cleanup(); });
             } else {
               nativeExportPrintViewPdfVector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 }, filename)
                 .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
@@ -20112,6 +20181,7 @@ const setDays = (updater) =>
           // falls back to the share sheet). Auto-mark-as-sent fires there.
           printIntentRef.current = 'email';
           emailCcRef.current = invoice.ccEmail || '';
+          emailMethodRef.current = userPrefs.invoiceEmailMethod || 'appleMail';
           setPrintTarget(invoice);
           return;
         }
