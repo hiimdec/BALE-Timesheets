@@ -3654,7 +3654,7 @@ async function main() {
     // ─ Z4: the "stays on your device" reassurance moved into the
     //   Invoicing group footer. Verify the text wasn't dropped. ─
     check('Z4 Invoicing privacy reassurance preserved',
-      body.includes("All your invoicing details stay on your device — we don't store or transmit any of this."));
+      body.includes("All your invoicing details stay on your device - we don't store or transmit any of this."));
 
     // ─ Z5: every one-off action still wired up (these are not prefs but
     //   they're in the inventory and must survive the move). ─
@@ -3722,9 +3722,9 @@ async function main() {
     check('Z8a Storage status card — "saved safely" copy for the persistent (granted) state',
       body.includes("Your data's saved safely on this device."));
     check('Z8b Storage status card — "browser could clear it" copy for the best-effort state',
-      body.includes("Your data's being saved, but this browser could clear it — keep a backup."));
+      body.includes("Your data's being saved, but this browser could clear it - keep a backup."));
     check('Z8c Storage status card — private-browsing warning preserved',
-      body.includes('Private browsing detected — your data may not be saved when this tab closes. Export a backup before leaving.'));
+      body.includes('Private browsing detected - your data may not be saved when this tab closes. Export a backup before leaving.'));
 
     // ─ Z9: helpers / data the regroup still depends on — if any of these
     //   stopped being referenced the regroup would render but with empty
@@ -5399,7 +5399,7 @@ async function main() {
       /\{exportConfirm && \(\(\) => \{[\s\S]{0,600}<ConfirmDialog\s*open\s*title=\{title\}\s*message=\{`\$\{exportConfirm\.invoiceNumber\} · \$\{clientLine\} · \$\{total\}`\}\s*confirmLabel="Export" confirmTone="primary" cancelLabel="Cancel"/.test(html));
     check('PP4b confirm total is computed at the export rounding (invoiceExportFigures); blank client guarded for Xero/QBO',
       /const total = fmtGBP\(invoiceExportFigures\(exportConfirm, production, userPrefs\)\.total\);/.test(html) &&
-      /No client set — add it in \$\{fmtName\}/.test(html));
+      /No client set - add it in \$\{fmtName\}/.test(html));
     check('PP4c the file is written ONLY from a confirm path (runExport in onConfirm), never directly in generateOrExport',
       /onConfirm=\{\(\) => \{\s*const inv = exportConfirm;\s*setExportConfirm\(null\);[\s\S]{0,400}runExport\(inv\);/.test(html) &&
       !/const generateOrExport = \(\) => \{[\s\S]{0,300}runExport\(/.test(html));
@@ -6232,15 +6232,15 @@ async function main() {
       /const visible = IS_NATIVE && avail && \(avail\.available \|\| avail\.reason === 'appleIntelligenceNotEnabled' \|\| avail\.reason === 'modelNotReady'\);/.test(html) &&
       /if \(!visible\) return null;/.test(html) &&
       /turn on Apple Intelligence in Settings\./.test(html) &&
-      /preparing — try again shortly\./.test(html));
+      /preparing - try again shortly\./.test(html));
     check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
       importFn.length > 0 &&
       /setProduction\(p => \(\{ \.\.\.p, \.\.\.patch \}\)\)/.test(importFn) &&
       (importFn.match(/setProduction\(/g) || []).length === 1 &&
       !/storage\.set|setUserPrefs\(|setProductions\(/.test(importFn));
     check('UU1d review-sheet states — quiet verified with p.N page ref; amber unverified with the check-before-applying reason; dashed missing tap-to-enter; replaces diff line shown up front',
-      /Couldn't locate on document — check before applying/.test(html) &&
-      /Not found — tap to enter/.test(html) &&
+      /Couldn't locate on document - check before applying/.test(html) &&
+      /Not found - tap to enter/.test(html) &&
       /p\.\{st\.page\}/.test(html) &&
       /replaces: \{current\}/.test(html) &&
       /border-dashed/.test(importFn));
@@ -6251,7 +6251,7 @@ async function main() {
     check('UU1f Stage 2 entry lives at SHOOT level and the dev panel is fully retired — mounted inside ProductionSettingsSheet\'s invoicing section; no CallSheetDevPanel anywhere; AI-extraction footer present',
       /<CallSheetImport production=\{production\} setProduction=\{setProduction\} userPrefs=\{userPrefs\} autoFile=\{importFile\} \/>/.test(html) &&
       !/CallSheetDevPanel/.test(html) &&
-      /Extracted on-device by Apple Intelligence — verify each field\./.test(html));
+      /Extracted on-device by Apple Intelligence - verify each field\./.test(html));
 
     // ── Stage 3 — acquisition breadth ──
     check('UU1g Stage 3 bridge sources are IS_NATIVE-guarded (pickPhotos / scanDocument / ingestShared) and extract accepts an array of image paths as pages',
@@ -6309,7 +6309,7 @@ async function main() {
 
     // ── Stage 3.5 — input-quality honesty + correction UX ──
     check('UU1l weak-OCR banner is present and NON-BLOCKING — exact copy, gated only on native quality metrics, and the field rows render unconditionally after it (banner index < rows index)',
-      /This image was hard to read — text may be too small\. Zoomed screenshots \(e\.g\. the invoicing section\) or sharing the PDF itself work best\./.test(importFn) &&
+      /This image was hard to read - text may be too small\. Zoomed screenshots \(e\.g\. the invoicing section\) or sharing the PDF itself work best\./.test(importFn) &&
       /result && result\.quality && result\.quality\.weakPages && result\.quality\.weakPages\.length > 0/.test(importFn) &&
       /\{FIELDS\.map\(reviewRow\)\}/.test(importFn) &&
       importFn.indexOf('This image was hard to read') < importFn.indexOf('{FIELDS.map(reviewRow)}'));
@@ -6322,8 +6322,8 @@ async function main() {
       /Select on sheet/.test(importFn) &&
       !/storage\.set|setUserPrefs\(|setProductions\(/.test(importFn));
     check('UU1n photos tip caption + explicit edit affordance in the verify view',
-      /Tip: zoomed screenshots read best — try one of the masthead and one of the invoicing section\./.test(importFn) &&
-      /Value — tap to edit/.test(importFn));
+      /Tip: zoomed screenshots read best - try one of the masthead and one of the invoicing section\./.test(importFn) &&
+      /Value - tap to edit/.test(importFn));
     // ── Prompt (2) — CC secondary email + field-shape validation + LA wording ──
     check('UU1o CC secondary invoicing email maps to the EXISTING ccEmail field (no schema change), through the SAME single-merge Apply (one setProduction in the importer)',
       /\{ key: 'ccEmail', label: 'CC email', target: 'ccEmail' \},/.test(importFn) &&
@@ -6332,7 +6332,7 @@ async function main() {
       /const EMAIL_KEYS = new Set\(\['invoicingEmail', 'ccEmail'\]\);/.test(importFn) &&
       /const UK_POSTCODE_RE = /.test(importFn) &&
       /Doesn't look like an email/.test(importFn) &&
-      /No postcode found — check the address/.test(importFn) &&
+      /No postcode found - check the address/.test(importFn) &&
       /const unverified = hasVal && \(!shape\.ok \|\| /.test(importFn));
     check('UU1q Live Activity lunch label is "ON LUNCH" (not "AT LUNCH") in the widget chip',
       (() => {

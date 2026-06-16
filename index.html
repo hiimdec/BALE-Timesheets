@@ -1393,8 +1393,8 @@
       version: APP_VERSION,
       date: "2026-06-02",
       added: [
-        "New: Client and job details (company, emails, project, reference) now flow between your project and its invoices — fill them once; sent invoices stay locked as issued.",
-        "Improved: Backups now include bank details, company info, settings and invoice numbering — so a restore, or moving to a new device, brings everything back.",
+        "New: Client and job details (company, emails, project, reference) now flow between your project and its invoices - fill them once; sent invoices stay locked as issued.",
+        "Improved: Backups now include bank details, company info, settings and invoice numbering - so a restore, or moving to a new device, brings everything back.",
         "Improved: Favourable invoices now show clean whole-pound amounts on every line, including penalties.",
         "Improved: Rounding is now a single choice — Exact, Favourable, or APA — instead of two separate switches that could conflict.",
         "Fix: Overtime after midnight now correctly pays triple time through to wrap.",
@@ -1960,7 +1960,7 @@
       return diff;
     }
     function formatElapsed(minutes) {
-      if (minutes == null || minutes < 0) return "—";
+      if (minutes == null || minutes < 0) return "-";
       if (minutes < 60) return `${minutes}m`;
       const h = Math.floor(minutes / 60);
       const m = minutes % 60;
@@ -2152,9 +2152,9 @@
       return { showDiscard, setShowDiscard, onBeforeDismiss };
     };
     const weekday = (iso) => { if (!iso) return ""; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" }); };
-    const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
+    const fmtDate = (iso) => { if (!iso) return "-"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
     // fmtDateShort → "04/05/2026" (compact: line items, table rows)
-    const fmtDateShort = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+    const fmtDateShort = (iso) => { if (!iso) return "-"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }); };
     const formatDayHeaderDate = (isoDate) => {
       if (!isoDate) return "";
       const d = new Date(isoDate + "T12:00:00");
@@ -2164,14 +2164,14 @@
       return `${wd} · ${dayNum} ${month}`;
     };
     // fmtDateMed → "4 May 2026" (headers, invoice metadata, prose)
-    const fmtDateMed = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }); };
+    const fmtDateMed = (iso) => { if (!iso) return "-"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }); };
     // fmtDateLong → "Wed, 4 May 2026" (day editor headings, weekly summaries)
-    const fmtDateLong = (iso) => { if (!iso) return "—"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }); };
+    const fmtDateLong = (iso) => { if (!iso) return "-"; return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }); };
     // fmtDateOrdinal → "7th May 2026" (highest-earning-day stat card).
     // Ordinal suffix rules: 11/12/13 are always "th" (the standard
     // English exception); otherwise pivot on the units digit.
     const fmtDateOrdinal = (iso) => {
-      if (!iso) return "—";
+      if (!iso) return "-";
       const d = new Date(iso + "T12:00:00");
       const day = d.getDate();
       const j = day % 10, k = day % 100;
@@ -2224,25 +2224,25 @@
     const invoiceNeedsOverdueReminder = (inv) => !!inv && inv.status === "sent" && !inv.datePaid && !!inv.dueDate;
 
     // Travel time UX copy — caption shows inline, explainer expands on ⓘ tap.
-    const TRAVEL_TIME_CAPTION = "Enter your full door-to-door travel time — the app handles the APA deductions for you.";
+    const TRAVEL_TIME_CAPTION = "Enter your full door-to-door travel time - the app handles the APA deductions for you.";
     const TRAVEL_TIME_EXPLAINER = `Just enter your raw travel time for each direction. The app handles the rest:
 
-- The first 60 mins each way is non-billable per APA — we deduct this for you.
+- The first 60 mins each way is non-billable per APA - we deduct this for you.
 - If you wrapped early, the unused part of your basic working day absorbs travel time before any becomes chargeable.
 
 You don't need to subtract anything yourself.`;
 
     // Pre-call UX copy — expands on ⓘ tap inside Extras.
     const PRE_CALL_EXPLAINER = `Use this when you started before the main unit call. Common scenarios:
-  • Truck driving — loading or delivering gear
-  • Pre-light — sparks setting up lighting before crew arrival
-  • Prep — props, dressing, or any early setup work
+  • Truck driving - loading or delivering gear
+  • Pre-light - sparks setting up lighting before crew arrival
+  • Prep - props, dressing, or any early setup work
 
 The hours between your pre-call and the main call time are paid at BHR (basic hourly rate).
 
-Lunch deadlines, continuous workday (CWD), and overtime are still measured from your main call time — not from the pre-call. So an 07:00 pre-call followed by an 08:00 main call gets you 1 hour of pre-call pay, but lunch is still expected by 13:00 (5h from main call).`;
+Lunch deadlines, continuous workday (CWD), and overtime are still measured from your main call time - not from the pre-call. So an 07:00 pre-call followed by an 08:00 main call gets you 1 hour of pre-call pay, but lunch is still expected by 13:00 (5h from main call).`;
 
-    const PRE_CALL_PRE5_DISCLAIMER = `Pre-call before 05:00 is outside standard APA territory — a pre-5am unit call would normally trigger night-shoot rates. With a pre-call this is usually agreed with production. The app has applied triple time (3× BHR) for the pre-05:00 portion.`;
+    const PRE_CALL_PRE5_DISCLAIMER = `Pre-call before 05:00 is outside standard APA territory - a pre-5am unit call would normally trigger night-shoot rates. With a pre-call this is usually agreed with production. The app has applied triple time (3× BHR) for the pre-05:00 portion.`;
 
     const EXPENSE_CATEGORIES = ["Transport", "Food", "Equipment", "Accommodation", "Other"];
 
@@ -2426,10 +2426,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const notes = [];
       const bs = deriveBreakState(day, effectiveDayType);
       if (bs === null) {
-        return { meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
+        return { meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "-", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false }, lines: [], total: 0 };
       }
       const { callH, wrapAbs, wrapNextDay, workedHrs, lunchDuration, lunchMissed, continuousDay, secondBreakRequired, sbState, cwd2Required } = bs;
-      if (bs.dayClamped) notes.push("Day length exceeded 24h — clamped to 24h. Check the wrap time / +1 flag.");
+      if (bs.dayClamped) notes.push("Day length exceeded 24h - clamped to 24h. Check the wrap time / +1 flag.");
       const preCallTime = day.preCallTime || day.truckCallTime; // back-compat with legacy truckCallTime
       const preCallH = preCallTime ? parseHHMM(preCallTime) : null;
       // Split the pre-call window into (a) hours before 05:00 paid at 3× BHR
@@ -2450,7 +2450,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const overnight = (24 - preCallH) + callH;
           // Guard: >12h overnight is almost certainly a user error.
           if (overnight > 12) {
-            notes.push("Pre-call appears to be after main call — ignored. If this is an overnight pre-call, enter it as the previous day's clock time.");
+            notes.push("Pre-call appears to be after main call - ignored. If this is an overnight pre-call, enter it as the previous day's clock time.");
             return { triple: 0, ot: 0, total: 0 };
           }
           triple = (24 - preCallH) + Math.min(5, callH);
@@ -2790,7 +2790,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return {
           meta: {
             workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr,
-            dayLabel: day.dayType || "—", notes: [],
+            dayLabel: day.dayType || "-", notes: [],
             secondBreakRequired: false, continuousDay: false, isPmpa: true,
             isBankHoliday: isBankHoliday(day.date),
             bankHolidayName: getBankHolidayName(day.date),
@@ -2805,7 +2805,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const wrapH = parseHHMM(day.wrapTime);
       if (callH === null || wrapH === null) {
         return {
-          meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true },
+          meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr, dayLabel: "-", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true },
           lines: [], total: 0,
         };
       }
@@ -2813,7 +2813,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // 0h day (£0 + note, not a silent 24h); clamp an implausibly long day to 24h.
       const wrapNextDay = day.wrapNextDay || wrapH < callH;
       if (wrapH === callH && !day.wrapNextDay) {
-        return { meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr, dayLabel: "—", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true }, lines: [], total: 0 };
+        return { meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr, dayLabel: "-", notes: ["Missing or invalid call/wrap time"], secondBreakRequired: false, continuousDay: false, isPmpa: true }, lines: [], total: 0 };
       }
       let wrapAbs = wrapNextDay ? wrapH + 24 : wrapH;
       let workedHrs = wrapAbs - callH;
@@ -2905,7 +2905,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return {
         meta: {
           workedHrs, otHrs, waivedOtHrs, bhr, otRate, dayLabel,
-          notes: dayClamped ? ["Day length exceeded 24h — clamped to 24h. Check the wrap time / +1 flag."] : [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
+          notes: dayClamped ? ["Day length exceeded 24h - clamped to 24h. Check the wrap time / +1 flag."] : [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
           isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
         },
         lines, total,
@@ -3438,16 +3438,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const qty = line.qty;
       const timeMatch = line.detail?.match(/^(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})(\s*\(\+1\))?/);
       const timePart = timeMatch ? `${timeMatch[1]}-${timeMatch[2]}${timeMatch[3] || ''}` : '';
-      if (/mileage/i.test(label)) return `Mileage: ${qty} mi — ${fmtGBP(line.amount)}`;
+      if (/mileage/i.test(label)) return `Mileage: ${qty} mi - ${fmtGBP(line.amount)}`;
       const isOTLine = /\bot\b|\bovertime\b/i.test(label);
       if (isOTLine) {
         const prefix = timePart || line.detail || '';
-        const amountHint = line.amount != null ? ` — ${fmtGBP(line.amount)}` : '';
-        return `${prefix ? prefix + ' — ' : ''}${formatOTDuration(qty)}h ${label}${amountHint}`;
+        const amountHint = line.amount != null ? ` - ${fmtGBP(line.amount)}` : '';
+        return `${prefix ? prefix + ' - ' : ''}${formatOTDuration(qty)}h ${label}${amountHint}`;
       }
       const isHoursLine = typeof qty === 'number' && /triple|travel time|early|travel day/i.test(label) && qty !== 1;
       const hoursHint = isHoursLine ? ` (${qty % 1 === 0 ? qty : qty.toFixed(2)} HR${qty !== 1 ? 'S' : ''})` : '';
-      const amountHint = (!isHoursLine || /travel time/i.test(label)) && line.amount != null ? ` — ${fmtGBP(line.amount)}` : '';
+      const amountHint = (!isHoursLine || /travel time/i.test(label)) && line.amount != null ? ` - ${fmtGBP(line.amount)}` : '';
       return `${timePart ? timePart + ' ' : ''}${label}${hoursHint}${amountHint}`;
     }
 
@@ -3670,7 +3670,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // the invoice editor shows the notes verbatim, and the print/PDF view carries the
       // brand in its own footer — share-text callers of generateCrewText still keep theirs.
       return generateCrewText(crewMember, myDays, production)
-        .replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '')
+        .replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '')
         .trimEnd();
     }
 
@@ -4109,8 +4109,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       } catch (err) {
         // Fail safe: a corrupt/legacy day (e.g. an unknown dayType) must not crash
         // the many render sites that call calcForDisplay. Return a zero day + note.
-        calc = { meta: { workedHrs: 0, otHrs: 0, bhr: 0, otRate: 0, dayLabel: "—",
-          notes: ["Couldn't calculate this day — check its details."],
+        calc = { meta: { workedHrs: 0, otHrs: 0, bhr: 0, otRate: 0, dayLabel: "-",
+          notes: ["Couldn't calculate this day - check its details."],
           secondBreakRequired: false, continuousDay: false, isBankHoliday: false, bankHolidayName: null },
           lines: [], total: 0 };
       }
@@ -4141,7 +4141,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function generateCrewText(crewMember, entries, production) {
       const lines = [];
-      lines.push(`${(crewMember.name || '').toUpperCase()} — ${crewMember.role}`);
+      lines.push(`${(crewMember.name || '').toUpperCase()} - ${crewMember.role}`);
       if (production.title) lines.push(production.title);
       if (production.prodCo) lines.push(production.prodCo);
       lines.push('');
@@ -4151,8 +4151,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       sorted.forEach((d) => {
         const calc = calcForDisplay(production, d, crewMember, prevEntry);
         grandTotal += calc.total;
-        const stepUpNote = d.stepUpRole ? ` — Stepped up: ${d.stepUpRole}` : '';
-        lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
+        const stepUpNote = d.stepUpRole ? ` - Stepped up: ${d.stepUpRole}` : '';
+        lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' - CWD' : ''}${stepUpNote}`);
         calc.lines.forEach((l) => lines.push(formatLineText(l)));
         lines.push(`Day total: ${fmtGBP(calc.total)}`);
         lines.push('');
@@ -4160,7 +4160,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       });
       lines.push(`TOTAL: ${fmtGBP(grandTotal)}`);
       lines.push('');
-      lines.push('—');
+      lines.push('-');
       lines.push('Generated with TimeMachine · timemachineapp.co.uk');
       return lines.join('\n');
     }
@@ -4190,9 +4190,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const prevDay = allDays ? findPrevDay(allDays, day) : null;
       const calc = calcForDisplay(production, day, crewMember, prevDay);
       const lines = [];
-      lines.push(`${crewMember.name} — ${crewMember.role}`);
-      const stepUpNote = day.stepUpRole ? ` — Stepped up: ${day.stepUpRole}` : '';
-      lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' — CWD' : ''}${stepUpNote}`);
+      lines.push(`${crewMember.name} - ${crewMember.role}`);
+      const stepUpNote = day.stepUpRole ? ` - Stepped up: ${day.stepUpRole}` : '';
+      lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' - CWD' : ''}${stepUpNote}`);
       lines.push('');
       calc.lines.forEach((l) => lines.push(formatLineText(l)));
       lines.push('');
@@ -4207,7 +4207,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lines.push(`TOTAL: ${fmtGBP(calc.total)}`);
       }
       lines.push('');
-      lines.push('—');
+      lines.push('-');
       lines.push('Generated with TimeMachine · timemachineapp.co.uk');
       return lines.join('\n');
     }
@@ -5042,7 +5042,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <div className="mo tnum">{mo}</div>
                     </div>
                     <div className="body"><span className="label">Rest</span></div>
-                    <div className="total"><div className="lbl">—</div></div>
+                    <div className="total"><div className="lbl">-</div></div>
                   </div>
                 );
               }
@@ -5061,7 +5061,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <div className="mo tnum">{mo}</div>
                     </div>
                     <div className="body"><span className="label">Rest</span></div>
-                    <div className="total"><div className="lbl">—</div></div>
+                    <div className="total"><div className="lbl">-</div></div>
                   </div>
                 );
               }
@@ -5103,7 +5103,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <React.Fragment key={i}>
                             <span className="ll">
                               {isOT
-                                ? <>{line.detail ? <>{line.detail}<span className="sep">—</span></> : null}<span className="ot">{formatOTDuration(line.qty)}h {line.label}</span></>
+                                ? <>{line.detail ? <>{line.detail}<span className="sep">-</span></> : null}<span className="ot">{formatOTDuration(line.qty)}h {line.label}</span></>
                                 : isPen
                                 ? <><span className="penalty">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
                                 : <><strong>{line.label}</strong>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
@@ -5303,7 +5303,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div key={dateISO} className={`grid-cell${cls ? ' ' + cls : ''}`}>
                       {ct.tot > 0
                         ? <><div className="day-total-val tnum">{fmtGBP(ct.tot)}</div><div className="day-total-hrs tnum">{ct.hrs.toFixed(1)}h</div></>
-                        : <span style={{color:'#d4d4d4'}}>—</span>}
+                        : <span style={{color:'#d4d4d4'}}>-</span>}
                     </div>
                   );
                 })}
@@ -5699,7 +5699,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 blocks so page-break-inside: avoid on .notes-day keeps each day's lines together. */}
             {(() => {
               const cleanNotes = (invoice.notes || '')
-                .replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '')
+                .replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '')
                 .trim();
               if (!cleanNotes) return null;
               return (
@@ -5741,7 +5741,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // hoisted function declarations, so this runs fine despite being defined above them.
     function buildInvoiceEmailContent(invoice) {
       const subjectBase = `Invoice ${invoice.invoiceNumber}`;
-      const subject = invoice.jobTitle ? `${subjectBase} — ${invoice.jobTitle}` : subjectBase;
+      const subject = invoice.jobTitle ? `${subjectBase} - ${invoice.jobTitle}` : subjectBase;
       const subtotal = invoiceSubtotal(invoice.lineItems);
       const { vatAmount } = invoiceVAT(invoice, subtotal);
       const totalStr = fmtGBP(subtotal + vatAmount);
@@ -6464,7 +6464,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     const ROUNDING_OPTIONS = [
-      { value: 'exact',      label: 'Exact',      desc: 'Exact decimals — no rounding.' },
+      { value: 'exact',      label: 'Exact',      desc: 'Exact decimals - no rounding.' },
       { value: 'favourable', label: 'Favourable', desc: 'Round each line amount up to the next whole pound, in your favour.' },
       { value: 'apa',        label: 'APA',        desc: "Round BHR to the nearest whole pound, matching APA's published rate table (e.g. £444 BDR → £44 BHR)." },
     ];
@@ -6520,7 +6520,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 key={opt.value}
                 label={opt.label}
                 desc={opt.desc}
-                note={disabled ? 'Applies to the TimeMachine PDF only — set the invoice export format to TimeMachine to use it.' : undefined}
+                note={disabled ? 'Applies to the TimeMachine PDF only - set the invoice export format to TimeMachine to use it.' : undefined}
                 active={cur === opt.value}
                 disabled={disabled}
                 onClick={() => onChange(opt.value)}
@@ -7305,17 +7305,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     }
                   </Select>
                 </Field>
-                <Field label="Basic Day Rate (£)" hint="Editable — default is APA max for role">
+                <Field label="Basic Day Rate (£)" hint="Editable - default is APA max for role">
                   <Input type="number" step="0.01" min="0" value={form.bdr} onChange={(e) => { const bdr = Number(e.target.value); setForm({ ...form, bdr, otCoef: autoOtCoef(bdr) }); }} />
                 </Field>
                 <Field label="OT Coefficient" hint="Grade I=1.5× · II=1.25× · III=1.0×">
                   <Select value={form.otCoef} onChange={(e) => setForm({ ...form, otCoef: Number(e.target.value) })}>
-                    <option value={1.5}>Grade I — 1.5×</option>
-                    <option value={1.25}>Grade II — 1.25×</option>
-                    <option value={1}>Grade III — 1.0×</option>
+                    <option value={1.5}>Grade I - 1.5×</option>
+                    <option value={1.25}>Grade II - 1.25×</option>
+                    <option value={1}>Grade III - 1.0×</option>
                   </Select>
                 </Field>
-                <Field label="Email" hint="Optional — used for Save Timesheets">
+                <Field label="Email" hint="Optional - used for Save Timesheets">
                   <Input
                     type="email"
                     value={form.email || ''}
@@ -7464,10 +7464,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const copyBreakdown = async () => {
         const lines = [];
         lines.push(production.title || "Production");
-        lines.push(`Cancellation notice: ${noticeDate ? fmtDateShort(noticeDate) : "—"}`);
+        lines.push(`Cancellation notice: ${noticeDate ? fmtDateShort(noticeDate) : "-"}`);
         crewCalcs.forEach(({ member, dayInfo, cells, isBlock }, ci) => {
           lines.push("");
-          lines.push(`${member.name} — ${member.role}${isBlock ? " (block)" : ""}`);
+          lines.push(`${member.name} - ${member.role}${isBlock ? " (block)" : ""}`);
           dayInfo.forEach((d, i) => {
             if (d.agreedFee <= 0) return;
             const pctUsed = isBlock
@@ -7480,7 +7480,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lines.push("");
         lines.push(`Grand total: ${fmtGBP(grandTotal)}`);
         lines.push("");
-        lines.push("—");
+        lines.push("-");
         lines.push("Generated with TimeMachine · timemachineapp.co.uk");
         await shareTextOrCopy(lines.join("\n"), production.title || "Cancellation fees");
         setCopied(true);
@@ -7493,7 +7493,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="flex-shrink-0 px-5 pt-1 pb-3 border-b border-neutral-700 flex items-start justify-between gap-3">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-1">Cancellation Fees</div>
-                <div className="text-[11px] text-neutral-500">APA §7 — fees calculated relative to notice date</div>
+                <div className="text-[11px] text-neutral-500">APA §7 - fees calculated relative to notice date</div>
               </div>
               <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }} aria-label="Close"><IX size={16}/></button>
             </div>
@@ -7561,7 +7561,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                               <Btn variant="ghost" size="sm" onClick={() => setUnlockedRowIds(s => new Set(s).add(member.id))}>Custom</Btn>
                             </div>
                           )}
-                          <div className="text-[10px] text-neutral-500 mt-1.5 leading-tight">Used as the default rate for each day below — you can override per day.</div>
+                          <div className="text-[10px] text-neutral-500 mt-1.5 leading-tight">Used as the default rate for each day below - you can override per day.</div>
                         </div>
                       )}
 
@@ -7626,7 +7626,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
                       {isBlock && noticeDate && dayInfo.some(d => d.agreedFee > 0) && (
                         <div className="text-[10px] text-neutral-400 leading-relaxed bg-sky-500/[0.04] border border-dashed border-sky-500/25 rounded-lg px-3 py-2">
-                          <span className="text-sky-500 font-bold uppercase tracking-wider">Block</span> — 3 or fewer planned days, all calculated at the earliest day's percentage.
+                          <span className="text-sky-500 font-bold uppercase tracking-wider">Block</span> - 3 or fewer planned days, all calculated at the earliest day's percentage.
                         </div>
                       )}
 
@@ -7739,7 +7739,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <td className="px-3 py-2 text-[10px] uppercase tracking-wider text-neutral-400 font-bold border-r border-neutral-700">Total</td>
                         {setCrew && <td className="border-r border-neutral-700 bg-neutral-950" />}
                         {colTotals.map((t, i) => (
-                          <td key={i} className="px-2 py-2 text-right text-[11px] font-mono text-neutral-200 border-r border-neutral-700 font-bold">{t > 0 ? fmtGBP(t) : "—"}</td>
+                          <td key={i} className="px-2 py-2 text-right text-[11px] font-mono text-neutral-200 border-r border-neutral-700 font-bold">{t > 0 ? fmtGBP(t) : "-"}</td>
                         ))}
                         <td className="px-3 py-2 text-right text-[12px] font-mono text-tm-warn font-bold whitespace-nowrap border-l border-neutral-700">{fmtGBP(grandTotal)}</td>
                       </tr>
@@ -7794,7 +7794,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               )}
 
               <div className="mt-5 rounded-lg border border-neutral-800 bg-neutral-900/60 px-3.5 py-3">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-1.5">APA §7 — How fees are calculated</div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-1.5">APA §7 - How fees are calculated</div>
                 <div className="text-[11px] text-neutral-400 leading-relaxed">
                   7+ days notice = 0% · 6–4 days = 50% · 3–2 days = 75% · 1 day or less = 100%. Days counted include the notice date and exclude the shoot date. Crew members with 3 or fewer planned days are calculated as a single block at the earliest day's percentage.
                 </div>
@@ -7905,16 +7905,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 if (!day.mileagePostcode) return null;
                 if (!result) return (
                   <div className="text-xs text-tm-warn mt-1">
-                    Couldn't find that postcode — try the first part only, like NW1.
+                    Couldn't find that postcode - try the first part only, like NW1.
                   </div>
                 );
                 return (
                   <div className="space-y-0.5 mt-1">
                     <div className="text-sm text-sky-300">→ {result.miles} mile{result.miles === 1 ? '' : 's'}</div>
-                    <div className="text-[10px] text-neutral-500">Approximate — adjust manually if your route differs.</div>
+                    <div className="text-[10px] text-neutral-500">Approximate - adjust manually if your route differs.</div>
                     {result.insideM25 && (
                       <div className="text-xs text-tm-warn">
-                        ⚠ {result.outcode} is inside the M25 — APA mileage usually isn't charged for inside-M25 shoots, so you can clear this. Only keep it if your job pays mileage anyway.
+                        ⚠ {result.outcode} is inside the M25 - APA mileage usually isn't charged for inside-M25 shoots, so you can clear this. Only keep it if your job pays mileage anyway.
                       </div>
                     )}
                   </div>
@@ -8085,10 +8085,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // 2nd-break chip status suffix — drives the chip's trailing " — STATE" text.
       const sbSuffix = !bs ? ""
-        : bs.sbState === "missed"    ? " — MISSED"
-        : bs.sbState === "late"      ? " — LATE"
-        : bs.sbState === "curtailed" ? " — CURTAILED"
-        : bs.sbState === "given"     ? " — ✓"
+        : bs.sbState === "missed"    ? " - MISSED"
+        : bs.sbState === "late"      ? " - LATE"
+        : bs.sbState === "curtailed" ? " - CURTAILED"
+        : bs.sbState === "given"     ? " - ✓"
         : "";
 
       // V4-5h-10b: Value presence drives activation. Chip tap toggles panel
@@ -8157,7 +8157,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 {!fixedCrewId && !allCrewMode && (
                   <Field label="Crew Member">
                     <Select value={v.crewId} onChange={(e) => set({ crewId: e.target.value })}>
-                      <option value="">— Select —</option>
+                      <option value="">- Select -</option>
                       {crew.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.role})</option>)}
                     </Select>
                   </Field>
@@ -8170,7 +8170,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 )}
                 <div className="grid grid-cols-2 gap-3">
                   {!fixedDate && (
-                    <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " — weekend rate applies" : ""}${isBH ? " — bank holiday rate applies" : ""}` : ""}>
+                    <Field label="Date" hint={v.date ? `${dayLabel}${isWeekend ? " - weekend rate applies" : ""}${isBH ? " - bank holiday rate applies" : ""}` : ""}>
                       <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
                     </Field>
                   )}
@@ -8190,12 +8190,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           )}
           {isPmpa && (
             <StatusMsg kind="info">
-              APA Appendix 1 §(a): {role}s use a simpler framework — flat BDR plus OT for hours beyond BWD on shoot days only. No break penalties, no travel time, no triple time.
+              APA Appendix 1 §(a): {role}s use a simpler framework - flat BDR plus OT for hours beyond BWD on shoot days only. No break penalties, no travel time, no triple time.
             </StatusMsg>
           )}
           {isBH && (
             <StatusMsg kind="info">
-              Bank Holiday — {bhName}. APA §2.4: paid as Sunday rate (2× BDR for shoot day, 2× BHR all hours).
+              Bank Holiday - {bhName}. APA §2.4: paid as Sunday rate (2× BDR for shoot day, 2× BHR all hours).
             </StatusMsg>
           )}
 
@@ -8335,7 +8335,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         ? { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/35' }
                       : null;
                     const showBody = !isDiscretionary && dur > 0;
-                    const endText = (bs?.lunchEndAbs != null && dur > 0) ? toHHMM(bs.lunchEndAbs) : '—';
+                    const endText = (bs?.lunchEndAbs != null && dur > 0) ? toHHMM(bs.lunchEndAbs) : '-';
                     return (
                       <div ref={lunchRef} className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
                         {/* Row 1 — header: LUNCH label TL, conditional chip TR */}
@@ -8417,10 +8417,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
                   {bs && (
                     <>
-                      {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed — Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of {isElevenHourDay ? 12 : 11}h.</StatusMsg>}
-                      {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 — no lunch obligation on {vr.dayType} days. Paid as 8h × BHR.</StatusMsg>}
-                      {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) — CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
-                      {bs.lunchLate && <StatusMsg kind="warn">Late — should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
+                      {bs.lunchMissed && bs.cwdApplies && <StatusMsg kind="bad">Lunch missed - Continuous Working Day. OT now starts at {toHHMM(bs.callH + 9)} (9h after call) instead of {isElevenHourDay ? 12 : 11}h.</StatusMsg>}
+                      {bs.lunchMissed && !bs.cwdApplies && <StatusMsg kind="info">APA §2.3 - no lunch obligation on {vr.dayType} days. Paid as 8h × BHR.</StatusMsg>}
+                      {bs.lunchVeryLate && bs.cwdApplies && <StatusMsg kind="bad">Lunch started after {toHHMM(bs.cwdThreshold)} (6.5h from call) - CWD triggered. OT now starts at {toHHMM(bs.callH + 9)}.</StatusMsg>}
+                      {bs.lunchLate && <StatusMsg kind="warn">Late - should have started by {toHHMM(bs.lateThreshold)} (5.5h from call). £10 penalty applied.</StatusMsg>}
                       {!bs.lunchMissed && !bs.lunchLate && !bs.lunchVeryLate && bs.lunchDuration < 60 && bs.cwdApplies && bs.lunchEndAbs != null && <StatusMsg kind="warn">Curtailed by {60 - bs.lunchDuration}m. Ends {toHHMM(bs.lunchEndAbs)}. OT starts {60 - bs.lunchDuration}m earlier.</StatusMsg>}
                     </>
                   )}
@@ -8465,7 +8465,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     aria-expanded={secondBreakExpanded}
                   >
                     <span>2nd break</span>
-                    {sbSuffix && <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{sbSuffix.replace(/^ — /, '')}</span>}
+                    {sbSuffix && <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{sbSuffix.replace(/^ - /, '')}</span>}
                     <IChevronDown size={11} strokeWidth={2.5} className={`opacity-60 transition-transform ${secondBreakExpanded ? 'rotate-180' : ''}`} />
                   </button>
                 );
@@ -8552,8 +8552,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     </Select>
                   </Field>
                 </div>
-                {bs.sbState === "missed" && <StatusMsg kind="bad">Missed — 30m × BHR penalty applied.</StatusMsg>}
-                {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed — treated as missed. 30m × BHR penalty.</StatusMsg>}
+                {bs.sbState === "missed" && <StatusMsg kind="bad">Missed - 30m × BHR penalty applied.</StatusMsg>}
+                {bs.sbState === "late" && <StatusMsg kind="bad">Late (started after {toHHMM(bs.sbDeadline)}). APA: 2nd break can't be delayed - treated as missed. 30m × BHR penalty.</StatusMsg>}
                 {bs.sbState === "curtailed" && <StatusMsg kind="warn">Curtailed by {30 - bs.sbDuration}m. {30 - bs.sbDuration}m × BHR penalty.</StatusMsg>}
                 {bs.sbState === "given" && <StatusMsg kind="ok">Given on time.</StatusMsg>}
               </div>
@@ -8567,16 +8567,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="text-[11px] text-neutral-400 leading-tight">APA §6.4: CWD requires a 30m break by {toHHMM(bs.cwd1Deadline)} (9h after call){bs.cwd2Required ? `, and another by ${toHHMM(bs.cwd2Deadline)} (12.5h after call)` : ""}. Missed breaks = 30m × BHR penalty.</div>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 1 — by {toHHMM(bs.cwd1Deadline)}</div>
-                    <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak1Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 1 - by {toHHMM(bs.cwd1Deadline)}</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak1Given === false ? "Missed - +30m × BHR" : "Given"}</div>
                   </div>
                   <Toggle value={v.cwdBreak1Given !== false} onChange={(val) => set({ cwdBreak1Given: val })} ariaLabel="CWD break 1 given" />
                 </div>
                 {bs.cwd2Required && (
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 2 — by {toHHMM(bs.cwd2Deadline)}</div>
-                      <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak2Given === false ? "Missed — +30m × BHR" : "Given"}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Break 2 - by {toHHMM(bs.cwd2Deadline)}</div>
+                      <div className="text-[10px] text-neutral-500 mt-0.5">{v.cwdBreak2Given === false ? "Missed - +30m × BHR" : "Given"}</div>
                     </div>
                     <Toggle value={v.cwdBreak2Given !== false} onChange={(val) => set({ cwdBreak2Given: val })} ariaLabel="CWD break 2 given" />
                   </div>
@@ -8595,7 +8595,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     const d = ROLE_DEFAULTS[role] || {};
                     set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef, stepUpOTRate: d.otRate ?? null });
                   }}>
-                    <option value="">— Select Role —</option>
+                    <option value="">- Select Role -</option>
                     {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}
                   </Select>
                 </Field>
@@ -8639,7 +8639,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <span className="text-[10px] text-neutral-500">What counts as pre-call?</span>
                 </div>
                 {showPreCallInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{PRE_CALL_EXPLAINER}</span></StatusMsg>}
-                <Field label="Pre-call time" hint="Early arrival — paid at BHR. Lunch and CWD still measured from main call time.">
+                <Field label="Pre-call time" hint="Early arrival - paid at BHR. Lunch and CWD still measured from main call time.">
                   <TimeInput value={v.preCallTime || v.truckCallTime || ''} onChange={(e) => set({ preCallTime: e.target.value })} className="min-h-[44px]" />
                 </Field>
                 {(() => { const pc = parseHHMM(v.preCallTime || v.truckCallTime); return pc != null && pc < 5; })() && (
@@ -8743,7 +8743,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                 )}
                 <div className={hasAny ? 'mt-3 pt-3 border-t border-neutral-800' : ''}>
-                  <Field label="Kit (ad-hoc) — £/day" hint="Added on top of any ticked items above. Use for one-off kit not in your Kit Room.">
+                  <Field label="Kit (ad-hoc) - £/day" hint="Added on top of any ticked items above. Use for one-off kit not in your Kit Room.">
                     <Input type="number" min="0" step="0.01" value={v.kitMoneyAmount ?? 0} onChange={(e) => set({ kitMoneyAmount: Number(e.target.value) })} />
                   </Field>
                 </div>
@@ -8866,7 +8866,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dirty = JSON.stringify(form) !== JSON.stringify(initialRef.current);
       const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(dirty);
 
-      const modalTitle = isNew ? "New Day Entry" : isNewAll ? "New Day — All Crew" : "Edit Day Entry";
+      const modalTitle = isNew ? "New Day Entry" : isNewAll ? "New Day - All Crew" : "Edit Day Entry";
 
       return (
         <>
@@ -8890,7 +8890,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {!fixedCrewId && (isNew || isNewAll) && (
                     <div className="text-xs text-neutral-500">
                       {isNewAll
-                        ? `${crew.length} crew member${crew.length !== 1 ? "s" : ""}${dateStr ? ` — ${dateStr}` : " — select date below"}`
+                        ? `${crew.length} crew member${crew.length !== 1 ? "s" : ""}${dateStr ? ` - ${dateStr}` : " - select date below"}`
                         : "Select crew member and date below"}
                     </div>
                   )}
@@ -8915,7 +8915,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               />
               {isNewAll && (
                 <div className="mt-3 bg-black border border-sky-500 p-3 text-xs text-neutral-300 rounded-xl">
-                  <span className="text-sky-500 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries — one per crew member
+                  <span className="text-sky-500 font-bold uppercase tracking-wider">Will create: </span>{crew.length} day entries - one per crew member
                 </div>
               )}
               {activeCalc && activeCalc.lines.length > 0 && (
@@ -9020,8 +9020,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const hasMSB   = lines.some(l => /missed.*2nd|late.*2nd/i.test(l.label));
       const anyPenalty = hasOT || hasCWD || hasLate1 || hasMSB || hasTOC;
 
-      const ct = resolved.callTime || "—";
-      const wt = resolved.wrapTime || "—";
+      const ct = resolved.callTime || "-";
+      const wt = resolved.wrapTime || "-";
       const hrs = gridDisplayHours(resolved);
       const hrsLabel = Number.isInteger(hrs) ? `${hrs}h` : `${hrs.toFixed(1)}h`;
 
@@ -9219,7 +9219,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             if (hasEntries) { openDateEdit(date); } else { onAddAllOnDate(date, addDayType); }
                           }}
                           className={`px-2 py-1.5 text-center cursor-pointer border-r border-neutral-700 transition-colors hover:bg-neutral-800/60 ${cellBg}${isEditingThis ? " ring-2 ring-inset ring-sky-500" : ""}`}
-                          title={isBH ? `Bank Holiday — ${getBankHolidayName(date)}` : undefined}>
+                          title={isBH ? `Bank Holiday - ${getBankHolidayName(date)}` : undefined}>
                           <div className={`text-[11px] font-bold leading-none ${numColor}`}>
                             {new Date(date + "T12:00:00").getDate()}
                           </div>
@@ -9350,7 +9350,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <Field label="Call Time"><TimeInput value={dateEdit.callTime || ""} onChange={e => setDateEdit(p => ({...p, callTime: e.target.value}))} /></Field>
                         <Field label="Wrap Time"><TimeInput value={dateEdit.wrapTime || ""} onChange={e => setDateEdit(p => ({...p, wrapTime: e.target.value}))} /></Field>
                         {dateEdit.dayType !== "Travel Day" && dateEdit.dayType !== "Rest Day" && (
-                          <Field label="Pre-call Time" hint="Early arrival — paid at BHR. Lunch and CWD from main call.">
+                          <Field label="Pre-call Time" hint="Early arrival - paid at BHR. Lunch and CWD from main call.">
                             <TimeInput value={dateEdit.preCallTime || ""} onChange={e => setDateEdit(p => ({...p, preCallTime: e.target.value}))} />
                           </Field>
                         )}
@@ -9432,7 +9432,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       </Field>
                     </div>
                     <div className="space-y-3">
-                      <Field label="Step-Up Role for all crew" hint="Select — None — to disable.">
+                      <Field label="Step-Up Role for all crew" hint="Select - None - to disable.">
                         <Select value={dateEdit.stepUpRole || ""} onChange={e => {
                           const role = e.target.value;
                           const d = ROLE_DEFAULTS[role] || {};
@@ -9444,7 +9444,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             stepUpOTRate: role ? (d.otRate ?? null) : null,
                           }));
                         }}>
-                          <option value="">— None (not stepped up) —</option>
+                          <option value="">- None (not stepped up) -</option>
                           {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}</optgroup>)}
                         </Select>
                       </Field>
@@ -10988,7 +10988,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className={`text-[10px] uppercase tracking-wider font-bold ${(anyCrewLunchLate || anyCrewLunchCurtailed) ? 'text-tm-pen' : 'text-neutral-500'}`}>LUNCH</div>
               {deptLunchStart ? (
                 <>
-                  <div className="font-mono text-sm text-neutral-100 tabular-nums">{deptLunchStart} → {deptLunchEnd || '—'}</div>
+                  <div className="font-mono text-sm text-neutral-100 tabular-nums">{deptLunchStart} → {deptLunchEnd || '-'}</div>
                   {anyCrewLunchLate && (
                     <span className="text-[9px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">LUNCH LATE</span>
                   )}
@@ -11269,7 +11269,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <div className="text-[11px] text-neutral-400 mt-0.5">
                     {isOff
                       ? <span className="text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-bold">{offReason || 'Not on this day'}</span>
-                      : `${member.role || '—'} · £${member.bdr ?? 0} BDR`}
+                      : `${member.role || '-'} · £${member.bdr ?? 0} BDR`}
                   </div>
                   {!isOff && chips.length > 0 && (
                     <div className="flex gap-1 mt-1.5">
@@ -11279,7 +11279,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
 
                 {isOff ? (
-                  <div className="text-neutral-600 font-mono">—</div>
+                  <div className="text-neutral-600 font-mono">-</div>
                 ) : (
                   <div className="text-right flex-shrink-0">
                     <div className="font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(dayTotal)}</div>
@@ -11408,7 +11408,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             )}
           </div>
           <div className={`text-[26px] font-mono font-bold leading-none tabular-nums ${isOverridden ? 'text-fuchsia-400' : 'text-neutral-100'}`}>
-            {value || <span className="text-neutral-500 text-base font-sans font-medium">—</span>}
+            {value || <span className="text-neutral-500 text-base font-sans font-medium">-</span>}
           </div>
           <input
             type="time"
@@ -11445,7 +11445,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <>
                 <span className={`font-mono text-[14px] tabular-nums ${startOverridden ? 'text-fuchsia-400' : 'text-neutral-100'}`}>{startValue}</span>
                 <span className="text-neutral-600">→</span>
-                <span className={`font-mono text-[14px] tabular-nums ${startOverridden ? 'text-fuchsia-400' : 'text-neutral-100'}`}>{lunchEnd || '—'}</span>
+                <span className={`font-mono text-[14px] tabular-nums ${startOverridden ? 'text-fuchsia-400' : 'text-neutral-100'}`}>{lunchEnd || '-'}</span>
                 {isLunchLate && (
                   <span className="text-[10px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">
                     {lateMinutes > 0 ? `${lateMinutes}m LATE` : 'LATE'}
@@ -11459,7 +11459,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <span className={`ml-auto text-[11px] font-mono tabular-nums ${durOverridden ? 'text-fuchsia-400' : 'text-neutral-400'}`}>{durValue} mins</span>
               </>
             ) : (
-              <span className="text-neutral-500 text-sm">{tappable ? 'Tap to set' : '—'}</span>
+              <span className="text-neutral-500 text-sm">{tappable ? 'Tap to set' : '-'}</span>
             )}
           </div>
           {anyOverridden && (
@@ -11484,7 +11484,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <span className="text-[10px] uppercase tracking-[0.15em] text-sky-500 font-bold">DAY TYPE</span>
           <span className="relative inline-block ml-auto">
             <span className={`font-mono text-[12px] uppercase tracking-wider ${isOverridden ? 'text-fuchsia-400' : 'text-neutral-100'} ${editable ? 'underline decoration-dotted decoration-neutral-600 underline-offset-2' : ''}`}>
-              {value || '—'}
+              {value || '-'}
             </span>
             {editable && (
               <select
@@ -11585,7 +11585,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="px-5 pt-1 pb-3 border-b border-neutral-800/60">
               <div className="text-base font-bold text-neutral-100 truncate">{crewMember.name || 'Crew'}</div>
               <div className="text-[11px] text-neutral-400 mt-0.5">
-                {crewMember.role || '—'} · £{crewMember.bdr ?? 0} BDR
+                {crewMember.role || '-'} · £{crewMember.bdr ?? 0} BDR
               </div>
               {hasEmail ? (
                 <div className="text-[10px] font-mono text-neutral-500 mt-0.5 truncate">{crewMember.email}</div>
@@ -11955,7 +11955,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     {isMe && <span className="text-[10px] font-semibold text-neutral-500 lowercase">(you)</span>}
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.14em] text-sky-500 font-bold mt-0.5">
-                    {crewMember.role || '—'} · £{crewMember.bdr ?? 0} BDR
+                    {crewMember.role || '-'} · £{crewMember.bdr ?? 0} BDR
                   </div>
                 </div>
                 <button
@@ -12108,8 +12108,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <span className="flex-1 h-px bg-neutral-800/60"/>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <ExtraChip label="Step-up" isSet={stepUpActive} summary={stepUpActive ? (dayRecord.stepUpRole || '—') : null} onTap={() => toggleExtra('stepUp')}/>
-                        {!isTravelDay && <ExtraChip label="Pre-call" isSet={preCallActive} isOverridden={preCallOverridden} summary={preCallActive ? (dayRecord.preCallTime || dayRecord.truckCallTime || '—') : null} onTap={() => toggleExtra('preCall')}/>}
+                        <ExtraChip label="Step-up" isSet={stepUpActive} summary={stepUpActive ? (dayRecord.stepUpRole || '-') : null} onTap={() => toggleExtra('stepUp')}/>
+                        {!isTravelDay && <ExtraChip label="Pre-call" isSet={preCallActive} isOverridden={preCallOverridden} summary={preCallActive ? (dayRecord.preCallTime || dayRecord.truckCallTime || '-') : null} onTap={() => toggleExtra('preCall')}/>}
                         <ExtraChip label="Mileage" isSet={mileageActive} isOverridden={mileageOverridden} summary={mileageActive ? `${Number(dayRecord.miles) || 0} mi` : null} onTap={() => toggleExtra('mileage')}/>
                         <ExtraChip label="Kit" isSet={kitMoneyActive} summary={kitMoneyActive ? fmtGBP(Number(dayRecord.kitMoneyAmount) || 0) : null} onTap={() => toggleExtra('kit')}/>
                         {!isTravelDay && <ExtraChip label="Travel" isSet={travelTimeActive} isOverridden={travelOverridden} summary={travelTimeActive ? `${travelOut}+${travelBack}m` : null} onTap={() => toggleExtra('travel')}/>}
@@ -12296,7 +12296,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                     }}
                                     className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
                                   >
-                                    <option value="">— None (not stepped up) —</option>
+                                    <option value="">- None (not stepped up) -</option>
                                     {Object.entries(DEPARTMENTS).map(([dept, roles]) => (
                                       <optgroup key={dept} label={dept}>
                                         {Object.keys(roles).map(r => <option key={r} value={r}>{r}</option>)}
@@ -12373,9 +12373,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                 <div className="text-[11px] text-neutral-400 leading-tight">
                                   APA §6.4: CWD requires a 30m break by {toHHMM(calc.meta.cwd1Deadline)} (9h after call){cwd2Req ? `, and another by ${toHHMM(calc.meta.cwd2Deadline)} (12.5h after call)` : ''}. Missed = 30m × BHR penalty.
                                 </div>
-                                <ToggleRow label={`Break 1 — by ${toHHMM(calc.meta.cwd1Deadline)}`} value={dayRecord.cwdBreak1Given !== false} onChange={(val) => updateField('cwdBreak1Given', val)} ariaLabel="CWD break 1 given"/>
+                                <ToggleRow label={`Break 1 - by ${toHHMM(calc.meta.cwd1Deadline)}`} value={dayRecord.cwdBreak1Given !== false} onChange={(val) => updateField('cwdBreak1Given', val)} ariaLabel="CWD break 1 given"/>
                                 {cwd2Req && (
-                                  <ToggleRow label={`Break 2 — by ${toHHMM(calc.meta.cwd2Deadline)}`} value={dayRecord.cwdBreak2Given !== false} onChange={(val) => updateField('cwdBreak2Given', val)} ariaLabel="CWD break 2 given"/>
+                                  <ToggleRow label={`Break 2 - by ${toHHMM(calc.meta.cwd2Deadline)}`} value={dayRecord.cwdBreak2Given !== false} onChange={(val) => updateField('cwdBreak2Given', val)} ariaLabel="CWD break 2 given"/>
                                 )}
                               </div>
                             );
@@ -12791,7 +12791,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Text / Clipboard</div>
             {byCrew.map(({ crew: c, entries }) => (
               <Btn key={c.id} variant="ghost" onClick={() => handleCrewText(c, entries)}>
-                <IMessage/>{c.name} — Text
+                <IMessage/>{c.name} - Text
               </Btn>
             ))}
           </div>
@@ -12864,7 +12864,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         (production.toAddress || '').split('\n')[0].trim() ||
         (production.invoicingEmail || '').trim() ||
         (production.jobReference || '').trim() ||
-        '—';
+        '-';
 
       const modeSummary = (() => {
         const parts = [];
@@ -12887,7 +12887,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       })();
 
       const soloMember = (!production.bestBoyMode && (production.crew ?? []).length > 0) ? production.crew[0] : null;
-      const roleSummary = soloMember ? `${soloMember.role || '—'} · £${soloMember.bdr ?? 0}` : '—';
+      const roleSummary = soloMember ? `${soloMember.role || '-'} · £${soloMember.bdr ?? 0}` : '-';
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
@@ -12905,7 +12905,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
             <SectionCard title="Basics">
               <Field label="Production title">
-                <Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays — Minds Eye" />
+                <Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays - Minds Eye" />
               </Field>
               <Field label="Production company">
                 <ClientPicker
@@ -12994,7 +12994,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <StatusMsg kind="info">You'll need to add additional crew members in Crew Manager.</StatusMsg>
                 )}
                 {!production.bestBoyMode && crew.length > 1 && (
-                  <StatusMsg kind="warn">You have {crew.length} crew members. Disabling Best Boy mode hides the grid but keeps your crew data — you can re-enable any time.</StatusMsg>
+                  <StatusMsg kind="warn">You have {crew.length} crew members. Disabling Best Boy mode hides the grid but keeps your crew data - you can re-enable any time.</StatusMsg>
                 )}
               </div>
               <div>
@@ -13060,7 +13060,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </button>
 
                   <div className="text-[10px] text-neutral-500 mt-2.5 leading-relaxed">
-                    Both modes read and write the same data — switch any time. Mobile mode arrives in V4-2; for now this preference is stored but the production still renders in grid view.
+                    Both modes read and write the same data - switch any time. Mobile mode arrives in V4-2; for now this preference is stored but the production still renders in grid view.
                   </div>
                 </div>
               )}
@@ -13072,9 +13072,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const effectiveId = production.iAmCrewId || autoMatchId || null;
                 const effectiveCrew = effectiveId ? (production.crew || []).find(c => c.id === effectiveId) : null;
                 const summaryLine = production.iAmCrewId
-                  ? `Manually set to ${effectiveCrew?.name || '—'}`
+                  ? `Manually set to ${effectiveCrew?.name || '-'}`
                   : autoMatchId
-                  ? `Auto-matched to ${effectiveCrew?.name || '—'}${userName ? '' : ''}`
+                  ? `Auto-matched to ${effectiveCrew?.name || '-'}${userName ? '' : ''}`
                   : userName
                   ? `No crew named "${userName}" on this production`
                   : 'Set your name in Settings, or pick from the list.';
@@ -13088,7 +13088,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
                       style={{ WebkitAppearance: 'none' }}
                     >
-                      <option value="">— Auto-match by name —</option>
+                      <option value="">- Auto-match by name -</option>
                       {(production.crew || []).map(c => (
                         <option key={c.id} value={c.id}>{c.name || 'Unnamed'}{c.role ? ` (${c.role})` : ''}</option>
                       ))}
@@ -13122,7 +13122,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               return (
                 <Disclosure label="Kit on this shoot" summary={summaryText}>
                   <p className="text-[11px] text-neutral-500 -mt-1 leading-relaxed">
-                    Summary of the kit items on your own days. Enter a "Deal £" if you've agreed a flat total for an item across the shoot — the discount is shown here for reference. It doesn't change invoice or breakdown totals yet.
+                    Summary of the kit items on your own days. Enter a "Deal £" if you've agreed a flat total for an item across the shoot - the discount is shown here for reference. It doesn't change invoice or breakdown totals yet.
                   </p>
                   <div className="flex flex-col gap-2">
                     {kitAgg.items.map(item => (
@@ -13152,7 +13152,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             step="0.01"
                             value={item.negotiatedTotal == null ? '' : item.negotiatedTotal}
                             onChange={(e) => updateDeal(item.itemId, e.target.value)}
-                            placeholder="—"
+                            placeholder="-"
                             aria-label={`Negotiated deal total for ${item.name || 'kit item'}`}
                             style={{ width: 110 }}
                             className="text-sm"
@@ -13235,9 +13235,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </Field>
                   <Field label="OT Coefficient">
                     <Select value={m.otCoef} onChange={(e) => setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, otCoef: Number(e.target.value) } : c) }))}>
-                      <option value={1.5}>Grade I — 1.5×</option>
-                      <option value={1.25}>Grade II — 1.25×</option>
-                      <option value={1}>Grade III — 1.0×</option>
+                      <option value={1.5}>Grade I - 1.5×</option>
+                      <option value={1.25}>Grade II - 1.25×</option>
+                      <option value={1}>Grade III - 1.0×</option>
                     </Select>
                   </Field>
                   <div className="flex items-center justify-between gap-3">
@@ -13586,7 +13586,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       {isMe && <span className="ml-1.5 text-[9px] font-semibold text-neutral-500 lowercase">(you)</span>}
                     </div>
                     <div className="text-[11px] text-neutral-400 mt-0.5 font-mono">
-                      {daysWorked} {daysWorked === 1 ? 'day' : 'days'} · {member.role || '—'}
+                      {daysWorked} {daysWorked === 1 ? 'day' : 'days'} · {member.role || '-'}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -13742,7 +13742,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <span className="text-neutral-600">‹</span>{(production.title || 'PRODUCTION').toUpperCase()}
               </button>
               <div className="text-[20px] font-extrabold tracking-tight text-neutral-100 truncate">{crewMember.name || 'Unnamed'}</div>
-              <div className="text-[11px] text-neutral-400 mt-0.5">{crewMember.role || '—'} · £{crewMember.bdr ?? 0} BDR</div>
+              <div className="text-[11px] text-neutral-400 mt-0.5">{crewMember.role || '-'} · £{crewMember.bdr ?? 0} BDR</div>
             </div>
           </div>
 
@@ -13818,7 +13818,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dayTotal = perCrewBreakdowns.reduce((s, b) => s + b.total, 0);
       const fdate = date
         ? new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-        : '—';
+        : '-';
 
       return (
         <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -13857,7 +13857,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <div key={member.id} className="bg-neutral-900 border border-neutral-800 rounded-xl">
                       <div className="px-3.5 py-2.5 border-b border-neutral-800/60 flex items-center gap-2.5 flex-wrap">
                         <span className="text-sm font-semibold text-neutral-100 truncate">{member.name || 'Unnamed'}</span>
-                        <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{member.role || '—'}</span>
+                        <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{member.role || '-'}</span>
                         <span className="ml-auto font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(total)}</span>
                       </div>
                       <div className="px-3.5 py-2 flex flex-col gap-1">
@@ -14215,8 +14215,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   // Resolved times (cascade from dayDefaults) so inherited days
                   // show their call/wrap instead of "—".
                   const resolvedD = resolveDay(production, d, member);
-                  const callT = resolvedD.callTime || "—";
-                  const wrapT = resolvedD.wrapTime || "—";
+                  const callT = resolvedD.callTime || "-";
+                  const wrapT = resolvedD.wrapTime || "-";
 
                   const dayBuckets = { ot: 0, pen: 0 };
                   for (const line of calc.lines || []) {
@@ -14564,7 +14564,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               const calc = c ? calcForDisplay(production, day, c, findPrevDay(days, day)) : null;
               const resolved = c ? resolveDay(production, day, c) : day;
               const isCurrent = day.id === currentDayId;
-              const dateStr = day.date ? new Date(day.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "—";
+              const dateStr = day.date ? new Date(day.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "-";
               const times = (resolved.callTime && resolved.wrapTime) ? `${resolved.callTime} – ${resolved.wrapTime}` : "";
               return (
                 <button
@@ -15857,7 +15857,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             const fmtName = fmt === 'xero' ? 'Xero' : fmt === 'quickbooks' ? 'QuickBooks' : 'CSV';
             const title = fmt === 'csv' ? 'Export CSV' : `Export to ${fmtName}`;
             const clientLine = (exportConfirm.toName || '').trim()
-              || ((fmt === 'xero' || fmt === 'quickbooks') ? `No client set — add it in ${fmtName}` : 'No client set');
+              || ((fmt === 'xero' || fmt === 'quickbooks') ? `No client set - add it in ${fmtName}` : 'No client set');
             const total = fmtGBP(invoiceExportFigures(exportConfirm, production, userPrefs).total);
             return (
               <ConfirmDialog
@@ -16624,7 +16624,7 @@ const setDays = (updater) =>
 
                 <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 text-sm text-neutral-400 leading-relaxed">
                   <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 mb-2">Beta · Local only</div>
-                  Your data stays on this device. No cloud sync yet — use <span className="text-neutral-300 font-medium">Settings → Export backup</span> to keep a copy.
+                  Your data stays on this device. No cloud sync yet - use <span className="text-neutral-300 font-medium">Settings → Export backup</span> to keep a copy.
                 </div>
 
                 <Btn variant="primary" size="lg" className="w-full justify-center" onClick={() => setStep(2)}>Continue</Btn>
@@ -16643,7 +16643,7 @@ const setDays = (updater) =>
                 <div className="space-y-4">
                   <Field label="Department">
                     <Select value={userPrefs.defaultDepartment} onChange={(e) => onDeptChange(e.target.value)}>
-                      <option value="">— pick a department —</option>
+                      <option value="">- pick a department -</option>
                       {Object.keys(DEPARTMENTS).map(d => <option key={d} value={d}>{d}</option>)}
                     </Select>
                   </Field>
@@ -16657,7 +16657,7 @@ const setDays = (updater) =>
                   )}
 
                   {userPrefs.defaultRole && (
-                    <Field label="BDR (£)" hint="Auto-filled from the APA rate card — edit if negotiated differently">
+                    <Field label="BDR (£)" hint="Auto-filled from the APA rate card - edit if negotiated differently">
                       <Input
                         type="number"
                         min="0"
@@ -16740,7 +16740,7 @@ const setDays = (updater) =>
                 )}
 
                 <div className="rounded-xl bg-neutral-900 border border-neutral-800 px-4 py-3 text-[11px] text-neutral-500 leading-relaxed">
-                  When you're ready to invoice, we'll guide you through setting up your bank details — everything stays on your device, nothing uploaded.
+                  When you're ready to invoice, we'll guide you through setting up your bank details - everything stays on your device, nothing uploaded.
                 </div>
 
                 <Btn variant="primary" size="lg" className="w-full justify-center" onClick={completeOnboarding}>+ Add Production</Btn>
@@ -16959,7 +16959,7 @@ const setDays = (updater) =>
             Your personal inventory of kit items. Each has a name, a default daily rate, and a "default on for new shoots" toggle that auto-applies the item to qualifying day records. Drag the grip handle to reorder.
           </div>
           {items.length === 0 && (
-            <div className="text-[11px] text-neutral-600 italic py-2">No items yet — tap "Add kit item" to start.</div>
+            <div className="text-[11px] text-neutral-600 italic py-2">No items yet - tap "Add kit item" to start.</div>
           )}
           {items.length > 0 && (
             <div className="flex flex-col gap-2" style={{ touchAction: drag ? 'none' : undefined }}>
@@ -17031,7 +17031,7 @@ const setDays = (updater) =>
                         <Toggle
                           value={!!item.defaultOn}
                           onChange={(v) => updateKitItem(item.id, { defaultOn: v })}
-                          ariaLabel={`Default on new shoots — ${item.name || 'kit item'}`}
+                          ariaLabel={`Default on new shoots - ${item.name || 'kit item'}`}
                         />
                         <span className="text-[11px] text-neutral-400 leading-tight">Default on new shoots</span>
                       </div>
@@ -17096,7 +17096,7 @@ const setDays = (updater) =>
       return (
         <div className="flex flex-col gap-2">
           {items.length === 0 && (
-            <div className="text-[11px] text-neutral-600 italic py-2">No presets yet — tap "Add preset" to start.</div>
+            <div className="text-[11px] text-neutral-600 italic py-2">No presets yet - tap "Add preset" to start.</div>
           )}
           {items.map((item) => (
             <div key={item.id} data-expense-preset="1" className="bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3">
@@ -17124,7 +17124,7 @@ const setDays = (updater) =>
                   <Toggle
                     value={!!item.defaultOn}
                     onChange={(v) => updatePreset(item.id, { defaultOn: v })}
-                    ariaLabel={`Default on new shoots — ${item.name || 'preset'}`}
+                    ariaLabel={`Default on new shoots - ${item.name || 'preset'}`}
                   />
                   <span className="text-[11px] text-neutral-400 leading-tight">Default on new shoots</span>
                 </div>
@@ -17331,7 +17331,7 @@ const setDays = (updater) =>
         const v = ((value || '') + '').trim();
         if (!v) return { ok: true, reason: null };
         if (EMAIL_KEYS.has(key)) return extractEmails(v).length >= 1 ? { ok: true, reason: null } : { ok: false, reason: "Doesn't look like an email" };
-        if (key === 'invoicingAddress') return UK_POSTCODE_RE.test(v) ? { ok: true, reason: null } : { ok: false, reason: 'No postcode found — check the address' };
+        if (key === 'invoicingAddress') return UK_POSTCODE_RE.test(v) ? { ok: true, reason: null } : { ok: false, reason: 'No postcode found - check the address' };
         return { ok: true, reason: null };
       };
       const fieldState = (key) => (result && result.perField && result.perField[key]) || { state: 'missing' };
@@ -17480,7 +17480,7 @@ const setDays = (updater) =>
               className="w-full text-left border border-dashed border-neutral-700 rounded-xl px-3.5 py-3 hover:border-neutral-600 transition-colors"
               style={{ WebkitTapHighlightColor: 'transparent' }}>
               <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">{f.label}</div>
-              <div className="text-[13px] text-neutral-500 italic mt-1">Not found — tap to enter</div>
+              <div className="text-[13px] text-neutral-500 italic mt-1">Not found - tap to enter</div>
             </button>
           );
         }
@@ -17490,7 +17490,7 @@ const setDays = (updater) =>
         const shape = shapeCheck(f.key, v);
         const hasVal = !!(v && String(v).trim());
         const unverified = hasVal && (!shape.ok || (m ? !m.verified : (st.state === 'unverified' && !edited)));
-        const reason = !shape.ok ? shape.reason : "Couldn't locate on document — check before applying";
+        const reason = !shape.ok ? shape.reason : "Couldn't locate on document - check before applying";
         return (
           <button type="button" key={f.key} onClick={() => setVerifyKey(f.key)}
             className={`w-full text-left bg-neutral-900 border rounded-xl px-3.5 py-3 transition-colors ${unverified ? 'border-tm-warn/35 hover:border-tm-warn/55' : 'border-neutral-800 hover:border-neutral-700'}`}
@@ -17520,7 +17520,7 @@ const setDays = (updater) =>
                 {phase === 'extracting' ? 'Reading call sheet…' : 'Import from call sheet'}
               </Btn>
               {phase === 'extracting' && (
-                <p className="text-[10px] text-neutral-500 mt-1 text-center">Extracting on-device — this takes a few seconds.</p>
+                <p className="text-[10px] text-neutral-500 mt-1 text-center">Extracting on-device - this takes a few seconds.</p>
               )}
               {error && <p className="text-[11px] text-tm-pen mt-1">{error}</p>}
             </div>
@@ -17528,7 +17528,7 @@ const setDays = (updater) =>
             <p className="text-[11px] text-neutral-500">
               {avail.reason === 'appleIntelligenceNotEnabled'
                 ? 'Call-sheet import: turn on Apple Intelligence in Settings.'
-                : 'Call-sheet import: preparing — try again shortly.'}
+                : 'Call-sheet import: preparing - try again shortly.'}
             </p>
           )}
 
@@ -17538,7 +17538,7 @@ const setDays = (updater) =>
             <div className="space-y-2.5 pb-1">
               {[
                 { key: 'files', label: 'Files', desc: 'PDF or image from the Files app' },
-                { key: 'photos', label: 'Photos', desc: 'Up to 5 screenshots or photos — each becomes a page', tip: 'Tip: zoomed screenshots read best — try one of the masthead and one of the invoicing section.' },
+                { key: 'photos', label: 'Photos', desc: 'Up to 5 screenshots or photos - each becomes a page', tip: 'Tip: zoomed screenshots read best - try one of the masthead and one of the invoicing section.' },
                 ...(avail.scanner ? [{ key: 'camera', label: 'Camera', desc: 'Scan a printed call sheet' }] : []),
               ].map(s => (
                 <button key={s.key} type="button" onClick={() => pickFrom(s.key)}
@@ -17561,13 +17561,13 @@ const setDays = (updater) =>
                   Vision confidence < 0.5 or < 200 recognised chars). */}
               {result && result.quality && result.quality.weakPages && result.quality.weakPages.length > 0 && (
                 <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
-                  <p className="text-[11px] text-neutral-400 leading-snug">This image was hard to read — text may be too small. Zoomed screenshots (e.g. the invoicing section) or sharing the PDF itself work best.</p>
+                  <p className="text-[11px] text-neutral-400 leading-snug">This image was hard to read - text may be too small. Zoomed screenshots (e.g. the invoicing section) or sharing the PDF itself work best.</p>
                 </div>
               )}
               {FIELDS.map(reviewRow)}
               <Btn onClick={apply} className="w-full justify-center mt-1">Apply to shoot</Btn>
               <p className="text-[10px] text-neutral-500 text-center leading-snug">
-                Extracted on-device by Apple Intelligence — verify each field.
+                Extracted on-device by Apple Intelligence - verify each field.
               </p>
             </div>
           </Sheet>
@@ -17666,7 +17666,7 @@ const setDays = (updater) =>
                     as editable — a visible form field, not a label that secretly
                     accepts input. */}
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">Value — tap to edit</div>
+                  <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">Value - tap to edit</div>
                   {verifyKey === 'invoicingAddress' ? (
                     <textarea
                       value={liveValue(verifyKey)}
@@ -17780,14 +17780,14 @@ const setDays = (updater) =>
         (userPrefs.legalName || '').trim() ||
         (userPrefs.fromCompanyName || '').trim() ||
         (userPrefs.fromEmail || '').trim() ||
-        '—';
+        '-';
 
       const defaultsSummary = (() => {
         const bits = [];
         if (Number(userPrefs.defaultMileageRate) > 0) bits.push(`£${userPrefs.defaultMileageRate}/mi`);
         if (userPrefs.defaultKitMoneyEnabled) bits.push('Kit');
         if (userPrefs.defaultPerDiemEnabled) bits.push('Per diem');
-        return bits.length ? bits.join(' · ') : '—';
+        return bits.length ? bits.join(' · ') : '-';
       })();
 
       return (
@@ -17826,7 +17826,7 @@ const setDays = (updater) =>
               </Field>
               <Field label="Default department">
                 <Select value={userPrefs.defaultDepartment} onChange={(e) => onDeptChange(e.target.value)}>
-                  <option value="">— none —</option>
+                  <option value="">- none -</option>
                   {Object.keys(DEPARTMENTS).map(d => <option key={d} value={d}>{d}</option>)}
                 </Select>
               </Field>
@@ -17838,7 +17838,7 @@ const setDays = (updater) =>
                 </Field>
               )}
               {userPrefs.defaultRole && (
-                <Field label="Default BDR (£)" hint="Basic daily rate — auto-filled from your role; adjust if needed.">
+                <Field label="Default BDR (£)" hint="Basic daily rate - auto-filled from your role; adjust if needed.">
                   <Input
                     type="number"
                     min="0"
@@ -17875,7 +17875,7 @@ const setDays = (updater) =>
               <div className="flex items-center justify-between gap-3">
                 <div className="pr-3">
                   <span className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold">Show invoicing</span>
-                  <p className="text-[11px] text-neutral-500 mt-1 leading-tight">Show the Invoices tab and the day-page Generate/Export button. Turn off for a calculator-only app — your existing invoices are kept and return when you switch it back on.</p>
+                  <p className="text-[11px] text-neutral-500 mt-1 leading-tight">Show the Invoices tab and the day-page Generate/Export button. Turn off for a calculator-only app - your existing invoices are kept and return when you switch it back on.</p>
                 </div>
                 <Toggle value={invoicingEnabled(userPrefs)} onChange={(v) => set({ invoicingEnabled: v })} ariaLabel="Show invoicing" />
               </div>
@@ -17886,10 +17886,10 @@ const setDays = (updater) =>
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Your details</div>
                 <div className="text-[10px] text-neutral-500 mb-3">The legal name below appears as the invoice's "From" name. Leave it blank to use your display name (from You).</div>
-                <Field label="Legal name (for invoices)" hint="Formal name on generated invoices — distinct from the casual display name shown in the app. Falls back to display name if blank.">
+                <Field label="Legal name (for invoices)" hint="Formal name on generated invoices - distinct from the casual display name shown in the app. Falls back to display name if blank.">
                   <Input type="text" value={userPrefs.legalName} onChange={(e) => set({ legalName: e.target.value })} placeholder="Your full legal name" />
                 </Field>
-                <Field label="Company name" hint="Optional — if you trade as a limited company">
+                <Field label="Company name" hint="Optional - if you trade as a limited company">
                   <Input type="text" value={userPrefs.fromCompanyName} onChange={(e) => set({ fromCompanyName: e.target.value })} placeholder="e.g. Crew Co Ltd" />
                 </Field>
                 <Field label="Your address">
@@ -17965,10 +17965,10 @@ const setDays = (updater) =>
                     }}
                     placeholder="00-00-00" />
                 </Field>
-                <Field label="IBAN" hint="Optional — for international payments">
+                <Field label="IBAN" hint="Optional - for international payments">
                   <Input type="text" value={userPrefs.bankIBAN} onChange={(e) => set({ bankIBAN: e.target.value })} placeholder="GB00 BARC 0000 0000 0000 00" />
                 </Field>
-                <Field label="SWIFT / BIC" hint="Optional — for international payments">
+                <Field label="SWIFT / BIC" hint="Optional - for international payments">
                   <Input type="text" value={userPrefs.bankSWIFT} onChange={(e) => set({ bankSWIFT: e.target.value })} placeholder="BARCGB22" />
                 </Field>
               </div>
@@ -17993,7 +17993,7 @@ const setDays = (updater) =>
                         const file = e.target.files?.[0];
                         if (!file) return;
                         if (file.size > 500 * 1024) {
-                          showToast("That logo's too big — keep it under 500KB.");
+                          showToast("That logo's too big - keep it under 500KB.");
                           e.target.value = '';
                           return;
                         }
@@ -18037,7 +18037,7 @@ const setDays = (updater) =>
                   <div className="space-y-2">
                     <RoundingOptionCard
                       label="Apple Mail"
-                      desc="Opens the Mail composer with everything prefilled — recipient, subject, body and the PDF attached."
+                      desc="Opens the Mail composer with everything prefilled - recipient, subject, body and the PDF attached."
                       active={(userPrefs.invoiceEmailMethod || 'appleMail') === 'appleMail'}
                       onClick={() => set({ invoiceEmailMethod: 'appleMail' })}
                     />
@@ -18063,7 +18063,7 @@ const setDays = (updater) =>
                     </div>
                     {userPrefs.overdueRemindersEnabled !== false && notifPerm === 'denied' && (
                       <div className="text-[11px] text-tm-warn mt-2 leading-snug">
-                        Notifications are off for TimeMachine — reminders won't fire.{' '}
+                        Notifications are off for TimeMachine - reminders won't fire.{' '}
                         <button type="button" onClick={() => Notifications.openIOSSettings()} className="underline text-sky-300">Open&nbsp;Settings</button>
                       </div>
                     )}
@@ -18111,7 +18111,7 @@ const setDays = (updater) =>
                   return (
                     <div className="flex flex-col gap-2">
                       <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
-                        Companies and clients you bill — invoices and new productions auto-fill from this list.
+                        Companies and clients you bill - invoices and new productions auto-fill from this list.
                       </div>
                       {items.length === 0 && (
                         <div className="text-[11px] text-neutral-600 italic py-2">No clients yet. Add your first and it's ready for every invoice.</div>
@@ -18169,7 +18169,7 @@ const setDays = (updater) =>
               {/* Privacy reassurance — group footer. Previously a sibling
                   paragraph between Logo and Defaults. */}
               <div className="text-[10px] text-neutral-500 italic mt-5 pt-4 border-t border-neutral-800 leading-snug">
-                All your invoicing details stay on your device — we don't store or transmit any of this.
+                All your invoicing details stay on your device - we don't store or transmit any of this.
               </div>
               </>)}
             </Disclosure>
@@ -18184,7 +18184,7 @@ const setDays = (updater) =>
               label="Kit room"
               summary={(() => {
                 const n = (userPrefs.kitInventory || []).length;
-                return n ? `${n} item${n === 1 ? '' : 's'}` : '—';
+                return n ? `${n} item${n === 1 ? '' : 's'}` : '-';
               })()}
             >
               <KitRoomEditor
@@ -18201,7 +18201,7 @@ const setDays = (updater) =>
               label="Expense presets"
               summary={(() => {
                 const n = (userPrefs.expensePresets || []).length;
-                return n ? `${n} preset${n === 1 ? '' : 's'}` : '—';
+                return n ? `${n} preset${n === 1 ? '' : 's'}` : '-';
               })()}
             >
               <ExpensePresetsEditor
@@ -18218,8 +18218,8 @@ const setDays = (updater) =>
               label="New-production defaults"
               summary={(() => {
                 const parts = [];
-                if (defaultsSummary && defaultsSummary !== '—') parts.push(defaultsSummary);
-                return parts.length ? parts.join(' · ') : '—';
+                if (defaultsSummary && defaultsSummary !== '-') parts.push(defaultsSummary);
+                return parts.length ? parts.join(' · ') : '-';
               })()}
             >
               <Field label="Default mileage rate (£/mile)">
@@ -18392,7 +18392,7 @@ const setDays = (updater) =>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Haptic feedback</div>
-                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Subtle taps on selections, toggles, time stamps, and completions. Native only — silent on web.</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Subtle taps on selections, toggles, time stamps, and completions. Native only - silent on web.</div>
                   </div>
                   <Toggle value={userPrefs.hapticsEnabled !== false} onChange={(v) => set({ hapticsEnabled: v })} ariaLabel="Haptic feedback" />
                 </div>
@@ -18405,7 +18405,7 @@ const setDays = (updater) =>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Live Activity</div>
-                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Lock Screen / Dynamic Island card with the live day total and Lunch/Wrap buttons on shoot days. iOS only — has no effect on web.</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Lock Screen / Dynamic Island card with the live day total and Lunch/Wrap buttons on shoot days. iOS only - has no effect on web.</div>
                   </div>
                   <Toggle value={userPrefs.liveActivityEnabled !== false} onChange={(v) => set({ liveActivityEnabled: v })} ariaLabel="Live Activity" />
                 </div>
@@ -18423,14 +18423,14 @@ const setDays = (updater) =>
                   // Plain-English status from the SAME persistent-vs-best-effort
                   // condition (the dev-facing backend / reason readout was dropped).
                   const persistLabel = s.persistent === 'granted' ? "Your data's saved safely on this device."
-                    : s.persistent === 'best-effort' ? "Your data's being saved, but this browser could clear it — keep a backup."
+                    : s.persistent === 'best-effort' ? "Your data's being saved, but this browser could clear it - keep a backup."
                     : null;
                   if (!persistLabel && !s.privateBrowsingLikely) return null;
                   return (
                     <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] text-neutral-400 leading-relaxed">
                       {persistLabel && <div>{persistLabel}</div>}
                       {s.privateBrowsingLikely && (
-                        <div className="text-tm-warn mt-1">Private browsing detected — your data may not be saved when this tab closes. Export a backup before leaving.</div>
+                        <div className="text-tm-warn mt-1">Private browsing detected - your data may not be saved when this tab closes. Export a backup before leaving.</div>
                       )}
                     </div>
                   );
@@ -18447,7 +18447,7 @@ const setDays = (updater) =>
                 <div className="border-t border-neutral-800 pt-3">
                   <Btn variant="danger" onClick={() => setConfirmOpts({
                     title: "Reset everything?",
-                    message: "This permanently deletes every production, all your crew data, and your settings from this device. Nothing's uploaded — it's a local delete. Worth exporting a backup first.",
+                    message: "This permanently deletes every production, all your crew data, and your settings from this device. Nothing's uploaded - it's a local delete. Worth exporting a backup first.",
                     confirmLabel: "Reset everything",
                     confirmTone: "danger",
                     onConfirm: onResetAll,
@@ -18466,7 +18466,7 @@ const setDays = (updater) =>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Re-run setup wizard</div>
                 <Btn variant="ghost" onClick={() => setConfirmOpts({
                   title: "Re-run setup?",
-                  message: "Your existing settings won't be lost — you'll just be guided through them again.",
+                  message: "Your existing settings won't be lost - you'll just be guided through them again.",
                   confirmLabel: "Re-run setup",
                   confirmTone: "primary",
                   onConfirm: () => set({ onboardingComplete: false }),
@@ -18486,7 +18486,7 @@ const setDays = (updater) =>
                 >
                   <div>
                     <div className="font-medium">APA Recommended Terms</div>
-                    <div className="text-[10px] text-neutral-500 mt-0.5 group-hover:text-neutral-400 transition-colors">Official rate card and working terms — opens in a new tab</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5 group-hover:text-neutral-400 transition-colors">Official rate card and working terms - opens in a new tab</div>
                   </div>
                   <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-500 transition-colors"/>
                 </a>
@@ -18494,7 +18494,7 @@ const setDays = (updater) =>
 
               {/* Sub: What's new */}
               <div className="mt-5 pt-4 border-t border-neutral-800">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">What's new — v{RELEASE_NOTES.version}</div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">What's new - v{RELEASE_NOTES.version}</div>
                 <div className="font-semibold text-sm text-neutral-200 mb-0.5">Version {RELEASE_NOTES.version}</div>
                 <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
                 <ul className="space-y-1.5 mb-3">
@@ -18533,8 +18533,8 @@ const setDays = (updater) =>
                 <div className="space-y-3 text-[12px] text-neutral-400 leading-relaxed">
                   <p><span className="text-neutral-200 font-semibold">Your data never leaves your device.</span> Productions, days, crew, invoices, and bank details are stored in your browser's local storage only. We have no server, no sync, and no account.</p>
                   <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
-                  <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app bundles everything it needs (including its UI framework) and fetches nothing from outside services while you use it — there are no external CDNs and no third party ever sees your IP address. No data about you or your productions is sent.</p>
-                  <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library — only when you upload a logo or attach an expense receipt. Files — only when you export a PDF or backup. Never accessed without your explicit action.</p>
+                  <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app bundles everything it needs (including its UI framework) and fetches nothing from outside services while you use it - there are no external CDNs and no third party ever sees your IP address. No data about you or your productions is sent.</p>
+                  <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library - only when you upload a logo or attach an expense receipt. Files - only when you export a PDF or backup. Never accessed without your explicit action.</p>
                   <p>Export all your data: <span className="text-neutral-200">Settings → Export backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset all data</span>.</p>
                   <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
                 </div>
@@ -18882,7 +18882,7 @@ const setDays = (updater) =>
                   )}
                   <div className="mt-4 pt-3 border-t border-neutral-800 text-[12px] text-neutral-400 leading-snug">
                     {!vsLY ? (
-                      <span>No comparison — first {fmtMonShort(selEntry.month).split(' ')[0]} on record.</span>
+                      <span>No comparison - first {fmtMonShort(selEntry.month).split(' ')[0]} on record.</span>
                     ) : (
                       (() => {
                         const sign = vsPct >= 0 ? '+' : '−';
@@ -19196,8 +19196,8 @@ const setDays = (updater) =>
                 {visible.map(({ month, amount, days }) => (
                   <tr key={month}>
                     <td className="py-1.5 text-sm text-neutral-300">{fmtMonth(month)}</td>
-                    <td className="py-1.5 text-sm font-mono text-right text-neutral-200">{amount > 0 ? fmtGBP(amount) : '—'}</td>
-                    <td className="py-1.5 text-sm text-right text-neutral-400">{days > 0 ? days : '—'}</td>
+                    <td className="py-1.5 text-sm font-mono text-right text-neutral-200">{amount > 0 ? fmtGBP(amount) : '-'}</td>
+                    <td className="py-1.5 text-sm text-right text-neutral-400">{days > 0 ? days : '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -19555,7 +19555,7 @@ const setDays = (updater) =>
       if (invoice.jobRole) parts.push(invoice.jobRole);
       if (line.label) parts.push(line.label);
       if (line.detail) parts.push(line.detail);
-      let s = parts.join(' — ');
+      let s = parts.join(' - ');
       if (line.rate != null) s += ` @ £${fmtExportNum(line.rate)}`;
       return s;
     }
@@ -19906,7 +19906,7 @@ const setDays = (updater) =>
                   <Input type="number" min="0" step="0.5" value={qty} onChange={(e) => setQty(e.target.value)} />
                 </Field>
                 <Field label="Rate (£)" hint="Blank = fixed amount">
-                  <Input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="—" />
+                  <Input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="-" />
                 </Field>
               </div>
               <Field label="Amount (£)" hint={hasRate ? "Computed: qty × rate" : "Fixed amount"}>
@@ -20056,7 +20056,7 @@ const setDays = (updater) =>
                     // it into To and — since the sheet drops cc too — offer one-tap
                     // Copy Cc when a cc exists (the clipboard holds one value).
                     const cc = (emailCcRef.current || '').trim();
-                    const lead = wasDraft ? 'Marked as sent · recipient copied — paste into To' : 'Recipient copied — paste into To';
+                    const lead = wasDraft ? 'Marked as sent · recipient copied - paste into To' : 'Recipient copied - paste into To';
                     showToast(
                       <span>{lead}{cc ? (
                         <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(cc); } catch (_) {} showToast('Cc copied'); }} className="ml-2 underline">Copy Cc</button>
@@ -20064,7 +20064,7 @@ const setDays = (updater) =>
                       cc ? 6000 : 3000
                     );
                   } else if (wasDraft) {
-                    showToast('Email composer opened — marked as sent');
+                    showToast('Email composer opened - marked as sent');
                   }
                 })
                 .catch((e) => { try { console.error('Invoice email failed', e); } catch (_) {} })
@@ -20231,11 +20231,11 @@ const setDays = (updater) =>
           // Auto-mark sent. The mailto opens the user's mail client; we optimistically
           // assume they'll send. If they cancel, the header kebab has "Revert to draft".
           sendInvoice(production, invoice, { status: 'sent', dateSent: todayISO() });
-          showToast('Email opened — marked as sent');
+          showToast('Email opened - marked as sent');
         } else if (editingSentFields) {
           // Re-sending an edited issued invoice: re-lock — its details are re-frozen.
           setEditingSentFields(false);
-          showToast('Email opened — updated details re-saved');
+          showToast('Email opened - updated details re-saved');
         }
       };
 
@@ -20341,7 +20341,7 @@ const setDays = (updater) =>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Issued</span>
                 <div className="relative flex-1">
                   <span className="text-sm font-mono font-semibold text-neutral-100 block">
-                    {invoice.invoiceDate ? fmtDateMed(invoice.invoiceDate) : '—'}
+                    {invoice.invoiceDate ? fmtDateMed(invoice.invoiceDate) : '-'}
                   </span>
                   <input
                     type="date"
@@ -20356,7 +20356,7 @@ const setDays = (updater) =>
               <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Due</span>
                 <span className="flex-1 text-sm font-mono font-semibold text-neutral-100 truncate">
-                  {invoice.dueDate ? fmtDateMed(invoice.dueDate) : '—'}{' '}
+                  {invoice.dueDate ? fmtDateMed(invoice.dueDate) : '-'}{' '}
                   <span className="text-neutral-500 font-medium">· {daysFromIssue} days</span>
                 </span>
                 <input
@@ -20374,9 +20374,9 @@ const setDays = (updater) =>
                 <div className="flex items-baseline gap-3 py-2">
                   <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Shoot</span>
                   <span className="flex-1 text-sm font-mono font-semibold text-neutral-100">
-                    {invoice.shootDateStart ? fmtDateMed(invoice.shootDateStart) : '—'}
-                    <span className="text-neutral-500 mx-1.5">—</span>
-                    {invoice.shootDateEnd ? fmtDateMed(invoice.shootDateEnd) : '—'}
+                    {invoice.shootDateStart ? fmtDateMed(invoice.shootDateStart) : '-'}
+                    <span className="text-neutral-500 mx-1.5">-</span>
+                    {invoice.shootDateEnd ? fmtDateMed(invoice.shootDateEnd) : '-'}
                   </span>
                 </div>
               )}
@@ -20395,7 +20395,7 @@ const setDays = (updater) =>
               </div>
             ) : (
               <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl px-4 py-2.5 mb-1 text-[11px] text-sky-200/90 leading-snug">
-                <span className="font-bold">Editing a sent invoice.</span> Changes affect only this invoice — not the project or your other invoices.
+                <span className="font-bold">Editing a sent invoice.</span> Changes affect only this invoice - not the project or your other invoices.
               </div>
             ))}
 
@@ -20474,7 +20474,7 @@ const setDays = (updater) =>
                 value={invoice.ccEmail || ''}
                 onChange={(e) => editClientField('ccEmail', e.target.value)}
                 readOnly={fieldsLocked}
-                placeholder="CC (optional) — accounts@example.com"
+                placeholder="CC (optional) - accounts@example.com"
                 className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
                 aria-label="CC recipients for this send"
               />
@@ -20533,7 +20533,7 @@ const setDays = (updater) =>
 
               <div className="space-y-1">
                 {normalLines.length === 0 && expenseLines.length === 0 && (
-                  <div className="text-[11px] text-neutral-500 italic py-2">No line items — tap Add line below.</div>
+                  <div className="text-[11px] text-neutral-500 italic py-2">No line items - tap Add line below.</div>
                 )}
                 {normalLines.map(item => renderLineRow(item))}
 
@@ -20636,7 +20636,7 @@ const setDays = (updater) =>
                 </span>
                 <span className="text-[11px] text-neutral-600 font-mono">
                   {(() => {
-                    const editorNotes = (invoice.notes || '').replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '').trimEnd();
+                    const editorNotes = (invoice.notes || '').replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '').trimEnd();
                     return editorNotes ? `${editorNotes.length} chars` : 'empty';
                   })()}
                 </span>
@@ -20644,7 +20644,7 @@ const setDays = (updater) =>
               {notesOpen && (
                 <div className="px-4 pb-3">
                   <textarea
-                    value={(invoice.notes || '').replace(/\n+—\nGenerated with TimeMachine[^\n]*/g, '').trimEnd()}
+                    value={(invoice.notes || '').replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '').trimEnd()}
                     onChange={(e) => updateInvoice({ notes: e.target.value, notesEdited: true })}
                     readOnly={fieldsLocked}
                     rows={5}
@@ -20671,7 +20671,7 @@ const setDays = (updater) =>
                     Bank details
                   </span>
                   <span className="text-[11px] text-neutral-600 font-mono">
-                    {[invoice.bankName, invoice.bankAccountNumber ? `••••${invoice.bankAccountNumber.slice(-4)}` : null].filter(Boolean).join(' · ') || '—'}
+                    {[invoice.bankName, invoice.bankAccountNumber ? `••••${invoice.bankAccountNumber.slice(-4)}` : null].filter(Boolean).join(' · ') || '-'}
                   </span>
                 </button>
                 {bankOpen && (
@@ -20888,7 +20888,7 @@ const setDays = (updater) =>
           <ConfirmDialog
             open={confirmEditSent}
             title="Edit a sent invoice?"
-            message="This invoice has already been sent. Changes update this issued record only — they won't affect the project or your other invoices. Re-send it afterwards so the client gets the corrected version."
+            message="This invoice has already been sent. Changes update this issued record only - they won't affect the project or your other invoices. Re-send it afterwards so the client gets the corrected version."
             confirmLabel="Edit details" confirmTone="primary" cancelLabel="Keep locked"
             onConfirm={() => { setEditingSentFields(true); setConfirmEditSent(false); }}
             onCancel={() => setConfirmEditSent(false)}
@@ -21237,7 +21237,7 @@ const setDays = (updater) =>
                 </div>
                 <div className="bg-sky-500/[0.04] border border-sky-500/25 rounded-xl px-4 py-3 flex gap-3">
                   <IInfo size={16} className="text-sky-400 flex-shrink-0 mt-0.5"/>
-                  <div className="text-xs text-sky-400">Your bank details stay on this device only — they're never uploaded or transmitted anywhere.</div>
+                  <div className="text-xs text-sky-400">Your bank details stay on this device only - they're never uploaded or transmitted anywhere.</div>
                 </div>
                 <Field label="Account name"><Input value={local.bankAccountName} onChange={set('bankAccountName')} placeholder="e.g. Jane Smith"/></Field>
                 <Field label="Sort code"><Input value={local.bankSortCode} onChange={set('bankSortCode')} placeholder="00-00-00" inputMode="numeric"/></Field>
@@ -21563,7 +21563,7 @@ const setDays = (updater) =>
             <div className="max-w-6xl mx-auto px-4 py-12 text-center">
               <div className="flex justify-center mb-4 text-neutral-700"><IReceipt size={40}/></div>
               <div className="text-neutral-200 text-sm font-semibold mb-2">Set up invoicing</div>
-              <div className="text-neutral-500 text-xs mb-6">Add your name and bank details once — they'll appear on every invoice you generate.</div>
+              <div className="text-neutral-500 text-xs mb-6">Add your name and bank details once - they'll appear on every invoice you generate.</div>
               <Btn variant="primary" onClick={() => setShowWizard(true)}><IFilePlus size={14}/>Set up invoicing</Btn>
             </div>
           );
@@ -22014,7 +22014,7 @@ const confirmDelete = (p) => setConfirmOpts({
           const earliestCallMins = callMinsList.length ? Math.min(...callMinsList) : null;
           const earliestCallStr = earliestCallMins != null ? toHHMM(earliestCallMins / 60) : null;
 
-          let clockedValue = "—";
+          let clockedValue = "-";
           let clockedSub = "";
           if (allWrapped) {
             let totalMins = 0;
@@ -22344,7 +22344,7 @@ const confirmDelete = (p) => setConfirmOpts({
                   <div className="py-12 text-center">
                     <div className="flex justify-center mb-4 text-neutral-700"><ICal size={48}/></div>
                     <h3 className="text-xl font-semibold mb-2">No shoots yet</h3>
-                    <p className="text-sm text-neutral-400 mb-6">Add your first shoot — we'll sweat the rates so you don't.</p>
+                    <p className="text-sm text-neutral-400 mb-6">Add your first shoot - we'll sweat the rates so you don't.</p>
                     <Btn variant="primary" onClick={onNewProduction}><IPlus/>New production</Btn>
                   </div>
                 )}
@@ -22442,7 +22442,7 @@ const confirmDelete = (p) => setConfirmOpts({
                             confirmTone: "primary",
                             onConfirm: () => {
                               onUpdateDays(p.id, days => days.map(d => d.date === t ? { ...d, wrapped: false } : d));
-                              showToast("Day un-wrapped — back on call");
+                              showToast("Day un-wrapped - back on call");
                             },
                           });
                         }}
@@ -22453,7 +22453,7 @@ const confirmDelete = (p) => setConfirmOpts({
                     );
                   })()}
                   <button type="button"
-                    onClick={() => { const p = actionSheet; setActionSheet(null); onDuplicate(p); showToast("Duplicated — edit the copy"); }}
+                    onClick={() => { const p = actionSheet; setActionSheet(null); onDuplicate(p); showToast("Duplicated - edit the copy"); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <ICopy size={15}/>Duplicate
@@ -22467,7 +22467,7 @@ const confirmDelete = (p) => setConfirmOpts({
                       let text;
                       if (p.bestBoyMode) {
                         const parts = pCrew.map(c => generateCrewText(c, pDays.filter(d => d.crewId === c.id), p));
-                        text = parts.join('\n\n—\n\n');
+                        text = parts.join('\n\n-\n\n');
                       } else {
                         const c = pCrew[0];
                         if (!c) { showToast("No crew on this day to copy."); return; }
@@ -23143,7 +23143,7 @@ const confirmDelete = (p) => setConfirmOpts({
           if (storage.isNative) await storage.flush();
           window.location.reload();
         } catch (err) {
-          alert("Couldn't reset data — try closing and reopening the app, or clearing your browser storage manually.");
+          alert("Couldn't reset data - try closing and reopening the app, or clearing your browser storage manually.");
         }
       };
 
@@ -23215,8 +23215,8 @@ const confirmDelete = (p) => setConfirmOpts({
                   {shareAvail.reason === 'appleIntelligenceNotEnabled'
                     ? 'Call-sheet import: turn on Apple Intelligence in Settings.'
                     : shareAvail.reason === 'modelNotReady'
-                      ? 'Call-sheet import: preparing — try again shortly.'
-                      : "Call-sheet import isn't available on this device — choosing a shoot just opens it."}
+                      ? 'Call-sheet import: preparing - try again shortly.'
+                      : "Call-sheet import isn't available on this device - choosing a shoot just opens it."}
                 </p>
               )}
               {sharePhase === 'extracting' ? (
@@ -23243,18 +23243,18 @@ const confirmDelete = (p) => setConfirmOpts({
           </Sheet>
           {storageError && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#7f1d1d', color: '#fca5a5', padding: '8px 16px', fontSize: 12, fontFamily: 'ui-sans-serif, system-ui', textAlign: 'center' }}>
-              ⚠ Storage error — data may not be saved: {storageError}
+              ⚠ Storage error - data may not be saved: {storageError}
             </div>
           )}
           {showMigrationBanner && (
             <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 80px)', left: 12, right: 12, zIndex: 9998, background: '#0c1e33', border: '1px solid #0ea5e9', borderRadius: 12, color: '#e0f2fe', padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
-              <span>Your data was updated to the latest format — everything is fine.</span>
+              <span>Your data was updated to the latest format - everything is fine.</span>
               <button onClick={() => setShowMigrationBanner(false)} style={{ color: '#7dd3fc', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} aria-label="Dismiss">×</button>
             </div>
           )}
           {migrationResult.error && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#7f1d1d', color: '#fca5a5', padding: '10px 16px', fontSize: 12, fontFamily: 'ui-sans-serif, system-ui', textAlign: 'center', lineHeight: 1.5 }}>
-              <strong>⚠ Your data couldn't be updated to the latest format — storage may be full.</strong>
+              <strong>⚠ Your data couldn't be updated to the latest format - storage may be full.</strong>
               <br/>
               Export a backup (Settings → Export), then remove an old production to free space. Details: {migrationResult.error}
             </div>
@@ -23300,7 +23300,7 @@ const confirmDelete = (p) => setConfirmOpts({
         if (root) {
           root.innerHTML = '<div style="position:fixed;inset:0;background:#0a0a0a;color:#fca5a5;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;font-family:ui-sans-serif,system-ui;font-size:13px;line-height:1.6;">'
             + '<div style="font-weight:600;font-size:18px;color:#f5f5f5;margin-bottom:12px;">TimeMachine</div>'
-            + '<div style="max-width:380px;">Storage failed to load. Your data is still safe in browser storage — try reloading the page, or open in another browser to recover.</div>'
+            + '<div style="max-width:380px;">Storage failed to load. Your data is still safe in browser storage - try reloading the page, or open in another browser to recover.</div>'
             + '</div>';
         }
       } catch (_) {}
