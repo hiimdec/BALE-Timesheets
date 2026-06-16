@@ -21075,28 +21075,28 @@ const setDays = (updater) =>
                 <button type="button" onClick={markSent}
                   className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
-                  <ICheck size={15}/>Mark as Sent
+                  <ICheck size={15}/>Mark as sent
                 </button>
               )}
               {invoice.status === 'sent' && (
                 <button type="button" onClick={markPaid}
                   className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
-                  <ICheck size={15}/>Mark as Paid
+                  <ICheck size={15}/>Mark as paid
                 </button>
               )}
               {invoice.status === 'sent' && (
                 <button type="button" onClick={revertToDraft}
                   className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-400 flex items-center gap-2"
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
-                  <IReset size={15}/>Mark as Draft
+                  <IReset size={15}/>Mark as draft
                 </button>
               )}
               {invoice.status === 'paid' && (
                 <button type="button" onClick={revertToSent}
                   className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-400 flex items-center gap-2"
                   style={{ WebkitTapHighlightColor: 'transparent' }}>
-                  <IReset size={15}/>Mark as Unpaid
+                  <IReset size={15}/>Mark as unpaid
                 </button>
               )}
               <button type="button" onClick={() => setConfirmDelete(true)}
@@ -22476,7 +22476,7 @@ const confirmDelete = (p) => setConfirmOpts({
                     }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IShare size={15}/>Share Times
+                    <IShare size={15}/>Share times
                   </button>
                   <button type="button"
                     onClick={() => { const p = actionSheet; setActionSheet(null); confirmDelete(p); }}
