@@ -9175,7 +9175,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         onClick={handleAddWeek}
                         className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-sky-500/40 text-sky-500 hover:bg-sky-500/10 hover:border-sky-500 transition-colors text-sm font-bold uppercase tracking-wider"
                       >
-                        <span className="text-lg leading-none">+</span> Add Week
+                        <span className="text-lg leading-none">+</span> Add week
                       </button>
                     </td>
                   </tr>
@@ -10445,8 +10445,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {!gridView && days.length === 0 && !editing && crew.length > 0 && (
             <div className="border-2 border-dashed border-neutral-700 rounded-xl p-8 text-center">
               <div className="flex justify-center mb-3 text-neutral-700"><ICal size={36}/></div>
-              <p className="text-sm text-neutral-400 mb-4">No days yet — log today to get started.</p>
-              <Btn variant="primary" onClick={startNew}><IPlus/>Add Day</Btn>
+              <p className="text-sm text-neutral-400 mb-4">No days yet. Clock on and we'll count the rest.</p>
+              <Btn variant="primary" onClick={startNew}><IPlus/>Add day</Btn>
             </div>
           )}
 
@@ -19300,8 +19300,8 @@ const setDays = (updater) =>
             ) : enrichedDays.length === 0 ? (
               <div className="py-20 text-center">
                 <div className="flex justify-center mb-4 text-neutral-700"><IStats size={48}/></div>
-                <h3 className="text-xl font-semibold mb-2">No data yet for '{displayName}'</h3>
-                <p className="text-sm text-neutral-400 max-w-xs mx-auto">Make sure crew members in your productions have your name to be counted in stats.</p>
+                <h3 className="text-xl font-semibold mb-2">No stats yet for {displayName}</h3>
+                <p className="text-sm text-neutral-400 max-w-xs mx-auto">Stats count the days you're listed on crew. Add your name to a shoot and they'll start adding up.</p>
               </div>
             ) : (
               <>
@@ -20947,9 +20947,9 @@ const setDays = (updater) =>
             {sortedInvoices.length === 0 ? (
               <div className="text-center py-16">
                 <div className="flex justify-center mb-3 text-neutral-700"><IReceipt size={40}/></div>
-                <div className="text-sm font-semibold text-neutral-400 mb-1">No invoices yet</div>
-                <div className="text-[11px] text-neutral-600 mb-6">Tap New Invoice to generate one from your timesheet</div>
-                <Btn variant="primary" onClick={handleNewInvoice}><IPlus size={13}/>New Invoice</Btn>
+                <div className="text-sm font-semibold text-neutral-400 mb-1">No invoices yet.</div>
+                <div className="text-[11px] text-neutral-600 mb-6">Turn your timesheet into one and we'll handle the maths.</div>
+                <Btn variant="primary" onClick={handleNewInvoice}><IPlus size={13}/>New invoice</Btn>
               </div>
             ) : (
               <>
@@ -21042,6 +21042,9 @@ const setDays = (updater) =>
                       </button>
                     );
                   })}
+                  {filteredInvoices.length === 0 && filterStatus !== 'all' && (
+                    <div className="text-center py-10 text-[12px] text-neutral-500">No {filterStatus} invoices.</div>
+                  )}
                 </div>
               </>
             )}
@@ -21567,7 +21570,7 @@ const setDays = (updater) =>
           <div className="max-w-6xl mx-auto px-4 py-12 text-center">
             <div className="flex justify-center mb-4 text-neutral-700"><IReceipt size={40}/></div>
             <div className="text-neutral-400 text-sm font-semibold">No invoices yet.</div>
-            <div className="text-neutral-500 text-xs mt-2">Tap <strong className="text-neutral-300">+ New invoice</strong> below to create your first invoice.</div>
+            <div className="text-neutral-500 text-xs mt-2">Tap <strong className="text-neutral-300">+ New invoice</strong> to turn a shoot's timesheet into your first.</div>
           </div>
         );
       }
@@ -21735,6 +21738,9 @@ const setDays = (updater) =>
                       </div>
                     ))}
                   </section>
+                )}
+                {filterStatus !== 'all' && !showDrafts && !showOverdue && !showUnpaid && !showPaid && (
+                  <div className="text-center py-10 text-[12px] text-neutral-500">No {filterStatus} invoices.</div>
                 )}
               </>
             );
@@ -22336,8 +22342,8 @@ const confirmDelete = (p) => setConfirmOpts({
                   <div className="py-12 text-center">
                     <div className="flex justify-center mb-4 text-neutral-700"><ICal size={48}/></div>
                     <h3 className="text-xl font-semibold mb-2">No shoots yet</h3>
-                    <p className="text-sm text-neutral-400 mb-6">Create your first production to get started</p>
-                    <Btn variant="primary" onClick={onNewProduction}><IPlus/>New Production</Btn>
+                    <p className="text-sm text-neutral-400 mb-6">Add your first shoot — we'll sweat the rates so you don't.</p>
+                    <Btn variant="primary" onClick={onNewProduction}><IPlus/>New production</Btn>
                   </div>
                 )}
 

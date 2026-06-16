@@ -4398,6 +4398,19 @@ async function main() {
     check('FF8d production swipe ConfirmDialog is the existing top-level confirmOpts (no parallel)',
       html.includes('const confirmDelete = (p) => setConfirmOpts({'));
 
+    // ─ ES (surface-2 empty states): NET-NEW filtered-to-zero invoice message.
+    //   Shown ONLY when invoices EXIST but the active status filter matches none
+    //   (a non-'all' filter) — NOT the first-time-empty case. Lives in both the
+    //   per-production list and the global AllInvoicesView. The `filterStatus
+    //   !== 'all'` clause is what keeps it off the first-time-empty surface. ─
+    check('ES1 filtered-empty invoice message present in BOTH invoice views',
+      (html.match(/>No \{filterStatus\} invoices\.<\/div>/g) || []).length >= 2,
+      `matches=${(html.match(/>No \{filterStatus\} invoices\.<\/div>/g) || []).length}`);
+    check('ES2 per-production filtered-empty guarded on empty filtered list + non-all filter',
+      html.includes("filteredInvoices.length === 0 && filterStatus !== 'all'"));
+    check('ES3 global filtered-empty guarded on non-all filter + no visible status sections',
+      html.includes("filterStatus !== 'all' && !showDrafts && !showOverdue && !showUnpaid && !showPaid"));
+
     // ─ FF9: existing kebab path is intact (swipe is an addition, not a
     //   replacement). ─
     check('FF9a production kebab still wired to setActionSheet',
