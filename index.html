@@ -3332,10 +3332,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // Caller is responsible for calling window.location.reload() on ok.
     function importBackup(rawText) {
       let parsed;
-      try { parsed = JSON.parse(rawText); } catch { return { ok: false, error: 'Could not parse JSON.' }; }
+      try { parsed = JSON.parse(rawText); } catch { return { ok: false, error: "Couldn't read that file. Is it a TimeMachine backup?" }; }
       const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.productions) ? parsed.productions : null);
       if (!arr || !arr.every(p => p && typeof p.id === 'string')) {
-        return { ok: false, error: 'Not a valid TimeMachine backup.' };
+        return { ok: false, error: "That file isn't a TimeMachine backup." };
       }
       const fileSchemaVersion = parsed?.schemaVersion ?? 0;
       if (fileSchemaVersion > SCHEMA_VERSION) {
@@ -3368,11 +3368,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             if (originalUserPrefs != null) storage.set('bigals_user_prefs', originalUserPrefs);
             else storage.remove('bigals_user_prefs');
           }
-          return { ok: false, error: `Migration failed: ${result.error}` };
+          console.log('Migration failed:', result.error);
+          return { ok: false, error: "Couldn't bring this backup up to date - it may be damaged. Try another backup." };
         }
         return { ok: true };
       } catch (err) {
-        return { ok: false, error: `Import failed: ${err.message}` };
+        console.log('Import failed:', err.message);
+        return { ok: false, error: "Couldn't import that backup. Check the file and try again." };
       }
     }
 
@@ -10105,7 +10107,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
 
       const handleClick = () => {
-        if (todayEntries.length === 0) { showToast("No work days found for today"); return; }
+        if (todayEntries.length === 0) { showToast("No day logged yet - add one first."); return; }
         if (alreadyWrapped && !confirming) {
           setConfirming(true);
           setTimeout(() => setConfirming(false), 4000);
@@ -10155,7 +10157,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
 
       const handleClick = () => {
-        if (todayEntries.length === 0) { showToast("No work days found for today"); return; }
+        if (todayEntries.length === 0) { showToast("No day logged yet - add one first."); return; }
         if (alreadyLunched && !confirming) {
           setConfirming(true);
           setTimeout(() => setConfirming(false), 4000);
@@ -10326,8 +10328,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const { sourceDate } = dupDateDialog;
         setDupDateDialog(null);
         const source = days.filter(d => d.date === sourceDate);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) { showToast("Invalid date"); return; }
-        if (targetDate === sourceDate) { showToast("Target date is the same as source"); return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) { showToast("That's not a valid date - check the format."); return; }
+        if (targetDate === sourceDate) { showToast("Pick a different date - that's the one you're copying from."); return; }
         const existing = days.filter(d => d.date === targetDate);
         const copies = source.map(d => ({ ...d, id: uid(), date: targetDate }));
         if (existing.length > 0) {
@@ -10830,7 +10832,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const handleReassignDate = (newDate) => {
         if (!newDate || newDate === currentDate) return;
         if (days.some(d => d.date === newDate)) {
-          showToast?.('Date already exists in this production');
+          showToast?.("That date's already in this production - pick another.");
           return;
         }
         setProduction(p => {
@@ -15554,7 +15556,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         ? new Date(currentDay.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
         : "this day";
       const deleteConfirmMessage = isLastDay
-        ? `"${production.title || 'This production'}" has only this day. Deleting it will also delete the entire production.`
+        ? `"${production.title || 'This production'}" has only this day - deleting it deletes the whole production too. There's no getting it back.`
         : `Delete ${deleteDateLabel} (Day ${currentIdx + 1} of ${sortedDays.length})?`;
 
       return (
@@ -15882,7 +15884,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <ConfirmDialog
               open
               title="Invoice was hand-edited"
-              message="This invoice's lines were edited in the editor, so the export is recomputed from current shoot data and may not match. Export anyway?"
+              message="This invoice was hand-edited, so the export uses the shoot's current figures and may not match your edits. Export anyway?"
               confirmLabel="Export anyway" confirmTone="primary" cancelLabel="Cancel"
               onConfirm={() => { const inv = exportWarn; setExportWarn(null); runExport(inv); }}
               onCancel={() => setExportWarn(null)}
@@ -20835,7 +20837,7 @@ const setDays = (updater) =>
           <ConfirmDialog
             open={exportWarn}
             title="Source changed since sent"
-            message="This invoice was hand-edited, or its shoot data changed after it was sent. The export is recomputed from current data and may not match the invoice you sent. Export anyway?"
+            message="This invoice changed since it was sent, so the export may not match the copy your client has. Export anyway?"
             confirmLabel="Export anyway" confirmTone="primary" cancelLabel="Cancel"
             onConfirm={() => { setExportWarn(false); doExportFile(); }}
             onCancel={() => setExportWarn(false)}
@@ -20875,7 +20877,7 @@ const setDays = (updater) =>
           <ConfirmDialog
             open={confirmRefresh}
             title="Refresh from shoot?"
-            message="Discard your edits and rebuild line items from current shoot data?"
+            message="Discard your edits and rebuild the invoice from the shoot's current figures?"
             confirmLabel="Refresh" confirmTone="primary" cancelLabel="Keep edits"
             onConfirm={() => {
               if (userCrewId) updateInvoice({ lineItems: buildInvoiceLineItems(production, userPrefs, userCrewId), linesEdited: false });
@@ -20926,7 +20928,7 @@ const setDays = (updater) =>
       }, [sortedInvoices, filterStatus]);
 
       const handleNewInvoice = () => {
-        if (!userCrewId) { showToast("No crew member — check Settings → My Setup"); return; }
+        if (!userCrewId) { showToast("No crew member set - add your name in Settings."); return; }
         const inv = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
         onOpenInvoice(inv.id);
       };
@@ -22468,7 +22470,7 @@ const confirmDelete = (p) => setConfirmOpts({
                         text = parts.join('\n\n—\n\n');
                       } else {
                         const c = pCrew[0];
-                        if (!c) { showToast("No crew member"); return; }
+                        if (!c) { showToast("No crew on this day to copy."); return; }
                         text = generateCrewText(c, pDays, p);
                       }
                       const r = await shareTextOrCopy(text, p.title || 'Timesheet');
