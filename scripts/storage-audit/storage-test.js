@@ -5953,6 +5953,22 @@ async function main() {
           /ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)/.test(html);
         return coreOk && timeOnly && wiredOk;
       })());
+    check('TT13c LogMyTimes voice fix — LogMyTimesVoiceIntent is a plain AppIntent (NOT LiveActivityIntent) so Siri VOICE can run the spoken @Parameter elicitation; a LOAD-BEARING parameterSummary includes $spoken (else iOS 18 NSCocoaErrorDomain 4099 re-breaks the ask); requestConfirmation migrated to the modern dialog: form gated #available(iOS 18) with the deprecated result: form kept for the iOS 17 floor; the Wrap/Lunch voice intents stay LiveActivityIntent, untouched',
+      (() => {
+        const sc = fs.readFileSync(path.join(ROOT, 'ios/App/App/TimeMachineAppShortcuts.swift'), 'utf8');
+        const conformanceOk = /struct LogMyTimesVoiceIntent: AppIntent \{/.test(sc) &&
+          !/struct LogMyTimesVoiceIntent: LiveActivityIntent/.test(sc);
+        const summaryOk = /static var parameterSummary: some ParameterSummary \{ Summary\("Log /.test(sc) &&
+          /parameterSummary[\s\S]{0,90}spoken/.test(sc);
+        // Stage A voice intents need no elicitation — must stay LiveActivityIntent
+        const stageAOk = /struct WrapNowVoiceIntent: LiveActivityIntent \{/.test(sc) &&
+          /struct LunchNowVoiceIntent: LiveActivityIntent \{/.test(sc);
+        // confirmation migration present + availability-gated (modern + deprecated fallback)
+        const confirmOk = /if #available\(iOS 18\.0, \*\) \{/.test(sc) &&
+          /\.custom\(acceptLabel: "Log it", acceptAlternatives: \[\], denyLabel:/.test(sc) &&
+          /requestConfirmation\(result: \.result\(dialog:/.test(sc);
+        return conformanceOk && summaryOk && stageAOk && confirmOk;
+      })());
 
     // ─ TT14: Overdue-invoice reminders — pref + bridge + helpers + sweep + tap ─
     // Pins the pure helpers (behavioural eval), the reconcile predicate, the

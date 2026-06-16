@@ -123,13 +123,27 @@ private func timesReadback(_ p: ParsedTimes) -> String {
 }
 
 @available(iOS 17.0, *)
-struct LogMyTimesVoiceIntent: LiveActivityIntent {
+struct LogMyTimesVoiceIntent: AppIntent {
     static var title: LocalizedStringResource = "Log My Times"
     static var description = IntentDescription("Dictate today's call, lunch and wrap times for the active shoot.")
     static var openAppWhenRun: Bool = false
 
     @Parameter(title: "Times", requestValueDialog: "What are your times?")
     var spoken: String
+
+    // PLAIN AppIntent (NOT LiveActivityIntent) — the bug fix. The App Shortcut
+    // phrases omit the times, so `spoken` is elicited as a spoken FOLLOW-UP after
+    // the trigger. A LiveActivityIntent runs headless in-process with no
+    // elicitation surface, so BY VOICE it tore down before asking "What are your
+    // times?" (typed worked, because Shortcuts has a foreground prompt). This
+    // intent touches NO ActivityKit — only the App-Group write + a best-effort
+    // drain nudge — so it needs none of LiveActivityIntent's in-process guarantee
+    // (the Wrap/Lunch voice intents + the widget-button intents keep it).
+    //
+    // parameterSummary is LOAD-BEARING, not decorative: on iOS 18 a @Parameter
+    // absent from the summary can fail elicitation with NSCocoaErrorDomain 4099,
+    // which would re-break the spoken ask even as a plain AppIntent.
+    static var parameterSummary: some ParameterSummary { Summary("Log \(\.$spoken)") }
 
     init() {}
 
@@ -144,8 +158,16 @@ struct LogMyTimesVoiceIntent: LiveActivityIntent {
         }
         let readback = timesReadback(parsed)
         // Read back + CONFIRM before any write. A declined confirmation throws,
-        // so nothing is appended — zero writes on "no".
-        try await requestConfirmation(result: .result(dialog: "\(readback) — log it?"))
+        // so nothing is appended — zero writes on "no". The modern
+        // requestConfirmation(dialog:) is iOS 18+, so gate it; the intent's iOS 17
+        // floor keeps the still-working (deprecated) result: form.
+        if #available(iOS 18.0, *) {
+            try await requestConfirmation(
+                actionName: .custom(acceptLabel: "Log it", acceptAlternatives: [], denyLabel: "Cancel", denyAlternatives: []),
+                dialog: "\(readback) — log it?")
+        } else {
+            try await requestConfirmation(result: .result(dialog: "\(readback) — log it?"))
+        }
         TMLiveActivity.appendSetTimesEvent(
             productionId: shoot.productionId, date: shoot.date,
             call: parsed.call, lunch: parsed.lunch, wrap: parsed.wrap,
