@@ -3339,7 +3339,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       const fileSchemaVersion = parsed?.schemaVersion ?? 0;
       if (fileSchemaVersion > SCHEMA_VERSION) {
-        return { ok: false, error: `This backup was made with a newer version of TimeMachine (schema v${fileSchemaVersion}). Update the app first.` };
+        return { ok: false, error: `This backup was made by a newer version of TimeMachine. Update the app and try again.` };
       }
       // Snapshot the ORIGINAL user data before overwriting — runMigrations() takes its own snapshot
       // after the overwrite, so without this, a migration failure would restore the imported (bad)
@@ -10307,7 +10307,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (count === 0) return;
         setConfirmOpts({
           title: "Remove all entries?",
-          message: `Remove all ${count} entr${count === 1 ? 'y' : 'ies'} on ${fmtDate(date)}? This cannot be undone.`,
+          message: `Remove all ${count} entr${count === 1 ? 'y' : 'ies'} on ${fmtDate(date)}? There's no getting ${count === 1 ? 'it' : 'them'} back.`,
           confirmLabel: "Remove",
           confirmTone: "danger",
           onConfirm: () => setDays(prev => prev.filter(d => d.date !== date)),
@@ -16235,7 +16235,7 @@ const setDays = (updater) =>
                 <div className="flex items-center gap-3">
                   <Btn size="sm" variant="ghost" onClick={() => setConfirmOpts({
                     title: "Reset production data?",
-                    message: `Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays. This cannot be undone.`,
+                    message: `Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays, but there's no getting that data back.`,
                     confirmLabel: "Reset",
                     confirmTone: "danger",
                     onConfirm: clearAll,
@@ -16477,7 +16477,7 @@ const setDays = (updater) =>
                       setShowMobileNav(false);
                       setConfirmOpts({
                         title: 'Reset production data?',
-                        message: `Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays. This cannot be undone.`,
+                        message: `Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays, but there's no getting that data back.`,
                         confirmLabel: 'Reset',
                         confirmTone: 'danger',
                         onConfirm: clearAll,
@@ -16622,7 +16622,7 @@ const setDays = (updater) =>
 
                 <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 text-sm text-neutral-400 leading-relaxed">
                   <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 mb-2">Beta · Local only</div>
-                  Your data stays on this device. No cloud sync yet — use <span className="text-neutral-300 font-medium">Settings → Export Backup</span> to keep a copy.
+                  Your data stays on this device. No cloud sync yet — use <span className="text-neutral-300 font-medium">Settings → Export backup</span> to keep a copy.
                 </div>
 
                 <Btn variant="primary" size="lg" className="w-full justify-center" onClick={() => setStep(2)}>Continue</Btn>
@@ -17852,7 +17852,7 @@ const setDays = (updater) =>
                 Keep compact (single button) — modal flow + local showCalc state
                 are unchanged. */}
             <SectionCard title="Tools">
-              <Btn variant="ghost" onClick={() => setShowCalc(true)}><ICalc/>Cancellation Calculator</Btn>
+              <Btn variant="ghost" onClick={() => setShowCalc(true)}><ICalc/>Cancellation calculator</Btn>
               <p className="text-[10px] text-neutral-500 mt-1">Estimate APA cancellation fees for cancelled or curtailed shoots.</p>
             </SectionCard>
 
@@ -18533,7 +18533,7 @@ const setDays = (updater) =>
                   <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
                   <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app bundles everything it needs (including its UI framework) and fetches nothing from outside services while you use it — there are no external CDNs and no third party ever sees your IP address. No data about you or your productions is sent.</p>
                   <p><span className="font-semibold text-neutral-200">Permissions (iOS):</span> Camera / Photo Library — only when you upload a logo or attach an expense receipt. Files — only when you export a PDF or backup. Never accessed without your explicit action.</p>
-                  <p>Export all your data: <span className="text-neutral-200">Settings → Export Backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset all data</span>.</p>
+                  <p>Export all your data: <span className="text-neutral-200">Settings → Export backup</span>. Delete all data: <span className="text-neutral-200">Settings → Reset all data</span>.</p>
                   <p className="text-neutral-600">For questions: feedback@timemachineapp.co.uk</p>
                 </div>
               </div>
@@ -20867,7 +20867,7 @@ const setDays = (updater) =>
           <ConfirmDialog
             open={confirmDel}
             title="Delete invoice?"
-            message={`Delete ${invoice.invoiceNumber}? This cannot be undone.`}
+            message={`Delete ${invoice.invoiceNumber}? There's no getting it back.`}
             confirmLabel="Delete" confirmTone="danger" cancelLabel="Cancel"
             onConfirm={deleteInvoice}
             onCancel={() => setConfirmDel(false)}
@@ -21113,7 +21113,7 @@ const setDays = (updater) =>
         <ConfirmDialog
           open={confirmDelete}
           title="Delete invoice?"
-          message={`Delete ${invoice.invoiceNumber}? This cannot be undone.`}
+          message={`Delete ${invoice.invoiceNumber}? There's no getting it back.`}
           confirmLabel="Delete" confirmTone="danger"
           onConfirm={doDelete}
           onCancel={() => setConfirmDelete(false)}
@@ -21758,7 +21758,7 @@ const setDays = (updater) =>
           {swipeConfirmDelete && (
             <ConfirmDialog open
               title="Delete invoice?"
-              message={`Delete ${swipeConfirmDelete.invoice.invoiceNumber}? This cannot be undone.`}
+              message={`Delete ${swipeConfirmDelete.invoice.invoiceNumber}? There's no getting it back.`}
               confirmLabel="Delete"
               confirmTone="danger"
               onConfirm={() => {
@@ -21801,7 +21801,7 @@ const setDays = (updater) =>
       }, []);
 const confirmDelete = (p) => setConfirmOpts({
         title: "Delete production?",
-        message: `Delete "${p.title || 'Untitled Production'}"? This cannot be undone.`,
+        message: `Delete "${p.title || 'Untitled Production'}" and everything in it? There's no getting it back.`,
         confirmLabel: "Delete",
         confirmTone: "danger",
         onConfirm: () => onDelete(p.id),

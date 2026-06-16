@@ -3658,11 +3658,11 @@ async function main() {
 
     // ─ Z5: every one-off action still wired up (these are not prefs but
     //   they're in the inventory and must survive the move). ─
-    check('Z5a Cancellation Calculator launcher (setShowCalc(true))',
+    check('Z5a Cancellation calculator launcher (setShowCalc(true))',
       body.includes('setShowCalc(true)'));
-    check('Z5b Export Backup button bound to onExport',
+    check('Z5b Export backup button bound to onExport',
       body.includes('onClick={onExport}'));
-    check('Z5c Restore from Backup wired to importRef + handleFileSelect',
+    check('Z5c Restore from backup wired to importRef + handleFileSelect',
       body.includes('importRef.current?.click()') && body.includes('handleFileSelect'));
     check('Z5d Reset all data confirm flow bound to onResetAll',
       body.includes('onConfirm: onResetAll'));
@@ -4394,7 +4394,7 @@ async function main() {
       html.includes('title="Delete invoice?"') &&
       html.includes('confirmLabel="Delete"') &&
       html.includes('confirmTone="danger"') &&
-      /message=\{`Delete \$\{swipeConfirmDelete\.invoice\.invoiceNumber\}\? This cannot be undone\.`\}/.test(html));
+      /message=\{`Delete \$\{swipeConfirmDelete\.invoice\.invoiceNumber\}\? There's no getting it back\.`\}/.test(html));
     check('FF8d production swipe ConfirmDialog is the existing top-level confirmOpts (no parallel)',
       html.includes('const confirmDelete = (p) => setConfirmOpts({'));
 
