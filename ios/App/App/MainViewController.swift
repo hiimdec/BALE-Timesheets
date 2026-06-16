@@ -30,5 +30,6 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(LiveActivityPlugin())
         bridge?.registerPluginInstance(CallSheetPlugin())
         bridge?.registerPluginInstance(AppIconPlugin())
+        bridge?.registerPluginInstance(ShareSheetPlugin())
     }
 }

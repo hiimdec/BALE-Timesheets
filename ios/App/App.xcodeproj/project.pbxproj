@@ -21,6 +21,7 @@
 		B144A1912FD8CECE00FE2310 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */; };
 		B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */; };
 		A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */; };
+		5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */; };
 		B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */; };
 		B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */; };
 		B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */; };
@@ -69,6 +70,7 @@
 		B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
 		B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSheetPlugin.swift; sourceTree = "<group>"; };
 		A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconPlugin.swift; sourceTree = "<group>"; };
+		5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheetPlugin.swift; sourceTree = "<group>"; };
 		B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineAppShortcuts.swift; sourceTree = "<group>"; };
 		B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineTimesParser.swift; sourceTree = "<group>"; };
 		B144A1922FD8CF1300FE2310 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
@@ -149,6 +151,7 @@
 				B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */,
 				B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */,
 				A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */,
+				5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */,
 				B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */,
 				B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
@@ -298,6 +301,7 @@
 				B144A1912FD8CECE00FE2310 /* LiveActivityPlugin.swift in Sources */,
 				B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */,
 				A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */,
+				5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */,
 				B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */,
 				B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */,
 			);

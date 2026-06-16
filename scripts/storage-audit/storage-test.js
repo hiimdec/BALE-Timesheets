@@ -6156,12 +6156,30 @@ async function main() {
       /emailMethodRef\.current = userPrefs\.invoiceEmailMethod \|\| 'appleMail';/.test(html) &&
       /subject, body, base64, filename, method,/.test(html));
 
-    check('IM4 share-sheet path — subject FOLDED into the share text (Share.share has no subject), recipient copied to the clipboard BEFORE the sheet presents (onShareFallback → navigator.clipboard.writeText), and Cc offered via a one-tap Copy Cc (clipboard write) on the post-share toast',
-      /const shareText = subject \? `\$\{subject\}\\n\\n\$\{body\}` : body;/.test(html) &&
-      /await nativeSaveAndShare\(filename, base64, \{ title: filename, text: shareText \}\)/.test(html) &&
+    check('IM4 share-sheet path — body sent ALONE as the share text (subject-fold REMOVED; the mail app derives the subject from the filename and the body names the invoice no.); paragraph breaks PRESERVED by routing through the app ShareSheet plugin (body as HTML→NSAttributedString so Gmail keeps the \\n\\n) with a @capacitor/share fallback that also shares the body alone; recipient copied pre-sheet; one-tap Copy Cc',
+      // fix #2: the subject-fold is GONE; the @capacitor/share fallback shares the body alone
+      !/const shareText = subject \? `\$\{subject\}\\n\\n\$\{body\}` : body;/.test(html) &&
+      /await nativeSaveAndShare\(filename, base64, \{ title: filename, text: body \}\)/.test(html) &&
+      // fix #1: the HTML builder + the ShareSheet plugin route (body-only html + plain)
+      /function invoiceBodyToHtml\(body\) \{/.test(html) &&
+      /await ShareSheet\.shareEmail\(\{ subject, html: invoiceBodyToHtml\(body\), plain: body, fileUri: uri \}\)/.test(html) &&
+      // recipient + cc clipboard steps unchanged
       /if \(onShareFallback\) \{ try \{ await onShareFallback\(\); \} catch \(_\) \{\} \}/.test(html) &&
       /await navigator\.clipboard\.writeText\(recip\)/.test(html) &&
       /await navigator\.clipboard\.writeText\(cc\)/.test(html));
+    check('IM6 native ShareSheet plugin — escaped HTML body (escapeHtml BEFORE the <br> substitution) parsed to an NSAttributedString and vended via UIActivityItemSource (mail → HTML body with paragraphs; non-mail → plain .string, so it can never regress to raw tags), registered in MainViewController',
+      /function escapeHtml\(s\) \{/.test(html) &&
+      /escapeHtml\(body\)\.replace\(\/\\n\/g, '<br>'\)/.test(html) &&   // escape THEN \n→<br> (order is load-bearing; \n\n→<br><br>)
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const plugin = readSafe('ios/App/App/ShareSheetPlugin.swift');
+        const mvc = readSafe('ios/App/App/MainViewController.swift');
+        return /@objc\(ShareSheetPlugin\)/.test(plugin) && /public let jsName = "ShareSheet"/.test(plugin) &&
+          /func shareEmail\(_ call: CAPPluginCall\)/.test(plugin) &&
+          /: NSObject, UIActivityItemSource/.test(plugin) &&
+          /NSAttributedString\.DocumentType\.html/.test(plugin) &&
+          /registerPluginInstance\(ShareSheetPlugin\(\)\)/.test(mvc);
+      })());
 
     check('IM5 Settings picker — IS_NATIVE-gated (hidden on web, which keeps mailto), two RoundingOptionCard options bound to invoiceEmailMethod (appleMail / shareSheet), the trade-off spelled out in the card descriptions',
       /Send invoices via/.test(html) &&

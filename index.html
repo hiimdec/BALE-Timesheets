@@ -1342,8 +1342,23 @@
       // caller's onShareFallback copies the To to the clipboard BEFORE the sheet
       // presents; the subject is folded into the shared text. Attachment unchanged.
       if (onShareFallback) { try { await onShareFallback(); } catch (_) {} }
-      const shareText = subject ? `${subject}\n\n${body}` : body;
-      await nativeSaveAndShare(filename, base64, { title: filename, text: shareText });
+      // The share text is the BODY ALONE — no subject prefix. The mail app derives
+      // the subject from the attachment filename (and the body names the invoice
+      // number), so a prepended subject just duplicated a header line.
+      // Route through the app's ShareSheet plugin, which vends the body as an
+      // NSAttributedString so HTML-composing mail apps (Gmail/Outlook) keep its
+      // paragraph breaks — the plain-text @capacitor/share item collapses them in
+      // Gmail's HTML compose. Fall back to @capacitor/share if the plugin is absent.
+      const { ShareSheet, Filesystem } = _capPlugins();
+      if (ShareSheet && ShareSheet.shareEmail && Filesystem) {
+        try {
+          await Filesystem.writeFile({ path: filename, data: base64, directory: 'CACHE', recursive: true });
+          const { uri } = await Filesystem.getUri({ path: filename, directory: 'CACHE' });
+          await ShareSheet.shareEmail({ subject, html: invoiceBodyToHtml(body), plain: body, fileUri: uri });
+          return 'shared';
+        } catch (e) { try { console.warn('[ShareSheet] shareEmail failed, falling back', (e && e.message) || e); } catch (_) {} }
+      }
+      await nativeSaveAndShare(filename, base64, { title: filename, text: body });
       return 'shared';
     }
 
@@ -5731,6 +5746,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const jobBit = invoice.jobTitle ? ` for ${invoice.jobTitle}` : '';
       const body = `Hi,\n\nPlease find attached invoice ${invoice.invoiceNumber}${jobBit}, total ${totalStr}.\n\nPlease quote ${invoice.invoiceNumber} when making payment.\n\nMany thanks,\n${fromName}`;
       return { subject, body };
+    }
+
+    // Escape + wrap the plain email body as a minimal HTML document so HTML-
+    // composing mail apps (Gmail/Outlook) reached via the share sheet render real
+    // paragraph breaks instead of collapsing the body's "\n\n" to single spaces
+    // (the native ShareSheet plugin parses this to an NSAttributedString). Escaping
+    // runs BEFORE the <br> substitution so an & or < in a name/job can't break the
+    // markup; the <br> tags we insert afterwards stay live.
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function invoiceBodyToHtml(body) {
+      // Every "\n" → <br> (so a paragraph gap "\n\n" → <br><br>). Mail composers
+      // render the breaks; and a non-mail target that extracts the
+      // NSAttributedString's plain `.string` gets each <br> back as "\n",
+      // reproducing the body's exact "\n\n" spacing — a <p>-block form would have
+      // collapsed those gaps to a single "\n" for those targets.
+      return `<html><body>${escapeHtml(body).replace(/\n/g, '<br>')}</body></html>`;
     }
 
     /* ── mailto: email opener ── */
