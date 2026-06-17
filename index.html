@@ -12850,7 +12850,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION SETTINGS SHEET ═══════════════════════════ */
 
-    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile, onImportApplied }) {
+    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile, onImportApplied, onReset }) {
       const set = (k) => (e) => setProduction(p => ({ ...p, [k]: e.target.value }));
       const setNum = (k) => (e) => setProduction(p => ({ ...p, [k]: Number(e.target.value) }));
       // Saved Clients Stage 4 — nudge for the Basics "Invoicing details"
@@ -12859,6 +12859,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // and missing setUserPrefs all naturally produce a null `pending` so
       // the nudge stays hidden.
       const nudge = useClientUpdateNudge(production, userPrefs, setUserPrefs);
+      // Stage 3b (BB): destructive reset lives here now, BB-only (gated on the onReset prop
+      // ProductionApp passes; solo passes none, so solo's sheet is unchanged). The sheet
+      // owns its confirm because ProductionApp's confirm dialog isn't mounted while this
+      // sheet is showing.
+      const [confirmReset, setConfirmReset] = useState(false);
 
       const handleStartDateChange = (e) => {
         const newDate = e.target.value;
@@ -13285,6 +13290,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </Disclosure>
               );
             })()}
+
+            {onReset && (
+              <div className="pt-2">
+                <button type="button" onClick={() => setConfirmReset(true)}
+                  className="w-full text-left px-4 py-3 rounded-xl border border-tm-pen/30 text-tm-pen hover:bg-tm-pen/[0.06] transition-colors text-sm font-semibold flex items-center gap-2.5"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IReset size={14}/>Reset production data
+                </button>
+                <ConfirmDialog
+                  open={confirmReset}
+                  title="Reset production data?"
+                  message={`Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays, but there's no getting that data back.`}
+                  confirmLabel="Reset"
+                  confirmTone="danger"
+                  onConfirm={() => { setConfirmReset(false); onReset(); }}
+                  onCancel={() => setConfirmReset(false)}
+                />
+              </div>
+            )}
 
           </div>
         </div>
@@ -15943,7 +15967,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION APP ═══════════════════════════ */
 
-    function ProductionApp({ production, setProduction, onBack, userPrefs, setUserPrefs, initialInvoiceId, initialImportFile }) {
+    function ProductionApp({ production, setProduction, onBack, userPrefs, setUserPrefs, initialInvoiceId, initialImportFile, bbActionsRef }) {
 
 // Convenience aliases — child components keep receiving crew/days as before
 const crew = production.crew ?? [];
@@ -16126,6 +16150,18 @@ const setDays = (updater) =>
         setProduction((prev) => ({ id: prev.id, title: "", prodCo: "", crew: [], days: [], defaultDay: DEFAULT_PRODUCTION_DAY, gridDates: [], weekStarts: [], cancellationData: null }));
       };
 
+      // Stage 3b (native chrome): register this best-boy shoot's trailing actions so the
+      // native bar can drive Production settings + the mobile "more" kebab; cleared on
+      // unmount so they no-op when no BB shoot is open.
+      useEffect(() => {
+        if (!bbActionsRef) return;
+        bbActionsRef.current = {
+          prodSettings: () => setShowProdSettings(true),
+          more: () => setShowMobileNav(true),
+        };
+        return () => { bbActionsRef.current = null; };
+      }, []);
+
       const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c, findPrevDay(days, d)).total : s; }, 0);
 
       if (showProdSettings) {
@@ -16139,6 +16175,7 @@ const setDays = (updater) =>
             setUserPrefs={setUserPrefs}
             importFile={pendingImportFile}
             onImportApplied={() => setPendingImportFile(null)}
+            onReset={clearAll}
           />
         );
       }
@@ -16223,6 +16260,7 @@ const setDays = (updater) =>
           )}
 
           {drilldownCrewMember ? null : (production.viewMode === 'mobile' && production.bestBoyMode) ? (
+            !NATIVE_CHROME_ACTIVE && (
             <div className="sticky top-0 z-40 bg-black" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
               <div className="border-b border-sky-500 bg-black">
                 <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
@@ -16260,8 +16298,10 @@ const setDays = (updater) =>
                 </div>
               </div>
             </div>
+            )
           ) : (
-          <div className="sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="sticky top-0 z-40" style={{ paddingTop: NATIVE_CHROME_ACTIVE ? 0 : 'env(safe-area-inset-top)' }}>
+            {!NATIVE_CHROME_ACTIVE && (
             <div className="border-b border-sky-500 bg-black">
               <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
                 <div>
@@ -16269,17 +16309,11 @@ const setDays = (updater) =>
                   <div className="font-bold uppercase tracking-tight leading-none text-sm">{production.title || <span className="text-neutral-500">Untitled Production</span>}</div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Btn size="sm" variant="ghost" onClick={() => setConfirmOpts({
-                    title: "Reset production data?",
-                    message: `Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays, but there's no getting that data back.`,
-                    confirmLabel: "Reset",
-                    confirmTone: "danger",
-                    onConfirm: clearAll,
-                  })}><IReset/>Reset</Btn>
                   <button onClick={() => setShowProdSettings(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 rounded-lg hover:bg-neutral-800" aria-label="Production settings" title="Production settings"><IGear size={16}/></button>
                 </div>
               </div>
             </div>
+            )}
             <div className="bg-neutral-950 border-b border-neutral-800">
               <div className="max-w-6xl mx-auto px-4 py-2 flex justify-start overflow-x-auto">
                 <div className="inline-flex rounded-lg bg-neutral-800 p-0.5">
@@ -16489,6 +16523,17 @@ const setDays = (updater) =>
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IShare size={15}/>Export
                   </button>
+                  {/* Stage 3b: the mobile header's Share/calc-view button is suppressed under
+                      native chrome, so surface it here (native only — web keeps the header button). */}
+                  {NATIVE_CHROME_ACTIVE && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowMobileNav(false); setShowCalcView(true); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IShare size={15}/>Share / export
+                  </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => { setShowMobileNav(false); setShowSaveSheet(true); }}
@@ -16505,24 +16550,6 @@ const setDays = (updater) =>
                     <IReceipt size={15}/>Invoices
                   </button>
                   )}
-                </div>
-                <div className="px-4 pb-3 pt-1 border-t border-neutral-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMobileNav(false);
-                      setConfirmOpts({
-                        title: 'Reset production data?',
-                        message: `Remove all crew, days, and settings from "${production.title || 'this production'}". The production itself stays, but there's no getting that data back.`,
-                        confirmLabel: 'Reset',
-                        confirmTone: 'danger',
-                        onConfirm: clearAll,
-                      });
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-tm-pen hover:bg-tm-pen/[0.05] rounded-xl transition-colors flex items-center gap-2.5"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IReset size={14}/>Reset production data
-                  </button>
                 </div>
                 <div className="px-4 pb-3">
                   <button type="button" onClick={() => setShowMobileNav(false)}
@@ -23222,6 +23249,10 @@ const confirmDelete = (p) => setConfirmOpts({
       // bar's trailing Share / Production-settings buttons can drive its internal sheets.
       // Null when no solo shoot is mounted (the actions no-op otherwise).
       const soloActionsRef = React.useRef(null);
+      // Stage 3b (best-boy): ProductionApp registers its trailing actions here (prodSettings
+      // + the mobile "more" kebab). Solo + BB are mutually exclusive, so only one of the
+      // two refs is set at a time.
+      const bbActionsRef = React.useRef(null);
       const chromeNavRef = React.useRef({});
       chromeNavRef.current = { showSettings, openId };
       useEffect(() => {
@@ -23237,7 +23268,8 @@ const confirmDelete = (p) => setConfirmOpts({
           }
           if (d.action === 'settings') { setShowStats(false); setShowSettings(true); return; }
           if (d.action === 'share') { if (soloActionsRef.current) soloActionsRef.current.share(); return; }
-          if (d.action === 'prodSettings') { if (soloActionsRef.current) soloActionsRef.current.prodSettings(); return; }
+          if (d.action === 'prodSettings') { const a = soloActionsRef.current || bbActionsRef.current; if (a && a.prodSettings) a.prodSettings(); return; }
+          if (d.action === 'more') { if (bbActionsRef.current) bbActionsRef.current.more(); return; }
           if (d.action === 'search') {
             setShowSettings(false); setShowStats(false); setOpenId(null);
             setHomeTab('productions'); setSearchSignal(n => n + 1);
@@ -23265,9 +23297,13 @@ const confirmDelete = (p) => setConfirmOpts({
         const title = inShoot ? (currentProduction.title || 'Untitled production')
           : showSettings ? 'Settings'
           : wordmark;
-        // Stage 3b: trailing buttons are context-aware. Tab roots + best-boy shoots keep
-        // app Settings + Search; a SOLO shoot shows Share + Production settings (no search).
-        const trailing = inSoloShoot ? ['prodSettings', 'share'] : ['settings', 'search'];
+        // Stage 3b: trailing buttons are context-aware. Tab roots keep app Settings +
+        // Search; a SOLO shoot shows Share + Production settings; a BEST-BOY shoot shows
+        // Production settings (+ a "more" overflow in mobile viewMode for the kebab).
+        const inBBShoot = inShoot && currentProduction.bestBoyMode;
+        const trailing = inSoloShoot ? ['prodSettings', 'share']
+          : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])
+          : ['settings', 'search'];
         NativeChrome.update({
           title,
           backVisible: inShoot || showSettings,
@@ -23275,7 +23311,7 @@ const confirmDelete = (p) => setConfirmOpts({
           tabBarVisible: !inShoot && !showSettings,
           trailing,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {
@@ -23326,7 +23362,7 @@ const confirmDelete = (p) => setConfirmOpts({
           soloActionsRef={soloActionsRef}
         />;
       } else {
-        screen = <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} initialInvoiceId={openInvoiceId} initialImportFile={openImportFile} />;
+        screen = <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} initialInvoiceId={openInvoiceId} initialImportFile={openImportFile} bbActionsRef={bbActionsRef} />;
       }
 
       return (

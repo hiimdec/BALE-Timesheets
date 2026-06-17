@@ -159,6 +159,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     @objc private func onSearch() { dispatchNav(action: "search") }
     @objc private func onShare() { dispatchNav(action: "share") }
     @objc private func onProdSettings() { dispatchNav(action: "prodSettings") }
+    @objc private func onMore() { dispatchNav(action: "more") }
 
     // Context-aware trailing nav-bar buttons. Each key maps to an SF Symbol + a distinct
     // `tmNativeNav` action. Tab roots / best-boy: settings + search; solo shoot: share +
@@ -171,6 +172,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         case "search":       symbol = "magnifyingglass";     action = #selector(onSearch)
         case "share":        symbol = "square.and.arrow.up";  action = #selector(onShare)
         case "prodSettings": symbol = "slider.horizontal.3";  action = #selector(onProdSettings)
+        case "more":         symbol = "ellipsis";             action = #selector(onMore)
         default: return nil
         }
         return UIBarButtonItem(image: UIImage(systemName: symbol), style: .plain, target: self, action: action)
