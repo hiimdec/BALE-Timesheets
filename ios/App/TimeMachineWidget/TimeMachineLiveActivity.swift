@@ -156,7 +156,7 @@ private func elapsedTimer(anchor: Double, end: Double) -> some View {
                 .monospacedDigit()
                 .foregroundColor(.tmInk)
         } else {
-            Text("—").font(timerFont).foregroundColor(.tmMuted)
+            Text("-").font(timerFont).foregroundColor(.tmMuted)
         }
     }
 }
@@ -238,7 +238,7 @@ private func lunchSlot(_ productionId: String, armed: String, lunchLogged: Bool,
     } else if onLunch {
         // Logged, within the statutory hour — single tap arms the curtail.
         Button(intent: CurtailIntent(productionId: productionId)) {
-            ActionPill(text: "Curtailed?", confirm: false, fill: Color.tmAmber.opacity(0.14), stroke: Color.tmAmber.opacity(0.4), textColor: .tmAmber)
+            ActionPill(text: "Back early?", confirm: false, fill: Color.tmAmber.opacity(0.14), stroke: Color.tmAmber.opacity(0.4), textColor: .tmAmber)
         }
         .buttonStyle(.plain)
     } else {

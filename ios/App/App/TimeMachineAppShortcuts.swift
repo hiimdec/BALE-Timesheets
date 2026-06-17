@@ -164,9 +164,9 @@ struct LogMyTimesVoiceIntent: AppIntent {
         if #available(iOS 18.0, *) {
             try await requestConfirmation(
                 actionName: .custom(acceptLabel: "Log it", acceptAlternatives: [], denyLabel: "Cancel", denyAlternatives: []),
-                dialog: "\(readback) — log it?")
+                dialog: "\(readback) - log it?")
         } else {
-            try await requestConfirmation(result: .result(dialog: "\(readback) — log it?"))
+            try await requestConfirmation(result: .result(dialog: "\(readback) - log it?"))
         }
         TMLiveActivity.appendSetTimesEvent(
             productionId: shoot.productionId, date: shoot.date,
@@ -174,7 +174,7 @@ struct LogMyTimesVoiceIntent: AppIntent {
             lunchDurationMins: parsed.lunchDurationMins
         )
         await TMLiveActivity.requestBackgroundDrain()   // best-effort live apply, same as the now-stamps
-        return .result(dialog: "\(readback) — logged.")
+        return .result(dialog: "\(readback) - logged.")
     }
 }
 

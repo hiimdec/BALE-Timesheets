@@ -5821,7 +5821,7 @@ async function main() {
         return gone && rowOk && lockOk && diOk && placedOk;
       })());
 
-    // ─ TT11: Group B — "Curtailed?" button (new write path, reuses the queue) ─
+    // ─ TT11: Group B — "Back early?" button (new write path, reuses the queue) ─
     check('TT11a descriptor GATES the lunch phases on lunchLogged (actually-started, NOT the seeded plan) — when rec.lunchLogged it pushes lunchEndEpoch (statutory hour) + curtailMins (recorded 0<dur<60); state never becomes a time-derived "lunch" (the on-lunch/full-hour boundary is native); the pushed lunchedFull boolean is GONE; all flow into return/sig/payload',
       /} else if \(rec\.lunchLogged === true\) \{/.test(descFn) &&
       /lunchLogged = true;/.test(descFn) &&
@@ -5885,7 +5885,7 @@ async function main() {
           // the flush precedes the wrap arm
           wrap.indexOf('appendEvent(type: "lunchCurtail"') < wrap.indexOf('arm(productionId, action: "wrap")');
       })());
-    check('TT11f SwiftUI lunchSlot — ENTRY gated on lunchLogged (stays Lunch now / Confirm? until lunch is started); then Undo·NNm (CurtailIntent) > Lunch NNm ✓ (disabled) > Curtailed? (CurtailIntent, native onLunch) > Full hour (disabled); exactly 4 Button(intent:) in the slot; wrap unchanged; lunchedFull/old signatures gone',
+    check('TT11f SwiftUI lunchSlot — ENTRY gated on lunchLogged (stays Lunch now / Confirm? until lunch is started); then Undo·NNm (CurtailIntent) > Lunch NNm ✓ (disabled) > Back early? (CurtailIntent, native onLunch) > Full hour (disabled); exactly 4 Button(intent:) in the slot; wrap unchanged; lunchedFull/old signatures gone',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const slot = (la.match(/private func lunchSlot[\s\S]*?\n\}/) || [''])[0];
@@ -5895,10 +5895,10 @@ async function main() {
           /if armed == "lunch" \{/.test(slot) && /"Confirm\?"/.test(slot) && /"Lunch now"/.test(slot) &&
           /else if armed == "curtail" \{/.test(slot) && /"Undo · \\\(curtailMins\)m"/.test(slot) &&
           /else if curtailMins > 0 \{/.test(slot) && /ActionPill\(text: "Lunch \\\(curtailMins\)m ✓"/.test(slot) &&
-          /else if onLunch \{/.test(slot) && /"Curtailed\?"/.test(slot) &&
+          /else if onLunch \{/.test(slot) && /"Back early\?"/.test(slot) &&
           /ActionPill\(text: "Full hour"/.test(slot);
-        // exactly 4 tappable phases (Lunch now/Confirm?, Undo, Curtailed?); 2
-        // CurtailIntent (Undo + Curtailed?), 2 LunchNowIntent (Lunch now + Confirm?);
+        // exactly 4 tappable phases (Lunch now/Confirm?, Undo, Back early?); 2
+        // CurtailIntent (Undo + Back early?), 2 LunchNowIntent (Lunch now + Confirm?);
         // the 2 disabled phases are plain ActionPills with no intent.
         const tappableOk = (slot.match(/Button\(intent:/g) || []).length === 4 &&
           (slot.match(/CurtailIntent\(productionId: productionId\)/g) || []).length === 2 &&
@@ -5930,7 +5930,7 @@ async function main() {
         return bs.length > 500 && calc.length > 500 && pmpa.length > 500 &&
           !/lunchLogged/.test(bs) && !/lunchLogged/.test(calc) && !/lunchLogged/.test(pmpa);
       })());
-    check('TT12d native onLunch is the shared Date()-derived predicate — isOnLunch = lunchLogged && curtailMins==0 && lunchEndEpoch>0 && Date()<lunchEndEpoch — driving the chip, the timer slot AND the Curtailed?/Full-hour split, so the deadline resolves on the next render with no push; fed isOnLunch(context.state) at every surface',
+    check('TT12d native onLunch is the shared Date()-derived predicate — isOnLunch = lunchLogged && curtailMins==0 && lunchEndEpoch>0 && Date()<lunchEndEpoch — driving the chip, the timer slot AND the Back early?/Full-hour split, so the deadline resolves on the next render with no push; fed isOnLunch(context.state) at every surface',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const predOk = /private func isOnLunch\(_ s: TimeMachineActivityAttributes\.ContentState\) -> Bool \{/.test(la) &&
