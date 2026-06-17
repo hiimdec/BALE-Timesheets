@@ -17816,6 +17816,7 @@ const setDays = (updater) =>
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          {!NATIVE_CHROME_ACTIVE && (
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
@@ -17825,6 +17826,7 @@ const setDays = (updater) =>
               <div style={{ width: 24 }} />
             </div>
           </div>
+          )}
 
           <div className="max-w-2xl mx-auto px-4 py-6">
 
@@ -19288,13 +19290,15 @@ const setDays = (updater) =>
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: NATIVE_CHROME_ACTIVE ? 0 : 'env(safe-area-inset-top)' }}>
+            {!NATIVE_CHROME_ACTIVE && (
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
               </button>
               <h1 className="font-bold text-sm uppercase tracking-wide">Stats</h1>
             </div>
+            )}
             <div className="max-w-2xl mx-auto px-4 pb-3">
               <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
                 {[['all', 'All time'], ['taxyear', 'Tax year'], ['ytd', 'Year to date']].map(([k, l]) => {
@@ -21828,6 +21832,12 @@ const setDays = (updater) =>
       useEffect(() => {
         if (NATIVE_CHROME_ACTIVE && searchSignal > 0) setSearchOpen(true);
       }, [searchSignal]);
+      // Stage 3a: under native chrome, never let search linger — close + clear it when
+      // leaving the shoots (productions) tab. (Leaving home entirely unmounts
+      // ProductionsScreen, which resets it anyway.)
+      useEffect(() => {
+        if (NATIVE_CHROME_ACTIVE && homeTab !== 'productions') { setSearchOpen(false); setQuery(""); }
+      }, [homeTab]);
       // Live clock for the hero card's CLOCKED stat — ticks every 30s so the
       // "Xh Ym since call" value advances while ON CALL. Static state (WRAPPED
       // / no call yet) is unaffected by the tick.
@@ -22329,6 +22339,7 @@ const confirmDelete = (p) => setConfirmOpts({
                     type="text"
                     value={query}
                     onChange={e => setQuery(e.target.value)}
+                    onBlur={() => { if (NATIVE_CHROME_ACTIVE) { setSearchOpen(false); setQuery(""); } }}
                     placeholder="Search shoots, crew, notes…"
                     className="flex-1 bg-transparent text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none"
                   />
@@ -23217,17 +23228,21 @@ const confirmDelete = (p) => setConfirmOpts({
         if (!NATIVE_CHROME_ACTIVE) return;
         const inShoot = !!(openId && currentProduction);
         const activeTab = showStats ? 'stats' : (homeTab === 'invoices' ? 'invoices' : 'shoots');
+        // Stage 3a: the three tab roots show the wordmark (the literal tab-name title
+        // was redundant with the tab labels); a shoot shows its production name; the
+        // Settings push stays "Settings".
+        const wm = (userPrefs && userPrefs.displayName && userPrefs.displayName.trim()) || '';
+        const wordmark = wm ? `${wm}'s TimeMachine` : 'TimeMachine';
         const title = inShoot ? (currentProduction.title || 'Untitled production')
           : showSettings ? 'Settings'
-          : showStats ? 'Stats'
-          : homeTab === 'invoices' ? 'Invoices' : 'Shoots';
+          : wordmark;
         NativeChrome.update({
           title,
           backVisible: inShoot || showSettings,
           activeTab,
           tabBarVisible: !inShoot && !showSettings,
         });
-      }, [openId, currentProduction && currentProduction.title, showStats, showSettings, homeTab]);
+      }, [openId, currentProduction && currentProduction.title, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {
