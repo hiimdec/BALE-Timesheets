@@ -1110,7 +1110,7 @@
         try { const p = _capPlugins().CallSheet; if (p && p.extract) return await p.extract(Array.isArray(path) ? { paths: path } : { path }); }
         catch (e) {
           try { console.warn('[CallSheet] extract failed', (e && e.message) || e); } catch (_) {}
-          return { error: (e && e.message) || 'Extraction failed' };
+          return { error: (e && e.message) || "Couldn't read that call sheet. Try again, or use a clearer page." };
         }
         return null;
       },
@@ -20412,7 +20412,7 @@ const setDays = (updater) =>
                 />
               </div>
               <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Job reference</span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Job ref</span>
                 <input
                   type="text"
                   value={invoice.jobReference || ''}
