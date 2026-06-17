@@ -15258,7 +15258,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return null;
     }
 
-    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs, initialInvoiceId, initialImportFile }) {
+    function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs, initialInvoiceId, initialImportFile, soloActionsRef }) {
       const crew = production.crew ?? [];
       const days = production.days ?? [];
 
@@ -15397,6 +15397,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         { label: "Delete day", variant: "danger", action: () => { setShowDayActions(false); requestDeleteCurrentDay(); } },
       ];
       const [showExportSheet, setShowExportSheet] = useState(false);
+      // Stage 3b (native chrome): register this solo shoot's header actions so the native
+      // bar's trailing Share / Production-settings buttons can drive them; cleared on
+      // unmount so they no-op when no solo shoot is open.
+      useEffect(() => {
+        if (!soloActionsRef) return;
+        soloActionsRef.current = { share: () => setShowExportSheet(true), prodSettings: () => setShowSettings(true) };
+        return () => { soloActionsRef.current = null; };
+      }, []);
       const [pendingDeepLink] = useState(() => initialInvoiceId || null);
       const [invoiceNav, setInvoiceNav] = useState(null); // null | "list" | invoiceId
       const [soloExportState, setSoloExportState] = useState(null);
@@ -15581,7 +15589,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 80px)' }}>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
 
-          {/* Page header — stacked breadcrumb on left, share/settings icons on right */}
+          {/* Page header — suppressed under native chrome (the native bar owns back / title / share / production settings) */}
+          {!NATIVE_CHROME_ACTIVE && (
           <div className="bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="max-w-3xl mx-auto flex items-start justify-between px-4 pt-4 pb-3">
               <button
@@ -15623,6 +15632,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             </div>
           </div>
+          )}
 
           {/* Day-specific content — finger-swipe carousel with windowed
               [prev, current, next] mounts. Each slot renders the day's
@@ -23203,6 +23213,10 @@ const confirmDelete = (p) => setConfirmOpts({
       // ProductionsScreen unmount/remount) so a remount — e.g. returning from Settings —
       // can't replay a stale searchSignal and reopen the field. Fire-once-per-tap.
       const searchConsumedRef = React.useRef(0);
+      // Stage 3b: the mounted SoloDayPage registers its header actions here so the native
+      // bar's trailing Share / Production-settings buttons can drive its internal sheets.
+      // Null when no solo shoot is mounted (the actions no-op otherwise).
+      const soloActionsRef = React.useRef(null);
       const chromeNavRef = React.useRef({});
       chromeNavRef.current = { showSettings, openId };
       useEffect(() => {
@@ -23217,6 +23231,8 @@ const confirmDelete = (p) => setConfirmOpts({
             return;
           }
           if (d.action === 'settings') { setShowStats(false); setShowSettings(true); return; }
+          if (d.action === 'share') { if (soloActionsRef.current) soloActionsRef.current.share(); return; }
+          if (d.action === 'prodSettings') { if (soloActionsRef.current) soloActionsRef.current.prodSettings(); return; }
           if (d.action === 'search') {
             setShowSettings(false); setShowStats(false); setOpenId(null);
             setHomeTab('productions'); setSearchSignal(n => n + 1);
@@ -23234,6 +23250,7 @@ const confirmDelete = (p) => setConfirmOpts({
       useEffect(() => {
         if (!NATIVE_CHROME_ACTIVE) return;
         const inShoot = !!(openId && currentProduction);
+        const inSoloShoot = inShoot && !currentProduction.bestBoyMode;
         const activeTab = showStats ? 'stats' : (homeTab === 'invoices' ? 'invoices' : 'shoots');
         // Stage 3a: the three tab roots show the wordmark (the literal tab-name title
         // was redundant with the tab labels); a shoot shows its production name; the
@@ -23243,13 +23260,17 @@ const confirmDelete = (p) => setConfirmOpts({
         const title = inShoot ? (currentProduction.title || 'Untitled production')
           : showSettings ? 'Settings'
           : wordmark;
+        // Stage 3b: trailing buttons are context-aware. Tab roots + best-boy shoots keep
+        // app Settings + Search; a SOLO shoot shows Share + Production settings (no search).
+        const trailing = inSoloShoot ? ['prodSettings', 'share'] : ['settings', 'search'];
         NativeChrome.update({
           title,
           backVisible: inShoot || showSettings,
           activeTab,
           tabBarVisible: !inShoot && !showSettings,
+          trailing,
         });
-      }, [openId, currentProduction && currentProduction.title, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {
@@ -23297,6 +23318,7 @@ const confirmDelete = (p) => setConfirmOpts({
           setUserPrefs={setUserPrefs}
           initialInvoiceId={openInvoiceId}
           initialImportFile={openImportFile}
+          soloActionsRef={soloActionsRef}
         />;
       } else {
         screen = <ProductionApp production={currentProduction} setProduction={setProduction} onBack={closeProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} initialInvoiceId={openInvoiceId} initialImportFile={openImportFile} />;

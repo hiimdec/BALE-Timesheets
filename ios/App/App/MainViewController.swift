@@ -77,11 +77,8 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
     private func setupChrome() {
         // Top nav bar — sits just below the status bar; centered title + leading back
-        // (hidden by default) + trailing settings/search. Plain, unstyled.
-        navItem.rightBarButtonItems = [
-            UIBarButtonItem(image: UIImage(systemName: "gearshape"), style: .plain, target: self, action: #selector(onSettings)),
-            UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"), style: .plain, target: self, action: #selector(onSearch)),
-        ]
+        // (hidden by default) + trailing buttons. The trailing buttons are CONTEXT-AWARE
+        // (set per update() in applyChromeState), so none are wired here.
         navBar.items = [navItem]
         navBar.delegate = self
         navBar.translatesAutoresizingMaskIntoConstraints = false
@@ -126,13 +123,16 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
-    func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool) {
+    func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String]) {
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
         }
         navItem.title = title
         navItem.leftBarButtonItem = backVisible ? backButton : nil
+        // rightBarButtonItems lay out right-to-left (index 0 = rightmost); the web sends
+        // them in that order. Unknown keys are dropped.
+        navItem.rightBarButtonItems = trailing.compactMap { trailingButton(for: $0) }
         tabBar.isHidden = !tabBarVisible
         let tag = activeTab == "invoices" ? 1 : (activeTab == "stats" ? 2 : 0)
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
@@ -157,6 +157,24 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     @objc private func onBack() { dispatchNav(action: "back") }
     @objc private func onSettings() { dispatchNav(action: "settings") }
     @objc private func onSearch() { dispatchNav(action: "search") }
+    @objc private func onShare() { dispatchNav(action: "share") }
+    @objc private func onProdSettings() { dispatchNav(action: "prodSettings") }
+
+    // Context-aware trailing nav-bar buttons. Each key maps to an SF Symbol + a distinct
+    // `tmNativeNav` action. Tab roots / best-boy: settings + search; solo shoot: share +
+    // prodSettings (production settings, distinct from app settings).
+    private func trailingButton(for key: String) -> UIBarButtonItem? {
+        let symbol: String
+        let action: Selector
+        switch key {
+        case "settings":     symbol = "gearshape";           action = #selector(onSettings)
+        case "search":       symbol = "magnifyingglass";     action = #selector(onSearch)
+        case "share":        symbol = "square.and.arrow.up";  action = #selector(onShare)
+        case "prodSettings": symbol = "slider.horizontal.3";  action = #selector(onProdSettings)
+        default: return nil
+        }
+        return UIBarButtonItem(image: UIImage(systemName: symbol), style: .plain, target: self, action: action)
+    }
 
     // No UINavigationController, so tell the standalone bar it's top-attached (correct
     // hairline / background extension).
@@ -180,9 +198,10 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let backVisible = call.getBool("backVisible") ?? false
         let activeTab = call.getString("activeTab") ?? "shoots"
         let tabBarVisible = call.getBool("tabBarVisible") ?? true
+        let trailing = call.getArray("trailing", String.self) ?? ["settings", "search"]
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
-                title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible)
+                title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing)
             call.resolve()
         }
     }
