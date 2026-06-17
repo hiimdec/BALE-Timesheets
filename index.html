@@ -12908,7 +12908,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: NATIVE_CHROME_ACTIVE ? 0 : 'env(safe-area-inset-top)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
@@ -15402,7 +15402,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // unmount so they no-op when no solo shoot is open.
       useEffect(() => {
         if (!soloActionsRef) return;
-        soloActionsRef.current = { share: () => setShowExportSheet(true), prodSettings: () => setShowSettings(true) };
+        // Mutually exclusive (native bar only fires these): each closes the other sheet
+        // first, so only one is open at a time and the just-tapped one is on top.
+        soloActionsRef.current = {
+          share: () => { setShowSettings(false); setShowExportSheet(true); },
+          prodSettings: () => { setShowExportSheet(false); setShowSettings(true); },
+        };
         return () => { soloActionsRef.current = null; };
       }, []);
       const [pendingDeepLink] = useState(() => initialInvoiceId || null);
