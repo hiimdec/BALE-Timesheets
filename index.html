@@ -17222,9 +17222,9 @@ const setDays = (updater) =>
         try {
           const r = await CallSheet.extract(pathsArg);
           if (r && r.perField) { setResult(r); setEdits({}); setPhase('review'); }
-          else { setError((r && r.error) || 'Extraction returned nothing'); setPhase('idle'); }
+          else { setError((r && r.error) || "Couldn't find anything to import. Try a zoomed screenshot of the masthead or invoicing section."); setPhase('idle'); }
         } catch (e) {
-          setError((e && e.message) || 'Extraction failed');
+          setError((e && e.message) || "Couldn't read that call sheet. Try again, or use a clearer page.");
           setPhase('idle');
         }
       };
@@ -17302,7 +17302,7 @@ const setDays = (updater) =>
         { key: 'jobReference', label: 'Job reference', target: 'jobReference' },
         { key: 'invoicingEmail', label: 'Invoicing email', target: 'invoicingEmail' },
         { key: 'ccEmail', label: 'CC email', target: 'ccEmail' },
-        { key: 'invoicingAddress', label: 'Company address', target: 'toAddress' },
+        { key: 'invoicingAddress', label: 'Billing address', target: 'toAddress' },
       ];
       // Deterministic email extraction (no model) — pull every valid address
       // TOKEN out of a value, in order, case-insensitively de-duped. An
@@ -20412,7 +20412,7 @@ const setDays = (updater) =>
                 />
               </div>
               <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Ref</span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Job reference</span>
                 <input
                   type="text"
                   value={invoice.jobReference || ''}

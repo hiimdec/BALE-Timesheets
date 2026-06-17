@@ -185,7 +185,7 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func scanDocument(_ call: CAPPluginCall) {
         guard VNDocumentCameraViewController.isSupported else {
-            call.reject("Document scanning not supported on this device")
+            call.reject("This device can't scan documents. Import from Files or Photos instead.")
             return
         }
         DispatchQueue.main.async {
@@ -242,7 +242,7 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
         // Same gate as extract — not because Vision needs it, but because the
         // pipeline namespace is availability-scoped and select-on-sheet is
         // only reachable after a successful (iOS 26+) extraction anyway.
-        guard #available(iOS 26.0, *) else { call.reject("Requires iOS 26"); return }
+        guard #available(iOS 26.0, *) else { call.reject("Call-sheet import needs iOS 26 - update your iPhone to use it."); return }
         var paths = (call.getArray("paths", String.self) ?? []).filter { !$0.isEmpty }
         if paths.isEmpty, let single = call.getString("path"), !single.isEmpty { paths = [single] }
         let page = call.getInt("page") ?? 1
@@ -265,9 +265,9 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
     // each image acting as a page of one document)
 
     @objc func extract(_ call: CAPPluginCall) {
-        guard #available(iOS 26.0, *) else { call.reject("Requires iOS 26"); return }
+        guard #available(iOS 26.0, *) else { call.reject("Call-sheet import needs iOS 26 - update your iPhone to use it."); return }
         guard SystemLanguageModel.default.availability == .available else {
-            call.reject("Apple Intelligence model unavailable")
+            call.reject("Apple Intelligence isn't ready - turn it on in Settings, or try again shortly.")
             return
         }
         var paths = (call.getArray("paths", String.self) ?? []).filter { !$0.isEmpty }
@@ -281,7 +281,8 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
                 let result = try await CallSheetPipeline.run(paths: paths)
                 call.resolve(result)
             } catch {
-                call.reject("extract failed: \(error.localizedDescription)")
+                NSLog("[CallSheet] extract failed: %@", error.localizedDescription)
+                call.reject("Couldn't read that call sheet. Try again, or use a clearer page.")
             }
         }
     }
