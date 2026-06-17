@@ -12833,7 +12833,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION SETTINGS SHEET ═══════════════════════════ */
 
-    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile }) {
+    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile, onImportApplied }) {
       const set = (k) => (e) => setProduction(p => ({ ...p, [k]: e.target.value }));
       const setNum = (k) => (e) => setProduction(p => ({ ...p, [k]: Number(e.target.value) }));
       // Saved Clients Stage 4 — nudge for the Basics "Invoicing details"
@@ -12943,12 +12943,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </Field>
             </SectionCard>
 
-            <Disclosure label="Invoicing details" summary={invoicingDetailsSummary}>
+            <Disclosure label="Invoicing details" summary={invoicingDetailsSummary} defaultOpen={!!importFile}>
               {/* Stage 2 — AI call-sheet import. Sits adjacent to the fields it
                   fills; self-gates on native + model availability (web and
                   ineligible devices render nothing). Apply routes through the
                   same setProduction merge the inputs below use. */}
-              <CallSheetImport production={production} setProduction={setProduction} userPrefs={userPrefs} autoFile={importFile} />
+              <CallSheetImport production={production} setProduction={setProduction} userPrefs={userPrefs} autoFile={importFile} onImportApplied={onImportApplied} />
               <Field label="Company address" hint="Where the invoice is addressed to">
                 <textarea
                   value={production.toAddress || ""}
@@ -15397,7 +15397,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Deep-link (Stage 3 share-in): a shared call sheet targeted at this
       // shoot — open settings with the import flow armed (the one-shot file
       // rides down to CallSheetImport via ProductionSettingsSheet).
-      const [pendingImportFile] = useState(() => initialImportFile || null);
+      const [pendingImportFile, setPendingImportFile] = useState(() => initialImportFile || null);
       useEffect(() => {
         if (pendingImportFile) setShowSettings(true);
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -15512,6 +15512,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
             importFile={pendingImportFile}
+            onImportApplied={() => setPendingImportFile(null)}
           />
         );
       }
@@ -15947,7 +15948,7 @@ const setDays = (updater) =>
 
       // Deep-link (Stage 3 share-in): a shared call sheet targeted at this
       // shoot — open production settings with the import flow armed.
-      const [pendingImportFile] = useState(() => initialImportFile || null);
+      const [pendingImportFile, setPendingImportFile] = useState(() => initialImportFile || null);
       useEffect(() => {
         if (pendingImportFile) setShowProdSettings(true);
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -16105,6 +16106,7 @@ const setDays = (updater) =>
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
             importFile={pendingImportFile}
+            onImportApplied={() => setPendingImportFile(null)}
           />
         );
       }
@@ -17185,7 +17187,7 @@ const setDays = (updater) =>
     // clientId on apply — the same linkage manual ClientPicker selection
     // writes; unmatched companies are left to the existing
     // save-on-send / update-nudge machinery.
-    function CallSheetImport({ production, setProduction, userPrefs, autoFile }) {
+    function CallSheetImport({ production, setProduction, userPrefs, autoFile, onImportApplied }) {
       const [avail, setAvail] = useState(null);
       const [phase, setPhase] = useState('idle'); // idle | extracting | review
       const [chooser, setChooser] = useState(false); // Stage 3 source chooser
@@ -17461,6 +17463,11 @@ const setDays = (updater) =>
         }
         if (Object.keys(patch).length) setProduction(p => ({ ...p, ...patch }));
         closeReview();
+        // One-and-done: drop the cached extraction so the auto-review doesn't
+        // re-fire on a later section collapse/expand or settings reopen. The
+        // manual "Import from call sheet" button is unaffected (it never reads
+        // autoFile — it runs its own pick → extract → review).
+        if (onImportApplied) onImportApplied();
       };
 
       const reviewRow = (f) => {

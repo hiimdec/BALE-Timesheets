@@ -6219,7 +6219,7 @@ async function main() {
   // Source-presence only.
   {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
-    const importFn = (html.match(/function CallSheetImport\(\{ production, setProduction, userPrefs, autoFile \}\)[\s\S]*?\n    \}\n\n    function SettingsScreen/) || [''])[0];
+    const importFn = (html.match(/function CallSheetImport\(\{ production, setProduction, userPrefs, autoFile, onImportApplied \}\)[\s\S]*?\n    \}\n\n    function SettingsScreen/) || [''])[0];
 
     check('UU1a CallSheet bridge defines isAvailable/pickDocument/extract, each returning BEFORE touching _capPlugins() unless IS_NATIVE',
       /const CallSheet = \{/.test(html) &&
@@ -6228,7 +6228,7 @@ async function main() {
       /async extract\(path\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
       /_capPlugins\(\)\.CallSheet/.test(html));
     check('UU1b importer self-gates — IS_NATIVE + availability (available / appleIntelligenceNotEnabled / modelNotReady); web and ineligible devices render null; not-enabled/not-ready get hint lines',
-      /function CallSheetImport\(\{ production, setProduction, userPrefs, autoFile \}\)/.test(html) &&
+      /function CallSheetImport\(\{ production, setProduction, userPrefs, autoFile, onImportApplied \}\)/.test(html) &&
       /const visible = IS_NATIVE && avail && \(avail\.available \|\| avail\.reason === 'appleIntelligenceNotEnabled' \|\| avail\.reason === 'modelNotReady'\);/.test(html) &&
       /if \(!visible\) return null;/.test(html) &&
       /turn on Apple Intelligence in Settings\./.test(html) &&
@@ -6249,7 +6249,7 @@ async function main() {
       /patch\.clientId = matchedClient\.id;/.test(importFn) &&
       /Matches saved client · \{matchedClient\.name\}/.test(importFn));
     check('UU1f Stage 2 entry lives at SHOOT level and the dev panel is fully retired — mounted inside ProductionSettingsSheet\'s invoicing section; no CallSheetDevPanel anywhere; AI-extraction footer present',
-      /<CallSheetImport production=\{production\} setProduction=\{setProduction\} userPrefs=\{userPrefs\} autoFile=\{importFile\} \/>/.test(html) &&
+      /<CallSheetImport production=\{production\} setProduction=\{setProduction\} userPrefs=\{userPrefs\} autoFile=\{importFile\} onImportApplied=\{onImportApplied\} \/>/.test(html) &&
       !/CallSheetDevPanel/.test(html) &&
       /Extracted on-device by Apple Intelligence - verify each field\./.test(html));
 
@@ -6283,7 +6283,7 @@ async function main() {
       !/setOpenImportFile\(\{ result: pendingNewImport\.result \}\)/.test(html) &&
       /initialTitle=\{\(openImportFile && openImportFile\.result && openImportFile\.result\.fields && openImportFile\.result\.fields\.title\) \|\| ''\}/.test(html) &&
       /initialImportFile=\{openImportFile\}/.test(html) &&
-      /const \[pendingImportFile\] = useState\(\(\) => initialImportFile \|\| null\);/.test(html) &&
+      /const \[pendingImportFile, setPendingImportFile\] = useState\(\(\) => initialImportFile \|\| null\);/.test(html) &&
       /autoConsumedRef\.current = true;/.test(importFn));
     check('UU1j Info.plist carries the share-in document types + the camera usage string; the Stage 2 single-merge write path is STILL the only write (no second setProduction in the importer)',
       (() => {
