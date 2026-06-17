@@ -18649,7 +18649,7 @@ const setDays = (updater) =>
       const bucketRows = [
         { key: 'basic',  label: 'Basic',     barCls: 'bg-sky-500',  textCls: 'text-sky-400' },
         { key: 'ot',     label: 'OT',        barCls: 'bg-tm-warn',  textCls: 'text-tm-warn' },
-        { key: 'pen',    label: 'Penalty',   barCls: 'bg-tm-pen',   textCls: 'text-tm-pen' },
+        { key: 'pen',    label: 'Penalties', barCls: 'bg-tm-pen',   textCls: 'text-tm-pen' },
         { key: 'kit',    label: 'Kit',       barCls: 'bg-tm-kit',   textCls: 'text-tm-kit' },
         { key: 'extras', label: 'Extras',    barCls: 'bg-tm-good',  textCls: 'text-tm-good' },
       ];
@@ -19434,8 +19434,8 @@ const setDays = (updater) =>
                       {excludedCount} production{excludedCount !== 1 ? 's' : ''} excluded
                     </div>
                     <p className="text-xs text-neutral-400 leading-relaxed">
-                      {excludedCount} production{excludedCount !== 1 ? 's don\'t' : ' doesn\'t'} include a crew member matching '{displayName}'. {excludedCount !== 1 ? 'They are' : 'It is'} excluded from stats.
-                      Check for typos in crew names.
+                      {excludedCount} production{excludedCount !== 1 ? 's don\'t' : ' doesn\'t'} list '{displayName}' in the crew, so {excludedCount !== 1 ? 'they\'re' : 'it\'s'} left out of your stats.
+                      Check for a typo in your name.
                     </p>
                     <button onClick={onClose} className="mt-3 text-xs text-sky-400 hover:text-sky-300 transition-colors underline underline-offset-2">
                       Back to productions
