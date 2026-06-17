@@ -868,6 +868,23 @@
     const IS_NATIVE = storage.isNative;
     const _capPlugins = () => (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins) || {};
 
+    // ───────────────────────── NATIVE CHROME (Stage 2 skeleton) ─────────────────────────
+    // Native iOS nav bar + bottom tab bar overlaid on the webview (MainViewController),
+    // driving and reflecting Root()'s navigation through a two-way bridge. Master flag
+    // DEFAULTS OFF; NATIVE_CHROME_ACTIVE also requires IS_NATIVE, so the web build is
+    // never affected and a flag-off native build is visually unchanged.
+    //   native → web : `tmNativeNav` CustomEvents (tab / back / settings / search)
+    //   web → native : NativeChrome.update({ title, backVisible, activeTab, tabBarVisible })
+    const NATIVE_CHROME = false;
+    const NATIVE_CHROME_ACTIVE = NATIVE_CHROME && IS_NATIVE;
+    const NativeChrome = {
+      update(state) {
+        if (!NATIVE_CHROME_ACTIVE) return;
+        const p = _capPlugins().NativeChrome;
+        if (p && p.update) { try { p.update(state); } catch (_) {} }
+      },
+    };
+
     // Lazy-load a vendored script exactly once. Used for the PDF libraries on native.
     const _scriptPromises = {};
     function loadVendorScript(src) {
@@ -21788,7 +21805,7 @@ const setDays = (updater) =>
       );
     }
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, homeTab, setHomeTab }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, homeTab, setHomeTab, searchSignal }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -21806,6 +21823,11 @@ const setDays = (updater) =>
       const [searchOpen, setSearchOpen] = useState(false);
       const [query, setQuery] = useState("");
       const searchInputRef = useRef(null);
+      // Native chrome (Stage 2): the nav-bar search button bumps searchSignal; reopen
+      // the existing web search field in response (v1 reuses it, no native field).
+      useEffect(() => {
+        if (NATIVE_CHROME_ACTIVE && searchSignal > 0) setSearchOpen(true);
+      }, [searchSignal]);
       // Live clock for the hero card's CLOCKED stat — ticks every 30s so the
       // "Xh Ym since call" value advances while ON CALL. Static state (WRAPPED
       // / no call yet) is unaffected by the tick.
@@ -22239,9 +22261,10 @@ const confirmDelete = (p) => setConfirmOpts({
       };
 
       return (
-        <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32">
-          {/* Inline (non-sticky) header */}
-          <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className={`min-h-screen bg-neutral-950 text-neutral-100 ${NATIVE_CHROME_ACTIVE ? '' : 'pb-32'}`}>
+          {/* Inline (non-sticky) header — suppressed under native chrome (native nav bar owns it) */}
+          <div style={{ paddingTop: NATIVE_CHROME_ACTIVE ? 0 : 'env(safe-area-inset-top)' }}>
+            {!NATIVE_CHROME_ACTIVE && (<>
             <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-start justify-between">
               <div>
                 {displayName && <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-1">{displayName}'s</div>}
@@ -22295,6 +22318,7 @@ const confirmDelete = (p) => setConfirmOpts({
                 )}
               </div>
             </div>
+            </>)}
 
             {searchOpen && homeTab === "productions" && (
               <div className="max-w-6xl mx-auto px-4 pb-3">
@@ -23156,6 +23180,55 @@ const confirmDelete = (p) => setConfirmOpts({
 
       const currentProduction = productions.find((p) => p.id === openId);
 
+      // ───────────────────── NATIVE CHROME (Stage 2) — two-way bridge ─────────────────────
+      // Gated on NATIVE_CHROME_ACTIVE (default OFF). Maps the native bars' taps onto
+      // Root's existing state, and pushes the current nav state back so the bars track
+      // web-driven changes. See the NativeChrome helper + the MainViewController overlay.
+      const [searchSignal, setSearchSignal] = useState(0);
+      const chromeNavRef = React.useRef({});
+      chromeNavRef.current = { showSettings, openId };
+      useEffect(() => {
+        if (!NATIVE_CHROME_ACTIVE) return;
+        const onNav = (ev) => {
+          const d = (ev && ev.detail) || {};
+          if (d.action === 'tab') {
+            setShowSettings(false); setShowNewProduction(false);
+            if (d.tab === 'stats') { setOpenId(null); setShowStats(true); return; }
+            setShowStats(false); setOpenId(null);
+            setHomeTab(d.tab === 'invoices' ? 'invoices' : 'productions');
+            return;
+          }
+          if (d.action === 'settings') { setShowStats(false); setShowSettings(true); return; }
+          if (d.action === 'search') {
+            setShowSettings(false); setShowStats(false); setOpenId(null);
+            setHomeTab('productions'); setSearchSignal(n => n + 1);
+            return;
+          }
+          if (d.action === 'back') {
+            const st = chromeNavRef.current;
+            if (st.showSettings) { setShowSettings(false); return; }
+            if (st.openId) { setOpenId(null); setOpenInvoiceId(null); setOpenImportFile(null); }
+          }
+        };
+        window.addEventListener('tmNativeNav', onNav);
+        return () => window.removeEventListener('tmNativeNav', onNav);
+      }, []);
+      useEffect(() => {
+        if (!NATIVE_CHROME_ACTIVE) return;
+        const inShoot = !!(openId && currentProduction);
+        const activeTab = showStats ? 'stats' : (homeTab === 'invoices' ? 'invoices' : 'shoots');
+        const title = inShoot ? (currentProduction.title || 'Untitled production')
+          : showSettings ? 'Settings'
+          : showStats ? 'Stats'
+          : homeTab === 'invoices' ? 'Invoices' : 'Shoots';
+        NativeChrome.update({
+          title,
+          backVisible: inShoot || showSettings,
+          activeTab,
+          tabBarVisible: !inShoot && !showSettings,
+        });
+      }, [openId, currentProduction && currentProduction.title, showStats, showSettings, homeTab]);
+
       let screen;
       if (!userPrefs.onboardingComplete) {
         screen = (
@@ -23188,7 +23261,7 @@ const confirmDelete = (p) => setConfirmOpts({
           />
         );
       } else if (!openId || !currentProduction) {
-        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} />;
+        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} searchSignal={searchSignal} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
           production={currentProduction}
