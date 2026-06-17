@@ -16610,7 +16610,7 @@ const setDays = (updater) =>
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-3">Step 1 of 3</div>
                   <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">Welcome to<br/>TimeMachine</h1>
-                  <p className="text-sm text-neutral-400 leading-relaxed">The APA timesheet calculator for UK commercial crew.</p>
+                  <p className="text-sm text-neutral-400 leading-relaxed">The APA timesheet calculator for UK commercial crew. Let's get your rates sorted.</p>
                 </div>
 
                 <Field label="Your name" hint="Appears on your exported timesheets">
@@ -16657,7 +16657,7 @@ const setDays = (updater) =>
                   )}
 
                   {userPrefs.defaultRole && (
-                    <Field label="BDR (£)" hint="Auto-filled from the APA rate card - edit if negotiated differently">
+                    <Field label="BDR (£)" hint="Basic daily rate - auto-filled from the APA rate card; edit if you negotiated differently.">
                       <Input
                         type="number"
                         min="0"
@@ -16682,7 +16682,7 @@ const setDays = (updater) =>
                           onChange={(e) => set({ vatNumber: e.target.value })}
                         />
                       </Field>
-                      <Field label="VAT rate (%)">
+                      <Field label="VAT rate (%)" hint="Usually 20%">
                         <Input
                           type="number"
                           min="0"
@@ -17816,7 +17816,7 @@ const setDays = (updater) =>
                 dept, role, BDR). Always open. Role only shows when a dept is
                 set; BDR only shows when a role is set. */}
             <SectionCard title="You">
-              <Field label="Display name" hint="Appears on exported PDFs">
+              <Field label="Display name" hint="Appears on your exported timesheets.">
                 <Input
                   type="text"
                   placeholder="Your name"
