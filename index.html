@@ -952,6 +952,27 @@
       }, [ctx, active, id]);
     }
 
+    // ───────────────────────── Tab-root sub-screens ─────────────────────────
+    // A pushed screen reached FROM a tab root (Stats' Earnings detail, the invoice setup
+    // wizard) is NOT a root: it must drop the wordmark + root search/settings actions, gain a
+    // native back button, and own a plain title. Such a screen registers via useTabRootSubScreen
+    // FROM INSIDE its component — that (a) pushes a back-level so native back pops ONE step, and
+    // (b) declares its title to Root through this context so the chrome effect shows back + that
+    // title instead of root chrome. Reactive (it drives the chrome payload), unlike the
+    // imperative back stack. Gated on NATIVE_CHROME_ACTIVE so the web build is untouched.
+    const SubScreenContext = React.createContext(null);
+    function useTabRootSubScreen(active, title, close, id) {
+      useBackLevel(active, close, id);   // native back pops this level to its parent
+      const ctx = React.useContext(SubScreenContext);
+      const titleRef = React.useRef(title);
+      titleRef.current = title;
+      React.useEffect(() => {
+        if (!ctx || !NATIVE_CHROME_ACTIVE || !active) return;
+        ctx.set(id, titleRef.current);
+        return () => ctx.clear(id);   // remove when inactive OR on unmount
+      }, [ctx, active, id, title]);
+    }
+
     // Lazy-load a vendored script exactly once. Used for the PDF libraries on native.
     const _scriptPromises = {};
     function loadVendorScript(src) {
@@ -18826,6 +18847,12 @@ const setDays = (updater) =>
       const [anchorTax,  setAnchorTax]  = React.useState(currentTY);
       const [sel,        setSel]        = React.useState(null);
 
+      // Pushed sub-screen OFF the Stats root: native bar shows back + "Earnings" (no wordmark /
+      // root actions); native back pops one level. A selected month is a deeper level — back
+      // deselects it first (returns to the chart) before popping the screen.
+      useTabRootSubScreen(true, 'Earnings', onClose, 'stats-earnings');
+      useBackLevel(sel != null, () => setSel(null), 'stats-earnings-month');
+
       const windowEntries = React.useMemo(() => {
         if (mode === '12m') {
           return monthlyWindow(series, '12m', clampMonthlyAnchor('12m', anchor12m, earliestMo, todayMo));
@@ -18899,6 +18926,8 @@ const setDays = (updater) =>
         // but a single negative-margin slip would otherwise re-introduce the
         // sideways-scroll bug. Cheap belt-and-braces.
         <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32" style={{ overflowX: 'hidden' }}>
+          {/* Header suppressed under native chrome — the native bar owns back + "Earnings". */}
+          {!NATIVE_CHROME_ACTIVE && (
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
@@ -18907,6 +18936,7 @@ const setDays = (updater) =>
               <h1 className="font-bold text-sm uppercase tracking-wide">Earnings</h1>
             </div>
           </div>
+          )}
 
           <div className="max-w-2xl mx-auto px-4 pt-4">
             {/* Mode segmented control */}
@@ -21431,6 +21461,10 @@ const setDays = (updater) =>
     function InvoiceSetupWizard({ userPrefs, setUserPrefs, onClose }) {
       useEscape(onClose);
       const [step, setStep] = useState(1);
+      // Pushed sub-screen OFF the Invoices root: native bar shows back + "Set up invoicing"
+      // (no wordmark / root actions). Native back mirrors the wizard's own back — previous step
+      // (step 2), else close (step 1, and the final step where its own back is hidden).
+      useTabRootSubScreen(true, 'Set up invoicing', (step > 1 && step < 3) ? () => setStep(s => s - 1) : onClose, 'invoice-wizard');
       const [local, setLocal] = useState({
         displayName:      userPrefs.displayName      || '',
         fromCompanyName:  userPrefs.fromCompanyName  || '',
@@ -21449,8 +21483,11 @@ const setDays = (updater) =>
       };
 
       return (
-        <div className="fixed inset-0 bg-neutral-950 flex flex-col" style={{ zIndex: 90 }}>
+        <div className="fixed inset-0 bg-neutral-950 flex flex-col tm-native-overlay" style={{ zIndex: 90 }}>
           <div className="flex items-center justify-between px-4 pt-4 pb-4 border-b border-neutral-800" style={{ paddingTop: 'max(1rem, var(--sat))' }}>
+            {/* Back + title suppressed under native chrome (native bar owns them); the X
+                (abandon) + the progress bars below are kept. */}
+            {!NATIVE_CHROME_ACTIVE ? (
             <div className="flex items-center gap-2">
               {step < 3 && (
                 <button type="button" onClick={step === 1 ? onClose : () => setStep(s => s - 1)}
@@ -21460,6 +21497,7 @@ const setDays = (updater) =>
               )}
               <div className="text-sm font-bold text-neutral-100">Set up invoicing</div>
             </div>
+            ) : <span />}
             <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-300 transition-colors"><IX size={18}/></button>
           </div>
           <div className="flex gap-1.5 px-4 pt-4">
@@ -23457,6 +23495,15 @@ const confirmDelete = (p) => setConfirmOpts({
         push: (id, close) => { if (!backStackRef.current.some(e => e.id === id)) backStackRef.current.push({ id, close }); },
         remove: (id) => { backStackRef.current = backStackRef.current.filter(e => e.id !== id); },
       }), []);
+      // Tab-root sub-screens (Stats Earnings, invoice wizard) declare their title here so the
+      // chrome effect can swap root chrome for "back + title". REACTIVE (drives the payload),
+      // unlike the back stack above. Topmost (last) entry is the active sub-screen.
+      const [subScreenStack, setSubScreenStack] = useState([]);
+      const subScreenCtx = React.useMemo(() => ({
+        set: (id, title) => setSubScreenStack(prev => [...prev.filter(s => s.id !== id), { id, title }]),
+        clear: (id) => setSubScreenStack(prev => prev.filter(s => s.id !== id)),
+      }), []);
+      const activeSubScreen = subScreenStack[subScreenStack.length - 1] || null;
       useEffect(() => {
         if (!NATIVE_CHROME_ACTIVE) return;
         const onNav = (ev) => {
@@ -23505,10 +23552,13 @@ const confirmDelete = (p) => setConfirmOpts({
         // A "tab root" is ONLY the three actual roots (Shoots / Invoices / Stats). New Production
         // — and any other pushed Root-level screen — is NOT a root: it gets no wordmark lockup,
         // no root search/settings actions, and no tab bar (it keeps its own web X to close).
-        const isTabRoot = userPrefs.onboardingComplete && !inShoot && !showSettings && !showNewProduction;
+        // A tab-root SUB-screen (Stats Earnings, invoice wizard) is also NOT a root: it carries
+        // a native back + plain title, no wordmark/actions/tab bar — same as a pushed screen.
+        const isTabRoot = userPrefs.onboardingComplete && !inShoot && !showSettings && !showNewProduction && !activeSubScreen;
         const title = inShoot ? (currentProduction.title || 'Untitled production')
           : showSettings ? 'Settings'
           : showNewProduction ? 'New production'   // pushed screen — plain title, no wordmark
+          : activeSubScreen ? activeSubScreen.title   // tab-root sub-screen (e.g. "Earnings")
           : isTabRoot ? wordmark
           : '';
         // Stage 3b: trailing buttons are context-aware. Tab roots keep app Settings +
@@ -23521,7 +23571,7 @@ const confirmDelete = (p) => setConfirmOpts({
           : [];   // pushed Root-level screens (New Production / Settings) get NO root actions
         NativeChrome.update({
           title,
-          backVisible: inShoot || showSettings,
+          backVisible: inShoot || showSettings || !!activeSubScreen,
           activeTab,
           tabBarVisible: isTabRoot,
           trailing,
@@ -23536,7 +23586,7 @@ const confirmDelete = (p) => setConfirmOpts({
           // TEMPORARY preview size (sm/md/lg) — remove this field with the size picker.
           wordmarkSize,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), wordmarkSize]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), wordmarkSize, subScreenStack]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {
@@ -23595,6 +23645,7 @@ const confirmDelete = (p) => setConfirmOpts({
       return (
         <>
           <BackLevelContext.Provider value={backCtx}>
+          <SubScreenContext.Provider value={subScreenCtx}>
           {screen}
           {/* Stage 3 share-in chooser — a shared file has no shoot context, so
               ask. Existing shoot rows are most-recent-first; "New shoot" runs
@@ -23637,6 +23688,7 @@ const confirmDelete = (p) => setConfirmOpts({
           {/* share-in chooser lives INSIDE the provider so its Sheet-primitive back-level
               registers — a share that opens over a live shoot must pop the chooser, not the
               shoot. Transient banners / CelebrationLayer below stay outside (no back-level). */}
+          </SubScreenContext.Provider>
           </BackLevelContext.Provider>
           {storageError && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#7f1d1d', color: '#fca5a5', padding: '8px 16px', fontSize: 12, fontFamily: 'ui-sans-serif, system-ui', textAlign: 'center' }}>
