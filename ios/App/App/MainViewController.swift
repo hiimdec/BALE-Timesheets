@@ -100,14 +100,26 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         glass.layer.cornerCurve = .continuous
         glass.clipsToBounds = true
         b.insertSubview(glass, at: 0)
+        // Dedicated WHITE "+" as its OWN image view ON TOP of the glass — NOT UIButton's managed
+        // imageView. The managed imageView lost the z-fight with the inserted effect view (it was
+        // composited under / swallowed by the glass), so setting .white never made it show. This
+        // explicit, non-interactive image view is the topmost subview → it composites cleanly above
+        // the glass and is unambiguously legible.
+        let plusGlyph = UIImageView(image: UIImage(systemName: "plus",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 23, weight: .bold))?
+            .withRenderingMode(.alwaysTemplate))
+        plusGlyph.translatesAutoresizingMaskIntoConstraints = false
+        plusGlyph.tintColor = .white
+        plusGlyph.isUserInteractionEnabled = false
+        b.addSubview(plusGlyph)                         // added after the glass → on top
         NSLayoutConstraint.activate([
             glass.leadingAnchor.constraint(equalTo: b.leadingAnchor),
             glass.trailingAnchor.constraint(equalTo: b.trailingAnchor),
             glass.topAnchor.constraint(equalTo: b.topAnchor),
             glass.bottomAnchor.constraint(equalTo: b.bottomAnchor),
+            plusGlyph.centerXAnchor.constraint(equalTo: b.centerXAnchor),
+            plusGlyph.centerYAnchor.constraint(equalTo: b.centerYAnchor),
         ])
-        b.tintColor = .white                            // WHITE glyph — clear on the sky-tinted glass (sky-500 on sky-500 was invisible)
-        b.setImage(UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold)), for: .normal)
         b.isHidden = true
         b.addTarget(self, action: #selector(onCreate), for: .touchUpInside)
         // Tactile press (scale + opacity) to suggest interaction.
@@ -137,6 +149,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         // the bridge relayouts / re-adds the webview after our viewDidLoad.
         view.bringSubviewToFront(navBar)
         view.bringSubviewToFront(capsuleGlass)
+        view.bringSubviewToFront(tabBar)
         view.bringSubviewToFront(fabButton)
     }
 
@@ -186,23 +199,37 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         tabBar.selectedItem = tabBar.items?.first
         tabBar.delegate = self
         tabBar.translatesAutoresizingMaskIntoConstraints = false
-        // Transparent bar — the glass capsule BEHIND it owns the material, so the bar floats as a
-        // pill rather than painting its own edge-to-edge background.
+        // FULLY transparent bar — it must contribute NO pill of its own; the glass capsule behind
+        // is the only rounded shape. The iOS-26 standalone UITabBar otherwise paints its own glass
+        // platter, which showed as a SECOND pill whose corners the capsule then clipped. Clear the
+        // background platter + hairline shadow on BOTH appearances and on the bar directly. The
+        // selected-item indicator is item-level and survives this.
         let tabAppearance = UITabBarAppearance()
         tabAppearance.configureWithTransparentBackground()
+        tabAppearance.backgroundColor = .clear
+        tabAppearance.backgroundImage = UIImage()
+        tabAppearance.shadowImage = UIImage()
+        tabAppearance.shadowColor = .clear
         tabBar.standardAppearance = tabAppearance
         if #available(iOS 15.0, *) { tabBar.scrollEdgeAppearance = tabAppearance }
+        tabBar.backgroundImage = UIImage()
+        tabBar.shadowImage = UIImage()
+        tabBar.backgroundColor = .clear
+        tabBar.isTranslucent = true
+        tabBar.isHidden = true   // a sibling of the capsule now → gated in lockstep with it
 
-        // Glass capsule — centred, floating, fully-rounded, item-hugging. Holds the transparent
-        // tab bar. Hidden/shown as a unit (the tab bar inside is always visible — it IS the
-        // content). cornerRadius = height/2 → fully-rounded ends matching the bead's circle.
+        // Glass capsule — centred, floating, fully-rounded, item-hugging. The ONLY rounded/clipped
+        // shape. Seated directly BEHIND a same-frame transparent tab bar as a SIBLING — NOT nested
+        // in the effect view's contentView (that nesting clipped the bar against the capsule corners
+        // and left a second visible pill). Same glass-behind-content pattern the bead uses.
+        // cornerRadius = height/2 → fully-rounded ends matching the bead's circle.
         capsuleGlass.translatesAutoresizingMaskIntoConstraints = false
         capsuleGlass.isHidden = true
         capsuleGlass.layer.cornerRadius = Self.capsuleHeight / 2
         capsuleGlass.layer.cornerCurve = .continuous
         capsuleGlass.clipsToBounds = true
         view.addSubview(capsuleGlass)
-        capsuleGlass.contentView.addSubview(tabBar)
+        view.addSubview(tabBar)   // transparent, same frame, ON TOP of the glass (a sibling)
 
         // Floating + bead — clustered immediately right of the capsule's trailing end (small
         // consistent gap), same vertical centre, diameter == capsule height. Reads as one centred
@@ -223,10 +250,12 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             capsuleGlass.heightAnchor.constraint(equalToConstant: Self.capsuleHeight),
             widthC,
 
-            // Tab bar fills the capsule (its intrinsic height centres the items within).
-            tabBar.leadingAnchor.constraint(equalTo: capsuleGlass.contentView.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: capsuleGlass.contentView.trailingAnchor),
-            tabBar.centerYAnchor.constraint(equalTo: capsuleGlass.contentView.centerYAnchor),
+            // Tab bar is congruent with the glass pill (same rect, ON TOP) → a definite size, items
+            // centred, and the capsule's corner radius clips nothing of the bar.
+            tabBar.leadingAnchor.constraint(equalTo: capsuleGlass.leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: capsuleGlass.trailingAnchor),
+            tabBar.topAnchor.constraint(equalTo: capsuleGlass.topAnchor),
+            tabBar.bottomAnchor.constraint(equalTo: capsuleGlass.bottomAnchor),
 
             fabButton.widthAnchor.constraint(equalToConstant: Self.fabSize),
             fabButton.heightAnchor.constraint(equalToConstant: Self.fabSize),
@@ -291,19 +320,20 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             tabBar.items = tabItems(invoices: invoicesVisible)
             capsuleWidthConstraint?.constant = capsuleWidth(forItems: tabBar.items?.count ?? 3)
         }
-        // Show/hide the CAPSULE (the container) — NOT the inner bar. The tab bar lives in the
-        // capsule's contentView, so a hidden capsule hides the bar with it. The pre-capsule code
-        // toggled only `tabBar.isHidden`, leaving the capsule hidden from setup → the whole bar
-        // vanished on device. The bar inside stays visible; the capsule is the single visibility gate.
+        // Capsule (glass) + tab bar are SIBLINGS now (the bar sits ON TOP of the glass, not inside
+        // its contentView) → toggle BOTH in lockstep. Clearance still keys off capsuleGlass, which
+        // shares the bar's exact frame.
         capsuleGlass.isHidden = !tabBarVisible
+        tabBar.isHidden = !tabBarVisible
         // Sync by TAG (the tab NAME), not index — so dropping Invoices never highlights Stats as Invoices.
         let tag = activeTab == "invoices" ? 1 : (activeTab == "stats" ? 2 : 0)
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
         // Floating + create button — Shoots root only.
         fabButton.isHidden = !createButton
         view.bringSubviewToFront(navBar)
-        view.bringSubviewToFront(capsuleGlass)   // carries the tab bar (its contentView child); bringing the bar itself was a no-op (not a direct subview of view)
-        view.bringSubviewToFront(fabButton)
+        view.bringSubviewToFront(capsuleGlass)   // glass (behind)
+        view.bringSubviewToFront(tabBar)         // transparent bar, on top of the glass
+        view.bringSubviewToFront(fabButton)      // bead, on top of all
         view.setNeedsLayout()
         applyContentInsets()
     }
