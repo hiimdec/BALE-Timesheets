@@ -22630,7 +22630,8 @@ const confirmDelete = (p) => setConfirmOpts({
                     <div className="flex justify-center mb-4 text-neutral-700"><ICal size={48}/></div>
                     <h3 className="text-xl font-semibold mb-2">No shoots yet</h3>
                     <p className="text-sm text-neutral-400 mb-6">Add your first shoot - we'll sweat the rates so you don't.</p>
-                    <Btn variant="primary" onClick={onNewProduction}><IPlus/>New production</Btn>
+                    {/* Suppressed under native chrome — the native floating + button creates. */}
+                    {!NATIVE_CHROME_ACTIVE && <Btn variant="primary" onClick={onNewProduction}><IPlus/>New production</Btn>}
                   </div>
                 )}
 
@@ -22641,8 +22642,9 @@ const confirmDelete = (p) => setConfirmOpts({
                   </div>
                 )}
 
-                {/* + New production inline (only when there are productions) */}
-                {productions.length > 0 && (
+                {/* + New production inline (only when there are productions) — suppressed under
+                    native chrome (the native floating + button is the create affordance). */}
+                {productions.length > 0 && !NATIVE_CHROME_ACTIVE && (
                   <button
                     type="button"
                     onClick={onNewProduction}
@@ -23508,8 +23510,15 @@ const confirmDelete = (p) => setConfirmOpts({
             return;
           }
         };
+        // Native floating "+" → open New Production (the same action as the web create
+        // affordance, which is suppressed under native chrome so it isn't doubled).
+        const onCreate = () => setShowNewProduction(true);
         window.addEventListener('tmNativeNav', onNav);
-        return () => window.removeEventListener('tmNativeNav', onNav);
+        window.addEventListener('tmNativeCreate', onCreate);
+        return () => {
+          window.removeEventListener('tmNativeNav', onNav);
+          window.removeEventListener('tmNativeCreate', onCreate);
+        };
       }, []);
       useEffect(() => {
         if (!NATIVE_CHROME_ACTIVE) return;
@@ -23555,6 +23564,9 @@ const confirmDelete = (p) => setConfirmOpts({
           // true (roots only); `wordmarkName` is the possessive line ("DECLAN'S" or '').
           wordmark: isTabRoot,
           wordmarkName: isTabRoot && wm ? `${wm.toUpperCase()}'S` : '',
+          // Native floating "+" create button — shown ONLY on the Shoots tab root (not Stats /
+          // Invoices / shoots / Settings / pushed screens). Tap fires tmNativeCreate (below).
+          createButton: isTabRoot && activeTab === 'shoots',
         });
       }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack]);
 

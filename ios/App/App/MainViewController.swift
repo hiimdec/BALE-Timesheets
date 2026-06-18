@@ -47,6 +47,24 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private var invoicesShown = true   // current tab set; rebuilt when the web's invoicing toggle flips
     private lazy var backButton = UIBarButtonItem(
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
+    // Floating "+" create button (Rate-style): a SOLID blue circle (text-sky-500, the wordmark
+    // blue — not invented), white glyph, ~56pt, subtle elevation so it reads as floating. Part
+    // of the bottom chrome; the web drives visibility via `createButton` (Shoots root only).
+    private lazy var fabButton: UIButton = {
+        let b = UIButton(type: .custom)
+        b.translatesAutoresizingMaskIntoConstraints = false
+        b.backgroundColor = UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)  // text-sky-500
+        b.tintColor = .white
+        b.setImage(UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold)), for: .normal)
+        b.layer.cornerRadius = 28        // 56pt diameter → circle
+        b.layer.shadowColor = UIColor.black.cgColor
+        b.layer.shadowOpacity = 0.3
+        b.layer.shadowRadius = 8
+        b.layer.shadowOffset = CGSize(width: 0, height: 4)
+        b.isHidden = true
+        b.addTarget(self, action: #selector(onCreate), for: .touchUpInside)
+        return b
+    }()
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -120,6 +138,11 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         tabBar.isHidden = true
         view.addSubview(tabBar)
 
+        // Floating + button — to the right of the tab bar, vertically aligned with the tab
+        // items (centre ≈ 24.5pt below the bar's top, the item band), respecting the bottom
+        // safe area (the bar carries the home-indicator inset below).
+        view.addSubview(fabButton)
+
         NSLayoutConstraint.activate([
             navBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             navBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -127,6 +150,10 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            fabButton.widthAnchor.constraint(equalToConstant: 56),
+            fabButton.heightAnchor.constraint(equalToConstant: 56),
+            fabButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            fabButton.centerYAnchor.constraint(equalTo: tabBar.topAnchor, constant: 24.5),
         ])
     }
 
@@ -155,7 +182,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
     func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
-                          wordmark: Bool = false, wordmarkName: String = "") {
+                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false) {
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
@@ -177,8 +204,11 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         // Sync by TAG (the tab NAME), not index — so dropping Invoices never highlights Stats as Invoices.
         let tag = activeTab == "invoices" ? 1 : (activeTab == "stats" ? 2 : 0)
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
+        // Floating + create button — Shoots root only.
+        fabButton.isHidden = !createButton
         view.bringSubviewToFront(navBar)
         view.bringSubviewToFront(tabBar)
+        view.bringSubviewToFront(fabButton)
         view.setNeedsLayout()
         applyContentInsets()
     }
@@ -239,6 +269,10 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     @objc private func onShare() { dispatchNav(action: "share") }
     @objc private func onProdSettings() { dispatchNav(action: "prodSettings") }
     @objc private func onMore() { dispatchNav(action: "more") }
+    // Floating + → its own event (not a nav action); the web opens New Production.
+    @objc private func onCreate() {
+        bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('tmNativeCreate'))", completionHandler: nil)
+    }
 
     // Context-aware trailing nav-bar buttons. Each key maps to an SF Symbol + a distinct
     // `tmNativeNav` action. Tab roots / best-boy: settings + search; solo shoot: share +
@@ -282,13 +316,14 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let trailing = call.getArray("trailing", String.self) ?? ["settings", "search"]
         let invoicesVisible = call.getBool("invoicesVisible") ?? true
         // Wordmark lockup (tab roots only). `wordmark` gates the custom two-line titleView;
-        // `wordmarkName` is the possessive line.
+        // `wordmarkName` is the possessive line. `createButton` shows the floating + (Shoots root).
         let wordmark = call.getBool("wordmark") ?? false
         let wordmarkName = call.getString("wordmarkName") ?? ""
+        let createButton = call.getBool("createButton") ?? false
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
                 title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
-                wordmark: wordmark, wordmarkName: wordmarkName)
+                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton)
             call.resolve()
         }
     }
