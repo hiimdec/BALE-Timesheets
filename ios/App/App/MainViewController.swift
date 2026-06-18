@@ -108,17 +108,26 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         ])
     }
 
-    // Inset the webview's scroll content so the page clears both bars — native owns the
-    // insets now (the web drops its bottom-padding hack under native chrome). Only when
-    // enabled; otherwise Capacitor's webview is left untouched (flag-off = unchanged).
+    // Full-screen webview: the bars OVERLAY it (content scrolls under them — the glass look).
+    // We do NOT inset the scrollView — a contentInset made short pages overflow by the bar
+    // heights and shoved fixed overlays (kebab/export sheet) off-screen. Instead push the
+    // measured bar clearances to the web as CSS vars; the web owns its layout from them
+    // (see the body.tm-native rules + the --sat/--sab sweep in index.html). --sat/--sab are
+    // zeroed because the native bars cover the device safe area; --sab keeps the bottom safe
+    // area only when the tab bar is hidden (nothing else covers the home indicator then).
     private func applyContentInsets() {
-        guard chromeEnabled, let scroll = bridge?.webView?.scrollView else { return }
-        scroll.contentInsetAdjustmentBehavior = .never
+        guard chromeEnabled, let webView = bridge?.webView else { return }
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.contentInset = .zero
+        webView.scrollView.verticalScrollIndicatorInsets = .zero
         let top = navBar.frame.maxY
-        let bottom = tabBar.isHidden ? 0 : max(0, view.bounds.height - tabBar.frame.minY)
-        let insets = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
-        scroll.contentInset = insets
-        scroll.verticalScrollIndicatorInsets = insets
+        let bottom = tabBar.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.height - tabBar.frame.minY)
+        let sab = tabBar.isHidden ? view.safeAreaInsets.bottom : 0
+        let js = "document.documentElement.style.setProperty('--tm-native-top','\(top)px');"
+            + "document.documentElement.style.setProperty('--tm-native-bottom','\(bottom)px');"
+            + "document.documentElement.style.setProperty('--sat','0px');"
+            + "document.documentElement.style.setProperty('--sab','\(sab)px');"
+        webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)

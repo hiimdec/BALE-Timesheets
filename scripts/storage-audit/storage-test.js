@@ -4067,8 +4067,8 @@ async function main() {
     // ─ CC9: safe-area-inset usage — body bottom padding + the various
     //   sticky/fixed chrome paddingTop/Bottom uses. Spot-check the count
     //   so a regression that strips them all would fire here. ─
-    const safeAreaCount = (html.match(/env\(safe-area-inset-(top|bottom|left|right)\)/g) || []).length;
-    check('CC9 env(safe-area-inset-*) used in at least 10 places',
+    const safeAreaCount = (html.match(/var\(--sat\)|var\(--sab\)/g) || []).length;
+    check('CC9 safe-area insets (routed through the --sat/--sab vars so native chrome can neutralise them) applied in at least 10 places',
       safeAreaCount >= 10,
       `count=${safeAreaCount} (expected >= 10)`);
 
@@ -4850,8 +4850,8 @@ async function main() {
     check('II2f Sheet sets touchAction pan-y only when swipeDismiss',
       // Anchor inside the Sheet function (it's ~9.4KB so widen the window).
       /function Sheet\([\s\S]{0,12000}touchAction: swipeDismiss \? 'pan-y' : undefined/.test(html));
-    check('II2g Sheet card pads safe-area-inset-bottom',
-      /function Sheet\([\s\S]{0,12000}calc\(env\(safe-area-inset-bottom\) \+ 16px\)/.test(html));
+    check('II2g Sheet card pads safe-area-inset-bottom (routed through --sab + the native bottom-bar clearance)',
+      /function Sheet\([\s\S]{0,12000}calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ 16px\)/.test(html));
     check('II2h Sheet stack push/splice in mount/unmount effect (per-instance id)',
       /function Sheet\([\s\S]{0,4000}_sheetStack\.push\(id\)/.test(html) &&
       /_sheetStack\.splice\([\s\S]{0,80}1\)/.test(html));
@@ -5168,7 +5168,7 @@ async function main() {
     //   opaque (bg-black on the safe-area-inset-top sticky div), so scrolled
     //   content can't bleed through the status-bar strip. ─
     check('LL8 Best Boy mobile header: bg-black on the safe-area-inset-top sticky bar (no see-through status-bar strip)',
-      /<div className="sticky top-0 z-40 bg-black" style=\{\{ paddingTop: 'env\(safe-area-inset-top\)' \}\}>\s*<div className="border-b border-sky-500 bg-black">\s*<div className="max-w-6xl mx-auto px-4 pt-3 pb-3\.5">/.test(html));
+      /<div className="sticky top-0 z-40 bg-black" style=\{\{ paddingTop: 'var\(--sat\)' \}\}>\s*<div className="border-b border-sky-500 bg-black">\s*<div className="max-w-6xl mx-auto px-4 pt-3 pb-3\.5">/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════

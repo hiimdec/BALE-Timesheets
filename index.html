@@ -49,7 +49,32 @@
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
       --pill-paper: #e6e9ed;
       --pill-ink: #15171a;
+      /* Safe-area insets routed through vars so native chrome can neutralise them
+         (the native bars cover the device safe area). Web default = the real env(). */
+      --sat: env(safe-area-inset-top);
+      --sab: env(safe-area-inset-bottom);
+      /* Native bar clearances — 0 on web; MainViewController pushes the measured
+         heights (incl. safe areas) on the native shell. */
+      --tm-native-top: 0px;
+      --tm-native-bottom: 0px;
     }
+    /* ───────────── Native chrome layout (full-screen webview, bars overlay) ─────────────
+       The native nav + tab bar overlay the webview; content scrolls UNDER them (the glass
+       look). body.tm-native is set by Root() only when NATIVE_CHROME && IS_NATIVE. The native
+       side zeroes --sat/--sab (its bars cover the device safe area) and provides the bar
+       clearances, so every header self-corrects from the one source (no per-screen env
+       double-count) and a short page reserves the bars without gaining scroll (no
+       contentInset → no overflow). */
+    body.tm-native .min-h-screen {
+      padding-top: var(--tm-native-top);
+      padding-bottom: var(--tm-native-bottom);
+    }
+    /* Sticky headers stick BELOW the native nav bar (no contentInset to inset the origin). */
+    body.tm-native .sticky.top-0 {
+      top: var(--tm-native-top);
+    }
+    /* The global body bottom inset is owned by the min-h-screen rule on native. */
+    body.tm-native { padding-bottom: 0; }
     /* ═══════════════════════════ iOS PHASE A — FEEL NATIVE ═══════════════════════════
        Goal: kill the web tells (grey tap flash, hover stickiness, page rubber-band,
        300ms delay, iOS focus-zoom) and add a fast, subtle press state to every
@@ -77,7 +102,7 @@
        Numerals continue to come from the explicit ui-monospace stack on
        .tm-pill-amount / breakdown numbers — that's unchanged. */
     body {
-      padding-bottom: env(safe-area-inset-bottom);
+      padding-bottom: var(--sab);
       font-family: -apple-system, BlinkMacSystemFont, ui-sans-serif, system-ui,
                    "Segoe UI", Roboto, sans-serif;
       /* 4. App shell — no text selection / no long-press callout. Content
@@ -6468,7 +6493,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           className={`tm-scrolltop fixed flex items-center justify-center w-11 h-11 rounded-full bg-sky-500 text-black shadow-lg shadow-sky-500/30 hover:bg-sky-400 active:bg-sky-600 transition-colors ${visible ? 'tm-scrolltop-visible' : ''}`}
           style={{
             right: 16,
-            bottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+            bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)',
             zIndex: 30,
             WebkitTapHighlightColor: 'transparent',
           }}>
@@ -7066,7 +7091,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               maxWidth: `${maxWidth}px`,
               transform: cardTransform,
               transition: cardTransition,
-              paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+              paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)',
               touchAction: swipeDismiss ? 'pan-y' : undefined,
             }}
             onTransitionEnd={onTransitionEnd}
@@ -9323,11 +9348,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             >
               <div
                 className="bg-neutral-900 w-full rounded-xl shadow-2xl border border-neutral-700 flex flex-col"
-                style={{ maxWidth: 640, maxHeight: "calc(100dvh - env(safe-area-inset-top) - 1rem)" }}
+                style={{ maxWidth: 640, maxHeight: "calc(100dvh - var(--sat) - 1rem)" }}
                 onClick={e => e.stopPropagation()}
               >
                 {/* ── Fixed header ── */}
-                <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
+                <div className="flex-shrink-0 px-5 pb-3 border-b border-neutral-700" style={{ paddingTop: 'calc(var(--sat) + 1rem)' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div id="date-edit-title" className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-1.5">All Crew</div>
@@ -9484,7 +9509,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
 
                 {/* ── Fixed footer ── */}
-                <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 flex gap-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+                <div className="flex-shrink-0 border-t border-neutral-700 px-5 pt-3 flex gap-2" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 12px)' }}>
                   <Btn variant="success" onClick={() => { onBulkEditDate(editingDate, dateEdit); setEditingDate(null); }}>
                     <ICheck/>Save all
                   </Btn>
@@ -10887,7 +10912,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const gbpPence = dotIdx >= 0 ? gbp.slice(dotIdx) : '';
 
       return (
-        <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div style={{ paddingBottom: 'var(--sab)' }}>
           <div className="px-3 py-3 flex items-center gap-2">
             <button
               onClick={() => hasPrev && setCurrentDate(sortedDates[currentIdx - 1])}
@@ -11329,7 +11354,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div
                   onClick={(e) => e.stopPropagation()}
                   className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5"
-                  style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+                  style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)' }}
                 >
                   <div className="text-sm font-bold text-neutral-100 mb-3">Lunch</div>
                   <div className="grid grid-cols-2 gap-3">
@@ -11956,8 +11981,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : '';
 
       return (
-        <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <div className="sticky top-0 z-40 bg-black border-b border-sky-500 -mx-4 -mt-6 px-4" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div style={{ paddingBottom: 'var(--sab)' }}>
+          <div className="sticky top-0 z-40 bg-black border-b border-sky-500 -mx-4 -mt-6 px-4" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto pt-3 pb-3.5">
               <button
                 onClick={onBack}
@@ -12456,7 +12481,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div
                 onClick={(e) => e.stopPropagation()}
                 className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+                style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)' }}
               >
                 <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
                 <div className="text-sm font-bold text-neutral-100 mb-3">{crewMember.name || 'Crew'}'s lunch</div>
@@ -12546,7 +12571,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div
                 onClick={(e) => e.stopPropagation()}
                 className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl px-5 pt-5"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+                style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)' }}
               >
                 <div className="w-9 h-1 bg-neutral-700 rounded-full mx-auto mt-0 mb-3"/>
                 <div className="text-base font-bold text-neutral-100 mb-3">{crewMember.name || 'Crew'}'s notes</div>
@@ -12913,7 +12938,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: NATIVE_CHROME_ACTIVE ? 0 : 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
@@ -13394,7 +13419,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const compareQty = compareItem ? fmtComparisonQty(total / compareItem.price) : null;
       const swap = { animation: 'tm-pill-swap 140ms ease' };
       return (
-        <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
+        <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
           <div style={{ pointerEvents: 'auto' }}>
             <Pill
               leftBtn={{
@@ -13446,7 +13471,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const useNewRight = hasNext !== null;
       const rightDisabled = useNewRight && !hasNext;
       return (
-        <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
+        <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 12px)', left: 12, right: 12, zIndex: 30, pointerEvents: 'none' }}>
           <div style={{ height: 56, background: 'var(--tm-pill-paper)', borderRadius: 28, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', overflow: 'hidden', pointerEvents: 'auto' }}>
             <button onClick={useNewLeft ? (hasPrev ? onPrev : undefined) : onBack}
               disabled={leftDisabled}
@@ -13561,8 +13586,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [production, days, crew, sortedDates]);
 
       return (
-        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 96px)' }}>
-          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 96px)' }}>
+          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
               <button onClick={onClose} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Close production overview">
                 <span className="text-neutral-600">‹</span>{(production.title || 'PRODUCTION').toUpperCase()}
@@ -13686,7 +13711,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             style={{
               boxShadow: '0 8px 24px rgba(14,165,233,0.4)',
               WebkitTapHighlightColor: 'transparent',
-              bottom: 'calc(env(safe-area-inset-bottom) + 24px)',
+              bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 24px)',
             }}
           >
             <IMail size={14}/>Save Timesheets
@@ -13776,8 +13801,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const productionTotal = perDayBreakdowns.reduce((s, b) => s + b.total, 0);
 
       return (
-        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'var(--sab)' }}>
+          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
               <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to overview">
                 <span className="text-neutral-600">‹</span>{(production.title || 'PRODUCTION').toUpperCase()}
@@ -13862,8 +13887,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : '-';
 
       return (
-        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'var(--sab)' }}>
+          <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
               <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to overview">
                 <span className="text-neutral-600">‹</span>{(production.title || 'PRODUCTION').toUpperCase()}
@@ -14114,7 +14139,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
           {/* Header — back, centered title, SHARE link */}
-          <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4px)', flexShrink: 0 }}>
+          <div style={{ paddingTop: 'calc(var(--sat) + 4px)', flexShrink: 0 }}>
             <div className="flex items-center justify-between px-4 py-3 mb-3.5 border-b border-neutral-800">
               <button
                 type="button"
@@ -14341,7 +14366,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           </div>
 
           {/* Footer pill — back left, GENERATE INVOICE compare, file icon right */}
-          <div style={{ flexShrink: 0, paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+          <div style={{ flexShrink: 0, paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 12px)' }}>
             <div className="px-3 pt-2">
               <Pill
                 leftBtn={{
@@ -15615,12 +15640,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : `Delete ${deleteDateLabel} (Day ${currentIdx + 1} of ${sortedDays.length})?`;
 
       return (
-        <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 80px)' }}>
+        <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)' }}>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
 
           {/* Page header — suppressed under native chrome (the native bar owns back / title / share / production settings) */}
           {!NATIVE_CHROME_ACTIVE && (
-          <div className="bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-3xl mx-auto flex items-start justify-between px-4 pt-4 pb-3">
               <button
                 type="button"
@@ -16261,7 +16286,7 @@ const setDays = (updater) =>
 
           {drilldownCrewMember ? null : (production.viewMode === 'mobile' && production.bestBoyMode) ? (
             !NATIVE_CHROME_ACTIVE && (
-            <div className="sticky top-0 z-40 bg-black" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="sticky top-0 z-40 bg-black" style={{ paddingTop: 'var(--sat)' }}>
               <div className="border-b border-sky-500 bg-black">
                 <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
                   <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to productions list">
@@ -16300,7 +16325,7 @@ const setDays = (updater) =>
             </div>
             )
           ) : (
-          <div className="sticky top-0 z-40" style={{ paddingTop: NATIVE_CHROME_ACTIVE ? 0 : 'env(safe-area-inset-top)' }}>
+          <div className="sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             {!NATIVE_CHROME_ACTIVE && (
             <div className="border-b border-sky-500 bg-black">
               <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
@@ -16494,7 +16519,7 @@ const setDays = (updater) =>
               <div
                 onClick={(e) => e.stopPropagation()}
                 className="w-full bg-neutral-900 border-t border-neutral-800 rounded-t-2xl"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}
+                style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 8px)' }}
               >
                 <div className="px-5 pt-5 pb-3">
                   <div className="text-sm font-bold text-neutral-100 truncate">{production.title || 'Production'}</div>
@@ -16579,7 +16604,7 @@ const setDays = (updater) =>
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center">
               <button onClick={onCancel} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Cancel" aria-label="Cancel">
                 <IX size={18}/>
@@ -16663,7 +16688,7 @@ const setDays = (updater) =>
       const { onDeptChange, onRoleChange } = makeDeptRoleHandlers(set, userPrefs);
 
       return (
-        <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center px-6 py-12" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center px-6 py-12" style={{ paddingTop: 'calc(var(--sat) + var(--tm-native-top))' }}>
           <div className="w-full max-w-sm">
 
             {step === 1 && (
@@ -17859,7 +17884,7 @@ const setDays = (updater) =>
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           {!NATIVE_CHROME_ACTIVE && (
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
@@ -18729,7 +18754,7 @@ const setDays = (updater) =>
         // but a single negative-margin slip would otherwise re-introduce the
         // sideways-scroll bug. Cheap belt-and-braces.
         <div className="min-h-screen bg-neutral-950 text-neutral-100 pb-32" style={{ overflowX: 'hidden' }}>
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
                 <IArrowLeft size={16}/>
@@ -19332,7 +19357,7 @@ const setDays = (updater) =>
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: NATIVE_CHROME_ACTIVE ? 0 : 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             {!NATIVE_CHROME_ACTIVE && (
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
@@ -20380,7 +20405,7 @@ const setDays = (updater) =>
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
-          <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onBack} className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
                 <IArrowLeft size={18}/>
@@ -20759,7 +20784,7 @@ const setDays = (updater) =>
 
             <div
               className="border-t border-neutral-800 pt-4 flex gap-2"
-              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+              style={{ paddingBottom: 'var(--sab)' }}
             >
               {invoice.status === 'draft' && (
                 <>
@@ -21006,7 +21031,7 @@ const setDays = (updater) =>
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
                 <IArrowLeft size={18}/>
@@ -21269,7 +21294,7 @@ const setDays = (updater) =>
 
       return (
         <div className="fixed inset-0 bg-neutral-950 flex flex-col" style={{ zIndex: 90 }}>
-          <div className="flex items-center justify-between px-4 pt-4 pb-4 border-b border-neutral-800" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+          <div className="flex items-center justify-between px-4 pt-4 pb-4 border-b border-neutral-800" style={{ paddingTop: 'max(1rem, var(--sat))' }}>
             <div className="flex items-center gap-2">
               {step < 3 && (
                 <button type="button" onClick={step === 1 ? onClose : () => setStep(s => s - 1)}
@@ -21327,7 +21352,7 @@ const setDays = (updater) =>
             )}
           </div>
           {step < 3 && (
-            <div className="px-4 pt-4 pb-6 border-t border-neutral-800 flex gap-3" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
+            <div className="px-4 pt-4 pb-6 border-t border-neutral-800 flex gap-3" style={{ paddingBottom: 'max(1.5rem, var(--sab))' }}>
               {step === 2 && <Btn variant="ghost" className="flex-1" onClick={() => setStep(1)}>Back</Btn>}
               <Btn variant="primary" className="flex-1"
                 onClick={() => step === 1 ? setStep(2) : save()}
@@ -22318,7 +22343,7 @@ const confirmDelete = (p) => setConfirmOpts({
       return (
         <div className={`min-h-screen bg-neutral-950 text-neutral-100 ${NATIVE_CHROME_ACTIVE ? '' : 'pb-32'}`}>
           {/* Inline (non-sticky) header — suppressed under native chrome (native nav bar owns it) */}
-          <div style={{ paddingTop: NATIVE_CHROME_ACTIVE ? 0 : 'env(safe-area-inset-top)' }}>
+          <div style={{ paddingTop: 'var(--sat)' }}>
             {!NATIVE_CHROME_ACTIVE && (<>
             <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-start justify-between">
               <div>
@@ -23253,6 +23278,14 @@ const confirmDelete = (p) => setConfirmOpts({
       // + the mobile "more" kebab). Solo + BB are mutually exclusive, so only one of the
       // two refs is set at a time.
       const bbActionsRef = React.useRef(null);
+      // Native chrome owns the layout insets via CSS vars (see :root + the body.tm-native
+      // rules + MainViewController). Toggle the class so those rules apply only on the
+      // native shell (web build is untouched).
+      useEffect(() => {
+        if (!NATIVE_CHROME_ACTIVE) return;
+        document.body.classList.add('tm-native');
+        return () => document.body.classList.remove('tm-native');
+      }, []);
       const chromeNavRef = React.useRef({});
       chromeNavRef.current = { showSettings, openId };
       useEffect(() => {
@@ -23412,7 +23445,7 @@ const confirmDelete = (p) => setConfirmOpts({
             </div>
           )}
           {showMigrationBanner && (
-            <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 80px)', left: 12, right: 12, zIndex: 9998, background: '#0c1e33', border: '1px solid #0ea5e9', borderRadius: 12, color: '#e0f2fe', padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+            <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)', left: 12, right: 12, zIndex: 9998, background: '#0c1e33', border: '1px solid #0ea5e9', borderRadius: 12, color: '#e0f2fe', padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
               <span>Your data was updated to the latest format - everything is fine.</span>
               <button onClick={() => setShowMigrationBanner(false)} style={{ color: '#7dd3fc', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} aria-label="Dismiss">×</button>
             </div>
@@ -23425,7 +23458,7 @@ const confirmDelete = (p) => setConfirmOpts({
             </div>
           )}
           {versionToast && (
-            <div style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 80px)', left: 12, right: 12, zIndex: 9997, background: '#052e16', border: '1px solid #4ade80', borderRadius: 12, color: '#bbf7d0', padding: '10px 14px', fontSize: 12, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+            <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)', left: 12, right: 12, zIndex: 9997, background: '#052e16', border: '1px solid #4ade80', borderRadius: 12, color: '#bbf7d0', padding: '10px 14px', fontSize: 12, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
               Updated to TimeMachine v{APP_VERSION} ✓
             </div>
           )}
