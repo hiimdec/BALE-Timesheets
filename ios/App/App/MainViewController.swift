@@ -47,79 +47,6 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private var invoicesShown = true   // current tab set; rebuilt when the web's invoicing toggle flips
     private lazy var backButton = UIBarButtonItem(
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
-    private static let fabSize: CGFloat = 56
-
-    // Floating bottom-cluster geometry. The bead's diameter == the capsule's height, so the two
-    // share a vertical centre and the bead's circle radius matches the capsule's rounded end.
-    private static let capsuleHeight: CGFloat = 56
-    private static let capsuleBottomMargin: CGFloat = 8   // float ABOVE the home indicator
-    private static let beadGap: CGFloat = 8               // capsule trailing end → bead (Rate spacing)
-    private static let tabItemWidth: CGFloat = 80         // per-item width → capsule hugs the item count
-
-    // Shared bottom-chrome material: REAL Liquid Glass on iOS 26 (so the capsule and the + bead are
-    // the SAME clear/neutral glass — NO tint), a thin-material blur fallback on iOS 15-25. Over the
-    // near-black app background the bead reads as a subtle dark-translucent glass disc (intended).
-    // The only colour on the bead is the white "+" glyph.
-    private static func glassEffect() -> UIVisualEffect {
-        if #available(iOS 26.0, *) {
-            return UIGlassEffect()   // clear glass, no tintColor
-        }
-        return UIBlurEffect(style: .systemThinMaterial)
-    }
-
-    // The tab bar lives INSIDE this glass capsule (transparent bar + glass behind), so the bar
-    // reads as one floating iOS-26 pill, not an edge-to-edge slab — the SAME material as the +
-    // bead (Self.glassEffect). Width hugs the visible item count; recomputed on the invoicing
-    // toggle. HIDDEN as a unit when the web hides the tab bar (the clearance maths keys off this
-    // view, not the bar). (Non-lazy `let` → explicit type name, not `Self`, in the initializer.)
-    private let capsuleGlass = UIVisualEffectView(effect: MainViewController.glassEffect())
-    private var capsuleWidthConstraint: NSLayoutConstraint?
-
-    private func capsuleWidth(forItems count: Int) -> CGFloat {
-        CGFloat(max(count, 1)) * Self.tabItemWidth
-    }
-
-    // Floating "+" create button — a GLASS BEAD (Rate-style) sharing the capsule's CLEAR glass
-    // material, so it stops reading as a foreign solid disc. No tint, no fill, no drop-shadow — over
-    // the near-black app background it's a subtle dark-translucent glass disc. The only colour is
-    // the white "+" glyph on top.
-    private lazy var fabButton: UIButton = {
-        let b = UIButton(type: .custom)
-        b.translatesAutoresizingMaskIntoConstraints = false
-        let glass = UIVisualEffectView(effect: Self.glassEffect())
-        glass.translatesAutoresizingMaskIntoConstraints = false
-        glass.isUserInteractionEnabled = false
-        glass.layer.cornerRadius = Self.fabSize / 2     // circle — matches the capsule's end radius
-        glass.layer.cornerCurve = .continuous
-        glass.clipsToBounds = true
-        b.insertSubview(glass, at: 0)
-        // Dedicated WHITE "+" as its OWN image view ON TOP of the glass — NOT UIButton's managed
-        // imageView. The managed imageView lost the z-fight with the inserted effect view (it was
-        // composited under / swallowed by the glass), so setting .white never made it show. This
-        // explicit, non-interactive image view is the topmost subview → it composites cleanly above
-        // the glass and is unambiguously legible.
-        let plusGlyph = UIImageView(image: UIImage(systemName: "plus",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 23, weight: .bold))?
-            .withRenderingMode(.alwaysTemplate))
-        plusGlyph.translatesAutoresizingMaskIntoConstraints = false
-        plusGlyph.tintColor = .white
-        plusGlyph.isUserInteractionEnabled = false
-        b.addSubview(plusGlyph)                         // added after the glass → on top
-        NSLayoutConstraint.activate([
-            glass.leadingAnchor.constraint(equalTo: b.leadingAnchor),
-            glass.trailingAnchor.constraint(equalTo: b.trailingAnchor),
-            glass.topAnchor.constraint(equalTo: b.topAnchor),
-            glass.bottomAnchor.constraint(equalTo: b.bottomAnchor),
-            plusGlyph.centerXAnchor.constraint(equalTo: b.centerXAnchor),
-            plusGlyph.centerYAnchor.constraint(equalTo: b.centerYAnchor),
-        ])
-        b.isHidden = true
-        b.addTarget(self, action: #selector(onCreate), for: .touchUpInside)
-        // Tactile press (scale + opacity) to suggest interaction.
-        b.addTarget(self, action: #selector(fabPressDown), for: [.touchDown, .touchDragEnter])
-        b.addTarget(self, action: #selector(fabPressUp), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
-        return b
-    }()
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -141,30 +68,12 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         // Capacitor owns the webview as the VC's content; keep the bars on top in case
         // the bridge relayouts / re-adds the webview after our viewDidLoad.
         view.bringSubviewToFront(navBar)
-        view.bringSubviewToFront(capsuleGlass)
         view.bringSubviewToFront(tabBar)
-        view.bringSubviewToFront(fabButton)
-        logTopInstrumentation("viewDidAppear")
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         applyContentInsets()
-        logTopInstrumentation("viewDidLayoutSubviews")
-    }
-
-    // Phase-1 Option-A spike — Defect-2 instrumentation. On the HOSTED path only, dump the numbers
-    // that disambiguate why this view's top safe area resolves to ~0 when re-parented: is the view at
-    // y=0 with a 0 top inset, did additionalSafeAreaInsets take, is the window's safe area itself 0
-    // (status bar / notch), where did the top bar land. OFF build: tabBarController == nil → silent →
-    // byte-identical. (The Capacitor status-bar plugin's resizeWebView() lives in node_modules and
-    // can't be instrumented from here — it fires on rotation, which a portrait launch never triggers;
-    // the view.frame line below reveals any frame clobber.)
-    private func logTopInstrumentation(_ phase: String) {
-        guard tabBarController != nil else { return }
-        let winTop = view.window?.safeAreaInsets.top ?? -1
-        print("[OptionA-top] \(phase) view.frame=\(view.frame) view.safeTop=\(view.safeAreaInsets.top) "
-            + "addlSafe=\(additionalSafeAreaInsets) window.safeTop=\(winTop) navBar.frame=\(navBar.frame)")
     }
 
     // Tab set is driven by the web's invoicesTabVisible(userPrefs). Tags are STABLE
@@ -208,67 +117,16 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         tabBar.selectedItem = tabBar.items?.first
         tabBar.delegate = self
         tabBar.translatesAutoresizingMaskIntoConstraints = false
-        // FULLY transparent bar via the MODERN appearance ONLY — this clears the iOS-26 glass
-        // platter (the would-be second pill) the supported way, on BOTH standard + scrollEdge.
-        // Do NOT also set the LEGACY bar-level properties (backgroundImage / shadowImage /
-        // backgroundColor / isTranslucent): mixing legacy customization with a UITabBarAppearance
-        // makes UIKit keep a SECOND, legacy visual provider alongside the modern one, and each
-        // renders its OWN copy of the items → the doubled, slightly-offset labels seen on device.
-        // Appearance-only = a single provider = one item set. The selection indicator is
-        // item-level and survives; the glass capsule behind remains the only pill.
-        let tabAppearance = UITabBarAppearance()
-        tabAppearance.configureWithTransparentBackground()
-        tabAppearance.backgroundColor = .clear
-        tabAppearance.backgroundImage = UIImage()
-        tabAppearance.shadowImage = UIImage()
-        tabAppearance.shadowColor = .clear
-        tabBar.standardAppearance = tabAppearance
-        if #available(iOS 15.0, *) { tabBar.scrollEdgeAppearance = tabAppearance }
-        tabBar.isHidden = true   // a sibling of the capsule now → gated in lockstep with it
-
-        // Glass capsule — centred, floating, fully-rounded, item-hugging. The ONLY rounded/clipped
-        // shape. Seated directly BEHIND a same-frame transparent tab bar as a SIBLING — NOT nested
-        // in the effect view's contentView (that nesting clipped the bar against the capsule corners
-        // and left a second visible pill). Same glass-behind-content pattern the bead uses.
-        // cornerRadius = height/2 → fully-rounded ends matching the bead's circle.
-        capsuleGlass.translatesAutoresizingMaskIntoConstraints = false
-        capsuleGlass.isHidden = true
-        capsuleGlass.layer.cornerRadius = Self.capsuleHeight / 2
-        capsuleGlass.layer.cornerCurve = .continuous
-        capsuleGlass.clipsToBounds = true
-        view.addSubview(capsuleGlass)
-        view.addSubview(tabBar)   // transparent, same frame, ON TOP of the glass (a sibling)
-
-        // Floating + bead — clustered immediately right of the capsule's trailing end (small
-        // consistent gap), same vertical centre, diameter == capsule height. Reads as one centred
-        // cluster, NOT stranded at the screen edge. The capsule stays dead-centre regardless of
-        // the bead's Shoots-only visibility, so it never jumps between tabs.
-        view.addSubview(fabButton)
-
-        let widthC = capsuleGlass.widthAnchor.constraint(equalToConstant: capsuleWidth(forItems: tabBar.items?.count ?? 3))
-        capsuleWidthConstraint = widthC
+        tabBar.isHidden = true
+        view.addSubview(tabBar)
 
         NSLayoutConstraint.activate([
             navBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             navBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             navBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-
-            capsuleGlass.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            capsuleGlass.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Self.capsuleBottomMargin),
-            capsuleGlass.heightAnchor.constraint(equalToConstant: Self.capsuleHeight),
-            widthC,
-
-            // Tab bar is congruent with the glass pill (same rect, ON TOP) → a definite size, items
-            // centred, and the capsule's corner radius clips nothing of the bar.
-            tabBar.leadingAnchor.constraint(equalTo: capsuleGlass.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: capsuleGlass.trailingAnchor),
-            tabBar.topAnchor.constraint(equalTo: capsuleGlass.topAnchor),
-            tabBar.bottomAnchor.constraint(equalTo: capsuleGlass.bottomAnchor),
-
-            fabButton.widthAnchor.constraint(equalToConstant: Self.fabSize),
-            fabButton.heightAnchor.constraint(equalToConstant: Self.fabSize),
-            fabButton.leadingAnchor.constraint(equalTo: capsuleGlass.trailingAnchor, constant: Self.beadGap),
-            fabButton.centerYAnchor.constraint(equalTo: capsuleGlass.centerYAnchor),
+            tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
     }
 
@@ -280,24 +138,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // zeroed because the native bars cover the device safe area; --sab keeps the bottom safe
     // area only when the tab bar is hidden (nothing else covers the home indicator then).
     private func applyContentInsets() {
-        // Phase-1 Option-A spike (device check ii): prove the re-parented bridge VC still reaches its
-        // webview. Gated to the tab-controller path so the OFF build (tabBarController == nil) is silent
-        // and byte-identical.
-        if tabBarController != nil {
-            print("[OptionA-spike] applyContentInsets: bridge?.webView = \(bridge?.webView == nil ? "NIL" : "non-nil")")
-        }
         guard chromeEnabled, let webView = bridge?.webView else { return }
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.contentInset = .zero
         webView.scrollView.verticalScrollIndicatorInsets = .zero
         let top = navBar.frame.maxY
-        // Clearance keys off the floating CAPSULE's top edge, not the old bottom-pinned bar. The
-        // capsule floats `capsuleBottomMargin` above the home indicator, so its top sits higher
-        // than the bar's did → web content / sheets clear the whole cluster (the bead shares the
-        // capsule's vertical extent, so its top is covered too). When the capsule is hidden, fall
-        // back to the bottom safe area (nothing covers the home indicator then).
-        let bottom = capsuleGlass.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.height - capsuleGlass.frame.minY)
-        let sab = capsuleGlass.isHidden ? view.safeAreaInsets.bottom : 0
+        let bottom = tabBar.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.height - tabBar.frame.minY)
+        let sab = tabBar.isHidden ? view.safeAreaInsets.bottom : 0
         let js = "document.documentElement.style.setProperty('--tm-native-top','\(top)px');"
             + "document.documentElement.style.setProperty('--tm-native-bottom','\(bottom)px');"
             + "document.documentElement.style.setProperty('--sat','0px');"
@@ -327,36 +174,23 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             let leadingItems = leading.compactMap { trailingButton(for: $0) }
             navItem.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
         }
-        navItem.rightBarButtonItems = trailing.compactMap { trailingButton(for: $0) }
+        // Trailing: the web's trailing keys, plus a "+" create action just LEFT of the fixed
+        // rightmost icon when the web flags createButton (Shoots root only). rightBarButtonItems
+        // lay out right-to-left (index 0 = rightmost), so appending "create" puts it left of settings.
+        var trailingKeys = trailing
+        if createButton { trailingKeys.append("create") }
+        navItem.rightBarButtonItems = trailingKeys.compactMap { trailingButton(for: $0) }
         // Honour the web's invoicing toggle: rebuild the tab set when it flips.
         if invoicesVisible != invoicesShown {
             invoicesShown = invoicesVisible
             tabBar.items = tabItems(invoices: invoicesVisible)
-            capsuleWidthConstraint?.constant = capsuleWidth(forItems: tabBar.items?.count ?? 3)
         }
-        // Capsule (glass) + tab bar are SIBLINGS now (the bar sits ON TOP of the glass, not inside
-        // its contentView) → toggle BOTH in lockstep. Clearance still keys off capsuleGlass, which
-        // shares the bar's exact frame.
-        capsuleGlass.isHidden = !tabBarVisible
         tabBar.isHidden = !tabBarVisible
         // Sync by TAG (the tab NAME), not index — so dropping Invoices never highlights Stats as Invoices.
         let tag = activeTab == "invoices" ? 1 : (activeTab == "stats" ? 2 : 0)
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
-        // Floating + create button — Shoots root only.
-        fabButton.isHidden = !createButton
-        // Phase-1 Option-A spike: when hosted in the RootTabBarController the SYSTEM tab bar IS the
-        // bottom chrome, so force the OLD hand-built cluster hidden to avoid a doubled bar. Reversible
-        // guard (Phase 2 deletes the old code). On the OFF build MainViewController is the window root,
-        // so `tabBarController` is nil and this is a no-op → byte-identical. Clearance left as-is.
-        if tabBarController != nil {
-            capsuleGlass.isHidden = true
-            tabBar.isHidden = true
-            fabButton.isHidden = true
-        }
         view.bringSubviewToFront(navBar)
-        view.bringSubviewToFront(capsuleGlass)   // glass (behind)
-        view.bringSubviewToFront(tabBar)         // transparent bar, on top of the glass
-        view.bringSubviewToFront(fabButton)      // bead, on top of all
+        view.bringSubviewToFront(tabBar)
         view.setNeedsLayout()
         applyContentInsets()
     }
@@ -411,33 +245,15 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         let tab = item.tag == 1 ? "invoices" : (item.tag == 2 ? "stats" : "shoots")
         dispatchNav(action: "tab", tab: tab)
     }
-    // Phase-1 Option-A spike: the RootTabBarController routes a SYSTEM-tab tap here, firing the SAME
-    // `tmNativeNav` tab event the hand-built bar dispatches (index 0/1/2 → shoots/invoices/stats).
-    func spikeDispatchTab(index: Int) {
-        let tab = index == 1 ? "invoices" : (index == 2 ? "stats" : "shoots")
-        dispatchNav(action: "tab", tab: tab)
-    }
     @objc private func onBack() { dispatchNav(action: "back") }
     @objc private func onSettings() { dispatchNav(action: "settings") }
     @objc private func onSearch() { dispatchNav(action: "search") }
     @objc private func onShare() { dispatchNav(action: "share") }
     @objc private func onProdSettings() { dispatchNav(action: "prodSettings") }
     @objc private func onMore() { dispatchNav(action: "more") }
-    // Floating + → its own event (not a nav action); the web opens New Production.
+    // Trailing "+" create → its own event (not a nav action); the web opens New Production.
     @objc private func onCreate() {
         bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('tmNativeCreate'))", completionHandler: nil)
-    }
-    @objc private func fabPressDown() {
-        UIView.animate(withDuration: 0.12, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
-            self.fabButton.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
-            self.fabButton.alpha = 0.85
-        }
-    }
-    @objc private func fabPressUp() {
-        UIView.animate(withDuration: 0.18, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
-            self.fabButton.transform = .identity
-            self.fabButton.alpha = 1
-        }
     }
 
     // Context-aware trailing nav-bar buttons. Each key maps to an SF Symbol + a distinct
@@ -452,6 +268,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         case "share":        symbol = "square.and.arrow.up";  action = #selector(onShare)
         case "prodSettings": symbol = "slider.horizontal.3";  action = #selector(onProdSettings)
         case "more":         symbol = "ellipsis";             action = #selector(onMore)
+        case "create":       symbol = "plus";                 action = #selector(onCreate)
         default: return nil
         }
         return UIBarButtonItem(image: UIImage(systemName: symbol), style: .plain, target: self, action: action)

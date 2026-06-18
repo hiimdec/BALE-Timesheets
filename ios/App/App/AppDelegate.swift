@@ -7,18 +7,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Phase-1 Option-A spike, GATED by the Info.plist Boolean `TMNativeChrome` (committed false).
-        // OFF (key absent/false): do nothing — the && short-circuits before touching the window, so
-        // the storyboard's MainViewController stays the window root, BYTE-IDENTICAL to before.
-        // ON: host that SAME storyboard-instantiated MainViewController as the single persistent child
-        // of a RootTabBarController (system tab bar) and make the tab controller the window root.
-        if Bundle.main.object(forInfoDictionaryKey: "TMNativeChrome") as? Bool == true,
-           let window = self.window,
-           let main = window.rootViewController as? MainViewController {
-            let root = RootTabBarController()
-            root.hostBridgeViewController(main)
-            window.rootViewController = root
-        }
+        // Override point for customization after application launch.
         return true
     }
 
@@ -57,91 +46,4 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
-}
-
-/// Phase-1 Option-A spike — a throwaway foundation. A UITabBarController that owns the SYSTEM tab bar
-/// but hosts the single Capacitor bridge VC (MainViewController) as ONE persistent, full-screen child.
-/// The bridge VC is NEVER placed in `viewControllers`, so UIKit never hides/shows it on a tab change →
-/// the WKWebView (the React app, its router, scroll state) is never torn down. The three tabs are empty
-/// PLACEHOLDERS that exist only so the bar renders three items and emits `didSelect`; their views are
-/// never shown as content. A tab tap routes to the web via the existing `tmNativeNav` tab event — no
-/// native VC swap. Phase 2 deletes the old hand-built bottom chrome and re-sources clearance; this
-/// spike only proves the re-parent works, so clearance/create/morph are deliberately left for later.
-final class RootTabBarController: UITabBarController, UITabBarControllerDelegate {
-
-    private weak var host: MainViewController?
-
-    func hostBridgeViewController(_ main: MainViewController) {
-        host = main
-        delegate = self
-
-        // Placeholder tabs — CLEAR + non-interactive, so the persistent webview behind them stays
-        // visible and keeps receiving touches. Tags 0/1/2 mirror MainViewController.tabItems.
-        viewControllers = [
-            placeholder("Shoots", "film", 0),
-            placeholder("Invoices", "doc.text", 1),
-            placeholder("Stats", "chart.bar", 2),
-        ]
-
-        // Embed the bridge VC ONCE as a persistent child — NOT in `viewControllers` (that's what keeps
-        // the webview alive across tab changes). Sized by AUTORESIZING (the model Capacitor's webView
-        // expects) and sent to the BACK: on iOS 26 the system tab bar's glass container is NOT a direct
-        // subview of `view`, so the earlier insertBelow/bringToFront against `tabBar` was a no-op and the
-        // full-bleed webView covered the bar. At the back, UIKit keeps the tab bar (and its container)
-        // on top; the clear placeholders pass touches through to the webView.
-        addChild(main)
-        main.view.translatesAutoresizingMaskIntoConstraints = true
-        main.view.frame = view.bounds
-        main.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(main.view)
-        view.sendSubviewToBack(main.view)
-        main.didMove(toParent: self)
-    }
-
-    private func placeholder(_ title: String, _ symbol: String, _ tag: Int) -> UIViewController {
-        let vc = UIViewController()
-        vc.view.backgroundColor = .clear
-        vc.view.isUserInteractionEnabled = false
-        vc.tabBarItem = UITabBarItem(title: title, image: UIImage(systemName: symbol), tag: tag)
-        return vc
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        // Keep the persistent webview at the BACK every layout pass (UIKit re-inserts the selected
-        // placeholder on a tab change); the tab bar stays topmost by UIKit default.
-        if let h = host?.view, h.superview == view {
-            view.sendSubviewToBack(h)
-        }
-        // Compensate the hosted webView's collapsed TOP safe area so the native top bar clears the
-        // status bar. The prior attempt sourced the target from `view.safeAreaInsets.top` (this tab
-        // controller's view) — which is itself ~0, so `needed` came out 0 and the fix was a no-op.
-        // Source the target from the WINDOW's safe area instead: that's the true physical inset
-        // (status bar / notch / Dynamic Island), independent of VC-level propagation. Non-oscillating:
-        // `inherited` backs out our own additional inset. Top only — bottom/clearance is Phase 2.
-        var inheritedTop: CGFloat = -1
-        let winTop = view.window?.safeAreaInsets.top ?? view.safeAreaInsets.top
-        if let main = host {
-            inheritedTop = main.view.safeAreaInsets.top - main.additionalSafeAreaInsets.top
-            let needed = max(0, winTop - inheritedTop)
-            if abs(main.additionalSafeAreaInsets.top - needed) > 0.5 {
-                main.additionalSafeAreaInsets = UIEdgeInsets(top: needed, left: 0, bottom: 0, right: 0)
-            }
-        }
-        // Spike diagnostics (ON-path only — this controller exists only when the gate fired).
-        print("[OptionA-spike] gate FIRED. tabBar.frame=\(tabBar.frame) hidden=\(tabBar.isHidden) "
-            + "root.safeTop=\(view.safeAreaInsets.top) window.safeTop=\(winTop) "
-            + "host.inheritedTop=\(inheritedTop) host.safeTop=\(host?.view.safeAreaInsets.top ?? -1)")
-    }
-
-    // Tab tap → fire the EXISTING web tab event (verbatim); never swap to a placeholder's view.
-    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-        host?.spikeDispatchTab(index: viewController.tabBarItem.tag)
-        if let h = host?.view, h.superview == view { view.sendSubviewToBack(h) }
-    }
-
-    // UIViewControllerBasedStatusBarAppearance is true — keep status-bar appearance coming from the
-    // bridge VC, not the tab controller, so it doesn't regress now that the tab controller is root.
-    override var childForStatusBarStyle: UIViewController? { host }
-    override var childForStatusBarHidden: UIViewController? { host }
 }
