@@ -66,6 +66,12 @@
        double-count) and a short page reserves the bars without gaining scroll (no
        contentInset → no overflow). */
     body.tm-native .min-h-screen {
+      /* Pin to the DYNAMIC viewport, not 100vh: on iOS WKWebView 100vh resolves to the
+         larger (toolbar-less) viewport, so min-height:100vh can exceed the visible webview
+         and a short page gains scroll the border-box was meant to prevent. 100dvh == the
+         real frame, so a short page stays within the viewport (no overscroll); equal to
+         100vh on web, so no change there. */
+      min-height: 100dvh;
       padding-top: var(--tm-native-top);
       padding-bottom: var(--tm-native-bottom);
     }
@@ -73,6 +79,11 @@
     body.tm-native .sticky.top-0 {
       top: var(--tm-native-top);
     }
+    /* Full-screen overlay route views (BB calc/totals + crew/day breakdowns + the calc view)
+       keep their fixed-inset overlay + inner scroll, but take the SAME top clearance so their
+       content clears the native bar instead of hiding under it (border-box keeps the inset-0
+       height intact; the inner overflow scrolls under the bar). */
+    body.tm-native .tm-native-overlay { padding-top: var(--tm-native-top); }
     /* The global body bottom inset is owned by the min-h-screen rule on native. */
     body.tm-native { padding-bottom: 0; }
     /* ═══════════════════════════ iOS PHASE A — FEEL NATIVE ═══════════════════════════
@@ -12033,12 +12044,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         <div style={{ paddingBottom: 'var(--sab)' }}>
           <div className="sticky top-0 z-40 bg-black border-b border-sky-500 -mx-4 -mt-6 px-4" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto pt-3 pb-3.5">
+              {/* Redundant back+title row suppressed under native chrome (native bar owns it);
+                  the crew-identity row + kebab below is page content and stays. */}
+              {!NATIVE_CHROME_ACTIVE && (
               <button
                 onClick={onBack}
                 className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1"
                 aria-label="Back to multi-crew day view">
                 <span className="text-neutral-600">‹</span>{(production.title || 'Production').toUpperCase()}{dayNumber > 0 ? ` · DAY ${dayNumber}` : ''}
               </button>
+              )}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[22px] font-extrabold tracking-tight text-neutral-100 truncate flex items-baseline gap-2">
@@ -12987,6 +13002,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          {/* Header suppressed under native chrome — the native bar owns back + title. */}
+          {!NATIVE_CHROME_ACTIVE && (
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
@@ -12996,6 +13013,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div style={{ width: 24 }} />
             </div>
           </div>
+          )}
 
           <div className="max-w-2xl mx-auto px-4 py-6">
 
@@ -13635,7 +13653,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [production, days, crew, sortedDates]);
 
       return (
-        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 96px)' }}>
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto tm-native-overlay" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 96px)' }}>
+          {/* Header suppressed under native chrome — the native bar owns back + title. */}
+          {!NATIVE_CHROME_ACTIVE && (
           <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
               <button onClick={onClose} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Close production overview">
@@ -13644,6 +13664,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="text-[20px] font-extrabold tracking-tight text-neutral-100">PRODUCTION TOTAL</div>
             </div>
           </div>
+          )}
 
           <div className="max-w-6xl mx-auto px-4 py-4">
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5 mb-4">
@@ -13850,7 +13871,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const productionTotal = perDayBreakdowns.reduce((s, b) => s + b.total, 0);
 
       return (
-        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'var(--sab)' }}>
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto tm-native-overlay" style={{ paddingBottom: 'var(--sab)' }}>
+          {/* Header suppressed under native chrome — the native bar owns back + title. */}
+          {!NATIVE_CHROME_ACTIVE && (
           <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
               <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to overview">
@@ -13860,6 +13883,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="text-[11px] text-neutral-400 mt-0.5">{crewMember.role || '-'} · £{crewMember.bdr ?? 0} BDR</div>
             </div>
           </div>
+          )}
 
           <div className="max-w-6xl mx-auto px-4 py-4">
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5 mb-4">
@@ -13936,7 +13960,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : '-';
 
       return (
-        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto" style={{ paddingBottom: 'var(--sab)' }}>
+        <div className="fixed inset-0 z-50 bg-neutral-950 overflow-y-auto tm-native-overlay" style={{ paddingBottom: 'var(--sab)' }}>
+          {/* Header suppressed under native chrome — the native bar owns back + title. */}
+          {!NATIVE_CHROME_ACTIVE && (
           <div className="sticky top-0 z-10 bg-black border-b border-sky-500" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto px-4 pt-3 pb-3.5">
               <button onClick={onBack} className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1" aria-label="Back to overview">
@@ -13946,6 +13972,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="text-[11px] text-neutral-400 mt-0.5">{crewOnDate.length} {crewOnDate.length === 1 ? 'crew' : 'crew'} · day total</div>
             </div>
           </div>
+          )}
 
           <div className="max-w-6xl mx-auto px-4 py-4">
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 pt-4 pb-3.5 mb-4">
@@ -14186,10 +14213,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       });
 
       return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
-          {/* Header — back, centered title, SHARE link */}
+        <div className="tm-native-overlay" style={{ position: 'fixed', inset: 0, zIndex: 60, background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
+          {/* Header — back + centered title are suppressed under native chrome (the native bar
+              owns them); the SHARE action is kept in a slim right-aligned row. */}
           <div style={{ paddingTop: 'calc(var(--sat) + 4px)', flexShrink: 0 }}>
             <div className="flex items-center justify-between px-4 py-3 mb-3.5 border-b border-neutral-800">
+              {!NATIVE_CHROME_ACTIVE ? (
               <button
                 type="button"
                 onClick={onClose}
@@ -14199,9 +14228,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               >
                 <IChevronLeft size={14} strokeWidth={2.2} />
               </button>
+              ) : <span />}
+              {!NATIVE_CHROME_ACTIVE && (
               <h3 className="text-[14px] uppercase tracking-[0.1em] font-extrabold text-neutral-100 m-0">
                 Shoot Total
               </h3>
+              )}
               <button
                 type="button"
                 onClick={() => setShowShareMenu(true)}
@@ -20494,11 +20526,15 @@ const setDays = (updater) =>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
           <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+              {/* Back + title suppressed under native chrome (native bar owns them); the kebab
+                  (More options) is kept, right-aligned via the flex-1 spacer. */}
+              {!NATIVE_CHROME_ACTIVE && (
               <button onClick={onBack} className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
                 <IArrowLeft size={18}/>
               </button>
+              )}
               <div className="flex-1 min-w-0 font-mono text-[10px] tracking-[0.18em] uppercase text-neutral-500 font-bold truncate">
-                Invoices
+                {!NATIVE_CHROME_ACTIVE && 'Invoices'}
               </div>
               <button
                 type="button"
@@ -21120,10 +21156,14 @@ const setDays = (updater) =>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+              {/* Back + title suppressed under native chrome (native bar owns them); the
+                  New Invoice action is kept, right-aligned via the flex-1 spacer. */}
+              {!NATIVE_CHROME_ACTIVE && (
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-2 rounded-full hover:bg-neutral-800" aria-label="Back">
                 <IArrowLeft size={18}/>
               </button>
-              <div className="flex-1 text-sm font-bold">Invoices</div>
+              )}
+              <div className="flex-1 text-sm font-bold">{!NATIVE_CHROME_ACTIVE && 'Invoices'}</div>
               <Btn variant="primary" size="sm" onClick={handleNewInvoice}><IPlus size={13}/>New Invoice</Btn>
             </div>
           </div>
