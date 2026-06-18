@@ -75,51 +75,67 @@ final class RootTabBarController: UITabBarController, UITabBarControllerDelegate
         host = main
         delegate = self
 
-        // Placeholder tabs — tags 0/1/2 mirror MainViewController.tabItems (Shoots / Invoices / Stats).
+        // Placeholder tabs — CLEAR + non-interactive, so the persistent webview behind them stays
+        // visible and keeps receiving touches. Tags 0/1/2 mirror MainViewController.tabItems.
         viewControllers = [
             placeholder("Shoots", "film", 0),
             placeholder("Invoices", "doc.text", 1),
             placeholder("Stats", "chart.bar", 2),
         ]
 
-        // Embed the bridge VC ONCE as a persistent full-screen child — NOT in `viewControllers`. That
-        // single choice is what keeps the webview alive across every tab change. Z-order (above the
-        // never-shown placeholder content, below the system tab bar) is re-asserted in layout.
+        // Embed the bridge VC ONCE as a persistent child — NOT in `viewControllers` (that's what keeps
+        // the webview alive across tab changes). Sized by AUTORESIZING (the model Capacitor's webView
+        // expects) and sent to the BACK: on iOS 26 the system tab bar's glass container is NOT a direct
+        // subview of `view`, so the earlier insertBelow/bringToFront against `tabBar` was a no-op and the
+        // full-bleed webView covered the bar. At the back, UIKit keeps the tab bar (and its container)
+        // on top; the clear placeholders pass touches through to the webView.
         addChild(main)
-        main.view.translatesAutoresizingMaskIntoConstraints = false
+        main.view.translatesAutoresizingMaskIntoConstraints = true
+        main.view.frame = view.bounds
+        main.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(main.view)
-        NSLayoutConstraint.activate([
-            main.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            main.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            main.view.topAnchor.constraint(equalTo: view.topAnchor),
-            main.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
+        view.sendSubviewToBack(main.view)
         main.didMove(toParent: self)
     }
 
     private func placeholder(_ title: String, _ symbol: String, _ tag: Int) -> UIViewController {
         let vc = UIViewController()
+        vc.view.backgroundColor = .clear
+        vc.view.isUserInteractionEnabled = false
         vc.tabBarItem = UITabBarItem(title: title, image: UIImage(systemName: symbol), tag: tag)
         return vc
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        keepHostBelowTabBar()
-    }
-
-    // The persistent webview host must stay ABOVE the placeholder content (so touches reach the
-    // webview) but BELOW the system tab bar (so tab taps work). UIKit re-inserts the selected
-    // placeholder's view on selection, so re-assert the z-order every layout pass.
-    private func keepHostBelowTabBar() {
-        guard let h = host?.view, h.superview == view else { return }
-        view.insertSubview(h, belowSubview: tabBar)
+        // Keep the persistent webview at the BACK every layout pass (UIKit re-inserts the selected
+        // placeholder on a tab change); the tab bar stays topmost by UIKit default.
+        if let h = host?.view, h.superview == view {
+            view.sendSubviewToBack(h)
+        }
+        // The re-parented webView's TOP safe area collapsed (the status-bar inset isn't propagating
+        // geometrically to the hosted child). Compensate so the native top bar clears the status bar
+        // exactly as when MainViewController was root. Non-oscillating: `inherited` backs out our own
+        // additional inset, so once set it stays put. Top only — bottom/clearance is Phase 2.
+        var inheritedTop: CGFloat = -1
+        if let main = host {
+            let want = view.safeAreaInsets.top
+            inheritedTop = main.view.safeAreaInsets.top - main.additionalSafeAreaInsets.top
+            let needed = max(0, want - inheritedTop)
+            if abs(main.additionalSafeAreaInsets.top - needed) > 0.5 {
+                main.additionalSafeAreaInsets = UIEdgeInsets(top: needed, left: 0, bottom: 0, right: 0)
+            }
+        }
+        // Spike diagnostics (ON-path only — this controller exists only when the gate fired). Confirms
+        // the gate, the tab-bar frame, and whether the top inset propagated (inheritedTop) vs after fix.
+        print("[OptionA-spike] gate FIRED. tabBar.frame=\(tabBar.frame) hidden=\(tabBar.isHidden) "
+            + "root.safeTop=\(view.safeAreaInsets.top) host.inheritedTop=\(inheritedTop) host.safeTop=\(host?.view.safeAreaInsets.top ?? -1)")
     }
 
     // Tab tap → fire the EXISTING web tab event (verbatim); never swap to a placeholder's view.
     func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
         host?.spikeDispatchTab(index: viewController.tabBarItem.tag)
-        keepHostBelowTabBar()
+        if let h = host?.view, h.superview == view { view.sendSubviewToBack(h) }
     }
 
     // UIViewControllerBasedStatusBarAppearance is true — keep status-bar appearance coming from the
