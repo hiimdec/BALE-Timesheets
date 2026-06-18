@@ -49,6 +49,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
     private static let fabSize: CGFloat = 56
 
+    // Floating bottom-cluster geometry. The bead's diameter == the capsule's height, so the two
+    // share a vertical centre and the bead's circle radius matches the capsule's rounded end.
+    private static let capsuleHeight: CGFloat = 56
+    private static let capsuleBottomMargin: CGFloat = 8   // float ABOVE the home indicator
+    private static let beadGap: CGFloat = 8               // capsule trailing end → bead (Rate spacing)
+    private static let tabItemWidth: CGFloat = 80         // per-item width → capsule hugs the item count
+
     // Brand accent — text-sky-500 (#0EA5E9), the wordmark token (not invented).
     private static let accentBlue = UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)
 
@@ -62,6 +69,18 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             return g
         }
         return UIBlurEffect(style: .systemThinMaterial)
+    }
+
+    // The tab bar lives INSIDE this glass capsule (transparent bar + glass behind), so the bar
+    // reads as one floating iOS-26 pill, not an edge-to-edge slab — the SAME material as the +
+    // bead (Self.glassEffect). Width hugs the visible item count; recomputed on the invoicing
+    // toggle. HIDDEN as a unit when the web hides the tab bar (the clearance maths keys off this
+    // view, not the bar). (Non-lazy `let` → explicit type name, not `Self`, in the initializer.)
+    private let capsuleGlass = UIVisualEffectView(effect: MainViewController.glassEffect(tinted: false))
+    private var capsuleWidthConstraint: NSLayoutConstraint?
+
+    private func capsuleWidth(forItems count: Int) -> CGFloat {
+        CGFloat(max(count, 1)) * Self.tabItemWidth
     }
 
     // Floating "+" create button — a GLASS BEAD (Rate-style) sharing the capsule's material, so
@@ -114,7 +133,8 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         // Capacitor owns the webview as the VC's content; keep the bars on top in case
         // the bridge relayouts / re-adds the webview after our viewDidLoad.
         view.bringSubviewToFront(navBar)
-        view.bringSubviewToFront(tabBar)
+        view.bringSubviewToFront(capsuleGlass)
+        view.bringSubviewToFront(fabButton)
     }
 
     override func viewDidLayoutSubviews() {
@@ -163,25 +183,52 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         tabBar.selectedItem = tabBar.items?.first
         tabBar.delegate = self
         tabBar.translatesAutoresizingMaskIntoConstraints = false
-        tabBar.isHidden = true
-        view.addSubview(tabBar)
+        // Transparent bar — the glass capsule BEHIND it owns the material, so the bar floats as a
+        // pill rather than painting its own edge-to-edge background.
+        let tabAppearance = UITabBarAppearance()
+        tabAppearance.configureWithTransparentBackground()
+        tabBar.standardAppearance = tabAppearance
+        if #available(iOS 15.0, *) { tabBar.scrollEdgeAppearance = tabAppearance }
 
-        // Floating + button — to the right of the tab bar, vertically aligned with the tab
-        // items (centre ≈ 24.5pt below the bar's top, the item band), respecting the bottom
-        // safe area (the bar carries the home-indicator inset below).
+        // Glass capsule — centred, floating, fully-rounded, item-hugging. Holds the transparent
+        // tab bar. Hidden/shown as a unit (the tab bar inside is always visible — it IS the
+        // content). cornerRadius = height/2 → fully-rounded ends matching the bead's circle.
+        capsuleGlass.translatesAutoresizingMaskIntoConstraints = false
+        capsuleGlass.isHidden = true
+        capsuleGlass.layer.cornerRadius = Self.capsuleHeight / 2
+        capsuleGlass.layer.cornerCurve = .continuous
+        capsuleGlass.clipsToBounds = true
+        view.addSubview(capsuleGlass)
+        capsuleGlass.contentView.addSubview(tabBar)
+
+        // Floating + bead — clustered immediately right of the capsule's trailing end (small
+        // consistent gap), same vertical centre, diameter == capsule height. Reads as one centred
+        // cluster, NOT stranded at the screen edge. The capsule stays dead-centre regardless of
+        // the bead's Shoots-only visibility, so it never jumps between tabs.
         view.addSubview(fabButton)
+
+        let widthC = capsuleGlass.widthAnchor.constraint(equalToConstant: capsuleWidth(forItems: tabBar.items?.count ?? 3))
+        capsuleWidthConstraint = widthC
 
         NSLayoutConstraint.activate([
             navBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             navBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             navBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            fabButton.widthAnchor.constraint(equalToConstant: 56),
-            fabButton.heightAnchor.constraint(equalToConstant: 56),
-            fabButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            fabButton.centerYAnchor.constraint(equalTo: tabBar.topAnchor, constant: 24.5),
+
+            capsuleGlass.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            capsuleGlass.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Self.capsuleBottomMargin),
+            capsuleGlass.heightAnchor.constraint(equalToConstant: Self.capsuleHeight),
+            widthC,
+
+            // Tab bar fills the capsule (its intrinsic height centres the items within).
+            tabBar.leadingAnchor.constraint(equalTo: capsuleGlass.contentView.leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: capsuleGlass.contentView.trailingAnchor),
+            tabBar.centerYAnchor.constraint(equalTo: capsuleGlass.contentView.centerYAnchor),
+
+            fabButton.widthAnchor.constraint(equalToConstant: Self.fabSize),
+            fabButton.heightAnchor.constraint(equalToConstant: Self.fabSize),
+            fabButton.leadingAnchor.constraint(equalTo: capsuleGlass.trailingAnchor, constant: Self.beadGap),
+            fabButton.centerYAnchor.constraint(equalTo: capsuleGlass.centerYAnchor),
         ])
     }
 
@@ -198,8 +245,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         webView.scrollView.contentInset = .zero
         webView.scrollView.verticalScrollIndicatorInsets = .zero
         let top = navBar.frame.maxY
-        let bottom = tabBar.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.height - tabBar.frame.minY)
-        let sab = tabBar.isHidden ? view.safeAreaInsets.bottom : 0
+        // Clearance keys off the floating CAPSULE's top edge, not the old bottom-pinned bar. The
+        // capsule floats `capsuleBottomMargin` above the home indicator, so its top sits higher
+        // than the bar's did → web content / sheets clear the whole cluster (the bead shares the
+        // capsule's vertical extent, so its top is covered too). When the capsule is hidden, fall
+        // back to the bottom safe area (nothing covers the home indicator then).
+        let bottom = capsuleGlass.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.height - capsuleGlass.frame.minY)
+        let sab = capsuleGlass.isHidden ? view.safeAreaInsets.bottom : 0
         let js = "document.documentElement.style.setProperty('--tm-native-top','\(top)px');"
             + "document.documentElement.style.setProperty('--tm-native-bottom','\(bottom)px');"
             + "document.documentElement.style.setProperty('--sat','0px');"
