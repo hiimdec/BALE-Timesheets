@@ -47,22 +47,50 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private var invoicesShown = true   // current tab set; rebuilt when the web's invoicing toggle flips
     private lazy var backButton = UIBarButtonItem(
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
-    // Floating "+" create button (Rate-style): a SOLID blue circle (text-sky-500, the wordmark
-    // blue — not invented), white glyph, ~56pt, subtle elevation so it reads as floating. Part
-    // of the bottom chrome; the web drives visibility via `createButton` (Shoots root only).
+    private static let fabSize: CGFloat = 56
+
+    // Brand accent — text-sky-500 (#0EA5E9), the wordmark token (not invented).
+    private static let accentBlue = UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)
+
+    // Shared bottom-chrome material: REAL Liquid Glass on iOS 26 (so the capsule and the + bead
+    // are the SAME material), a thin-material blur fallback on iOS 15-25. `tinted` carries the
+    // brand accent on the bead's glass.
+    private static func glassEffect(tinted: Bool) -> UIVisualEffect {
+        if #available(iOS 26.0, *) {
+            let g = UIGlassEffect()
+            if tinted { g.tintColor = accentBlue }
+            return g
+        }
+        return UIBlurEffect(style: .systemThinMaterial)
+    }
+
+    // Floating "+" create button — a GLASS BEAD (Rate-style) sharing the capsule's material, so
+    // it stops reading as a foreign solid disc. Brand accent as a glass tint + an sky-500 glyph
+    // (the + wears the accent on shared glass, not a different material). No opaque fill, no
+    // drop-shadow — it sits on the same glass elevation as the capsule, lifted by the glass edge.
     private lazy var fabButton: UIButton = {
         let b = UIButton(type: .custom)
         b.translatesAutoresizingMaskIntoConstraints = false
-        b.backgroundColor = UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)  // text-sky-500
-        b.tintColor = .white
+        let glass = UIVisualEffectView(effect: Self.glassEffect(tinted: true))
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        glass.isUserInteractionEnabled = false
+        glass.layer.cornerRadius = Self.fabSize / 2     // circle — matches the capsule's end radius
+        glass.layer.cornerCurve = .continuous
+        glass.clipsToBounds = true
+        b.insertSubview(glass, at: 0)
+        NSLayoutConstraint.activate([
+            glass.leadingAnchor.constraint(equalTo: b.leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: b.trailingAnchor),
+            glass.topAnchor.constraint(equalTo: b.topAnchor),
+            glass.bottomAnchor.constraint(equalTo: b.bottomAnchor),
+        ])
+        b.tintColor = Self.accentBlue                   // sky-500 glyph
         b.setImage(UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold)), for: .normal)
-        b.layer.cornerRadius = 28        // 56pt diameter → circle
-        b.layer.shadowColor = UIColor.black.cgColor
-        b.layer.shadowOpacity = 0.3
-        b.layer.shadowRadius = 8
-        b.layer.shadowOffset = CGSize(width: 0, height: 4)
         b.isHidden = true
         b.addTarget(self, action: #selector(onCreate), for: .touchUpInside)
+        // Tactile press (scale + opacity) to suggest interaction.
+        b.addTarget(self, action: #selector(fabPressDown), for: [.touchDown, .touchDragEnter])
+        b.addTarget(self, action: #selector(fabPressUp), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
         return b
     }()
 
@@ -279,6 +307,18 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // Floating + → its own event (not a nav action); the web opens New Production.
     @objc private func onCreate() {
         bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('tmNativeCreate'))", completionHandler: nil)
+    }
+    @objc private func fabPressDown() {
+        UIView.animate(withDuration: 0.12, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.fabButton.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
+            self.fabButton.alpha = 0.85
+        }
+    }
+    @objc private func fabPressUp() {
+        UIView.animate(withDuration: 0.18, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.fabButton.transform = .identity
+            self.fabButton.alpha = 1
+        }
     }
 
     // Context-aware trailing nav-bar buttons. Each key maps to an SF Symbol + a distinct
