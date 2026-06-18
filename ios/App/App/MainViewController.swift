@@ -56,20 +56,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private static let beadGap: CGFloat = 8               // capsule trailing end → bead (Rate spacing)
     private static let tabItemWidth: CGFloat = 80         // per-item width → capsule hugs the item count
 
-    // Brand accent — text-sky-500 (#0EA5E9), the wordmark token (not invented).
-    private static let accentBlue = UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)
-
-    // Shared bottom-chrome material: REAL Liquid Glass on iOS 26 (so the capsule and the + bead
-    // are the SAME material), a thin-material blur fallback on iOS 15-25. `tinted` carries the
-    // brand accent on the bead's glass.
-    private static func glassEffect(tinted: Bool) -> UIVisualEffect {
+    // Shared bottom-chrome material: REAL Liquid Glass on iOS 26 (so the capsule and the + bead are
+    // the SAME clear/neutral glass — NO tint), a thin-material blur fallback on iOS 15-25. Over the
+    // near-black app background the bead reads as a subtle dark-translucent glass disc (intended).
+    // The only colour on the bead is the white "+" glyph.
+    private static func glassEffect() -> UIVisualEffect {
         if #available(iOS 26.0, *) {
-            let g = UIGlassEffect()
-            // Dialled-back alpha so the bead reads as TINTED GLASS, not a solid disc — the glass
-            // character + backdrop show through and the white glyph stays legible on top. (Exact
-            // alpha is a device-judgment dial for Derrick.)
-            if tinted { g.tintColor = accentBlue.withAlphaComponent(0.5) }
-            return g
+            return UIGlassEffect()   // clear glass, no tintColor
         }
         return UIBlurEffect(style: .systemThinMaterial)
     }
@@ -79,21 +72,21 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // bead (Self.glassEffect). Width hugs the visible item count; recomputed on the invoicing
     // toggle. HIDDEN as a unit when the web hides the tab bar (the clearance maths keys off this
     // view, not the bar). (Non-lazy `let` → explicit type name, not `Self`, in the initializer.)
-    private let capsuleGlass = UIVisualEffectView(effect: MainViewController.glassEffect(tinted: false))
+    private let capsuleGlass = UIVisualEffectView(effect: MainViewController.glassEffect())
     private var capsuleWidthConstraint: NSLayoutConstraint?
 
     private func capsuleWidth(forItems count: Int) -> CGFloat {
         CGFloat(max(count, 1)) * Self.tabItemWidth
     }
 
-    // Floating "+" create button — a GLASS BEAD (Rate-style) sharing the capsule's material, so
-    // it stops reading as a foreign solid disc. Dialled-back sky tint on the glass + a WHITE glyph
-    // for contrast (a sky-500 glyph on a sky-500 tint was invisible — the original was white-on-blue).
-    // No opaque fill, no drop-shadow — it sits on the same glass elevation as the capsule.
+    // Floating "+" create button — a GLASS BEAD (Rate-style) sharing the capsule's CLEAR glass
+    // material, so it stops reading as a foreign solid disc. No tint, no fill, no drop-shadow — over
+    // the near-black app background it's a subtle dark-translucent glass disc. The only colour is
+    // the white "+" glyph on top.
     private lazy var fabButton: UIButton = {
         let b = UIButton(type: .custom)
         b.translatesAutoresizingMaskIntoConstraints = false
-        let glass = UIVisualEffectView(effect: Self.glassEffect(tinted: true))
+        let glass = UIVisualEffectView(effect: Self.glassEffect())
         glass.translatesAutoresizingMaskIntoConstraints = false
         glass.isUserInteractionEnabled = false
         glass.layer.cornerRadius = Self.fabSize / 2     // circle — matches the capsule's end radius
@@ -199,11 +192,14 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         tabBar.selectedItem = tabBar.items?.first
         tabBar.delegate = self
         tabBar.translatesAutoresizingMaskIntoConstraints = false
-        // FULLY transparent bar — it must contribute NO pill of its own; the glass capsule behind
-        // is the only rounded shape. The iOS-26 standalone UITabBar otherwise paints its own glass
-        // platter, which showed as a SECOND pill whose corners the capsule then clipped. Clear the
-        // background platter + hairline shadow on BOTH appearances and on the bar directly. The
-        // selected-item indicator is item-level and survives this.
+        // FULLY transparent bar via the MODERN appearance ONLY — this clears the iOS-26 glass
+        // platter (the would-be second pill) the supported way, on BOTH standard + scrollEdge.
+        // Do NOT also set the LEGACY bar-level properties (backgroundImage / shadowImage /
+        // backgroundColor / isTranslucent): mixing legacy customization with a UITabBarAppearance
+        // makes UIKit keep a SECOND, legacy visual provider alongside the modern one, and each
+        // renders its OWN copy of the items → the doubled, slightly-offset labels seen on device.
+        // Appearance-only = a single provider = one item set. The selection indicator is
+        // item-level and survives; the glass capsule behind remains the only pill.
         let tabAppearance = UITabBarAppearance()
         tabAppearance.configureWithTransparentBackground()
         tabAppearance.backgroundColor = .clear
@@ -212,10 +208,6 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         tabAppearance.shadowColor = .clear
         tabBar.standardAppearance = tabAppearance
         if #available(iOS 15.0, *) { tabBar.scrollEdgeAppearance = tabAppearance }
-        tabBar.backgroundImage = UIImage()
-        tabBar.shadowImage = UIImage()
-        tabBar.backgroundColor = .clear
-        tabBar.isTranslucent = true
         tabBar.isHidden = true   // a sibling of the capsule now → gated in lockstep with it
 
         // Glass capsule — centred, floating, fully-rounded, item-hugging. The ONLY rounded/clipped
