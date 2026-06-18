@@ -4634,17 +4634,20 @@ async function main() {
     // ─ GG12: swipe surface fills the panel height (NOT content-sized).
     //   Without this, the area below collapsed chips falls outside the
     //   pointer-handler region and swipes started there silently miss.
-    //   minHeight: calc(100dvh - 11rem) on the carousel root keeps the
-    //   swipe area at viewport-fill while allowing the root to grow when
-    //   chips expand (min-height is a floor, not a cap, so the page
-    //   still scrolls naturally when the form gets tall). ─
-    check('GG12a carousel root has minHeight: calc(100dvh - 11rem) for viewport-fill swipe surface',
-      /style=\{\{[^}]*touchAction:\s*'pan-y',\s*minHeight:\s*'calc\(100dvh\s*-\s*11rem\)'/.test(html));
-    check('GG12b carousel root style applies BEFORE the onPointerDown handler (same JSX element)',
-      // Cross-check that the minHeight is on the SAME div that owns the
+    //   The floor is the .tm-day-carousel class: web keeps the fixed
+    //   `calc(100dvh - 11rem)` estimate; under native chrome it subtracts
+    //   the REAL bar/pill clearances (--tm-native-top + the pill calc) so an
+    //   empty solo day exactly fills the page content box (zero overscroll)
+    //   yet still grows past the floor when the form gets tall. ─
+    check('GG12a carousel root uses the tm-day-carousel floor class (web 11rem; native = real chrome vars)',
+      /className="relative overflow-hidden tm-day-carousel"/.test(html) &&
+      /\.tm-day-carousel\s*\{\s*min-height:\s*calc\(100dvh\s*-\s*11rem\)/.test(html) &&
+      /body\.tm-native\s+\.tm-day-carousel\s*\{\s*min-height:\s*calc\(100dvh\s*-\s*var\(--tm-native-top\)\s*-\s*max\(var\(--sab\),\s*var\(--tm-native-bottom\)\)\s*-\s*80px\)/.test(html));
+    check('GG12b carousel floor class is on the SAME JSX element as the onPointerDown handler',
+      // Cross-check that the floor class is on the SAME div that owns the
       // pointer handlers — not on an inner wrapper that the handlers
       // would never see.
-      /minHeight:\s*'calc\(100dvh\s*-\s*11rem\)'\s*\}\}[\s\S]{0,200}onPointerDown=\{onPointerDown\}/.test(html));
+      /className="[^"]*tm-day-carousel[^"]*"[\s\S]{0,200}onPointerDown=\{onPointerDown\}/.test(html));
   }
 
   // ===== HH. DAY CAROUSEL ADD-DAY (over-pull) — source presence =====

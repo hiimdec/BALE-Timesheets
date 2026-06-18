@@ -84,6 +84,14 @@
        content clears the native bar instead of hiding under it (border-box keeps the inset-0
        height intact; the inner overflow scrolls under the bar). */
     body.tm-native .tm-native-overlay { padding-top: var(--tm-native-top); }
+    /* Solo day swipe-surface floor. On web it's a fixed estimate (in-flow header ~5rem +
+       bottom pill ~6rem). Under native chrome the header is gone and the page reserves the
+       REAL clearances as padding (top = --tm-native-top, bottom = the pill calc); the fixed
+       11rem under-shot those by ~26px, so the carousel floor + the page padding exceeded
+       100dvh and an EMPTY day overscrolled. Subtract the actual chrome vars so the floor
+       exactly fills the page's content box → zero overscroll, grows past it when content does. */
+    .tm-day-carousel { min-height: calc(100dvh - 11rem); }
+    body.tm-native .tm-day-carousel { min-height: calc(100dvh - var(--tm-native-top) - max(var(--sab), var(--tm-native-bottom)) - 80px); }
     /* The global body bottom inset is owned by the min-h-screen rule on native. */
     body.tm-native { padding-bottom: 0; }
     /* ═══════════════════════════ iOS PHASE A — FEEL NATIVE ═══════════════════════════
@@ -15089,8 +15097,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // the root is permitted to grow.
         <div
           ref={containerRef}
-          className="relative overflow-hidden"
-          style={{ touchAction: 'pan-y', minHeight: 'calc(100dvh - 11rem)' }}
+          className="relative overflow-hidden tm-day-carousel"
+          style={{ touchAction: 'pan-y' }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -23494,25 +23502,28 @@ const confirmDelete = (p) => setConfirmOpts({
         // Settings push stays "Settings".
         const wm = (userPrefs && userPrefs.displayName && userPrefs.displayName.trim()) || '';
         const wordmark = wm ? `${wm}'s TimeMachine` : 'TimeMachine';
+        // A "tab root" is ONLY the three actual roots (Shoots / Invoices / Stats). New Production
+        // — and any other pushed Root-level screen — is NOT a root: it gets no wordmark lockup,
+        // no root search/settings actions, and no tab bar (it keeps its own web X to close).
+        const isTabRoot = userPrefs.onboardingComplete && !inShoot && !showSettings && !showNewProduction;
         const title = inShoot ? (currentProduction.title || 'Untitled production')
           : showSettings ? 'Settings'
-          : wordmark;
-        // The custom wordmark lockup (titleView) is used ONLY on the three tab roots — i.e.
-        // wherever the title IS the wordmark. Pushed screens (production name / Settings) keep
-        // their plain string title.
-        const isWordmarkRoot = !inShoot && !showSettings;
+          : showNewProduction ? 'New production'   // pushed screen — plain title, no wordmark
+          : isTabRoot ? wordmark
+          : '';
         // Stage 3b: trailing buttons are context-aware. Tab roots keep app Settings +
         // Search; a SOLO shoot shows Share + Production settings; a BEST-BOY shoot shows
         // Production settings (+ a "more" overflow in mobile viewMode for the kebab).
         const inBBShoot = inShoot && currentProduction.bestBoyMode;
         const trailing = inSoloShoot ? ['prodSettings', 'share']
           : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])
-          : ['settings', 'search'];
+          : isTabRoot ? ['settings', 'search']
+          : [];   // pushed Root-level screens (New Production / Settings) get NO root actions
         NativeChrome.update({
           title,
           backVisible: inShoot || showSettings,
           activeTab,
-          tabBarVisible: !inShoot && !showSettings,
+          tabBarVisible: isTabRoot,
           trailing,
           // The native tab bar drops Invoices when invoicing is toggled off (matches the
           // web home sub-tab gating). A redirect effect already bumps homeTab off
@@ -23520,12 +23531,12 @@ const confirmDelete = (p) => setConfirmOpts({
           invoicesVisible: invoicesTabVisible(userPrefs),
           // Wordmark lockup: native swaps in the two-line lockup titleView when `wordmark` is
           // true (roots only); `wordmarkName` is the possessive line ("DECLAN'S" or '').
-          wordmark: isWordmarkRoot,
-          wordmarkName: isWordmarkRoot && wm ? `${wm.toUpperCase()}'S` : '',
+          wordmark: isTabRoot,
+          wordmarkName: isTabRoot && wm ? `${wm.toUpperCase()}'S` : '',
           // TEMPORARY preview size (sm/md/lg) — remove this field with the size picker.
           wordmarkSize,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), wordmarkSize]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), wordmarkSize]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {

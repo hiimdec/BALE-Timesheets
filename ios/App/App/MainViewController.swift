@@ -94,6 +94,21 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         navBar.delegate = self
         navBar.translatesAutoresizingMaskIntoConstraints = false
         navBar.isHidden = true
+        // Opaque solid-black bar (matches the #0a0a0a app background) so content scrolling UNDER
+        // it is hidden instead of ghosting through the translucent default (worst on Stats mid-
+        // scroll). On the near-black app this blends with the bg at rest and reads clean on
+        // scroll. Drop the hairline (shadowColor = clear) so there's no harsh edge on the black.
+        // The bottom tab bar keeps its default glass look (no title to clash with).
+        let barBg = UIColor(red: 10.0/255.0, green: 10.0/255.0, blue: 10.0/255.0, alpha: 1)  // #0a0a0a (bg-neutral-950)
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithOpaqueBackground()
+        navAppearance.backgroundColor = barBg
+        navAppearance.shadowColor = .clear
+        navBar.standardAppearance = navAppearance
+        navBar.scrollEdgeAppearance = navAppearance
+        navBar.compactAppearance = navAppearance
+        if #available(iOS 15.0, *) { navBar.compactScrollEdgeAppearance = navAppearance }
+        navBar.isTranslucent = false
         view.addSubview(navBar)
 
         // Bottom tab bar — 3 items (reuses the spike pattern). Pinned to the bottom edge
