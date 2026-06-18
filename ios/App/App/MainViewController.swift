@@ -144,11 +144,27 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         view.bringSubviewToFront(capsuleGlass)
         view.bringSubviewToFront(tabBar)
         view.bringSubviewToFront(fabButton)
+        logTopInstrumentation("viewDidAppear")
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         applyContentInsets()
+        logTopInstrumentation("viewDidLayoutSubviews")
+    }
+
+    // Phase-1 Option-A spike — Defect-2 instrumentation. On the HOSTED path only, dump the numbers
+    // that disambiguate why this view's top safe area resolves to ~0 when re-parented: is the view at
+    // y=0 with a 0 top inset, did additionalSafeAreaInsets take, is the window's safe area itself 0
+    // (status bar / notch), where did the top bar land. OFF build: tabBarController == nil → silent →
+    // byte-identical. (The Capacitor status-bar plugin's resizeWebView() lives in node_modules and
+    // can't be instrumented from here — it fires on rotation, which a portrait launch never triggers;
+    // the view.frame line below reveals any frame clobber.)
+    private func logTopInstrumentation(_ phase: String) {
+        guard tabBarController != nil else { return }
+        let winTop = view.window?.safeAreaInsets.top ?? -1
+        print("[OptionA-top] \(phase) view.frame=\(view.frame) view.safeTop=\(view.safeAreaInsets.top) "
+            + "addlSafe=\(additionalSafeAreaInsets) window.safeTop=\(winTop) navBar.frame=\(navBar.frame)")
     }
 
     // Tab set is driven by the web's invoicesTabVisible(userPrefs). Tags are STABLE

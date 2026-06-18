@@ -113,23 +113,25 @@ final class RootTabBarController: UITabBarController, UITabBarControllerDelegate
         if let h = host?.view, h.superview == view {
             view.sendSubviewToBack(h)
         }
-        // The re-parented webView's TOP safe area collapsed (the status-bar inset isn't propagating
-        // geometrically to the hosted child). Compensate so the native top bar clears the status bar
-        // exactly as when MainViewController was root. Non-oscillating: `inherited` backs out our own
-        // additional inset, so once set it stays put. Top only — bottom/clearance is Phase 2.
+        // Compensate the hosted webView's collapsed TOP safe area so the native top bar clears the
+        // status bar. The prior attempt sourced the target from `view.safeAreaInsets.top` (this tab
+        // controller's view) — which is itself ~0, so `needed` came out 0 and the fix was a no-op.
+        // Source the target from the WINDOW's safe area instead: that's the true physical inset
+        // (status bar / notch / Dynamic Island), independent of VC-level propagation. Non-oscillating:
+        // `inherited` backs out our own additional inset. Top only — bottom/clearance is Phase 2.
         var inheritedTop: CGFloat = -1
+        let winTop = view.window?.safeAreaInsets.top ?? view.safeAreaInsets.top
         if let main = host {
-            let want = view.safeAreaInsets.top
             inheritedTop = main.view.safeAreaInsets.top - main.additionalSafeAreaInsets.top
-            let needed = max(0, want - inheritedTop)
+            let needed = max(0, winTop - inheritedTop)
             if abs(main.additionalSafeAreaInsets.top - needed) > 0.5 {
                 main.additionalSafeAreaInsets = UIEdgeInsets(top: needed, left: 0, bottom: 0, right: 0)
             }
         }
-        // Spike diagnostics (ON-path only — this controller exists only when the gate fired). Confirms
-        // the gate, the tab-bar frame, and whether the top inset propagated (inheritedTop) vs after fix.
+        // Spike diagnostics (ON-path only — this controller exists only when the gate fired).
         print("[OptionA-spike] gate FIRED. tabBar.frame=\(tabBar.frame) hidden=\(tabBar.isHidden) "
-            + "root.safeTop=\(view.safeAreaInsets.top) host.inheritedTop=\(inheritedTop) host.safeTop=\(host?.view.safeAreaInsets.top ?? -1)")
+            + "root.safeTop=\(view.safeAreaInsets.top) window.safeTop=\(winTop) "
+            + "host.inheritedTop=\(inheritedTop) host.safeTop=\(host?.view.safeAreaInsets.top ?? -1)")
     }
 
     // Tab tap → fire the EXISTING web tab event (verbatim); never swap to a placeholder's view.
