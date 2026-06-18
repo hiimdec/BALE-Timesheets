@@ -182,7 +182,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
     func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
-                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false) {
+                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = []) {
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
@@ -191,9 +191,16 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         // Tab roots get the custom two-line wordmark lockup as the titleView; pushed screens
         // (production name / Settings) fall back to the plain string title (titleView = nil).
         navItem.titleView = wordmark ? makeWordmarkLockup(name: wordmarkName) : nil
-        navItem.leftBarButtonItem = backVisible ? backButton : nil
-        // rightBarButtonItems lay out right-to-left (index 0 = rightmost); the web sends
-        // them in that order. Unknown keys are dropped.
+        // Leading slot holds the back button (pushed screens) OR the web's leading actions
+        // (search, roots only) — never both. Leading actions reuse the same key→button map as
+        // trailing, so the icon styling matches. rightBarButtonItems lay out right-to-left
+        // (index 0 = rightmost); the web sends them in that order. Unknown keys are dropped.
+        if backVisible {
+            navItem.leftBarButtonItems = [backButton]
+        } else {
+            let leadingItems = leading.compactMap { trailingButton(for: $0) }
+            navItem.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
+        }
         navItem.rightBarButtonItems = trailing.compactMap { trailingButton(for: $0) }
         // Honour the web's invoicing toggle: rebuild the tab set when it flips.
         if invoicesVisible != invoicesShown {
@@ -313,7 +320,10 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let backVisible = call.getBool("backVisible") ?? false
         let activeTab = call.getString("activeTab") ?? "shoots"
         let tabBarVisible = call.getBool("tabBarVisible") ?? true
-        let trailing = call.getArray("trailing", String.self) ?? ["settings", "search"]
+        let trailing = call.getArray("trailing", String.self) ?? ["settings"]
+        // Leading nav-bar actions (left of the title) — search on roots; empty on pushed
+        // screens where the back button owns the leading slot.
+        let leading = call.getArray("leading", String.self) ?? ["search"]
         let invoicesVisible = call.getBool("invoicesVisible") ?? true
         // Wordmark lockup (tab roots only). `wordmark` gates the custom two-line titleView;
         // `wordmarkName` is the possessive line. `createButton` shows the floating + (Shoots root).
@@ -323,7 +333,7 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
                 title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
-                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton)
+                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading)
             call.resolve()
         }
     }

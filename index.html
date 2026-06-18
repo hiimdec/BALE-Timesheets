@@ -23546,16 +23546,24 @@ const confirmDelete = (p) => setConfirmOpts({
         // Search; a SOLO shoot shows Share + Production settings; a BEST-BOY shoot shows
         // Production settings (+ a "more" overflow in mobile viewMode for the kebab).
         const inBBShoot = inShoot && currentProduction.bestBoyMode;
+        // Settings is the PERSISTENT trailing action on roots AND tab-root sub-screens (so
+        // Earnings gets it back). Search splits to the LEADING slot on roots only (below).
+        // Shoots keep their own trailing; New Production / Settings get none.
         const trailing = inSoloShoot ? ['prodSettings', 'share']
           : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])
-          : isTabRoot ? ['settings', 'search']
-          : [];   // pushed Root-level screens (New Production / Settings) get NO root actions
+          : (isTabRoot || activeSubScreen) ? ['settings']
+          : [];
+        // Leading ACTION (left of the wordmark) — search, roots only. The leading slot holds
+        // search (root) or the back/X (pushed) — never both; back is driven natively by
+        // backVisible, so leading is empty on pushed screens.
+        const leading = isTabRoot ? ['search'] : [];
         NativeChrome.update({
           title,
           backVisible: inShoot || showSettings || !!activeSubScreen,
           activeTab,
           tabBarVisible: isTabRoot,
           trailing,
+          leading,
           // The native tab bar drops Invoices when invoicing is toggled off (matches the
           // web home sub-tab gating). A redirect effect already bumps homeTab off
           // 'invoices' when this flips false, so activeTab follows to 'shoots'.
