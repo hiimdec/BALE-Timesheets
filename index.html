@@ -910,6 +910,29 @@
       },
     };
 
+    // ───────────────────────── Depth-aware native back ─────────────────────────
+    // One shared LIFO of dismissable "back levels". Each level (a screen/overlay/sheet
+    // inside or above a shoot) registers itself via useBackLevel FROM INSIDE its own
+    // component; the native bar's 'back' pops the top entry and calls its one-step closer
+    // (the level's EXISTING close/back logic — reused, never rewritten). The stack is an
+    // imperative ref read only by the native back handler — NOT reactive, never drives
+    // render. Gated on NATIVE_CHROME_ACTIVE so the web build is untouched.
+    const BackLevelContext = React.createContext(null);
+    function useBackLevel(active, close, id) {
+      const ctx = React.useContext(BackLevelContext);
+      const closeRef = React.useRef(close);
+      closeRef.current = close;   // keep the latest closer without re-pushing the stack
+      React.useEffect(() => {
+        if (!ctx || !NATIVE_CHROME_ACTIVE || !active) return;
+        // Wrapper calls the LATEST closer (closeRef) AND propagates its return value so the
+        // back handler can honour a veto: a guarded closer returns false when a dirty editor
+        // declines to dismiss (it shows its discard prompt) — false must reach the handler so
+        // the level stays on the stack instead of being popped under the still-open editor.
+        ctx.push(id, () => { const c = closeRef.current; return c ? c() : undefined; });
+        return () => ctx.remove(id);   // remove when active flips false OR on unmount
+      }, [ctx, active, id]);
+    }
+
     // Lazy-load a vendored script exactly once. Used for the PDF libraries on native.
     const _scriptPromises = {};
     function loadVendorScript(src) {
@@ -6860,6 +6883,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const _confirmAlertStack = [];
     function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', children }) {
       const [mounted, setMounted] = React.useState(open);
+      // Native back: every open Sheet IS a dismissable back-level. Registering here (the
+      // shared primitive) means EVERY sheet — editors, pickers, action/kebab sheets, the
+      // quick-add crew sheet, invoice line editors — pops one step on back, with no
+      // per-call-site wiring to miss. Closer reuses the sheet's own onBeforeDismiss guard
+      // (a dirty editor vetoes → return false keeps it on the stack and shows its discard
+      // prompt) then onClose. No-ops off the native shell / outside a shoot's provider.
+      const __backLevelId = React.useId();
+      useBackLevel(open, () => {
+        if (onBeforeDismiss && onBeforeDismiss() === false) return false;
+        if (onClose) { onClose(); return true; }
+        return false;
+      }, __backLevelId);
       const [visible, setVisible] = React.useState(false);
       const [dragY, setDragY] = React.useState(0);
       const [zSlot, setZSlot] = React.useState(0);
@@ -7303,6 +7338,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const initialRef = useRef(form);
       const dirty = JSON.stringify(form) !== JSON.stringify(initialRef.current);
       const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(dirty);
+      // Native back closes this editor one step (discard guard intact) via the Sheet
+      // primitive's back-level registration (onBeforeDismiss + onClose) — no wiring here.
 
       const onDeptChange = (dept) => {
         setSelectedDept(dept);
@@ -8907,6 +8944,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const initialRef = useRef(form);
       const dirty = JSON.stringify(form) !== JSON.stringify(initialRef.current);
       const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(dirty);
+      // Native back closes this grid day editor one step (discard guard intact) via the
+      // Sheet primitive's back-level registration (onBeforeDismiss + onClose) — no wiring here.
 
       const modalTitle = isNew ? "New Day Entry" : isNewAll ? "New Day - All Crew" : "Edit Day Entry";
 
@@ -9098,6 +9137,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return () => { unlockBodyScroll(); };
       }, [editingDate]);
       useEscape(editingDate ? () => setEditingDate(null) : null);
+      // Native back closes the all-crew bulk date-edit overlay (a bespoke fixed-inset modal,
+      // not a Sheet) one step — parallel to the Escape handler above.
+      useBackLevel(!!editingDate, () => setEditingDate(null), 'tsg-edit-date');
 
       const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -10599,6 +10641,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const crew = production.crew || [];
       const days = production.days || [];
       const [showLunchSheet, setShowLunchSheet] = useState(false);
+      // Native back: the lunch overlay is a bespoke fixed-inset sheet (not a <Sheet>), so
+      // register it explicitly — back closes the lunch sheet, not the whole day view.
+      useBackLevel(showLunchSheet, () => setShowLunchSheet(false), 'bbmobile-lunch');
       const [showAddCrew, setShowAddCrew] = useState(false);
       const [expandedVarianceCrewIds, setExpandedVarianceCrewIds] = useState(() => new Set());
       const [expandedDeptExtras, setExpandedDeptExtras] = useState(() => new Set());
@@ -11840,6 +11885,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onTriggerCrewTimesheet, showToast, userPrefs }) {
       const [showLunchEdit, setShowLunchEdit] = useState(false);
+      // Native back: lunch + note overlays are bespoke fixed-inset sheets (not <Sheet>), so
+      // register them explicitly — back closes the open sheet, not the whole drilldown.
+      useBackLevel(showLunchEdit, () => setShowLunchEdit(false), 'cmdv-lunch');
       const [expandedExtras, setExpandedExtras] = useState(() => new Set());
       const extraRefs = useRef({});
       const toggleExtra = (key) => {
@@ -11872,6 +11920,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         });
       };
       const [editingNote, setEditingNote] = useState(false);
+      useBackLevel(editingNote, () => setEditingNote(false), 'cmdv-note');
       const [showCrewActions, setShowCrewActions] = useState(false);
       const [showEditCrew, setShowEditCrew] = useState(false);
       const dayRecord = (production.days || []).find(d => d.date === currentDate && d.crewId === crewMember.id);
@@ -14453,12 +14502,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", confirmTone = "primary", cancelLabel = "Cancel", onConfirm, onCancel }) {
       const [visible, setVisible] = useState(false);
       const idRef = useRef(null);
-
       const reduceMotion = useMemo(() => {
         if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
         try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
         catch (_) { return false; }
       }, []);
+      // Native back: an open confirm IS a back-level — back CANCELS it (the safe choice),
+      // mirroring the web Escape handler below. Registered at the primitive so every alert
+      // (delete-day, export warnings, discard-changes, line-item confirms) is covered. If a
+      // dialog has no cancel handler (forced choice), back is a no-op (return false keeps it
+      // on the stack) rather than skipping a level.
+      const __backLevelId = React.useId();
+      useBackLevel(open, () => { if (onCancel) { onCancel(); return true; } return false; }, __backLevelId);
 
       // Body-scroll lock + push onto the alert stack while open. The stack
       // tells a sheet underneath to swallow Escape (see Sheet) and lets the web
@@ -15489,6 +15544,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
       };
 
+      // Depth-aware native back: register the FULL-SCREEN solo levels here (the ones the
+      // Sheet/ConfirmDialog primitives don't own). Shoot root FIRST (lowest in the stack);
+      // deeper full-screen views stack on top. Each closer is the level's EXISTING one-step
+      // close. Sheets (jump/day-actions/export) and confirms (delete/export warnings) are
+      // registered by the Sheet / ConfirmDialog primitives, so they're intentionally absent.
+      useBackLevel(true, onBack, 'shoot-root');
+      useBackLevel(showSettings, () => setShowSettings(false), 'solo-prod-settings');
+      useBackLevel(invoicesTabVisible(userPrefs) && invoiceNav && invoiceNav !== 'list', handleEditorClose, 'solo-invoice-editor');
+      useBackLevel(invoicesTabVisible(userPrefs) && invoiceNav === 'list', () => setInvoiceNav(null), 'solo-invoice-list');
+      useBackLevel(showCalc, () => setShowCalc(false), 'solo-calc');
+
       const soloWeeks = useMemo(() => computeWeeks(production, days), [production, days]);
       const soloCrew = crew[0] || null;
 
@@ -16188,6 +16254,23 @@ const setDays = (updater) =>
       }, []);
 
       const totalShoot = days.reduce((s, d) => { const c = crew.find((cc) => cc.id === d.crewId); return c ? s + calcForDisplay(production, d, c, findPrevDay(days, d)).total : s; }, 0);
+
+      // Depth-aware native back: register the FULL-SCREEN / custom best-boy levels here (the
+      // ones the Sheet/ConfirmDialog primitives don't own). Shoot root FIRST (lowest); deeper
+      // full-screen views stack on top. Each closer is the level's EXISTING one-step close.
+      // Sheets (save, cancellation calc, crew/day editors, quick-add, pickers, action sheets)
+      // and confirms (confirmOpts) are owned by the Sheet / ConfirmDialog primitives, so
+      // they're intentionally absent. bb-mobile-nav is a bespoke fixed-inset drawer (not a
+      // Sheet), so it stays here.
+      useBackLevel(true, onBack, 'shoot-root');
+      useBackLevel(showProdSettings, () => setShowProdSettings(false), 'bb-prod-settings');
+      useBackLevel(invoicesTabVisible(userPrefs) && invoiceNav && invoiceNav !== 'list', handleEditorClose, 'bb-invoice-editor');
+      useBackLevel(invoicesTabVisible(userPrefs) && invoiceNav === 'list', () => setInvoiceNav(null), 'bb-invoice-list');
+      useBackLevel(showCalcView, () => setShowCalcView(false), 'bb-calc');
+      useBackLevel(!!breakdownCrewMember, () => setBreakdownCrewMember(null), 'bb-crew-breakdown');
+      useBackLevel(!!breakdownDate, () => setBreakdownDate(null), 'bb-day-breakdown');
+      useBackLevel(!!drilldownCrewMember, () => setDrilldownCrewMember(null), 'bb-drilldown');
+      useBackLevel(showMobileNav, () => setShowMobileNav(false), 'bb-mobile-nav');
 
       if (showProdSettings) {
         return (
@@ -17789,6 +17872,7 @@ const setDays = (updater) =>
     }
 
     function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0 }) {
+      useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -20096,6 +20180,9 @@ const setDays = (updater) =>
       // source changed) — surface, don't silently export.
       const [exportWarn, setExportWarn] = React.useState(false);
       const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
+      // Native back: the header action menu is a bespoke fixed-inset overlay (not a Sheet),
+      // so register it as a back-level explicitly — back closes the menu, not the editor.
+      useBackLevel(showHeaderMenu, () => setShowHeaderMenu(false), 'invoice-header-menu');
       const [notesOpen, setNotesOpen] = React.useState(!!invoice?.notes);
       // CC is persisted on the invoice (invoice.ccEmail). emailCcRef just carries
       // it into the async native print/email effect after setPrintTarget.
@@ -23286,8 +23373,14 @@ const confirmDelete = (p) => setConfirmOpts({
         document.body.classList.add('tm-native');
         return () => document.body.classList.remove('tm-native');
       }, []);
-      const chromeNavRef = React.useRef({});
-      chromeNavRef.current = { showSettings, openId };
+      // Depth-aware native back: one LIFO of dismissable levels (see useBackLevel). Each
+      // level registers from inside its own component; the 'back' handler below pops the
+      // top and calls its one-step closer. Imperative ref — never drives render.
+      const backStackRef = React.useRef([]);
+      const backCtx = React.useMemo(() => ({
+        push: (id, close) => { if (!backStackRef.current.some(e => e.id === id)) backStackRef.current.push({ id, close }); },
+        remove: (id) => { backStackRef.current = backStackRef.current.filter(e => e.id !== id); },
+      }), []);
       useEffect(() => {
         if (!NATIVE_CHROME_ACTIVE) return;
         const onNav = (ev) => {
@@ -23309,9 +23402,15 @@ const confirmDelete = (p) => setConfirmOpts({
             return;
           }
           if (d.action === 'back') {
-            const st = chromeNavRef.current;
-            if (st.showSettings) { setShowSettings(false); return; }
-            if (st.openId) { setOpenId(null); setOpenInvoiceId(null); setOpenImportFile(null); }
+            // Pop ONE level: the topmost registered dismissable level closes itself
+            // (its own one-step closer). No special cases — the stack is the single source.
+            // The closer runs FIRST; a guarded level (a dirty editor) returns false to VETO
+            // its own dismissal (it shows a discard prompt instead) — leave it on the stack
+            // so a later back re-triggers the guard rather than skipping a level.
+            const stack = backStackRef.current;
+            const top = stack[stack.length - 1];
+            if (top && top.close() !== false) stack.pop();
+            return;
           }
         };
         window.addEventListener('tmNativeNav', onNav);
@@ -23404,6 +23503,7 @@ const confirmDelete = (p) => setConfirmOpts({
 
       return (
         <>
+          <BackLevelContext.Provider value={backCtx}>
           {screen}
           {/* Stage 3 share-in chooser — a shared file has no shoot context, so
               ask. Existing shoot rows are most-recent-first; "New shoot" runs
@@ -23443,6 +23543,10 @@ const confirmDelete = (p) => setConfirmOpts({
               )}
             </div>
           </Sheet>
+          {/* share-in chooser lives INSIDE the provider so its Sheet-primitive back-level
+              registers — a share that opens over a live shoot must pop the chooser, not the
+              shoot. Transient banners / CelebrationLayer below stay outside (no back-level). */}
+          </BackLevelContext.Provider>
           {storageError && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#7f1d1d', color: '#fca5a5', padding: '8px 16px', fontSize: 12, fontFamily: 'ui-sans-serif, system-ui', textAlign: 'center' }}>
               ⚠ Storage error - data may not be saved: {storageError}
