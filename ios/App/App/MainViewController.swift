@@ -264,6 +264,12 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // zeroed because the native bars cover the device safe area; --sab keeps the bottom safe
     // area only when the tab bar is hidden (nothing else covers the home indicator then).
     private func applyContentInsets() {
+        // Phase-1 Option-A spike (device check ii): prove the re-parented bridge VC still reaches its
+        // webview. Gated to the tab-controller path so the OFF build (tabBarController == nil) is silent
+        // and byte-identical.
+        if tabBarController != nil {
+            print("[OptionA-spike] applyContentInsets: bridge?.webView = \(bridge?.webView == nil ? "NIL" : "non-nil")")
+        }
         guard chromeEnabled, let webView = bridge?.webView else { return }
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.contentInset = .zero
@@ -322,6 +328,15 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
         // Floating + create button — Shoots root only.
         fabButton.isHidden = !createButton
+        // Phase-1 Option-A spike: when hosted in the RootTabBarController the SYSTEM tab bar IS the
+        // bottom chrome, so force the OLD hand-built cluster hidden to avoid a doubled bar. Reversible
+        // guard (Phase 2 deletes the old code). On the OFF build MainViewController is the window root,
+        // so `tabBarController` is nil and this is a no-op → byte-identical. Clearance left as-is.
+        if tabBarController != nil {
+            capsuleGlass.isHidden = true
+            tabBar.isHidden = true
+            fabButton.isHidden = true
+        }
         view.bringSubviewToFront(navBar)
         view.bringSubviewToFront(capsuleGlass)   // glass (behind)
         view.bringSubviewToFront(tabBar)         // transparent bar, on top of the glass
@@ -378,6 +393,12 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
     func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
         let tab = item.tag == 1 ? "invoices" : (item.tag == 2 ? "stats" : "shoots")
+        dispatchNav(action: "tab", tab: tab)
+    }
+    // Phase-1 Option-A spike: the RootTabBarController routes a SYSTEM-tab tap here, firing the SAME
+    // `tmNativeNav` tab event the hand-built bar dispatches (index 0/1/2 → shoots/invoices/stats).
+    func spikeDispatchTab(index: Int) {
+        let tab = index == 1 ? "invoices" : (index == 2 ? "stats" : "shoots")
         dispatchNav(action: "tab", tab: tab)
     }
     @objc private func onBack() { dispatchNav(action: "back") }
