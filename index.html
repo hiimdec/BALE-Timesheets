@@ -23343,8 +23343,12 @@ const confirmDelete = (p) => setConfirmOpts({
           activeTab,
           tabBarVisible: !inShoot && !showSettings,
           trailing,
+          // The native tab bar drops Invoices when invoicing is toggled off (matches the
+          // web home sub-tab gating). A redirect effect already bumps homeTab off
+          // 'invoices' when this flips false, so activeTab follows to 'shoots'.
+          invoicesVisible: invoicesTabVisible(userPrefs),
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs)]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {

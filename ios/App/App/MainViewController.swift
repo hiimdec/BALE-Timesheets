@@ -44,6 +44,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private let navItem = UINavigationItem()
     private let tabBar = UITabBar()
     private var chromeEnabled = false
+    private var invoicesShown = true   // current tab set; rebuilt when the web's invoicing toggle flips
     private lazy var backButton = UIBarButtonItem(
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
 
@@ -75,6 +76,16 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         applyContentInsets()
     }
 
+    // Tab set is driven by the web's invoicesTabVisible(userPrefs). Tags are STABLE
+    // (Shoots 0 / Invoices 1 / Stats 2) regardless of which are present, so the active-tab
+    // sync (by tag, below) never misaligns when Invoices is dropped.
+    private func tabItems(invoices: Bool) -> [UITabBarItem] {
+        var items = [UITabBarItem(title: "Shoots", image: UIImage(systemName: "film"), tag: 0)]
+        if invoices { items.append(UITabBarItem(title: "Invoices", image: UIImage(systemName: "doc.text"), tag: 1)) }
+        items.append(UITabBarItem(title: "Stats", image: UIImage(systemName: "chart.bar"), tag: 2))
+        return items
+    }
+
     private func setupChrome() {
         // Top nav bar — sits just below the status bar; centered title + leading back
         // (hidden by default) + trailing buttons. The trailing buttons are CONTEXT-AWARE
@@ -87,11 +98,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
         // Bottom tab bar — 3 items (reuses the spike pattern). Pinned to the bottom edge
         // so it auto-grows to include the home-indicator inset.
-        tabBar.items = [
-            UITabBarItem(title: "Shoots", image: UIImage(systemName: "film"), tag: 0),
-            UITabBarItem(title: "Invoices", image: UIImage(systemName: "doc.text"), tag: 1),
-            UITabBarItem(title: "Stats", image: UIImage(systemName: "chart.bar"), tag: 2),
-        ]
+        tabBar.items = tabItems(invoices: invoicesShown)
         tabBar.selectedItem = tabBar.items?.first
         tabBar.delegate = self
         tabBar.translatesAutoresizingMaskIntoConstraints = false
@@ -132,7 +139,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
-    func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String]) {
+    func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool) {
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
@@ -142,7 +149,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         // rightBarButtonItems lay out right-to-left (index 0 = rightmost); the web sends
         // them in that order. Unknown keys are dropped.
         navItem.rightBarButtonItems = trailing.compactMap { trailingButton(for: $0) }
+        // Honour the web's invoicing toggle: rebuild the tab set when it flips.
+        if invoicesVisible != invoicesShown {
+            invoicesShown = invoicesVisible
+            tabBar.items = tabItems(invoices: invoicesVisible)
+        }
         tabBar.isHidden = !tabBarVisible
+        // Sync by TAG (the tab NAME), not index — so dropping Invoices never highlights Stats as Invoices.
         let tag = activeTab == "invoices" ? 1 : (activeTab == "stats" ? 2 : 0)
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
         view.bringSubviewToFront(navBar)
@@ -210,9 +223,10 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let activeTab = call.getString("activeTab") ?? "shoots"
         let tabBarVisible = call.getBool("tabBarVisible") ?? true
         let trailing = call.getArray("trailing", String.self) ?? ["settings", "search"]
+        let invoicesVisible = call.getBool("invoicesVisible") ?? true
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
-                title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing)
+                title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible)
             call.resolve()
         }
     }
