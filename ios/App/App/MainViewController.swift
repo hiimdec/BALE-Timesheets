@@ -139,12 +139,16 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
-    func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool) {
+    func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
+                          wordmark: Bool = false, wordmarkName: String = "", wordmarkSize: String = "md") {
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
         }
         navItem.title = title
+        // Tab roots get the custom two-line wordmark lockup as the titleView; pushed screens
+        // (production name / Settings) fall back to the plain string title (titleView = nil).
+        navItem.titleView = wordmark ? makeWordmarkLockup(name: wordmarkName, size: wordmarkSize) : nil
         navItem.leftBarButtonItem = backVisible ? backButton : nil
         // rightBarButtonItems lay out right-to-left (index 0 = rightmost); the web sends
         // them in that order. Unknown keys are dropped.
@@ -162,6 +166,45 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         view.bringSubviewToFront(tabBar)
         view.setNeedsLayout()
         applyContentInsets()
+    }
+
+    // Two-line centred wordmark lockup for the three tab roots, matching the web wordmark:
+    //   line 1 (possessive)  — muted grey (text-neutral-500 = #737373), medium, wide tracking
+    //                          (0.2em), ~0.52x the mark; omitted when there's no display name.
+    //   line 2 (mark)        — signature blue (text-sky-500 = #0EA5E9), heavy, tight tracking.
+    // System font, all caps, static. Colours are the literal web tokens (not invented).
+    // TEMPORARY: the mark point size comes from `size` (sm/md/lg) via the preview picker — when
+    // that's removed, hardcode `mark = 17` and drop the `size` parameter.
+    private func makeWordmarkLockup(name: String, size: String) -> UIView {
+        let mark: CGFloat = size == "sm" ? 15 : (size == "lg" ? 19 : 17)
+        let possSize = (mark * 0.52).rounded()
+        let blue = UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)   // text-sky-500
+        let grey = UIColor(red: 115.0/255.0, green: 115.0/255.0, blue: 115.0/255.0, alpha: 1)  // text-neutral-500
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 0
+        stack.isUserInteractionEnabled = false
+
+        if !name.isEmpty {
+            let poss = UILabel()
+            poss.attributedText = NSAttributedString(string: name.uppercased(), attributes: [
+                .font: UIFont.systemFont(ofSize: possSize, weight: .medium),
+                .foregroundColor: grey,
+                .kern: possSize * 0.2,        // tracking-[0.2em]
+            ])
+            stack.addArrangedSubview(poss)
+        }
+        let markLabel = UILabel()
+        markLabel.attributedText = NSAttributedString(string: "TIMEMACHINE", attributes: [
+            .font: UIFont.systemFont(ofSize: mark, weight: .black),
+            .foregroundColor: blue,
+            .kern: mark * -0.025,             // tracking-tight
+        ])
+        stack.addArrangedSubview(markLabel)
+        stack.frame = CGRect(origin: .zero, size: stack.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize))
+        return stack
     }
 
     // MARK: - Native → web (one-way evaluateJavaScript hop, same lightweight path as the spike)
@@ -224,9 +267,15 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let tabBarVisible = call.getBool("tabBarVisible") ?? true
         let trailing = call.getArray("trailing", String.self) ?? ["settings", "search"]
         let invoicesVisible = call.getBool("invoicesVisible") ?? true
+        // Wordmark lockup (tab roots only). `wordmark` gates the custom two-line titleView;
+        // `wordmarkName` is the possessive line. `wordmarkSize` is TEMPORARY (preview picker).
+        let wordmark = call.getBool("wordmark") ?? false
+        let wordmarkName = call.getString("wordmarkName") ?? ""
+        let wordmarkSize = call.getString("wordmarkSize") ?? "md"
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
-                title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible)
+                title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
+                wordmark: wordmark, wordmarkName: wordmarkName, wordmarkSize: wordmarkSize)
             call.resolve()
         }
     }

@@ -17903,7 +17903,7 @@ const setDays = (updater) =>
       );
     }
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0 }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0, wordmarkSize = 'md', setWordmarkSize = () => {} }) {
       useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
@@ -18058,6 +18058,27 @@ const setDays = (updater) =>
                 </Field>
               )}
             </SectionCard>
+
+            {/* ════════════════ TEMPORARY — WORDMARK SIZE PREVIEW (REMOVE LATER) ════════════════
+                Isolated device-tuning control for the native wordmark lockup. Writes the
+                STANDALONE key tm_wordmark_preview_size (NOT userPrefs / not any record) and
+                lifts the value to Root so the native bar re-emits live. Native-only (the lockup
+                renders in MainViewController). To remove: delete this whole block, the Root
+                wordmarkSize state + setter, the standalone key, and the wordmarkSize field on
+                NativeChrome.update + the Swift size param. ═══════════════════════════════════ */}
+            {NATIVE_CHROME_ACTIVE && (
+            <SectionCard title="Wordmark size (preview)">
+              <div className="flex bg-neutral-900 border border-neutral-800 rounded-lg p-0.5 gap-0.5">
+                {[['sm', 'Small'], ['md', 'Medium'], ['lg', 'Large']].map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => { haptic.light(); setWordmarkSize(k); }}
+                    className={`flex-1 text-[12px] font-semibold py-1.5 rounded-md transition-colors ${wordmarkSize === k ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200'}`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </SectionCard>
+            )}
 
             {/* §2 — Tools: standalone one-offs that don't fit a settings group.
                 Keep compact (single button) — modal flow + local showCalc state
@@ -23111,6 +23132,13 @@ const confirmDelete = (p) => setConfirmOpts({
 
       const [showSettings, setShowSettings] = useState(false);
       const [showStats, setShowStats] = useState(false);
+      // TEMPORARY — wordmark size preview. Standalone localStorage key (NOT userPrefs / not any
+      // record), so it's zero-migration-risk and a clean delete later. Held in state so the
+      // native-chrome title effect re-emits when the size changes.
+      const [wordmarkSize, setWordmarkSizeState] = useState(() => {
+        try { const v = localStorage.getItem('tm_wordmark_preview_size'); return (v === 'sm' || v === 'lg') ? v : 'md'; } catch (_) { return 'md'; }
+      });
+      const setWordmarkSize = (v) => { setWordmarkSizeState(v); try { localStorage.setItem('tm_wordmark_preview_size', v); } catch (_) {} };
       const [showNewProduction, setShowNewProduction] = useState(false);
       const [showMigrationBanner, setShowMigrationBanner] = useState(migrationResult.ran === true);
       const [versionToast, setVersionToast] = useState(false);
@@ -23469,6 +23497,10 @@ const confirmDelete = (p) => setConfirmOpts({
         const title = inShoot ? (currentProduction.title || 'Untitled production')
           : showSettings ? 'Settings'
           : wordmark;
+        // The custom wordmark lockup (titleView) is used ONLY on the three tab roots — i.e.
+        // wherever the title IS the wordmark. Pushed screens (production name / Settings) keep
+        // their plain string title.
+        const isWordmarkRoot = !inShoot && !showSettings;
         // Stage 3b: trailing buttons are context-aware. Tab roots keep app Settings +
         // Search; a SOLO shoot shows Share + Production settings; a BEST-BOY shoot shows
         // Production settings (+ a "more" overflow in mobile viewMode for the kebab).
@@ -23486,8 +23518,14 @@ const confirmDelete = (p) => setConfirmOpts({
           // web home sub-tab gating). A redirect effect already bumps homeTab off
           // 'invoices' when this flips false, so activeTab follows to 'shoots'.
           invoicesVisible: invoicesTabVisible(userPrefs),
+          // Wordmark lockup: native swaps in the two-line lockup titleView when `wordmark` is
+          // true (roots only); `wordmarkName` is the possessive line ("DECLAN'S" or '').
+          wordmark: isWordmarkRoot,
+          wordmarkName: isWordmarkRoot && wm ? `${wm.toUpperCase()}'S` : '',
+          // TEMPORARY preview size (sm/md/lg) — remove this field with the size picker.
+          wordmarkSize,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs)]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), wordmarkSize]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {
@@ -23507,6 +23545,8 @@ const confirmDelete = (p) => setConfirmOpts({
             onExport={handleExport}
             onResetAll={handleResetAll}
             productionCount={productions.length}
+            wordmarkSize={wordmarkSize}
+            setWordmarkSize={setWordmarkSize}
           />
         );
       } else if (showStats) {
