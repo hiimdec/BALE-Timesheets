@@ -65,7 +65,10 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private static func glassEffect(tinted: Bool) -> UIVisualEffect {
         if #available(iOS 26.0, *) {
             let g = UIGlassEffect()
-            if tinted { g.tintColor = accentBlue }
+            // Dialled-back alpha so the bead reads as TINTED GLASS, not a solid disc — the glass
+            // character + backdrop show through and the white glyph stays legible on top. (Exact
+            // alpha is a device-judgment dial for Derrick.)
+            if tinted { g.tintColor = accentBlue.withAlphaComponent(0.5) }
             return g
         }
         return UIBlurEffect(style: .systemThinMaterial)
@@ -84,9 +87,9 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     }
 
     // Floating "+" create button — a GLASS BEAD (Rate-style) sharing the capsule's material, so
-    // it stops reading as a foreign solid disc. Brand accent as a glass tint + an sky-500 glyph
-    // (the + wears the accent on shared glass, not a different material). No opaque fill, no
-    // drop-shadow — it sits on the same glass elevation as the capsule, lifted by the glass edge.
+    // it stops reading as a foreign solid disc. Dialled-back sky tint on the glass + a WHITE glyph
+    // for contrast (a sky-500 glyph on a sky-500 tint was invisible — the original was white-on-blue).
+    // No opaque fill, no drop-shadow — it sits on the same glass elevation as the capsule.
     private lazy var fabButton: UIButton = {
         let b = UIButton(type: .custom)
         b.translatesAutoresizingMaskIntoConstraints = false
@@ -103,7 +106,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             glass.topAnchor.constraint(equalTo: b.topAnchor),
             glass.bottomAnchor.constraint(equalTo: b.bottomAnchor),
         ])
-        b.tintColor = Self.accentBlue                   // sky-500 glyph
+        b.tintColor = .white                            // WHITE glyph — clear on the sky-tinted glass (sky-500 on sky-500 was invisible)
         b.setImage(UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold)), for: .normal)
         b.isHidden = true
         b.addTarget(self, action: #selector(onCreate), for: .touchUpInside)
@@ -286,15 +289,20 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         if invoicesVisible != invoicesShown {
             invoicesShown = invoicesVisible
             tabBar.items = tabItems(invoices: invoicesVisible)
+            capsuleWidthConstraint?.constant = capsuleWidth(forItems: tabBar.items?.count ?? 3)
         }
-        tabBar.isHidden = !tabBarVisible
+        // Show/hide the CAPSULE (the container) — NOT the inner bar. The tab bar lives in the
+        // capsule's contentView, so a hidden capsule hides the bar with it. The pre-capsule code
+        // toggled only `tabBar.isHidden`, leaving the capsule hidden from setup → the whole bar
+        // vanished on device. The bar inside stays visible; the capsule is the single visibility gate.
+        capsuleGlass.isHidden = !tabBarVisible
         // Sync by TAG (the tab NAME), not index — so dropping Invoices never highlights Stats as Invoices.
         let tag = activeTab == "invoices" ? 1 : (activeTab == "stats" ? 2 : 0)
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
         // Floating + create button — Shoots root only.
         fabButton.isHidden = !createButton
         view.bringSubviewToFront(navBar)
-        view.bringSubviewToFront(tabBar)
+        view.bringSubviewToFront(capsuleGlass)   // carries the tab bar (its contentView child); bringing the bar itself was a no-op (not a direct subview of view)
         view.bringSubviewToFront(fabButton)
         view.setNeedsLayout()
         applyContentInsets()
