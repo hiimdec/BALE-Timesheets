@@ -6085,7 +6085,7 @@ async function main() {
         const payloadOk = /extra: \{ productionId: p\.id, invoiceId: inv\.id \},/.test(sweep) &&
           /schedule: \{ at \},/.test(sweep) &&
           /title: 'Invoice overdue',/.test(sweep) &&
-          /body: `\$\{p\.name \|\| 'Your'\} invoice is now overdue\. Chase it\?`,/.test(sweep);
+          /body: `\$\{p\.title \|\| 'Your'\} invoice is now overdue\. Chase it\?`,/.test(sweep);
         const applyOk = /if \(toCancel\.length\) await Notifications\.cancel\(toCancel\);/.test(sweep) &&
           /if \(toSchedule\.length\) await Notifications\.schedule\(toSchedule\);/.test(sweep);
         const calcNeutralOk = !/setProductions\(|setDays\(|setProduction\(/.test(sweep);

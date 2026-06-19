@@ -23082,7 +23082,7 @@ const confirmDelete = (p) => setConfirmOpts({
             title: 'Invoice overdue',
             // Exact copy (job name inline, NO amount, NO invoice number) as the
             // body so it wraps on the lock screen rather than truncating.
-            body: `${p.name || 'Your'} invoice is now overdue. Chase it?`,
+            body: `${p.title || 'Your'} invoice is now overdue. Chase it?`,
             schedule: { at },
             extra: { productionId: p.id, invoiceId: inv.id },
           });
