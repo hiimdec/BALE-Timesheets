@@ -160,31 +160,47 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             chromeEnabled = true
             navBar.isHidden = false
         }
-        navItem.title = title
-        // Tab roots get the custom two-line wordmark lockup as the titleView; pushed screens
-        // (production name / Settings) fall back to the plain string title (titleView = nil).
-        navItem.titleView = wordmark ? makeWordmarkLockup(name: wordmarkName) : nil
-        // Leading slot holds the back button (pushed screens) OR the web's leading actions
-        // (search, roots only) — never both. Leading actions reuse the same key→button map as
-        // trailing, so the icon styling matches. rightBarButtonItems lay out right-to-left
-        // (index 0 = rightmost); the web sends them in that order. Unknown keys are dropped.
-        if backVisible {
-            navItem.leftBarButtonItems = [backButton]
+        // ── Left-aligned redesign ──────────────────────────────────────────────────────────
+        // Roots: the wordmark lockup is LEFT-ALIGNED in the leading slot (not a centred titleView);
+        // the right holds TWO clusters — a [search settings] utility group + a pinned [+] create
+        // pill at the trailing edge (Shoots only). Pushed screens keep their plain centred title +
+        // back/X. Search's close-X toggle just lives in the right-hand utility group now.
+        navItem.titleView = nil
+        navItem.title = wordmark ? "" : title
+
+        // Leading item(s): root → wordmark lockup; pushed → back chevron OR the leading close-X.
+        let leadingItems: [UIBarButtonItem]
+        if wordmark {
+            let wm = UIBarButtonItem(customView: makeWordmarkLockup(name: wordmarkName))
+            if #available(iOS 26.0, *) { wm.hidesSharedBackground = true }   // brand mark, not a button pill
+            leadingItems = [wm]
+        } else if backVisible {
+            leadingItems = [backButton]
         } else {
-            // Leading actions. `search` toggles to a close-X (firing closeSearch) when the web
-            // reports search active; `close` (New Production) is an X that fires the back path.
-            let leadingItems = leading.compactMap { (key: String) -> UIBarButtonItem? in
-                if key == "search" && searchActive { return trailingButton(for: "closeSearch") }
-                return trailingButton(for: key)
-            }
-            navItem.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
+            leadingItems = leading.compactMap { trailingButton(for: $0) }    // New Production close-X, etc.
         }
-        // Trailing: the web's trailing keys, plus a "+" create action just LEFT of the fixed
-        // rightmost icon when the web flags createButton (Shoots root only). rightBarButtonItems
-        // lay out right-to-left (index 0 = rightmost), so appending "create" puts it left of settings.
-        var trailingKeys = trailing
-        if createButton { trailingKeys.append("create") }
-        navItem.rightBarButtonItems = trailingKeys.compactMap { trailingButton(for: $0) }
+
+        // Trailing utility items (search → close-X when the web reports search active) + the create
+        // pill, pinned at the trailing edge as the most prominent action (Shoots root only).
+        let utilityItems = trailing.compactMap { (key: String) -> UIBarButtonItem? in
+            (key == "search" && searchActive) ? trailingButton(for: "closeSearch") : trailingButton(for: key)
+        }
+        let createItem = createButton ? trailingButton(for: "create") : nil
+
+        if #available(iOS 26.0, *) {
+            // Two distinct bar-button groups → two glass clusters; create pinned past the utility group.
+            navItem.leadingItemGroups = leadingItems.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: leadingItems, representativeItem: nil)]
+            navItem.trailingItemGroups = utilityItems.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: utilityItems, representativeItem: nil)]
+            navItem.pinnedTrailingGroup = createItem.map { UIBarButtonItemGroup(barButtonItems: [$0], representativeItem: nil) }
+        } else {
+            // iOS 15-25 fallback: flat arrays (one cluster). Right lays out right-to-left, so create
+            // at index 0 sits at the trailing edge, then settings, then search.
+            navItem.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
+            var rightItems: [UIBarButtonItem] = []
+            if let c = createItem { rightItems.append(c) }
+            rightItems.append(contentsOf: utilityItems.reversed())
+            navItem.rightBarButtonItems = rightItems.isEmpty ? nil : rightItems
+        }
         // Honour the web's invoicing toggle: rebuild the tab set when it flips.
         if invoicesVisible != invoicesShown {
             invoicesShown = invoicesVisible
