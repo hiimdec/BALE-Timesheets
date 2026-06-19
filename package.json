@@ -6,9 +6,10 @@
   "scripts": {
     "generate-icons": "node scripts/generate-icons.js",
     "build": "node scripts/build.js",
-    "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js",
+    "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js && node scripts/build-vs-source-audit/kit-assertions.js",
     "audit:build:exec": "node scripts/build-vs-source-audit/compare.js",
     "audit:build:textual": "node scripts/build-vs-source-audit/textual-diff.js",
+    "audit:kit": "node scripts/build-vs-source-audit/kit-assertions.js",
     "audit:storage": "node scripts/storage-audit/storage-test.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -26,7 +27,9 @@
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.3.4",
+    "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
@@ -40,6 +43,7 @@
     "@capacitor/assets": "^3.0.5",
     "@fontsource/inter": "^5.2.8",
     "esbuild": "^0.25.12",
+    "fake-indexeddb": "^6.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.19"

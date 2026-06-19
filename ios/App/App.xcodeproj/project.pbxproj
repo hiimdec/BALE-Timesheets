@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 60;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -15,10 +15,43 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		B144A1722FD8CA2B00FE2310 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B144A1712FD8CA2B00FE2310 /* WidgetKit.framework */; };
+		B144A1742FD8CA2B00FE2310 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B144A1732FD8CA2B00FE2310 /* SwiftUI.framework */; };
+		B144A1832FD8CA2C00FE2310 /* TimeMachineWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B144A1912FD8CECE00FE2310 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */; };
+		B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */; };
+		A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */; };
+		5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */; };
+		B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */; };
+		B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */; };
 		B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */; };
 		B41A0E1A2E1B000100000003 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000004 /* MainViewController.swift */; };
 		B41A0E1A2E1B000100000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000006 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B144A1812FD8CA2C00FE2310 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B144A16E2FD8CA2B00FE2310;
+			remoteInfo = TimeMachineWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B144A1842FD8CA2C00FE2310 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B144A1832FD8CA2C00FE2310 /* TimeMachineWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -31,10 +64,43 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TimeMachineWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B144A1712FD8CA2B00FE2310 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		B144A1732FD8CA2B00FE2310 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
+		B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSheetPlugin.swift; sourceTree = "<group>"; };
+		A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconPlugin.swift; sourceTree = "<group>"; };
+		5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheetPlugin.swift; sourceTree = "<group>"; };
+		B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineAppShortcuts.swift; sourceTree = "<group>"; };
+		B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineTimesParser.swift; sourceTree = "<group>"; };
+		B144A1922FD8CF1300FE2310 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		B144A1932FD8CF5400FE2310 /* TimeMachineWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TimeMachineWidgetExtension.entitlements; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePdfPlugin.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000006 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B144A1872FD8CA2C00FE2310 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B144A16E2FD8CA2B00FE2310 /* TimeMachineWidgetExtension */;
+		};
+		B144A18F2FD8CE4E00FE2310 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				TimeMachineActivityAttributes.swift,
+				TimeMachineIntents.swift,
+			);
+			target = 504EC3031FED79650016851F /* App */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B144A1752FD8CA2B00FE2310 /* TimeMachineWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (B144A18F2FD8CE4E00FE2310 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, B144A1872FD8CA2C00FE2310 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = TimeMachineWidget; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		504EC3011FED79650016851F /* Frameworks */ = {
@@ -45,14 +111,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B144A16C2FD8CA2B00FE2310 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B144A1742FD8CA2B00FE2310 /* SwiftUI.framework in Frameworks */,
+				B144A1722FD8CA2B00FE2310 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
+				B144A1932FD8CF5400FE2310 /* TimeMachineWidgetExtension.entitlements */,
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
+				B144A1752FD8CA2B00FE2310 /* TimeMachineWidget */,
+				B144A1702FD8CA2B00FE2310 /* Frameworks */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,6 +139,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -68,6 +147,13 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
+				B144A1922FD8CF1300FE2310 /* App.entitlements */,
+				B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */,
+				B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */,
+				A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */,
+				5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */,
+				B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */,
+				B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */,
@@ -83,6 +169,15 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		B144A1702FD8CA2B00FE2310 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B144A1712FD8CA2B00FE2310 /* WidgetKit.framework */,
+				B144A1732FD8CA2B00FE2310 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -93,10 +188,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				B144A1842FD8CA2C00FE2310 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B144A1822FD8CA2C00FE2310 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -106,19 +203,44 @@
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B144A16E2FD8CA2B00FE2310 /* TimeMachineWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B144A1882FD8CA2C00FE2310 /* Build configuration list for PBXNativeTarget "TimeMachineWidgetExtension" */;
+			buildPhases = (
+				B144A16B2FD8CA2B00FE2310 /* Sources */,
+				B144A16C2FD8CA2B00FE2310 /* Frameworks */,
+				B144A16D2FD8CA2B00FE2310 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B144A1752FD8CA2B00FE2310 /* TimeMachineWidget */,
+			);
+			name = TimeMachineWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = TimeMachineWidgetExtension;
+			productReference = B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
 		504EC2FC1FED79650016851F /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastSwiftUpdateCheck = 0920;
+				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 0920;
 				TargetAttributes = {
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
 						ProvisioningStyle = Automatic;
+					};
+					B144A16E2FD8CA2B00FE2310 = {
+						CreatedOnToolsVersion = 26.5;
 					};
 				};
 			};
@@ -139,6 +261,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				B144A16E2FD8CA2B00FE2310 /* TimeMachineWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -158,6 +281,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B144A16D2FD8CA2B00FE2310 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -168,10 +298,31 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */,
 				B41A0E1A2E1B000100000003 /* MainViewController.swift in Sources */,
+				B144A1912FD8CECE00FE2310 /* LiveActivityPlugin.swift in Sources */,
+				B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */,
+				A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */,
+				5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */,
+				B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */,
+				B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B144A16B2FD8CA2B00FE2310 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B144A1822FD8CA2C00FE2310 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B144A16E2FD8CA2B00FE2310 /* TimeMachineWidgetExtension */;
+			targetProxy = B144A1812FD8CA2C00FE2310 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -306,9 +457,12 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = Scribble;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 7TYG2Q28MA;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -316,7 +470,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.8.1;
+				MARKETING_VERSION = 5.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.timemachineapp.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -329,9 +483,12 @@
 		504EC3181FED79650016851F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = Scribble;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 7TYG2Q28MA;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -339,10 +496,96 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.8.1;
+				MARKETING_VERSION = 5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.timemachineapp.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B144A1852FD8CA2C00FE2310 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_ENTITLEMENTS = TimeMachineWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 7TYG2Q28MA;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TimeMachineWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TimeMachineWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 5.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = uk.co.timemachineapp.app.TimeMachineWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B144A1862FD8CA2C00FE2310 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_ENTITLEMENTS = TimeMachineWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 7TYG2Q28MA;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TimeMachineWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TimeMachineWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 5.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = uk.co.timemachineapp.app.TimeMachineWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -365,6 +608,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B144A1882FD8CA2C00FE2310 /* Build configuration list for PBXNativeTarget "TimeMachineWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B144A1852FD8CA2C00FE2310 /* Debug */,
+				B144A1862FD8CA2C00FE2310 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

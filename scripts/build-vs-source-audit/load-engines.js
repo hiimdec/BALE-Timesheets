@@ -39,6 +39,30 @@ const ENGINE_NAMES = [
   'augmentCalc',
   'computeAPArate',
   'dayOfWeek',
+  // Stage 2 (Kit Inventory): spot-checks read the categoriser to confirm
+  // itemised kit lines bucket via the bucket:'kit' marker, not the regex.
+  'categorizeBreakdownLine',
+  // Stage 2b auto-apply helper. Pure function: given a day + userPrefs,
+  // returns the day with kitItems snapshotted from default-on inventory
+  // items IFF the day's dayType is kit-bearing AND kitItems is empty.
+  'applyKitAutoApply',
+  // Stage 2c: auto-remove + cascade-resolved effective type.
+  'applyKitAutoRemove',
+  'resolveEffectiveDayType',
+  // Stage 2d: user-crew-id resolver for kit scoping (combines
+  // resolveUserCrewId with a solo single-crew fallback).
+  'getEffectiveUserCrewId',
+  // Stage 3: shoot-level kit aggregation (days-on, usual total,
+  // negotiated total + computed % discount).
+  'aggregateKitForShoot',
+  // Stage 4: end-to-end invoice line generation. Spot-checks build a
+  // production, call buildInvoiceLineItems, and assert deal application,
+  // detail formatting, double-counting safety, and rate-variation handling.
+  'buildInvoiceLineItems',
+  // Stage 6: per-production kit discount = Σ max(0, usual − negotiatedTotal)
+  // over the user's dealt items. Same helper / same user-crew-id resolution
+  // as the invoice path → stats-vs-invoice reconcile by construction.
+  'computeProductionKitDiscount',
 ];
 
 const EXPORT_LINE =

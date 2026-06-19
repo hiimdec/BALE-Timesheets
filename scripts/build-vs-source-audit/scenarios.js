@@ -5,7 +5,7 @@
  * (production, day, crewMember, prevDay) quadruple. The audit harness calls
  * calcForDisplay on both the SOURCE engine and the BUILT engine and compares.
  *
- * Coverage groups (>= 50 scenarios, currently 66):
+ * Coverage groups (>= 50 scenarios, currently 87):
  *   A. Continuous shoot days, various lengths
  *   B. Pre-light (incl. Saturday Pre-light)
  *   C. Prep / Recce / Build / De-rig
@@ -214,6 +214,16 @@ const scenarios = [
   mk('L04', 'Shoot + expenses (2 items)', {}, { expenses: [{ category: 'Parking', description: 'NCP', amount: 12 }, { category: 'Materials', description: 'Gels', amount: 8.50 }] }),
   mk('L05', 'Shoot + all extras', { kitMoneyEnabled: true, kitMoneyAmount: 40 }, { miles: 25, perDiemAmount: 30, kitMoneyAmount: 40, expenses: [{ category: 'Parking', description: 'NCP', amount: 12 }] }),
   mk('L06', 'Shoot + mileage round-trip', {}, { miles: 30, mileageRoundTrip: true }),
+  // Expenses rework — NEW-shape entries exercise augmentCalc's new reading path.
+  // L07 mirrors L02's per-diem output via a preset instance (presetId per-diem);
+  // L08 exercises a custom (presetId:null, name) + a non-per-diem preset instance.
+  mk('L07', 'Shoot + per-diem PRESET INSTANCE £30 (new shape — matches L02)', {}, { perDiemAmount: 0, expenses: [{ id: 'pd1', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 30, detail: '' }] }),
+  mk('L08', 'Shoot + new-shape expenses (custom + congestion preset)', {}, { expenses: [{ id: 'x1', presetId: null, name: 'Parking', amount: 12, detail: 'NCP' }, { id: 'x2', presetId: 'builtin-congestion', name: 'Congestion Charge', amount: 18, detail: '' }] }),
+  // Cascade REMOVED (strictly per-day): an empty day.expenses + a populated
+  // dayDefaults[date] must NOT inherit any more — calcForDisplay shows base only,
+  // and source==built agree (the materialisation happens in MIGRATIONS[4], proven
+  // by the EX-suite, not by resolveDay at calc time).
+  mk('L09', 'Cascade removed — empty day.expenses + dayDefaults set → no inheritance', {}, { expenses: [] }, { dayDefaults: { '2026-06-01': { expenses: [{ category: 'Parking', description: 'NCP', amount: 12 }], perDiemAmount: 25 } } }),
 
   // M. Step-up
   mk('M01', 'Spark stepping up to Gaffer (higher BDR)', {}, { stepUpRole: 'Gaffer', stepUpBDR: 600, stepUpOTCoef: 1.5 }),
