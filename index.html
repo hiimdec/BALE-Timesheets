@@ -919,7 +919,7 @@
     // never affected and a flag-off native build is visually unchanged.
     //   native → web : `tmNativeNav` CustomEvents (tab / back / settings / search)
     //   web → native : NativeChrome.update({ title, backVisible, activeTab, tabBarVisible })
-    const NATIVE_CHROME = false;
+    const NATIVE_CHROME = true;   // SHIPPING (v5): native chrome live on the iOS app; IS_NATIVE keeps web unaffected
     const NATIVE_CHROME_ACTIVE = NATIVE_CHROME && IS_NATIVE;
     const NativeChrome = {
       update(state) {

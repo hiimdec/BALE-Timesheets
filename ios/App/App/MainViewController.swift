@@ -175,7 +175,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             navItem.title = wordmark ? "" : title
         } else {
             navItem.title = title
-            navItem.titleView = wordmark ? makeWordmarkLockup(name: wordmarkName) : nil
+            navItem.titleView = wordmark ? makeWordmarkLockup(name: wordmarkName, alignment: .center) : nil
         }
 
         // Leading: LEFT root → wordmark lockup; otherwise → back chevron, or the web's leading
@@ -183,7 +183,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         // when the web reports search active.
         let leadingItems: [UIBarButtonItem]
         if isLeft && wordmark {
-            let wm = UIBarButtonItem(customView: makeWordmarkLockup(name: wordmarkName))
+            let wm = UIBarButtonItem(customView: makeWordmarkLockup(name: wordmarkName, alignment: .leading))
             if #available(iOS 26.0, *) { wm.hidesSharedBackground = true }   // brand mark, not a button pill
             leadingItems = [wm]
         } else if backVisible {
@@ -247,7 +247,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     //   line 2 (mark)        — signature blue (text-sky-500 = #0EA5E9), heavy, tight tracking.
     // System font, all caps, static. Colours are the literal web tokens (not invented).
     // Mark point size finalised at the Large value (19pt) after the on-device size review.
-    private func makeWordmarkLockup(name: String) -> UIView {
+    private func makeWordmarkLockup(name: String, alignment: UIStackView.Alignment) -> UIView {
         let mark: CGFloat = 19
         let possSize = (mark * 0.52).rounded()
         let blue = UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)   // text-sky-500
@@ -255,7 +255,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
         let stack = UIStackView()
         stack.axis = .vertical
-        stack.alignment = .leading   // both lines flush-left: the name lines up with TIMEMACHINE's left edge
+        stack.alignment = alignment   // CENTRED layout → .center (name centred over the mark); LEFT layout → .leading (name flush-left under the mark)
         stack.spacing = 0
         stack.isUserInteractionEnabled = false
 
