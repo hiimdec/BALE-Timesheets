@@ -5944,6 +5944,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const IExternalLink = (p) => <Icon {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></Icon>;
     const IReceipt = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16l3-2 2 2 2-2 2 2 2-2 3 2V4a2 2 0 0 0-2-2z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></Icon>;
     const IFilePlus = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></Icon>;
+    // doc.text — matches the native Invoices tab icon (document with text lines).
+    const IDocText = (p) => <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></Icon>;
 
     /* ═══════════════════════════ UI PRIMITIVES ═══════════════════════════ */
 
@@ -21230,7 +21232,7 @@ const setDays = (updater) =>
           <div className="max-w-3xl mx-auto px-4 py-6">
             {sortedInvoices.length === 0 ? (
               <div className="text-center py-16">
-                <div className="flex justify-center mb-3 text-neutral-700"><IReceipt size={40}/></div>
+                <div className="flex justify-center mb-3 text-neutral-700"><IDocText size={40}/></div>
                 <div className="text-sm font-semibold text-neutral-400 mb-1">No invoices yet.</div>
                 <div className="text-[11px] text-neutral-600 mb-6">Turn your timesheet into one and we'll handle the maths.</div>
                 <Btn variant="primary" onClick={handleNewInvoice}><IPlus size={13}/>New invoice</Btn>
@@ -21851,7 +21853,7 @@ const setDays = (updater) =>
         if (!hasInvoicingSetup) {
           return (
             <div className="max-w-6xl mx-auto px-4 py-12 text-center">
-              <div className="flex justify-center mb-4 text-neutral-700"><IReceipt size={40}/></div>
+              <div className="flex justify-center mb-4 text-neutral-700"><IDocText size={40}/></div>
               <div className="text-neutral-200 text-sm font-semibold mb-2">Set up invoicing</div>
               <div className="text-neutral-500 text-xs mb-6">Add your name and bank details once - they'll appear on every invoice you generate.</div>
               <Btn variant="primary" onClick={() => setShowWizard(true)}><IFilePlus size={14}/>Set up invoicing</Btn>
@@ -21860,7 +21862,7 @@ const setDays = (updater) =>
         }
         return (
           <div className="max-w-6xl mx-auto px-4 py-12 text-center">
-            <div className="flex justify-center mb-4 text-neutral-700"><IReceipt size={40}/></div>
+            <div className="flex justify-center mb-4 text-neutral-700"><IDocText size={40}/></div>
             <div className="text-neutral-400 text-sm font-semibold">No invoices yet.</div>
             <div className="text-neutral-500 text-xs mt-2">Tap <strong className="text-neutral-300">+ New invoice</strong> to turn a shoot's timesheet into your first.</div>
           </div>
@@ -21900,6 +21902,7 @@ const setDays = (updater) =>
               );
             })}
           </div>
+          {!NATIVE_CHROME_ACTIVE && (
           <button
             type="button"
             onClick={() => setShowProductionPicker(true)}
@@ -21908,6 +21911,7 @@ const setDays = (updater) =>
           >
             <IPlus size={13}/>New invoice
           </button>
+          )}
           {(() => {
             // The per-card render — extracted so each section maps over
             // its own slice without duplicating markup.
@@ -22071,7 +22075,7 @@ const setDays = (updater) =>
       );
     }
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, homeTab, setHomeTab, searchSignal, searchConsumedRef, onSearchActiveChange, searchActionsRef }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, homeTab, setHomeTab, searchSignal, searchConsumedRef, onSearchActiveChange, searchActionsRef, newInvoiceActionRef }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -22112,6 +22116,12 @@ const setDays = (updater) =>
         if (!NATIVE_CHROME_ACTIVE || !searchActionsRef) return;
         searchActionsRef.current = { close: () => { setSearchOpen(false); setQuery(""); } };
         return () => { searchActionsRef.current = null; };
+      }, []);
+      // Native "+" on the Invoices tab routes here → the new-invoice flow (production picker).
+      useEffect(() => {
+        if (!NATIVE_CHROME_ACTIVE || !newInvoiceActionRef) return;
+        newInvoiceActionRef.current = { create: () => setShowProductionPicker(true) };
+        return () => { newInvoiceActionRef.current = null; };
       }, []);
       // Live clock for the hero card's CLOCKED stat — ticks every 30s so the
       // "Xh Ym since call" value advances while ON CALL. Static state (WRAPPED
@@ -23482,6 +23492,11 @@ const confirmDelete = (p) => setConfirmOpts({
       // native X (action 'closeSearch') can dismiss the inline search.
       const [searchActive, setSearchActive] = useState(false);
       const searchActionsRef = React.useRef(null);
+      // Native "+" is tab-aware: ProductionsScreen registers its new-invoice trigger here, and the
+      // live home tab is mirrored to a ref so the (empty-deps) tmNativeCreate listener can route.
+      const newInvoiceActionRef = React.useRef(null);
+      const homeTabRef = React.useRef('productions');
+      useEffect(() => { homeTabRef.current = homeTab; }, [homeTab]);
       // Stage 3b: the mounted SoloDayPage registers its header actions here so the native
       // bar's trailing Share / Production-settings buttons can drive its internal sheets.
       // Null when no solo shoot is mounted (the actions no-op otherwise).
@@ -23552,9 +23567,17 @@ const confirmDelete = (p) => setConfirmOpts({
             return;
           }
         };
-        // Native floating "+" → open New Production (the same action as the web create
-        // affordance, which is suppressed under native chrome so it isn't doubled).
-        const onCreate = () => setShowNewProduction(true);
+        // Native floating "+" is tab-aware (the web routes it; native stays dumb): Shoots → New
+        // Production; Invoices → the new-invoice flow (production picker). The live tab is read via
+        // a ref since this listener has empty deps; the in-content create affordances stay suppressed
+        // under native chrome so they aren't doubled.
+        const onCreate = () => {
+          if (homeTabRef.current === 'invoices') {
+            if (newInvoiceActionRef.current && newInvoiceActionRef.current.create) newInvoiceActionRef.current.create();
+          } else {
+            setShowNewProduction(true);
+          }
+        };
         window.addEventListener('tmNativeNav', onNav);
         window.addEventListener('tmNativeCreate', onCreate);
         return () => {
@@ -23616,9 +23639,10 @@ const confirmDelete = (p) => setConfirmOpts({
           // true (roots only); `wordmarkName` is the possessive line ("DECLAN'S" or '').
           wordmark: isTabRoot,
           wordmarkName: isTabRoot && wm ? `${wm.toUpperCase()}'S` : '',
-          // Native floating "+" create button — shown ONLY on the Shoots tab root (not Stats /
-          // Invoices / shoots / Settings / pushed screens). Tap fires tmNativeCreate (below).
-          createButton: isTabRoot && activeTab === 'shoots',
+          // Native "+" create button — on the Shoots AND Invoices tab roots (not Stats / Settings /
+          // pushed screens). Tap fires tmNativeCreate; the web routes it by the live tab (Shoots →
+          // New Production, Invoices → new-invoice flow). Native stays dumb.
+          createButton: isTabRoot && (activeTab === 'shoots' || activeTab === 'invoices'),
           // Inline search open (Shoots root): native swaps the leading search icon to a close-X
           // whose tap fires 'closeSearch'. Mirrored from ProductionsScreen via setSearchActive.
           // Masked to activeTab==='shoots' — only there is ProductionsScreen mounted (so the
@@ -23659,7 +23683,7 @@ const confirmDelete = (p) => setConfirmOpts({
           />
         );
       } else if (!openId || !currentProduction) {
-        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} searchSignal={searchSignal} searchConsumedRef={searchConsumedRef} onSearchActiveChange={setSearchActive} searchActionsRef={searchActionsRef} />;
+        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} searchSignal={searchSignal} searchConsumedRef={searchConsumedRef} onSearchActiveChange={setSearchActive} searchActionsRef={searchActionsRef} newInvoiceActionRef={newInvoiceActionRef} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
           production={currentProduction}
