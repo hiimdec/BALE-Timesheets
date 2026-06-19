@@ -1492,26 +1492,20 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "4.8.1";
+    const APP_VERSION = "5.0";
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-06-02",
+      date: "2026-06-19",
       added: [
-        "New: Client and job details (company, emails, project, reference) now flow between your project and its invoices - fill them once; sent invoices stay locked as issued.",
-        "Improved: Backups now include bank details, company info, settings and invoice numbering - so a restore, or moving to a new device, brings everything back.",
-        "Improved: Favourable invoices now show clean whole-pound amounts on every line, including penalties.",
-        "Improved: Rounding is now a single choice (Exact, Favourable, or APA) instead of two separate switches that could conflict.",
-        "Fix: Overtime after midnight now correctly pays triple time through to wrap.",
-        "Fix: Pre-call premiums (early starts) are always paid in full, even on short days.",
-        "Fix: Corrected the travel-time threshold across all day types.",
-        "Fix: Mileage lines now show the correct route and M25 status.",
-        "Fix: Rigger rates now compute via the standard rules from the rate-card day rate.",
-        "Fix: A wrap time could go blank and zero the day total after changing the call time; the wrap now defaults to 11 hours after the call.",
-        "Fix: Duplicating a shoot no longer copies its invoices.",
-        "Data-integrity, input-validation and stability fixes throughout.",
+        "AI Call-Sheet Reader: import a call sheet and TimeMachine fills in your invoicing details, all on-device. (iPhone 15 Pro and newer, iOS 26, Apple Intelligence on.)",
+        "Live Activity: a live lock-screen card with running total, lunch countdown, OT projection, and Lunch / Wrap / Curtailed buttons.",
+        'Siri: "wrap now in TimeMachine" / "lunch in TimeMachine".',
+        "Invoicing: skip-the-editor CSV export, simpler rounding, hide/show modes.",
+        "A more native top and bottom bar, plus a new alternate app icon.",
+        "Fixes: overdue reminders now name the job; planned-lunch logging fix; smoother animations.",
       ],
-      notes: "Pay-calc accuracy (overtime, pre-call, travel, riggers, wrap time), a single rounding choice, bidirectional invoice linking, fuller backups, and data-integrity fixes. See CHANGELOG.md for full notes.",
+      notes: "Apple-Intelligence call-sheet import, a live lock-screen card, Siri shortcuts, CSV invoicing, and a more native shell. See CHANGELOG.md for full notes.",
     };
 
     /* ─── Schema version & storage-safety helpers ─── */
