@@ -230,7 +230,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
         let stack = UIStackView()
         stack.axis = .vertical
-        stack.alignment = .center
+        stack.alignment = .leading   // both lines flush-left: the name lines up with TIMEMACHINE's left edge
         stack.spacing = 0
         stack.isUserInteractionEnabled = false
 
