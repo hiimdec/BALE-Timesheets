@@ -155,7 +155,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
     func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
-                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = []) {
+                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false) {
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
@@ -171,7 +171,12 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         if backVisible {
             navItem.leftBarButtonItems = [backButton]
         } else {
-            let leadingItems = leading.compactMap { trailingButton(for: $0) }
+            // Leading actions. `search` toggles to a close-X (firing closeSearch) when the web
+            // reports search active; `close` (New Production) is an X that fires the back path.
+            let leadingItems = leading.compactMap { (key: String) -> UIBarButtonItem? in
+                if key == "search" && searchActive { return trailingButton(for: "closeSearch") }
+                return trailingButton(for: key)
+            }
             navItem.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
         }
         // Trailing: the web's trailing keys, plus a "+" create action just LEFT of the fixed
@@ -251,6 +256,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     @objc private func onShare() { dispatchNav(action: "share") }
     @objc private func onProdSettings() { dispatchNav(action: "prodSettings") }
     @objc private func onMore() { dispatchNav(action: "more") }
+    @objc private func onCloseSearch() { dispatchNav(action: "closeSearch") }
     // Trailing "+" create → its own event (not a nav action); the web opens New Production.
     @objc private func onCreate() {
         bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('tmNativeCreate'))", completionHandler: nil)
@@ -269,6 +275,10 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         case "prodSettings": symbol = "slider.horizontal.3";  action = #selector(onProdSettings)
         case "more":         symbol = "ellipsis";             action = #selector(onMore)
         case "create":       symbol = "plus";                 action = #selector(onCreate)
+        // Leading-slot dismiss X's: `close` (New Production) routes through the back path so the
+        // dirty-discard guard fires; `closeSearch` dismisses the inline search.
+        case "close":        symbol = "xmark";                action = #selector(onBack)
+        case "closeSearch":  symbol = "xmark";                action = #selector(onCloseSearch)
         default: return nil
         }
         return UIBarButtonItem(image: UIImage(systemName: symbol), style: .plain, target: self, action: action)
@@ -306,10 +316,11 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let wordmark = call.getBool("wordmark") ?? false
         let wordmarkName = call.getString("wordmarkName") ?? ""
         let createButton = call.getBool("createButton") ?? false
+        let searchActive = call.getBool("searchActive") ?? false
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
                 title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
-                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading)
+                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive)
             call.resolve()
         }
     }

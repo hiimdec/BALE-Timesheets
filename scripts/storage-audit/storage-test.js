@@ -4434,7 +4434,7 @@ async function main() {
 
     // ─ FF12: openSwipeRowId state declared in BOTH list components. ─
     check('FF12a ProductionsScreen owns openSwipeRowId state (precedes confirmDelete declaration)',
-      /const \[openSwipeRowId, setOpenSwipeRowId\] = useState\(null\);[\s\S]{0,2000}confirmDelete = \(p\)/.test(html));
+      /const \[openSwipeRowId, setOpenSwipeRowId\] = useState\(null\);[\s\S]{0,2800}confirmDelete = \(p\)/.test(html));
     check('FF12b AllInvoicesView owns openSwipeRowId + swipeConfirmDelete state',
       /const \[openSwipeRowId, setOpenSwipeRowId\] = useState\(null\);\s*const \[swipeConfirmDelete, setSwipeConfirmDelete\] = useState\(null\);/.test(html));
 

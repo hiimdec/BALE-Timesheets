@@ -16746,8 +16746,20 @@ const setDays = (updater) =>
       const canCreate = title.trim().length > 0;
       const handleCreate = () => { if (canCreate) onCreate({ title: title.trim(), bestBoyMode }); };
 
+      // Native chrome: the top-bar leading X closes via the back path. Guard a dirty form with a
+      // "Discard new production?" confirm (reuses the dirty-editor pattern); an untouched form
+      // closes immediately. The closer returns false to VETO (show the prompt) when dirty.
+      const dirty = title.trim().length > 0 || bestBoyMode;
+      const [showDiscard, setShowDiscard] = useState(false);
+      useBackLevel(true, () => {
+        if (dirty) { setShowDiscard(true); return false; }
+        onCancel(); return true;
+      }, 'new-production');
+
       return (
+        <>
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          {!NATIVE_CHROME_ACTIVE && (
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center">
               <button onClick={onCancel} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Cancel" aria-label="Cancel">
@@ -16755,6 +16767,7 @@ const setDays = (updater) =>
               </button>
             </div>
           </div>
+          )}
 
           <div className="max-w-2xl mx-auto px-4 py-10">
             <h1 className="text-2xl font-bold tracking-tight mb-8">New Production</h1>
@@ -16795,6 +16808,15 @@ const setDays = (updater) =>
             </Btn>
           </div>
         </div>
+        <ConfirmDialog
+          open={showDiscard}
+          title="Discard new production?"
+          message="The production you started won't be created."
+          confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"
+          onConfirm={() => { setShowDiscard(false); onCancel(); }}
+          onCancel={() => setShowDiscard(false)}
+        />
+        </>
       );
     }
 
@@ -22049,7 +22071,7 @@ const setDays = (updater) =>
       );
     }
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, homeTab, setHomeTab, searchSignal, searchConsumedRef }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, homeTab, setHomeTab, searchSignal, searchConsumedRef, onSearchActiveChange, searchActionsRef }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -22081,6 +22103,16 @@ const setDays = (updater) =>
       useEffect(() => {
         if (NATIVE_CHROME_ACTIVE && homeTab !== 'productions') { setSearchOpen(false); setQuery(""); }
       }, [homeTab]);
+      // Native chrome: mirror the inline-search open state up to Root (so the native leading
+      // button toggles search ⇄ close-X), and expose a close() the native X can call.
+      useEffect(() => {
+        if (NATIVE_CHROME_ACTIVE && onSearchActiveChange) onSearchActiveChange(searchOpen);
+      }, [searchOpen]);
+      useEffect(() => {
+        if (!NATIVE_CHROME_ACTIVE || !searchActionsRef) return;
+        searchActionsRef.current = { close: () => { setSearchOpen(false); setQuery(""); } };
+        return () => { searchActionsRef.current = null; };
+      }, []);
       // Live clock for the hero card's CLOCKED stat — ticks every 30s so the
       // "Xh Ym since call" value advances while ON CALL. Static state (WRAPPED
       // / no call yet) is unaffected by the tick.
@@ -23445,6 +23477,11 @@ const confirmDelete = (p) => setConfirmOpts({
       // ProductionsScreen unmount/remount) so a remount — e.g. returning from Settings —
       // can't replay a stale searchSignal and reopen the field. Fire-once-per-tap.
       const searchConsumedRef = React.useRef(0);
+      // ProductionsScreen mirrors its inline-search open state here so the chrome payload can
+      // toggle the native leading button (search ⇄ close-X). And it registers a close() so the
+      // native X (action 'closeSearch') can dismiss the inline search.
+      const [searchActive, setSearchActive] = useState(false);
+      const searchActionsRef = React.useRef(null);
       // Stage 3b: the mounted SoloDayPage registers its header actions here so the native
       // bar's trailing Share / Production-settings buttons can drive its internal sheets.
       // Null when no solo shoot is mounted (the actions no-op otherwise).
@@ -23496,6 +23533,11 @@ const confirmDelete = (p) => setConfirmOpts({
           if (d.action === 'search') {
             setShowSettings(false); setShowStats(false); setOpenId(null);
             setHomeTab('productions'); setSearchSignal(n => n + 1);
+            return;
+          }
+          if (d.action === 'closeSearch') {
+            // The native leading X (shown while search is active) dismisses the inline search.
+            if (searchActionsRef.current && searchActionsRef.current.close) searchActionsRef.current.close();
             return;
           }
           if (d.action === 'back') {
@@ -23553,10 +23595,13 @@ const confirmDelete = (p) => setConfirmOpts({
           : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])
           : (isTabRoot || activeSubScreen) ? ['settings']
           : [];
-        // Leading ACTION (left of the wordmark) — search, roots only. The leading slot holds
-        // search (root) or the back/X (pushed) — never both; back is driven natively by
-        // backVisible, so leading is empty on pushed screens.
-        const leading = isTabRoot ? ['search'] : [];
+        // Leading ACTION (left of the wordmark). Roots: search (which native swaps to a close-X
+        // while `searchActive`). New Production: its own close X (fires the back path → discard
+        // guard). Other pushed screens: empty — their back chevron is driven natively by
+        // backVisible. The slot never shows both a root action and a back/X.
+        const leading = isTabRoot ? ['search']
+          : showNewProduction ? ['close']
+          : [];
         NativeChrome.update({
           title,
           backVisible: inShoot || showSettings || !!activeSubScreen,
@@ -23575,8 +23620,13 @@ const confirmDelete = (p) => setConfirmOpts({
           // Native floating "+" create button — shown ONLY on the Shoots tab root (not Stats /
           // Invoices / shoots / Settings / pushed screens). Tap fires tmNativeCreate (below).
           createButton: isTabRoot && activeTab === 'shoots',
+          // Inline search open (Shoots root): native swaps the leading search icon to a close-X
+          // whose tap fires 'closeSearch'. Mirrored from ProductionsScreen via setSearchActive.
+          // Masked to activeTab==='shoots' — only there is ProductionsScreen mounted (so the
+          // mirrored value is live), which avoids a stale-true showing an X on the Stats/Invoices roots.
+          searchActive: isTabRoot && activeTab === 'shoots' && searchActive,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {
@@ -23610,7 +23660,7 @@ const confirmDelete = (p) => setConfirmOpts({
           />
         );
       } else if (!openId || !currentProduction) {
-        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} searchSignal={searchSignal} searchConsumedRef={searchConsumedRef} />;
+        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} searchSignal={searchSignal} searchConsumedRef={searchConsumedRef} onSearchActiveChange={setSearchActive} searchActionsRef={searchActionsRef} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
           production={currentProduction}
