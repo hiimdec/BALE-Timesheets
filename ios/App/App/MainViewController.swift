@@ -155,50 +155,75 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
     func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
-                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false) {
+                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false,
+                          topBarLayout: String = "left") {
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
         }
-        // ── Left-aligned redesign ──────────────────────────────────────────────────────────
-        // Roots: the wordmark lockup is LEFT-ALIGNED in the leading slot (not a centred titleView);
-        // the right holds TWO clusters — a [search settings] utility group + a pinned [+] create
-        // pill at the trailing edge (Shoots only). Pushed screens keep their plain centred title +
-        // back/X. Search's close-X toggle just lives in the right-hand utility group now.
-        navItem.titleView = nil
-        navItem.title = wordmark ? "" : title
+        // ── Top-bar layout A/B (beta) ──────────────────────────────────────────────────────
+        // Two coexisting layouts, selected by `topBarLayout`. ONLY the wordmark alignment and the
+        // search slot differ; everything else (search↔X, the + + tab-aware create, New Production X,
+        // back/X) is identical. LEFT (default, current shipping): wordmark left-aligned in the
+        // leading slot; right = [search settings] utility group + a pinned [+] pill. CENTRED:
+        // wordmark centred (titleView); search in the LEADING slot; settings (+ create) trailing.
+        let isLeft = (topBarLayout != "centred")
 
-        // Leading item(s): root → wordmark lockup; pushed → back chevron OR the leading close-X.
+        // Wordmark: centred titleView (CENTRED) vs left-aligned leading customView (LEFT).
+        if isLeft {
+            navItem.titleView = nil
+            navItem.title = wordmark ? "" : title
+        } else {
+            navItem.title = title
+            navItem.titleView = wordmark ? makeWordmarkLockup(name: wordmarkName) : nil
+        }
+
+        // Leading: LEFT root → wordmark lockup; otherwise → back chevron, or the web's leading
+        // actions (CENTRED search / New Production close-X), with search swapping to a close-X
+        // when the web reports search active.
         let leadingItems: [UIBarButtonItem]
-        if wordmark {
+        if isLeft && wordmark {
             let wm = UIBarButtonItem(customView: makeWordmarkLockup(name: wordmarkName))
             if #available(iOS 26.0, *) { wm.hidesSharedBackground = true }   // brand mark, not a button pill
             leadingItems = [wm]
         } else if backVisible {
             leadingItems = [backButton]
         } else {
-            leadingItems = leading.compactMap { trailingButton(for: $0) }    // New Production close-X, etc.
+            leadingItems = leading.compactMap { (key: String) -> UIBarButtonItem? in
+                (key == "search" && searchActive) ? trailingButton(for: "closeSearch") : trailingButton(for: key)
+            }
         }
 
-        // Trailing utility items (search → close-X when the web reports search active) + the create
-        // pill, pinned at the trailing edge as the most prominent action (Shoots root only).
+        // Trailing utility items (search → close-X when active) + the create pill (Shoots/Invoices).
         let utilityItems = trailing.compactMap { (key: String) -> UIBarButtonItem? in
             (key == "search" && searchActive) ? trailingButton(for: "closeSearch") : trailingButton(for: key)
         }
         let createItem = createButton ? trailingButton(for: "create") : nil
 
         if #available(iOS 26.0, *) {
-            // Two distinct bar-button groups → two glass clusters; create pinned past the utility group.
             navItem.leadingItemGroups = leadingItems.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: leadingItems, representativeItem: nil)]
-            navItem.trailingItemGroups = utilityItems.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: utilityItems, representativeItem: nil)]
-            navItem.pinnedTrailingGroup = createItem.map { UIBarButtonItemGroup(barButtonItems: [$0], representativeItem: nil) }
+            if isLeft {
+                // LEFT: utility group + a SEPARATE pinned create pill (two glass clusters).
+                navItem.trailingItemGroups = utilityItems.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: utilityItems, representativeItem: nil)]
+                navItem.pinnedTrailingGroup = createItem.map { UIBarButtonItemGroup(barButtonItems: [$0], representativeItem: nil) }
+            } else {
+                // CENTRED: [+ settings] as ONE trailing group (create to the LEFT of settings); no pinned pill.
+                var items = utilityItems
+                if let c = createItem { items.insert(c, at: 0) }
+                navItem.trailingItemGroups = items.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: items, representativeItem: nil)]
+                navItem.pinnedTrailingGroup = nil
+            }
         } else {
-            // iOS 15-25 fallback: flat arrays (one cluster). Right lays out right-to-left, so create
-            // at index 0 sits at the trailing edge, then settings, then search.
+            // iOS 15-25 fallback: flat arrays (one cluster). Right lays out right-to-left (index 0 = rightmost edge).
             navItem.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
             var rightItems: [UIBarButtonItem] = []
-            if let c = createItem { rightItems.append(c) }
-            rightItems.append(contentsOf: utilityItems.reversed())
+            if isLeft {
+                if let c = createItem { rightItems.append(c) }            // create at the trailing edge
+                rightItems.append(contentsOf: utilityItems.reversed())   // …then settings, then search
+            } else {
+                rightItems.append(contentsOf: utilityItems)              // [settings]
+                if let c = createItem { rightItems.append(c) }           // create to the LEFT of settings ([+ settings])
+            }
             navItem.rightBarButtonItems = rightItems.isEmpty ? nil : rightItems
         }
         // Honour the web's invoicing toggle: rebuild the tab set when it flips.
@@ -333,10 +358,11 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let wordmarkName = call.getString("wordmarkName") ?? ""
         let createButton = call.getBool("createButton") ?? false
         let searchActive = call.getBool("searchActive") ?? false
+        let topBarLayout = call.getString("topBarLayout") ?? "left"   // TEMPORARY beta A/B
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
                 title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
-                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive)
+                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive, topBarLayout: topBarLayout)
             call.resolve()
         }
     }

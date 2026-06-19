@@ -17956,7 +17956,7 @@ const setDays = (updater) =>
       );
     }
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0 }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0, topBarLayout = 'left', setTopBarLayout = () => {} }) {
       useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
@@ -18119,6 +18119,24 @@ const setDays = (updater) =>
               <Btn variant="ghost" onClick={() => setShowCalc(true)}><ICalc/>Cancellation calculator</Btn>
               <p className="text-[10px] text-neutral-500 mt-1">Estimate APA cancellation fees for cancelled or curtailed shoots.</p>
             </SectionCard>
+
+            {/* TEMPORARY beta A/B — top-bar layout picker. Native-chrome only; remove this whole
+                SectionCard (+ the standalone key, payload field, native centred path) before GA. */}
+            {NATIVE_CHROME_ACTIVE && (
+            <SectionCard title="Beta">
+              <div className="text-[11px] text-neutral-400 mb-2">Top bar layout</div>
+              <div className="flex bg-neutral-900 border border-neutral-800 rounded-lg p-0.5 gap-0.5">
+                {[['centred', 'Centred'], ['left', 'Left']].map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => { haptic.light(); setTopBarLayout(k); }}
+                    className={`flex-1 text-[12px] font-semibold py-1.5 rounded-md transition-colors ${topBarLayout === k ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200'}`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-neutral-500 mt-1.5">Try both arrangements of the top bar and tell us which you prefer.</p>
+            </SectionCard>
+            )}
 
             {/* §3 — Invoicing: ONE top-level group. Order: master toggle, then the
                 identity cluster (Your details, VAT, Bank details, Logo), Numbering
@@ -23497,6 +23515,14 @@ const confirmDelete = (p) => setConfirmOpts({
       const newInvoiceActionRef = React.useRef(null);
       const homeTabRef = React.useRef('productions');
       useEffect(() => { homeTabRef.current = homeTab; }, [homeTab]);
+      // TEMPORARY beta A/B — top-bar layout ('centred' | 'left'). STANDALONE localStorage key
+      // (NOT userPrefs / not any record → no migration). Default 'left' (current shipping
+      // behaviour). Remove this block + the Settings toggle + the topBarLayout payload field +
+      // the native centred path together before GA.
+      const [topBarLayout, setTopBarLayoutState] = useState(() => {
+        try { return localStorage.getItem('tm_topbar_layout') === 'centred' ? 'centred' : 'left'; } catch (_) { return 'left'; }
+      });
+      const setTopBarLayout = (v) => { setTopBarLayoutState(v); try { localStorage.setItem('tm_topbar_layout', v); } catch (_) {} };
       // Stage 3b: the mounted SoloDayPage registers its header actions here so the native
       // bar's trailing Share / Production-settings buttons can drive its internal sheets.
       // Null when no solo shoot is mounted (the actions no-op otherwise).
@@ -23614,16 +23640,23 @@ const confirmDelete = (p) => setConfirmOpts({
         // Left-aligned redesign: roots put a [search, settings] UTILITY group on the right (native
         // renders it as one cluster, plus a separate pinned + pill). Sub-screens keep settings only;
         // shoots keep their own trailing; New Production / Settings get none.
+        // TEMPORARY beta A/B (tm_topbar_layout): the ONLY two things that differ between layouts are
+        // the wordmark alignment (native, from `topBarLayout`) and the SEARCH SLOT. LEFT (default):
+        // roots put a [search, settings] utility group trailing + a separate pinned + pill; the
+        // wordmark is left-aligned. CENTRED: search sits in the LEADING slot, settings (+ create)
+        // trailing, wordmark centred. Everything else is identical.
+        const isLeft = topBarLayout !== 'centred';
         const trailing = inSoloShoot ? ['prodSettings', 'share']
           : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])
-          : isTabRoot ? ['search', 'settings']
+          : isTabRoot ? (isLeft ? ['search', 'settings'] : ['settings'])
           : activeSubScreen ? ['settings']
           : [];
-        // Leading ACTION. Roots show only the LEFT-ALIGNED wordmark (native renders it from the
-        // `wordmark` flag) — no leading action here. New Production: its own close X (fires the back
-        // path → discard guard). Other pushed screens: empty — back chevron is driven natively by
-        // backVisible. Search now lives in the right-hand utility group (above), not the leading slot.
-        const leading = showNewProduction ? ['close'] : [];
+        // Leading ACTION. LEFT roots: empty (the left-aligned wordmark fills the slot, native-side).
+        // CENTRED roots: search. New Production: its own close X (fires the back path → discard guard).
+        // Other pushed screens: empty — back chevron is driven natively by backVisible.
+        const leading = isTabRoot ? (isLeft ? [] : ['search'])
+          : showNewProduction ? ['close']
+          : [];
         NativeChrome.update({
           title,
           backVisible: inShoot || showSettings || !!activeSubScreen,
@@ -23648,8 +23681,10 @@ const confirmDelete = (p) => setConfirmOpts({
           // Masked to activeTab==='shoots' — only there is ProductionsScreen mounted (so the
           // mirrored value is live), which avoids a stale-true showing an X on the Stats/Invoices roots.
           searchActive: isTabRoot && activeTab === 'shoots' && searchActive,
+          // TEMPORARY beta A/B — which top-bar arrangement native renders ('centred' | 'left').
+          topBarLayout,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive, topBarLayout]);
 
       let screen;
       if (!userPrefs.onboardingComplete) {
@@ -23669,6 +23704,8 @@ const confirmDelete = (p) => setConfirmOpts({
             onExport={handleExport}
             onResetAll={handleResetAll}
             productionCount={productions.length}
+            topBarLayout={topBarLayout}
+            setTopBarLayout={setTopBarLayout}
           />
         );
       } else if (showStats) {
