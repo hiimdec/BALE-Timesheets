@@ -75,7 +75,7 @@ function buildHtml(html) {
   // 1. Replace the whole CDN dependencies block (Tailwind CDN + inline config +
   //    React + ReactDOM + Babel) with local references.
   const cdnBlockStart = html.indexOf('<!-- CDN Dependencies -->');
-  const babelTag = '<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>';
+  const babelTag = '<script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>';
   const cdnBlockEnd = html.indexOf(babelTag);
   if (cdnBlockStart === -1 || cdnBlockEnd === -1) {
     throw new Error('Could not locate the CDN dependencies block in index.html');

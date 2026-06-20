@@ -42,7 +42,14 @@
   </script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- @babel/standalone is PINNED to 7.26.4 (was UNPINNED → auto-updated to a build whose preset-react
+       now defaults to the 'automatic' JSX runtime, which emits a bare `import "react/jsx-runtime"` that
+       this unbundled page can't resolve → "Failed to resolve module specifier", the live site never
+       mounted). Babel 7.26.x defaults to the CLASSIC runtime (React.createElement / React.Fragment on
+       the global React UMD loaded above) — exactly what this in-browser-Babel web path needs. Do NOT
+       bump to an automatic-default build without also forcing runtime:'classic'. The esbuild/native
+       build is separate and unaffected (scripts/build.js uses its own jsx:'transform'). -->
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
 
   <style>
     :root {
