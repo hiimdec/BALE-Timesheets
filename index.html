@@ -22454,8 +22454,8 @@ const confirmDelete = (p) => setConfirmOpts({
       }, [productions, userPrefs]);
 
       // A shoot is "upcoming" when it has dated days and none has elapsed.
-      // Its card shows the full booked figure (muted + BOOKED label) instead
-      // of the earned-so-far total, which is £0 by construction. Display-only:
+      // Its card shows the full booked figure, muted, instead of the
+      // earned-so-far total, which is £0 by construction. Display-only:
       // reads productionTotalsFull per-production; nothing here feeds
       // productionTotals / monthTotal / stats (the Stage 7 fence above stands).
       const productionIsUpcoming = useMemo(() => {
@@ -22796,10 +22796,7 @@ const confirmDelete = (p) => setConfirmOpts({
                 </div>
               )}
               {productionIsUpcoming[p.id] ? (
-                <div className="flex flex-col items-end flex-shrink-0">
-                  <span className="text-[15px] font-mono font-bold text-neutral-500">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
-                  <span className="text-[8px] uppercase tracking-[0.15em] text-neutral-600 font-bold">Booked</span>
-                </div>
+                <span className="text-[15px] font-mono font-bold text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
                 <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
               )}
@@ -22832,10 +22829,7 @@ const confirmDelete = (p) => setConfirmOpts({
               {bestBoyBadge}
               {invChip}
               {productionIsUpcoming[p.id] ? (
-                <span className="flex items-baseline gap-1.5 flex-shrink-0">
-                  <span className="text-[8px] uppercase tracking-[0.15em] text-neutral-600 font-bold">Booked</span>
-                  <span className="text-[13px] font-mono text-neutral-500">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
-                </span>
+                <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
                 <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
               )}
