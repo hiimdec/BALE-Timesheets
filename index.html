@@ -10318,7 +10318,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, userPrefs = null }) {
+    function DaysManager({ days, setDays, crew, production, setProduction, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, userPrefs = null }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -10483,12 +10483,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           // a no-op. The form's kitItems IS empty at this point because the
           // form-level hooks all reject crewId="" → no kitItems leaked from
           // the modal into the cross-crew duplication.
+          //
+          // The entered times go to dayDefaults[date] through the dept-default
+          // path, NOT onto each crew record. Explicit per-record copies froze
+          // every record against later dept-default edits (override = value
+          // presence), so the automatic apply-to-all cascade never ran for
+          // days created here. Each record omits the five cascade fields —
+          // the same seeding rule setDayDefault uses (V4-5h-14 F4.3) — so
+          // resolveDay follows the defaults until a member is individually
+          // edited. Kit auto-apply gets the form's dayType as effectiveType
+          // because the record itself no longer carries one.
           const myCrewId = getEffectiveUserCrewId(production, userPrefs);
-          const newDays = crew.map((c) => applyKitAutoApply(
-            { ...form, id: uid(), crewId: c.id },
-            userPrefs, null, myCrewId,
-          ));
-          setDays((prev) => [...prev, ...newDays]);
+          const cascadeFields = ["callTime", "wrapTime", "lunchStartTime", "lunchDurationMins", "dayType"];
+          const newDays = crew.map((c) => {
+            const rec = { ...form, id: uid(), crewId: c.id };
+            for (const f of cascadeFields) delete rec[f];
+            return applyKitAutoApply(rec, userPrefs, form.dayType, myCrewId);
+          });
+          setProduction((prev) => {
+            // Records go in first: setDayDefault seeds its own blank day for
+            // crew[0] on this date when none exists, which would duplicate.
+            let next = { ...prev, days: [...(prev.days || []), ...newDays].map(migrateDay) };
+            for (const f of cascadeFields) {
+              if (form[f] !== undefined) next = setDayDefault(next, form.date, f, form[f]);
+            }
+            return next;
+          });
           cancel();
         } else {
           if (!form.crewId) return;
@@ -16564,7 +16584,7 @@ const setDays = (updater) =>
                         onCrewTap={setDrilldownCrewMember}
                         showToast={showToast}
                       />)
-                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} userPrefs={userPrefs} />
+                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} setProduction={setProduction} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} userPrefs={userPrefs} />
             )}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
           </div>
