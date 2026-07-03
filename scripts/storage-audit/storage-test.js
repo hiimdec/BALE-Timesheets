@@ -4628,8 +4628,8 @@ async function main() {
     // ─ GG11: per-slot onChange writes through its OWN day.id (load-
     //   bearing — without this, swiping mid-edit would commit to the
     //   wrong day). ─
-    check('GG11 renderDay closure builds a per-day onChange keyed to day.id',
-      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? updatedDay : d\)\);\s*\}/.test(html));
+    check('GG11 renderDay closure builds a per-day onChange keyed to day.id (routed through applySoloWrapIntent — the solo wrap-edit intent)',
+      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)\);\s*\}/.test(html));
 
     // ─ GG12: swipe surface fills the panel height (NOT content-sized).
     //   Without this, the area below collapsed chips falls outside the
@@ -5735,7 +5735,7 @@ async function main() {
     check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, pref enabled), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
-      /const qualifies = enabled && !!rec && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
+      /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
       /if \(!qualifies\) \{[\s\S]{0,120}LiveActivity\.endForProduction\(pid\);/.test(html) &&
       /\} else if \(ids\.length > 1\) \{[\s\S]{0,160}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
       /if \(dupeIds\.length\) LiveActivity\.endActivityIds\(dupeIds\);/.test(html));
@@ -6185,6 +6185,20 @@ async function main() {
           /guard s\.wrapCurve\.count >= 2 else \{ return s\.totalText \}/.test(intents) &&
           /if s\.wrapCurve\[i\] >= now \{ pence = s\.wrapCurve\[i \+ 1\]; break \}/.test(intents);
         return schemaOk && pluginOk && intentsOk;
+      })());
+
+    // ─ TT17: solo wrap-edit intent — in-app wrap ends the card like card wrap ─
+    check('TT17a applySoloWrapIntent — fires ONLY on a wrapTime/wrapNextDay change; a PASSED wrap moment sets wrapped:true (the card-wrap flag → same WRAPPED send-off), a future/cleared wrap clears it; call-relative next-day handling (wrap < call or explicit wrapNextDay → +24h) protects night shifts; wired into BOTH solo write paths (dayOnChange + handleDayChange); reconcile qualifies excludes wrapped days',
+      (() => {
+        const fn = (html.match(/function applySoloWrapIntent\(prevDay, nextDay\)[\s\S]*?\n    \}/) || [''])[0];
+        const fnOk = /if \(nextDay\.wrapTime === prevDay\.wrapTime && !!nextDay\.wrapNextDay === !!prevDay\.wrapNextDay\) return nextDay;/.test(fn) &&
+          /const nextDayShift = nextDay\.wrapNextDay === true \|\| \(callH != null && wrapH < callH\);/.test(fn) &&
+          /if \(passed && nextDay\.wrapped !== true\) return \{ \.\.\.nextDay, wrapped: true \};/.test(fn) &&
+          /if \(!passed && nextDay\.wrapped === true\) return \{ \.\.\.nextDay, wrapped: false \};/.test(fn);
+        const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html) &&
+          /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html);
+        const sweepOk = /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html);
+        return fnOk && wiredOk && sweepOk;
       })());
   }
 

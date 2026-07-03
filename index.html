@@ -4150,6 +4150,36 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const uid0 = production.crew && production.crew[0] && production.crew[0].id;
       return { ...production, days: mapDayNow(production.days, date, uid0, { wrapTime: t, wrapped: true }) };
     }
+
+    // Solo wrap-edit intent: typing a wrap time that has ALREADY PASSED is
+    // recording reality — the day is over — so it sets the same explicit
+    // `wrapped` flag the card's Wrap button path writes, and the Live
+    // Activity gets the identical WRAPPED send-off. A wrap moment still
+    // ahead (or a cleared wrap) is a PLAN: it clears the flag so the day is
+    // live again (the card legitimately restarts via the reconcile sweep).
+    // ONLY a wrapTime/wrapNextDay change triggers this — other edits never
+    // touch the flag, and a planned wrap merely passing on the clock does
+    // NOT end the day: that moment is precisely when OT tracking starts.
+    // The wrap moment is call-relative like the engine: wrap earlier than
+    // call (or an explicit wrapNextDay) lands on the NEXT day, so a
+    // 22:00-call night shift editing wrap to 04:00 is never misread as
+    // already-wrapped. Solo-only — Best Boy dept/crew paths are untouched.
+    function applySoloWrapIntent(prevDay, nextDay) {
+      if (!prevDay || !nextDay) return nextDay;
+      if (nextDay.wrapTime === prevDay.wrapTime && !!nextDay.wrapNextDay === !!prevDay.wrapNextDay) return nextDay;
+      const wrapH = parseHHMM(nextDay.wrapTime);
+      if (wrapH == null) {
+        return nextDay.wrapped === true ? { ...nextDay, wrapped: false } : nextDay;
+      }
+      const base = nextDay.date ? new Date(nextDay.date + 'T00:00:00') : new Date(new Date().toDateString());
+      const callH = parseHHMM(nextDay.callTime);
+      const nextDayShift = nextDay.wrapNextDay === true || (callH != null && wrapH < callH);
+      const wrapMs = base.getTime() + (wrapH + (nextDayShift ? 24 : 0)) * 3600 * 1000;
+      const passed = wrapMs <= Date.now();
+      if (passed && nextDay.wrapped !== true) return { ...nextDay, wrapped: true };
+      if (!passed && nextDay.wrapped === true) return { ...nextDay, wrapped: false };
+      return nextDay;
+    }
     // Curtailed-lunch ingestion (Group B): write the card-captured lunch duration
     // (whole minutes, computed natively as now − lunchStart) onto the day RECORD
     // via the SAME mapDayNow transform every other "Now" writer uses — NOT a new
@@ -15603,7 +15633,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const handleDayChange = (updatedDay) => {
         if (!currentDay) return;
-        setDays(prev => prev.map(d => d.id === currentDay.id ? updatedDay : d));
+        setDays(prev => prev.map(d => d.id === currentDay.id ? applySoloWrapIntent(d, updatedDay) : d));
       };
 
       const [confirmDelete, setConfirmDelete] = useState(false);
@@ -15907,7 +15937,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onAddDay={addDay}
             renderDay={(day, dayIdxInList) => {
               const dayOnChange = (updatedDay) => {
-                setDays(prev => prev.map(d => d.id === day.id ? updatedDay : d));
+                setDays(prev => prev.map(d => d.id === day.id ? applySoloWrapIntent(d, updatedDay) : d));
               };
               return (
                 <>
@@ -23049,7 +23079,9 @@ const confirmDelete = (p) => setConfirmOpts({
           const rec = soloCrew ? ((pr.days || []).find(d => d.date === today && d.crewId === soloCrew.id)
                               || (pr.days || []).find(d => d.date === today)) : null;
           const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
-          const qualifies = enabled && !!rec && !!(rec.callTime || (dd && dd.callTime));
+          // A wrapped day (explicit user flag — card wrap, WrapNow, or a solo
+    // wrap-time edit that already passed) can never keep or restart a card.
+    const qualifies = enabled && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime));
           if (!qualifies) {
             console.log('[LiveActivity] reconcile → end (no qualifying day)', pid);
             LiveActivity.endForProduction(pid);
