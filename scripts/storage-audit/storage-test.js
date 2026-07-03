@@ -5670,7 +5670,7 @@ async function main() {
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
       /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
-      /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged \};/.test(html));
+      /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
@@ -5692,7 +5692,7 @@ async function main() {
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
-      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \}/.test(html) &&
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \}/.test(html) &&
       !/desc\.l1/.test(html));
     // ─ TT8c-LA: lunch-exit fix — the activity refresh wake is aimed at lunch-end ─
     check('TT8c2 descriptor staleEpoch is LUNCH-AWARE — ON LUNCH (lunchLogged && curtailMins===0 && lunchEndEpoch>now) points the activity stale wake at lunchEndEpoch so the LOCKED card refreshes at lunch-end and the native isOnLunch flips false; else the ~16h-after-anchor safety sentinel; the OLD flat unconditional call+16h form is GONE (guards the LA lunch-exit fix against a silent regress)',
@@ -5755,7 +5755,7 @@ async function main() {
       /ls\.setHours\(Math\.floor\(lunchH\), Math\.round\(\(lunchH % 1\) \* 60\), 0, 0\);/.test(descFn) &&
       /lunchEndEpoch = Math\.floor\(ls\.getTime\(\) \/ 1000\) \+ 3600;/.test(descFn) &&
       (descFn.match(/lunchEndEpoch = Math\.floor/g) || []).length === 1 &&
-      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \};/.test(descFn));
+      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
       /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
       /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: '02:00', wrapNextDay: true \}, soloCrew, null\)/.test(descFn) &&
@@ -5765,8 +5765,8 @@ async function main() {
       // engine maths re-derived here — it only reads the rendered OT line).
       !/otStartAbs\s*=[^=]/.test(descFn) && !/basicHrs\s*=/.test(descFn));
     check('TT10c sig + payload carry lunchEndEpoch + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getDouble/getString reads)',
-      /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, ll: desc\.lunchLogged \}/.test(html) &&
-      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged \}/.test(html));
+      /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, ll: desc\.lunchLogged, wc: desc\.wrapCurve \}/.test(html) &&
+      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \}/.test(html));
     check('TT10d ContentState schema — lunchEndEpoch: Double + otFrom: String (display-only, init-defaulted); the plugin reads both (getDouble/getString) on start AND update; the intent process preserves both across all 4 reconstructions (arm/disarm/update/endWrapped)',
       (() => {
         const attr = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift'), 'utf8');
@@ -5835,7 +5835,7 @@ async function main() {
       /if \(dur > 0 && dur < 60\) curtailMins = dur;/.test(descFn) &&
       !/lunchedFull/.test(descFn) &&            // no pushed full-hour boolean
       !/state = 'lunch'/.test(descFn) &&        // no time-derived lunch state
-      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \};/.test(descFn));
+      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT11b ingest reuses the SAME queue — lunchCurtail added to the today-only idempotent type filter + dispatched to applyLunchCurtail, which writes lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
       /ev\.type !== 'lunchNow' && ev\.type !== 'wrapNow' && ev\.type !== 'lunchCurtail'/.test(html) &&
       /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)/.test(html) &&
@@ -6157,6 +6157,34 @@ async function main() {
           /AppIconPlugin\.swift in Sources/.test(pbx);
         const assetOk = /Scribble-1024\.png/.test(contents);
         return pluginOk && regOk && buildOk && assetOk;
+      })());
+
+    // ─ TT16: wrap curve — the card freezes the CORRECT total at a card wrap ─
+    check('TT16a wrap curve (JS) — descriptor precomputes flattened [epoch,pence] pairs by sampling the calc engine at 30-min OT boundaries (hypothetical-wrap probes off otFrom; empty when wrapped / no hourly-OT line / probe failure), and the curve flows into return, sig and start/update payload',
+      (() => {
+        const descFn2 = (html.match(/function liveActivityDescriptor[\s\S]*?\n    \}/) || [''])[0];
+        return /let wrapCurve = \[\];/.test(descFn2) &&
+          /wrapCurve\.push\(bEpoch, Math\.round\(t \* 100\)\);/.test(descFn2) &&
+          /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: hhmm, wrapNextDay: nextDay \}, soloCrew, prevDay\)/.test(descFn2) &&
+          /curtailMins, lunchLogged, wrapCurve \};/.test(descFn2) &&
+          /ll: desc\.lunchLogged, wc: desc\.wrapCurve \}/.test(html) &&
+          /lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \};/.test(html);
+      })());
+    check('TT16b wrap curve (native) — ContentState carries wrapCurve: [Double] (init-defaulted [] so pre-curve payloads decode); the plugin reads it on start AND update; every intent-side reconstruction preserves it (8 sites); endWrapped freezes totalText via wrapTotalText (FIRST breakpoint ≥ now — the crew-favour round-up), falling back to the pushed total on an empty curve; gbpText byte-matches fmtGBP',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const attrs = readSafe('ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift');
+        const plugin = readSafe('ios/App/App/LiveActivityPlugin.swift');
+        const intents = readSafe('ios/App/TimeMachineWidget/TimeMachineIntents.swift');
+        const schemaOk = /public var wrapCurve: \[Double\]/.test(attrs) &&
+          /wrapCurve: \[Double\] = \[\]/.test(attrs);
+        const pluginOk = (plugin.match(/call\.getArray\("wrapCurve"\)/g) || []).length >= 2 &&
+          (plugin.match(/lunchLogged: lunchLogged, wrapCurve: wrapCurve/g) || []).length >= 2;
+        const intentsOk = (intents.match(/wrapCurve: cur\.wrapCurve/g) || []).length >= 8 &&
+          /totalText: wrapTotalText\(cur\),/.test(intents) &&
+          /guard s\.wrapCurve\.count >= 2 else \{ return s\.totalText \}/.test(intents) &&
+          /if s\.wrapCurve\[i\] >= now \{ pence = s\.wrapCurve\[i \+ 1\]; break \}/.test(intents);
+        return schemaOk && pluginOk && intentsOk;
       })());
   }
 

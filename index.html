@@ -15380,6 +15380,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (m) otFrom = m[1];
         } catch (_) {}
       }
+      // WRAP CURVE — the total the day settles at if wrapped at each 30-minute
+      // OT boundary, precomputed HERE (the calc engine's home) and carried in
+      // ContentState so the widget process — which has no engine — can freeze
+      // the CORRECT total the moment the card's Wrap confirm lands. Flattened
+      // ascending [epoch, pence, epoch, pence, …]; the native lookup is "first
+      // breakpoint ≥ wrap moment", which matches ceilHalf's round-up-to-30-min
+      // in the crew's favour exactly (totals are non-decreasing in wrap time).
+      // Grid: the engine's own OT-start (otFrom) + 24 half-hours (12h); a wrap
+      // before the first point resolves to it (the basic-day total — OT qty 0),
+      // beyond the last resolves to the last (best effort). Empty when wrapped,
+      // when the day has no hourly-OT line (flat/discretionary types — their
+      // total doesn't step with wrap), or on probe failure: the native side
+      // then keeps the pushed totalText (the pre-curve freeze behaviour).
+      // Display-only, same discipline as totalText — pay is never computed
+      // outside the engine; these ARE engine outputs, sampled.
+      let wrapCurve = [];
+      if (!wrapped && otFrom) {
+        try {
+          let otEpoch = hhmmToEpochToday(otFrom);
+          if (otEpoch && callEpoch && otEpoch < callEpoch) otEpoch += 86400; // OT start lands past midnight
+          if (otEpoch) {
+            const prevDay = findPrevDay(days, rec);
+            const localTodayStr = new Date().toDateString();
+            for (let k = 0; k <= 24; k++) {
+              const bEpoch = otEpoch + k * 1800;
+              const bd = new Date(bEpoch * 1000);
+              const hhmm = `${String(bd.getHours()).padStart(2, '0')}:${String(bd.getMinutes()).padStart(2, '0')}`;
+              const nextDay = bd.toDateString() !== localTodayStr;
+              const t = calcForDisplay(production, { ...rec, wrapTime: hhmm, wrapNextDay: nextDay }, soloCrew, prevDay).total || 0;
+              wrapCurve.push(bEpoch, Math.round(t * 100));
+            }
+          }
+        } catch (_) { wrapCurve = []; }
+      }
       // Activity stale wake. While ON LUNCH — mirroring the native isOnLunch
       // predicate (lunchLogged, uncurtailed, hour-end still ahead of now) — point
       // staleDate at lunchEndEpoch so a foreground push carries the lunch-end wake
@@ -15392,7 +15426,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const nowEpoch = Math.floor(Date.now() / 1000);
       const onLunchNow = lunchLogged && curtailMins === 0 && lunchEndEpoch > nowEpoch;
       const staleEpoch = onLunchNow ? lunchEndEpoch : (callEpoch ? callEpoch + 16 * 3600 : 0);
-      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged };
+      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve };
     }
 
     // Mounted inside SoloDayPage. START when today's call time is set; debounced
@@ -15414,7 +15448,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return () => clearInterval(t);
       }, []);
       const desc = (IS_NATIVE && enabled) ? liveActivityDescriptor(production, soloCrew, days) : null;
-      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd, l: desc.lunchEndEpoch, o: desc.otFrom, cm: desc.curtailMins, ll: desc.lunchLogged }) : '';
+      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd, l: desc.lunchEndEpoch, o: desc.otFrom, cm: desc.curtailMins, ll: desc.lunchLogged, wc: desc.wrapCurve }) : '';
       React.useEffect(() => {
         if (!IS_NATIVE) return;
         // END on DISQUALIFICATION: the still-mounted controller re-renders and
@@ -15438,7 +15472,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
-          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId, lunchEndEpoch: desc.lunchEndEpoch, otFrom: desc.otFrom, curtailMins: desc.curtailMins, lunchLogged: desc.lunchLogged };
+          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId, lunchEndEpoch: desc.lunchEndEpoch, otFrom: desc.otFrom, curtailMins: desc.curtailMins, lunchLogged: desc.lunchLogged, wrapCurve: desc.wrapCurve };
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…

@@ -183,6 +183,47 @@ enum TMLiveActivity {
         return Date(timeIntervalSince1970: s.lunchEndEpoch)
     }
 
+    /// Resolve the day total AT the wrap moment from the pushed wrapCurve —
+    /// flattened ascending [epoch, pence, …] pairs the JS calc engine sampled
+    /// at each 30-minute OT boundary. Pick the FIRST breakpoint ≥ now: OT is
+    /// charged rounded UP to 30 minutes in the crew's favour, so rounding up
+    /// the curve reproduces the engine's ceilHalf exactly. Beyond the last
+    /// breakpoint → the last total (best effort). Empty curve (flat day types,
+    /// probe failure, pre-curve payload) → the pushed totalText unchanged (the
+    /// original freeze behaviour). NO pay maths here — these are engine
+    /// outputs, looked up.
+    @available(iOS 16.2, *)
+    static func wrapTotalText(_ s: TimeMachineActivityAttributes.ContentState) -> String {
+        guard s.wrapCurve.count >= 2 else { return s.totalText }
+        let now = Date().timeIntervalSince1970
+        var pence = s.wrapCurve[s.wrapCurve.count - 1]
+        var i = 0
+        while i + 1 < s.wrapCurve.count {
+            if s.wrapCurve[i] >= now { pence = s.wrapCurve[i + 1]; break }
+            i += 2
+        }
+        return gbpText(pence: pence)
+    }
+
+    /// "£1,234.56" from pence — byte-matches the web layer's fmtGBP
+    /// (toFixed(2) + comma thousands) so a native-resolved total renders
+    /// identically to a pushed one.
+    static func gbpText(pence: Double) -> String {
+        let pounds = pence / 100.0
+        var s = String(format: "%.2f", pounds)
+        let parts = s.split(separator: ".")
+        if parts.count == 2 {
+            var intPart = String(parts[0])
+            var grouped = ""
+            while intPart.count > 3 {
+                grouped = "," + intPart.suffix(3) + grouped
+                intPart = String(intPart.dropLast(3))
+            }
+            s = intPart + grouped + "." + parts[1]
+        }
+        return "£" + s
+    }
+
     /// Current two-tap arm state ("" | "lunch" | "wrap"), gated on FRESHNESS:
     /// an arm older than armWindow returns "" so a stale CONFIRM? (auto-reset
     /// missed because iOS suspended the process mid-hold) can never confirm —
@@ -207,7 +248,7 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
+            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
         return stamp
@@ -225,7 +266,7 @@ enum TMLiveActivity {
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
@@ -242,24 +283,27 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
 
     /// BEST-EFFORT — flip to WRAPPED, freeze the timer (endEpoch = now), clear
     /// any arm, then end with a short dismissal window so the wrapped card lingers.
+    /// The frozen total is resolved from the pushed wrapCurve at THIS moment
+    /// (wrapTotalText) — previously it reused the stale pre-wrap totalText,
+    /// which missed any OT accrued since the last app-side update.
     @available(iOS 16.2, *)
     static func endWrapped(_ productionId: String) async {
         guard let activity = current(productionId) else { return }
         let cur = activity.content.state
         let next = TimeMachineActivityAttributes.ContentState(
-            totalText: cur.totalText,
+            totalText: wrapTotalText(cur),
             state: "wrapped",
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: Date().timeIntervalSince1970,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         // A normal end-of-day wrap is post-lunch (or curtailed) → helper returns
         // nil, behaviour unchanged. A rare wrap DURING the lunch hour keeps the
@@ -284,7 +328,7 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "curtail", armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: mins, lunchLogged: cur.lunchLogged
+            otFrom: cur.otFrom, curtailMins: mins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
         return stamp
@@ -300,7 +344,7 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: cur.lunchLogged
+            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
@@ -324,7 +368,7 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged
+            otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
         await requestBackgroundDrain()
@@ -346,7 +390,7 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: flooredMin + 3600,
-            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: true
+            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: true, wrapCurve: cur.wrapCurve
         )
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
