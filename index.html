@@ -22028,7 +22028,10 @@ const setDays = (updater) =>
             const showUnpaid  = (filterStatus === 'all' || filterStatus === 'sent')  && sections.unpaid.length > 0;
             const showPaid    = (filterStatus === 'all' || filterStatus === 'paid')  && sections.paidGroups.length > 0;
 
-            const sectionHdrCls = "text-[10px] uppercase tracking-[0.22em] font-bold mb-2 mt-5 first:mt-0";
+            // Mirrors the shoots-page month-group header (dashed rule, 10px
+            // pad below the label, 2px side inset, 32px between groups) so
+            // the two list pages share one rhythm.
+            const sectionHdrCls = "text-[11px] uppercase tracking-[0.2em] font-bold border-b border-dashed border-neutral-800 px-0.5 pb-2.5 mb-2.5 mt-8 first:mt-0";
             const fmtMonthLabel = (yyyymm) => {
               if (!yyyymm) return '(undated)';
               const d = new Date(yyyymm + '-01T12:00:00');
