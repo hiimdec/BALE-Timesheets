@@ -1731,14 +1731,111 @@
       {
         effectiveFrom: "2026-09-01",
         label: "Sept 2026",
-        // PLACEHOLDER — filled below with a byte-identical deep copy of the
-        // Sept 2025 numbers. The real Sept 2026 values arrive in a follow-up
-        // instruction and will replace the copy with an explicit table; until
-        // then the boundary exists but moves no money.
-        departments: null,
+        // Sept 2026 card — BDR-only uplift (~3%, rounded to the pound);
+        // otCoef / noOT / pmpa are card-invariant. Allowances (mileage,
+        // missed meal, late break) carry over unchanged per Derrick.
+        departments: {
+          "Direction & Production": {
+            "Director":             { bdr: 961,  otCoef: 0,    noOT: true },
+            "Producer":             { bdr: 961,  otCoef: 0,    noOT: true },
+            "Production Manager":   { bdr: 627,  otCoef: 1.0,  pmpa: true },
+            "Production Assistant": { bdr: 441,  otCoef: 1.0,  pmpa: true },
+            "Production Runner":    { bdr: 245,  otCoef: 1.0,  pmpa: true },
+          },
+          "Assistant Directors": {
+            "1st AD":                    { bdr: 809, otCoef: 1.0 },
+            "2nd AD":                    { bdr: 448, otCoef: 1.5 },
+            "3rd AD":                    { bdr: 336, otCoef: 1.5 },
+            "Floor Runner / AD Trainee": { bdr: 245, otCoef: 1.0, pmpa: true },
+          },
+          "Script Supervisor": {
+            "Script Supervisor": { bdr: 575, otCoef: 1.25 },
+          },
+          "Locations": {
+            "Location Manager": { bdr: 597, otCoef: 1.25 },
+          },
+          "Camera": {
+            "DoP":                     { bdr: 1561, otCoef: 1.0  },
+            "Camera Operator":         { bdr: 656,  otCoef: 1.25 },
+            "Focus Puller (1st AC)":   { bdr: 575,  otCoef: 1.25 },
+            "Clapper Loader (2nd AC)": { bdr: 448,  otCoef: 1.5  },
+            "DIT":                     { bdr: 527,  otCoef: 1.25 },
+            "Senior Video Operator":   { bdr: 518,  otCoef: 1.25 },
+            "Video Operator":          { bdr: 403,  otCoef: 1.5  },
+          },
+          "Grip": {
+            "Key Grip":     { bdr: 575, otCoef: 1.25 },
+            "Non-Key Grip": { bdr: 526, otCoef: 1.25 },
+          },
+          "Lighting": {
+            "Gaffer":              { bdr: 585, otCoef: 1.25 },
+            "Best Boy":            { bdr: 527, otCoef: 1.25 },
+            "Desk Op":             { bdr: 527, otCoef: 1.25 },
+            "Lighting Technician": { bdr: 457, otCoef: 1.5  },
+            // Trainee carries over from 2025 unchanged (confirmed ruling).
+            "Trainee":             { bdr: 250, otCoef: 1.5 },
+          },
+          // Rigging rates carry over from 2025 unchanged (confirmed ruling).
+          "Rigging": {
+            "Master Rigger":   { bdr: 675, otCoef: 1.5 },
+            "Advanced Rigger": { bdr: 515, otCoef: 1.5 },
+            "Standby Rigger":  { bdr: 515, otCoef: 1.5 },
+          },
+          "SFX": {
+            "SFX Supervisor":      { bdr: 1561, otCoef: 1.0  },
+            "Sr. SFX Technician":  { bdr: 668,  otCoef: 1.25 },
+            "SFX Technician":      { bdr: 535,  otCoef: 1.25 },
+            "SFX Assistant":       { bdr: 448,  otCoef: 1.5  },
+            "Model Animator":      { bdr: 820,  otCoef: 1.0  },
+            "Model Animator Asst": { bdr: 575,  otCoef: 1.25 },
+          },
+          "Art Dept": {
+            "Art Director":       { bdr: 878, otCoef: 1.0  },
+            "Asst. Art Director": { bdr: 585, otCoef: 1.25 },
+            "Stylist":            { bdr: 647, otCoef: 1.25 },
+            "Props Buyer":        { bdr: 585, otCoef: 1.25 },
+            "Master Props":       { bdr: 521, otCoef: 1.25 },
+            "Props":              { bdr: 398, otCoef: 1.5  },
+            "Props Assistant":    { bdr: 319, otCoef: 1.5  },
+            "Scenic Artist":      { bdr: 735, otCoef: 1.0  },
+            "Home Economist":     { bdr: 668, otCoef: 1.25 },
+          },
+          "Construction": {
+            "Construction Manager": { bdr: 548, otCoef: 1.25 },
+            "Master Painter":       { bdr: 512, otCoef: 1.25 },
+            "Painter":              { bdr: 398, otCoef: 1.5  },
+            "Master Carpenter":     { bdr: 512, otCoef: 1.25 },
+            "Carpenter":            { bdr: 398, otCoef: 1.5  },
+            "Master Plasterer":     { bdr: 512, otCoef: 1.25 },
+            "Plasterer":            { bdr: 398, otCoef: 1.5  },
+            "Standby Construction": { bdr: 398, otCoef: 1.5  },
+            "Stage Hand":           { bdr: 370, otCoef: 1.5  },
+            "Labourer":             { bdr: 308, otCoef: 1.5  },
+          },
+          "Sound": {
+            "Sound Mixer":       { bdr: 668, otCoef: 1.25 },
+            "Boom Operator":     { bdr: 535, otCoef: 1.25 },
+            "Sound Maintenance": { bdr: 436, otCoef: 1.5  },
+            "Sound Assistant":   { bdr: 403, otCoef: 1.5  },
+          },
+          "Costume": {
+            "Costume Designer": { bdr: 694, otCoef: 1.25 },
+            "Wardrobe Buyer":   { bdr: 694, otCoef: 1.25 },
+            "Wardrobe":         { bdr: 398, otCoef: 1.5  },
+          },
+          "Hair & Makeup": {
+            "Chief Make Up Artist": { bdr: 668, otCoef: 1.25 },
+            "Make Up":              { bdr: 398, otCoef: 1.5  },
+            "Chief Hair Designer":  { bdr: 668, otCoef: 1.25 },
+            "Hairdresser":          { bdr: 398, otCoef: 1.5  },
+          },
+          "Other": {
+            "Driver":           { bdr: 308, otCoef: 1.5 },
+            "Covid Supervisor": { bdr: 448, otCoef: 1.5 },
+          },
+        },
       },
     ];
-    RATE_CARDS[1].departments = JSON.parse(JSON.stringify(RATE_CARDS[0].departments));
 
     // Flatten a card to the role → { bdr, otCoef, … } lookup. The legacy
     // "Spark" alias follows every card.

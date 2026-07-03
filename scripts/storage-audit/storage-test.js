@@ -6147,17 +6147,29 @@ async function main() {
       })());
 
     // ─ TT20: effective-dated APA rate cards — copy sites only, engine untouched ─
-    check('TT20a RATE_CARDS — two cards (2025-09-01 base + 2026-09-01 placeholder that is a byte-identical deep copy); resolveRateCard picks the latest effectiveFrom ≤ startDate, falling back to todayISO() for no/blank startDate; roleDefaultsFor flattens the resolved card with the Spark alias following every card',
+    check('TT20a RATE_CARDS — two cards (2025-09-01 base + the explicit Sept 2026 table: ~3% BDR uplift rounded to the pound, Trainee + Rigging carried over, allowances unchanged, flags card-invariant; the placeholder deep-copy line is GONE); resolveRateCard picks the latest effectiveFrom ≤ startDate, falling back to todayISO() for no/blank startDate; roleDefaultsFor flattens the resolved card with the Spark alias following every card',
       (() => {
         const cardsOk = /effectiveFrom: "2025-09-01",\s*label: "Sept 2025",/.test(html) &&
           /effectiveFrom: "2026-09-01",\s*label: "Sept 2026",/.test(html) &&
-          /RATE_CARDS\[1\]\.departments = JSON\.parse\(JSON\.stringify\(RATE_CARDS\[0\]\.departments\)\);/.test(html);
+          !/RATE_CARDS\[1\]\.departments = JSON\.parse/.test(html);
+        // Sentinels from the 2026 table: uplifted (Director 961, DoP 1561,
+        // Wardrobe 398), carried over (Trainee 250, Master Rigger 675), and
+        // the allowances-carry-over note.
+        const card26 = (html.match(/effectiveFrom: "2026-09-01",[\s\S]*?\n    \];/) || [''])[0];
+        const valuesOk = /"Director":\s*\{ bdr: 961,/.test(card26) &&
+          /"DoP":\s*\{ bdr: 1561,/.test(card26) &&
+          /"Wardrobe":\s*\{ bdr: 398,/.test(card26) &&
+          /"Trainee":\s*\{ bdr: 250,/.test(card26) &&
+          /"Master Rigger":\s*\{ bdr: 675,/.test(card26) &&
+          /Allowances \(mileage,\s*\/\/ missed meal, late break\) carry over unchanged/.test(card26) &&
+          /Rigging rates carry over from 2025 unchanged/.test(card26) &&
+          /Trainee carries over from 2025 unchanged/.test(card26);
         const resolveOk = /const key = \(typeof startDate === "string" && startDate\) \? startDate : todayISO\(\);/.test(html) &&
           /for \(const c of RATE_CARDS\) \{ if \(c\.effectiveFrom <= key\) chosen = c; \}/.test(html);
         const flattenOk = /function flattenRateCard\(card\) \{/.test(html) &&
           /flat\["Spark"\] = flat\["Lighting Technician"\];/.test(html) &&
           /return flattenRateCard\(resolveRateCard\(production && production\.startDate\)\);/.test(html);
-        return cardsOk && resolveOk && flattenOk;
+        return cardsOk && valuesOk && resolveOk && flattenOk;
       })());
     check('TT20b every rate COPY site resolves through the effective-dated card — production-scoped sites (CrewManager blank+role change, DayEntryForm + bulk + CrewMemberDayView step-ups, QuickAddCrewSheet ×2, solo "your role") use roleDefaultsFor(production); current-date sites (Settings global defaults ×2, new-production seed) use roleDefaultsFor(null); footers are version-aware; the boundary-crossing startDate edit offers the one-time crew-rate refresh (never silent)',
       (() => {
