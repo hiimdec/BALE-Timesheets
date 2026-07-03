@@ -1067,9 +1067,9 @@
         catch (e) { try { console.warn('[LiveActivity] list failed', (e && e.message) || e); } catch (_) {} }
         return [];
       },
-      async endForProduction(productionId) {
+      async endForProduction(productionId, immediate = true) {
         if (!IS_NATIVE) return;
-        try { const p = _capPlugins().LiveActivity; if (p && p.endForProduction) await p.endForProduction({ productionId, immediate: true }); }
+        try { const p = _capPlugins().LiveActivity; if (p && p.endForProduction) await p.endForProduction({ productionId, immediate: immediate !== false }); }
         catch (e) { try { console.warn('[LiveActivity] endForProduction failed', (e && e.message) || e); } catch (_) {} }
       },
       // End specific activities by id — the reconcile sweep's duplicate-converge
@@ -23217,8 +23217,15 @@ const confirmDelete = (p) => setConfirmOpts({
           // wrap-time edit that already passed) can never keep or restart a card.
           const qualifies = enabled && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime));
           if (!qualifies) {
-            console.log('[LiveActivity] reconcile → end (no qualifying day)', pid);
-            LiveActivity.endForProduction(pid);
+            // A day disqualified BY THE WRAP FLAG ends WITH the linger — that
+            // window is the wrapped send-off (freshly corrected by the wrap
+            // drain), and the sweep must not cut it short. Ending an already-
+            // lingering card again is a native no-op. Every other
+            // disqualification (day deleted, date moved, pref off) stays
+            // immediate.
+            const wrappedSendOff = enabled && !!rec && rec.wrapped === true && !!(rec.callTime || (dd && dd.callTime));
+            console.log('[LiveActivity] reconcile → end (no qualifying day)', pid, wrappedSendOff ? '(wrapped — linger)' : '(immediate)');
+            LiveActivity.endForProduction(pid, !wrappedSendOff);
           } else if (ids.length > 1) {
             console.log('[LiveActivity] reconcile → converge duplicates', pid, ids.length);
             for (let i = 1; i < ids.length; i++) dupeIds.push(ids[i]);

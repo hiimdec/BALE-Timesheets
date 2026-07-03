@@ -288,13 +288,16 @@ enum TMLiveActivity {
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
     }
 
-    /// BEST-EFFORT — flip to WRAPPED, freeze the timer (endEpoch = now), clear
-    /// any arm, then end with a short dismissal window so the wrapped card lingers.
-    /// The frozen total is resolved from the pushed wrapCurve at THIS moment
-    /// (wrapTotalText) — previously it reused the stale pre-wrap totalText,
-    /// which missed any OT accrued since the last app-side update.
+    /// CONFIRM Wrap — flip the card to WRAPPED with the curve-resolved total
+    /// and frozen timer the INSTANT the confirming tap lands, WITHOUT ending
+    /// it yet: the activity stays updatable through the bounded background-
+    /// drain window that follows (requestBackgroundDrain holds ~2.5s, the
+    /// LunchNowIntent pattern), so a live webview can push one corrected
+    /// total covering what the curve couldn't see (a curtail armed on the
+    /// card moments before wrap). endWrapped then ends with the normal
+    /// linger. Mirrors confirmLunch's instant-flip parity.
     @available(iOS 16.2, *)
-    static func endWrapped(_ productionId: String) async {
+    static func confirmWrap(_ productionId: String) async {
         guard let activity = current(productionId) else { return }
         let cur = activity.content.state
         let next = TimeMachineActivityAttributes.ContentState(
@@ -303,6 +306,28 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: Date().timeIntervalSince1970,
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+        )
+        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+    }
+
+    /// BEST-EFFORT — end the WRAPPED card with a short dismissal window so it
+    /// lingers. An already-wrapped state (confirmWrap ran, and possibly a JS
+    /// drain corrected the total after it) is preserved VERBATIM — resolving
+    /// the curve again here would re-read "now" after the ~2.5s drain hold
+    /// and could jump a 30-min OT boundary the user never worked. Only a
+    /// not-yet-wrapped card (legacy/direct path) resolves and freezes here.
+    @available(iOS 16.2, *)
+    static func endWrapped(_ productionId: String) async {
+        guard let activity = current(productionId) else { return }
+        let cur = activity.content.state
+        let alreadyWrapped = cur.state == "wrapped"
+        let next = TimeMachineActivityAttributes.ContentState(
+            totalText: alreadyWrapped ? cur.totalText : wrapTotalText(cur),
+            state: "wrapped",
+            callEpoch: cur.callEpoch,
+            anchorLabel: cur.anchorLabel,
+            endEpoch: (alreadyWrapped && cur.endEpoch > 0) ? cur.endEpoch : Date().timeIntervalSince1970,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         // A normal end-of-day wrap is post-lunch (or curtailed) → helper returns
@@ -462,10 +487,16 @@ struct WrapNowIntent: LiveActivityIntent {
         // Two-tap: first tap ARMS, the confirming second tap writes the event.
         let armed = TMLiveActivity.armedAction(productionId)
         if armed == "wrap" {
-            // CONFIRM: critical direct write, then freeze + end the card. No
-            // background-drain nudge — the card is ending and the total freezes
-            // at wrap; the wrap write reaches records on the normal foreground drain.
+            // CONFIRM: critical direct write, then the LunchNowIntent pattern —
+            // instant state flip (confirmWrap: WRAPPED + curve-resolved total,
+            // card still ACTIVE), a bounded best-effort background drain so a
+            // live webview can push one corrected total while the card is
+            // still updatable, THEN the linger end. A cold process no-ops the
+            // drain and the curve total stands; the wrap write itself reaches
+            // records on the normal foreground drain either way.
             TMLiveActivity.appendEvent(type: "wrapNow", productionId: productionId)
+            await TMLiveActivity.confirmWrap(productionId)
+            await TMLiveActivity.requestBackgroundDrain()
             await TMLiveActivity.endWrapped(productionId)
         } else {
             // Commit-then-wrap (Group B): if a curtail is mid-undo (armed=="curtail"

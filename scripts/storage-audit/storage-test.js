@@ -5593,14 +5593,14 @@ async function main() {
       /const LiveActivity = \{/.test(html) &&
       /async isAvailable\(\)/.test(html) && /async start\(opts\)/.test(html) &&
       /async update\(opts\)/.test(html) && /async end\(opts\)/.test(html) &&
-      /async list\(\)/.test(html) && /async endForProduction\(productionId\)/.test(html));
+      /async list\(\)/.test(html) && /async endForProduction\(productionId, immediate = true\)/.test(html));
     check('TT1b every bridge method returns BEFORE touching _capPlugins() unless IS_NATIVE (web never references the plugin)',
       /async isAvailable\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
       /async start\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async update\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async end\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async list\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
-      /async endForProduction\(productionId\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /async endForProduction\(productionId, immediate = true\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /_capPlugins\(\)\.LiveActivity/.test(html));
 
     // ─ TT2: descriptor reuses the calc + derives state; controller is guarded ─
@@ -5738,7 +5738,7 @@ async function main() {
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
       /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
-      /if \(!qualifies\) \{[\s\S]{0,120}LiveActivity\.endForProduction\(pid\);/.test(html) &&
+      /if \(!qualifies\) \{[\s\S]{0,700}LiveActivity\.endForProduction\(pid, !wrappedSendOff\);/.test(html) &&
       /\} else if \(ids\.length > 1\) \{[\s\S]{0,160}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
       /if \(dupeIds\.length\) LiveActivity\.endActivityIds\(dupeIds\);/.test(html));
     check('TT9e single-activity invariant — the endActivityIds bridge method is IS_NATIVE-guarded (the sweep\'s by-id duplicate-converge; native startActivity adopt-or-update is the primary dedupe, compile-verified)',
@@ -6228,7 +6228,7 @@ async function main() {
           /ll: desc\.lunchLogged, wc: desc\.wrapCurve \}/.test(html) &&
           /lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \};/.test(html);
       })());
-    check('TT16b wrap curve (native) — ContentState carries wrapCurve: [Double] (init-defaulted [] so pre-curve payloads decode); the plugin reads it on start AND update; every intent-side reconstruction preserves it (8 sites); endWrapped freezes totalText via wrapTotalText (FIRST breakpoint ≥ now — the crew-favour round-up), falling back to the pushed total on an empty curve; gbpText byte-matches fmtGBP',
+    check('TT16b wrap curve (native) — ContentState carries wrapCurve: [Double] (init-defaulted [] so pre-curve payloads decode); the plugin reads it on start AND update; every intent-side reconstruction preserves it; confirmWrap freezes totalText via wrapTotalText (FIRST breakpoint ≥ now — the crew-favour round-up), falling back to the pushed total on an empty curve; gbpText byte-matches fmtGBP',
       (() => {
         const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
         const attrs = readSafe('ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift');
@@ -6272,6 +6272,24 @@ async function main() {
           /LiveActivity\.start\(descriptorToPayload\(desc\)\);/.test(html);
         const bailGoneOk = !/const acts = await LiveActivity\.list\(\);\s*if \(!acts \|\| !acts\.length\) return;/.test(html);
         return helperOk && registryOk && startOk && bailGoneOk;
+      })());
+
+    // ─ TT21: wrap confirm drain-hold — corrected total INSIDE the send-off ─
+    check('TT21a WrapNowIntent confirm follows the LunchNowIntent pattern — appendEvent → confirmWrap (instant WRAPPED + curve total, card still ACTIVE) → requestBackgroundDrain (bounded ~2.5s hold) → endWrapped (linger); endWrapped PRESERVES an already-wrapped totalText/endEpoch verbatim (no curve re-resolve after the hold — a boundary crossed during the 2.5s must not add OT); the sweep ends a wrapped-day card WITH the linger (endForProduction(pid, !wrappedSendOff)) so the drain-corrected send-off is never cut short',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const intents = readSafe('ios/App/TimeMachineWidget/TimeMachineIntents.swift');
+        const seqOk = /appendEvent\(type: "wrapNow", productionId: productionId\)\s*await TMLiveActivity\.confirmWrap\(productionId\)\s*await TMLiveActivity\.requestBackgroundDrain\(\)\s*await TMLiveActivity\.endWrapped\(productionId\)/.test(intents);
+        const cw = (intents.match(/static func confirmWrap[\s\S]*?\n    \}/) || [''])[0];
+        const confirmOk = /totalText: wrapTotalText\(cur\),/.test(cw) &&
+          /state: "wrapped",/.test(cw) && /await activity\.update\(/.test(cw) && !/\.end\(/.test(cw);
+        const ew = (intents.match(/static func endWrapped[\s\S]*?\n    \}/) || [''])[0];
+        const preserveOk = /let alreadyWrapped = cur\.state == "wrapped"/.test(ew) &&
+          /totalText: alreadyWrapped \? cur\.totalText : wrapTotalText\(cur\),/.test(ew) &&
+          /endEpoch: \(alreadyWrapped && cur\.endEpoch > 0\) \? cur\.endEpoch : Date\(\)\.timeIntervalSince1970,/.test(ew);
+        const bridgeOk = /async endForProduction\(productionId, immediate = true\)/.test(html) &&
+          /immediate: immediate !== false/.test(html);
+        return seqOk && confirmOk && preserveOk && bridgeOk;
       })());
   }
 
