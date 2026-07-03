@@ -23216,40 +23216,80 @@ const confirmDelete = (p) => setConfirmOpts({
         };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-      // ── Overdue-invoice reminders reconcile sweep (Stage 2) ───────────────────
+      // ── Overdue-invoice reminders reconcile sweep (Stage 2; fired ledger V5) ──
       // Mirrors the Live Activity reconcile: one sweep reconciles the WHOLE
       // notification set against current productions. Every invoice that is
       // sent && !datePaid && has a dueDate (with the toggle on AND OS permission
-      // granted) gets exactly ONE local notification scheduled to fire at 08:00
-      // local the morning after its dueDate; any scheduled reminder whose invoice
-      // no longer qualifies (marked paid, deleted, reverted to draft, due date
-      // cleared, toggle off, or permission revoked) is cancelled. Idempotent — a
-      // reminder already pending for a still-qualifying invoice is left untouched
-      // (no churn). Reads through a render-refreshed ref so the debounced change-
-      // sweep and the launch/foreground sweep both see CURRENT state. Touches NO
-      // calc/day-record state — a pure notification side-channel. IS_NATIVE-gated.
+      // granted) gets exactly ONE local notification per due date — the FIRED
+      // LEDGER (bigals_overdue_fired) is what makes "exactly one" true across
+      // launches: iOS drops a delivered notification from getPending(), so
+      // without a delivery record every later sweep saw "desired but not
+      // pending" plus a passed fire date and re-armed the ~1-min catch-up —
+      // one duplicate per app open until the invoice was paid. Ledger shape:
+      // { [invoiceId]: { dueDate, firedAt } }, its OWN storage key (invoice
+      // records are FROZEN — never a field on them), loaded once into a ref,
+      // write-through, capped at 200 pruned oldest-firedAt-first (the
+      // applied-events ledger pattern). An entry is written in the SAME pass
+      // that schedules (firedAt = the armed fire moment — delivery itself is
+      // unobservable), keyed on dueDate so a re-issued invoice with a NEW due
+      // date re-arms exactly once; entries are pruned when the invoice is
+      // deleted, paid, or back to draft. Any scheduled reminder whose invoice
+      // no longer qualifies is cancelled (a ledger-armed, still-pending one is
+      // kept — cancelling it because it left `desired` would eat the one shot).
+      // Reads through a render-refreshed ref so the debounced change-sweep and
+      // the launch/foreground sweep both see CURRENT state; an in-flight guard
+      // serialises overlapping sweeps (launch + the ~1s change-sweep both read
+      // getPending() before either schedules — the double-schedule race).
+      // Touches NO calc/day-record state — a pure notification side-channel.
+      // IS_NATIVE-gated.
       const notifSweepStateRef = React.useRef({ productions: [], enabled: true });
       notifSweepStateRef.current = {
         productions,
         enabled: !userPrefs || userPrefs.overdueRemindersEnabled !== false,
       };
+      const OVERDUE_FIRED_KEY = 'bigals_overdue_fired';
+      const overdueFiredRef = React.useRef(null);
+      const overdueReconcilingRef = React.useRef(false);
       const overdueReconcile = React.useCallback(async () => {
         if (!IS_NATIVE) return;
+        if (overdueReconcilingRef.current) return; // in-flight guard
+        overdueReconcilingRef.current = true;
+        try {
         const { productions: prods, enabled } = notifSweepStateRef.current;
         // Permission is re-read each sweep (cheap, local) so a grant or revocation
         // made in iOS Settings is honoured on the next launch/foreground pass.
         const granted = enabled && (await Notifications.checkPermission()) === 'granted';
-        // Desired schedule: notifId → { production, invoice, fireAt }.
+        if (!overdueFiredRef.current) {
+          let seed = {};
+          try { seed = JSON.parse(storage.get(OVERDUE_FIRED_KEY) || '{}') || {}; } catch (_) {}
+          overdueFiredRef.current = seed;
+        }
+        const fired = overdueFiredRef.current;
+        let ledgerDirty = false;
+        // Desired schedule: notifId → { production, invoice, fireAt } — only
+        // invoices NOT yet armed for their current dueDate. firedKeep = ledger
+        // entries still justified (invoice exists, still sent-unpaid, same
+        // dueDate) — everything else is pruned below. keepIds = armed AND
+        // possibly still pending → protected from the stale-cancel (only
+        // meaningful while granted; toggle-off cancels everything pending but
+        // KEEPS the ledger, so re-enabling never re-fires an already-sent nudge).
         const desired = new Map();
-        if (granted) {
-          for (const p of (prods || [])) {
-            for (const inv of (p.invoices || [])) {
-              if (!invoiceNeedsOverdueReminder(inv)) continue;
-              const fireAt = overdueFireDate(inv.dueDate);
-              if (!fireAt) continue;
-              desired.set(overdueNotifId(inv.id), { p, inv, fireAt });
-            }
+        const firedKeep = new Set();
+        const keepIds = new Set();
+        for (const p of (prods || [])) {
+          for (const inv of (p.invoices || [])) {
+            if (!invoiceNeedsOverdueReminder(inv)) continue;
+            const armed = !!(fired[inv.id] && fired[inv.id].dueDate === inv.dueDate);
+            if (armed) firedKeep.add(inv.id);
+            if (!granted) continue;
+            if (armed) { keepIds.add(overdueNotifId(inv.id)); continue; }
+            const fireAt = overdueFireDate(inv.dueDate);
+            if (!fireAt) continue;
+            desired.set(overdueNotifId(inv.id), { p, inv, fireAt });
           }
+        }
+        for (const invId of Object.keys(fired)) {
+          if (!firedKeep.has(invId)) { delete fired[invId]; ledgerDirty = true; }
         }
         // Reconcile the whole set against what's actually pending. Only OUR
         // reminders (extra carries invoiceId) are ever touched — defensive
@@ -23260,12 +23300,18 @@ const confirmDelete = (p) => setConfirmOpts({
         for (const n of (pending || [])) {
           if (!n || typeof n.id !== 'number' || !(n.extra && n.extra.invoiceId)) continue;
           pendingOurs.add(n.id);
-          if (!desired.has(n.id)) toCancel.push(n.id);
+          if (!desired.has(n.id) && !keepIds.has(n.id)) toCancel.push(n.id);
         }
         const NOW = Date.now();
         const toSchedule = [];
         for (const [id, { p, inv, fireAt }] of desired) {
-          if (pendingOurs.has(id)) continue; // already scheduled — no churn
+          if (pendingOurs.has(id)) {
+            // Pending but not in the ledger — a pre-ledger install's reminder.
+            // Adopt it so it can never re-arm after it delivers.
+            fired[inv.id] = { dueDate: inv.dueDate, firedAt: fireAt.getTime() };
+            ledgerDirty = true;
+            continue;
+          }
           // Already-overdue at reconcile time (went overdue while the app was
           // closed, or reconciled later that day) → fire once ~1 min out so the
           // single nudge still lands; otherwise the 08:00 day-after fire date.
@@ -23279,9 +23325,22 @@ const confirmDelete = (p) => setConfirmOpts({
             schedule: { at },
             extra: { productionId: p.id, invoiceId: inv.id },
           });
+          // Ledger write in the SAME pass as the schedule — the exactly-once
+          // guarantee. From here this invoice+dueDate can never re-arm.
+          fired[inv.id] = { dueDate: inv.dueDate, firedAt: at.getTime() };
+          ledgerDirty = true;
         }
         if (toCancel.length) await Notifications.cancel(toCancel);
         if (toSchedule.length) await Notifications.schedule(toSchedule);
+        if (ledgerDirty) {
+          const invIds = Object.keys(fired);
+          if (invIds.length > 200) {
+            invIds.sort((a, b) => ((fired[a] && fired[a].firedAt) || 0) - ((fired[b] && fired[b].firedAt) || 0));
+            for (const invId of invIds.slice(0, invIds.length - 200)) delete fired[invId];
+          }
+          try { storage.set(OVERDUE_FIRED_KEY, JSON.stringify(fired)); } catch (_) {}
+        }
+        } finally { overdueReconcilingRef.current = false; }
       }, []);
       // Debounced change-sweep: invoice edits (send, mark paid, delete, due-date
       // change) and the Settings toggle reconcile within ~1s while the app is open.

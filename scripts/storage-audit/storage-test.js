@@ -6079,8 +6079,8 @@ async function main() {
           /desired\.set\(overdueNotifId\(inv\.id\), \{ p, inv, fireAt \}\);/.test(sweep);
         const reconcileOk = /const pending = await Notifications\.getPending\(\);/.test(sweep) &&
           /if \(!n \|\| typeof n\.id !== 'number' \|\| !\(n\.extra && n\.extra\.invoiceId\)\) continue;/.test(sweep) &&
-          /if \(!desired\.has\(n\.id\)\) toCancel\.push\(n\.id\);/.test(sweep) &&
-          /if \(pendingOurs\.has\(id\)\) continue;/.test(sweep);
+          /if \(!desired\.has\(n\.id\) && !keepIds\.has\(n\.id\)\) toCancel\.push\(n\.id\);/.test(sweep) &&
+          /if \(pendingOurs\.has\(id\)\) \{/.test(sweep);
         const fireOk = /const at = fireAt\.getTime\(\) > NOW \+ 1000 \? fireAt : new Date\(NOW \+ 60 \* 1000\);/.test(sweep);
         // The EXACT title + body pins ARE the "no amount / no invoice number"
         // guarantee — the only user-facing strings, and neither interpolates a
@@ -6121,6 +6121,28 @@ async function main() {
       /onClick=\{\(\) => Notifications\.openIOSSettings\(\)\}/.test(html) &&
       (html.match(/if \(frozenPatch && frozenPatch\.status === 'sent' && userPrefs\.overdueRemindersEnabled !== false\) \{\s*Notifications\.requestPermission\(\);/g) || []).length === 2 &&
       /useEffect\(\(\) => \{ if \(IS_NATIVE\) Notifications\.checkPermission\(\)\.then\(setNotifPerm\); \}, \[\]\);/.test(html));
+
+    // ─ TT19: overdue fired ledger — exactly ONE notification per invoice+dueDate ─
+    check('TT19a fired ledger — bigals_overdue_fired ({invoiceId → {dueDate, firedAt}}) is its OWN storage key (frozen invoices gain no field), ref-loaded once, written through in the SAME pass that schedules; armed invoices (ledger dueDate matches) leave `desired` so they can never re-arm; a still-pending armed reminder is cancel-protected via keepIds; entries prune when the invoice is deleted/paid/back-to-draft; ledger capped at 200 oldest-firedAt-first; round-trips through storage.get/set',
+      (() => {
+        const sweep = sliceArrow(html, 'const overdueReconcile = React.useCallback(async () => {', '}, []);');
+        if (!sweep) return false;
+        const keyOk = /const OVERDUE_FIRED_KEY = 'bigals_overdue_fired';/.test(html) &&
+          /JSON\.parse\(storage\.get\(OVERDUE_FIRED_KEY\) \|\| '\{\}'\)/.test(sweep) &&
+          /storage\.set\(OVERDUE_FIRED_KEY, JSON\.stringify\(fired\)\)/.test(sweep);
+        const armOk = /const armed = !!\(fired\[inv\.id\] && fired\[inv\.id\]\.dueDate === inv\.dueDate\);/.test(sweep) &&
+          /if \(armed\) \{ keepIds\.add\(overdueNotifId\(inv\.id\)\); continue; \}/.test(sweep) &&
+          (sweep.match(/fired\[inv\.id\] = \{ dueDate: inv\.dueDate, firedAt: /g) || []).length >= 2;
+        const pruneOk = /if \(!firedKeep\.has\(invId\)\) \{ delete fired\[invId\]; ledgerDirty = true; \}/.test(sweep) &&
+          /invIds\.slice\(0, invIds\.length - 200\)/.test(sweep);
+        const guardOk = /if \(overdueReconcilingRef\.current\) return;/.test(sweep) &&
+          /finally \{ overdueReconcilingRef\.current = false; \}/.test(sweep);
+        // The standing re-schedule of already-fired reminders is GONE: the
+        // bare no-churn `continue` (pendingOurs skip without ledger adopt)
+        // must not exist anywhere in the sweep.
+        const rescheduleGoneOk = !/if \(pendingOurs\.has\(id\)\) continue;/.test(sweep);
+        return keyOk && armOk && pruneOk && guardOk && rescheduleGoneOk;
+      })());
 
     // ─ TT15: Second app icon ("Scribble") — bridge + Settings picker (+ native) ─
     // The web build must never touch the AppIcon native bridge (audit:web also
