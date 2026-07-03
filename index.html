@@ -9977,13 +9977,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // not by the full window length. Otherwise a run of pre-data zero months
       // (or a quiet stretch) drags the average toward zero and misrepresents
       // the user's typical earning month. £4,003 across 2 earning months reads
-      // as £2,001.50, not £333.58. The numerator stays the window total —
-      // every zero contributes 0 either way, so dropping them from the sum
-      // is unnecessary; only the denominator changes.
+      // as £2,001.50, not £333.58.
+      // The in-progress current month (isCurrentMonth) is excluded from BOTH
+      // sum and count: a partial month drags the average down the same way a
+      // zero month would. The chart still renders it — exclusion lives only
+      // here, in the average.
       // Divide-by-zero guard: an all-zero window returns 0 (no division)
       // so the headline "Monthly average £0.00" reads cleanly with no NaN.
       if (!Array.isArray(windowEntries) || windowEntries.length === 0) return 0;
-      const earning = windowEntries.filter(e => e && (e.amount || 0) > 0);
+      const earning = windowEntries.filter(e => e && (e.amount || 0) > 0 && !e.isCurrentMonth);
       if (earning.length === 0) return 0;
       return earning.reduce((s, e) => s + (e.amount || 0), 0) / earning.length;
     }
