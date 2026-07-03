@@ -10672,12 +10672,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    // Day-anchor rule shared by Best Boy (computeInitialDate) and Solo
+    // (SoloDayPage anchor effect): open on the existing day closest to today,
+    // ties going to the earlier day. Picking only among existing days clamps
+    // the anchor to the shoot's date range — a wrapped shoot opens on its
+    // last day, a future one on its first. Empty/dateless input → null.
+    function closestDateToToday(dates) {
+      const uniq = [...new Set((dates || []).filter(Boolean))].sort();
+      if (uniq.length === 0) return null;
+      const t = new Date(todayISO()).getTime();
+      let best = uniq[0];
+      let bestDist = Math.abs(new Date(uniq[0]).getTime() - t);
+      for (let i = 1; i < uniq.length; i++) {
+        const dist = Math.abs(new Date(uniq[i]).getTime() - t);
+        if (dist < bestDist) { best = uniq[i]; bestDist = dist; }
+      }
+      return best;
+    }
+
     function computeInitialDate(production) {
-      const today = todayISO();
-      const datesWithData = new Set((production.days || []).map(d => d.date));
-      if (datesWithData.has(today)) return today;
-      if (datesWithData.size > 0) return [...datesWithData].sort().reverse()[0];
-      return production.startDate || today;
+      return closestDateToToday((production.days || []).map(d => d.date))
+        || production.startDate || todayISO();
     }
 
     function BestBoyMobileDayView({ production, setProduction, userPrefs, onPushUndo, currentDate, setCurrentDate, onCrewTap, showToast }) {
@@ -15470,14 +15485,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const [currentDayId, setCurrentDayId] = useState(null);
 
-      // Anchor to today's day (or last day) on first load and re-anchor if current id becomes invalid
+      // Anchor to the day closest to today (ties → earlier; see
+      // closestDateToToday) on first load, and re-anchor by the same rule
+      // if the current id becomes invalid (e.g. day deleted).
       useEffect(() => {
         if (sortedDays.length === 0) return;
         const stillValid = currentDayId && sortedDays.some(d => d.id === currentDayId);
         if (stillValid) return;
-        const todayStr = todayISO();
-        const todayDay = sortedDays.find(d => d.date === todayStr);
-        setCurrentDayId(todayDay?.id ?? sortedDays[sortedDays.length - 1].id);
+        const anchorDate = closestDateToToday(sortedDays.map(d => d.date));
+        const anchorDay = (anchorDate && sortedDays.find(d => d.date === anchorDate)) || sortedDays[sortedDays.length - 1];
+        setCurrentDayId(anchorDay.id);
       }, [sortedDays, currentDayId]);
 
       const currentDay = sortedDays.find(d => d.id === currentDayId) || sortedDays[0];
