@@ -6200,6 +6200,21 @@ async function main() {
         const sweepOk = /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html);
         return fnOk && wiredOk && sweepOk;
       })());
+
+    // ─ TT18: sweep start branch — centralised lifecycle, no double-start ─
+    check('TT18a reconcile sweep STARTS a qualifying card (descriptor-driven, wrapped excluded) for productions with no card and no mounted controller; descriptorToPayload is the ONE payload shape shared by controller + sweep; SoloLiveActivity registers/deregisters its pid in laControllerPids (mount/unmount) and the start branch skips owned pids; the early bail on an empty activity list is GONE (an empty list is exactly when a start is needed)',
+      (() => {
+        const helperOk = /function descriptorToPayload\(desc\) \{/.test(html) &&
+          /const payload = descriptorToPayload\(desc\);/.test(html);
+        const registryOk = /const laControllerPids = new Set\(\);/.test(html) &&
+          /laControllerPids\.add\(pid\);/.test(html) &&
+          /return \(\) => \{ laControllerPids\.delete\(pid\); \};/.test(html);
+        const startOk = /if \(!pr \|\| byPid\.has\(pr\.id\) \|\| laControllerPids\.has\(pr\.id\)\) continue;/.test(html) &&
+          /if \(!desc \|\| desc\.wrapped\) continue;/.test(html) &&
+          /LiveActivity\.start\(descriptorToPayload\(desc\)\);/.test(html);
+        const bailGoneOk = !/const acts = await LiveActivity\.list\(\);\s*if \(!acts \|\| !acts\.length\) return;/.test(html);
+        return helperOk && registryOk && startOk && bailGoneOk;
+      })());
   }
 
   // IM — Invoice email method ("Apple Mail" composer vs "Another app" / share

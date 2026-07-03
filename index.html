@@ -15459,12 +15459,38 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve };
     }
 
+    // ONE payload shape for both lifecycle owners — the mounted controller
+    // (SoloLiveActivity) and the app-level reconcile sweep's start branch —
+    // so the two can never drift. Exactly what the plugin reads on
+    // start/update; wrapped/staleness stay descriptor-side concerns.
+    function descriptorToPayload(desc) {
+      const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId, lunchEndEpoch: desc.lunchEndEpoch, otFrom: desc.otFrom, curtailMins: desc.curtailMins, lunchLogged: desc.lunchLogged, wrapCurve: desc.wrapCurve };
+      return payload;
+    }
+
+    // Lifecycle-ownership registry (module scope): the pids whose Live
+    // Activity start/update is currently owned by a MOUNTED SoloLiveActivity
+    // controller. The reconcile sweep's start branch skips these — the guard
+    // against a double-start race between the ~1s change-sweep and a fresh
+    // mount. Ending stays sweep-territory for everyone (a controller that
+    // disqualifies ends its own card immediately anyway).
+    const laControllerPids = new Set();
+
     // Mounted inside SoloDayPage. START when today's call time is set; debounced
     // UPDATE on recompute / state change; END on wrap. All native calls behind
     // IS_NATIVE (no-op on web). Renders nothing.
     function SoloLiveActivity({ production, soloCrew, days, enabled = true }) {
       const startedKeyRef = React.useRef(null);
       const lastSentRef = React.useRef('');
+      // Register lifecycle ownership for this production while mounted — the
+      // reconcile sweep's start branch defers to a mounted controller.
+      React.useEffect(() => {
+        if (!IS_NATIVE) return;
+        const pid = production && production.id;
+        if (!pid) return;
+        laControllerPids.add(pid);
+        return () => { laControllerPids.delete(pid); };
+      }, [production && production.id]);
       // Minute tick: the descriptor's time-derived outputs (AT LUNCH state, the
       // L1/CWD live-window terms) depend on wall-clock "now", but nothing in
       // SoloDayPage re-renders on a timer — so without this, a threshold crossing
@@ -15502,7 +15528,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
-          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId, lunchEndEpoch: desc.lunchEndEpoch, otFrom: desc.otFrom, curtailMins: desc.curtailMins, lunchLogged: desc.lunchLogged, wrapCurve: desc.wrapCurve };
+          const payload = descriptorToPayload(desc);
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…
@@ -23040,16 +23066,25 @@ const confirmDelete = (p) => setConfirmOpts({
       // via a persisted appliedEventIds set; today-dated (UTC, matches todayISO) only.
       // Entirely IS_NATIVE-gated, so the web build never touches the bridge.
       //
-      // ── Live Activity reconcile sweep (round 3) ──────────────────────────────
-      // Ends any system-registered Activity whose production no longer has a
-      // valid, today-qualifying solo day — catching changes made while no
-      // SoloLiveActivity controller was mounted (day deleted, date moved off
-      // today, production deleted or flipped to Best Boy, or the Live Activity
-      // setting switched OFF — disabled counts as not-qualifying). Qualify
-      // conditions mirror liveActivityDescriptor's null checks. Reads through a
+      // ── Live Activity reconcile sweep (round 3; start branch added V5) ──────
+      // The sweep owns BOTH lifecycle directions for unmounted productions:
+      // it ENDS any system-registered Activity whose production no longer has
+      // a valid, today-qualifying solo day (day deleted, date moved off today,
+      // production deleted or flipped to Best Boy, wrapped, or the Live
+      // Activity setting switched OFF — disabled counts as not-qualifying),
+      // and it STARTS a card for a production that qualifies but has none —
+      // catching eligibility created while no SoloLiveActivity controller was
+      // mounted (e.g. a date edited from tomorrow to today in production
+      // settings). A pid with a MOUNTED controller (laControllerPids) is
+      // skipped by the start branch: the controller owns start/update there,
+      // which closes the double-start race with the ~1s change-sweep; the
+      // native adopt-don't-duplicate in startActivity plus the duplicate
+      // converge below backstop anything that still slips through. End-side
+      // qualify conditions mirror liveActivityDescriptor's null checks (cheap
+      // record read); the start branch uses the descriptor itself so payload
+      // and eligibility can't drift from the controller's. Reads through a
       // render-refreshed ref so the mount-time foreground listener and the
-      // debounced change-sweep both see CURRENT state. Wrapped days still
-      // qualify — the wrap flow owns its own linger-then-end. Uses list()/
+      // debounced change-sweep both see CURRENT state. Uses list()/
       // endForProduction (ActivityKit-backed), so it also clears cards orphaned
       // by an app restart, which the plugin's single tracked handle cannot end.
       const laSweepStateRef = React.useRef({ productions: [], enabled: true });
@@ -23057,7 +23092,6 @@ const confirmDelete = (p) => setConfirmOpts({
       const liveActivityReconcile = React.useCallback(async () => {
         if (!IS_NATIVE) return;
         const acts = await LiveActivity.list();
-        if (!acts || !acts.length) return;
         const { productions: prods, enabled } = laSweepStateRef.current;
         const today = todayISO();
         // Group by productionId so the sweep can converge DUPLICATES of a
@@ -23067,7 +23101,7 @@ const confirmDelete = (p) => setConfirmOpts({
         // invariant; startActivity's adopt-or-update normally prevents a second,
         // this catches any that slip past, e.g. a race before adopt).
         const byPid = new Map();
-        for (const a of acts) {
+        for (const a of (acts || [])) {
           if (!a || !a.productionId) continue;
           if (!byPid.has(a.productionId)) byPid.set(a.productionId, []);
           byPid.get(a.productionId).push(a.id);
@@ -23080,8 +23114,8 @@ const confirmDelete = (p) => setConfirmOpts({
                               || (pr.days || []).find(d => d.date === today)) : null;
           const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
           // A wrapped day (explicit user flag — card wrap, WrapNow, or a solo
-    // wrap-time edit that already passed) can never keep or restart a card.
-    const qualifies = enabled && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime));
+          // wrap-time edit that already passed) can never keep or restart a card.
+          const qualifies = enabled && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime));
           if (!qualifies) {
             console.log('[LiveActivity] reconcile → end (no qualifying day)', pid);
             LiveActivity.endForProduction(pid);
@@ -23091,6 +23125,21 @@ const confirmDelete = (p) => setConfirmOpts({
           }
         }
         if (dupeIds.length) LiveActivity.endActivityIds(dupeIds);
+        // START branch — a qualifying production with NO card and NO mounted
+        // controller gets one here, through the same descriptor + payload the
+        // controller uses. desc.wrapped is excluded (that day is over; the
+        // send-off belongs to the controller/intent flows, never a sweep).
+        if (!enabled) return;
+        for (const pr of (prods || [])) {
+          if (!pr || byPid.has(pr.id) || laControllerPids.has(pr.id)) continue;
+          const soloCrew = !pr.bestBoyMode ? (pr.crew || [])[0] : null;
+          if (!soloCrew) continue;
+          let desc = null;
+          try { desc = liveActivityDescriptor(pr, soloCrew, pr.days || []); } catch (_) {}
+          if (!desc || desc.wrapped) continue;
+          console.log('[LiveActivity] reconcile → start (qualifying day, no card)', pr.id);
+          LiveActivity.start(descriptorToPayload(desc));
+        }
       }, []);
       // Change-sweep: production edits (delete day/production, date moves) and
       // the Settings toggle reconcile within ~1s while the app is open; launch +
