@@ -399,7 +399,10 @@ struct TimeMachineLiveActivity: Widget {
             } compactLeading: {
                 Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
             } compactTrailing: {
-                moneyText(context.state.totalText, font: Font.system(size: 14, weight: .bold, design: .monospaced))
+                // Money is deliberately absent from the always-visible
+                // presentations (compact/minimal show the status dot only);
+                // the day total lives in the expanded island and lock screen.
+                EmptyView()
             } minimal: {
                 Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
             }
