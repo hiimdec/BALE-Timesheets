@@ -22257,6 +22257,21 @@ const confirmDelete = (p) => setConfirmOpts({
         return totals;
       }, [productions, userPrefs]);
 
+      // A shoot is "upcoming" when it has dated days and none has elapsed.
+      // Its card shows the full booked figure (muted + BOOKED label) instead
+      // of the earned-so-far total, which is £0 by construction. Display-only:
+      // reads productionTotalsFull per-production; nothing here feeds
+      // productionTotals / monthTotal / stats (the Stage 7 fence above stands).
+      const productionIsUpcoming = useMemo(() => {
+        const today = todayISO();
+        const map = {};
+        for (const p of productions) {
+          const dated = (p.days ?? []).filter(d => d.date);
+          map[p.id] = dated.length > 0 && !dated.some(d => d.date < today);
+        }
+        return map;
+      }, [productions]);
+
       // Per-production worked-hours total (for the month-group head's hour figure).
       const productionHours = useMemo(() => {
         const today = todayISO();
@@ -22337,6 +22352,10 @@ const confirmDelete = (p) => setConfirmOpts({
         label: g.label,
         monthTotal: g.items.reduce((sum, p) => sum + (productionTotals[p.id] || 0), 0),
         monthHours: g.items.reduce((sum, p) => sum + (productionHours[p.id] || 0), 0),
+        // Header figures mean EARNED money/hours only. A group whose shoots
+        // are all upcoming has earned nothing — hide the figures rather than
+        // render a dead £0 (booked values are deliberately NOT summed here).
+        allUpcoming: g.items.every(p => productionIsUpcoming[p.id]),
         items: g.items.filter(p => p.id !== currentShoot?.id),
       })).filter(g => g.items.length > 0);
 
@@ -22580,7 +22599,14 @@ const confirmDelete = (p) => setConfirmOpts({
                   {invChip}
                 </div>
               )}
-              <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+              {productionIsUpcoming[p.id] ? (
+                <div className="flex flex-col items-end flex-shrink-0">
+                  <span className="text-[15px] font-mono font-bold text-neutral-500">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
+                  <span className="text-[8px] uppercase tracking-[0.15em] text-neutral-600 font-bold">Booked</span>
+                </div>
+              ) : (
+                <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); openActionSheet(p); }}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800 flex-shrink-0 transition-colors"
@@ -22609,7 +22635,14 @@ const confirmDelete = (p) => setConfirmOpts({
               <h3 className="flex-1 min-w-0 truncate text-[13px] text-neutral-400">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
               {bestBoyBadge}
               {invChip}
-              <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+              {productionIsUpcoming[p.id] ? (
+                <span className="flex items-baseline gap-1.5 flex-shrink-0">
+                  <span className="text-[8px] uppercase tracking-[0.15em] text-neutral-600 font-bold">Booked</span>
+                  <span className="text-[13px] font-mono text-neutral-500">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
+                </span>
+              ) : (
+                <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+              )}
             </div>
           </div>
           </SwipeableRow>
@@ -22760,14 +22793,16 @@ const confirmDelete = (p) => setConfirmOpts({
 
                 {/* Month groups */}
                 <div className="space-y-8">
-                  {groupsDisplay.map(({ label, items, monthTotal, monthHours }) => (
+                  {groupsDisplay.map(({ label, items, monthTotal, monthHours, allUpcoming }) => (
                     <div key={label}>
                       <div className="flex items-baseline justify-between border-b border-dashed border-neutral-800 mb-2.5" style={{ padding: '0 2px 10px' }}>
                         <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label}</div>
-                        <div className="flex items-baseline gap-2.5">
-                          <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>
-                          <span className="font-mono text-[12px] font-bold text-neutral-100">{fmtGBP(monthTotal)}</span>
-                        </div>
+                        {!allUpcoming && (
+                          <div className="flex items-baseline gap-2.5">
+                            <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>
+                            <span className="font-mono text-[12px] font-bold text-neutral-100">{fmtGBP(monthTotal)}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-2">
                         {items.map(p => renderCard(p, { compact: !isCurrentMonth(p) }))}
