@@ -331,12 +331,18 @@ struct TimeMachineLockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Line 1: production name · state chip
+            // Line 1: production name · state chip. The name shrinks (to 75%)
+            // then tail-truncates rather than overflowing: an over-wide row
+            // would otherwise push the VStack past the card's width and the
+            // centred overflow clips the LEADING edge of the name ("REBULL
+            // RACING" losing its R).
             HStack {
                 Text(context.attributes.productionName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.tmMuted)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.75)
                 Spacer()
                 chipSlot(state: context.state.state, cwd: context.state.cwd, onLunch: isOnLunch(context.state))
             }
@@ -357,6 +363,10 @@ struct TimeMachineLockScreenView: View {
                 actionButtons(context.attributes.productionId, armed: context.state.armed, lunchLogged: context.state.lunchLogged, curtailMins: context.state.curtailMins, onLunch: isOnLunch(context.state))
             }
         }
+        // Pin the stack to the full offered width, leading-aligned: a child
+        // row that can't fit then truncates in place instead of widening the
+        // stack past the card and getting centre-clipped at both edges.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .activityBackgroundTint(.tmBg)
         .activitySystemActionForegroundColor(.tmSky)
@@ -409,5 +419,10 @@ struct TimeMachineLiveActivity: Widget {
             .widgetURL(URL(string: "timemachine://today"))
             .keylineTint(.tmSky)
         }
+        // The card's own .padding(16) is the ONLY margin: opt out of the
+        // iOS 17 system content margins so the inset is deterministic and
+        // identical across OS versions instead of stacking on top of ours.
+        // (No-op below iOS 17.)
+        .contentMarginsDisabled()
     }
 }
