@@ -1616,7 +1616,20 @@
       return custom ? [...COMPARISON_SURFACE, custom.label] : COMPARISON_SURFACE;
     };
 
-    const DEPARTMENTS = {
+    // ── APA rate cards — effective-dated (numbers only) ─────────────────────
+    // The RULES never vary by card: role names, departments, pmpa/noOT flags
+    // and the whole calc engine are card-invariant — only the figures
+    // (bdr/otCoef, any explicit otRate) move between cards. A production
+    // resolves its card by startDate at the COPY sites only (crew creation,
+    // role change, step-up pickers, the boundary-crossing refresh prompt);
+    // the engine reads nothing but the values already snapshotted onto
+    // crew/day records, so an existing production never moves retroactively
+    // when a new card lands.
+    const RATE_CARDS = [
+      {
+        effectiveFrom: "2025-09-01",
+        label: "Sept 2025",
+        departments: {
       "Direction & Production": {
         "Director":             { bdr: 933,  otCoef: 0,    noOT: true },
         "Producer":             { bdr: 933,  otCoef: 0,    noOT: true },
@@ -1713,9 +1726,56 @@
         "Driver":           { bdr: 299, otCoef: 1.5 },
         "Covid Supervisor": { bdr: 435, otCoef: 1.5 },
       },
-    };
+        },
+      },
+      {
+        effectiveFrom: "2026-09-01",
+        label: "Sept 2026",
+        // PLACEHOLDER — filled below with a byte-identical deep copy of the
+        // Sept 2025 numbers. The real Sept 2026 values arrive in a follow-up
+        // instruction and will replace the copy with an explicit table; until
+        // then the boundary exists but moves no money.
+        departments: null,
+      },
+    ];
+    RATE_CARDS[1].departments = JSON.parse(JSON.stringify(RATE_CARDS[0].departments));
 
-    // Flat lookup — backwards compatible
+    // Flatten a card to the role → { bdr, otCoef, … } lookup. The legacy
+    // "Spark" alias follows every card.
+    function flattenRateCard(card) {
+      const flat = Object.fromEntries(
+        Object.values(card.departments).flatMap(roles => Object.entries(roles))
+      );
+      flat["Spark"] = flat["Lighting Technician"];
+      return flat;
+    }
+
+    // Latest card whose effectiveFrom ≤ the production's startDate; no/blank
+    // startDate resolves by the CURRENT date. Plain string compare — both
+    // sides are YYYY-MM-DD.
+    function resolveRateCard(startDate) {
+      const key = (typeof startDate === "string" && startDate) ? startDate : todayISO();
+      let chosen = RATE_CARDS[0];
+      for (const c of RATE_CARDS) { if (c.effectiveFrom <= key) chosen = c; }
+      return chosen;
+    }
+
+    // The role-rates lookup for a production — EVERY bdr/otCoef/otRate copy
+    // resolves through this (pass null for "the current-date card": Settings
+    // global defaults, brand-new productions). Resolved at CALL time, never
+    // cached at module init: todayISO() is declared later in the file (TDZ),
+    // and the current-date card changes at a boundary anyway.
+    function roleDefaultsFor(production) {
+      return flattenRateCard(resolveRateCard(production && production.startDate));
+    }
+
+    // Rules-side structure (role names / departments / display order) —
+    // card-invariant, bound once to the base card.
+    const DEPARTMENTS = RATE_CARDS[0].departments;
+
+    // Flat lookup — backwards compatible. Kept as the BASE-card flatten for
+    // the card-invariant reads (pmpa/noOT flags, role-name lists); NUMBER
+    // copies must go through roleDefaultsFor(production) instead.
     const ROLE_DEFAULTS = Object.fromEntries(
       Object.values(DEPARTMENTS).flatMap(roles => Object.entries(roles))
     );
@@ -7276,9 +7336,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ CREW MANAGER ═══════════════════════════ */
 
-    function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed, onPushUndo }) {
+    function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed, onPushUndo, production = null }) {
       const [editing, setEditing] = useState(null);
-      const blank = { id: "", name: "", role: "Lighting Technician", bdr: ROLE_DEFAULTS["Lighting Technician"].bdr, otCoef: ROLE_DEFAULTS["Lighting Technician"].otCoef, otRate: ROLE_DEFAULTS["Lighting Technician"].otRate ?? null, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false, email: "" };
+      // Rate copies resolve through the production's effective-dated card.
+      const cardRoles = roleDefaultsFor(production);
+      const blank = { id: "", name: "", role: "Lighting Technician", bdr: cardRoles["Lighting Technician"].bdr, otCoef: cardRoles["Lighting Technician"].otCoef, otRate: cardRoles["Lighting Technician"].otRate ?? null, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false, email: "" };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
       const dragIdx = useRef(null);
@@ -7304,7 +7366,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         cancel();
       };
       const remove = (id) => { onPushUndo('Crew member removed'); setCrew((prev) => prev.filter((c) => c.id !== id)); setConfirmRemove(null); };
-      const onRoleChange = (role) => { const d = ROLE_DEFAULTS[role] || {}; setForm((f) => ({ ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr), otRate: d.otRate ?? null })); };
+      const onRoleChange = (role) => { const d = cardRoles[role] || {}; setForm((f) => ({ ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr), otRate: d.otRate ?? null })); };
       const sortByRole = () => {
         setCrew((prev) => [...prev].sort((a, b) => {
           const r = roleRank(a.role) - roleRank(b.role);
@@ -8744,7 +8806,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Field label="Step-Up Role">
                   <Select value={v.stepUpRole || ""} onChange={(e) => {
                     const role = e.target.value;
-                    const d = ROLE_DEFAULTS[role] || {};
+                    const d = roleDefaultsFor(production)[role] || {};
                     set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef, stepUpOTRate: d.otRate ?? null });
                   }}>
                     <option value="">- Select Role -</option>
@@ -9592,7 +9654,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <Field label="Step-Up Role for all crew" hint="Select - None - to disable.">
                         <Select value={dateEdit.stepUpRole || ""} onChange={e => {
                           const role = e.target.value;
-                          const d = ROLE_DEFAULTS[role] || {};
+                          const d = roleDefaultsFor(production)[role] || {};
                           setDateEdit(p => ({
                             ...p,
                             stepUpRole: role,
@@ -11552,6 +11614,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <QuickAddCrewSheet
               onClose={() => setShowAddCrew(false)}
               onSubmit={handleAddNewCrew}
+              production={production}
             />
           )}
         </div>
@@ -11870,11 +11933,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function QuickAddCrewSheet({ onClose, onSubmit, crewMember = null }) {
+    function QuickAddCrewSheet({ onClose, onSubmit, crewMember = null, production = null }) {
       const isEditMode = crewMember !== null;
       const [name, setName] = useState(crewMember?.name || '');
       const [role, setRole] = useState(crewMember?.role || 'Lighting Technician');
-      const [bdr, setBdr] = useState(String(crewMember?.bdr ?? ROLE_DEFAULTS['Lighting Technician'].bdr ?? ''));
+      const [bdr, setBdr] = useState(String(crewMember?.bdr ?? roleDefaultsFor(production)['Lighting Technician'].bdr ?? ''));
       const [email, setEmail] = useState(crewMember?.email || '');
 
       // (c) editor — local buffer until Add/Save. Snapshot the initial field
@@ -11887,7 +11950,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const canSave = name.trim().length > 0;
       const handleSubmit = () => {
         if (!canSave) return;
-        const roleDefaults = ROLE_DEFAULTS[role] || {};
+        const roleDefaults = roleDefaultsFor(production)[role] || {};
         if (isEditMode) {
           onSubmit({
             ...crewMember,
@@ -12487,7 +12550,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                     value={dayRecord.stepUpRole || ''}
                                     onChange={(e) => {
                                       const role = e.target.value;
-                                      const d = ROLE_DEFAULTS[role] || {};
+                                      const d = roleDefaultsFor(production)[role] || {};
                                       setProduction(p => ({
                                         ...p,
                                         days: p.days.map(rec => rec.id === dayRecord.id ? {
@@ -12714,6 +12777,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {showEditCrew && (
             <QuickAddCrewSheet
               crewMember={crewMember}
+              production={production}
               onClose={() => setShowEditCrew(false)}
               onSubmit={(updated) => {
                 setProduction(p => ({
@@ -13053,8 +13117,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // sheet is showing.
       const [confirmReset, setConfirmReset] = useState(false);
 
+      // Boundary-crossing rate prompt: a startDate edit that lands the
+      // production on a DIFFERENT rate card (either direction) offers a
+      // one-time refresh of the crew's snapshotted bdr/otCoef/otRate from the
+      // newly-resolved card. Bug-avoidance, never silent: declining keeps
+      // every snapshot; custom/unknown roles are untouched either way, and
+      // step-up fields stay snapshotted (out of scope by design).
+      const [rateCardPrompt, setRateCardPrompt] = useState(null);
+
       const handleStartDateChange = (e) => {
         const newDate = e.target.value;
+        const oldCard = resolveRateCard(production.startDate);
+        const newCard = resolveRateCard(newDate);
         if (/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
           const monday = getMonday(newDate);
           setProduction(prev => ({
@@ -13065,6 +13139,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         } else {
           setProduction(prev => ({ ...prev, startDate: newDate }));
         }
+        if (newCard !== oldCard && (production.crew || []).length > 0) {
+          setRateCardPrompt({ label: newCard.label });
+        }
+      };
+
+      const applyRateCardRefresh = () => {
+        setRateCardPrompt(null);
+        setProduction(prev => {
+          // Re-resolve off the COMMITTED startDate rather than a captured
+          // card, so a raced second edit can't apply stale figures.
+          const flat = flattenRateCard(resolveRateCard(prev.startDate));
+          return {
+            ...prev,
+            crew: (prev.crew || []).map(c => {
+              const d = flat[c.role];
+              return d ? { ...c, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null } : c;
+            }),
+          };
+        });
       };
 
       const displayTitle = production.title || "Production";
@@ -13153,6 +13246,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     style={{ WebkitAppearance: 'none' }}
                   />
                 </div>
+                <ConfirmDialog
+                  open={!!rateCardPrompt}
+                  title="Rate card changed"
+                  message={`This start date puts the production on the APA ${rateCardPrompt?.label} rate card. Update the existing crew's day rates and OT to match? Custom rates for roles not on the card are left alone — and you can keep every current figure by choosing Keep.`}
+                  confirmLabel="Update rates"
+                  confirmTone="primary"
+                  cancelLabel="Keep"
+                  onConfirm={applyRateCardRefresh}
+                  onCancel={() => setRateCardPrompt(null)}
+                />
               </Field>
             </SectionCard>
 
@@ -13433,7 +13536,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <Field label="Role">
                     <Select value={m.role} onChange={(e) => {
                       const role = e.target.value;
-                      const d = ROLE_DEFAULTS[role] || {};
+                      const d = roleDefaultsFor(production)[role] || {};
                       setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, role, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null } : c) }));
                     }}>
                       {Object.entries(DEPARTMENTS).map(([dept, roles]) =>
@@ -13911,6 +14014,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {editingCrew && (
             <QuickAddCrewSheet
               crewMember={editingCrew}
+              production={production}
               onClose={() => setEditingCrew(null)}
               onSubmit={(updated) => {
                 setProduction(p => ({
@@ -16637,7 +16741,7 @@ const setDays = (updater) =>
             {tab === "setup" && production.bestBoyMode && (
               <div className="space-y-8">
                 <ProductionForm production={production} setProduction={setProduction} onOpenSettings={() => setShowProdSettings(true)} />
-                <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} onPushUndo={pushUndo} />
+                <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} onPushUndo={pushUndo} production={production} />
                 <div>
                   <Btn variant="ghost" size="sm" onClick={() => setShowCancelModal(true)}>Cancellation fees</Btn>
                 </div>
@@ -16680,7 +16784,7 @@ const setDays = (updater) =>
           </div>
 
           <div className="text-center text-[10px] text-neutral-600 py-6 pb-32 uppercase tracking-widest">
-            Rates per APA Sept 2025
+            Rates per APA {resolveRateCard(production.startDate).label}
           </div>
 
           {(() => {
@@ -16955,15 +17059,17 @@ const setDays = (updater) =>
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
     function makeDeptRoleHandlers(set, userPrefs) {
+      // Global defaults seed FUTURE productions, so numbers come off the
+      // current-date card (roleDefaultsFor(null)).
       return {
         onDeptChange: (dept) => {
           const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
-          const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
+          const roleDefaults = firstRole ? (roleDefaultsFor(null)[firstRole] || {}) : {};
           set({ defaultDepartment: dept, defaultRole: firstRole,
                 defaultBDR: roleDefaults.bdr ?? 0, defaultOTCoef: roleDefaults.otCoef ?? 1.5 });
         },
         onRoleChange: (role) => {
-          const d = ROLE_DEFAULTS[role] || {};
+          const d = roleDefaultsFor(null)[role] || {};
           set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
         },
       };
@@ -18928,7 +19034,7 @@ const setDays = (updater) =>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-neutral-500">APA rate version</span>
-                    <span className="font-mono">APA Sept 2025</span>
+                    <span className="font-mono">APA {resolveRateCard(null).label}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-neutral-500">Feedback</span>
@@ -23648,7 +23754,8 @@ const confirmDelete = (p) => setConfirmOpts({
       };
       const handleNewProduction = ({ title, bestBoyMode }) => {
         const role = userPrefs.defaultRole || "Lighting Technician";
-        const roleDefaults = ROLE_DEFAULTS[role] || {};
+        // New production starts today → the current-date card seeds its crew.
+        const roleDefaults = roleDefaultsFor(null)[role] || {};
         const bdr = userPrefs.defaultBDR || roleDefaults.bdr || 0;
         const otCoef = userPrefs.defaultOTCoef ?? roleDefaults.otCoef ?? 1.5;
         const soloCrew = bestBoyMode ? [] : [{

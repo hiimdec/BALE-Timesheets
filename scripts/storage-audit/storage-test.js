@@ -5151,7 +5151,9 @@ async function main() {
 
     // ─ LL6: ProductionSettingsSheet stays a full-screen page (NOT a Sheet) ─
     check('LL6 ProductionSettingsSheet remains a full-screen page (min-h-screen), not routed through <Sheet>',
-      /function ProductionSettingsSheet\([\s\S]{0,3500}<div className="min-h-screen bg-neutral-950/.test(html) &&
+      // window widened for the rate-card boundary prompt handlers that now
+      // sit between the function head and the render
+      /function ProductionSettingsSheet\([\s\S]{0,6500}<div className="min-h-screen bg-neutral-950/.test(html) &&
       (() => {
         const m = html.match(/function ProductionSettingsSheet\(([\s\S]*?)\n    function /);
         return m ? !/<Sheet\b/.test(m[1]) : false;
@@ -6142,6 +6144,40 @@ async function main() {
         // must not exist anywhere in the sweep.
         const rescheduleGoneOk = !/if \(pendingOurs\.has\(id\)\) continue;/.test(sweep);
         return keyOk && armOk && pruneOk && guardOk && rescheduleGoneOk;
+      })());
+
+    // ─ TT20: effective-dated APA rate cards — copy sites only, engine untouched ─
+    check('TT20a RATE_CARDS — two cards (2025-09-01 base + 2026-09-01 placeholder that is a byte-identical deep copy); resolveRateCard picks the latest effectiveFrom ≤ startDate, falling back to todayISO() for no/blank startDate; roleDefaultsFor flattens the resolved card with the Spark alias following every card',
+      (() => {
+        const cardsOk = /effectiveFrom: "2025-09-01",\s*label: "Sept 2025",/.test(html) &&
+          /effectiveFrom: "2026-09-01",\s*label: "Sept 2026",/.test(html) &&
+          /RATE_CARDS\[1\]\.departments = JSON\.parse\(JSON\.stringify\(RATE_CARDS\[0\]\.departments\)\);/.test(html);
+        const resolveOk = /const key = \(typeof startDate === "string" && startDate\) \? startDate : todayISO\(\);/.test(html) &&
+          /for \(const c of RATE_CARDS\) \{ if \(c\.effectiveFrom <= key\) chosen = c; \}/.test(html);
+        const flattenOk = /function flattenRateCard\(card\) \{/.test(html) &&
+          /flat\["Spark"\] = flat\["Lighting Technician"\];/.test(html) &&
+          /return flattenRateCard\(resolveRateCard\(production && production\.startDate\)\);/.test(html);
+        return cardsOk && resolveOk && flattenOk;
+      })());
+    check('TT20b every rate COPY site resolves through the effective-dated card — production-scoped sites (CrewManager blank+role change, DayEntryForm + bulk + CrewMemberDayView step-ups, QuickAddCrewSheet ×2, solo "your role") use roleDefaultsFor(production); current-date sites (Settings global defaults ×2, new-production seed) use roleDefaultsFor(null); footers are version-aware; the boundary-crossing startDate edit offers the one-time crew-rate refresh (never silent)',
+      (() => {
+        const prodSites = (html.match(/roleDefaultsFor\(production\)/g) || []).length >= 7;
+        const nullSites = (html.match(/roleDefaultsFor\(null\)/g) || []).length >= 3;
+        const footerOk = /Rates per APA \{resolveRateCard\(production\.startDate\)\.label\}/.test(html) &&
+          /APA \{resolveRateCard\(null\)\.label\}/.test(html);
+        const promptOk = /const \[rateCardPrompt, setRateCardPrompt\] = useState\(null\);/.test(html) &&
+          /if \(newCard !== oldCard && \(production\.crew \|\| \[\]\)\.length > 0\) \{\s*setRateCardPrompt\(\{ label: newCard\.label \}\);/.test(html) &&
+          /const flat = flattenRateCard\(resolveRateCard\(prev\.startDate\)\);/.test(html) &&
+          /title="Rate card changed"/.test(html);
+        return prodSites && nullSites && footerOk && promptOk;
+      })());
+    check('TT20c the pay engine never reads the card system — deriveBreakState, calculateDay and calculatePmpaDay contain no RATE_CARDS / resolveRateCard / roleDefaultsFor reference (rates reach the engine only as crew/day snapshots; the byte-identical 84-scenario calc audit independently proves zero drift)',
+      (() => {
+        const bs   = (html.match(/function deriveBreakState\([\s\S]*?\n    function /) || [''])[0];
+        const calc = (html.match(/function calculateDay\([\s\S]*?\n    function /) || [''])[0];
+        const pmpa = (html.match(/function calculatePmpaDay\([\s\S]*?\n    function /) || [''])[0];
+        const clean = (s) => s.length > 500 && !/RATE_CARDS|resolveRateCard|roleDefaultsFor/.test(s);
+        return clean(bs) && clean(calc) && clean(pmpa);
       })());
 
     // ─ TT15: Second app icon ("Scribble") — bridge + Settings picker (+ native) ─
