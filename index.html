@@ -1209,6 +1209,88 @@
       },
     };
 
+    // ── Health steps cache — the Legwork ledger (H3) ────────────────────────
+    // dayRecordId → { steps, windowStart, windowEnd, fetchedAt, settled }.
+    // Its OWN storage key, ledger pattern (ref-loaded once, write-through,
+    // capped) — NEVER fields on day records or productions (the migration
+    // landmine rule). Windows are epochs of the day's RESOLVED shoot hours,
+    // so an edit to call/wrap after a fetch shows up as a window mismatch
+    // and drops the entry, settled or not.
+    const HEALTH_STEPS_KEY = 'bigals_health_steps';
+    // Health data backfills late (a watch can sync a day's steps overnight),
+    // so a day's figure only freezes once fetched ≥36h after its wrap — the
+    // settling window. Before that, every Stats visit refetches.
+    const HEALTH_SETTLE_MS = 36 * 3600 * 1000;
+    const HEALTH_CACHE_CAP = 400;
+
+    let healthStepsCacheRef = null;
+    function healthStepsCache() {
+      if (!healthStepsCacheRef) {
+        let seed = {};
+        try { seed = JSON.parse(storage.get(HEALTH_STEPS_KEY) || '{}') || {}; } catch (_) {}
+        healthStepsCacheRef = seed;
+      }
+      return healthStepsCacheRef;
+    }
+
+    // Resolved shoot window for a day record — the resolveDay cascade (dept
+    // defaults count), LOCAL time, with the engine's call-relative overnight
+    // rule (explicit wrapNextDay, or wrap earlier than call → next day).
+    // No call → null (ineligible). No wrap → call→now, never settleable.
+    function healthWindowForDay(production, day, crewMember) {
+      if (!day || !day.date) return null;
+      const vr = resolveDay(production, day, crewMember);
+      const callH = parseHHMM(vr.callTime);
+      if (callH == null) return null;
+      const base = new Date(day.date + 'T00:00:00').getTime();
+      const windowStart = base + callH * 3600 * 1000;
+      const wrapH = parseHHMM(vr.wrapTime);
+      if (wrapH == null) return { windowStart, windowEnd: Date.now(), settleable: false };
+      const nextDay = vr.wrapNextDay === true || wrapH < callH;
+      const windowEnd = base + (wrapH + (nextDay ? 24 : 0)) * 3600 * 1000;
+      return { windowStart, windowEnd, settleable: true };
+    }
+
+    // Refresh sweep, run on Stats visits. dayEntries is the COMPLETE live set
+    // of the user's day records ({ id-bearing day, production, crewMember })
+    // — completeness matters because ids absent from it are treated as
+    // orphans (deleted days) and pruned. Reuse rule: settled + window
+    // matches exactly → frozen, no fetch; any mismatch drops and refetches;
+    // unsettled/missing always refetch. Settles when fetched ≥36h past wrap;
+    // call→now windows (no wrap yet) never settle.
+    async function refreshHealthSteps(dayEntries) {
+      const cache = healthStepsCache();
+      const liveIds = new Set((dayEntries || []).map(e => e.day.id));
+      let touched = false;
+      for (const e of (dayEntries || [])) {
+        const win = healthWindowForDay(e.production, e.day, e.crewMember);
+        if (!win) continue;
+        const cur = cache[e.day.id];
+        if (cur && cur.settled && cur.windowStart === win.windowStart && cur.windowEnd === win.windowEnd) continue;
+        const steps = await HealthSteps.querySteps(win.windowStart / 1000, win.windowEnd / 1000);
+        const fetchedAt = Date.now();
+        cache[e.day.id] = {
+          steps,
+          windowStart: win.windowStart,
+          windowEnd: win.windowEnd,
+          fetchedAt,
+          settled: win.settleable && fetchedAt >= win.windowEnd + HEALTH_SETTLE_MS,
+        };
+        touched = true;
+      }
+      for (const id of Object.keys(cache)) {
+        if (!liveIds.has(id)) { delete cache[id]; touched = true; }
+      }
+      const ids = Object.keys(cache);
+      if (ids.length > HEALTH_CACHE_CAP) {
+        ids.sort((a, b) => ((cache[a] && cache[a].windowEnd) || 0) - ((cache[b] && cache[b].windowEnd) || 0));
+        for (const id of ids.slice(0, ids.length - HEALTH_CACHE_CAP)) delete cache[id];
+        touched = true;
+      }
+      if (touched) { try { storage.set(HEALTH_STEPS_KEY, JSON.stringify(cache)); } catch (_) {} }
+      return cache;
+    }
+
     // ── AI call-sheet reader (Stage 1) — bridge to CallSheetPlugin ──────────
     // ON-DEVICE extraction (Apple Foundation Models + Vision/PDFKit): nothing
     // leaves the phone. EVERY method is IS_NATIVE-guarded and returns before
