@@ -5804,7 +5804,7 @@ async function main() {
         const movedOk = (la.match(/elapsedTimer\(anchor: anchor/g) || []).length === 1;
         return countdownOk && slotOk && elapsedNativeOk && movedOk;
       })());
-    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow (timer slot + OT-from in tmFaint, hidden when wrapped) separated by spacing only (NO divider), placed on lock screen + DI expanded (×2); DI compact = status dot only (money stripped from always-visible presentations; compactTrailing renders EmptyView); the old secondaryReadout row is GONE',
+    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow (timer slot + OT-from in tmFaint, hidden when wrapped) separated by spacing only (NO divider), LOCK SCREEN ONLY (the DI expanded is minimal: dot + name leading with tail-truncation/min-scale, money trailing, NO bottom region — the lock card is the actionable surface); DI compact = status dot only (compactTrailing renders EmptyView); the old secondaryReadout row is GONE',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const gone = !/secondaryReadout/.test(la);
@@ -5818,14 +5818,21 @@ async function main() {
         const lockOk = /microLabel\("DAY TOTAL"\)\s*Spacer\(\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
           /moneyText\(context\.state\.totalText, font: moneyFont\)/.test(la) &&
           !/Rectangle\(\)\.fill\(Color\.tmFaint\.opacity\(0\.18\)\)/.test(la);
-        // DI expanded: anchor relocated under the total (trailing). Compact:
-        // status dot leading, NOTHING trailing — money is deliberately absent
-        // from the always-visible presentations (expanded + lock screen keep it).
-        const diOk = /moneyText\(context\.state\.totalText, font: moneyFontSmall\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
+        // DI expanded is MINIMAL: leading = status dot + name (lineLimit +
+        // tail-truncation + min-scale — the anti-clip trio), trailing = the
+        // money alone; NO bottom region, NO microLabels/anchor/chip, NO
+        // buttons (the lock card owns all of that). Compact: status dot
+        // leading, NOTHING trailing.
+        const expanded = (la.match(/DynamicIsland \{[\s\S]*?\} compactLeading:/) || [''])[0];
+        const diOk = /HStack\(spacing: 6\) \{\s*Circle\(\)\.fill\(chipColor/.test(expanded) &&
+          /\.lineLimit\(1\)\s*\.truncationMode\(\.tail\)\s*\.minimumScaleFactor\(0\.75\)/.test(expanded) &&
+          /DynamicIslandExpandedRegion\(\.trailing\) \{\s*moneyText\(context\.state\.totalText, font: moneyFontSmall\)\s*\}/.test(expanded) &&
+          !/DynamicIslandExpandedRegion\(\.bottom\)/.test(expanded) &&
+          !/microLabel\(/.test(expanded) && !/actionButtons\(/.test(expanded) && !/timerProjectionRow\(/.test(expanded) &&
           /compactTrailing: \{[^}]*EmptyView\(\)/.test(la) &&
           !/compactTrailing: \{[^}]*moneyText/.test(la) &&
           /compactLeading: \{\s*Circle\(\)\.fill\(chipColor/.test(la);
-        const placedOk = (la.match(/timerProjectionRow\(state: context\.state\.state/g) || []).length === 2;
+        const placedOk = (la.match(/timerProjectionRow\(state: context\.state\.state/g) || []).length === 1;
         return gone && rowOk && lockOk && diOk && placedOk;
       })());
 

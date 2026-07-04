@@ -381,30 +381,27 @@ struct TimeMachineLiveActivity: Widget {
             TimeMachineLockScreenView(context: context)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded
+                // Expanded (long-press) — deliberately minimal: the name and
+                // the money, nothing else. The lock-screen card remains the
+                // actionable surface (timer, OT projection, Lunch/Wrap
+                // buttons all live there). Dropping the bottom region and
+                // the label stack releases the width pressure that clipped
+                // the production name's leading edge; the name still shrinks
+                // (to 75%) then tail-truncates so a genuinely long name
+                // degrades gracefully instead of clipping.
                 DynamicIslandExpandedRegion(.leading) {
-                    VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
                         Text(context.attributes.productionName)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.tmMuted)
                             .lineLimit(1)
-                        chipSlot(state: context.state.state, cwd: context.state.cwd, onLunch: isOnLunch(context.state))
+                            .truncationMode(.tail)
+                            .minimumScaleFactor(0.75)
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        microLabel("DAY TOTAL")
-                        moneyText(context.state.totalText, font: moneyFontSmall)
-                        microLabel(context.state.anchorLabel)
-                    }
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 8) {
-                        timerProjectionRow(state: context.state.state, onLunch: isOnLunch(context.state), anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
-                        if #available(iOS 17.0, *), context.state.state != "wrapped" {
-                            actionButtons(context.attributes.productionId, armed: context.state.armed, lunchLogged: context.state.lunchLogged, curtailMins: context.state.curtailMins, onLunch: isOnLunch(context.state))
-                        }
-                    }
+                    moneyText(context.state.totalText, font: moneyFontSmall)
                 }
             } compactLeading: {
                 Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
