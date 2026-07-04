@@ -410,13 +410,16 @@ struct TimeMachineLiveActivity: Widget {
                     HStack(spacing: 7) {
                         Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
                         Text(context.attributes.productionName)
-                            // .bold per Derrick's J1 call — the island name
-                            // read too light on device. (The lock card's name
-                            // is semibold; both surfaces were already
-                            // semibold, so "match" was a no-op — bold is the
-                            // half of the instruction that changes anything.)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.tmMuted)
+                            // Title treatment (K1): primary ink, 16pt bold —
+                            // the name clearly outranks the CALL/OT
+                            // microlabel line while the 22pt hero total
+                            // stays the loudest thing on the card. tmInk is
+                            // this design system's "primary white" (#FAFAFA,
+                            // the money-digit colour); the old tmMuted was
+                            // the defect — a secondary grey on what is
+                            // effectively the card's title.
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.tmInk)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .minimumScaleFactor(0.75)
