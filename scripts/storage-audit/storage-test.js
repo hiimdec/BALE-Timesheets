@@ -6237,6 +6237,86 @@ async function main() {
           !/bdr: Number\(userPrefs\?\.defaultBDR\) \|\| 0, isDefaultUser: true/.test(html);
         return fnOk && wiredOk && shadowGoneOk;
       })());
+
+    // ─ HH: Legwork (Apple Health steps) — bridge, ledger, block, native wiring ─
+    check('HH1a HealthSteps bridge is web-safe (TT14a style) — all four methods return their default BEFORE any plugin touch when !IS_NATIVE',
+      /const HealthSteps = \{/.test(html) &&
+      /async isAvailable\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
+      /async getRequestStatus\(\) \{\s*if \(!IS_NATIVE\) return 'unknown';/.test(html) &&
+      /async requestRead\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
+      /async querySteps\(startEpoch, endEpoch\) \{\s*if \(!IS_NATIVE\) return 0;/.test(html));
+    check('HH1b native wiring — HealthStepsPlugin (App target only): 4 methods, READ-ONLY requestAuthorization(toShare: nil), HKStatisticsQuery cumulativeSum with strict-dates predicate, getRequestStatusForAuthorization; registered in MainViewController; pbxproj Sources entry; App.entitlements gains healthkit while the WIDGET entitlements do NOT; Info.plist carries the exact NSHealthShareUsageDescription and NO update/write string, NO clinical-records array, NO background delivery',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const plugin = readSafe('ios/App/App/HealthStepsPlugin.swift');
+        const mvc = readSafe('ios/App/App/MainViewController.swift');
+        const pbx = readSafe('ios/App/App.xcodeproj/project.pbxproj');
+        const appEnt = readSafe('ios/App/App/App.entitlements');
+        const widgetEnt = readSafe('ios/App/TimeMachineWidgetExtension.entitlements');
+        const plist = readSafe('ios/App/App/Info.plist');
+        const pluginOk = /public let jsName = "HealthSteps"/.test(plugin) &&
+          ['isAvailable', 'getRequestStatus', 'requestRead', 'querySteps'].every(m => plugin.includes(`CAPPluginMethod(name: "${m}"`)) &&
+          /requestAuthorization\(toShare: nil, read: \[stepType\]\)/.test(plugin) &&
+          /getRequestStatusForAuthorization\(toShare: \[\], read: \[stepType\]\)/.test(plugin) &&
+          /HKStatisticsQuery\(quantityType: stepType,/.test(plugin) &&
+          /options: \.cumulativeSum\)/.test(plugin) &&
+          /options: \[\.strictStartDate, \.strictEndDate\]/.test(plugin) &&
+          // read-only invariant: requestAuthorization never receives a
+          // non-empty share set (doc comments may NAME the write string;
+          // the plist check below pins its actual absence)
+          !/requestAuthorization\(toShare: \[[^\]]/.test(plugin);
+        const wiredOk = /registerPluginInstance\(HealthStepsPlugin\(\)\)/.test(mvc) &&
+          /HealthStepsPlugin\.swift in Sources/.test(pbx);
+        const entOk = /com\.apple\.developer\.healthkit/.test(appEnt) &&
+          !/healthkit/i.test(widgetEnt);
+        const plistOk = plist.includes('<key>NSHealthShareUsageDescription</key>') &&
+          plist.includes('<string>TimeMachine reads your step count to show how far you walk on shoot days, between call and wrap. Your steps are processed on this phone and never leave it.</string>') &&
+          !/NSHealthUpdateUsageDescription/.test(plist) &&
+          !/healthkit\.access|background-delivery/.test(plist);
+        return pluginOk && wiredOk && entOk && plistOk;
+      })());
+    check('HH2a health steps ledger — bigals_health_steps (own key, ref-loaded, write-through, cap 400 pruned oldest-windowEnd-first); settled entries reused ONLY on an exact resolved-window match (mismatch = times edited → drop + refetch); settles at fetchedAt ≥ windowEnd + 36h; call→now (no wrap) windows never settle; orphaned day ids pruned',
+      (() => {
+        const keyOk = /const HEALTH_STEPS_KEY = 'bigals_health_steps';/.test(html) &&
+          /const HEALTH_SETTLE_MS = 36 \* 3600 \* 1000;/.test(html) &&
+          /const HEALTH_CACHE_CAP = 400;/.test(html) &&
+          /JSON\.parse\(storage\.get\(HEALTH_STEPS_KEY\) \|\| '\{\}'\)/.test(html) &&
+          /storage\.set\(HEALTH_STEPS_KEY, JSON\.stringify\(cache\)\)/.test(html);
+        const reuseOk = /if \(cur && cur\.settled && cur\.windowStart === win\.windowStart && cur\.windowEnd === win\.windowEnd\) continue;/.test(html) &&
+          /settled: win\.settleable && fetchedAt >= win\.windowEnd \+ HEALTH_SETTLE_MS,/.test(html) &&
+          /if \(wrapH == null\) return \{ windowStart, windowEnd: Date\.now\(\), settleable: false \};/.test(html) &&
+          /if \(!liveIds\.has\(id\)\) \{ delete cache\[id\]; touched = true; \}/.test(html);
+        return keyOk && reuseOk;
+      })());
+    check('HH2b no health fields ever land on day records or productions — makeBlankDay, migrateDay and migrateProduction stay health-free (the cache is the ONLY store, keyed by day id)',
+      (() => {
+        const blank = (html.match(/function makeBlankDay\([\s\S]*?\n    \}/) || [''])[0];
+        const mDay = (html.match(/function migrateDay\([\s\S]*?\n    \}/) || [''])[0];
+        const mProd = (html.match(/const migrateProduction = \(p\) => \{[\s\S]*?\n    \};/) || [''])[0];
+        const clean = (s) => s.length > 200 && !/health|steps/i.test(s);
+        return clean(blank) && clean(mDay) && clean(mProd);
+      })());
+    check('HH3a Legwork block — IS_NATIVE-gated at the mount boundary; getRequestStatus (HealthKit truth, not the persisted flag) gates the pre-ask card; quiet line + Hide affordance on universal zeros; "Show step stats" Settings toggle is a display pref only; dayTotal via calcForDisplay; the block never references the engine internals',
+      (() => {
+        const block = (html.match(/function LegworkBlock\(\{[\s\S]*?\n    \}\n\n    function StatsScreen/) || [''])[0];
+        const gateOk = /\{IS_NATIVE && userPrefs\.healthStepsHidden !== true && \(\s*<LegworkBlock/.test(html);
+        const stateOk = /if \(status === 'shouldRequest'\) \{ setPhase\('preask'\); return; \}/.test(block) &&
+          /setUserPrefs\(prev => \(\{ \.\.\.prev, healthStepsHidden: true \}\)\)/.test(block);
+        const toggleOk = /<Toggle value=\{userPrefs\.healthStepsHidden !== true\} onChange=\{\(v\) => set\(\{ healthStepsHidden: !v \}\)\} ariaLabel="Show step stats" \/>/.test(html);
+        const calcOk = /calcForDisplay\(e\.production, e\.day, e\.crewMember, findPrevDay\(e\.production\.days \|\| \[\], e\.day\)\)/.test(block) &&
+          !/calculateDay|calculatePmpaDay|deriveBreakState/.test(block);
+        return block.length > 500 && gateOk && stateOk && toggleOk && calcOk;
+      })());
+    check('HH3b Legwork copy — the finalised strings, verbatim (explainer, button, both quips, summary, skipped caption, quiet line)',
+      /Connect Apple Health and TimeMachine will count your steps between call and wrap — shoot days only, and only on this phone\./.test(html) &&
+      />Connect Apple Health<\/Btn>/.test(html) &&
+      /somebody had to carry the kit\./.test(html) &&
+      /the chair was comfy, presumably\./.test(html) &&
+      // the summary line is PROSE — default sans in the Stats body voice,
+      // never mono (the card figures keep the data-hot treatment)
+      /<div className="text-sm text-neutral-400">\{figures\.total\.toLocaleString\('en-GB'\)\} steps across \{figures\.n\} shoot day\{figures\.n !== 1 \? 's' : ''\}<\/div>/.test(html) &&
+      /under 100 steps recorded\. Phone in the truck\?/.test(html) &&
+      /No step data available — check Health access in Settings\./.test(html));
     check('TT20c the pay engine never reads the card system — deriveBreakState, calculateDay and calculatePmpaDay contain no RATE_CARDS / resolveRateCard / roleDefaultsFor reference (rates reach the engine only as crew/day snapshots; the byte-identical 84-scenario calc audit independently proves zero drift)',
       (() => {
         const bs   = (html.match(/function deriveBreakState\([\s\S]*?\n    function /) || [''])[0];

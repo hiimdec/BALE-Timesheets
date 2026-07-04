@@ -1174,6 +1174,123 @@
       },
     };
 
+    // ── Health steps bridge — Legwork block (iOS-only) ─────────────────────
+    // Wraps HealthStepsPlugin: ONE HealthKit capability (summed stepCount
+    // over a window), read-only, on-device. EVERY method returns its
+    // web-safe default BEFORE touching the plugin layer unless IS_NATIVE
+    // (audit:web). getRequestStatus surfaces HealthKit's own
+    // sheet-was-presented state ('shouldRequest' | 'unnecessary' |
+    // 'unknown') — the pre-ask/post-ask source of truth, since iOS keeps
+    // read grants opaque (denied reads just return empty data).
+    const HealthSteps = {
+      async isAvailable() {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().HealthSteps; if (p && p.isAvailable) { const r = await p.isAvailable(); return !!(r && r.available); } }
+        catch (e) { try { console.warn('[HealthSteps] isAvailable failed', (e && e.message) || e); } catch (_) {} }
+        return false;
+      },
+      async getRequestStatus() {
+        if (!IS_NATIVE) return 'unknown';
+        try { const p = _capPlugins().HealthSteps; if (p && p.getRequestStatus) { const r = await p.getRequestStatus(); return (r && r.status) || 'unknown'; } }
+        catch (e) { try { console.warn('[HealthSteps] getRequestStatus failed', (e && e.message) || e); } catch (_) {} }
+        return 'unknown';
+      },
+      async requestRead() {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().HealthSteps; if (p && p.requestRead) { const r = await p.requestRead(); return !!(r && r.ok); } }
+        catch (e) { try { console.warn('[HealthSteps] requestRead failed', (e && e.message) || e); } catch (_) {} }
+        return false;
+      },
+      async querySteps(startEpoch, endEpoch) {
+        if (!IS_NATIVE) return 0;
+        try { const p = _capPlugins().HealthSteps; if (p && p.querySteps) { const r = await p.querySteps({ startEpoch, endEpoch }); return Number(r && r.steps) || 0; } }
+        catch (e) { try { console.warn('[HealthSteps] querySteps failed', (e && e.message) || e); } catch (_) {} }
+        return 0;
+      },
+    };
+
+    // ── Health steps cache — the Legwork ledger (H3) ────────────────────────
+    // dayRecordId → { steps, windowStart, windowEnd, fetchedAt, settled }.
+    // Its OWN storage key, ledger pattern (ref-loaded once, write-through,
+    // capped) — NEVER fields on day records or productions (the migration
+    // landmine rule). Windows are epochs of the day's RESOLVED shoot hours,
+    // so an edit to call/wrap after a fetch shows up as a window mismatch
+    // and drops the entry, settled or not.
+    const HEALTH_STEPS_KEY = 'bigals_health_steps';
+    // Health data backfills late (a watch can sync a day's steps overnight),
+    // so a day's figure only freezes once fetched ≥36h after its wrap — the
+    // settling window. Before that, every Stats visit refetches.
+    const HEALTH_SETTLE_MS = 36 * 3600 * 1000;
+    const HEALTH_CACHE_CAP = 400;
+
+    let healthStepsCacheRef = null;
+    function healthStepsCache() {
+      if (!healthStepsCacheRef) {
+        let seed = {};
+        try { seed = JSON.parse(storage.get(HEALTH_STEPS_KEY) || '{}') || {}; } catch (_) {}
+        healthStepsCacheRef = seed;
+      }
+      return healthStepsCacheRef;
+    }
+
+    // Resolved shoot window for a day record — the resolveDay cascade (dept
+    // defaults count), LOCAL time, with the engine's call-relative overnight
+    // rule (explicit wrapNextDay, or wrap earlier than call → next day).
+    // No call → null (ineligible). No wrap → call→now, never settleable.
+    function healthWindowForDay(production, day, crewMember) {
+      if (!day || !day.date) return null;
+      const vr = resolveDay(production, day, crewMember);
+      const callH = parseHHMM(vr.callTime);
+      if (callH == null) return null;
+      const base = new Date(day.date + 'T00:00:00').getTime();
+      const windowStart = base + callH * 3600 * 1000;
+      const wrapH = parseHHMM(vr.wrapTime);
+      if (wrapH == null) return { windowStart, windowEnd: Date.now(), settleable: false };
+      const nextDay = vr.wrapNextDay === true || wrapH < callH;
+      const windowEnd = base + (wrapH + (nextDay ? 24 : 0)) * 3600 * 1000;
+      return { windowStart, windowEnd, settleable: true };
+    }
+
+    // Refresh sweep, run on Stats visits. dayEntries is the COMPLETE live set
+    // of the user's day records ({ id-bearing day, production, crewMember })
+    // — completeness matters because ids absent from it are treated as
+    // orphans (deleted days) and pruned. Reuse rule: settled + window
+    // matches exactly → frozen, no fetch; any mismatch drops and refetches;
+    // unsettled/missing always refetch. Settles when fetched ≥36h past wrap;
+    // call→now windows (no wrap yet) never settle.
+    async function refreshHealthSteps(dayEntries) {
+      const cache = healthStepsCache();
+      const liveIds = new Set((dayEntries || []).map(e => e.day.id));
+      let touched = false;
+      for (const e of (dayEntries || [])) {
+        const win = healthWindowForDay(e.production, e.day, e.crewMember);
+        if (!win) continue;
+        const cur = cache[e.day.id];
+        if (cur && cur.settled && cur.windowStart === win.windowStart && cur.windowEnd === win.windowEnd) continue;
+        const steps = await HealthSteps.querySteps(win.windowStart / 1000, win.windowEnd / 1000);
+        const fetchedAt = Date.now();
+        cache[e.day.id] = {
+          steps,
+          windowStart: win.windowStart,
+          windowEnd: win.windowEnd,
+          fetchedAt,
+          settled: win.settleable && fetchedAt >= win.windowEnd + HEALTH_SETTLE_MS,
+        };
+        touched = true;
+      }
+      for (const id of Object.keys(cache)) {
+        if (!liveIds.has(id)) { delete cache[id]; touched = true; }
+      }
+      const ids = Object.keys(cache);
+      if (ids.length > HEALTH_CACHE_CAP) {
+        ids.sort((a, b) => ((cache[a] && cache[a].windowEnd) || 0) - ((cache[b] && cache[b].windowEnd) || 0));
+        for (const id of ids.slice(0, ids.length - HEALTH_CACHE_CAP)) delete cache[id];
+        touched = true;
+      }
+      if (touched) { try { storage.set(HEALTH_STEPS_KEY, JSON.stringify(cache)); } catch (_) {} }
+      return cache;
+    }
+
     // ── AI call-sheet reader (Stage 1) — bridge to CallSheetPlugin ──────────
     // ON-DEVICE extraction (Apple Foundation Models + Vision/PDFKit): nothing
     // leaves the phone. EVERY method is IS_NATIVE-guarded and returns before
@@ -19049,6 +19166,20 @@ const setDays = (updater) =>
                   <Toggle value={userPrefs.liveActivityEnabled !== false} onChange={(v) => set({ liveActivityEnabled: v })} ariaLabel="Live Activity" />
                 </div>
               </div>
+              {/* Legwork visibility — a DISPLAY preference only (the block can
+                  be hidden from its own quiet line); never touches Health
+                  permissions or the step cache. Native-only surface. */}
+              {IS_NATIVE && (
+                <div className="mt-4 pt-4 border-t border-neutral-800">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Show step stats</div>
+                      <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">The Legwork block on the Stats screen — Apple Health steps counted between call and wrap on shoot days.</div>
+                    </div>
+                    <Toggle value={userPrefs.healthStepsHidden !== true} onChange={(v) => set({ healthStepsHidden: !v })} ariaLabel="Show step stats" />
+                  </div>
+                </div>
+              )}
             </Disclosure>
 
             {/* §8 — Data & backup: storage status + the three one-off actions
@@ -19555,7 +19686,136 @@ const setDays = (updater) =>
       );
     }
 
-    function StatsScreen({ productions, userPrefs, onClose, onOpenSettings }) {
+    // ── Legwork — Apple Health steps on shoot days (H4) ─────────────────────
+    // Mounted by StatsScreen behind an IS_NATIVE gate (web renders nothing).
+    // State machine (approved G2): HealthKit's own getRequestStatus drives
+    // pre-ask ('shouldRequest' → explainer/opt-in card) vs post-ask
+    // ('unnecessary' → query; data renders the block, universally-zero data
+    // renders the quiet line + hide, since iOS keeps read denial opaque).
+    // Figures (approved G4): eligible day = resolved call+wrap with the wrap
+    // moment passed, a current-window cache entry, steps ≥ 100 (the
+    // phone-in-the-truck floor — excluded days leave both cards AND the
+    // summary sum, but are captioned, never silently dropped). dayTotal
+    // comes from calcForDisplay exactly as the existing per-day surfaces use
+    // it — this block reads calc OUTPUT and never touches the engine.
+    // Steps figures are data (sky/ink, mono); quips stay muted.
+    function LegworkBlock({ productions, userPrefs, setUserPrefs, SectionHdr }) {
+      const [phase, setPhase] = React.useState('loading'); // loading | preask | data | empty | unavailable
+      const [stepsByDay, setStepsByDay] = React.useState(null);
+
+      // The COMPLETE live set of the user's dated day records across all
+      // productions — completeness matters: refreshHealthSteps treats absent
+      // ids as deleted days and prunes them. Same user-scoping as stats.
+      const dayEntries = React.useMemo(() => {
+        const out = [];
+        for (const p of (productions || [])) {
+          const ids = userCrewIdsInProduction(p, userPrefs);
+          if (!ids.length) continue;
+          for (const d of (p.days || [])) {
+            if (!d.date || !ids.includes(d.crewId)) continue;
+            const crewMember = (p.crew || []).find(c => c.id === d.crewId);
+            if (!crewMember) continue;
+            out.push({ day: d, production: p, crewMember });
+          }
+        }
+        return out;
+      }, [productions, userPrefs]);
+
+      const runRefresh = React.useCallback(async () => {
+        const status = await HealthSteps.getRequestStatus();
+        if (status === 'shouldRequest') { setPhase('preask'); return; }
+        if (status === 'unknown') {
+          const avail = await HealthSteps.isAvailable();
+          if (!avail) { setPhase('unavailable'); return; }
+        }
+        const cache = await refreshHealthSteps(dayEntries);
+        const snapshot = {};
+        for (const id of Object.keys(cache)) snapshot[id] = cache[id];
+        setStepsByDay(snapshot);
+        setPhase(Object.values(snapshot).some(e => (e.steps || 0) > 0) ? 'data' : 'empty');
+      }, [dayEntries]);
+
+      // A Stats visit = a mount; the refresh policy (settled entries frozen,
+      // everything else refetched) lives in refreshHealthSteps.
+      React.useEffect(() => { runRefresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      const connect = async () => {
+        await HealthSteps.requestRead();
+        await runRefresh();
+      };
+      const hide = () => setUserPrefs(prev => ({ ...prev, healthStepsHidden: true }));
+
+      const figures = React.useMemo(() => {
+        if (!stepsByDay) return null;
+        const nowMs = Date.now();
+        let total = 0, n = 0, skipped = 0, hardest = null, wage = null;
+        for (const e of dayEntries) {
+          const entry = stepsByDay[e.day.id];
+          if (!entry) continue;
+          const win = healthWindowForDay(e.production, e.day, e.crewMember);
+          // Eligible: resolved call+wrap and the wrap moment has passed, and
+          // the cached entry belongs to the CURRENT resolved window.
+          if (!win || !win.settleable || win.windowEnd > nowMs) continue;
+          if (entry.windowStart !== win.windowStart || entry.windowEnd !== win.windowEnd) continue;
+          const steps = entry.steps || 0;
+          if (steps < 100) { skipped++; continue; }
+          total += steps; n++;
+          let dayTotal = 0;
+          try { dayTotal = calcForDisplay(e.production, e.day, e.crewMember, findPrevDay(e.production.days || [], e.day)).total || 0; } catch (_) {}
+          const per1k = steps > 0 ? dayTotal / (steps / 1000) : 0;
+          if (!hardest || steps > hardest.steps) hardest = { steps, per1k, title: e.production.title || 'Untitled', date: e.day.date };
+          if (dayTotal > 0 && (!wage || per1k > wage.per1k)) wage = { steps, per1k, title: e.production.title || 'Untitled', date: e.day.date };
+        }
+        return { total, n, skipped, hardest, wage };
+      }, [stepsByDay, dayEntries]);
+
+      if (phase === 'loading' || phase === 'unavailable') return null;
+
+      const quipCard = (label, f, quip) => (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+          <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 mb-2">{label}</div>
+          <div className="text-2xl font-bold font-mono text-neutral-100 tabular-nums truncate">{f.title}</div>
+          <div className="text-xs text-neutral-500 mt-1">{fmtDateOrdinal(f.date)}</div>
+          <div className="text-xs mt-1.5 leading-snug">
+            <span className="font-mono text-sky-400">{f.steps.toLocaleString('en-GB')} steps · {fmtGBP(f.per1k)} per 1,000</span>
+            <span className="text-neutral-500"> — {quip}</span>
+          </div>
+        </div>
+      );
+
+      return (
+        <>
+          <SectionHdr>Legwork</SectionHdr>
+          {phase === 'preask' && (
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+              <p className="text-xs text-neutral-400 leading-relaxed mb-3">Connect Apple Health and TimeMachine will count your steps between call and wrap — shoot days only, and only on this phone.</p>
+              <Btn variant="primary" size="sm" onClick={connect}>Connect Apple Health</Btn>
+            </div>
+          )}
+          {phase === 'empty' && (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-neutral-500">No step data available — check Health access in Settings.</p>
+              <button type="button" onClick={hide} className="text-[11px] text-neutral-600 hover:text-neutral-400 transition-colors flex-shrink-0" style={{ WebkitTapHighlightColor: 'transparent' }}>Hide this</button>
+            </div>
+          )}
+          {phase === 'data' && figures && (
+            <div className="space-y-3">
+              {/* Prose sentence, not a data figure — default sans in the
+                  Stats body voice (the card figures keep their data-hot
+                  mono treatment). */}
+              <div className="text-sm text-neutral-400">{figures.total.toLocaleString('en-GB')} steps across {figures.n} shoot day{figures.n !== 1 ? 's' : ''}</div>
+              {figures.hardest && quipCard('Hardest working day', figures.hardest, 'somebody had to carry the kit.')}
+              {figures.wage && quipCard('Stealing a wage', figures.wage, 'the chair was comfy, presumably.')}
+              {figures.skipped > 0 && (
+                <p className="text-[11px] text-neutral-600">{figures.skipped} day{figures.skipped !== 1 ? 's' : ''} skipped — under 100 steps recorded. Phone in the truck?</p>
+              )}
+            </div>
+          )}
+        </>
+      );
+    }
+
+    function StatsScreen({ productions, userPrefs, setUserPrefs, onClose, onOpenSettings }) {
       const [filter, setFilter] = useState('all');
       const [expandedStat, setExpandedStat] = useState(null);
       const [showAllMonths, setShowAllMonths] = useState(false);
@@ -20047,6 +20307,15 @@ const setDays = (updater) =>
                   <StatCard label="TOC breaches" value={stats.tocBreachCount}/>
                   <StatCard label="Night shoots" value={stats.nightShootCount}/>
                 </div>
+
+                {/* Legwork — IS_NATIVE-gated at the component boundary: the
+                    web build renders nothing and no HealthKit path executes.
+                    Hidden state (healthStepsHidden) removes the whole block,
+                    header included; the "Show step stats" Settings toggle
+                    re-surfaces it. */}
+                {IS_NATIVE && userPrefs.healthStepsHidden !== true && (
+                  <LegworkBlock productions={productions} userPrefs={userPrefs} setUserPrefs={setUserPrefs} SectionHdr={SectionHdr}/>
+                )}
 
                 {stats.daysByType.length > 0 && (
                   <>
@@ -24263,7 +24532,7 @@ const confirmDelete = (p) => setConfirmOpts({
           />
         );
       } else if (showStats) {
-        screen = <StatsScreen productions={productions} userPrefs={userPrefs} onClose={() => setShowStats(false)} onOpenSettings={() => { setShowStats(false); setShowSettings(true); }} />;
+        screen = <StatsScreen productions={productions} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onClose={() => setShowStats(false)} onOpenSettings={() => { setShowStats(false); setShowSettings(true); }} />;
       } else if (showNewProduction) {
         screen = (
           <NewProductionScreen

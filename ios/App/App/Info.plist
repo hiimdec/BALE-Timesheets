@@ -55,6 +55,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>TimeMachine uses the camera to scan call sheets for import.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>TimeMachine reads your step count to show how far you walk on shoot days, between call and wrap. Your steps are processed on this phone and never leave it.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSSupportsLiveActivities</key>
