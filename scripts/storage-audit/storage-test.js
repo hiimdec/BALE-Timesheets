@@ -6245,7 +6245,7 @@ async function main() {
       /async getRequestStatus\(\) \{\s*if \(!IS_NATIVE\) return 'unknown';/.test(html) &&
       /async requestRead\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
       /async querySteps\(startEpoch, endEpoch\) \{\s*if \(!IS_NATIVE\) return 0;/.test(html));
-    check('HH1b native wiring — HealthStepsPlugin (App target only): 4 methods, READ-ONLY requestAuthorization(toShare: nil), HKStatisticsQuery cumulativeSum with strict-dates predicate, getRequestStatusForAuthorization; registered in MainViewController; pbxproj Sources entry; App.entitlements gains healthkit while the WIDGET entitlements do NOT; Info.plist carries the exact NSHealthShareUsageDescription and NO update/write string, NO clinical-records array, NO background delivery',
+    check('HH1b native wiring — HealthStepsPlugin (App target only): 4 methods, READ-ONLY requestAuthorization(toShare: nil — the real invariant), HKStatisticsQuery cumulativeSum with strict-dates predicate, getRequestStatusForAuthorization; registered in MainViewController; pbxproj Sources entry; App.entitlements gains healthkit while the WIDGET entitlements do NOT; Info.plist carries the exact NSHealthShareUsageDescription AND the ITMS-90683-mandated NSHealthUpdateUsageDescription (validator requires both; the write string states the app never writes), NO clinical-records array, NO background delivery',
       (() => {
         const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
         const plugin = readSafe('ios/App/App/HealthStepsPlugin.swift');
@@ -6271,7 +6271,8 @@ async function main() {
           !/healthkit/i.test(widgetEnt);
         const plistOk = plist.includes('<key>NSHealthShareUsageDescription</key>') &&
           plist.includes('<string>TimeMachine reads your step count to show how far you walk on shoot days, between call and wrap. Your steps are processed on this phone and never leave it.</string>') &&
-          !/NSHealthUpdateUsageDescription/.test(plist) &&
+          plist.includes('<key>NSHealthUpdateUsageDescription</key>') &&
+          plist.includes('<string>TimeMachine does not write data to Apple Health. Apple requires this description because the app includes the Health framework.</string>') &&
           !/healthkit\.access|background-delivery/.test(plist);
         return pluginOk && wiredOk && entOk && plistOk;
       })());

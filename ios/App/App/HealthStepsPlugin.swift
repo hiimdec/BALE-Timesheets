@@ -8,12 +8,14 @@
 //  not auto-scan for app-embedded plugins).
 //
 //  Deliberate scope limits (App Store review posture):
-//    • READ-ONLY — requestAuthorization(toShare: nil). No write types, so
-//      Info.plist carries NSHealthShareUsageDescription ONLY (no
-//      NSHealthUpdateUsageDescription), and the entitlement is the plain
-//      com.apple.developer.healthkit boolean — no clinical-records access
-//      array, no background delivery. App target only; the widget extension
-//      never links HealthKit.
+//    • READ-ONLY — requestAuthorization(toShare: nil). No write types.
+//      Info.plist carries BOTH purpose strings, but only because Apple's
+//      upload validator (ITMS-90683) demands NSHealthUpdateUsageDescription
+//      whenever the Health framework's authorization APIs are present —
+//      the write string itself says the app never writes. The entitlement
+//      is the plain com.apple.developer.healthkit boolean — no
+//      clinical-records access array, no background delivery. App target
+//      only; the widget extension never links HealthKit.
 //    • The only HealthKit type this binary touches is stepCount.
 //    • iOS read-authorization opacity is BY DESIGN: a denied read returns
 //      empty data, indistinguishable from no data. getRequestStatus reports
