@@ -6310,9 +6310,11 @@ async function main() {
     check('HH3b Legwork copy — the finalised strings, verbatim (explainer, button, both quips, summary, skipped caption, quiet line)',
       /Connect Apple Health and TimeMachine will count your steps between call and wrap — shoot days only, and only on this phone\./.test(html) &&
       />Connect Apple Health<\/Btn>/.test(html) &&
-      /somebody had to run the cable\./.test(html) &&
+      /somebody had to carry the kit\./.test(html) &&
       /the chair was comfy, presumably\./.test(html) &&
-      /steps across \{figures\.n\} shoot day\{figures\.n !== 1 \? 's' : ''\}/.test(html) &&
+      // the summary line is PROSE — default sans in the Stats body voice,
+      // never mono (the card figures keep the data-hot treatment)
+      /<div className="text-sm text-neutral-400">\{figures\.total\.toLocaleString\('en-GB'\)\} steps across \{figures\.n\} shoot day\{figures\.n !== 1 \? 's' : ''\}<\/div>/.test(html) &&
       /under 100 steps recorded\. Phone in the truck\?/.test(html) &&
       /No step data available — check Health access in Settings\./.test(html));
     check('TT20c the pay engine never reads the card system — deriveBreakState, calculateDay and calculatePmpaDay contain no RATE_CARDS / resolveRateCard / roleDefaultsFor reference (rates reach the engine only as crew/day snapshots; the byte-identical 84-scenario calc audit independently proves zero drift)',

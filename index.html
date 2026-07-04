@@ -19800,8 +19800,11 @@ const setDays = (updater) =>
           )}
           {phase === 'data' && figures && (
             <div className="space-y-3">
-              <div className="text-sm font-mono text-neutral-200">{figures.total.toLocaleString('en-GB')} steps across {figures.n} shoot day{figures.n !== 1 ? 's' : ''}</div>
-              {figures.hardest && quipCard('Hardest working day', figures.hardest, 'somebody had to run the cable.')}
+              {/* Prose sentence, not a data figure — default sans in the
+                  Stats body voice (the card figures keep their data-hot
+                  mono treatment). */}
+              <div className="text-sm text-neutral-400">{figures.total.toLocaleString('en-GB')} steps across {figures.n} shoot day{figures.n !== 1 ? 's' : ''}</div>
+              {figures.hardest && quipCard('Hardest working day', figures.hardest, 'somebody had to carry the kit.')}
               {figures.wage && quipCard('Stealing a wage', figures.wage, 'the chair was comfy, presumably.')}
               {figures.skipped > 0 && (
                 <p className="text-[11px] text-neutral-600">{figures.skipped} day{figures.skipped !== 1 ? 's' : ''} skipped — under 100 steps recorded. Phone in the truck?</p>
