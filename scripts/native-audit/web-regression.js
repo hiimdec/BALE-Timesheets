@@ -86,12 +86,16 @@ function makeSandbox() {
   return sandbox;
 }
 
-function main() {
+async function main() {
   let code = fs.readFileSync(BUILT, 'utf8');
-  // Expose IS_NATIVE for assertion (built bundle is an IIFE; splice before close).
+  // Expose IS_NATIVE + the HealthSteps bridge for assertion (built bundle is
+  // an IIFE; splice before close).
   const close = '})();';
   const at = code.lastIndexOf(close);
-  code = code.slice(0, at) + '\n;globalThis.__IS_NATIVE = (typeof IS_NATIVE !== "undefined") ? IS_NATIVE : "undefined-symbol";\n' + code.slice(at);
+  code = code.slice(0, at)
+    + '\n;globalThis.__IS_NATIVE = (typeof IS_NATIVE !== "undefined") ? IS_NATIVE : "undefined-symbol";'
+    + '\nglobalThis.__HealthSteps = (typeof HealthSteps !== "undefined") ? HealthSteps : null;\n'
+    + code.slice(at);
 
   const sandbox = makeSandbox();
   vm.createContext(sandbox);
@@ -103,6 +107,22 @@ function main() {
   check('3b. window.jspdf undefined', typeof sandbox.jspdf === 'undefined');
   check('4. window.Capacitor never defined', typeof sandbox.Capacitor === 'undefined');
 
+  // 5. HealthKit unreachable on web: the bridge exists but EVERY method
+  //    resolves its web-safe default (false/'unknown'/false/0) without ever
+  //    touching a plugin layer — Capacitor stays undefined even after the
+  //    calls actually run under web conditions.
+  const HS = sandbox.__HealthSteps;
+  let hsDefaults = false;
+  if (HS) {
+    const a = await HS.isAvailable();
+    const s = await HS.getRequestStatus();
+    const r = await HS.requestRead();
+    const q = await HS.querySteps(0, 1000);
+    hsDefaults = a === false && s === 'unknown' && r === false && q === 0;
+  }
+  check('5a. HealthSteps bridge exposed with web-safe defaults (isAvailable=false, status=unknown, requestRead=false, querySteps=0)', !!HS && hsDefaults);
+  check('5b. calling the health bridge touches no plugin layer (window.Capacitor still undefined after the calls)', !!HS && typeof sandbox.Capacitor === 'undefined');
+
   console.log('');
   console.log('============================================================');
   console.log(' Web regression — native fixes do not affect the web build');
@@ -110,10 +130,10 @@ function main() {
   for (const r of results) console.log(`  ${r.ok ? '✓' : '✗'} ${r.name}${r.ok ? '' : '   << ' + r.detail}`);
   console.log('============================================================');
   console.log(failures === 0
-    ? ` ✅ PASS — web build loads clean: no Capacitor, no PDF libs, IS_NATIVE=false.`
+    ? ` ✅ PASS — web build loads clean: no Capacitor, no PDF libs, no HealthKit, IS_NATIVE=false.`
     : ` ❌ FAIL — ${failures} assertion(s) failed.`);
   console.log('============================================================');
   process.exit(failures === 0 ? 0 : 1);
 }
 
-main();
+main().catch((e) => { console.error(e); process.exit(1); });
