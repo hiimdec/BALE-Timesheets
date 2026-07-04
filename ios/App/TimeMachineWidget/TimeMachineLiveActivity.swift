@@ -71,7 +71,22 @@ private func callDate(_ epoch: Double) -> Date { Date(timeIntervalSince1970: epo
 
 private let moneyFont = Font.system(size: 30, weight: .bold, design: .monospaced)
 private let moneyFontSmall = Font.system(size: 17, weight: .bold, design: .monospaced)
+// Expanded-island hero figure — bigger than moneyFontSmall (the total is the
+// hero there), smaller than the lock card's 30pt so two lines sit comfortably
+// inside the island's enforced height.
+private let moneyFontIsland = Font.system(size: 22, weight: .bold, design: .monospaced)
 private let timerFont = Font.system(size: 15, weight: .semibold, design: .monospaced)
+
+// Expanded-island secondary line: "CALL 08:00 · OT FROM 19:00" in the lock
+// card's microlabel voice. anchorLabel arrives pre-formatted; OT-from is
+// hidden when wrapped or absent (otFrom is already "" then — the guard is
+// belt-and-braces). "" when nothing to show so the caller can skip the row.
+private func expandedSecondaryLine(_ s: TimeMachineActivityAttributes.ContentState) -> String {
+    var parts: [String] = []
+    if !s.anchorLabel.isEmpty { parts.append(s.anchorLabel) }
+    if s.state != "wrapped" && !s.otFrom.isEmpty { parts.append("OT FROM \(s.otFrom)") }
+    return parts.joined(separator: " · ")
+}
 
 private func microLabel(_ text: String) -> some View {
     Text(text)
@@ -381,27 +396,38 @@ struct TimeMachineLiveActivity: Widget {
             TimeMachineLockScreenView(context: context)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded (long-press) — deliberately minimal: the name and
-                // the money, nothing else. The lock-screen card remains the
-                // actionable surface (timer, OT projection, Lunch/Wrap
-                // buttons all live there). Dropping the bottom region and
-                // the label stack releases the width pressure that clipped
-                // the production name's leading edge; the name still shrinks
-                // (to 75%) then tail-truncates so a genuinely long name
-                // degrades gracefully instead of clipping.
+                // Expanded (long-press) — one full-width leading region so
+                // the layout owns the whole area: main row = status dot +
+                // name (leading) and the day total as the HERO figure
+                // (trailing, 22pt); beneath, one muted microlabel line
+                // ("CALL 08:00 · OT FROM 19:00"). No buttons, no timer —
+                // the lock-screen card remains the actionable surface.
+                // maxWidth/maxHeight .infinity centres the block inside the
+                // island's ENFORCED minimum height (no more rattling), and
+                // the explicit horizontal padding keeps the dot clear of the
+                // curved leading edge that clipped it on device — needs
+                // on-device confirmation against the real region margins.
                 DynamicIslandExpandedRegion(.leading) {
-                    HStack(spacing: 6) {
-                        Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
-                        Text(context.attributes.productionName)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.tmMuted)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .minimumScaleFactor(0.75)
+                    let secondary = expandedSecondaryLine(context.state)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 7) {
+                            Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
+                            Text(context.attributes.productionName)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.tmMuted)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .minimumScaleFactor(0.75)
+                            Spacer(minLength: 10)
+                            moneyText(context.state.totalText, font: moneyFontIsland)
+                        }
+                        if !secondary.isEmpty {
+                            microLabel(secondary)
+                                .padding(.leading, 15)
+                        }
                     }
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    moneyText(context.state.totalText, font: moneyFontSmall)
+                    .padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } compactLeading: {
                 Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)

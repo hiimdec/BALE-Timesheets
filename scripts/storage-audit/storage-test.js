@@ -5804,7 +5804,7 @@ async function main() {
         const movedOk = (la.match(/elapsedTimer\(anchor: anchor/g) || []).length === 1;
         return countdownOk && slotOk && elapsedNativeOk && movedOk;
       })());
-    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow (timer slot + OT-from in tmFaint, hidden when wrapped) separated by spacing only (NO divider), LOCK SCREEN ONLY (the DI expanded is minimal: dot + name leading with tail-truncation/min-scale, money trailing, NO bottom region — the lock card is the actionable surface); DI compact = status dot only (compactTrailing renders EmptyView); the old secondaryReadout row is GONE',
+    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow LOCK SCREEN ONLY; DI expanded = ONE full-width centred leading region (dot + name with the anti-clip trio, HERO 22pt total in-row, microlabel secondary line via expandedSecondaryLine, maxWidth/maxHeight .infinity, NO trailing/bottom regions, NO buttons/timer); DI compact = status dot only (compactTrailing renders EmptyView); the old secondaryReadout row is GONE',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const gone = !/secondaryReadout/.test(la);
@@ -5818,17 +5818,25 @@ async function main() {
         const lockOk = /microLabel\("DAY TOTAL"\)\s*Spacer\(\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
           /moneyText\(context\.state\.totalText, font: moneyFont\)/.test(la) &&
           !/Rectangle\(\)\.fill\(Color\.tmFaint\.opacity\(0\.18\)\)/.test(la);
-        // DI expanded is MINIMAL: leading = status dot + name (lineLimit +
-        // tail-truncation + min-scale — the anti-clip trio), trailing = the
-        // money alone; NO bottom region, NO microLabels/anchor/chip, NO
-        // buttons (the lock card owns all of that). Compact: status dot
-        // leading, NOTHING trailing.
+        // DI expanded (H1): ONE full-width leading region, vertically
+        // centred in the island's enforced height. Main row = dot + name
+        // (anti-clip trio) + HERO total in-row (moneyFontIsland 22pt);
+        // secondary microlabel line via expandedSecondaryLine ("CALL 08:00
+        // · OT FROM 19:00"); explicit horizontal padding clears the curved
+        // leading edge. NO trailing/bottom regions, NO buttons, NO timer.
+        // Compact: status dot leading, NOTHING trailing.
         const expanded = (la.match(/DynamicIsland \{[\s\S]*?\} compactLeading:/) || [''])[0];
-        const diOk = /HStack\(spacing: 6\) \{\s*Circle\(\)\.fill\(chipColor/.test(expanded) &&
+        const diOk = /HStack\(spacing: 7\) \{\s*Circle\(\)\.fill\(chipColor/.test(expanded) &&
           /\.lineLimit\(1\)\s*\.truncationMode\(\.tail\)\s*\.minimumScaleFactor\(0\.75\)/.test(expanded) &&
-          /DynamicIslandExpandedRegion\(\.trailing\) \{\s*moneyText\(context\.state\.totalText, font: moneyFontSmall\)\s*\}/.test(expanded) &&
+          /moneyText\(context\.state\.totalText, font: moneyFontIsland\)/.test(expanded) &&
+          /expandedSecondaryLine\(context\.state\)/.test(expanded) &&
+          /\.padding\(\.horizontal, 8\)/.test(expanded) &&
+          /\.frame\(maxWidth: \.infinity, maxHeight: \.infinity\)/.test(expanded) &&
+          !/DynamicIslandExpandedRegion\(\.trailing\)/.test(expanded) &&
           !/DynamicIslandExpandedRegion\(\.bottom\)/.test(expanded) &&
-          !/microLabel\(/.test(expanded) && !/actionButtons\(/.test(expanded) && !/timerProjectionRow\(/.test(expanded) &&
+          !/actionButtons\(/.test(expanded) && !/timerProjectionRow\(/.test(expanded) &&
+          /private func expandedSecondaryLine/.test(la) &&
+          /parts\.append\("OT FROM \\\(s\.otFrom\)"\)/.test(la) &&
           /compactTrailing: \{[^}]*EmptyView\(\)/.test(la) &&
           !/compactTrailing: \{[^}]*moneyText/.test(la) &&
           /compactLeading: \{\s*Circle\(\)\.fill\(chipColor/.test(la);
