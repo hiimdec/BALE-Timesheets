@@ -4628,8 +4628,8 @@ async function main() {
     // ─ GG11: per-slot onChange writes through its OWN day.id (load-
     //   bearing — without this, swiping mid-edit would commit to the
     //   wrong day). ─
-    check('GG11 renderDay closure builds a per-day onChange keyed to day.id',
-      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? updatedDay : d\)\);\s*\}/.test(html));
+    check('GG11 renderDay closure builds a per-day onChange keyed to day.id (routed through applySoloWrapIntent — the solo wrap-edit intent)',
+      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)\);\s*\}/.test(html));
 
     // ─ GG12: swipe surface fills the panel height (NOT content-sized).
     //   Without this, the area below collapsed chips falls outside the
@@ -5151,7 +5151,9 @@ async function main() {
 
     // ─ LL6: ProductionSettingsSheet stays a full-screen page (NOT a Sheet) ─
     check('LL6 ProductionSettingsSheet remains a full-screen page (min-h-screen), not routed through <Sheet>',
-      /function ProductionSettingsSheet\([\s\S]{0,3500}<div className="min-h-screen bg-neutral-950/.test(html) &&
+      // window widened for the rate-card boundary prompt handlers that now
+      // sit between the function head and the render
+      /function ProductionSettingsSheet\([\s\S]{0,6500}<div className="min-h-screen bg-neutral-950/.test(html) &&
       (() => {
         const m = html.match(/function ProductionSettingsSheet\(([\s\S]*?)\n    function /);
         return m ? !/<Sheet\b/.test(m[1]) : false;
@@ -5591,14 +5593,14 @@ async function main() {
       /const LiveActivity = \{/.test(html) &&
       /async isAvailable\(\)/.test(html) && /async start\(opts\)/.test(html) &&
       /async update\(opts\)/.test(html) && /async end\(opts\)/.test(html) &&
-      /async list\(\)/.test(html) && /async endForProduction\(productionId\)/.test(html));
+      /async list\(\)/.test(html) && /async endForProduction\(productionId, immediate = true\)/.test(html));
     check('TT1b every bridge method returns BEFORE touching _capPlugins() unless IS_NATIVE (web never references the plugin)',
       /async isAvailable\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
       /async start\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async update\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async end\(opts\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async list\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
-      /async endForProduction\(productionId\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
+      /async endForProduction\(productionId, immediate = true\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /_capPlugins\(\)\.LiveActivity/.test(html));
 
     // ─ TT2: descriptor reuses the calc + derives state; controller is guarded ─
@@ -5670,7 +5672,7 @@ async function main() {
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
       /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
-      /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged \};/.test(html));
+      /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
@@ -5692,7 +5694,7 @@ async function main() {
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
-      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \}/.test(html) &&
+      /anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \}/.test(html) &&
       !/desc\.l1/.test(html));
     // ─ TT8c-LA: lunch-exit fix — the activity refresh wake is aimed at lunch-end ─
     check('TT8c2 descriptor staleEpoch is LUNCH-AWARE — ON LUNCH (lunchLogged && curtailMins===0 && lunchEndEpoch>now) points the activity stale wake at lunchEndEpoch so the LOCKED card refreshes at lunch-end and the native isOnLunch flips false; else the ~16h-after-anchor safety sentinel; the OLD flat unconditional call+16h form is GONE (guards the LA lunch-exit fix against a silent regress)',
@@ -5735,8 +5737,8 @@ async function main() {
     check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, pref enabled), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
-      /const qualifies = enabled && !!rec && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
-      /if \(!qualifies\) \{[\s\S]{0,120}LiveActivity\.endForProduction\(pid\);/.test(html) &&
+      /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
+      /if \(!qualifies\) \{[\s\S]{0,700}LiveActivity\.endForProduction\(pid, !wrappedSendOff\);/.test(html) &&
       /\} else if \(ids\.length > 1\) \{[\s\S]{0,160}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
       /if \(dupeIds\.length\) LiveActivity\.endActivityIds\(dupeIds\);/.test(html));
     check('TT9e single-activity invariant — the endActivityIds bridge method is IS_NATIVE-guarded (the sweep\'s by-id duplicate-converge; native startActivity adopt-or-update is the primary dedupe, compile-verified)',
@@ -5755,7 +5757,7 @@ async function main() {
       /ls\.setHours\(Math\.floor\(lunchH\), Math\.round\(\(lunchH % 1\) \* 60\), 0, 0\);/.test(descFn) &&
       /lunchEndEpoch = Math\.floor\(ls\.getTime\(\) \/ 1000\) \+ 3600;/.test(descFn) &&
       (descFn.match(/lunchEndEpoch = Math\.floor/g) || []).length === 1 &&
-      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \};/.test(descFn));
+      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
       /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
       /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: '02:00', wrapNextDay: true \}, soloCrew, null\)/.test(descFn) &&
@@ -5765,8 +5767,8 @@ async function main() {
       // engine maths re-derived here — it only reads the rendered OT line).
       !/otStartAbs\s*=[^=]/.test(descFn) && !/basicHrs\s*=/.test(descFn));
     check('TT10c sig + payload carry lunchEndEpoch + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getDouble/getString reads)',
-      /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, ll: desc\.lunchLogged \}/.test(html) &&
-      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged \}/.test(html));
+      /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, ll: desc\.lunchLogged, wc: desc\.wrapCurve \}/.test(html) &&
+      /lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \}/.test(html));
     check('TT10d ContentState schema — lunchEndEpoch: Double + otFrom: String (display-only, init-defaulted); the plugin reads both (getDouble/getString) on start AND update; the intent process preserves both across all 4 reconstructions (arm/disarm/update/endWrapped)',
       (() => {
         const attr = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift'), 'utf8');
@@ -5802,7 +5804,7 @@ async function main() {
         const movedOk = (la.match(/elapsedTimer\(anchor: anchor/g) || []).length === 1;
         return countdownOk && slotOk && elapsedNativeOk && movedOk;
       })());
-    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow (timer slot + OT-from in tmFaint, hidden when wrapped) separated by spacing only (NO divider), placed on lock screen + DI expanded (×2); DI compact untouched (dot + money); the old secondaryReadout row is GONE',
+    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow LOCK SCREEN ONLY; DI expanded uses the regions AS INTENDED: leading = dot + name (anti-clip trio, maxHeight .infinity centring), trailing = HERO 22pt total, bottom = ONLY the single-line microlabel secondary (expandedSecondaryLine, lineLimit 1) — NO buttons/timer anywhere in the island; DI compact = status dot only (compactTrailing renders EmptyView); the old secondaryReadout row is GONE',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const gone = !/secondaryReadout/.test(la);
@@ -5816,11 +5818,30 @@ async function main() {
         const lockOk = /microLabel\("DAY TOTAL"\)\s*Spacer\(\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
           /moneyText\(context\.state\.totalText, font: moneyFont\)/.test(la) &&
           !/Rectangle\(\)\.fill\(Color\.tmFaint\.opacity\(0\.18\)\)/.test(la);
-        // DI expanded: anchor relocated under the total (trailing); compact intact.
-        const diOk = /moneyText\(context\.state\.totalText, font: moneyFontSmall\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
-          /compactTrailing: \{\s*moneyText\(context\.state\.totalText/.test(la) &&
+        // DI expanded (I1): regions AS INTENDED — the device round proved a
+        // single "full-width" leading region doesn't span (system reserves
+        // trailing width). Leading = dot + name (anti-clip trio), trailing
+        // = HERO total (moneyFontIsland 22pt), bottom = ONLY the
+        // single-line microlabel secondary. No buttons, no timer. Compact:
+        // status dot leading, NOTHING trailing.
+        const expanded = (la.match(/DynamicIsland \{[\s\S]*?\} compactLeading:/) || [''])[0];
+        const leading = (expanded.match(/DynamicIslandExpandedRegion\(\.leading\) \{[\s\S]*?\n                \}/) || [''])[0];
+        const trailing = (expanded.match(/DynamicIslandExpandedRegion\(\.trailing\) \{[\s\S]*?\n                \}/) || [''])[0];
+        const bottom = (expanded.match(/DynamicIslandExpandedRegion\(\.bottom\) \{[\s\S]*?\n                \}/) || [''])[0];
+        const diOk = /HStack\(spacing: 7\) \{\s*Circle\(\)\.fill\(chipColor/.test(leading) &&
+          /\.lineLimit\(1\)\s*\.truncationMode\(\.tail\)\s*\.minimumScaleFactor\(0\.75\)/.test(leading) &&
+          !/moneyText\(/.test(leading) &&
+          /moneyText\(context\.state\.totalText, font: moneyFontIsland\)/.test(trailing) &&
+          /\.frame\(maxHeight: \.infinity\)/.test(trailing) &&
+          /expandedSecondaryLine\(context\.state\)/.test(bottom) &&
+          /\.lineLimit\(1\)/.test(bottom) &&
+          !/actionButtons\(/.test(expanded) && !/timerProjectionRow\(/.test(expanded) &&
+          /private func expandedSecondaryLine/.test(la) &&
+          /parts\.append\("OT FROM \\\(s\.otFrom\)"\)/.test(la) &&
+          /compactTrailing: \{[^}]*EmptyView\(\)/.test(la) &&
+          !/compactTrailing: \{[^}]*moneyText/.test(la) &&
           /compactLeading: \{\s*Circle\(\)\.fill\(chipColor/.test(la);
-        const placedOk = (la.match(/timerProjectionRow\(state: context\.state\.state/g) || []).length === 2;
+        const placedOk = (la.match(/timerProjectionRow\(state: context\.state\.state/g) || []).length === 1;
         return gone && rowOk && lockOk && diOk && placedOk;
       })());
 
@@ -5832,7 +5853,7 @@ async function main() {
       /if \(dur > 0 && dur < 60\) curtailMins = dur;/.test(descFn) &&
       !/lunchedFull/.test(descFn) &&            // no pushed full-hour boolean
       !/state = 'lunch'/.test(descFn) &&        // no time-derived lunch state
-      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged \};/.test(descFn));
+      /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT11b ingest reuses the SAME queue — lunchCurtail added to the today-only idempotent type filter + dispatched to applyLunchCurtail, which writes lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
       /ev\.type !== 'lunchNow' && ev\.type !== 'wrapNow' && ev\.type !== 'lunchCurtail'/.test(html) &&
       /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)/.test(html) &&
@@ -6076,8 +6097,8 @@ async function main() {
           /desired\.set\(overdueNotifId\(inv\.id\), \{ p, inv, fireAt \}\);/.test(sweep);
         const reconcileOk = /const pending = await Notifications\.getPending\(\);/.test(sweep) &&
           /if \(!n \|\| typeof n\.id !== 'number' \|\| !\(n\.extra && n\.extra\.invoiceId\)\) continue;/.test(sweep) &&
-          /if \(!desired\.has\(n\.id\)\) toCancel\.push\(n\.id\);/.test(sweep) &&
-          /if \(pendingOurs\.has\(id\)\) continue;/.test(sweep);
+          /if \(!desired\.has\(n\.id\) && !keepIds\.has\(n\.id\)\) toCancel\.push\(n\.id\);/.test(sweep) &&
+          /if \(pendingOurs\.has\(id\)\) \{/.test(sweep);
         const fireOk = /const at = fireAt\.getTime\(\) > NOW \+ 1000 \? fireAt : new Date\(NOW \+ 60 \* 1000\);/.test(sweep);
         // The EXACT title + body pins ARE the "no amount / no invoice number"
         // guarantee — the only user-facing strings, and neither interpolates a
@@ -6119,6 +6140,112 @@ async function main() {
       (html.match(/if \(frozenPatch && frozenPatch\.status === 'sent' && userPrefs\.overdueRemindersEnabled !== false\) \{\s*Notifications\.requestPermission\(\);/g) || []).length === 2 &&
       /useEffect\(\(\) => \{ if \(IS_NATIVE\) Notifications\.checkPermission\(\)\.then\(setNotifPerm\); \}, \[\]\);/.test(html));
 
+    // ─ TT19: overdue fired ledger — exactly ONE notification per invoice+dueDate ─
+    check('TT19a fired ledger — bigals_overdue_fired ({invoiceId → {dueDate, firedAt}}) is its OWN storage key (frozen invoices gain no field), ref-loaded once, written through in the SAME pass that schedules; armed invoices (ledger dueDate matches) leave `desired` so they can never re-arm; a still-pending armed reminder is cancel-protected via keepIds; entries prune when the invoice is deleted/paid/back-to-draft; ledger capped at 200 oldest-firedAt-first; round-trips through storage.get/set',
+      (() => {
+        const sweep = sliceArrow(html, 'const overdueReconcile = React.useCallback(async () => {', '}, []);');
+        if (!sweep) return false;
+        const keyOk = /const OVERDUE_FIRED_KEY = 'bigals_overdue_fired';/.test(html) &&
+          /JSON\.parse\(storage\.get\(OVERDUE_FIRED_KEY\) \|\| '\{\}'\)/.test(sweep) &&
+          /storage\.set\(OVERDUE_FIRED_KEY, JSON\.stringify\(fired\)\)/.test(sweep);
+        const armOk = /const armed = !!\(fired\[inv\.id\] && fired\[inv\.id\]\.dueDate === inv\.dueDate\);/.test(sweep) &&
+          /if \(armed\) \{ keepIds\.add\(overdueNotifId\(inv\.id\)\); continue; \}/.test(sweep) &&
+          (sweep.match(/fired\[inv\.id\] = \{ dueDate: inv\.dueDate, firedAt: /g) || []).length >= 2;
+        const pruneOk = /if \(!firedKeep\.has\(invId\)\) \{ delete fired\[invId\]; ledgerDirty = true; \}/.test(sweep) &&
+          /invIds\.slice\(0, invIds\.length - 200\)/.test(sweep);
+        const guardOk = /if \(overdueReconcilingRef\.current\) return;/.test(sweep) &&
+          /finally \{ overdueReconcilingRef\.current = false; \}/.test(sweep);
+        // The standing re-schedule of already-fired reminders is GONE: the
+        // bare no-churn `continue` (pendingOurs skip without ledger adopt)
+        // must not exist anywhere in the sweep.
+        const rescheduleGoneOk = !/if \(pendingOurs\.has\(id\)\) continue;/.test(sweep);
+        return keyOk && armOk && pruneOk && guardOk && rescheduleGoneOk;
+      })());
+
+    // ─ TT20: effective-dated APA rate cards — copy sites only, engine untouched ─
+    check('TT20a RATE_CARDS — two cards (2025-09-01 base + the explicit Sept 2026 table: ~3% BDR uplift rounded to the pound, Trainee + Rigging carried over, allowances unchanged, flags card-invariant; the placeholder deep-copy line is GONE); resolveRateCard picks the latest effectiveFrom ≤ startDate, falling back to todayISO() for no/blank startDate; roleDefaultsFor flattens the resolved card with the Spark alias following every card',
+      (() => {
+        const cardsOk = /effectiveFrom: "2025-09-01",\s*label: "Sept 2025",/.test(html) &&
+          /effectiveFrom: "2026-09-01",\s*label: "Sept 2026",/.test(html) &&
+          !/RATE_CARDS\[1\]\.departments = JSON\.parse/.test(html);
+        // Sentinels from the 2026 table: uplifted (Director 961, DoP 1561,
+        // Wardrobe 398), carried over (Trainee 250, Master Rigger 675), and
+        // the allowances-carry-over note.
+        const card26 = (html.match(/effectiveFrom: "2026-09-01",[\s\S]*?\n    \];/) || [''])[0];
+        const valuesOk = /"Director":\s*\{ bdr: 961,/.test(card26) &&
+          /"DoP":\s*\{ bdr: 1561,/.test(card26) &&
+          /"Wardrobe":\s*\{ bdr: 398,/.test(card26) &&
+          /"Trainee":\s*\{ bdr: 250,/.test(card26) &&
+          /"Master Rigger":\s*\{ bdr: 675,/.test(card26) &&
+          /Allowances \(mileage,\s*\/\/ missed meal, late break\) carry over unchanged/.test(card26) &&
+          /Rigging rates carry over from 2025 unchanged/.test(card26) &&
+          /Trainee carries over from 2025 unchanged/.test(card26);
+        const resolveOk = /const key = \(typeof startDate === "string" && startDate\) \? startDate : todayISO\(\);/.test(html) &&
+          /for \(const c of RATE_CARDS\) \{ if \(c\.effectiveFrom <= key\) chosen = c; \}/.test(html);
+        const flattenOk = /function flattenRateCard\(card\) \{/.test(html) &&
+          /flat\["Spark"\] = flat\["Lighting Technician"\];/.test(html) &&
+          /return flattenRateCard\(resolveRateCard\(production && production\.startDate\)\);/.test(html);
+        return cardsOk && valuesOk && resolveOk && flattenOk;
+      })());
+    check('TT20b every rate COPY site resolves through the effective-dated card — production-scoped sites (CrewManager blank+role change, DayEntryForm + bulk + CrewMemberDayView step-ups, QuickAddCrewSheet ×2, solo "your role") use roleDefaultsFor(production); current-date sites (Settings global defaults ×2, new-production seed) use roleDefaultsFor(null); footers are version-aware; the boundary-crossing startDate edit offers the one-time crew-rate refresh (never silent)',
+      (() => {
+        const prodSites = (html.match(/roleDefaultsFor\(production\)/g) || []).length >= 7;
+        // Settings dept/role handlers ×2; production creation + the
+        // calculator seed moved to seedRateFromPrefs (TT20e).
+        const nullSites = (html.match(/roleDefaultsFor\(null\)/g) || []).length >= 2;
+        const footerOk = /Rates per APA \{resolveRateCard\(production\.startDate\)\.label\}/.test(html) &&
+          /APA \{resolveRateCard\(null\)\.label\}/.test(html);
+        const noticeOk = /const \[rateCardNotice, setRateCardNotice\] = useState\(null\);/.test(html) &&
+          /title="New rates apply"/.test(html);
+        return prodSites && nullSites && footerOk && noticeOk;
+      })());
+    check('TT20d startDate is DERIVED (earliest dated day) and rate-card application is AUTOMATIC (H2) — deriveStartDate defined once; migrateProduction snaps silently on every load (never rewrites rates); App.setProduction routes EVERY edit through finalizeProductionUpdate: on a resolved-card change applyRateCardToCrew rewrites ONLY crew whose bdr+otCoef+otRate exactly match the PREVIOUS card (the safety rule — negotiated/custom never touched); NO accept/decline dialog; the single informational notice fires only for a FUTURE card (effectiveFrom > today), queued on a ref (pure updaters) with a single OK (cancelLabel null); settings start-date input renders ONLY while no dated days exist',
+      (() => {
+        const deriveOk = /function deriveStartDate\(production\) \{/.test(html) &&
+          /return dates\.length \? dates\[0\] : \(\(production && production\.startDate\) \|\| null\);/.test(html) &&
+          /startDate: deriveStartDate\(\{ \.\.\.p, days \}\) \?\? \(p\.startDate \?\? todayISO\(\)\),/.test(html);
+        const autoOk = /const applyRateCardToCrew = \(production, fromCard, toCard\) => \{/.test(html) &&
+          /if \(!oldD \|\| !newD\) return c;/.test(html) &&
+          /const matchesOldCard = Number\(c\.bdr\) === Number\(oldD\.bdr\)\s*&& Number\(c\.otCoef\) === Number\(oldD\.otCoef\)\s*&& \(\(c\.otRate \?\? null\) === \(oldD\.otRate \?\? null\)\);/.test(html) &&
+          /if \(!matchesOldCard\) return c;/.test(html) &&
+          /return \{ \.\.\.c, bdr: newD\.bdr, otCoef: newD\.otCoef, otRate: newD\.otRate \?\? null \};/.test(html);
+        const finalizeOk = /const finalizeProductionUpdate = \(prevP, nextP\) => \{/.test(html) &&
+          /const withDate = \(derived && derived !== nextP\.startDate\) \? \{ \.\.\.nextP, startDate: derived \} : nextP;/.test(html) &&
+          /if \(fromCard === toCard\) return withDate;/.test(html) &&
+          /const applied = applyRateCardToCrew\(withDate, fromCard, toCard\);/.test(html) &&
+          /if \(toCard\.effectiveFrom > todayISO\(\)\) \{/.test(html) &&
+          /pendingRateNoticeRef\.current = \{ label: toCard\.label, effectiveFrom: toCard\.effectiveFrom \};/.test(html) &&
+          /p\.id === openId \? finalizeProductionUpdate\(p, \(typeof updater === "function" \? updater\(p\) : updater\)\) : p/.test(html);
+        const noticeOk = /cancelLabel=\{null\}/.test(html) &&
+          /so the \$\{month\} \$\{d\.getFullYear\(\)\} APA rates apply\./.test(html) &&
+          !/confirmLabel="Update rates"/.test(html) && !/applyRateCardRefresh/.test(html);
+        const fieldOk = /const hasDatedDays = \(production\.days \|\| \[\]\)\.some\(d => d\.date\);/.test(html) &&
+          /hint=\{hasDatedDays \? "Set by the first shoot day\." : undefined\}/.test(html) &&
+          /\{!hasDatedDays && \(\s*<input\s*type="date"/.test(html);
+        return deriveOk && autoOk && finalizeOk && noticeOk && fieldOk;
+      })());
+    check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
+      (() => {
+        const fn = (html.match(/function seedRateFromPrefs\(userPrefs, role, effectiveDate\)[\s\S]*?\n    \}/) || [''])[0];
+        const fnOk = /const matchesSomeCard = prefBdr > 0 && RATE_CARDS\.some\(c => \{/.test(fn) &&
+          /return !!d && prefBdr === Number\(d\.bdr\) && \(prefCoef == null \|\| prefCoef === Number\(d\.otCoef\)\);/.test(fn) &&
+          /const useCard = prefBdr <= 0 \|\| matchesSomeCard;/.test(fn) &&
+          /bdr: useCard \? \(resolved\.bdr \?\? 0\) : prefBdr,/.test(fn);
+        const wiredOk = (html.match(/seedRateFromPrefs\(userPrefs, role, null\)/g) || []).length >= 2 &&
+          /bdr: seeded\.bdr,\s*otCoef: seeded\.otCoef,\s*otRate: seeded\.otRate,/.test(html);
+        const shadowGoneOk = !/const bdr = userPrefs\.defaultBDR \|\| roleDefaults\.bdr \|\| 0;/.test(html) &&
+          !/bdr: Number\(userPrefs\?\.defaultBDR\) \|\| 0, isDefaultUser: true/.test(html);
+        return fnOk && wiredOk && shadowGoneOk;
+      })());
+    check('TT20c the pay engine never reads the card system — deriveBreakState, calculateDay and calculatePmpaDay contain no RATE_CARDS / resolveRateCard / roleDefaultsFor reference (rates reach the engine only as crew/day snapshots; the byte-identical 84-scenario calc audit independently proves zero drift)',
+      (() => {
+        const bs   = (html.match(/function deriveBreakState\([\s\S]*?\n    function /) || [''])[0];
+        const calc = (html.match(/function calculateDay\([\s\S]*?\n    function /) || [''])[0];
+        const pmpa = (html.match(/function calculatePmpaDay\([\s\S]*?\n    function /) || [''])[0];
+        const clean = (s) => s.length > 500 && !/RATE_CARDS|resolveRateCard|roleDefaultsFor/.test(s);
+        return clean(bs) && clean(calc) && clean(pmpa);
+      })());
+
     // ─ TT15: Second app icon ("Scribble") — bridge + Settings picker (+ native) ─
     // The web build must never touch the AppIcon native bridge (audit:web also
     // proves this); every JS path is IS_NATIVE-guarded. No stored pref — iOS owns
@@ -6154,6 +6281,81 @@ async function main() {
           /AppIconPlugin\.swift in Sources/.test(pbx);
         const assetOk = /Scribble-1024\.png/.test(contents);
         return pluginOk && regOk && buildOk && assetOk;
+      })());
+
+    // ─ TT16: wrap curve — the card freezes the CORRECT total at a card wrap ─
+    check('TT16a wrap curve (JS) — descriptor precomputes flattened [epoch,pence] pairs by sampling the calc engine at 30-min OT boundaries (hypothetical-wrap probes off otFrom; empty when wrapped / no hourly-OT line / probe failure), and the curve flows into return, sig and start/update payload',
+      (() => {
+        const descFn2 = (html.match(/function liveActivityDescriptor[\s\S]*?\n    \}/) || [''])[0];
+        return /let wrapCurve = \[\];/.test(descFn2) &&
+          /wrapCurve\.push\(bEpoch, Math\.round\(t \* 100\)\);/.test(descFn2) &&
+          /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: hhmm, wrapNextDay: nextDay \}, soloCrew, prevDay\)/.test(descFn2) &&
+          /curtailMins, lunchLogged, wrapCurve \};/.test(descFn2) &&
+          /ll: desc\.lunchLogged, wc: desc\.wrapCurve \}/.test(html) &&
+          /lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \};/.test(html);
+      })());
+    check('TT16b wrap curve (native) — ContentState carries wrapCurve: [Double] (init-defaulted [] so pre-curve payloads decode); the plugin reads it on start AND update; every intent-side reconstruction preserves it; confirmWrap freezes totalText via wrapTotalText (FIRST breakpoint ≥ now — the crew-favour round-up), falling back to the pushed total on an empty curve; gbpText byte-matches fmtGBP',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const attrs = readSafe('ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift');
+        const plugin = readSafe('ios/App/App/LiveActivityPlugin.swift');
+        const intents = readSafe('ios/App/TimeMachineWidget/TimeMachineIntents.swift');
+        const schemaOk = /public var wrapCurve: \[Double\]/.test(attrs) &&
+          /wrapCurve: \[Double\] = \[\]/.test(attrs);
+        const pluginOk = (plugin.match(/call\.getArray\("wrapCurve"\)/g) || []).length >= 2 &&
+          (plugin.match(/lunchLogged: lunchLogged, wrapCurve: wrapCurve/g) || []).length >= 2;
+        const intentsOk = (intents.match(/wrapCurve: cur\.wrapCurve/g) || []).length >= 8 &&
+          /totalText: wrapTotalText\(cur\),/.test(intents) &&
+          /guard s\.wrapCurve\.count >= 2 else \{ return s\.totalText \}/.test(intents) &&
+          /if s\.wrapCurve\[i\] >= now \{ pence = s\.wrapCurve\[i \+ 1\]; break \}/.test(intents);
+        return schemaOk && pluginOk && intentsOk;
+      })());
+
+    // ─ TT17: solo wrap-edit intent — in-app wrap ends the card like card wrap ─
+    check('TT17a applySoloWrapIntent — fires ONLY on a wrapTime/wrapNextDay change; a PASSED wrap moment sets wrapped:true (the card-wrap flag → same WRAPPED send-off), a future/cleared wrap clears it; call-relative next-day handling (wrap < call or explicit wrapNextDay → +24h) protects night shifts; wired into BOTH solo write paths (dayOnChange + handleDayChange); reconcile qualifies excludes wrapped days',
+      (() => {
+        const fn = (html.match(/function applySoloWrapIntent\(prevDay, nextDay\)[\s\S]*?\n    \}/) || [''])[0];
+        const fnOk = /if \(nextDay\.wrapTime === prevDay\.wrapTime && !!nextDay\.wrapNextDay === !!prevDay\.wrapNextDay\) return nextDay;/.test(fn) &&
+          /const nextDayShift = nextDay\.wrapNextDay === true \|\| \(callH != null && wrapH < callH\);/.test(fn) &&
+          /if \(passed && nextDay\.wrapped !== true\) return \{ \.\.\.nextDay, wrapped: true \};/.test(fn) &&
+          /if \(!passed && nextDay\.wrapped === true\) return \{ \.\.\.nextDay, wrapped: false \};/.test(fn);
+        const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html) &&
+          /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html);
+        const sweepOk = /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html);
+        return fnOk && wiredOk && sweepOk;
+      })());
+
+    // ─ TT18: sweep start branch — centralised lifecycle, no double-start ─
+    check('TT18a reconcile sweep STARTS a qualifying card (descriptor-driven, wrapped excluded) for productions with no card and no mounted controller; descriptorToPayload is the ONE payload shape shared by controller + sweep; SoloLiveActivity registers/deregisters its pid in laControllerPids (mount/unmount) and the start branch skips owned pids; the early bail on an empty activity list is GONE (an empty list is exactly when a start is needed)',
+      (() => {
+        const helperOk = /function descriptorToPayload\(desc\) \{/.test(html) &&
+          /const payload = descriptorToPayload\(desc\);/.test(html);
+        const registryOk = /const laControllerPids = new Set\(\);/.test(html) &&
+          /laControllerPids\.add\(pid\);/.test(html) &&
+          /return \(\) => \{ laControllerPids\.delete\(pid\); \};/.test(html);
+        const startOk = /if \(!pr \|\| byPid\.has\(pr\.id\) \|\| laControllerPids\.has\(pr\.id\)\) continue;/.test(html) &&
+          /if \(!desc \|\| desc\.wrapped\) continue;/.test(html) &&
+          /LiveActivity\.start\(descriptorToPayload\(desc\)\);/.test(html);
+        const bailGoneOk = !/const acts = await LiveActivity\.list\(\);\s*if \(!acts \|\| !acts\.length\) return;/.test(html);
+        return helperOk && registryOk && startOk && bailGoneOk;
+      })());
+
+    // ─ TT21: wrap confirm drain-hold — corrected total INSIDE the send-off ─
+    check('TT21a WrapNowIntent confirm follows the LunchNowIntent pattern — appendEvent → confirmWrap (instant WRAPPED + curve total, card still ACTIVE) → requestBackgroundDrain (bounded ~2.5s hold) → endWrapped (linger); endWrapped PRESERVES an already-wrapped totalText/endEpoch verbatim (no curve re-resolve after the hold — a boundary crossed during the 2.5s must not add OT); the sweep ends a wrapped-day card WITH the linger (endForProduction(pid, !wrappedSendOff)) so the drain-corrected send-off is never cut short',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const intents = readSafe('ios/App/TimeMachineWidget/TimeMachineIntents.swift');
+        const seqOk = /appendEvent\(type: "wrapNow", productionId: productionId\)\s*await TMLiveActivity\.confirmWrap\(productionId\)\s*await TMLiveActivity\.requestBackgroundDrain\(\)\s*await TMLiveActivity\.endWrapped\(productionId\)/.test(intents);
+        const cw = (intents.match(/static func confirmWrap[\s\S]*?\n    \}/) || [''])[0];
+        const confirmOk = /totalText: wrapTotalText\(cur\),/.test(cw) &&
+          /state: "wrapped",/.test(cw) && /await activity\.update\(/.test(cw) && !/\.end\(/.test(cw);
+        const ew = (intents.match(/static func endWrapped[\s\S]*?\n    \}/) || [''])[0];
+        const preserveOk = /let alreadyWrapped = cur\.state == "wrapped"/.test(ew) &&
+          /totalText: alreadyWrapped \? cur\.totalText : wrapTotalText\(cur\),/.test(ew) &&
+          /endEpoch: \(alreadyWrapped && cur\.endEpoch > 0\) \? cur\.endEpoch : Date\(\)\.timeIntervalSince1970,/.test(ew);
+        const bridgeOk = /async endForProduction\(productionId, immediate = true\)/.test(html) &&
+          /immediate: immediate !== false/.test(html);
+        return seqOk && confirmOk && preserveOk && bridgeOk;
       })());
   }
 

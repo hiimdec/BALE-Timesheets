@@ -1067,9 +1067,9 @@
         catch (e) { try { console.warn('[LiveActivity] list failed', (e && e.message) || e); } catch (_) {} }
         return [];
       },
-      async endForProduction(productionId) {
+      async endForProduction(productionId, immediate = true) {
         if (!IS_NATIVE) return;
-        try { const p = _capPlugins().LiveActivity; if (p && p.endForProduction) await p.endForProduction({ productionId, immediate: true }); }
+        try { const p = _capPlugins().LiveActivity; if (p && p.endForProduction) await p.endForProduction({ productionId, immediate: immediate !== false }); }
         catch (e) { try { console.warn('[LiveActivity] endForProduction failed', (e && e.message) || e); } catch (_) {} }
       },
       // End specific activities by id — the reconcile sweep's duplicate-converge
@@ -1616,7 +1616,20 @@
       return custom ? [...COMPARISON_SURFACE, custom.label] : COMPARISON_SURFACE;
     };
 
-    const DEPARTMENTS = {
+    // ── APA rate cards — effective-dated (numbers only) ─────────────────────
+    // The RULES never vary by card: role names, departments, pmpa/noOT flags
+    // and the whole calc engine are card-invariant — only the figures
+    // (bdr/otCoef, any explicit otRate) move between cards. A production
+    // resolves its card by startDate at the COPY sites only (crew creation,
+    // role change, step-up pickers, the boundary-crossing refresh prompt);
+    // the engine reads nothing but the values already snapshotted onto
+    // crew/day records, so an existing production never moves retroactively
+    // when a new card lands.
+    const RATE_CARDS = [
+      {
+        effectiveFrom: "2025-09-01",
+        label: "Sept 2025",
+        departments: {
       "Direction & Production": {
         "Director":             { bdr: 933,  otCoef: 0,    noOT: true },
         "Producer":             { bdr: 933,  otCoef: 0,    noOT: true },
@@ -1713,9 +1726,181 @@
         "Driver":           { bdr: 299, otCoef: 1.5 },
         "Covid Supervisor": { bdr: 435, otCoef: 1.5 },
       },
-    };
+        },
+      },
+      {
+        effectiveFrom: "2026-09-01",
+        label: "Sept 2026",
+        // Sept 2026 card — BDR-only uplift (~3%, rounded to the pound);
+        // otCoef / noOT / pmpa are card-invariant. Allowances (mileage,
+        // missed meal, late break) carry over unchanged per Derrick.
+        departments: {
+          "Direction & Production": {
+            "Director":             { bdr: 961,  otCoef: 0,    noOT: true },
+            "Producer":             { bdr: 961,  otCoef: 0,    noOT: true },
+            "Production Manager":   { bdr: 627,  otCoef: 1.0,  pmpa: true },
+            "Production Assistant": { bdr: 441,  otCoef: 1.0,  pmpa: true },
+            "Production Runner":    { bdr: 245,  otCoef: 1.0,  pmpa: true },
+          },
+          "Assistant Directors": {
+            "1st AD":                    { bdr: 809, otCoef: 1.0 },
+            "2nd AD":                    { bdr: 448, otCoef: 1.5 },
+            "3rd AD":                    { bdr: 336, otCoef: 1.5 },
+            "Floor Runner / AD Trainee": { bdr: 245, otCoef: 1.0, pmpa: true },
+          },
+          "Script Supervisor": {
+            "Script Supervisor": { bdr: 575, otCoef: 1.25 },
+          },
+          "Locations": {
+            "Location Manager": { bdr: 597, otCoef: 1.25 },
+          },
+          "Camera": {
+            "DoP":                     { bdr: 1561, otCoef: 1.0  },
+            "Camera Operator":         { bdr: 656,  otCoef: 1.25 },
+            "Focus Puller (1st AC)":   { bdr: 575,  otCoef: 1.25 },
+            "Clapper Loader (2nd AC)": { bdr: 448,  otCoef: 1.5  },
+            "DIT":                     { bdr: 527,  otCoef: 1.25 },
+            "Senior Video Operator":   { bdr: 518,  otCoef: 1.25 },
+            "Video Operator":          { bdr: 403,  otCoef: 1.5  },
+          },
+          "Grip": {
+            "Key Grip":     { bdr: 575, otCoef: 1.25 },
+            "Non-Key Grip": { bdr: 526, otCoef: 1.25 },
+          },
+          "Lighting": {
+            "Gaffer":              { bdr: 585, otCoef: 1.25 },
+            "Best Boy":            { bdr: 527, otCoef: 1.25 },
+            "Desk Op":             { bdr: 527, otCoef: 1.25 },
+            "Lighting Technician": { bdr: 457, otCoef: 1.5  },
+            // Trainee carries over from 2025 unchanged (confirmed ruling).
+            "Trainee":             { bdr: 250, otCoef: 1.5 },
+          },
+          // Rigging rates carry over from 2025 unchanged (confirmed ruling).
+          "Rigging": {
+            "Master Rigger":   { bdr: 675, otCoef: 1.5 },
+            "Advanced Rigger": { bdr: 515, otCoef: 1.5 },
+            "Standby Rigger":  { bdr: 515, otCoef: 1.5 },
+          },
+          "SFX": {
+            "SFX Supervisor":      { bdr: 1561, otCoef: 1.0  },
+            "Sr. SFX Technician":  { bdr: 668,  otCoef: 1.25 },
+            "SFX Technician":      { bdr: 535,  otCoef: 1.25 },
+            "SFX Assistant":       { bdr: 448,  otCoef: 1.5  },
+            "Model Animator":      { bdr: 820,  otCoef: 1.0  },
+            "Model Animator Asst": { bdr: 575,  otCoef: 1.25 },
+          },
+          "Art Dept": {
+            "Art Director":       { bdr: 878, otCoef: 1.0  },
+            "Asst. Art Director": { bdr: 585, otCoef: 1.25 },
+            "Stylist":            { bdr: 647, otCoef: 1.25 },
+            "Props Buyer":        { bdr: 585, otCoef: 1.25 },
+            "Master Props":       { bdr: 521, otCoef: 1.25 },
+            "Props":              { bdr: 398, otCoef: 1.5  },
+            "Props Assistant":    { bdr: 319, otCoef: 1.5  },
+            "Scenic Artist":      { bdr: 735, otCoef: 1.0  },
+            "Home Economist":     { bdr: 668, otCoef: 1.25 },
+          },
+          "Construction": {
+            "Construction Manager": { bdr: 548, otCoef: 1.25 },
+            "Master Painter":       { bdr: 512, otCoef: 1.25 },
+            "Painter":              { bdr: 398, otCoef: 1.5  },
+            "Master Carpenter":     { bdr: 512, otCoef: 1.25 },
+            "Carpenter":            { bdr: 398, otCoef: 1.5  },
+            "Master Plasterer":     { bdr: 512, otCoef: 1.25 },
+            "Plasterer":            { bdr: 398, otCoef: 1.5  },
+            "Standby Construction": { bdr: 398, otCoef: 1.5  },
+            "Stage Hand":           { bdr: 370, otCoef: 1.5  },
+            "Labourer":             { bdr: 308, otCoef: 1.5  },
+          },
+          "Sound": {
+            "Sound Mixer":       { bdr: 668, otCoef: 1.25 },
+            "Boom Operator":     { bdr: 535, otCoef: 1.25 },
+            "Sound Maintenance": { bdr: 436, otCoef: 1.5  },
+            "Sound Assistant":   { bdr: 403, otCoef: 1.5  },
+          },
+          "Costume": {
+            "Costume Designer": { bdr: 694, otCoef: 1.25 },
+            "Wardrobe Buyer":   { bdr: 694, otCoef: 1.25 },
+            "Wardrobe":         { bdr: 398, otCoef: 1.5  },
+          },
+          "Hair & Makeup": {
+            "Chief Make Up Artist": { bdr: 668, otCoef: 1.25 },
+            "Make Up":              { bdr: 398, otCoef: 1.5  },
+            "Chief Hair Designer":  { bdr: 668, otCoef: 1.25 },
+            "Hairdresser":          { bdr: 398, otCoef: 1.5  },
+          },
+          "Other": {
+            "Driver":           { bdr: 308, otCoef: 1.5 },
+            "Covid Supervisor": { bdr: 448, otCoef: 1.5 },
+          },
+        },
+      },
+    ];
 
-    // Flat lookup — backwards compatible
+    // Flatten a card to the role → { bdr, otCoef, … } lookup. The legacy
+    // "Spark" alias follows every card.
+    function flattenRateCard(card) {
+      const flat = Object.fromEntries(
+        Object.values(card.departments).flatMap(roles => Object.entries(roles))
+      );
+      flat["Spark"] = flat["Lighting Technician"];
+      return flat;
+    }
+
+    // Latest card whose effectiveFrom ≤ the production's startDate; no/blank
+    // startDate resolves by the CURRENT date. Plain string compare — both
+    // sides are YYYY-MM-DD.
+    function resolveRateCard(startDate) {
+      const key = (typeof startDate === "string" && startDate) ? startDate : todayISO();
+      let chosen = RATE_CARDS[0];
+      for (const c of RATE_CARDS) { if (c.effectiveFrom <= key) chosen = c; }
+      return chosen;
+    }
+
+    // The role-rates lookup for a production — EVERY bdr/otCoef/otRate copy
+    // resolves through this (pass null for "the current-date card": Settings
+    // global defaults, brand-new productions). Resolved at CALL time, never
+    // cached at module init: todayISO() is declared later in the file (TDZ),
+    // and the current-date card changes at a boundary anyway.
+    function roleDefaultsFor(production) {
+      return flattenRateCard(resolveRateCard(production && production.startDate));
+    }
+
+    // Seed-time rate resolution (I2). A stored Settings default
+    // (userPrefs.defaultBDR / defaultOTCoef) is a SNAPSHOT taken whenever
+    // the user last saved Settings — possibly under an older rate card —
+    // and silently seeding it births a shoot on the wrong card with no
+    // crossing event to correct it. H2's exact-match principle applied at
+    // seed time: a stored default that exactly matches the role's values on
+    // ANY card is provably table-derived — seed from the card resolved for
+    // the effective date instead (identical numbers when the snapshot is
+    // current; a correction when it's stale). A stored default matching NO
+    // card's values for the role is a deliberate custom rate — seeded
+    // VERBATIM, never overridden. Prefs themselves are never rewritten:
+    // this is resolve-at-use, and the preference-change rule stands.
+    function seedRateFromPrefs(userPrefs, role, effectiveDate) {
+      const resolved = flattenRateCard(resolveRateCard(effectiveDate || null))[role] || {};
+      const prefBdr = Number(userPrefs && userPrefs.defaultBDR) || 0;
+      const prefCoef = (userPrefs && userPrefs.defaultOTCoef != null) ? Number(userPrefs.defaultOTCoef) : null;
+      const matchesSomeCard = prefBdr > 0 && RATE_CARDS.some(c => {
+        const d = flattenRateCard(c)[role];
+        return !!d && prefBdr === Number(d.bdr) && (prefCoef == null || prefCoef === Number(d.otCoef));
+      });
+      const useCard = prefBdr <= 0 || matchesSomeCard;
+      return {
+        bdr: useCard ? (resolved.bdr ?? 0) : prefBdr,
+        otCoef: useCard ? (resolved.otCoef ?? (prefCoef ?? 1.5)) : (prefCoef ?? resolved.otCoef ?? 1.5),
+        otRate: resolved.otRate ?? null,
+      };
+    }
+
+    // Rules-side structure (role names / departments / display order) —
+    // card-invariant, bound once to the base card.
+    const DEPARTMENTS = RATE_CARDS[0].departments;
+
+    // Flat lookup — backwards compatible. Kept as the BASE-card flatten for
+    // the card-invariant reads (pmpa/noOT flags, role-name lists); NUMBER
+    // copies must go through roleDefaultsFor(production) instead.
     const ROLE_DEFAULTS = Object.fromEntries(
       Object.values(DEPARTMENTS).flatMap(roles => Object.entries(roles))
     );
@@ -3183,6 +3368,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return migrated;
     }
 
+    // startDate is DERIVED (G3): the earliest date across a production's
+    // dated days is the single source of truth whenever any dated day
+    // exists. Only a production with NO dated days keeps a stored/manual
+    // value (creation stamps today; a pencilled booking can be dated by
+    // hand). Everything that keys off startDate — rate-card resolution,
+    // version footers, sorting fallbacks, NEW invoice dating — reads the
+    // derived value; sent invoices are frozen snapshots and never change.
+    function deriveStartDate(production) {
+      const dates = ((production && production.days) || []).map(d => d.date).filter(Boolean).sort();
+      return dates.length ? dates[0] : ((production && production.startDate) || null);
+    }
+
     const migrateProduction = (p) => {
       // V4-5h-10: legacy v1→v2 kitMoneyEnabled backfill removed. Day records that lack
       // kitMoneyAmount now silently inherit kit money via augmentCalc's crew fallback
@@ -3281,7 +3478,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         roundingMode: _rmode,
         favourableRounding: _rmode === 'favourable',
         apaRounding: _rmode === 'apa',
-        startDate: p.startDate ?? todayISO(),
+        // startDate derivation snap (G3) — a SILENT load-time correction:
+        // dated days exist → earliest dated day wins over a disagreeing
+        // stored value (idempotent, re-asserted every load). Never prompts,
+        // never touches crew rate snapshots — those move only through the
+        // user-facing boundary prompt.
+        startDate: deriveStartDate({ ...p, days }) ?? (p.startDate ?? todayISO()),
         weekStarts: p.weekStarts ?? [],
         gridDates: p.gridDates ?? [],
         cancellationData: p.cancellationData ?? null,
@@ -4149,6 +4351,36 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function applyWrapNow(production, date, t) {
       const uid0 = production.crew && production.crew[0] && production.crew[0].id;
       return { ...production, days: mapDayNow(production.days, date, uid0, { wrapTime: t, wrapped: true }) };
+    }
+
+    // Solo wrap-edit intent: typing a wrap time that has ALREADY PASSED is
+    // recording reality — the day is over — so it sets the same explicit
+    // `wrapped` flag the card's Wrap button path writes, and the Live
+    // Activity gets the identical WRAPPED send-off. A wrap moment still
+    // ahead (or a cleared wrap) is a PLAN: it clears the flag so the day is
+    // live again (the card legitimately restarts via the reconcile sweep).
+    // ONLY a wrapTime/wrapNextDay change triggers this — other edits never
+    // touch the flag, and a planned wrap merely passing on the clock does
+    // NOT end the day: that moment is precisely when OT tracking starts.
+    // The wrap moment is call-relative like the engine: wrap earlier than
+    // call (or an explicit wrapNextDay) lands on the NEXT day, so a
+    // 22:00-call night shift editing wrap to 04:00 is never misread as
+    // already-wrapped. Solo-only — Best Boy dept/crew paths are untouched.
+    function applySoloWrapIntent(prevDay, nextDay) {
+      if (!prevDay || !nextDay) return nextDay;
+      if (nextDay.wrapTime === prevDay.wrapTime && !!nextDay.wrapNextDay === !!prevDay.wrapNextDay) return nextDay;
+      const wrapH = parseHHMM(nextDay.wrapTime);
+      if (wrapH == null) {
+        return nextDay.wrapped === true ? { ...nextDay, wrapped: false } : nextDay;
+      }
+      const base = nextDay.date ? new Date(nextDay.date + 'T00:00:00') : new Date(new Date().toDateString());
+      const callH = parseHHMM(nextDay.callTime);
+      const nextDayShift = nextDay.wrapNextDay === true || (callH != null && wrapH < callH);
+      const wrapMs = base.getTime() + (wrapH + (nextDayShift ? 24 : 0)) * 3600 * 1000;
+      const passed = wrapMs <= Date.now();
+      if (passed && nextDay.wrapped !== true) return { ...nextDay, wrapped: true };
+      if (!passed && nextDay.wrapped === true) return { ...nextDay, wrapped: false };
+      return nextDay;
     }
     // Curtailed-lunch ingestion (Group B): write the card-captured lunch duration
     // (whole minutes, computed natively as now − lunchStart) onto the day RECORD
@@ -7246,9 +7478,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ CREW MANAGER ═══════════════════════════ */
 
-    function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed, onPushUndo }) {
+    function CrewManager({ crew, setCrew, autoStart = false, onAutoStartConsumed, onPushUndo, production = null }) {
       const [editing, setEditing] = useState(null);
-      const blank = { id: "", name: "", role: "Lighting Technician", bdr: ROLE_DEFAULTS["Lighting Technician"].bdr, otCoef: ROLE_DEFAULTS["Lighting Technician"].otCoef, otRate: ROLE_DEFAULTS["Lighting Technician"].otRate ?? null, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false, email: "" };
+      // Rate copies resolve through the production's effective-dated card.
+      const cardRoles = roleDefaultsFor(production);
+      const blank = { id: "", name: "", role: "Lighting Technician", bdr: cardRoles["Lighting Technician"].bdr, otCoef: cardRoles["Lighting Technician"].otCoef, otRate: cardRoles["Lighting Technician"].otRate ?? null, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false, email: "" };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
       const dragIdx = useRef(null);
@@ -7274,7 +7508,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         cancel();
       };
       const remove = (id) => { onPushUndo('Crew member removed'); setCrew((prev) => prev.filter((c) => c.id !== id)); setConfirmRemove(null); };
-      const onRoleChange = (role) => { const d = ROLE_DEFAULTS[role] || {}; setForm((f) => ({ ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr), otRate: d.otRate ?? null })); };
+      const onRoleChange = (role) => { const d = cardRoles[role] || {}; setForm((f) => ({ ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr), otRate: d.otRate ?? null })); };
       const sortByRole = () => {
         setCrew((prev) => [...prev].sort((a, b) => {
           const r = roleRank(a.role) - roleRank(b.role);
@@ -8714,7 +8948,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <Field label="Step-Up Role">
                   <Select value={v.stepUpRole || ""} onChange={(e) => {
                     const role = e.target.value;
-                    const d = ROLE_DEFAULTS[role] || {};
+                    const d = roleDefaultsFor(production)[role] || {};
                     set({ stepUpRole: role, stepUpBDR: d.bdr ?? v.stepUpBDR, stepUpOTCoef: d.otCoef ?? v.stepUpOTCoef, stepUpOTRate: d.otRate ?? null });
                   }}>
                     <option value="">- Select Role -</option>
@@ -9562,7 +9796,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <Field label="Step-Up Role for all crew" hint="Select - None - to disable.">
                         <Select value={dateEdit.stepUpRole || ""} onChange={e => {
                           const role = e.target.value;
-                          const d = ROLE_DEFAULTS[role] || {};
+                          const d = roleDefaultsFor(production)[role] || {};
                           setDateEdit(p => ({
                             ...p,
                             stepUpRole: role,
@@ -9977,13 +10211,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // not by the full window length. Otherwise a run of pre-data zero months
       // (or a quiet stretch) drags the average toward zero and misrepresents
       // the user's typical earning month. £4,003 across 2 earning months reads
-      // as £2,001.50, not £333.58. The numerator stays the window total —
-      // every zero contributes 0 either way, so dropping them from the sum
-      // is unnecessary; only the denominator changes.
+      // as £2,001.50, not £333.58.
+      // The in-progress current month (isCurrentMonth) is excluded from BOTH
+      // sum and count: a partial month drags the average down the same way a
+      // zero month would. The chart still renders it — exclusion lives only
+      // here, in the average.
       // Divide-by-zero guard: an all-zero window returns 0 (no division)
       // so the headline "Monthly average £0.00" reads cleanly with no NaN.
       if (!Array.isArray(windowEntries) || windowEntries.length === 0) return 0;
-      const earning = windowEntries.filter(e => e && (e.amount || 0) > 0);
+      const earning = windowEntries.filter(e => e && (e.amount || 0) > 0 && !e.isCurrentMonth);
       if (earning.length === 0) return 0;
       return earning.reduce((s, e) => s + (e.amount || 0), 0) / earning.length;
     }
@@ -10316,7 +10552,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function DaysManager({ days, setDays, crew, production, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, userPrefs = null }) {
+    function DaysManager({ days, setDays, crew, production, setProduction, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, userPrefs = null }) {
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -10481,12 +10717,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           // a no-op. The form's kitItems IS empty at this point because the
           // form-level hooks all reject crewId="" → no kitItems leaked from
           // the modal into the cross-crew duplication.
+          //
+          // The entered times go to dayDefaults[date] through the dept-default
+          // path, NOT onto each crew record. Explicit per-record copies froze
+          // every record against later dept-default edits (override = value
+          // presence), so the automatic apply-to-all cascade never ran for
+          // days created here. Each record omits the five cascade fields —
+          // the same seeding rule setDayDefault uses (V4-5h-14 F4.3) — so
+          // resolveDay follows the defaults until a member is individually
+          // edited. Kit auto-apply gets the form's dayType as effectiveType
+          // because the record itself no longer carries one.
           const myCrewId = getEffectiveUserCrewId(production, userPrefs);
-          const newDays = crew.map((c) => applyKitAutoApply(
-            { ...form, id: uid(), crewId: c.id },
-            userPrefs, null, myCrewId,
-          ));
-          setDays((prev) => [...prev, ...newDays]);
+          const cascadeFields = ["callTime", "wrapTime", "lunchStartTime", "lunchDurationMins", "dayType"];
+          const newDays = crew.map((c) => {
+            const rec = { ...form, id: uid(), crewId: c.id };
+            for (const f of cascadeFields) delete rec[f];
+            return applyKitAutoApply(rec, userPrefs, form.dayType, myCrewId);
+          });
+          setProduction((prev) => {
+            // Records go in first: setDayDefault seeds its own blank day for
+            // crew[0] on this date when none exists, which would duplicate.
+            let next = { ...prev, days: [...(prev.days || []), ...newDays].map(migrateDay) };
+            for (const f of cascadeFields) {
+              if (form[f] !== undefined) next = setDayDefault(next, form.date, f, form[f]);
+            }
+            return next;
+          });
           cancel();
         } else {
           if (!form.crewId) return;
@@ -10672,12 +10928,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    // Day-anchor rule shared by Best Boy (computeInitialDate) and Solo
+    // (SoloDayPage anchor effect): open on the existing day closest to today,
+    // ties going to the earlier day. Picking only among existing days clamps
+    // the anchor to the shoot's date range — a wrapped shoot opens on its
+    // last day, a future one on its first. Empty/dateless input → null.
+    function closestDateToToday(dates) {
+      const uniq = [...new Set((dates || []).filter(Boolean))].sort();
+      if (uniq.length === 0) return null;
+      const t = new Date(todayISO()).getTime();
+      let best = uniq[0];
+      let bestDist = Math.abs(new Date(uniq[0]).getTime() - t);
+      for (let i = 1; i < uniq.length; i++) {
+        const dist = Math.abs(new Date(uniq[i]).getTime() - t);
+        if (dist < bestDist) { best = uniq[i]; bestDist = dist; }
+      }
+      return best;
+    }
+
     function computeInitialDate(production) {
-      const today = todayISO();
-      const datesWithData = new Set((production.days || []).map(d => d.date));
-      if (datesWithData.has(today)) return today;
-      if (datesWithData.size > 0) return [...datesWithData].sort().reverse()[0];
-      return production.startDate || today;
+      return closestDateToToday((production.days || []).map(d => d.date))
+        || production.startDate || todayISO();
     }
 
     function BestBoyMobileDayView({ production, setProduction, userPrefs, onPushUndo, currentDate, setCurrentDate, onCrewTap, showToast }) {
@@ -11485,6 +11756,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <QuickAddCrewSheet
               onClose={() => setShowAddCrew(false)}
               onSubmit={handleAddNewCrew}
+              production={production}
             />
           )}
         </div>
@@ -11803,11 +12075,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function QuickAddCrewSheet({ onClose, onSubmit, crewMember = null }) {
+    function QuickAddCrewSheet({ onClose, onSubmit, crewMember = null, production = null }) {
       const isEditMode = crewMember !== null;
       const [name, setName] = useState(crewMember?.name || '');
       const [role, setRole] = useState(crewMember?.role || 'Lighting Technician');
-      const [bdr, setBdr] = useState(String(crewMember?.bdr ?? ROLE_DEFAULTS['Lighting Technician'].bdr ?? ''));
+      const [bdr, setBdr] = useState(String(crewMember?.bdr ?? roleDefaultsFor(production)['Lighting Technician'].bdr ?? ''));
       const [email, setEmail] = useState(crewMember?.email || '');
 
       // (c) editor — local buffer until Add/Save. Snapshot the initial field
@@ -11820,7 +12092,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const canSave = name.trim().length > 0;
       const handleSubmit = () => {
         if (!canSave) return;
-        const roleDefaults = ROLE_DEFAULTS[role] || {};
+        const roleDefaults = roleDefaultsFor(production)[role] || {};
         if (isEditMode) {
           onSubmit({
             ...crewMember,
@@ -12420,7 +12692,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                     value={dayRecord.stepUpRole || ''}
                                     onChange={(e) => {
                                       const role = e.target.value;
-                                      const d = ROLE_DEFAULTS[role] || {};
+                                      const d = roleDefaultsFor(production)[role] || {};
                                       setProduction(p => ({
                                         ...p,
                                         days: p.days.map(rec => rec.id === dayRecord.id ? {
@@ -12647,6 +12919,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {showEditCrew && (
             <QuickAddCrewSheet
               crewMember={crewMember}
+              production={production}
               onClose={() => setShowEditCrew(false)}
               onSubmit={(updated) => {
                 setProduction(p => ({
@@ -12986,6 +13259,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // sheet is showing.
       const [confirmReset, setConfirmReset] = useState(false);
 
+      // startDate is DERIVED from the earliest dated day (G3); this manual
+      // path only operates while the production has NO dated days (a
+      // pencilled booking). Card detection + automatic rate application
+      // live centrally in App's setProduction — a manual edit here flows
+      // through the same funnel, so nothing sheet-local is needed.
+      const hasDatedDays = (production.days || []).some(d => d.date);
+
       const handleStartDateChange = (e) => {
         const newDate = e.target.value;
         if (/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
@@ -13070,21 +13350,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   className="w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg"
                 />
               </Field>
-              <Field label="Start date">
+              <Field label="Start date" hint={hasDatedDays ? "Set by the first shoot day." : undefined}>
                 <div className="relative w-full">
-                  <div className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm font-mono text-neutral-100 min-h-[36px] flex items-center">
+                  <div className={`w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm font-mono min-h-[36px] flex items-center ${hasDatedDays ? 'text-neutral-400' : 'text-neutral-100'}`}>
                     {production.startDate
                       ? fmtDateMed(production.startDate)
                       : <span className="text-neutral-500">Tap to set</span>}
                   </div>
-                  <input
-                    type="date"
-                    value={production.startDate || ""}
-                    onChange={handleStartDateChange}
-                    className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    aria-label="Start date"
-                    style={{ WebkitAppearance: 'none' }}
-                  />
+                  {!hasDatedDays && (
+                    <input
+                      type="date"
+                      value={production.startDate || ""}
+                      onChange={handleStartDateChange}
+                      className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      aria-label="Start date"
+                      style={{ WebkitAppearance: 'none' }}
+                    />
+                  )}
                 </div>
               </Field>
             </SectionCard>
@@ -13366,7 +13648,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <Field label="Role">
                     <Select value={m.role} onChange={(e) => {
                       const role = e.target.value;
-                      const d = ROLE_DEFAULTS[role] || {};
+                      const d = roleDefaultsFor(production)[role] || {};
                       setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, role, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null } : c) }));
                     }}>
                       {Object.entries(DEPARTMENTS).map(([dept, roles]) =>
@@ -13844,6 +14126,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {editingCrew && (
             <QuickAddCrewSheet
               crewMember={editingCrew}
+              production={production}
               onClose={() => setEditingCrew(null)}
               onSubmit={(updated) => {
                 setProduction(p => ({
@@ -14671,14 +14954,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               >
                 {confirmLabel}
               </button>
-              <button
-                type="button"
-                onClick={onCancel}
-                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-300 hover:text-neutral-100 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                {cancelLabel}
-              </button>
+              {/* cancelLabel={null} → single-button informational alert
+                  (OK only); onCancel still backs Escape/backdrop on web. */}
+              {cancelLabel !== null && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-300 hover:text-neutral-100 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  {cancelLabel}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -15343,6 +15630,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           if (m) otFrom = m[1];
         } catch (_) {}
       }
+      // WRAP CURVE — the total the day settles at if wrapped at each 30-minute
+      // OT boundary, precomputed HERE (the calc engine's home) and carried in
+      // ContentState so the widget process — which has no engine — can freeze
+      // the CORRECT total the moment the card's Wrap confirm lands. Flattened
+      // ascending [epoch, pence, epoch, pence, …]; the native lookup is "first
+      // breakpoint ≥ wrap moment", which matches ceilHalf's round-up-to-30-min
+      // in the crew's favour exactly (totals are non-decreasing in wrap time).
+      // Grid: the engine's own OT-start (otFrom) + 24 half-hours (12h); a wrap
+      // before the first point resolves to it (the basic-day total — OT qty 0),
+      // beyond the last resolves to the last (best effort). Empty when wrapped,
+      // when the day has no hourly-OT line (flat/discretionary types — their
+      // total doesn't step with wrap), or on probe failure: the native side
+      // then keeps the pushed totalText (the pre-curve freeze behaviour).
+      // Display-only, same discipline as totalText — pay is never computed
+      // outside the engine; these ARE engine outputs, sampled.
+      let wrapCurve = [];
+      if (!wrapped && otFrom) {
+        try {
+          let otEpoch = hhmmToEpochToday(otFrom);
+          if (otEpoch && callEpoch && otEpoch < callEpoch) otEpoch += 86400; // OT start lands past midnight
+          if (otEpoch) {
+            const prevDay = findPrevDay(days, rec);
+            const localTodayStr = new Date().toDateString();
+            for (let k = 0; k <= 24; k++) {
+              const bEpoch = otEpoch + k * 1800;
+              const bd = new Date(bEpoch * 1000);
+              const hhmm = `${String(bd.getHours()).padStart(2, '0')}:${String(bd.getMinutes()).padStart(2, '0')}`;
+              const nextDay = bd.toDateString() !== localTodayStr;
+              const t = calcForDisplay(production, { ...rec, wrapTime: hhmm, wrapNextDay: nextDay }, soloCrew, prevDay).total || 0;
+              wrapCurve.push(bEpoch, Math.round(t * 100));
+            }
+          }
+        } catch (_) { wrapCurve = []; }
+      }
       // Activity stale wake. While ON LUNCH — mirroring the native isOnLunch
       // predicate (lunchLogged, uncurtailed, hour-end still ahead of now) — point
       // staleDate at lunchEndEpoch so a foreground push carries the lunch-end wake
@@ -15355,8 +15676,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const nowEpoch = Math.floor(Date.now() / 1000);
       const onLunchNow = lunchLogged && curtailMins === 0 && lunchEndEpoch > nowEpoch;
       const staleEpoch = onLunchNow ? lunchEndEpoch : (callEpoch ? callEpoch + 16 * 3600 : 0);
-      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged };
+      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve };
     }
+
+    // ONE payload shape for both lifecycle owners — the mounted controller
+    // (SoloLiveActivity) and the app-level reconcile sweep's start branch —
+    // so the two can never drift. Exactly what the plugin reads on
+    // start/update; wrapped/staleness stay descriptor-side concerns.
+    function descriptorToPayload(desc) {
+      const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId, lunchEndEpoch: desc.lunchEndEpoch, otFrom: desc.otFrom, curtailMins: desc.curtailMins, lunchLogged: desc.lunchLogged, wrapCurve: desc.wrapCurve };
+      return payload;
+    }
+
+    // Lifecycle-ownership registry (module scope): the pids whose Live
+    // Activity start/update is currently owned by a MOUNTED SoloLiveActivity
+    // controller. The reconcile sweep's start branch skips these — the guard
+    // against a double-start race between the ~1s change-sweep and a fresh
+    // mount. Ending stays sweep-territory for everyone (a controller that
+    // disqualifies ends its own card immediately anyway).
+    const laControllerPids = new Set();
 
     // Mounted inside SoloDayPage. START when today's call time is set; debounced
     // UPDATE on recompute / state change; END on wrap. All native calls behind
@@ -15364,6 +15702,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function SoloLiveActivity({ production, soloCrew, days, enabled = true }) {
       const startedKeyRef = React.useRef(null);
       const lastSentRef = React.useRef('');
+      // Register lifecycle ownership for this production while mounted — the
+      // reconcile sweep's start branch defers to a mounted controller.
+      React.useEffect(() => {
+        if (!IS_NATIVE) return;
+        const pid = production && production.id;
+        if (!pid) return;
+        laControllerPids.add(pid);
+        return () => { laControllerPids.delete(pid); };
+      }, [production && production.id]);
       // Minute tick: the descriptor's time-derived outputs (AT LUNCH state, the
       // L1/CWD live-window terms) depend on wall-clock "now", but nothing in
       // SoloDayPage re-renders on a timer — so without this, a threshold crossing
@@ -15377,7 +15724,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return () => clearInterval(t);
       }, []);
       const desc = (IS_NATIVE && enabled) ? liveActivityDescriptor(production, soloCrew, days) : null;
-      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd, l: desc.lunchEndEpoch, o: desc.otFrom, cm: desc.curtailMins, ll: desc.lunchLogged }) : '';
+      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd, l: desc.lunchEndEpoch, o: desc.otFrom, cm: desc.curtailMins, ll: desc.lunchLogged, wc: desc.wrapCurve }) : '';
       React.useEffect(() => {
         if (!IS_NATIVE) return;
         // END on DISQUALIFICATION: the still-mounted controller re-renders and
@@ -15401,7 +15748,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
-          const payload = { name: desc.name, totalText: desc.totalText, callEpoch: desc.callEpoch, anchorLabel: desc.anchorLabel, endEpoch: desc.endEpoch, state: desc.state, cwd: desc.cwd, staleEpoch: desc.staleEpoch, productionId: desc.productionId, lunchEndEpoch: desc.lunchEndEpoch, otFrom: desc.otFrom, curtailMins: desc.curtailMins, lunchLogged: desc.lunchLogged };
+          const payload = descriptorToPayload(desc);
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
             LiveActivity.update(payload);   // reflect WRAPPED…
@@ -15470,14 +15817,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const [currentDayId, setCurrentDayId] = useState(null);
 
-      // Anchor to today's day (or last day) on first load and re-anchor if current id becomes invalid
+      // Anchor to the day closest to today (ties → earlier; see
+      // closestDateToToday) on first load, and re-anchor by the same rule
+      // if the current id becomes invalid (e.g. day deleted).
       useEffect(() => {
         if (sortedDays.length === 0) return;
         const stillValid = currentDayId && sortedDays.some(d => d.id === currentDayId);
         if (stillValid) return;
-        const todayStr = todayISO();
-        const todayDay = sortedDays.find(d => d.date === todayStr);
-        setCurrentDayId(todayDay?.id ?? sortedDays[sortedDays.length - 1].id);
+        const anchorDate = closestDateToToday(sortedDays.map(d => d.date));
+        const anchorDay = (anchorDate && sortedDays.find(d => d.date === anchorDate)) || sortedDays[sortedDays.length - 1];
+        setCurrentDayId(anchorDay.id);
       }, [sortedDays, currentDayId]);
 
       const currentDay = sortedDays.find(d => d.id === currentDayId) || sortedDays[0];
@@ -15530,7 +15879,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const handleDayChange = (updatedDay) => {
         if (!currentDay) return;
-        setDays(prev => prev.map(d => d.id === currentDay.id ? updatedDay : d));
+        setDays(prev => prev.map(d => d.id === currentDay.id ? applySoloWrapIntent(d, updatedDay) : d));
       };
 
       const [confirmDelete, setConfirmDelete] = useState(false);
@@ -15834,7 +16183,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onAddDay={addDay}
             renderDay={(day, dayIdxInList) => {
               const dayOnChange = (updatedDay) => {
-                setDays(prev => prev.map(d => d.id === day.id ? updatedDay : d));
+                setDays(prev => prev.map(d => d.id === day.id ? applySoloWrapIntent(d, updatedDay) : d));
               };
               return (
                 <>
@@ -16508,7 +16857,7 @@ const setDays = (updater) =>
             {tab === "setup" && production.bestBoyMode && (
               <div className="space-y-8">
                 <ProductionForm production={production} setProduction={setProduction} onOpenSettings={() => setShowProdSettings(true)} />
-                <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} onPushUndo={pushUndo} />
+                <CrewManager crew={crew} setCrew={setCrew} autoStart={openCrewForm} onAutoStartConsumed={() => setOpenCrewForm(false)} onPushUndo={pushUndo} production={production} />
                 <div>
                   <Btn variant="ghost" size="sm" onClick={() => setShowCancelModal(true)}>Cancellation fees</Btn>
                 </div>
@@ -16545,13 +16894,13 @@ const setDays = (updater) =>
                         onCrewTap={setDrilldownCrewMember}
                         showToast={showToast}
                       />)
-                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} userPrefs={userPrefs} />
+                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} setProduction={setProduction} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} userPrefs={userPrefs} />
             )}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
           </div>
 
           <div className="text-center text-[10px] text-neutral-600 py-6 pb-32 uppercase tracking-widest">
-            Rates per APA Sept 2025
+            Rates per APA {resolveRateCard(production.startDate).label}
           </div>
 
           {(() => {
@@ -16826,15 +17175,17 @@ const setDays = (updater) =>
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
     function makeDeptRoleHandlers(set, userPrefs) {
+      // Global defaults seed FUTURE productions, so numbers come off the
+      // current-date card (roleDefaultsFor(null)).
       return {
         onDeptChange: (dept) => {
           const firstRole = dept && DEPARTMENTS[dept] ? Object.keys(DEPARTMENTS[dept])[0] : "";
-          const roleDefaults = firstRole ? (ROLE_DEFAULTS[firstRole] || {}) : {};
+          const roleDefaults = firstRole ? (roleDefaultsFor(null)[firstRole] || {}) : {};
           set({ defaultDepartment: dept, defaultRole: firstRole,
                 defaultBDR: roleDefaults.bdr ?? 0, defaultOTCoef: roleDefaults.otCoef ?? 1.5 });
         },
         onRoleChange: (role) => {
-          const d = ROLE_DEFAULTS[role] || {};
+          const d = roleDefaultsFor(null)[role] || {};
           set({ defaultRole: role, defaultBDR: d.bdr ?? userPrefs.defaultBDR, defaultOTCoef: d.otCoef ?? 1.5 });
         },
       };
@@ -17969,7 +18320,14 @@ const setDays = (updater) =>
       const [calcCrew, setCalcCrew] = useState(() => {
         const name = userPrefs?.displayName?.trim() || "";
         if (!name) return [];
-        return [{ id: uid(), name, role: userPrefs?.defaultRole || "Crew", bdr: Number(userPrefs?.defaultBDR) || 0, isDefaultUser: true }];
+        // Same seed-time resolution as production creation: a stale
+        // table-derived Settings default resolves through the current card;
+        // a custom default (matches no card — including the "Crew" role,
+        // which no card knows) seeds verbatim. Ephemeral calculator state —
+        // nothing here persists.
+        const role = userPrefs?.defaultRole || "Crew";
+        const seeded = seedRateFromPrefs(userPrefs, role, null);
+        return [{ id: uid(), name, role, bdr: seeded.bdr, isDefaultUser: true }];
       });
       // Overdue-reminders notification permission (iOS) — checked on mount and
       // after a toggle-on request, so the toggle can surface a denied state.
@@ -18799,7 +19157,7 @@ const setDays = (updater) =>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-neutral-500">APA rate version</span>
-                    <span className="font-mono">APA Sept 2025</span>
+                    <span className="font-mono">APA {resolveRateCard(null).label}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-neutral-500">Feedback</span>
@@ -22009,7 +22367,13 @@ const setDays = (updater) =>
             const showUnpaid  = (filterStatus === 'all' || filterStatus === 'sent')  && sections.unpaid.length > 0;
             const showPaid    = (filterStatus === 'all' || filterStatus === 'paid')  && sections.paidGroups.length > 0;
 
-            const sectionHdrCls = "text-[10px] uppercase tracking-[0.22em] font-bold mb-2 mt-5 first:mt-0";
+            // Shoots-page vertical rhythm without the dashed rule (Derrick's
+            // call): 20px below the label (pb+mb), and the 32px gap ABOVE
+            // each section comes from the space-y-8 wrapper below — the same
+            // mechanism the shoots list uses between month groups. (The old
+            // mt-8 first:mt-0 was a no-op: every header is the first child
+            // of its own <section>, so first: zeroed it on all of them.)
+            const sectionHdrCls = "text-[11px] uppercase tracking-[0.2em] font-bold px-0.5 pb-2.5 mb-2.5";
             const fmtMonthLabel = (yyyymm) => {
               if (!yyyymm) return '(undated)';
               const d = new Date(yyyymm + '-01T12:00:00');
@@ -22017,7 +22381,7 @@ const setDays = (updater) =>
             };
 
             return (
-              <>
+              <div className="space-y-8">
                 {showDrafts && (
                   <section>
                     <div className={`${sectionHdrCls} text-sky-500`}>Drafts</div>
@@ -22057,7 +22421,7 @@ const setDays = (updater) =>
                 {filterStatus !== 'all' && !showDrafts && !showOverdue && !showUnpaid && !showPaid && (
                   <div className="text-center py-10 text-[12px] text-neutral-500">No {filterStatus} invoices.</div>
                 )}
-              </>
+              </div>
             );
           })()}
           {actionSheetTarget && (
@@ -22215,6 +22579,21 @@ const confirmDelete = (p) => setConfirmOpts({
         return totals;
       }, [productions, userPrefs]);
 
+      // A shoot is "upcoming" when it has dated days and none has elapsed.
+      // Its card shows the full booked figure, muted, instead of the
+      // earned-so-far total, which is £0 by construction. Display-only:
+      // reads productionTotalsFull per-production; nothing here feeds
+      // productionTotals / monthTotal / stats (the Stage 7 fence above stands).
+      const productionIsUpcoming = useMemo(() => {
+        const today = todayISO();
+        const map = {};
+        for (const p of productions) {
+          const dated = (p.days ?? []).filter(d => d.date);
+          map[p.id] = dated.length > 0 && !dated.some(d => d.date < today);
+        }
+        return map;
+      }, [productions]);
+
       // Per-production worked-hours total (for the month-group head's hour figure).
       const productionHours = useMemo(() => {
         const today = todayISO();
@@ -22295,6 +22674,10 @@ const confirmDelete = (p) => setConfirmOpts({
         label: g.label,
         monthTotal: g.items.reduce((sum, p) => sum + (productionTotals[p.id] || 0), 0),
         monthHours: g.items.reduce((sum, p) => sum + (productionHours[p.id] || 0), 0),
+        // Header figures mean EARNED money/hours only. A group whose shoots
+        // are all upcoming has earned nothing — hide the figures rather than
+        // render a dead £0 (booked values are deliberately NOT summed here).
+        allUpcoming: g.items.every(p => productionIsUpcoming[p.id]),
         items: g.items.filter(p => p.id !== currentShoot?.id),
       })).filter(g => g.items.length > 0);
 
@@ -22538,7 +22921,11 @@ const confirmDelete = (p) => setConfirmOpts({
                   {invChip}
                 </div>
               )}
-              <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+              {productionIsUpcoming[p.id] ? (
+                <span className="text-[15px] font-mono font-bold text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
+              ) : (
+                <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); openActionSheet(p); }}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800 flex-shrink-0 transition-colors"
@@ -22567,7 +22954,11 @@ const confirmDelete = (p) => setConfirmOpts({
               <h3 className="flex-1 min-w-0 truncate text-[13px] text-neutral-400">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
               {bestBoyBadge}
               {invChip}
-              <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+              {productionIsUpcoming[p.id] ? (
+                <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
+              ) : (
+                <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+              )}
             </div>
           </div>
           </SwipeableRow>
@@ -22718,14 +23109,16 @@ const confirmDelete = (p) => setConfirmOpts({
 
                 {/* Month groups */}
                 <div className="space-y-8">
-                  {groupsDisplay.map(({ label, items, monthTotal, monthHours }) => (
+                  {groupsDisplay.map(({ label, items, monthTotal, monthHours, allUpcoming }) => (
                     <div key={label}>
                       <div className="flex items-baseline justify-between border-b border-dashed border-neutral-800 mb-2.5" style={{ padding: '0 2px 10px' }}>
                         <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label}</div>
-                        <div className="flex items-baseline gap-2.5">
-                          <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>
-                          <span className="font-mono text-[12px] font-bold text-neutral-100">{fmtGBP(monthTotal)}</span>
-                        </div>
+                        {!allUpcoming && (
+                          <div className="flex items-baseline gap-2.5">
+                            <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>
+                            <span className="font-mono text-[12px] font-bold text-neutral-100">{fmtGBP(monthTotal)}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-2">
                         {items.map(p => renderCard(p, { compact: !isCurrentMonth(p) }))}
@@ -22899,16 +23292,25 @@ const confirmDelete = (p) => setConfirmOpts({
       // via a persisted appliedEventIds set; today-dated (UTC, matches todayISO) only.
       // Entirely IS_NATIVE-gated, so the web build never touches the bridge.
       //
-      // ── Live Activity reconcile sweep (round 3) ──────────────────────────────
-      // Ends any system-registered Activity whose production no longer has a
-      // valid, today-qualifying solo day — catching changes made while no
-      // SoloLiveActivity controller was mounted (day deleted, date moved off
-      // today, production deleted or flipped to Best Boy, or the Live Activity
-      // setting switched OFF — disabled counts as not-qualifying). Qualify
-      // conditions mirror liveActivityDescriptor's null checks. Reads through a
+      // ── Live Activity reconcile sweep (round 3; start branch added V5) ──────
+      // The sweep owns BOTH lifecycle directions for unmounted productions:
+      // it ENDS any system-registered Activity whose production no longer has
+      // a valid, today-qualifying solo day (day deleted, date moved off today,
+      // production deleted or flipped to Best Boy, wrapped, or the Live
+      // Activity setting switched OFF — disabled counts as not-qualifying),
+      // and it STARTS a card for a production that qualifies but has none —
+      // catching eligibility created while no SoloLiveActivity controller was
+      // mounted (e.g. a date edited from tomorrow to today in production
+      // settings). A pid with a MOUNTED controller (laControllerPids) is
+      // skipped by the start branch: the controller owns start/update there,
+      // which closes the double-start race with the ~1s change-sweep; the
+      // native adopt-don't-duplicate in startActivity plus the duplicate
+      // converge below backstop anything that still slips through. End-side
+      // qualify conditions mirror liveActivityDescriptor's null checks (cheap
+      // record read); the start branch uses the descriptor itself so payload
+      // and eligibility can't drift from the controller's. Reads through a
       // render-refreshed ref so the mount-time foreground listener and the
-      // debounced change-sweep both see CURRENT state. Wrapped days still
-      // qualify — the wrap flow owns its own linger-then-end. Uses list()/
+      // debounced change-sweep both see CURRENT state. Uses list()/
       // endForProduction (ActivityKit-backed), so it also clears cards orphaned
       // by an app restart, which the plugin's single tracked handle cannot end.
       const laSweepStateRef = React.useRef({ productions: [], enabled: true });
@@ -22916,7 +23318,6 @@ const confirmDelete = (p) => setConfirmOpts({
       const liveActivityReconcile = React.useCallback(async () => {
         if (!IS_NATIVE) return;
         const acts = await LiveActivity.list();
-        if (!acts || !acts.length) return;
         const { productions: prods, enabled } = laSweepStateRef.current;
         const today = todayISO();
         // Group by productionId so the sweep can converge DUPLICATES of a
@@ -22926,7 +23327,7 @@ const confirmDelete = (p) => setConfirmOpts({
         // invariant; startActivity's adopt-or-update normally prevents a second,
         // this catches any that slip past, e.g. a race before adopt).
         const byPid = new Map();
-        for (const a of acts) {
+        for (const a of (acts || [])) {
           if (!a || !a.productionId) continue;
           if (!byPid.has(a.productionId)) byPid.set(a.productionId, []);
           byPid.get(a.productionId).push(a.id);
@@ -22938,16 +23339,40 @@ const confirmDelete = (p) => setConfirmOpts({
           const rec = soloCrew ? ((pr.days || []).find(d => d.date === today && d.crewId === soloCrew.id)
                               || (pr.days || []).find(d => d.date === today)) : null;
           const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
-          const qualifies = enabled && !!rec && !!(rec.callTime || (dd && dd.callTime));
+          // A wrapped day (explicit user flag — card wrap, WrapNow, or a solo
+          // wrap-time edit that already passed) can never keep or restart a card.
+          const qualifies = enabled && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime));
           if (!qualifies) {
-            console.log('[LiveActivity] reconcile → end (no qualifying day)', pid);
-            LiveActivity.endForProduction(pid);
+            // A day disqualified BY THE WRAP FLAG ends WITH the linger — that
+            // window is the wrapped send-off (freshly corrected by the wrap
+            // drain), and the sweep must not cut it short. Ending an already-
+            // lingering card again is a native no-op. Every other
+            // disqualification (day deleted, date moved, pref off) stays
+            // immediate.
+            const wrappedSendOff = enabled && !!rec && rec.wrapped === true && !!(rec.callTime || (dd && dd.callTime));
+            console.log('[LiveActivity] reconcile → end (no qualifying day)', pid, wrappedSendOff ? '(wrapped — linger)' : '(immediate)');
+            LiveActivity.endForProduction(pid, !wrappedSendOff);
           } else if (ids.length > 1) {
             console.log('[LiveActivity] reconcile → converge duplicates', pid, ids.length);
             for (let i = 1; i < ids.length; i++) dupeIds.push(ids[i]);
           }
         }
         if (dupeIds.length) LiveActivity.endActivityIds(dupeIds);
+        // START branch — a qualifying production with NO card and NO mounted
+        // controller gets one here, through the same descriptor + payload the
+        // controller uses. desc.wrapped is excluded (that day is over; the
+        // send-off belongs to the controller/intent flows, never a sweep).
+        if (!enabled) return;
+        for (const pr of (prods || [])) {
+          if (!pr || byPid.has(pr.id) || laControllerPids.has(pr.id)) continue;
+          const soloCrew = !pr.bestBoyMode ? (pr.crew || [])[0] : null;
+          if (!soloCrew) continue;
+          let desc = null;
+          try { desc = liveActivityDescriptor(pr, soloCrew, pr.days || []); } catch (_) {}
+          if (!desc || desc.wrapped) continue;
+          console.log('[LiveActivity] reconcile → start (qualifying day, no card)', pr.id);
+          LiveActivity.start(descriptorToPayload(desc));
+        }
       }, []);
       // Change-sweep: production edits (delete day/production, date moves) and
       // the Settings toggle reconcile within ~1s while the app is open; launch +
@@ -23024,40 +23449,80 @@ const confirmDelete = (p) => setConfirmOpts({
         };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-      // ── Overdue-invoice reminders reconcile sweep (Stage 2) ───────────────────
+      // ── Overdue-invoice reminders reconcile sweep (Stage 2; fired ledger V5) ──
       // Mirrors the Live Activity reconcile: one sweep reconciles the WHOLE
       // notification set against current productions. Every invoice that is
       // sent && !datePaid && has a dueDate (with the toggle on AND OS permission
-      // granted) gets exactly ONE local notification scheduled to fire at 08:00
-      // local the morning after its dueDate; any scheduled reminder whose invoice
-      // no longer qualifies (marked paid, deleted, reverted to draft, due date
-      // cleared, toggle off, or permission revoked) is cancelled. Idempotent — a
-      // reminder already pending for a still-qualifying invoice is left untouched
-      // (no churn). Reads through a render-refreshed ref so the debounced change-
-      // sweep and the launch/foreground sweep both see CURRENT state. Touches NO
-      // calc/day-record state — a pure notification side-channel. IS_NATIVE-gated.
+      // granted) gets exactly ONE local notification per due date — the FIRED
+      // LEDGER (bigals_overdue_fired) is what makes "exactly one" true across
+      // launches: iOS drops a delivered notification from getPending(), so
+      // without a delivery record every later sweep saw "desired but not
+      // pending" plus a passed fire date and re-armed the ~1-min catch-up —
+      // one duplicate per app open until the invoice was paid. Ledger shape:
+      // { [invoiceId]: { dueDate, firedAt } }, its OWN storage key (invoice
+      // records are FROZEN — never a field on them), loaded once into a ref,
+      // write-through, capped at 200 pruned oldest-firedAt-first (the
+      // applied-events ledger pattern). An entry is written in the SAME pass
+      // that schedules (firedAt = the armed fire moment — delivery itself is
+      // unobservable), keyed on dueDate so a re-issued invoice with a NEW due
+      // date re-arms exactly once; entries are pruned when the invoice is
+      // deleted, paid, or back to draft. Any scheduled reminder whose invoice
+      // no longer qualifies is cancelled (a ledger-armed, still-pending one is
+      // kept — cancelling it because it left `desired` would eat the one shot).
+      // Reads through a render-refreshed ref so the debounced change-sweep and
+      // the launch/foreground sweep both see CURRENT state; an in-flight guard
+      // serialises overlapping sweeps (launch + the ~1s change-sweep both read
+      // getPending() before either schedules — the double-schedule race).
+      // Touches NO calc/day-record state — a pure notification side-channel.
+      // IS_NATIVE-gated.
       const notifSweepStateRef = React.useRef({ productions: [], enabled: true });
       notifSweepStateRef.current = {
         productions,
         enabled: !userPrefs || userPrefs.overdueRemindersEnabled !== false,
       };
+      const OVERDUE_FIRED_KEY = 'bigals_overdue_fired';
+      const overdueFiredRef = React.useRef(null);
+      const overdueReconcilingRef = React.useRef(false);
       const overdueReconcile = React.useCallback(async () => {
         if (!IS_NATIVE) return;
+        if (overdueReconcilingRef.current) return; // in-flight guard
+        overdueReconcilingRef.current = true;
+        try {
         const { productions: prods, enabled } = notifSweepStateRef.current;
         // Permission is re-read each sweep (cheap, local) so a grant or revocation
         // made in iOS Settings is honoured on the next launch/foreground pass.
         const granted = enabled && (await Notifications.checkPermission()) === 'granted';
-        // Desired schedule: notifId → { production, invoice, fireAt }.
+        if (!overdueFiredRef.current) {
+          let seed = {};
+          try { seed = JSON.parse(storage.get(OVERDUE_FIRED_KEY) || '{}') || {}; } catch (_) {}
+          overdueFiredRef.current = seed;
+        }
+        const fired = overdueFiredRef.current;
+        let ledgerDirty = false;
+        // Desired schedule: notifId → { production, invoice, fireAt } — only
+        // invoices NOT yet armed for their current dueDate. firedKeep = ledger
+        // entries still justified (invoice exists, still sent-unpaid, same
+        // dueDate) — everything else is pruned below. keepIds = armed AND
+        // possibly still pending → protected from the stale-cancel (only
+        // meaningful while granted; toggle-off cancels everything pending but
+        // KEEPS the ledger, so re-enabling never re-fires an already-sent nudge).
         const desired = new Map();
-        if (granted) {
-          for (const p of (prods || [])) {
-            for (const inv of (p.invoices || [])) {
-              if (!invoiceNeedsOverdueReminder(inv)) continue;
-              const fireAt = overdueFireDate(inv.dueDate);
-              if (!fireAt) continue;
-              desired.set(overdueNotifId(inv.id), { p, inv, fireAt });
-            }
+        const firedKeep = new Set();
+        const keepIds = new Set();
+        for (const p of (prods || [])) {
+          for (const inv of (p.invoices || [])) {
+            if (!invoiceNeedsOverdueReminder(inv)) continue;
+            const armed = !!(fired[inv.id] && fired[inv.id].dueDate === inv.dueDate);
+            if (armed) firedKeep.add(inv.id);
+            if (!granted) continue;
+            if (armed) { keepIds.add(overdueNotifId(inv.id)); continue; }
+            const fireAt = overdueFireDate(inv.dueDate);
+            if (!fireAt) continue;
+            desired.set(overdueNotifId(inv.id), { p, inv, fireAt });
           }
+        }
+        for (const invId of Object.keys(fired)) {
+          if (!firedKeep.has(invId)) { delete fired[invId]; ledgerDirty = true; }
         }
         // Reconcile the whole set against what's actually pending. Only OUR
         // reminders (extra carries invoiceId) are ever touched — defensive
@@ -23068,12 +23533,18 @@ const confirmDelete = (p) => setConfirmOpts({
         for (const n of (pending || [])) {
           if (!n || typeof n.id !== 'number' || !(n.extra && n.extra.invoiceId)) continue;
           pendingOurs.add(n.id);
-          if (!desired.has(n.id)) toCancel.push(n.id);
+          if (!desired.has(n.id) && !keepIds.has(n.id)) toCancel.push(n.id);
         }
         const NOW = Date.now();
         const toSchedule = [];
         for (const [id, { p, inv, fireAt }] of desired) {
-          if (pendingOurs.has(id)) continue; // already scheduled — no churn
+          if (pendingOurs.has(id)) {
+            // Pending but not in the ledger — a pre-ledger install's reminder.
+            // Adopt it so it can never re-arm after it delivers.
+            fired[inv.id] = { dueDate: inv.dueDate, firedAt: fireAt.getTime() };
+            ledgerDirty = true;
+            continue;
+          }
           // Already-overdue at reconcile time (went overdue while the app was
           // closed, or reconciled later that day) → fire once ~1 min out so the
           // single nudge still lands; otherwise the 08:00 day-after fire date.
@@ -23087,9 +23558,22 @@ const confirmDelete = (p) => setConfirmOpts({
             schedule: { at },
             extra: { productionId: p.id, invoiceId: inv.id },
           });
+          // Ledger write in the SAME pass as the schedule — the exactly-once
+          // guarantee. From here this invoice+dueDate can never re-arm.
+          fired[inv.id] = { dueDate: inv.dueDate, firedAt: at.getTime() };
+          ledgerDirty = true;
         }
         if (toCancel.length) await Notifications.cancel(toCancel);
         if (toSchedule.length) await Notifications.schedule(toSchedule);
+        if (ledgerDirty) {
+          const invIds = Object.keys(fired);
+          if (invIds.length > 200) {
+            invIds.sort((a, b) => ((fired[a] && fired[a].firedAt) || 0) - ((fired[b] && fired[b].firedAt) || 0));
+            for (const invId of invIds.slice(0, invIds.length - 200)) delete fired[invId];
+          }
+          try { storage.set(OVERDUE_FIRED_KEY, JSON.stringify(fired)); } catch (_) {}
+        }
+        } finally { overdueReconcilingRef.current = false; }
       }, []);
       // Debounced change-sweep: invoice edits (send, mark paid, delete, due-date
       // change) and the Settings toggle reconcile within ~1s while the app is open.
@@ -23397,16 +23881,22 @@ const confirmDelete = (p) => setConfirmOpts({
       };
       const handleNewProduction = ({ title, bestBoyMode }) => {
         const role = userPrefs.defaultRole || "Lighting Technician";
-        const roleDefaults = ROLE_DEFAULTS[role] || {};
-        const bdr = userPrefs.defaultBDR || roleDefaults.bdr || 0;
-        const otCoef = userPrefs.defaultOTCoef ?? roleDefaults.otCoef ?? 1.5;
+        // New production starts today → seed through the card current at
+        // creation time. seedRateFromPrefs applies the exact-match rule: a
+        // stored Settings default that matches an older card is a stale
+        // table snapshot (resolved card wins); one matching no card is a
+        // deliberate custom rate (seeded verbatim). Previously
+        // userPrefs.defaultBDR shadowed the resolved card outright — a shoot
+        // created after a boundary was silently born on the OLD card, and no
+        // crossing event ever fired to correct it.
+        const seeded = seedRateFromPrefs(userPrefs, role, null);
         const soloCrew = bestBoyMode ? [] : [{
           id: uid(),
           name: userPrefs.displayName || "You",
           role,
-          bdr,
-          otCoef,
-          otRate: roleDefaults.otRate ?? null,
+          bdr: seeded.bdr,
+          otCoef: seeded.otCoef,
+          otRate: seeded.otRate,
           vatRegistered: userPrefs.vatRegistered ?? false,
           vatRate: userPrefs.vatRate ?? 20,
           kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
@@ -23437,9 +23927,72 @@ const confirmDelete = (p) => setConfirmOpts({
         setOpenId(p.id);
         setShowNewProduction(false);
       };
+      // ── Derived start date + AUTOMATIC rate-card application (H2) ───────
+      // startDate is derived from the earliest dated day, and EVERY
+      // production edit funnels through setProduction — so derivation and
+      // card application live here ONCE, covering day add / date edit /
+      // delete on every screen AND the manual no-days start-date edit.
+      // Application is AUTOMATIC (no accept/decline — superseding the
+      // D6/G3 prompt): when an edit moves the production onto a different
+      // resolved card, the new card's numbers are applied on the spot, but
+      // ONLY to crew whose current bdr, otCoef AND otRate all EXACTLY match
+      // the PREVIOUSLY-resolved card's values for their role. That
+      // exact-match rule is what makes automatic application safe: a member
+      // still carrying the old table's values is provably table-derived, so
+      // moving them to the new table is a correction, not an overwrite; ANY
+      // mismatch means a hand-edited / negotiated rate and is never
+      // touched. Custom roles (absent from either card) are never touched.
+      // Step-ups stay snapshotted on day records by design. Application is
+      // EVENT-DRIVEN only — the migrate/load-time snap never passes through
+      // here, so stored data is never rewritten at load.
+      //
+      // One informational notice remains: when the newly-resolved card is a
+      // FUTURE card (effectiveFrom after today — e.g. booking a September
+      // shoot in July), a single-OK heads-up says the new rates apply. It
+      // is a notice, not a gate — rates apply underneath regardless — and
+      // it never fires once today has passed the card's effectiveFrom. It
+      // is QUEUED on a ref and flushed post-commit: updaters must stay pure
+      // (StrictMode double-invokes them), so no setState from inside.
+      const [rateCardNotice, setRateCardNotice] = useState(null);
+      const pendingRateNoticeRef = React.useRef(null);
+      useEffect(() => {
+        if (pendingRateNoticeRef.current) {
+          setRateCardNotice(pendingRateNoticeRef.current);
+          pendingRateNoticeRef.current = null;
+        }
+      });
+      const applyRateCardToCrew = (production, fromCard, toCard) => {
+        const fromFlat = flattenRateCard(fromCard);
+        const toFlat = flattenRateCard(toCard);
+        let changed = false;
+        const crew = (production.crew || []).map(c => {
+          const oldD = fromFlat[c.role];
+          const newD = toFlat[c.role];
+          if (!oldD || !newD) return c;                 // custom role — never touched
+          const matchesOldCard = Number(c.bdr) === Number(oldD.bdr)
+            && Number(c.otCoef) === Number(oldD.otCoef)
+            && ((c.otRate ?? null) === (oldD.otRate ?? null));
+          if (!matchesOldCard) return c;                // negotiated / hand-edited — never touched
+          changed = true;
+          return { ...c, bdr: newD.bdr, otCoef: newD.otCoef, otRate: newD.otRate ?? null };
+        });
+        return changed ? { ...production, crew } : production;
+      };
+      const finalizeProductionUpdate = (prevP, nextP) => {
+        const derived = deriveStartDate(nextP);
+        const withDate = (derived && derived !== nextP.startDate) ? { ...nextP, startDate: derived } : nextP;
+        const fromCard = resolveRateCard(prevP.startDate);
+        const toCard = resolveRateCard(withDate.startDate);
+        if (fromCard === toCard) return withDate;
+        const applied = applyRateCardToCrew(withDate, fromCard, toCard);
+        if (toCard.effectiveFrom > todayISO()) {
+          pendingRateNoticeRef.current = { label: toCard.label, effectiveFrom: toCard.effectiveFrom };
+        }
+        return applied;
+      };
       const setProduction = (updater) =>
         setProductions((prev) => prev.map((p) =>
-          p.id === openId ? (typeof updater === "function" ? updater(p) : updater) : p
+          p.id === openId ? finalizeProductionUpdate(p, (typeof updater === "function" ? updater(p) : updater)) : p
         ));
 
       const handleExport = () => {
@@ -23746,6 +24299,25 @@ const confirmDelete = (p) => setConfirmOpts({
           <BackLevelContext.Provider value={backCtx}>
           <SubScreenContext.Provider value={subScreenCtx}>
           {screen}
+          {/* H2 future-card notice — informational only: rates were already
+              applied automatically underneath (exact-match rule), so this
+              is a heads-up, never a permission gate. Single OK; fires only
+              while the resolved card's effectiveFrom is still ahead of
+              today. */}
+          <ConfirmDialog
+            open={!!rateCardNotice}
+            title="New rates apply"
+            message={rateCardNotice ? (() => {
+              const d = new Date(rateCardNotice.effectiveFrom + 'T12:00:00');
+              const month = d.toLocaleString('en-GB', { month: 'long' });
+              return `This shoot starts on or after ${d.getDate()} ${month} ${d.getFullYear()}, so the ${month} ${d.getFullYear()} APA rates apply.`;
+            })() : ''}
+            confirmLabel="OK"
+            confirmTone="primary"
+            cancelLabel={null}
+            onConfirm={() => setRateCardNotice(null)}
+            onCancel={() => setRateCardNotice(null)}
+          />
           {/* Stage 3 share-in chooser — a shared file has no shoot context, so
               ask. Existing shoot rows are most-recent-first; "New shoot" runs
               extraction first (title pre-fill) then the EXISTING creation flow.

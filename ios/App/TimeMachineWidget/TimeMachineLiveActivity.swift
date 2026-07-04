@@ -71,7 +71,22 @@ private func callDate(_ epoch: Double) -> Date { Date(timeIntervalSince1970: epo
 
 private let moneyFont = Font.system(size: 30, weight: .bold, design: .monospaced)
 private let moneyFontSmall = Font.system(size: 17, weight: .bold, design: .monospaced)
+// Expanded-island hero figure — bigger than moneyFontSmall (the total is the
+// hero there), smaller than the lock card's 30pt so two lines sit comfortably
+// inside the island's enforced height.
+private let moneyFontIsland = Font.system(size: 22, weight: .bold, design: .monospaced)
 private let timerFont = Font.system(size: 15, weight: .semibold, design: .monospaced)
+
+// Expanded-island secondary line: "CALL 08:00 · OT FROM 19:00" in the lock
+// card's microlabel voice. anchorLabel arrives pre-formatted; OT-from is
+// hidden when wrapped or absent (otFrom is already "" then — the guard is
+// belt-and-braces). "" when nothing to show so the caller can skip the row.
+private func expandedSecondaryLine(_ s: TimeMachineActivityAttributes.ContentState) -> String {
+    var parts: [String] = []
+    if !s.anchorLabel.isEmpty { parts.append(s.anchorLabel) }
+    if s.state != "wrapped" && !s.otFrom.isEmpty { parts.append("OT FROM \(s.otFrom)") }
+    return parts.joined(separator: " · ")
+}
 
 private func microLabel(_ text: String) -> some View {
     Text(text)
@@ -331,12 +346,18 @@ struct TimeMachineLockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Line 1: production name · state chip
+            // Line 1: production name · state chip. The name shrinks (to 75%)
+            // then tail-truncates rather than overflowing: an over-wide row
+            // would otherwise push the VStack past the card's width and the
+            // centred overflow clips the LEADING edge of the name ("REBULL
+            // RACING" losing its R).
             HStack {
                 Text(context.attributes.productionName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.tmMuted)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.75)
                 Spacer()
                 chipSlot(state: context.state.state, cwd: context.state.cwd, onLunch: isOnLunch(context.state))
             }
@@ -357,6 +378,10 @@ struct TimeMachineLockScreenView: View {
                 actionButtons(context.attributes.productionId, armed: context.state.armed, lunchLogged: context.state.lunchLogged, curtailMins: context.state.curtailMins, onLunch: isOnLunch(context.state))
             }
         }
+        // Pin the stack to the full offered width, leading-aligned: a child
+        // row that can't fit then truncates in place instead of widening the
+        // stack past the card and getting centre-clipped at both edges.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .activityBackgroundTint(.tmBg)
         .activitySystemActionForegroundColor(.tmSky)
@@ -371,40 +396,65 @@ struct TimeMachineLiveActivity: Widget {
             TimeMachineLockScreenView(context: context)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded
+                // Expanded (long-press) — the regions used AS INTENDED (the
+                // device round proved a single "full-width" leading region
+                // doesn't span: the system reserves trailing width
+                // regardless, cramming everything top-left). Leading = dot +
+                // name (anti-clip trio); trailing = the day total, hero
+                // size; bottom = ONE muted microlabel line, full width,
+                // single line ("CALL 08:00 · OT FROM 19:00", OT omitted
+                // when wrapped/absent) — nothing else, no buttons, no
+                // timer. maxHeight .infinity centres leading/trailing
+                // content vertically as far as the system allows.
                 DynamicIslandExpandedRegion(.leading) {
-                    VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 7) {
+                        Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
                         Text(context.attributes.productionName)
-                            .font(.system(size: 12, weight: .semibold))
+                            // .bold per Derrick's J1 call — the island name
+                            // read too light on device. (The lock card's name
+                            // is semibold; both surfaces were already
+                            // semibold, so "match" was a no-op — bold is the
+                            // half of the instruction that changes anything.)
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.tmMuted)
                             .lineLimit(1)
-                        chipSlot(state: context.state.state, cwd: context.state.cwd, onLunch: isOnLunch(context.state))
+                            .truncationMode(.tail)
+                            .minimumScaleFactor(0.75)
                     }
+                    .padding(.leading, 4)
+                    .frame(maxHeight: .infinity)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        microLabel("DAY TOTAL")
-                        moneyText(context.state.totalText, font: moneyFontSmall)
-                        microLabel(context.state.anchorLabel)
-                    }
+                    moneyText(context.state.totalText, font: moneyFontIsland)
+                        .frame(maxHeight: .infinity)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 8) {
-                        timerProjectionRow(state: context.state.state, onLunch: isOnLunch(context.state), anchor: context.state.callEpoch, end: context.state.endEpoch, lunchEnd: context.state.lunchEndEpoch, otFrom: context.state.otFrom)
-                        if #available(iOS 17.0, *), context.state.state != "wrapped" {
-                            actionButtons(context.attributes.productionId, armed: context.state.armed, lunchLogged: context.state.lunchLogged, curtailMins: context.state.curtailMins, onLunch: isOnLunch(context.state))
-                        }
+                    let secondary = expandedSecondaryLine(context.state)
+                    if !secondary.isEmpty {
+                        microLabel(secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 4)
                     }
                 }
             } compactLeading: {
                 Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
             } compactTrailing: {
-                moneyText(context.state.totalText, font: Font.system(size: 14, weight: .bold, design: .monospaced))
+                // Money is deliberately absent from the always-visible
+                // presentations (compact/minimal show the status dot only);
+                // the day total lives in the expanded island and lock screen.
+                EmptyView()
             } minimal: {
                 Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
             }
             .widgetURL(URL(string: "timemachine://today"))
             .keylineTint(.tmSky)
         }
+        // The card's own .padding(16) is the ONLY margin: opt out of the
+        // iOS 17 system content margins so the inset is deterministic and
+        // identical across OS versions instead of stacking on top of ours.
+        // (No-op below iOS 17.)
+        .contentMarginsDisabled()
     }
 }

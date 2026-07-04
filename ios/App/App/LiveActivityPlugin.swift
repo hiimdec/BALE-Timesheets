@@ -108,13 +108,17 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let otFrom = call.getString("otFrom") ?? ""
         let curtailMins = call.getInt("curtailMins") ?? 0
         let lunchLogged = call.getBool("lunchLogged") ?? false
+        // Flattened [epoch, pence, …] pairs; JS numbers arrive as NSNumber, so
+        // go through doubleValue rather than a typed cast that an integral
+        // pence value could dodge.
+        let wrapCurve = (call.getArray("wrapCurve") ?? []).compactMap { ($0 as? NSNumber)?.doubleValue }
         let productionId = call.getString("productionId") ?? ""
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
 
         DispatchQueue.main.async {
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
             let content = ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve),
                 staleDate: staleDate
             )
             // SINGLE-ACTIVITY INVARIANT (duplicate-card fix). "Start" is issued
@@ -162,6 +166,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let otFrom = call.getString("otFrom") ?? ""
         let curtailMins = call.getInt("curtailMins") ?? 0
         let lunchLogged = call.getBool("lunchLogged") ?? false
+        let wrapCurve = (call.getArray("wrapCurve") ?? []).compactMap { ($0 as? NSNumber)?.doubleValue }
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
         Task {
             // The anchor (callEpoch + anchorLabel) is carried on EVERY update so a
@@ -170,7 +175,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             // update always clears any pending two-tap arm (the app never sends a
             // non-empty armed): the backstop reset for an arm that never confirmed.
             await activity.update(ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged),
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve),
                 staleDate: staleDate
             ))
             call.resolve()

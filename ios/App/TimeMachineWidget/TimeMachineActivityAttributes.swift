@@ -81,8 +81,17 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
         /// rec.lunchLogged, and set on the spot by the Lunch-now confirm intent for
         /// an instant flip. Display-only — the calc never reads it.
         public var lunchLogged: Bool
+        /// Wrap-total curve — flattened ascending [epoch, pence, epoch, pence, …]
+        /// pairs precomputed by the JS calc engine: the day total if wrapped at
+        /// each 30-minute OT boundary. Lets endWrapped freeze the CORRECT total
+        /// at the moment the card's Wrap confirm lands (first breakpoint ≥ now —
+        /// the same round-up-to-30-min-in-the-crew's-favour the engine applies),
+        /// with NO pay maths in Swift: these are engine outputs, sampled. Empty
+        /// (default) → endWrapped keeps the pushed totalText (the pre-curve
+        /// freeze). Display-only, same discipline as totalText.
+        public var wrapCurve: [Double]
 
-        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchEndEpoch: Double = 0, otFrom: String = "", curtailMins: Int = 0, lunchLogged: Bool = false) {
+        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchEndEpoch: Double = 0, otFrom: String = "", curtailMins: Int = 0, lunchLogged: Bool = false, wrapCurve: [Double] = []) {
             self.totalText = totalText
             self.state = state
             self.callEpoch = callEpoch
@@ -95,6 +104,7 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
             self.otFrom = otFrom
             self.curtailMins = curtailMins
             self.lunchLogged = lunchLogged
+            self.wrapCurve = wrapCurve
         }
     }
 
