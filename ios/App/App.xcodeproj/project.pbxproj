@@ -15,14 +15,14 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */; };
+		A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */; };
+		A1C04ED02FE0B20000FE2310 /* HealthStepsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04ED12FE0B20000FE2310 /* HealthStepsPlugin.swift */; };
 		B144A1722FD8CA2B00FE2310 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B144A1712FD8CA2B00FE2310 /* WidgetKit.framework */; };
 		B144A1742FD8CA2B00FE2310 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B144A1732FD8CA2B00FE2310 /* SwiftUI.framework */; };
 		B144A1832FD8CA2C00FE2310 /* TimeMachineWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B144A1912FD8CECE00FE2310 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */; };
 		B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */; };
-		A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */; };
-		A1C04ED02FE0B20000FE2310 /* HealthStepsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04ED12FE0B20000FE2310 /* HealthStepsPlugin.swift */; };
-		5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */; };
 		B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */; };
 		B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */; };
 		B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */; };
@@ -64,19 +64,19 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheetPlugin.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconPlugin.swift; sourceTree = "<group>"; };
+		A1C04ED12FE0B20000FE2310 /* HealthStepsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStepsPlugin.swift; sourceTree = "<group>"; };
 		B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TimeMachineWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B144A1712FD8CA2B00FE2310 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		B144A1732FD8CA2B00FE2310 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		B144A1902FD8CECE00FE2310 /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
-		B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSheetPlugin.swift; sourceTree = "<group>"; };
-		A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconPlugin.swift; sourceTree = "<group>"; };
-		A1C04ED12FE0B20000FE2310 /* HealthStepsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStepsPlugin.swift; sourceTree = "<group>"; };
-		5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheetPlugin.swift; sourceTree = "<group>"; };
-		B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineAppShortcuts.swift; sourceTree = "<group>"; };
-		B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineTimesParser.swift; sourceTree = "<group>"; };
 		B144A1922FD8CF1300FE2310 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		B144A1932FD8CF5400FE2310 /* TimeMachineWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TimeMachineWidgetExtension.entitlements; sourceTree = "<group>"; };
+		B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSheetPlugin.swift; sourceTree = "<group>"; };
+		B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineAppShortcuts.swift; sourceTree = "<group>"; };
+		B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineTimesParser.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePdfPlugin.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000006 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -474,7 +474,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 5.0;
+				MARKETING_VERSION = 5.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.timemachineapp.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -500,7 +500,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 5.0;
+				MARKETING_VERSION = 5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.timemachineapp.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -537,7 +537,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 5.0;
+				MARKETING_VERSION = 5.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.timemachineapp.app.TimeMachineWidget;
@@ -581,7 +581,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 5.0;
+				MARKETING_VERSION = 5.1;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.timemachineapp.app.TimeMachineWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
