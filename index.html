@@ -22341,10 +22341,13 @@ const setDays = (updater) =>
             const showUnpaid  = (filterStatus === 'all' || filterStatus === 'sent')  && sections.unpaid.length > 0;
             const showPaid    = (filterStatus === 'all' || filterStatus === 'paid')  && sections.paidGroups.length > 0;
 
-            // Mirrors the shoots-page month-group header (dashed rule, 10px
-            // pad below the label, 2px side inset, 32px between groups) so
-            // the two list pages share one rhythm.
-            const sectionHdrCls = "text-[11px] uppercase tracking-[0.2em] font-bold border-b border-dashed border-neutral-800 px-0.5 pb-2.5 mb-2.5 mt-8 first:mt-0";
+            // Shoots-page vertical rhythm without the dashed rule (Derrick's
+            // call): 20px below the label (pb+mb), and the 32px gap ABOVE
+            // each section comes from the space-y-8 wrapper below — the same
+            // mechanism the shoots list uses between month groups. (The old
+            // mt-8 first:mt-0 was a no-op: every header is the first child
+            // of its own <section>, so first: zeroed it on all of them.)
+            const sectionHdrCls = "text-[11px] uppercase tracking-[0.2em] font-bold px-0.5 pb-2.5 mb-2.5";
             const fmtMonthLabel = (yyyymm) => {
               if (!yyyymm) return '(undated)';
               const d = new Date(yyyymm + '-01T12:00:00');
@@ -22352,7 +22355,7 @@ const setDays = (updater) =>
             };
 
             return (
-              <>
+              <div className="space-y-8">
                 {showDrafts && (
                   <section>
                     <div className={`${sectionHdrCls} text-sky-500`}>Drafts</div>
@@ -22392,7 +22395,7 @@ const setDays = (updater) =>
                 {filterStatus !== 'all' && !showDrafts && !showOverdue && !showUnpaid && !showPaid && (
                   <div className="text-center py-10 text-[12px] text-neutral-500">No {filterStatus} invoices.</div>
                 )}
-              </>
+              </div>
             );
           })()}
           {actionSheetTarget && (
