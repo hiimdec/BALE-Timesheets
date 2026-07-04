@@ -1174,6 +1174,41 @@
       },
     };
 
+    // ── Health steps bridge — Legwork block (iOS-only) ─────────────────────
+    // Wraps HealthStepsPlugin: ONE HealthKit capability (summed stepCount
+    // over a window), read-only, on-device. EVERY method returns its
+    // web-safe default BEFORE touching the plugin layer unless IS_NATIVE
+    // (audit:web). getRequestStatus surfaces HealthKit's own
+    // sheet-was-presented state ('shouldRequest' | 'unnecessary' |
+    // 'unknown') — the pre-ask/post-ask source of truth, since iOS keeps
+    // read grants opaque (denied reads just return empty data).
+    const HealthSteps = {
+      async isAvailable() {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().HealthSteps; if (p && p.isAvailable) { const r = await p.isAvailable(); return !!(r && r.available); } }
+        catch (e) { try { console.warn('[HealthSteps] isAvailable failed', (e && e.message) || e); } catch (_) {} }
+        return false;
+      },
+      async getRequestStatus() {
+        if (!IS_NATIVE) return 'unknown';
+        try { const p = _capPlugins().HealthSteps; if (p && p.getRequestStatus) { const r = await p.getRequestStatus(); return (r && r.status) || 'unknown'; } }
+        catch (e) { try { console.warn('[HealthSteps] getRequestStatus failed', (e && e.message) || e); } catch (_) {} }
+        return 'unknown';
+      },
+      async requestRead() {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().HealthSteps; if (p && p.requestRead) { const r = await p.requestRead(); return !!(r && r.ok); } }
+        catch (e) { try { console.warn('[HealthSteps] requestRead failed', (e && e.message) || e); } catch (_) {} }
+        return false;
+      },
+      async querySteps(startEpoch, endEpoch) {
+        if (!IS_NATIVE) return 0;
+        try { const p = _capPlugins().HealthSteps; if (p && p.querySteps) { const r = await p.querySteps({ startEpoch, endEpoch }); return Number(r && r.steps) || 0; } }
+        catch (e) { try { console.warn('[HealthSteps] querySteps failed', (e && e.message) || e); } catch (_) {} }
+        return 0;
+      },
+    };
+
     // ── AI call-sheet reader (Stage 1) — bridge to CallSheetPlugin ──────────
     // ON-DEVICE extraction (Apple Foundation Models + Vision/PDFKit): nothing
     // leaves the phone. EVERY method is IS_NATIVE-guarded and returns before
