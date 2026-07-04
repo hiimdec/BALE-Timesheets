@@ -410,15 +410,15 @@ struct TimeMachineLiveActivity: Widget {
                     HStack(spacing: 7) {
                         Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
                         Text(context.attributes.productionName)
-                            // Title treatment (K1): primary ink, 16pt bold —
-                            // the name clearly outranks the CALL/OT
-                            // microlabel line while the 22pt hero total
-                            // stays the loudest thing on the card. tmInk is
-                            // this design system's "primary white" (#FAFAFA,
-                            // the money-digit colour); the old tmMuted was
-                            // the defect — a secondary grey on what is
-                            // effectively the card's title.
-                            .font(.system(size: 16, weight: .bold))
+                            // Title treatment (K1/K2): primary ink, 18pt
+                            // bold — clearly outranks the CALL/OT microlabel
+                            // line; the 22pt hero total keeps dominance via
+                            // size, monospace mass and the sky £ accent.
+                            // tmInk is this design system's "primary white"
+                            // (#FAFAFA, the money-digit colour); the old
+                            // tmMuted was the defect — a secondary grey on
+                            // what is effectively the card's title.
+                            .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.tmInk)
                             .lineLimit(1)
                             .truncationMode(.tail)
