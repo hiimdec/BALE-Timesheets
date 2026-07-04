@@ -410,7 +410,12 @@ struct TimeMachineLiveActivity: Widget {
                     HStack(spacing: 7) {
                         Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
                         Text(context.attributes.productionName)
-                            .font(.system(size: 14, weight: .semibold))
+                            // .bold per Derrick's J1 call — the island name
+                            // read too light on device. (The lock card's name
+                            // is semibold; both surfaces were already
+                            // semibold, so "match" was a no-op — bold is the
+                            // half of the instruction that changes anything.)
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.tmMuted)
                             .lineLimit(1)
                             .truncationMode(.tail)
