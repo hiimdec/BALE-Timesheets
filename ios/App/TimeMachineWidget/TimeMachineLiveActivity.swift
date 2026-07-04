@@ -396,38 +396,42 @@ struct TimeMachineLiveActivity: Widget {
             TimeMachineLockScreenView(context: context)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded (long-press) — one full-width leading region so
-                // the layout owns the whole area: main row = status dot +
-                // name (leading) and the day total as the HERO figure
-                // (trailing, 22pt); beneath, one muted microlabel line
-                // ("CALL 08:00 · OT FROM 19:00"). No buttons, no timer —
-                // the lock-screen card remains the actionable surface.
-                // maxWidth/maxHeight .infinity centres the block inside the
-                // island's ENFORCED minimum height (no more rattling), and
-                // the explicit horizontal padding keeps the dot clear of the
-                // curved leading edge that clipped it on device — needs
-                // on-device confirmation against the real region margins.
+                // Expanded (long-press) — the regions used AS INTENDED (the
+                // device round proved a single "full-width" leading region
+                // doesn't span: the system reserves trailing width
+                // regardless, cramming everything top-left). Leading = dot +
+                // name (anti-clip trio); trailing = the day total, hero
+                // size; bottom = ONE muted microlabel line, full width,
+                // single line ("CALL 08:00 · OT FROM 19:00", OT omitted
+                // when wrapped/absent) — nothing else, no buttons, no
+                // timer. maxHeight .infinity centres leading/trailing
+                // content vertically as far as the system allows.
                 DynamicIslandExpandedRegion(.leading) {
-                    let secondary = expandedSecondaryLine(context.state)
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 7) {
-                            Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
-                            Text(context.attributes.productionName)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.tmMuted)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .minimumScaleFactor(0.75)
-                            Spacer(minLength: 10)
-                            moneyText(context.state.totalText, font: moneyFontIsland)
-                        }
-                        if !secondary.isEmpty {
-                            microLabel(secondary)
-                                .padding(.leading, 15)
-                        }
+                    HStack(spacing: 7) {
+                        Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
+                        Text(context.attributes.productionName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.tmMuted)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .minimumScaleFactor(0.75)
                     }
-                    .padding(.horizontal, 8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.leading, 4)
+                    .frame(maxHeight: .infinity)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    moneyText(context.state.totalText, font: moneyFontIsland)
+                        .frame(maxHeight: .infinity)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    let secondary = expandedSecondaryLine(context.state)
+                    if !secondary.isEmpty {
+                        microLabel(secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 4)
+                    }
                 }
             } compactLeading: {
                 Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)

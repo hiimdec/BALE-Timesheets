@@ -5804,7 +5804,7 @@ async function main() {
         const movedOk = (la.match(/elapsedTimer\(anchor: anchor/g) || []).length === 1;
         return countdownOk && slotOk && elapsedNativeOk && movedOk;
       })());
-    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow LOCK SCREEN ONLY; DI expanded = ONE full-width centred leading region (dot + name with the anti-clip trio, HERO 22pt total in-row, microlabel secondary line via expandedSecondaryLine, maxWidth/maxHeight .infinity, NO trailing/bottom regions, NO buttons/timer); DI compact = status dot only (compactTrailing renders EmptyView); the old secondaryReadout row is GONE',
+    check('TT10f SwiftUI layout — total reads clean on its own line (moneyText not beside the timer); Line-4 timerProjectionRow LOCK SCREEN ONLY; DI expanded uses the regions AS INTENDED: leading = dot + name (anti-clip trio, maxHeight .infinity centring), trailing = HERO 22pt total, bottom = ONLY the single-line microlabel secondary (expandedSecondaryLine, lineLimit 1) — NO buttons/timer anywhere in the island; DI compact = status dot only (compactTrailing renders EmptyView); the old secondaryReadout row is GONE',
       (() => {
         const la = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift'), 'utf8');
         const gone = !/secondaryReadout/.test(la);
@@ -5818,22 +5818,23 @@ async function main() {
         const lockOk = /microLabel\("DAY TOTAL"\)\s*Spacer\(\)\s*microLabel\(context\.state\.anchorLabel\)/.test(la) &&
           /moneyText\(context\.state\.totalText, font: moneyFont\)/.test(la) &&
           !/Rectangle\(\)\.fill\(Color\.tmFaint\.opacity\(0\.18\)\)/.test(la);
-        // DI expanded (H1): ONE full-width leading region, vertically
-        // centred in the island's enforced height. Main row = dot + name
-        // (anti-clip trio) + HERO total in-row (moneyFontIsland 22pt);
-        // secondary microlabel line via expandedSecondaryLine ("CALL 08:00
-        // · OT FROM 19:00"); explicit horizontal padding clears the curved
-        // leading edge. NO trailing/bottom regions, NO buttons, NO timer.
-        // Compact: status dot leading, NOTHING trailing.
+        // DI expanded (I1): regions AS INTENDED — the device round proved a
+        // single "full-width" leading region doesn't span (system reserves
+        // trailing width). Leading = dot + name (anti-clip trio), trailing
+        // = HERO total (moneyFontIsland 22pt), bottom = ONLY the
+        // single-line microlabel secondary. No buttons, no timer. Compact:
+        // status dot leading, NOTHING trailing.
         const expanded = (la.match(/DynamicIsland \{[\s\S]*?\} compactLeading:/) || [''])[0];
-        const diOk = /HStack\(spacing: 7\) \{\s*Circle\(\)\.fill\(chipColor/.test(expanded) &&
-          /\.lineLimit\(1\)\s*\.truncationMode\(\.tail\)\s*\.minimumScaleFactor\(0\.75\)/.test(expanded) &&
-          /moneyText\(context\.state\.totalText, font: moneyFontIsland\)/.test(expanded) &&
-          /expandedSecondaryLine\(context\.state\)/.test(expanded) &&
-          /\.padding\(\.horizontal, 8\)/.test(expanded) &&
-          /\.frame\(maxWidth: \.infinity, maxHeight: \.infinity\)/.test(expanded) &&
-          !/DynamicIslandExpandedRegion\(\.trailing\)/.test(expanded) &&
-          !/DynamicIslandExpandedRegion\(\.bottom\)/.test(expanded) &&
+        const leading = (expanded.match(/DynamicIslandExpandedRegion\(\.leading\) \{[\s\S]*?\n                \}/) || [''])[0];
+        const trailing = (expanded.match(/DynamicIslandExpandedRegion\(\.trailing\) \{[\s\S]*?\n                \}/) || [''])[0];
+        const bottom = (expanded.match(/DynamicIslandExpandedRegion\(\.bottom\) \{[\s\S]*?\n                \}/) || [''])[0];
+        const diOk = /HStack\(spacing: 7\) \{\s*Circle\(\)\.fill\(chipColor/.test(leading) &&
+          /\.lineLimit\(1\)\s*\.truncationMode\(\.tail\)\s*\.minimumScaleFactor\(0\.75\)/.test(leading) &&
+          !/moneyText\(/.test(leading) &&
+          /moneyText\(context\.state\.totalText, font: moneyFontIsland\)/.test(trailing) &&
+          /\.frame\(maxHeight: \.infinity\)/.test(trailing) &&
+          /expandedSecondaryLine\(context\.state\)/.test(bottom) &&
+          /\.lineLimit\(1\)/.test(bottom) &&
           !/actionButtons\(/.test(expanded) && !/timerProjectionRow\(/.test(expanded) &&
           /private func expandedSecondaryLine/.test(la) &&
           /parts\.append\("OT FROM \\\(s\.otFrom\)"\)/.test(la) &&
