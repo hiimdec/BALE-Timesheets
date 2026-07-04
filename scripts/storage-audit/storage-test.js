@@ -6192,26 +6192,34 @@ async function main() {
         const nullSites = (html.match(/roleDefaultsFor\(null\)/g) || []).length >= 3;
         const footerOk = /Rates per APA \{resolveRateCard\(production\.startDate\)\.label\}/.test(html) &&
           /APA \{resolveRateCard\(null\)\.label\}/.test(html);
-        const promptOk = /const \[rateCardPrompt, setRateCardPrompt\] = useState\(null\);/.test(html) &&
-          /const flat = flattenRateCard\(resolveRateCard\(p\.startDate\)\);/.test(html) &&
-          /title="Rate card changed"/.test(html);
-        return prodSites && nullSites && footerOk && promptOk;
+        const noticeOk = /const \[rateCardNotice, setRateCardNotice\] = useState\(null\);/.test(html) &&
+          /title="New rates apply"/.test(html);
+        return prodSites && nullSites && footerOk && noticeOk;
       })());
-    check('TT20d startDate is DERIVED (earliest dated day) — deriveStartDate defined once; migrateProduction snaps silently on every load (no prompt path); App.setProduction routes EVERY production edit through finalizeProductionUpdate (derive + boundary detect, prompt QUEUED on a ref and flushed post-commit — updaters stay pure); prompt gated on a crew member the new card can speak to; settings start-date input renders ONLY while no dated days exist ("Set by the first shoot day." hint otherwise)',
+    check('TT20d startDate is DERIVED (earliest dated day) and rate-card application is AUTOMATIC (H2) — deriveStartDate defined once; migrateProduction snaps silently on every load (never rewrites rates); App.setProduction routes EVERY edit through finalizeProductionUpdate: on a resolved-card change applyRateCardToCrew rewrites ONLY crew whose bdr+otCoef+otRate exactly match the PREVIOUS card (the safety rule — negotiated/custom never touched); NO accept/decline dialog; the single informational notice fires only for a FUTURE card (effectiveFrom > today), queued on a ref (pure updaters) with a single OK (cancelLabel null); settings start-date input renders ONLY while no dated days exist',
       (() => {
         const deriveOk = /function deriveStartDate\(production\) \{/.test(html) &&
           /return dates\.length \? dates\[0\] : \(\(production && production\.startDate\) \|\| null\);/.test(html) &&
           /startDate: deriveStartDate\(\{ \.\.\.p, days \}\) \?\? \(p\.startDate \?\? todayISO\(\)\),/.test(html);
+        const autoOk = /const applyRateCardToCrew = \(production, fromCard, toCard\) => \{/.test(html) &&
+          /if \(!oldD \|\| !newD\) return c;/.test(html) &&
+          /const matchesOldCard = Number\(c\.bdr\) === Number\(oldD\.bdr\)\s*&& Number\(c\.otCoef\) === Number\(oldD\.otCoef\)\s*&& \(\(c\.otRate \?\? null\) === \(oldD\.otRate \?\? null\)\);/.test(html) &&
+          /if \(!matchesOldCard\) return c;/.test(html) &&
+          /return \{ \.\.\.c, bdr: newD\.bdr, otCoef: newD\.otCoef, otRate: newD\.otRate \?\? null \};/.test(html);
         const finalizeOk = /const finalizeProductionUpdate = \(prevP, nextP\) => \{/.test(html) &&
           /const withDate = \(derived && derived !== nextP\.startDate\) \? \{ \.\.\.nextP, startDate: derived \} : nextP;/.test(html) &&
-          /if \(fromCard !== toCard\) \{/.test(html) &&
-          /\(withDate\.crew \|\| \[\]\)\.some\(c => !!flat\[c\.role\]\)/.test(html) &&
-          /pendingRatePromptRef\.current = \{ productionId: withDate\.id, label: toCard\.label \};/.test(html) &&
+          /if \(fromCard === toCard\) return withDate;/.test(html) &&
+          /const applied = applyRateCardToCrew\(withDate, fromCard, toCard\);/.test(html) &&
+          /if \(toCard\.effectiveFrom > todayISO\(\)\) \{/.test(html) &&
+          /pendingRateNoticeRef\.current = \{ label: toCard\.label, effectiveFrom: toCard\.effectiveFrom \};/.test(html) &&
           /p\.id === openId \? finalizeProductionUpdate\(p, \(typeof updater === "function" \? updater\(p\) : updater\)\) : p/.test(html);
+        const noticeOk = /cancelLabel=\{null\}/.test(html) &&
+          /so the \$\{month\} \$\{d\.getFullYear\(\)\} APA rates apply\./.test(html) &&
+          !/confirmLabel="Update rates"/.test(html) && !/applyRateCardRefresh/.test(html);
         const fieldOk = /const hasDatedDays = \(production\.days \|\| \[\]\)\.some\(d => d\.date\);/.test(html) &&
           /hint=\{hasDatedDays \? "Set by the first shoot day\." : undefined\}/.test(html) &&
           /\{!hasDatedDays && \(\s*<input\s*type="date"/.test(html);
-        return deriveOk && finalizeOk && fieldOk;
+        return deriveOk && autoOk && finalizeOk && noticeOk && fieldOk;
       })());
     check('TT20c the pay engine never reads the card system — deriveBreakState, calculateDay and calculatePmpaDay contain no RATE_CARDS / resolveRateCard / roleDefaultsFor reference (rates reach the engine only as crew/day snapshots; the byte-identical 84-scenario calc audit independently proves zero drift)',
       (() => {

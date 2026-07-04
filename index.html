@@ -13233,9 +13233,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // startDate is DERIVED from the earliest dated day (G3); this manual
       // path only operates while the production has NO dated days (a
-      // pencilled booking). Boundary detection + the rate-refresh prompt
+      // pencilled booking). Card detection + automatic rate application
       // live centrally in App's setProduction — a manual edit here flows
-      // through the same funnel, so no sheet-local prompt is needed.
+      // through the same funnel, so nothing sheet-local is needed.
       const hasDatedDays = (production.days || []).some(d => d.date);
 
       const handleStartDateChange = (e) => {
@@ -14926,14 +14926,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               >
                 {confirmLabel}
               </button>
-              <button
-                type="button"
-                onClick={onCancel}
-                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-300 hover:text-neutral-100 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                {cancelLabel}
-              </button>
+              {/* cancelLabel={null} → single-button informational alert
+                  (OK only); onCancel still backs Escape/backdrop on web. */}
+              {cancelLabel !== null && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-300 hover:text-neutral-100 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  {cancelLabel}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -23883,62 +23887,73 @@ const confirmDelete = (p) => setConfirmOpts({
         setOpenId(p.id);
         setShowNewProduction(false);
       };
-      // ── Derived start date + rate-card boundary prompt (G3) ─────────────
+      // ── Derived start date + AUTOMATIC rate-card application (H2) ───────
       // startDate is derived from the earliest dated day, and EVERY
       // production edit funnels through setProduction — so derivation and
-      // boundary detection live here ONCE, covering day add / date edit /
-      // delete on every screen AND the manual start-date edit (settings,
-      // no-days state). The settings sheet's own D6 prompt is folded into
-      // this. The migrate/load-time snap never passes through here, so it
-      // stays silent by construction. Detection compares the card resolved
-      // from the previous committed state against the new one — one prompt
-      // per resolved-card change, and only when at least one crew member
-      // carries table-derived rates the new card can speak to. The prompt is
-      // QUEUED on a ref and flushed post-commit: updaters must stay pure
+      // card application live here ONCE, covering day add / date edit /
+      // delete on every screen AND the manual no-days start-date edit.
+      // Application is AUTOMATIC (no accept/decline — superseding the
+      // D6/G3 prompt): when an edit moves the production onto a different
+      // resolved card, the new card's numbers are applied on the spot, but
+      // ONLY to crew whose current bdr, otCoef AND otRate all EXACTLY match
+      // the PREVIOUSLY-resolved card's values for their role. That
+      // exact-match rule is what makes automatic application safe: a member
+      // still carrying the old table's values is provably table-derived, so
+      // moving them to the new table is a correction, not an overwrite; ANY
+      // mismatch means a hand-edited / negotiated rate and is never
+      // touched. Custom roles (absent from either card) are never touched.
+      // Step-ups stay snapshotted on day records by design. Application is
+      // EVENT-DRIVEN only — the migrate/load-time snap never passes through
+      // here, so stored data is never rewritten at load.
+      //
+      // One informational notice remains: when the newly-resolved card is a
+      // FUTURE card (effectiveFrom after today — e.g. booking a September
+      // shoot in July), a single-OK heads-up says the new rates apply. It
+      // is a notice, not a gate — rates apply underneath regardless — and
+      // it never fires once today has passed the card's effectiveFrom. It
+      // is QUEUED on a ref and flushed post-commit: updaters must stay pure
       // (StrictMode double-invokes them), so no setState from inside.
-      const [rateCardPrompt, setRateCardPrompt] = useState(null);
-      const pendingRatePromptRef = React.useRef(null);
+      const [rateCardNotice, setRateCardNotice] = useState(null);
+      const pendingRateNoticeRef = React.useRef(null);
       useEffect(() => {
-        if (pendingRatePromptRef.current) {
-          setRateCardPrompt(pendingRatePromptRef.current);
-          pendingRatePromptRef.current = null;
+        if (pendingRateNoticeRef.current) {
+          setRateCardNotice(pendingRateNoticeRef.current);
+          pendingRateNoticeRef.current = null;
         }
       });
+      const applyRateCardToCrew = (production, fromCard, toCard) => {
+        const fromFlat = flattenRateCard(fromCard);
+        const toFlat = flattenRateCard(toCard);
+        let changed = false;
+        const crew = (production.crew || []).map(c => {
+          const oldD = fromFlat[c.role];
+          const newD = toFlat[c.role];
+          if (!oldD || !newD) return c;                 // custom role — never touched
+          const matchesOldCard = Number(c.bdr) === Number(oldD.bdr)
+            && Number(c.otCoef) === Number(oldD.otCoef)
+            && ((c.otRate ?? null) === (oldD.otRate ?? null));
+          if (!matchesOldCard) return c;                // negotiated / hand-edited — never touched
+          changed = true;
+          return { ...c, bdr: newD.bdr, otCoef: newD.otCoef, otRate: newD.otRate ?? null };
+        });
+        return changed ? { ...production, crew } : production;
+      };
       const finalizeProductionUpdate = (prevP, nextP) => {
         const derived = deriveStartDate(nextP);
         const withDate = (derived && derived !== nextP.startDate) ? { ...nextP, startDate: derived } : nextP;
         const fromCard = resolveRateCard(prevP.startDate);
         const toCard = resolveRateCard(withDate.startDate);
-        if (fromCard !== toCard) {
-          const flat = flattenRateCard(toCard);
-          if ((withDate.crew || []).some(c => !!flat[c.role])) {
-            pendingRatePromptRef.current = { productionId: withDate.id, label: toCard.label };
-          }
+        if (fromCard === toCard) return withDate;
+        const applied = applyRateCardToCrew(withDate, fromCard, toCard);
+        if (toCard.effectiveFrom > todayISO()) {
+          pendingRateNoticeRef.current = { label: toCard.label, effectiveFrom: toCard.effectiveFrom };
         }
-        return withDate;
+        return applied;
       };
       const setProduction = (updater) =>
         setProductions((prev) => prev.map((p) =>
           p.id === openId ? finalizeProductionUpdate(p, (typeof updater === "function" ? updater(p) : updater)) : p
         ));
-      const applyRateCardRefresh = () => {
-        const prompt = rateCardPrompt;
-        setRateCardPrompt(null);
-        if (!prompt) return;
-        setProductions(prev => prev.map(p => {
-          if (p.id !== prompt.productionId) return p;
-          // Re-resolve off the production's CURRENT startDate at apply time —
-          // a raced later edit can never apply stale figures.
-          const flat = flattenRateCard(resolveRateCard(p.startDate));
-          return {
-            ...p,
-            crew: (p.crew || []).map(c => {
-              const d = flat[c.role];
-              return d ? { ...c, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null } : c;
-            }),
-          };
-        }));
-      };
 
       const handleExport = () => {
         const now = new Date();
@@ -24244,20 +24259,24 @@ const confirmDelete = (p) => setConfirmOpts({
           <BackLevelContext.Provider value={backCtx}>
           <SubScreenContext.Provider value={subScreenCtx}>
           {screen}
-          {/* G3 rate-card boundary prompt — global, because the day edits
-              that move the DERIVED start date across a card boundary can
-              happen on any screen. Same semantics as the D6 settings prompt
-              it replaces: one-time offer, decline keeps every snapshot,
-              custom roles and step-ups untouched. */}
+          {/* H2 future-card notice — informational only: rates were already
+              applied automatically underneath (exact-match rule), so this
+              is a heads-up, never a permission gate. Single OK; fires only
+              while the resolved card's effectiveFrom is still ahead of
+              today. */}
           <ConfirmDialog
-            open={!!rateCardPrompt}
-            title="Rate card changed"
-            message={`This shoot now starts on the APA ${rateCardPrompt?.label} rate card. Update the existing crew's day rates and OT to match? Custom rates for roles not on the card are left alone — choose Keep to leave every current figure.`}
-            confirmLabel="Update rates"
+            open={!!rateCardNotice}
+            title="New rates apply"
+            message={rateCardNotice ? (() => {
+              const d = new Date(rateCardNotice.effectiveFrom + 'T12:00:00');
+              const month = d.toLocaleString('en-GB', { month: 'long' });
+              return `This shoot starts on or after ${d.getDate()} ${month} ${d.getFullYear()}, so the ${month} ${d.getFullYear()} APA rates apply.`;
+            })() : ''}
+            confirmLabel="OK"
             confirmTone="primary"
-            cancelLabel="Keep"
-            onConfirm={applyRateCardRefresh}
-            onCancel={() => setRateCardPrompt(null)}
+            cancelLabel={null}
+            onConfirm={() => setRateCardNotice(null)}
+            onCancel={() => setRateCardNotice(null)}
           />
           {/* Stage 3 share-in chooser — a shared file has no shoot context, so
               ask. Existing shoot rows are most-recent-first; "New shoot" runs
