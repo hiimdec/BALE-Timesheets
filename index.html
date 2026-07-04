@@ -3340,6 +3340,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return migrated;
     }
 
+    // startDate is DERIVED (G3): the earliest date across a production's
+    // dated days is the single source of truth whenever any dated day
+    // exists. Only a production with NO dated days keeps a stored/manual
+    // value (creation stamps today; a pencilled booking can be dated by
+    // hand). Everything that keys off startDate — rate-card resolution,
+    // version footers, sorting fallbacks, NEW invoice dating — reads the
+    // derived value; sent invoices are frozen snapshots and never change.
+    function deriveStartDate(production) {
+      const dates = ((production && production.days) || []).map(d => d.date).filter(Boolean).sort();
+      return dates.length ? dates[0] : ((production && production.startDate) || null);
+    }
+
     const migrateProduction = (p) => {
       // V4-5h-10: legacy v1→v2 kitMoneyEnabled backfill removed. Day records that lack
       // kitMoneyAmount now silently inherit kit money via augmentCalc's crew fallback
@@ -3438,7 +3450,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         roundingMode: _rmode,
         favourableRounding: _rmode === 'favourable',
         apaRounding: _rmode === 'apa',
-        startDate: p.startDate ?? todayISO(),
+        // startDate derivation snap (G3) — a SILENT load-time correction:
+        // dated days exist → earliest dated day wins over a disagreeing
+        // stored value (idempotent, re-asserted every load). Never prompts,
+        // never touches crew rate snapshots — those move only through the
+        // user-facing boundary prompt.
+        startDate: deriveStartDate({ ...p, days }) ?? (p.startDate ?? todayISO()),
         weekStarts: p.weekStarts ?? [],
         gridDates: p.gridDates ?? [],
         cancellationData: p.cancellationData ?? null,
@@ -13214,18 +13231,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // sheet is showing.
       const [confirmReset, setConfirmReset] = useState(false);
 
-      // Boundary-crossing rate prompt: a startDate edit that lands the
-      // production on a DIFFERENT rate card (either direction) offers a
-      // one-time refresh of the crew's snapshotted bdr/otCoef/otRate from the
-      // newly-resolved card. Bug-avoidance, never silent: declining keeps
-      // every snapshot; custom/unknown roles are untouched either way, and
-      // step-up fields stay snapshotted (out of scope by design).
-      const [rateCardPrompt, setRateCardPrompt] = useState(null);
+      // startDate is DERIVED from the earliest dated day (G3); this manual
+      // path only operates while the production has NO dated days (a
+      // pencilled booking). Boundary detection + the rate-refresh prompt
+      // live centrally in App's setProduction — a manual edit here flows
+      // through the same funnel, so no sheet-local prompt is needed.
+      const hasDatedDays = (production.days || []).some(d => d.date);
 
       const handleStartDateChange = (e) => {
         const newDate = e.target.value;
-        const oldCard = resolveRateCard(production.startDate);
-        const newCard = resolveRateCard(newDate);
         if (/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
           const monday = getMonday(newDate);
           setProduction(prev => ({
@@ -13236,25 +13250,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         } else {
           setProduction(prev => ({ ...prev, startDate: newDate }));
         }
-        if (newCard !== oldCard && (production.crew || []).length > 0) {
-          setRateCardPrompt({ label: newCard.label });
-        }
-      };
-
-      const applyRateCardRefresh = () => {
-        setRateCardPrompt(null);
-        setProduction(prev => {
-          // Re-resolve off the COMMITTED startDate rather than a captured
-          // card, so a raced second edit can't apply stale figures.
-          const flat = flattenRateCard(resolveRateCard(prev.startDate));
-          return {
-            ...prev,
-            crew: (prev.crew || []).map(c => {
-              const d = flat[c.role];
-              return d ? { ...c, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null } : c;
-            }),
-          };
-        });
       };
 
       const displayTitle = production.title || "Production";
@@ -13327,32 +13322,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   className="w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg"
                 />
               </Field>
-              <Field label="Start date">
+              <Field label="Start date" hint={hasDatedDays ? "Set by the first shoot day." : undefined}>
                 <div className="relative w-full">
-                  <div className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm font-mono text-neutral-100 min-h-[36px] flex items-center">
+                  <div className={`w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm font-mono min-h-[36px] flex items-center ${hasDatedDays ? 'text-neutral-400' : 'text-neutral-100'}`}>
                     {production.startDate
                       ? fmtDateMed(production.startDate)
                       : <span className="text-neutral-500">Tap to set</span>}
                   </div>
-                  <input
-                    type="date"
-                    value={production.startDate || ""}
-                    onChange={handleStartDateChange}
-                    className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    aria-label="Start date"
-                    style={{ WebkitAppearance: 'none' }}
-                  />
+                  {!hasDatedDays && (
+                    <input
+                      type="date"
+                      value={production.startDate || ""}
+                      onChange={handleStartDateChange}
+                      className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      aria-label="Start date"
+                      style={{ WebkitAppearance: 'none' }}
+                    />
+                  )}
                 </div>
-                <ConfirmDialog
-                  open={!!rateCardPrompt}
-                  title="Rate card changed"
-                  message={`This start date puts the production on the APA ${rateCardPrompt?.label} rate card. Update the existing crew's day rates and OT to match? Custom rates for roles not on the card are left alone — and you can keep every current figure by choosing Keep.`}
-                  confirmLabel="Update rates"
-                  confirmTone="primary"
-                  cancelLabel="Keep"
-                  onConfirm={applyRateCardRefresh}
-                  onCancel={() => setRateCardPrompt(null)}
-                />
               </Field>
             </SectionCard>
 
@@ -23896,10 +23883,62 @@ const confirmDelete = (p) => setConfirmOpts({
         setOpenId(p.id);
         setShowNewProduction(false);
       };
+      // ── Derived start date + rate-card boundary prompt (G3) ─────────────
+      // startDate is derived from the earliest dated day, and EVERY
+      // production edit funnels through setProduction — so derivation and
+      // boundary detection live here ONCE, covering day add / date edit /
+      // delete on every screen AND the manual start-date edit (settings,
+      // no-days state). The settings sheet's own D6 prompt is folded into
+      // this. The migrate/load-time snap never passes through here, so it
+      // stays silent by construction. Detection compares the card resolved
+      // from the previous committed state against the new one — one prompt
+      // per resolved-card change, and only when at least one crew member
+      // carries table-derived rates the new card can speak to. The prompt is
+      // QUEUED on a ref and flushed post-commit: updaters must stay pure
+      // (StrictMode double-invokes them), so no setState from inside.
+      const [rateCardPrompt, setRateCardPrompt] = useState(null);
+      const pendingRatePromptRef = React.useRef(null);
+      useEffect(() => {
+        if (pendingRatePromptRef.current) {
+          setRateCardPrompt(pendingRatePromptRef.current);
+          pendingRatePromptRef.current = null;
+        }
+      });
+      const finalizeProductionUpdate = (prevP, nextP) => {
+        const derived = deriveStartDate(nextP);
+        const withDate = (derived && derived !== nextP.startDate) ? { ...nextP, startDate: derived } : nextP;
+        const fromCard = resolveRateCard(prevP.startDate);
+        const toCard = resolveRateCard(withDate.startDate);
+        if (fromCard !== toCard) {
+          const flat = flattenRateCard(toCard);
+          if ((withDate.crew || []).some(c => !!flat[c.role])) {
+            pendingRatePromptRef.current = { productionId: withDate.id, label: toCard.label };
+          }
+        }
+        return withDate;
+      };
       const setProduction = (updater) =>
         setProductions((prev) => prev.map((p) =>
-          p.id === openId ? (typeof updater === "function" ? updater(p) : updater) : p
+          p.id === openId ? finalizeProductionUpdate(p, (typeof updater === "function" ? updater(p) : updater)) : p
         ));
+      const applyRateCardRefresh = () => {
+        const prompt = rateCardPrompt;
+        setRateCardPrompt(null);
+        if (!prompt) return;
+        setProductions(prev => prev.map(p => {
+          if (p.id !== prompt.productionId) return p;
+          // Re-resolve off the production's CURRENT startDate at apply time —
+          // a raced later edit can never apply stale figures.
+          const flat = flattenRateCard(resolveRateCard(p.startDate));
+          return {
+            ...p,
+            crew: (p.crew || []).map(c => {
+              const d = flat[c.role];
+              return d ? { ...c, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null } : c;
+            }),
+          };
+        }));
+      };
 
       const handleExport = () => {
         const now = new Date();
@@ -24205,6 +24244,21 @@ const confirmDelete = (p) => setConfirmOpts({
           <BackLevelContext.Provider value={backCtx}>
           <SubScreenContext.Provider value={subScreenCtx}>
           {screen}
+          {/* G3 rate-card boundary prompt — global, because the day edits
+              that move the DERIVED start date across a card boundary can
+              happen on any screen. Same semantics as the D6 settings prompt
+              it replaces: one-time offer, decline keeps every snapshot,
+              custom roles and step-ups untouched. */}
+          <ConfirmDialog
+            open={!!rateCardPrompt}
+            title="Rate card changed"
+            message={`This shoot now starts on the APA ${rateCardPrompt?.label} rate card. Update the existing crew's day rates and OT to match? Custom rates for roles not on the card are left alone — choose Keep to leave every current figure.`}
+            confirmLabel="Update rates"
+            confirmTone="primary"
+            cancelLabel="Keep"
+            onConfirm={applyRateCardRefresh}
+            onCancel={() => setRateCardPrompt(null)}
+          />
           {/* Stage 3 share-in chooser — a shared file has no shoot context, so
               ask. Existing shoot rows are most-recent-first; "New shoot" runs
               extraction first (title pre-fill) then the EXISTING creation flow.

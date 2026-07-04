@@ -6185,10 +6185,25 @@ async function main() {
         const footerOk = /Rates per APA \{resolveRateCard\(production\.startDate\)\.label\}/.test(html) &&
           /APA \{resolveRateCard\(null\)\.label\}/.test(html);
         const promptOk = /const \[rateCardPrompt, setRateCardPrompt\] = useState\(null\);/.test(html) &&
-          /if \(newCard !== oldCard && \(production\.crew \|\| \[\]\)\.length > 0\) \{\s*setRateCardPrompt\(\{ label: newCard\.label \}\);/.test(html) &&
-          /const flat = flattenRateCard\(resolveRateCard\(prev\.startDate\)\);/.test(html) &&
+          /const flat = flattenRateCard\(resolveRateCard\(p\.startDate\)\);/.test(html) &&
           /title="Rate card changed"/.test(html);
         return prodSites && nullSites && footerOk && promptOk;
+      })());
+    check('TT20d startDate is DERIVED (earliest dated day) — deriveStartDate defined once; migrateProduction snaps silently on every load (no prompt path); App.setProduction routes EVERY production edit through finalizeProductionUpdate (derive + boundary detect, prompt QUEUED on a ref and flushed post-commit — updaters stay pure); prompt gated on a crew member the new card can speak to; settings start-date input renders ONLY while no dated days exist ("Set by the first shoot day." hint otherwise)',
+      (() => {
+        const deriveOk = /function deriveStartDate\(production\) \{/.test(html) &&
+          /return dates\.length \? dates\[0\] : \(\(production && production\.startDate\) \|\| null\);/.test(html) &&
+          /startDate: deriveStartDate\(\{ \.\.\.p, days \}\) \?\? \(p\.startDate \?\? todayISO\(\)\),/.test(html);
+        const finalizeOk = /const finalizeProductionUpdate = \(prevP, nextP\) => \{/.test(html) &&
+          /const withDate = \(derived && derived !== nextP\.startDate\) \? \{ \.\.\.nextP, startDate: derived \} : nextP;/.test(html) &&
+          /if \(fromCard !== toCard\) \{/.test(html) &&
+          /\(withDate\.crew \|\| \[\]\)\.some\(c => !!flat\[c\.role\]\)/.test(html) &&
+          /pendingRatePromptRef\.current = \{ productionId: withDate\.id, label: toCard\.label \};/.test(html) &&
+          /p\.id === openId \? finalizeProductionUpdate\(p, \(typeof updater === "function" \? updater\(p\) : updater\)\) : p/.test(html);
+        const fieldOk = /const hasDatedDays = \(production\.days \|\| \[\]\)\.some\(d => d\.date\);/.test(html) &&
+          /hint=\{hasDatedDays \? "Set by the first shoot day\." : undefined\}/.test(html) &&
+          /\{!hasDatedDays && \(\s*<input\s*type="date"/.test(html);
+        return deriveOk && finalizeOk && fieldOk;
       })());
     check('TT20c the pay engine never reads the card system — deriveBreakState, calculateDay and calculatePmpaDay contain no RATE_CARDS / resolveRateCard / roleDefaultsFor reference (rates reach the engine only as crew/day snapshots; the byte-identical 84-scenario calc audit independently proves zero drift)',
       (() => {
