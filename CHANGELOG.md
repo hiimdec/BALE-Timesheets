@@ -1,5 +1,29 @@
 # Changelog
 
+## 5.1
+
+### September 2026 APA rates (new)
+The September 2026 rate card is built in and takes effect from a shoot's start date — which now simply follows the first shoot day, so a September booking gets September rates from the moment you date it. Rates apply automatically in both directions when a shoot's dates move across the boundary, and only ever to table rates: anything you've negotiated or entered by hand is never touched. Booking a shoot that starts after 1 September shows a one-off heads-up that the new rates apply.
+
+### Legwork (new)
+Apple Health step stats on the Stats screen. Connect Apple Health and TimeMachine counts your steps between call and wrap — shoot days only, and only on this phone. Headlines: hardest working day (most steps) and stealing a wage (highest £ per 1,000 steps). Days where the phone barely moved are skipped with a caption rather than skewing the numbers. Read-only, processed on-device, and revocable at any time in the Health app or iOS Settings; a Settings toggle hides the block entirely.
+
+### Live Activity
+- Redesigned Dynamic Island: compact shows just the status dot; the long-press view is the production name, the day total, and a single call/OT line. The lock-screen card keeps the timer, OT projection and Lunch/Wrap buttons.
+- The day total is now accurate the moment you press Wrap on the card, and corrects itself within seconds where possible.
+- Setting a wrap time inside the app now ends the card the same way pressing Wrap on the card does, and editing a shoot's date from any screen starts or ends the card correctly.
+- Fixed the production name clipping off the left edge of the lock-screen card.
+
+### Shoots & stats
+- Upcoming shoots now show their booked value (muted) instead of £0; month headers keep meaning earned money only.
+- Opening a shoot lands on the day closest to today instead of the last day.
+- The monthly average no longer counts the month in progress; the chart still shows it.
+
+### Polish & fixes
+- Fixed overdue-invoice reminders firing more than once for the same invoice — exactly one per invoice per due date now.
+- Fixed Best Boy department defaults not applying to all crew for days created with "Add Day (All Crew)".
+- Invoice list spacing: proper breathing room above each section header.
+
 ## 5.0
 
 ### AI Call-Sheet Reader (new)
