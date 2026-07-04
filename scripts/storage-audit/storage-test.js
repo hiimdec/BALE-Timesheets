@@ -6190,7 +6190,9 @@ async function main() {
     check('TT20b every rate COPY site resolves through the effective-dated card — production-scoped sites (CrewManager blank+role change, DayEntryForm + bulk + CrewMemberDayView step-ups, QuickAddCrewSheet ×2, solo "your role") use roleDefaultsFor(production); current-date sites (Settings global defaults ×2, new-production seed) use roleDefaultsFor(null); footers are version-aware; the boundary-crossing startDate edit offers the one-time crew-rate refresh (never silent)',
       (() => {
         const prodSites = (html.match(/roleDefaultsFor\(production\)/g) || []).length >= 7;
-        const nullSites = (html.match(/roleDefaultsFor\(null\)/g) || []).length >= 3;
+        // Settings dept/role handlers ×2; production creation + the
+        // calculator seed moved to seedRateFromPrefs (TT20e).
+        const nullSites = (html.match(/roleDefaultsFor\(null\)/g) || []).length >= 2;
         const footerOk = /Rates per APA \{resolveRateCard\(production\.startDate\)\.label\}/.test(html) &&
           /APA \{resolveRateCard\(null\)\.label\}/.test(html);
         const noticeOk = /const \[rateCardNotice, setRateCardNotice\] = useState\(null\);/.test(html) &&
@@ -6221,6 +6223,19 @@ async function main() {
           /hint=\{hasDatedDays \? "Set by the first shoot day\." : undefined\}/.test(html) &&
           /\{!hasDatedDays && \(\s*<input\s*type="date"/.test(html);
         return deriveOk && autoOk && finalizeOk && noticeOk && fieldOk;
+      })());
+    check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
+      (() => {
+        const fn = (html.match(/function seedRateFromPrefs\(userPrefs, role, effectiveDate\)[\s\S]*?\n    \}/) || [''])[0];
+        const fnOk = /const matchesSomeCard = prefBdr > 0 && RATE_CARDS\.some\(c => \{/.test(fn) &&
+          /return !!d && prefBdr === Number\(d\.bdr\) && \(prefCoef == null \|\| prefCoef === Number\(d\.otCoef\)\);/.test(fn) &&
+          /const useCard = prefBdr <= 0 \|\| matchesSomeCard;/.test(fn) &&
+          /bdr: useCard \? \(resolved\.bdr \?\? 0\) : prefBdr,/.test(fn);
+        const wiredOk = (html.match(/seedRateFromPrefs\(userPrefs, role, null\)/g) || []).length >= 2 &&
+          /bdr: seeded\.bdr,\s*otCoef: seeded\.otCoef,\s*otRate: seeded\.otRate,/.test(html);
+        const shadowGoneOk = !/const bdr = userPrefs\.defaultBDR \|\| roleDefaults\.bdr \|\| 0;/.test(html) &&
+          !/bdr: Number\(userPrefs\?\.defaultBDR\) \|\| 0, isDefaultUser: true/.test(html);
+        return fnOk && wiredOk && shadowGoneOk;
       })());
     check('TT20c the pay engine never reads the card system — deriveBreakState, calculateDay and calculatePmpaDay contain no RATE_CARDS / resolveRateCard / roleDefaultsFor reference (rates reach the engine only as crew/day snapshots; the byte-identical 84-scenario calc audit independently proves zero drift)',
       (() => {

@@ -1866,6 +1866,34 @@
       return flattenRateCard(resolveRateCard(production && production.startDate));
     }
 
+    // Seed-time rate resolution (I2). A stored Settings default
+    // (userPrefs.defaultBDR / defaultOTCoef) is a SNAPSHOT taken whenever
+    // the user last saved Settings — possibly under an older rate card —
+    // and silently seeding it births a shoot on the wrong card with no
+    // crossing event to correct it. H2's exact-match principle applied at
+    // seed time: a stored default that exactly matches the role's values on
+    // ANY card is provably table-derived — seed from the card resolved for
+    // the effective date instead (identical numbers when the snapshot is
+    // current; a correction when it's stale). A stored default matching NO
+    // card's values for the role is a deliberate custom rate — seeded
+    // VERBATIM, never overridden. Prefs themselves are never rewritten:
+    // this is resolve-at-use, and the preference-change rule stands.
+    function seedRateFromPrefs(userPrefs, role, effectiveDate) {
+      const resolved = flattenRateCard(resolveRateCard(effectiveDate || null))[role] || {};
+      const prefBdr = Number(userPrefs && userPrefs.defaultBDR) || 0;
+      const prefCoef = (userPrefs && userPrefs.defaultOTCoef != null) ? Number(userPrefs.defaultOTCoef) : null;
+      const matchesSomeCard = prefBdr > 0 && RATE_CARDS.some(c => {
+        const d = flattenRateCard(c)[role];
+        return !!d && prefBdr === Number(d.bdr) && (prefCoef == null || prefCoef === Number(d.otCoef));
+      });
+      const useCard = prefBdr <= 0 || matchesSomeCard;
+      return {
+        bdr: useCard ? (resolved.bdr ?? 0) : prefBdr,
+        otCoef: useCard ? (resolved.otCoef ?? (prefCoef ?? 1.5)) : (prefCoef ?? resolved.otCoef ?? 1.5),
+        otRate: resolved.otRate ?? null,
+      };
+    }
+
     // Rules-side structure (role names / departments / display order) —
     // card-invariant, bound once to the base card.
     const DEPARTMENTS = RATE_CARDS[0].departments;
@@ -18292,7 +18320,14 @@ const setDays = (updater) =>
       const [calcCrew, setCalcCrew] = useState(() => {
         const name = userPrefs?.displayName?.trim() || "";
         if (!name) return [];
-        return [{ id: uid(), name, role: userPrefs?.defaultRole || "Crew", bdr: Number(userPrefs?.defaultBDR) || 0, isDefaultUser: true }];
+        // Same seed-time resolution as production creation: a stale
+        // table-derived Settings default resolves through the current card;
+        // a custom default (matches no card — including the "Crew" role,
+        // which no card knows) seeds verbatim. Ephemeral calculator state —
+        // nothing here persists.
+        const role = userPrefs?.defaultRole || "Crew";
+        const seeded = seedRateFromPrefs(userPrefs, role, null);
+        return [{ id: uid(), name, role, bdr: seeded.bdr, isDefaultUser: true }];
       });
       // Overdue-reminders notification permission (iOS) — checked on mount and
       // after a toggle-on request, so the toggle can surface a denied state.
@@ -23846,17 +23881,22 @@ const confirmDelete = (p) => setConfirmOpts({
       };
       const handleNewProduction = ({ title, bestBoyMode }) => {
         const role = userPrefs.defaultRole || "Lighting Technician";
-        // New production starts today → the current-date card seeds its crew.
-        const roleDefaults = roleDefaultsFor(null)[role] || {};
-        const bdr = userPrefs.defaultBDR || roleDefaults.bdr || 0;
-        const otCoef = userPrefs.defaultOTCoef ?? roleDefaults.otCoef ?? 1.5;
+        // New production starts today → seed through the card current at
+        // creation time. seedRateFromPrefs applies the exact-match rule: a
+        // stored Settings default that matches an older card is a stale
+        // table snapshot (resolved card wins); one matching no card is a
+        // deliberate custom rate (seeded verbatim). Previously
+        // userPrefs.defaultBDR shadowed the resolved card outright — a shoot
+        // created after a boundary was silently born on the OLD card, and no
+        // crossing event ever fired to correct it.
+        const seeded = seedRateFromPrefs(userPrefs, role, null);
         const soloCrew = bestBoyMode ? [] : [{
           id: uid(),
           name: userPrefs.displayName || "You",
           role,
-          bdr,
-          otCoef,
-          otRate: roleDefaults.otRate ?? null,
+          bdr: seeded.bdr,
+          otCoef: seeded.otCoef,
+          otRate: seeded.otRate,
           vatRegistered: userPrefs.vatRegistered ?? false,
           vatRate: userPrefs.vatRate ?? 20,
           kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
