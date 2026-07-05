@@ -6309,15 +6309,18 @@ async function main() {
         return block.length > 500 && gateOk && stateOk && toggleOk && calcOk;
       })());
     check('HH3b Legwork copy — the finalised strings, verbatim (explainer, button, both quips, summary, skipped caption, quiet line)',
-      /Connect Apple Health and TimeMachine will count your steps between call and wrap — shoot days only, and only on this phone\./.test(html) &&
+      /Connect Apple Health and TimeMachine will count your steps between call and wrap\. Shoot days only, and only on this phone\./.test(html) &&
       />Connect Apple Health<\/Btn>/.test(html) &&
-      /somebody had to carry the kit\./.test(html) &&
-      /the chair was comfy, presumably\./.test(html) &&
+      /Somebody had to carry the kit\./.test(html) &&
+      /The chair was comfy, presumably\./.test(html) &&
       // the summary line is PROSE — default sans in the Stats body voice,
       // never mono (the card figures keep the data-hot treatment)
       /<div className="text-sm text-neutral-400">\{figures\.total\.toLocaleString\('en-GB'\)\} steps across \{figures\.n\} shoot day\{figures\.n !== 1 \? 's' : ''\}<\/div>/.test(html) &&
       /under 100 steps recorded\. Phone in the truck\?/.test(html) &&
-      /No step data available — check Health access in Settings\./.test(html) &&
+      // O4 ruling: the em-dash convention holds app-wide — UI copy carries
+      // none (marketing pages keep the house dash).
+      /No step data available\. Check Health access in Settings\./.test(html) &&
+      !/No step data available —/.test(html) &&
       // O3: the zero-days branch gets its own line (no Hide affordance — the
       // block becomes useful by itself); the check-Settings quiet line stays
       // for the has-days-but-all-zeros case only.
