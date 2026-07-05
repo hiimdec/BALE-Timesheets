@@ -6289,6 +6289,15 @@ async function main() {
           /if \(!liveIds\.has\(id\)\) \{ delete cache\[id\]; touched = true; \}/.test(html);
         return keyOk && reuseOk;
       })());
+    check('HH2c single-pass migration convergence (O5) — migrateProduction runs the dayDefaults backfill BEFORE the time-field collapse, and the collapse reads the BACKFILLED defaults, so a record whose date lacked an entry converges on load 1 (no intermediate stored shape between loads)',
+      (() => {
+        const fn = (html.match(/const migrateProduction = \(p\) => \{[\s\S]*?\n    \};/) || [''])[0];
+        const backfillAt = fn.indexOf('const backfilledDefaults =');
+        const collapseAt = fn.indexOf('const TIME_CASCADE_FIELDS =');
+        return fn.length > 500 && backfillAt > -1 && collapseAt > -1 && backfillAt < collapseAt &&
+          /const dd = backfilledDefaults\[day\.date\];/.test(fn) &&
+          !/const dd = p\.dayDefaults\?\.\[day\.date\];/.test(fn);
+      })());
     check('HH2b no health fields ever land on day records or productions — makeBlankDay, migrateDay and migrateProduction stay health-free (the cache is the ONLY store, keyed by day id)',
       (() => {
         const blank = (html.match(/function makeBlankDay\([\s\S]*?\n    \}/) || [''])[0];

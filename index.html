@@ -3502,21 +3502,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // (when crew.kitMoneyEnabled with crew.kitMoneyAmount > 0). No backfill needed.
       const days = p.days || [];
 
-      // V4-5h-11: collapse explicit-matching time fields to undefined so cascade fires.
-      // Idempotent — records already at undefined stay undefined; records with a value
-      // differing from default keep that explicit value (variance).
-      const TIME_CASCADE_FIELDS = ['callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins', 'dayType'];
-      for (const day of days) {
-        const dd = p.dayDefaults?.[day.date];
-        if (!dd) continue;
-        for (const field of TIME_CASCADE_FIELDS) {
-          if (day[field] !== undefined && day[field] === dd[field]) {
-            delete day[field];
-          }
-        }
-      }
-
       // dayDefaults backfill: derive from existing crew records per date. Idempotent.
+      // ORDER MATTERS (O5): backfill runs BEFORE the time-field collapse below so
+      // both converge in a SINGLE load pass. Previously the collapse ran first
+      // against only pre-existing dayDefaults — a record whose date lacked an
+      // entry was backfilled on load 1 and only collapsed on load 2, leaving an
+      // intermediate stored shape between the two. mostCommon reads the RAW
+      // record values either way: dates with a pre-existing entry are skipped
+      // here (identical to the old pass), and dates without one are read before
+      // anything is deleted — so one pass now produces byte-identically what
+      // two passes used to.
       const backfilledDefaults = { ...(p.dayDefaults || {}) };
       const uniqueDates = [...new Set(days.map(d => d.date))];
       for (const date of uniqueDates) {
@@ -3540,6 +3535,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           lunchDurationMins: mostCommon('lunchDurationMins') ?? DEFAULT_PRODUCTION_DAY.lunchDurationMins,
           dayType:           mostCommon('dayType') ?? DEFAULT_PRODUCTION_DAY.dayType,
         };
+      }
+
+      // V4-5h-11: collapse explicit-matching time fields to undefined so cascade fires.
+      // Idempotent — records already at undefined stay undefined; records with a value
+      // differing from default keep that explicit value (variance). Reads the
+      // BACKFILLED defaults (not just p.dayDefaults) so freshly-backfilled dates
+      // collapse in the same pass.
+      const TIME_CASCADE_FIELDS = ['callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins', 'dayType'];
+      for (const day of days) {
+        const dd = backfilledDefaults[day.date];
+        if (!dd) continue;
+        for (const field of TIME_CASCADE_FIELDS) {
+          if (day[field] !== undefined && day[field] === dd[field]) {
+            delete day[field];
+          }
+        }
       }
       // Round-5 extras backfill on dayDefaults — idempotent. Every dayDefaults entry
       // gets the 5 mobile-mode extras fields (defaulted to off/empty).
