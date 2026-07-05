@@ -6317,7 +6317,13 @@ async function main() {
       // never mono (the card figures keep the data-hot treatment)
       /<div className="text-sm text-neutral-400">\{figures\.total\.toLocaleString\('en-GB'\)\} steps across \{figures\.n\} shoot day\{figures\.n !== 1 \? 's' : ''\}<\/div>/.test(html) &&
       /under 100 steps recorded\. Phone in the truck\?/.test(html) &&
-      /No step data available — check Health access in Settings\./.test(html));
+      /No step data available — check Health access in Settings\./.test(html) &&
+      // O3: the zero-days branch gets its own line (no Hide affordance — the
+      // block becomes useful by itself); the check-Settings quiet line stays
+      // for the has-days-but-all-zeros case only.
+      /Step data appears once you've logged a shoot day\./.test(html) &&
+      /\{phase === 'empty' && dayEntries\.length === 0 && \(/.test(html) &&
+      /\{phase === 'empty' && dayEntries\.length > 0 && \(/.test(html));
     check('TT20c the pay engine never reads the card system — deriveBreakState, calculateDay and calculatePmpaDay contain no RATE_CARDS / resolveRateCard / roleDefaultsFor reference (rates reach the engine only as crew/day snapshots; the byte-identical 84-scenario calc audit independently proves zero drift)',
       (() => {
         const bs   = (html.match(/function deriveBreakState\([\s\S]*?\n    function /) || [''])[0];

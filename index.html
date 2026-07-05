@@ -19791,7 +19791,14 @@ const setDays = (updater) =>
               <Btn variant="primary" size="sm" onClick={connect}>Connect Apple Health</Btn>
             </div>
           )}
-          {phase === 'empty' && (
+          {phase === 'empty' && dayEntries.length === 0 && (
+            // Fresh install / no dated days yet: zero steps means "nothing to
+            // count", not a Health problem — don't send the user to Settings,
+            // and no hide affordance (the block becomes useful by itself once
+            // a day exists).
+            <p className="text-xs text-neutral-500">Step data appears once you've logged a shoot day.</p>
+          )}
+          {phase === 'empty' && dayEntries.length > 0 && (
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-neutral-500">No step data available — check Health access in Settings.</p>
               <button type="button" onClick={hide} className="text-[11px] text-neutral-600 hover:text-neutral-400 transition-colors flex-shrink-0" style={{ WebkitTapHighlightColor: 'transparent' }}>Hide this</button>
