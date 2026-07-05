@@ -18,7 +18,11 @@
   <link rel="manifest" href="manifest.json">
 
   <!-- CDN Dependencies -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- O9: pinned — the bare Play CDN URL serves whatever build is current,
+       which can restyle the live site with no deploy. 3.4.16 is the v3 line
+       this app was built against. dist/native vendors its own compiled CSS
+       and never touches this. -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script>
     tailwind.config = {
       // iOS Phase A: gate every `hover:*` utility behind `@media (hover: hover)`
@@ -40,8 +44,8 @@
       }
     }
   </script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
   <!-- @babel/standalone is PINNED to 7.26.4 (was UNPINNED → auto-updated to a build whose preset-react
        now defaults to the 'automatic' JSX runtime, which emits a bare `import "react/jsx-runtime"` that
        this unbundled page can't resolve → "Failed to resolve module specifier", the live site never
