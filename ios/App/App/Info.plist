@@ -59,6 +59,8 @@
 	<string>TimeMachine reads your step count to show how far you walk on shoot days, between call and wrap. Your steps are processed on this phone and never leave it.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>TimeMachine does not write data to Apple Health. Apple requires this description because the app includes the Health framework.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TimeMachine only uses the photo picker you invoke to import a call sheet. It never accesses your photo library in the background.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSSupportsLiveActivities</key>
