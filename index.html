@@ -6285,7 +6285,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return invoiceVAT(invoice, invoiceSubtotal(invoice.lineItems)).total;
     }
     function buildChaseEmailContent(invoice, userPrefs) {
-      const subject = `Invoice ${invoice.invoiceNumber} — overdue`;
+      const subject = `Invoice ${invoice.invoiceNumber} - overdue`;
       const contact = String(invoice.toName || '').trim();
       const production = String(invoice.jobTitle || '').trim();
       const totalStr = fmtGBP(invoiceCurrentTotal(invoice));

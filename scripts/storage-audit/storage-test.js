@@ -6759,8 +6759,8 @@ async function main() {
       return (s > 0 && e > s) ? html.slice(s, e) : '';
     })();
 
-    check('CE1a chase subject is the ruled string',
-      /const subject = `Invoice \$\{invoice\.invoiceNumber\} — overdue`;/.test(chase));
+    check('CE1a chase subject uses the hyphen convention (O4: no em dashes in UI copy)',
+      /const subject = `Invoice \$\{invoice\.invoiceNumber\} - overdue`;/.test(chase));
     check('CE1b chase body carries the ruled sentences (chasing / expect payment / charges warning)',
       /Just chasing invoice \$\{invoice\.invoiceNumber\}/.test(chase) &&
       /which was due on \$\{dueStr\} and is now overdue\./.test(chase) &&
