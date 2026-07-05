@@ -1020,6 +1020,21 @@
       return 'shared';
     }
 
+    // Multi-file sibling of nativeSaveAndShare: writes each TEXT file to the
+    // Cache dir and opens ONE share sheet carrying all of them (Share.share
+    // accepts several `files` uris — each becomes its own activity item).
+    async function nativeSaveAndShareMany(files, opts = {}) {
+      const { Filesystem, Share } = _capPlugins();
+      const uris = [];
+      for (const f of files) {
+        await Filesystem.writeFile({ path: f.filename, data: f.content, directory: 'CACHE', recursive: true, encoding: 'utf8' });
+        const { uri } = await Filesystem.getUri({ path: f.filename, directory: 'CACHE' });
+        uris.push(uri);
+      }
+      await Share.share({ title: opts.title || (files[0] && files[0].filename) || '', files: uris });
+      return 'shared';
+    }
+
     // Open a URL in the in-app Safari view (SFSafariViewController). Returns to the app.
     async function nativeOpenInBrowser(url) {
       const { Browser } = _capPlugins();
@@ -18441,10 +18456,17 @@ const setDays = (updater) =>
       );
     }
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0, topBarLayout = 'left', setTopBarLayout = () => {} }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onExportAccountant = () => {}, accountantYears = [], onResetAll, productionCount = 0, topBarLayout = 'left', setTopBarLayout = () => {} }) {
       useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
+      // Accountant export — selected tax year. Defaults to the most recent
+      // COMPLETE tax year that holds invoices, else the newest on offer.
+      const [acctYear, setAcctYear] = useState(() => {
+        const current = taxYearOf(todayISO());
+        const complete = accountantYears.filter(y => y < current);
+        return (complete[0] ?? accountantYears[0]) ?? null;
+      });
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
@@ -19203,9 +19225,10 @@ const setDays = (updater) =>
               )}
             </Disclosure>
 
-            {/* §8 — Data & backup: storage status + the three one-off actions
-                (export, restore, reset). Reset and restore still go through
-                ConfirmDialog; flows unchanged. */}
+            {/* §8 — Data & backup: storage status + the one-off actions
+                (export, accountant export, restore, reset). Reset and restore
+                still go through ConfirmDialog; flows unchanged. The accountant
+                block only appears once an issued invoice exists somewhere. */}
             <Disclosure label="Data & backup">
               <div className="flex flex-col gap-3">
                 {(() => {
@@ -19230,6 +19253,26 @@ const setDays = (updater) =>
                   <Btn variant="ghost" onClick={onExport}><IDownload/>Export backup</Btn>
                   <p className="text-[10px] text-neutral-500 mt-1">Downloads all your productions to a single backup file. It holds your data, so keep it somewhere private.</p>
                 </div>
+                {accountantYears.length > 0 && (
+                  <div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <Field label="Accountant export">
+                          <Select
+                            value={String(accountantYears.includes(acctYear) ? acctYear : accountantYears[0])}
+                            onChange={(e) => setAcctYear(Number(e.target.value))}
+                          >
+                            {accountantYears.map(y => (
+                              <option key={y} value={String(y)}>{taxYearLabel(y)} tax year</option>
+                            ))}
+                          </Select>
+                        </Field>
+                      </div>
+                      <Btn variant="ghost" onClick={() => onExportAccountant(accountantYears.includes(acctYear) ? acctYear : accountantYears[0])}><IDownload/>Export</Btn>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-1">Two files for your accountant: a CSV of every invoice in the tax year, and a summary with totals, month by month figures and mileage.</p>
+                  </div>
+                )}
                 <div>
                   <Btn variant="ghost" onClick={() => importRef.current?.click()}><IUpload/>Restore from backup</Btn>
                   <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
@@ -20603,6 +20646,198 @@ const setDays = (updater) =>
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       return 'downloaded';
+    }
+
+    // Multi-file variant of deliverTextFile — native: one share sheet carrying
+    // every file (nativeSaveAndShareMany); web: sequential Blob downloads (the
+    // browser has no multi-file download, so each file saves on its own).
+    async function deliverTextFiles(files, title) {
+      if (IS_NATIVE) return nativeSaveAndShareMany(files, { title });
+      for (const f of files) await deliverTextFile(f.filename, f.content, f.mime);
+      return 'downloaded';
+    }
+
+    /* ═══════════════ ACCOUNTANT EXPORT — tax-year handover ═════════════════
+     * READ-ONLY over FROZEN invoice snapshots. Every money figure comes from
+     * invoiceSubtotal(invoice.lineItems) + invoiceVAT — the exact figures the
+     * Invoices list and the sent document show. NOTHING here recomputes via
+     * buildInvoiceLineItems (contrast the accounting-format exports above,
+     * which serve a different job): a hand-edited sent invoice exports at its
+     * edited figures. Only ISSUED invoices (sent/paid) count — drafts are not
+     * documents. Engine untouched; no new storage keys. */
+
+    // UK tax year (6 April to 5 April). taxYearOf("2026-04-05") → 2025;
+    // taxYearOf("2026-04-06") → 2026. The start year names the tax year.
+    function taxYearOf(iso) {
+      const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return null;
+      return `${m[2]}-${m[3]}` >= '04-06' ? Number(m[1]) : Number(m[1]) - 1;
+    }
+    const taxYearLabel = (y) => `${y}-${String(y + 1).slice(2)}`;   // 2025 → "2025-26"
+    const taxYearBounds = (y) => ({ startISO: `${y}-04-06`, endISO: `${y + 1}-04-05` });
+
+    // The invoice's ledger date: its own invoiceDate, falling back to the
+    // creation day for any legacy record missing one.
+    const invoiceLedgerDate = (inv) => inv.invoiceDate || String(inv.createdAt || '').slice(0, 10);
+
+    // Frozen gross for one invoice — the list/PDF figure, never recomputed.
+    const invoiceFrozenGross = (inv) => invoiceVAT(inv, invoiceSubtotal(inv.lineItems)).total;
+
+    // Issued (sent/paid) invoices whose ledger date falls in the tax year,
+    // oldest first. Returns [{ invoice, production, dateISO }].
+    function issuedInvoicesInTaxYear(productions, startYear) {
+      const { startISO, endISO } = taxYearBounds(startYear);
+      const out = [];
+      for (const p of productions || []) {
+        for (const inv of p.invoices || []) {
+          if (inv.status !== 'sent' && inv.status !== 'paid') continue;
+          const d = invoiceLedgerDate(inv);
+          if (d >= startISO && d <= endISO) out.push({ invoice: inv, production: p, dateISO: d });
+        }
+      }
+      out.sort((a, b) => a.dateISO.localeCompare(b.dateISO) ||
+        String(a.invoice.invoiceNumber || '').localeCompare(String(b.invoice.invoiceNumber || '')));
+      return out;
+    }
+
+    // Tax years the picker offers: every year holding at least one issued
+    // invoice, newest first. Empty ⇒ the Settings block stays hidden.
+    function accountantTaxYears(productions) {
+      const years = new Set();
+      for (const p of productions || []) {
+        for (const inv of p.invoices || []) {
+          if (inv.status !== 'sent' && inv.status !== 'paid') continue;
+          const y = taxYearOf(invoiceLedgerDate(inv));
+          if (y != null) years.add(y);
+        }
+      }
+      return [...years].sort((a, b) => b - a);
+    }
+
+    // CSV status: stable sentence-case words (an accountant's ledger, not the
+    // UI chip). Paid wins; otherwise the app's own overdue predicate decides.
+    const accountantStatus = (inv, todayMs) =>
+      inv.status === 'paid' ? 'Paid' : (isOverdueSent(inv, todayMs) ? 'Overdue' : 'Sent');
+
+    // One identifying cell: the client (who pays), with the production title
+    // added when it says something the client name doesn't.
+    function accountantClientCell(inv) {
+      const client = String(inv.toName || '').trim();
+      const job = String(inv.jobTitle || '').trim();
+      if (client && job && client.toLowerCase() !== job.toLowerCase()) return `${client} / ${job}`;
+      return client || job;
+    }
+
+    // The ruled six columns — one row per issued invoice dated in the year.
+    const ACCOUNTANT_CSV_HEADERS = ['Invoice date', 'Client / production', 'Invoice number', 'Gross (GBP)', 'Date paid', 'Status'];
+    function formatAccountantCsv(entries, todayMs) {
+      const rows = [ACCOUNTANT_CSV_HEADERS.join(',')];
+      for (const { invoice, dateISO } of entries) {
+        rows.push([
+          fmtExportDate(dateISO),
+          accountantClientCell(invoice),
+          invoice.invoiceNumber || '',
+          fmtExportNum(invoiceFrozenGross(invoice)),
+          fmtExportDate(invoice.datePaid),
+          accountantStatus(invoice, todayMs),
+        ].map(csvCell).join(','));
+      }
+      return rows.join('\r\n') + '\r\n';
+    }
+
+    // Plain-text summary: headline totals, the month table, mileage. "Received"
+    // means paid by the tax year's last day, so invoiced = received + outstanding
+    // always holds (the two buckets partition the year's invoices).
+    function formatAccountantSummary(entries, productions, userPrefs, startYear, now) {
+      const { startISO, endISO } = taxYearBounds(startYear);
+      const todayStr = now.toISOString().slice(0, 10);
+      const fmtLong = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const monthName = (ym) => new Date(ym + '-01T12:00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+
+      const paidByEnd = ({ invoice }) => !!invoice.datePaid && invoice.datePaid <= endISO;
+      const sumGross = (list) => list.reduce((s, e) => s + invoiceFrozenGross(e.invoice), 0);
+      const invoiced = sumGross(entries);
+      const received = sumGross(entries.filter(paidByEnd));
+      const outstanding = sumGross(entries.filter(e => !paidByEnd(e)));
+
+      // Apr → Mar month keys for the table.
+      const months = [];
+      for (let i = 0; i < 12; i++) {
+        const mIdx = (3 + i) % 12;
+        const y = startYear + (mIdx < 3 ? 1 : 0);
+        months.push(`${y}-${String(mIdx + 1).padStart(2, '0')}`);
+      }
+      const invoicedBy = {}, receivedBy = {};
+      for (const e of entries) {
+        const im = e.dateISO.slice(0, 7);
+        invoicedBy[im] = (invoicedBy[im] || 0) + invoiceFrozenGross(e.invoice);
+        if (paidByEnd(e)) {
+          const rm = e.invoice.datePaid.slice(0, 7);
+          receivedBy[rm] = (receivedBy[rm] || 0) + invoiceFrozenGross(e.invoice);
+        }
+      }
+      const row = (label, a, b) => `${label.padEnd(16)}${a.padStart(12)}${b.padStart(14)}`;
+
+      // Miles logged: the user's own day records inside the year. Days dated
+      // today or later are excluded — the same aggregate-earnings date rule the
+      // Stats screen applies (logged means driven, not pre-loaded).
+      let milesLogged = 0;
+      for (const p of productions || []) {
+        const ids = userCrewIdsInProduction(p, userPrefs);
+        if (!ids.length) continue;
+        for (const d of p.days || []) {
+          if (!ids.includes(d.crewId)) continue;
+          if (!d.date || d.date < startISO || d.date > endISO || d.date >= todayStr) continue;
+          milesLogged += Number(d.miles) || 0;
+        }
+      }
+      // Mileage invoiced: frozen Mileage lines on the year's issued invoices.
+      let mileageInvoiced = 0;
+      for (const { invoice } of entries) {
+        for (const li of invoice.lineItems || []) {
+          if (/mileage/i.test(li.label || '')) mileageInvoiced += Number(getLineTotal(li)) || 0;
+        }
+      }
+
+      const forName = (userPrefs.legalName || userPrefs.displayName || '').trim();
+      const lines = [
+        'TimeMachine accountant summary',
+        `Tax year ${taxYearLabel(startYear)} (${fmtLong(startISO)} to ${fmtLong(endISO)})`,
+      ];
+      if (forName) lines.push(`For: ${forName}`);
+      lines.push(`Generated: ${fmtLong(todayStr)}`, '');
+      lines.push(
+        `Invoices issued: ${entries.length}`,
+        `Total invoiced (gross): ${fmtGBP(invoiced)}`,
+        `Total received by ${fmtLong(endISO)}: ${fmtGBP(received)}`,
+        `Outstanding at ${fmtLong(endISO)}: ${fmtGBP(outstanding)}`,
+        '',
+        'Month by month',
+        row('Month', 'Invoiced', 'Received'),
+      );
+      for (const ym of months) {
+        lines.push(row(monthName(ym), fmtGBP(invoicedBy[ym] || 0), fmtGBP(receivedBy[ym] || 0)));
+      }
+      lines.push(row('Total', fmtGBP(invoiced), fmtGBP(received)), '');
+      lines.push(
+        'Mileage',
+        `Miles logged: ${milesLogged.toLocaleString('en-GB', { maximumFractionDigits: 1 })}`,
+        `Mileage invoiced: ${fmtGBP(mileageInvoiced)}`,
+        '',
+        'All figures are gross (including VAT where charged) and come from issued invoices dated in this tax year, exactly as sent. Draft invoices are not included. The CSV alongside lists every invoice.',
+      );
+      return lines.join('\n') + '\n';
+    }
+
+    // The two files the share sheet delivers. Pure — callers pass the clock.
+    function accountantExportFiles(productions, userPrefs, startYear, now = new Date()) {
+      const todayMs = new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime();
+      const entries = issuedInvoicesInTaxYear(productions, startYear);
+      const label = taxYearLabel(startYear);
+      return [
+        { filename: `timemachine-${label}-invoices.csv`, content: formatAccountantCsv(entries, todayMs), mime: 'text/csv' },
+        { filename: `timemachine-${label}-summary.txt`, content: formatAccountantSummary(entries, productions, userPrefs, startYear, now), mime: 'text/plain' },
+      ];
     }
 
     function getDisplayStatus(invoice) {
@@ -24320,6 +24555,16 @@ const confirmDelete = (p) => setConfirmOpts({
         }
       };
 
+      // Accountant export (Settings → Data & backup). Years offered = tax years
+      // holding at least one issued invoice; the export itself reads frozen
+      // snapshots only (see the ACCOUNTANT EXPORT block).
+      const accountantYears = React.useMemo(() => accountantTaxYears(productions), [productions]);
+      const handleExportAccountant = (startYear) => {
+        const files = accountantExportFiles(productions, userPrefs, Number(startYear));
+        deliverTextFiles(files, `TimeMachine accountant export ${taxYearLabel(Number(startYear))}`)
+          .catch((e) => { try { console.error('Accountant export failed', e); } catch (_) {} });
+      };
+
       const handleUpdateDays = (id, updater) => {
         setProductions(prev => prev.map(p =>
           p.id === id
@@ -24553,6 +24798,8 @@ const confirmDelete = (p) => setConfirmOpts({
             setUserPrefs={setUserPrefs}
             onClose={() => setShowSettings(false)}
             onExport={handleExport}
+            onExportAccountant={handleExportAccountant}
+            accountantYears={accountantYears}
             onResetAll={handleResetAll}
             productionCount={productions.length}
             topBarLayout={topBarLayout}

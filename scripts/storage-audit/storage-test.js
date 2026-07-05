@@ -6693,6 +6693,58 @@ async function main() {
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
 
+  // ════════════════════════════════════════════════════════════════
+  // AE — Accountant export (tax-year CSV + summary). The money rule this
+  // series pins: every figure comes from FROZEN invoice snapshots
+  // (invoiceSubtotal over stored lineItems + invoiceVAT) — the accountant
+  // block must never recompute through the engine or the accounting-format
+  // export path. Plus the UK tax-year boundary, issued-only scope, the
+  // ruled filenames, and the one-share-sheet delivery. Source-presence
+  // (calc engine untouched — see audit:build).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    // The accountant block proper: from taxYearOf to getDisplayStatus.
+    const aStart = html.indexOf('function taxYearOf');
+    const aEnd = html.indexOf('function getDisplayStatus');
+    const acct = (aStart > 0 && aEnd > aStart) ? html.slice(aStart, aEnd) : '';
+
+    check('AE1a UK tax-year boundary: 5 Apr belongs to the prior year, 6 Apr starts the new one',
+      /return `\$\{m\[2\]\}-\$\{m\[3\]\}` >= '04-06' \? Number\(m\[1\]\) : Number\(m\[1\]\) - 1;/.test(acct));
+    check('AE1b taxYearBounds spans 6 April to 5 April',
+      /startISO: `\$\{y\}-04-06`, endISO: `\$\{y \+ 1\}-04-05`/.test(acct));
+
+    check('AE2a gross = frozen snapshot figure (invoiceVAT over invoiceSubtotal(inv.lineItems))',
+      /const invoiceFrozenGross = \(inv\) => invoiceVAT\(inv, invoiceSubtotal\(inv\.lineItems\)\)\.total;/.test(acct));
+    check('AE2b the accountant block never recomputes: no engine or accounting-export call inside',
+      acct.length > 0 &&
+      !/buildInvoiceLineItems|invoiceExportFigures|calcForDisplay|calculateDay\(/.test(acct));
+
+    check('AE3 issued-only scope: sent/paid filter guards BOTH the row collector and the year list',
+      (acct.match(/inv\.status !== 'sent' && inv\.status !== 'paid'/g) || []).length >= 2);
+
+    check('AE4 ruled filenames: timemachine-<year>-invoices.csv + timemachine-<year>-summary.txt',
+      /timemachine-\$\{label\}-invoices\.csv/.test(acct) &&
+      /timemachine-\$\{label\}-summary\.txt/.test(acct));
+
+    check('AE5a received/outstanding partition the year (paid-by-year-end predicate)',
+      /const paidByEnd = \(\{ invoice \}\) => !!invoice\.datePaid && invoice\.datePaid <= endISO;/.test(acct));
+    check('AE5b miles logged excludes today/future days (aggregate-earnings date rule)',
+      /if \(!d\.date \|\| d\.date < startISO \|\| d\.date > endISO \|\| d\.date >= todayStr\) continue;/.test(acct));
+    check('AE5c mileage invoiced reads frozen Mileage lines via getLineTotal',
+      /if \(\/mileage\/i\.test\(li\.label \|\| ''\)\) mileageInvoiced \+= Number\(getLineTotal\(li\)\) \|\| 0;/.test(acct));
+
+    check('AE6a two files leave through ONE native share sheet (deliverTextFiles → nativeSaveAndShareMany)',
+      /async function deliverTextFiles\(files, title\) \{\s*if \(IS_NATIVE\) return nativeSaveAndShareMany\(files, \{ title \}\);/.test(html));
+    check('AE6b nativeSaveAndShareMany passes every uri in a single Share.share files array',
+      /await Share\.share\(\{ title: opts\.title \|\| \(files\[0\] && files\[0\]\.filename\) \|\| '', files: uris \}\);/.test(html));
+
+    check('AE7a Settings block appears only once an issued invoice exists (accountantYears gate)',
+      /\{accountantYears\.length > 0 && \(/.test(html));
+    check('AE7b year picker defaults to the most recent COMPLETE tax year',
+      /const complete = accountantYears\.filter\(y => y < current\);/.test(html) &&
+      /return \(complete\[0\] \?\? accountantYears\[0\]\) \?\? null;/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.
