@@ -6784,6 +6784,58 @@ async function main() {
       /const recipient = \(invoice\.toEmail \|\| ''\)\.trim\(\);[\s\S]{0,120}buildChaseEmailContent\(invoice, userPrefs\);/.test(chase));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // IB — iCloud snapshot backup. Pins: the SINGLE payload builder shared by
+  // manual export and iCloud snapshot (v2 envelope carrying the behavioural
+  // ledgers + invoice charges), importBackup's guarded ledger restore with
+  // rollback, the daily/empty/onboarding sweep guards, filename + last-7
+  // prune, silent degradation, and both restore routes going through
+  // importBackup. Web build untouched (see audit:web check 6).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    check('IB1a one envelope: BACKUP_LEDGER_KEYS carries overdue-fired, LA events, invoice charges',
+      /const BACKUP_LEDGER_KEYS = \{\s*overdueFired: 'bigals_overdue_fired',\s*laAppliedEvents: 'bigals_la_applied_events',\s*invoiceCharges: 'bigals_invoice_charges',\s*\};/.test(html));
+    check('IB1b buildBackupPayload is version 2 and includes the ledgers field',
+      /version: 2,[\s\S]{0,220}productions,\s*userPrefs,\s*ledgers,\s*\};/.test(html));
+    check('IB1c the manual export uses buildBackupPayload (no second payload shape)',
+      /const payload = JSON\.stringify\(buildBackupPayload\(productions, userPrefs, now\), null, 2\);/.test(html));
+    check('IB1d the iCloud sweep writes the SAME builder\'s output',
+      /ICloudBackup\.write\(filename, JSON\.stringify\(buildBackupPayload\(prods, prefs\)\)\)/.test(html));
+
+    check('IB2a importBackup restores ledgers ONLY when the backup carries them (v1 backups leave device ledgers untouched)',
+      /const importedLedgers = \(parsed && parsed\.ledgers && typeof parsed\.ledgers === 'object' &&\s*!Array\.isArray\(parsed\.ledgers\)\) \? parsed\.ledgers : null;/.test(html) &&
+      /if \(importedLedgers\) \{\s*for \(const \[field, key\] of Object\.entries\(BACKUP_LEDGER_KEYS\)\) \{\s*if \(importedLedgers\[field\] !== undefined\)/.test(html));
+    check('IB2b migration failure rolls the ledgers back alongside productions/prefs',
+      /rollbackLedgers\(\);\s*console\.log\('Migration failed:', result\.error\);/.test(html));
+
+    check('IB3a sweep is at most once per calendar day (meta ledger gate)',
+      /if \(meta\.lastWriteDay === today\) return;/.test(html));
+    check('IB3b sweep never snapshots an empty data set or mid-onboarding',
+      /if \(!prods \|\| prods\.length === 0\) return;/.test(html) &&
+      /if \(!prefs \|\| !prefs\.onboardingComplete\) return;/.test(html));
+    check('IB3c sweep degrades silently when iCloud is unavailable',
+      /const st = await ICloudBackup\.status\(\);\s*if \(!st\.available\) return;/.test(html));
+    check('IB3d sweep arms on the backgrounding half of appStateChange',
+      /addListener\('appStateChange', \(s\) => \{ if \(s && !s\.isActive\) icloudBackupSweep\(\); \}\)/.test(html));
+
+    check('IB4a snapshots are date-stamped snapshot-YYYY-MM-DD.json',
+      /const filename = `snapshot-\$\{today\}\.json`;/.test(html));
+    check('IB4b prune keeps the last 7 (lexicographic = chronological on date-stamped names)',
+      /names\.slice\(0, Math\.max\(0, names\.length - 7\)\)/.test(html));
+
+    check('IB5a fresh-install offer routes through importBackup and reloads',
+      /const res = raw != null \? importBackup\(raw\)/.test(html));
+    check('IB5b Settings iCloud restore routes through importBackup behind the ConfirmDialog step',
+      /title: "Restore from iCloud\?",[\s\S]{0,400}const result = importBackup\(raw\);/.test(html));
+    check('IB5c the Settings status line carries the honest strings',
+      /`Last backup: \$\{fmtSnapDate\(icloudInfo\.meta\.lastWriteAt\)\}`/.test(html) &&
+      /'iCloud backup unavailable - sign in to iCloud\.'/.test(html));
+
+    check('IB6 reset-all clears the backup meta (snapshots themselves stay in iCloud)',
+      /storage\.remove\("bigals_icloud_backup_meta"\);/.test(html));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.

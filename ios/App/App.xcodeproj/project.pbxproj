@@ -18,6 +18,7 @@
 		5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */; };
 		A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */; };
 		A1C04ED02FE0B20000FE2310 /* HealthStepsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04ED12FE0B20000FE2310 /* HealthStepsPlugin.swift */; };
+		A1C04EE02FE0C10000FE2310 /* ICloudBackupPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C04EE12FE0C10000FE2310 /* ICloudBackupPlugin.swift */; };
 		B144A1722FD8CA2B00FE2310 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B144A1712FD8CA2B00FE2310 /* WidgetKit.framework */; };
 		B144A1742FD8CA2B00FE2310 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B144A1732FD8CA2B00FE2310 /* SwiftUI.framework */; };
 		B144A1832FD8CA2C00FE2310 /* TimeMachineWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -68,6 +69,7 @@
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconPlugin.swift; sourceTree = "<group>"; };
 		A1C04ED12FE0B20000FE2310 /* HealthStepsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStepsPlugin.swift; sourceTree = "<group>"; };
+		A1C04EE12FE0C10000FE2310 /* ICloudBackupPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudBackupPlugin.swift; sourceTree = "<group>"; };
 		B144A16F2FD8CA2B00FE2310 /* TimeMachineWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TimeMachineWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B144A1712FD8CA2B00FE2310 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		B144A1732FD8CA2B00FE2310 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -154,6 +156,7 @@
 				B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */,
 				A1C04EC12FE0A10000FE2310 /* AppIconPlugin.swift */,
 				A1C04ED12FE0B20000FE2310 /* HealthStepsPlugin.swift */,
+				A1C04EE12FE0C10000FE2310 /* ICloudBackupPlugin.swift */,
 				5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */,
 				B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */,
 				B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */,
@@ -305,6 +308,7 @@
 				B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */,
 				A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */,
 				A1C04ED02FE0B20000FE2310 /* HealthStepsPlugin.swift in Sources */,
+				A1C04EE02FE0C10000FE2310 /* ICloudBackupPlugin.swift in Sources */,
 				5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */,
 				B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */,
 				B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */,

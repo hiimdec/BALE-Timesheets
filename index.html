@@ -1228,6 +1228,47 @@
       },
     };
 
+    // ── iCloud snapshot backup bridge (R2) ──────────────────────────────────
+    // Talks to the app-embedded ICloudBackupPlugin (ubiquity container ROOT —
+    // never the Documents/ subfolder, so nothing appears in the Files app).
+    // EVERY method is a safe no-op on web and when the plugin is absent: each
+    // returns its web-safe default before touching the Capacitor bridge unless
+    // IS_NATIVE (audit:web). Failures degrade silently by design — iCloud
+    // signed out / full / offline must never surface; manual export remains
+    // the fallback.
+    const ICloudBackup = {
+      async status() {
+        if (!IS_NATIVE) return { available: false, reason: 'web' };
+        try { const p = _capPlugins().ICloudBackup; if (p && p.status) { const r = await p.status(); return { available: !!(r && r.available), reason: (r && r.reason) || '' }; } }
+        catch (e) { try { console.warn('[ICloudBackup] status failed', (e && e.message) || e); } catch (_) {} }
+        return { available: false, reason: 'plugin-missing' };
+      },
+      async write(filename, data) {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().ICloudBackup; if (p && p.writeSnapshot) { const r = await p.writeSnapshot({ filename, data }); return !!(r && r.ok); } }
+        catch (e) { try { console.warn('[ICloudBackup] write failed', (e && e.message) || e); } catch (_) {} }
+        return false;
+      },
+      async list() {
+        if (!IS_NATIVE) return [];
+        try { const p = _capPlugins().ICloudBackup; if (p && p.listSnapshots) { const r = await p.listSnapshots(); return Array.isArray(r && r.snapshots) ? r.snapshots : []; } }
+        catch (e) { try { console.warn('[ICloudBackup] list failed', (e && e.message) || e); } catch (_) {} }
+        return [];
+      },
+      async read(filename) {
+        if (!IS_NATIVE) return null;
+        try { const p = _capPlugins().ICloudBackup; if (p && p.readSnapshot) { const r = await p.readSnapshot({ filename }); return (r && typeof r.data === 'string') ? r.data : null; } }
+        catch (e) { try { console.warn('[ICloudBackup] read failed', (e && e.message) || e); } catch (_) {} }
+        return null;
+      },
+      async remove(filename) {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().ICloudBackup; if (p && p.deleteSnapshot) { const r = await p.deleteSnapshot({ filename }); return !!(r && r.ok); } }
+        catch (e) { try { console.warn('[ICloudBackup] remove failed', (e && e.message) || e); } catch (_) {} }
+        return false;
+      },
+    };
+
     // ── Health steps cache — the Legwork ledger (H3) ────────────────────────
     // dayRecordId → { steps, windowStart, windowEnd, fetchedAt, settled }.
     // Its OWN storage key, ledger pattern (ref-loaded once, write-through,
@@ -3784,6 +3825,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     // Validates, version-checks, writes to localStorage, runs migrations, returns { ok, error }.
     // Caller is responsible for calling window.location.reload() on ok.
+    // ── backup envelope (R2) ─────────────────────────────────────────────
+    // The ledger side-channels a backup carries ALONGSIDE productions/userPrefs
+    // — behavioural ledgers (so a restored device doesn't re-fire reminders or
+    // re-apply events) and the late-payment charges ledger (money already
+    // claimed must survive a restore). Backwards compatible both ways: an old
+    // app ignores the extra field; an old backup without it leaves the
+    // device's ledgers untouched on import.
+    const BACKUP_LEDGER_KEYS = {
+      overdueFired: 'bigals_overdue_fired',
+      laAppliedEvents: 'bigals_la_applied_events',
+      invoiceCharges: 'bigals_invoice_charges',
+    };
+    // SINGLE payload builder for the manual export AND the iCloud snapshot —
+    // the two can never drift. version 2 marks the ledgers envelope.
+    function buildBackupPayload(productions, userPrefs, now = new Date()) {
+      const ledgers = {};
+      for (const [field, key] of Object.entries(BACKUP_LEDGER_KEYS)) {
+        try {
+          const raw = storage.get(key);
+          if (raw) ledgers[field] = JSON.parse(raw);
+        } catch (_) {}
+      }
+      return {
+        version: 2,
+        appVersion: APP_VERSION,
+        schemaVersion: SCHEMA_VERSION,
+        exportDate: now.toISOString(),
+        exportedAt: now.toISOString(),
+        productions,
+        userPrefs,
+        ledgers,
+      };
+    }
+
     function importBackup(rawText) {
       let parsed;
       try { parsed = JSON.parse(rawText); } catch { return { ok: false, error: "Couldn't read that file. Is it a TimeMachine backup?" }; }
@@ -3803,15 +3878,38 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // untouched (never clobber bank details / settings with defaults).
       const importedPrefs = (parsed && typeof parsed === 'object' && parsed.userPrefs &&
         typeof parsed.userPrefs === 'object' && !Array.isArray(parsed.userPrefs)) ? parsed.userPrefs : null;
+      // Ledgers restore only when the backup actually carries them (v2
+      // envelope) — a v1 backup leaves the device's ledgers untouched, the
+      // same principle as the prefs guard above.
+      const importedLedgers = (parsed && parsed.ledgers && typeof parsed.ledgers === 'object' &&
+        !Array.isArray(parsed.ledgers)) ? parsed.ledgers : null;
       const originalProductions = storage.get('bigals_productions');
       const originalSchemaVersion = storage.get(SCHEMA_VERSION_KEY);
       const originalUserPrefs = storage.get('bigals_user_prefs');
+      const originalLedgers = {};
+      if (importedLedgers) {
+        for (const key of Object.values(BACKUP_LEDGER_KEYS)) originalLedgers[key] = storage.get(key);
+      }
+      const rollbackLedgers = () => {
+        if (!importedLedgers) return;
+        for (const key of Object.values(BACKUP_LEDGER_KEYS)) {
+          if (originalLedgers[key] != null) storage.set(key, originalLedgers[key]);
+          else storage.remove(key);
+        }
+      };
       try {
         storage.set('bigals_productions', JSON.stringify(arr));
         setStoredSchemaVersion(fileSchemaVersion);
         // Merge over DEFAULT_USER_PREFS so an older-schema prefs object gains any
         // newer keys (the same normalisation useStoredState applies on read).
         if (importedPrefs) storage.set('bigals_user_prefs', JSON.stringify({ ...DEFAULT_USER_PREFS, ...importedPrefs }));
+        if (importedLedgers) {
+          for (const [field, key] of Object.entries(BACKUP_LEDGER_KEYS)) {
+            if (importedLedgers[field] !== undefined) {
+              try { storage.set(key, JSON.stringify(importedLedgers[field])); } catch (_) {}
+            }
+          }
+        }
         const result = runMigrations();
         if (result.error) {
           if (originalProductions != null) storage.set('bigals_productions', originalProductions);
@@ -3822,6 +3920,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             if (originalUserPrefs != null) storage.set('bigals_user_prefs', originalUserPrefs);
             else storage.remove('bigals_user_prefs');
           }
+          rollbackLedgers();
           console.log('Migration failed:', result.error);
           return { ok: false, error: "Couldn't bring this backup up to date - it may be damaged. Try another backup." };
         }
@@ -18505,6 +18604,55 @@ const setDays = (updater) =>
         const complete = accountantYears.filter(y => y < current);
         return (complete[0] ?? accountantYears[0]) ?? null;
       });
+      // iCloud backup (R2, native only): honest status line + the missed-
+      // discovery restore route. Status reads the meta ledger + the plugin;
+      // restore lists snapshots and routes through the SAME importBackup +
+      // ConfirmDialog step the file restore uses.
+      const [icloudInfo, setIcloudInfo] = useState(null);   // { available, reason, meta }
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        let dead = false;
+        (async () => {
+          let meta = {};
+          try { meta = JSON.parse(storage.get('bigals_icloud_backup_meta') || '{}') || {}; } catch (_) {}
+          const st = await ICloudBackup.status();
+          if (!dead) setIcloudInfo({ ...st, meta });
+        })();
+        return () => { dead = true; };
+      }, []);
+      const [icloudSheet, setIcloudSheet] = useState(null); // null | 'loading' | { snapshots }
+      const fmtSnapDate = (iso) => {
+        const m = String(iso || '').match(/(\d{4}-\d{2}-\d{2})/);
+        return m ? new Date(m[1] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+      };
+      const openIcloudSheet = async () => {
+        setIcloudSheet('loading');
+        const snaps = (await ICloudBackup.list())
+          .filter(s => s && typeof s.name === 'string' && /^snapshot-\d{4}-\d{2}-\d{2}\.json$/.test(s.name))
+          .sort((a, b) => b.name.localeCompare(a.name));
+        setIcloudSheet({ snapshots: snaps });
+      };
+      const pickIcloudSnapshot = async (name) => {
+        setIcloudSheet(null);
+        const raw = await ICloudBackup.read(name);
+        if (raw == null) { showToast("Couldn't download that backup. Check your connection and try again."); return; }
+        let count = null;
+        try { const parsed = JSON.parse(raw); count = Array.isArray(parsed?.productions) ? parsed.productions.length : null; } catch (_) {}
+        const n = count == null ? '' : `${count} production${count === 1 ? '' : 's'} from `;
+        setConfirmOpts({
+          title: "Restore from iCloud?",
+          message: `Restore ${n}the ${fmtSnapDate(name)} snapshot? This replaces everything currently on this device, and there's no getting it back.`,
+          confirmLabel: "Restore",
+          confirmTone: "danger",
+          onConfirm: async () => {
+            const result = importBackup(raw);
+            if (result.ok) {
+              if (storage.isNative) await storage.flush();
+              window.location.reload();
+            } else { showToast(result.error); }
+          },
+        });
+      };
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
@@ -19287,6 +19435,15 @@ const setDays = (updater) =>
                     </div>
                   );
                 })()}
+                {IS_NATIVE && icloudInfo && (
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] text-neutral-400 leading-relaxed">
+                    {icloudInfo.available
+                      ? (icloudInfo.meta && icloudInfo.meta.lastWriteAt
+                          ? `Last backup: ${fmtSnapDate(icloudInfo.meta.lastWriteAt)}`
+                          : 'iCloud backup is on - the first snapshot is made when you close the app.')
+                      : 'iCloud backup unavailable - sign in to iCloud.'}
+                  </div>
+                )}
                 <div>
                   <Btn variant="ghost" onClick={onExport}><IDownload/>Export backup</Btn>
                   <p className="text-[10px] text-neutral-500 mt-1">Downloads all your productions to a single backup file. It holds your data, so keep it somewhere private.</p>
@@ -19316,6 +19473,52 @@ const setDays = (updater) =>
                   <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
                   <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with a previously exported backup file.</p>
                 </div>
+                {IS_NATIVE && icloudInfo && icloudInfo.available && (
+                  <div>
+                    <Btn variant="ghost" onClick={openIcloudSheet}><IUpload/>Restore from iCloud</Btn>
+                    <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with one of the app's automatic iCloud snapshots.</p>
+                    {icloudSheet && (
+                      <div
+                        className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+                        style={{ backgroundColor: 'rgba(0,0,0,0.82)', zIndex: 80 }}
+                        onClick={() => setIcloudSheet(null)}
+                      >
+                        <div
+                          className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
+                          style={{ maxWidth: 420 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="px-5 pt-5 pb-3">
+                            <div className="text-sm font-bold text-neutral-100">Restore from iCloud</div>
+                            <p className="text-[11px] text-neutral-500 mt-1">The app keeps up to seven daily snapshots. Pick one to restore.</p>
+                          </div>
+                          <div className="px-4 pb-4 flex flex-col gap-2">
+                            {icloudSheet === 'loading' && (
+                              <div className="text-[11px] text-neutral-500 italic py-2 px-1">Looking in iCloud…</div>
+                            )}
+                            {icloudSheet !== 'loading' && icloudSheet.snapshots.length === 0 && (
+                              <div className="text-[11px] text-neutral-500 italic py-2 px-1">No snapshots yet - one is made daily when you close the app.</div>
+                            )}
+                            {icloudSheet !== 'loading' && icloudSheet.snapshots.map(s => (
+                              <button
+                                key={s.name}
+                                type="button"
+                                onClick={() => pickIcloudSnapshot(s.name)}
+                                className="w-full text-left px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-lg hover:border-neutral-600 transition-colors"
+                              >
+                                <div className="text-[13px] font-semibold text-neutral-100">{fmtSnapDate(s.name)}</div>
+                                <div className="text-[10px] text-neutral-500 mt-0.5">
+                                  {s.size > 0 ? `${Math.max(1, Math.round(s.size / 1024))} KB` : 'In iCloud'}{s.downloaded === false ? ' - will download first' : ''}
+                                </div>
+                              </button>
+                            ))}
+                            <Btn variant="ghost" onClick={() => setIcloudSheet(null)} className="w-full justify-center mt-1">Cancel</Btn>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="border-t border-neutral-800 pt-3">
                   <Btn variant="danger" onClick={() => setConfirmOpts({
                     title: "Reset everything?",
@@ -24183,6 +24386,99 @@ const confirmDelete = (p) => setConfirmOpts({
         return () => { try { if (handle && handle.remove) handle.remove(); } catch (_) {} };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+      // ── iCloud snapshot backup sweep (R2) ────────────────────────────────
+      // Automatic, invisible: on backgrounding (the same appStateChange hook
+      // the storage flush uses), write ONE snapshot per calendar day to the
+      // app's private iCloud container and prune to the last 7. Every failure
+      // path returns silently — signed out / quota full / airplane mode must
+      // never surface (the manual export remains the fallback). Guards: never
+      // snapshots an EMPTY data set (a fresh install backgrounded before
+      // restore must not shadow the real snapshots with an empty one), and
+      // never before onboarding completes. Meta lives in its own ledger key.
+      const ICLOUD_BACKUP_META_KEY = 'bigals_icloud_backup_meta';
+      const icloudBackupStateRef = React.useRef({ productions: [], userPrefs: null });
+      icloudBackupStateRef.current = { productions, userPrefs };
+      const icloudBackupSweep = React.useCallback(async () => {
+        if (!IS_NATIVE) return;
+        try {
+          const { productions: prods, userPrefs: prefs } = icloudBackupStateRef.current;
+          if (!prods || prods.length === 0) return;            // nothing worth snapshotting
+          if (!prefs || !prefs.onboardingComplete) return;      // never mid-onboarding
+          const today = todayISO();
+          let meta = {};
+          try { meta = JSON.parse(storage.get(ICLOUD_BACKUP_META_KEY) || '{}') || {}; } catch (_) {}
+          if (meta.lastWriteDay === today) return;              // at most once per day
+          const st = await ICloudBackup.status();
+          if (!st.available) return;                            // silent degradation
+          const filename = `snapshot-${today}.json`;
+          const ok = await ICloudBackup.write(filename, JSON.stringify(buildBackupPayload(prods, prefs)));
+          if (!ok) return;
+          try { storage.set(ICLOUD_BACKUP_META_KEY, JSON.stringify({ lastWriteDay: today, lastWriteAt: new Date().toISOString(), lastFilename: filename })); } catch (_) {}
+          // Prune to the last 7 — names are date-stamped, so lexicographic
+          // order IS chronological order.
+          const names = (await ICloudBackup.list())
+            .map(s => s && s.name)
+            .filter(n => typeof n === 'string' && /^snapshot-\d{4}-\d{2}-\d{2}\.json$/.test(n))
+            .sort();
+          for (const n of names.slice(0, Math.max(0, names.length - 7))) {
+            try { await ICloudBackup.remove(n); } catch (_) {}
+          }
+        } catch (_) {} // invisible by design
+      }, []);
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        let handle = null;
+        try {
+          const AppPlg = _capPlugins().App;
+          if (AppPlg && AppPlg.addListener) {
+            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && !s.isActive) icloudBackupSweep(); }))
+              .then(h => { handle = h; }).catch(() => {});
+          }
+        } catch (_) {}
+        return () => { try { if (handle && handle.remove) handle.remove(); } catch (_) {} };
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      // ── Fresh-install restore discovery (R2) ─────────────────────────────
+      // Native, no data, onboarding not started → look for iCloud snapshots
+      // BEFORE onboarding renders. The plugin's metadata query is bounded at
+      // ~5s; a 6s guard here falls through to onboarding regardless. Declining
+      // is remembered for this launch only — a cold relaunch on a still-empty
+      // install offers again. Web: state initialises to 'none', zero effect.
+      const [icloudRestore, setIcloudRestore] = useState(() =>
+        (IS_NATIVE && productions.length === 0 && !userPrefs.onboardingComplete) ? 'checking' : 'none');
+      const [icloudRestoreBusy, setIcloudRestoreBusy] = useState(false);
+      const [icloudRestoreError, setIcloudRestoreError] = useState(null);
+      useEffect(() => {
+        if (icloudRestore !== 'checking') return;
+        let cancelled = false;
+        const guard = setTimeout(() => { if (!cancelled) setIcloudRestore('none'); }, 6000);
+        (async () => {
+          try {
+            const snaps = await ICloudBackup.list();
+            if (cancelled) return;
+            const usable = snaps
+              .filter(s => s && typeof s.name === 'string' && /^snapshot-\d{4}-\d{2}-\d{2}\.json$/.test(s.name))
+              .sort((a, b) => b.name.localeCompare(a.name));
+            setIcloudRestore(usable.length ? { snapshots: usable } : 'none');
+          } catch (_) { if (!cancelled) setIcloudRestore('none'); }
+          finally { clearTimeout(guard); }
+        })();
+        return () => { cancelled = true; clearTimeout(guard); };
+      }, [icloudRestore]); // eslint-disable-line react-hooks/exhaustive-deps
+      // Restore = download + the SAME importBackup every restore path uses
+      // (validation, newer-schema refusal, migration, rollback), then reload.
+      const icloudRestoreRun = async (name) => {
+        setIcloudRestoreBusy(true); setIcloudRestoreError(null);
+        try {
+          const raw = await ICloudBackup.read(name);
+          const res = raw != null ? importBackup(raw)
+            : { ok: false, error: "Couldn't download that backup. Check your connection and try again." };
+          if (res.ok) { if (storage.isNative) await storage.flush(); window.location.reload(); return; }
+          setIcloudRestoreError(res.error || "Couldn't restore that backup.");
+        } catch (_) { setIcloudRestoreError("Couldn't restore that backup."); }
+        setIcloudRestoreBusy(false);
+      };
+
       // ── Stage B: today's-active-shoot snapshot ────────────────────────────────
       // So the "log my times" voice intent can resolve the production with NO Live
       // Activity running (solo AND best-boy — id+date only). When the user opens a
@@ -24582,15 +24878,9 @@ const confirmDelete = (p) => setConfirmOpts({
       const handleExport = () => {
         const now = new Date();
         const date = now.toISOString().slice(0, 10);
-        const payload = JSON.stringify({
-          version: 1,
-          appVersion: APP_VERSION,
-          schemaVersion: SCHEMA_VERSION,
-          exportDate: now.toISOString(),
-          exportedAt: now.toISOString(),
-          productions,
-          userPrefs,
-        }, null, 2);
+        // Same envelope as the iCloud snapshot (buildBackupPayload) — the
+        // manual export now carries the ledgers too, so neither path drifts.
+        const payload = JSON.stringify(buildBackupPayload(productions, userPrefs, now), null, 2);
         const filename = `timemachine-backup-${date}.json`;
         if (IS_NATIVE) {
           // Write the JSON to the app's Cache dir and open the iOS share sheet
@@ -24631,6 +24921,10 @@ const confirmDelete = (p) => setConfirmOpts({
           storage.remove("bigals_user_prefs");
           storage.remove(SCHEMA_VERSION_KEY);
           storage.remove(PRE_MIGRATION_BACKUP_KEY);
+          // iCloud backup meta resets with everything else; the snapshots
+          // themselves stay in iCloud (they ARE the safety net), and the
+          // empty-data sweep guard means reset never writes an empty one.
+          storage.remove("bigals_icloud_backup_meta");
           // Native: ensure the deletes hit durable storage before the WebView
           // reloads (fire-and-forget writes would otherwise race the reload).
           // Web: storage.isNative is false, so no await runs — reload is
@@ -24835,7 +25129,41 @@ const confirmDelete = (p) => setConfirmOpts({
       }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive, topBarLayout]);
 
       let screen;
-      if (!userPrefs.onboardingComplete) {
+      if (!userPrefs.onboardingComplete && icloudRestore === 'checking') {
+        // Quiet beat while the metadata query looks for snapshots (≤6s).
+        screen = (
+          <div className="min-h-screen bg-neutral-950 flex items-center justify-center px-6">
+            <div className="text-[12px] text-neutral-500">Checking iCloud for a backup…</div>
+          </div>
+        );
+      } else if (!userPrefs.onboardingComplete && icloudRestore && icloudRestore.snapshots) {
+        const newest = icloudRestore.snapshots[0];
+        const snapDate = (() => {
+          const m = (newest.name || '').match(/(\d{4}-\d{2}-\d{2})/);
+          return m ? new Date(m[1] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+        })();
+        screen = (
+          <div className="min-h-screen bg-neutral-950 flex items-center justify-center px-6" style={{ paddingTop: 'var(--sat)', paddingBottom: 'var(--sab)' }}>
+            <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+              <div className="text-[15px] font-bold text-neutral-100 mb-1.5">Restore from iCloud?</div>
+              <p className="text-[12px] text-neutral-400 leading-relaxed mb-4">
+                A TimeMachine backup from {snapDate} was found in your iCloud. Restore it, or start fresh?
+              </p>
+              {icloudRestoreError && (
+                <p className="text-[11px] text-tm-pen mb-3">{icloudRestoreError}</p>
+              )}
+              <div className="flex flex-col gap-2">
+                <Btn variant="primary" disabled={icloudRestoreBusy} onClick={() => icloudRestoreRun(newest.name)} className="w-full justify-center">
+                  {icloudRestoreBusy ? 'Restoring…' : 'Restore backup'}
+                </Btn>
+                <Btn variant="ghost" disabled={icloudRestoreBusy} onClick={() => setIcloudRestore('none')} className="w-full justify-center">
+                  Start fresh
+                </Btn>
+              </div>
+            </div>
+          </div>
+        );
+      } else if (!userPrefs.onboardingComplete) {
         screen = (
           <OnboardingScreen
             userPrefs={userPrefs}

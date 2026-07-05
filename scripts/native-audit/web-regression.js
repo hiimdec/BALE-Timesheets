@@ -94,7 +94,8 @@ async function main() {
   const at = code.lastIndexOf(close);
   code = code.slice(0, at)
     + '\n;globalThis.__IS_NATIVE = (typeof IS_NATIVE !== "undefined") ? IS_NATIVE : "undefined-symbol";'
-    + '\nglobalThis.__HealthSteps = (typeof HealthSteps !== "undefined") ? HealthSteps : null;\n'
+    + '\nglobalThis.__HealthSteps = (typeof HealthSteps !== "undefined") ? HealthSteps : null;'
+    + '\nglobalThis.__ICloudBackup = (typeof ICloudBackup !== "undefined") ? ICloudBackup : null;\n'
     + code.slice(at);
 
   const sandbox = makeSandbox();
@@ -122,6 +123,22 @@ async function main() {
   }
   check('5a. HealthSteps bridge exposed with web-safe defaults (isAvailable=false, status=unknown, requestRead=false, querySteps=0)', !!HS && hsDefaults);
   check('5b. calling the health bridge touches no plugin layer (window.Capacitor still undefined after the calls)', !!HS && typeof sandbox.Capacitor === 'undefined');
+
+  // 6. iCloud backup unreachable on web: every bridge method resolves its
+  //    web-safe default (unavailable / false / [] / null) without touching a
+  //    plugin layer — the backup machinery is entirely absent from web.
+  const IB = sandbox.__ICloudBackup;
+  let ibDefaults = false;
+  if (IB) {
+    const st = await IB.status();
+    const w = await IB.write('snapshot-2026-01-01.json', '{}');
+    const l = await IB.list();
+    const r = await IB.read('snapshot-2026-01-01.json');
+    const d = await IB.remove('snapshot-2026-01-01.json');
+    ibDefaults = st && st.available === false && w === false && Array.isArray(l) && l.length === 0 && r === null && d === false;
+  }
+  check('6a. ICloudBackup bridge exposed with web-safe defaults (unavailable, write=false, list=[], read=null, remove=false)', !!IB && ibDefaults);
+  check('6b. calling the iCloud bridge touches no plugin layer (window.Capacitor still undefined after the calls)', !!IB && typeof sandbox.Capacitor === 'undefined');
 
   console.log('');
   console.log('============================================================');
