@@ -6389,7 +6389,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const name = savedClient.name || 'this client';
       return (
         <div className="mt-3 bg-sky-950/40 border border-sky-800 rounded-xl px-3 py-2.5 flex items-center gap-2">
-          <span className="text-[12px] text-sky-200 leading-snug flex-1 min-w-0">
+          {/* Sky stays on the CONTAINER (emphasis); the prose itself is
+              neutral — sky text is reserved for brand labels and data. */}
+          <span className="text-[12px] text-neutral-300 leading-snug flex-1 min-w-0">
             Update <span className="font-semibold">{name}</span>'s saved details for next time?
           </span>
           <button
@@ -7582,7 +7584,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2"><IBriefcase size={16}/>Production Setup</h2>
 
           {isUntitled && (
-            <div className="bg-sky-950/40 border border-sky-800 px-4 py-3 text-sm text-sky-300 flex items-center gap-2 rounded-xl">
+            <div className="bg-sky-950/40 border border-sky-800 px-4 py-3 text-sm text-neutral-300 flex items-center gap-2 rounded-xl">
               <IInfo size={14}/> Give this production a name to get started.
             </div>
           )}
@@ -11523,7 +11525,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {anyCrewLunchCurtailed && (
                     <span className="text-[9px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">CURTAILED</span>
                   )}
-                  {deptLunchMins !== null && <div className="text-[11px] text-neutral-500 font-mono ml-auto">{deptLunchMins} mins</div>}
+                  {deptLunchMins !== null && <div className="text-[11px] text-neutral-500 ml-auto"><span className="font-mono">{deptLunchMins}</span> mins</div>}
                 </>
               ) : (
                 <span className="text-neutral-500 text-sm">Tap to set</span>
@@ -11985,7 +11987,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     {curtailedMinutes > 0 ? `${curtailedMinutes}m SHORT` : 'CURT'}
                   </span>
                 )}
-                <span className={`ml-auto text-[11px] font-mono tabular-nums ${durOverridden ? 'text-fuchsia-400' : 'text-neutral-400'}`}>{durValue} mins</span>
+                <span className={`ml-auto text-[11px] ${durOverridden ? 'text-fuchsia-400' : 'text-neutral-400'}`}><span className="font-mono tabular-nums">{durValue}</span> mins</span>
               </>
             ) : (
               <span className="text-neutral-500 text-sm">{tappable ? 'Tap to set' : '-'}</span>
