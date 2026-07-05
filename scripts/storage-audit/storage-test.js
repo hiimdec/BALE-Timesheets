@@ -6713,8 +6713,10 @@ async function main() {
     check('AE1b taxYearBounds spans 6 April to 5 April',
       /startISO: `\$\{y\}-04-06`, endISO: `\$\{y \+ 1\}-04-05`/.test(acct));
 
-    check('AE2a gross = frozen snapshot figure (invoiceVAT over invoiceSubtotal(inv.lineItems))',
-      /const invoiceFrozenGross = \(inv\) => invoiceVAT\(inv, invoiceSubtotal\(inv\.lineItems\)\)\.total;/.test(acct));
+    check('AE2a frozen-gross helper intact AND the export gross follows invoiceCurrentTotal (frozen + charges)',
+      /const invoiceFrozenGross = \(inv\) => invoiceVAT\(inv, invoiceSubtotal\(inv\.lineItems\)\)\.total;/.test(acct) &&
+      /fmtExportNum\(invoiceCurrentTotal\(invoice\)\)/.test(acct) &&
+      /const sumGross = \(list\) => list\.reduce\(\(s, e\) => s \+ invoiceCurrentTotal\(e\.invoice\), 0\);/.test(acct));
     check('AE2b the accountant block never recomputes: no engine or accounting-export call inside',
       acct.length > 0 &&
       !/buildInvoiceLineItems|invoiceExportFigures|calcForDisplay|calculateDay\(/.test(acct));
@@ -6767,8 +6769,8 @@ async function main() {
       /Could you let me know when I can expect payment\? Late-payment charges will apply under the standard terms if it remains unpaid\./.test(chase) &&
       /Thanks,\\n\$\{signoff\}/.test(chase));
 
-    check('CE2a invoiceCurrentTotal reads the FROZEN snapshot (invoiceVAT over stored lineItems)',
-      /function invoiceCurrentTotal\(invoice\) \{\s*return invoiceVAT\(invoice, invoiceSubtotal\(invoice\.lineItems\)\)\.total;\s*\}/.test(chase));
+    check('CE2a invoiceCurrentTotal = FROZEN snapshot total + attached charges record (never a recompute)',
+      /function invoiceCurrentTotal\(invoice\) \{\s*const frozen = invoiceVAT\(invoice, invoiceSubtotal\(invoice\.lineItems\)\)\.total;\s*const ch = invoiceChargesFor\(invoice\.id\);\s*return ch \? frozen \+ \(Number\(ch\.interest\) \|\| 0\) \+ \(Number\(ch\.fixedFee\) \|\| 0\) : frozen;\s*\}/.test(chase));
     check('CE2b the chase amount quotes invoiceCurrentTotal (the late-payment extension seam)',
       /const totalStr = fmtGBP\(invoiceCurrentTotal\(invoice\)\);/.test(chase));
 
@@ -6834,6 +6836,106 @@ async function main() {
 
     check('IB6 reset-all clears the backup meta (snapshots themselves stay in iCloud)',
       /storage\.remove\("bigals_icloud_backup_meta"\);/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // LP — Late payment charges. The statutory logic is EXTRACTED from the
+  // source and EXECUTED here (fee-band boundaries, day-count fencepost,
+  // reference-date selection, table values, stale fallback, override), plus
+  // source pins for the money rules: the frozen invoice is never mutated
+  // (charges are their own ledger record, replaced whole on regeneration),
+  // the dueDate is never written by generation (the overdue-reminder ledger
+  // keys on it), and every owed-money surface reads invoiceCurrentTotal.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const lpStart = html.indexOf('const BASE_RATES');
+    const lpEnd = html.indexOf('/* ═ end late-payment logic ═ */');
+    const lp = (lpStart > 0 && lpEnd > lpStart) ? html.slice(lpStart, lpEnd) : '';
+
+    // Executable extraction: the LP block is self-contained except
+    // invoiceFrozenGross — stubbed to read a test principal.
+    let L = null;
+    try {
+      L = new Function(
+        'const invoiceFrozenGross = (inv) => Number(inv.__principal) || 0;\n' + lp +
+        '\nreturn { BASE_RATES, statutoryReferenceDate, baseRateFor, lateFeeFor, computeLateCharges };'
+      )();
+    } catch (_) {}
+    check('LP0 the late-payment logic block extracts and executes', !!L);
+
+    if (L) {
+      check('LP1 BASE_RATES carries the verified values (4.75 / 4.25 / 3.75 / 3.75 at the four reference dates)',
+        JSON.stringify(L.BASE_RATES) === JSON.stringify([
+          { referenceDate: '2024-12-31', rate: 4.75 },
+          { referenceDate: '2025-06-30', rate: 4.25 },
+          { referenceDate: '2025-12-31', rate: 3.75 },
+          { referenceDate: '2026-06-30', rate: 3.75 },
+        ]));
+      check('LP2 reference-date selection: due Jan–Jun → prior 31 Dec; due Jul–Dec → same-year 30 Jun (boundaries included)',
+        L.statutoryReferenceDate('2026-06-30') === '2025-12-31' &&
+        L.statutoryReferenceDate('2026-07-01') === '2026-06-30' &&
+        L.statutoryReferenceDate('2025-01-15') === '2024-12-31' &&
+        L.statutoryReferenceDate('2025-12-31') === '2025-06-30');
+      check('LP3 fee bands with exact boundaries: 999.99→£40, 1000→£70, 9999.99→£70, 10000→£100',
+        L.lateFeeFor(999.99) === 40 && L.lateFeeFor(1000) === 70 &&
+        L.lateFeeFor(9999.99) === 70 && L.lateFeeFor(10000) === 100 && L.lateFeeFor(0) === 40);
+      const inv = { id: 'i-t', __principal: 2000, dueDate: '2026-01-01' };
+      const onDue = L.computeLateCharges(inv, '2026-01-01');
+      const dayAfter = L.computeLateCharges(inv, '2026-01-02');
+      const day30 = L.computeLateCharges(inv, '2026-01-31');
+      check('LP4a day-count fencepost: generation ON the due date accrues nothing; the day after accrues one day',
+        onDue.daysOverdue === 0 && onDue.interest === 0 && dayAfter.daysOverdue === 1);
+      check('LP4b interest maths: £2,000, due 1 Jan 2026 (3.75% base → 11.75%), 30 days → £19.32; fee £70; new total £2,089.32',
+        day30.baseRate === 3.75 && day30.annualRate === 11.75 &&
+        day30.interest === 19.32 && day30.fixedFee === 70 && day30.newTotal === 2089.32);
+      const future = L.computeLateCharges({ id: 'i-f', __principal: 500, dueDate: '2027-01-15' }, '2027-02-01');
+      check('LP5a stale-table fallback: a due date past the table falls back to the newest rate and FLAGS stale',
+        future.stale === true && future.baseRate === 3.75 && future.baseRateSource === 'table');
+      const manual = L.computeLateCharges(inv, '2026-01-31', 4.0);
+      check('LP5b manual override: rate honoured, source marked, stale cleared',
+        manual.baseRate === 4 && manual.annualRate === 12 && manual.baseRateSource === 'manual override' && manual.stale === false);
+    }
+
+    // ─ Source pins: ledger discipline + rendering + the seam ─
+    check('LP6a ONE record per invoice, replaced whole; cap 200 pruned oldest-generatedAt-first',
+      /const next = \{ \.\.\.prev, \[invoiceId\]: record \};/.test(html) &&
+      /if \(ids\.length > 200\) \{/.test(html) &&
+      /String\(\(next\[a\] \|\| \{\}\)\.generatedAt \|\| ''\)\.localeCompare\(String\(\(next\[b\] \|\| \{\}\)\.generatedAt \|\| ''\)\)/.test(html));
+    check('LP6b charges live in their OWN key via useStoredState, matching the backup envelope key',
+      /useStoredState\('bigals_invoice_charges', \{\}\)/.test(html) &&
+      /invoiceCharges: 'bigals_invoice_charges',/.test(html));
+    check('LP7a deletion rules: reconciler removes records for deleted or reverted-to-draft invoices (paid keeps)',
+      /if \(status === undefined \|\| status === 'draft'\) \{ delete next\[id\]; changed = true; \}/.test(html));
+    (() => {
+      // The sheet IIFE sits between its opening expression and the editor's
+      // bottom action row — slice the CODE, not the banner comment (whose
+      // "no lineItems write" wording would trip the negative test).
+      const s = html.indexOf('{showChargesSheet && (() => {');
+      const e = s > 0 ? html.indexOf('border-t border-neutral-800 pt-4 flex gap-2', s) : -1;
+      const sheet = (s > 0 && e > s) ? html.slice(s, e) : '';
+      check('LP7b the generation sheet writes ONLY the ledger record — no invoice mutation, no dueDate write, no lineItems touch',
+        sheet.length > 0 &&
+        /writeInvoiceCharge\(invoice\.id, preview\);/.test(sheet) &&
+        /removeInvoiceCharge\(invoice\.id\);/.test(sheet) &&
+        !/updateInvoice|setProduction|lineItems|dueDate:/.test(sheet));
+    })();
+    check('LP8a the document renders charges as ONE document: charges prop, section between items and totals, updated Total due',
+      /function InvoiceDocument\(\{ invoice, userPrefs, charges = null \}\)/.test(html) &&
+      /className="invoice-charges"/.test(html) &&
+      /<span className="label">Invoice total<\/span>/.test(html) &&
+      /<span className="label">Late payment charges<\/span>/.test(html));
+    check('LP8b the editor print path passes the invoice\'s charges record into the print view',
+      /<InvoicePrintView invoice=\{printTarget\} userPrefs=\{userPrefs\} charges=\{allInvoiceCharges\[printTarget\.id\] \|\| null\} \/>/.test(html));
+    check('LP9 the accruing figure is computed on render, muted tm-pen, ONLY in the overdue detail — never stored',
+      /const acc = computeLateCharges\(invoice, todayISO\(\)\);/.test(html) &&
+      /text-tm-pen\/70/.test(html) &&
+      !/setInvoiceCharges\([^)]*acc/.test(html));
+    check('LP10 owed-money surfaces read the seam: list memo, production list outstanding, row totals',
+      /m\.set\(invoice\.id, invoiceCurrentTotal\(invoice\)\);/.test(html) &&
+      /const tot = invoiceCurrentTotal\(inv\);/.test(html) &&
+      /const total = invoiceCurrentTotal\(inv\);   \/\/ frozen \+ any charges/.test(html));
+    check('LP11 the ruled button label on the overdue detail',
+      />Add late-payment charges\s*<\/Btn>/.test(html.replace(/<IWarn size=\{13\}\/>/, '>')));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
