@@ -6745,6 +6745,45 @@ async function main() {
       /return \(complete\[0\] \?\? accountantYears\[0\]\) \?\? null;/.test(html));
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // CE — Chase email (overdue invoice detail). One template, no escalation
+  // tiers, no tracking ledger. Pins: the single-source content builder with
+  // the ruled copy, the frozen-total seam (invoiceCurrentTotal — the hook the
+  // late-payment module extends), the overdue-only gate, and that the chase
+  // path writes NO state. Source-presence (engine untouched — audit:build).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const chase = (() => {
+      const s = html.indexOf('function invoiceCurrentTotal');
+      const e = html.indexOf('INLINE SVG ICONS');
+      return (s > 0 && e > s) ? html.slice(s, e) : '';
+    })();
+
+    check('CE1a chase subject is the ruled string',
+      /const subject = `Invoice \$\{invoice\.invoiceNumber\} — overdue`;/.test(chase));
+    check('CE1b chase body carries the ruled sentences (chasing / expect payment / charges warning)',
+      /Just chasing invoice \$\{invoice\.invoiceNumber\}/.test(chase) &&
+      /which was due on \$\{dueStr\} and is now overdue\./.test(chase) &&
+      /Could you let me know when I can expect payment\? Late-payment charges will apply under the standard terms if it remains unpaid\./.test(chase) &&
+      /Thanks,\\n\$\{signoff\}/.test(chase));
+
+    check('CE2a invoiceCurrentTotal reads the FROZEN snapshot (invoiceVAT over stored lineItems)',
+      /function invoiceCurrentTotal\(invoice\) \{\s*return invoiceVAT\(invoice, invoiceSubtotal\(invoice\.lineItems\)\)\.total;\s*\}/.test(chase));
+    check('CE2b the chase amount quotes invoiceCurrentTotal (the late-payment extension seam)',
+      /const totalStr = fmtGBP\(invoiceCurrentTotal\(invoice\)\);/.test(chase));
+
+    check('CE3 the editor button is gated on sent + isOverdueSent and opens the chase mailto',
+      /\{invoice\.status === 'sent' && isOverdueSent\(invoice, new Date\(todayISO\(\) \+ 'T12:00:00'\)\.getTime\(\)\) && \(/.test(html) &&
+      /onClick=\{\(\) => openChaseMailto\(invoice, userPrefs\)\}/.test(html) &&
+      />Chase this invoice\s*<\/Btn>/.test(html.replace(/<IMail size=\{13\}\/>/, '>')));
+
+    check('CE4 chasing writes NO state: no storage.set / updateInvoice / setProduction in the chase block',
+      chase.length > 0 && !/storage\.set|updateInvoice|setProduction|setUserPrefs/.test(chase));
+
+    check('CE5 recipient is the invoice\'s stored client email',
+      /const recipient = \(invoice\.toEmail \|\| ''\)\.trim\(\);[\s\S]{0,120}buildChaseEmailContent\(invoice, userPrefs\);/.test(chase));
+  }
+
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded
   // mode; subsequent reads/writes route to localStorage transparently.

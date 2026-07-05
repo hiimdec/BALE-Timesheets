@@ -6275,6 +6275,44 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
     }
 
+    /* ── chase email — ONE template, no escalation tiers, no tracking state.
+       Just a prefilled draft from the overdue invoice detail (Q4). ── */
+    // The figure a chase (or any "what's owed now" surface) quotes. Today this
+    // IS the frozen document total; the late-payment charges module (Q3) will
+    // extend THIS function to add an invoice's attached charges record, so
+    // every caller updates together. The snapshot itself is never mutated.
+    function invoiceCurrentTotal(invoice) {
+      return invoiceVAT(invoice, invoiceSubtotal(invoice.lineItems)).total;
+    }
+    function buildChaseEmailContent(invoice, userPrefs) {
+      const subject = `Invoice ${invoice.invoiceNumber} — overdue`;
+      const contact = String(invoice.toName || '').trim();
+      const production = String(invoice.jobTitle || '').trim();
+      const totalStr = fmtGBP(invoiceCurrentTotal(invoice));
+      const dueStr = invoice.dueDate
+        ? new Date(invoice.dueDate + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+        : '';
+      const signoff = String((userPrefs && userPrefs.displayName) || invoice.fromName || '').trim();
+      const body = `Hi${contact ? ' ' + contact : ''},\n\nJust chasing invoice ${invoice.invoiceNumber}${production ? ` for ${production}` : ''} (${totalStr}), which was due on ${dueStr} and is now overdue.\n\nCould you let me know when I can expect payment? Late-payment charges will apply under the standard terms if it remains unpaid.\n\nThanks,\n${signoff}`;
+      return { subject, body };
+    }
+    // Same delivery split as openInvoiceMailto: mailto handed to iOS natively
+    // (WKWebView blocks location.href for mailto), location.href on web.
+    function openChaseMailto(invoice, userPrefs) {
+      const recipient = (invoice.toEmail || '').trim();
+      const { subject, body } = buildChaseEmailContent(invoice, userPrefs);
+      const params = new URLSearchParams();
+      if (subject) params.set('subject', subject);
+      if (body) params.set('body', body);
+      const queryString = params.toString().replace(/\+/g, '%20');
+      const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?${queryString}`;
+      if (IS_NATIVE) {
+        nativeOpenUrl(mailtoUrl).catch((e) => { try { console.error('openUrl chase mailto failed', e); } catch (_) {} });
+      } else {
+        window.location.href = mailtoUrl;
+      }
+    }
+
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
 
     const Icon = ({ children, size = 14, strokeWidth = 2 }) => (
@@ -21873,6 +21911,20 @@ const setDays = (updater) =>
                     {invoice.bankSWIFT && <div className="flex justify-between gap-4"><span className="text-neutral-500 flex-shrink-0">SWIFT/BIC</span><span className="text-neutral-200 font-mono text-right">{invoice.bankSWIFT}</span></div>}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Chase (Q4) — overdue sent invoices only. ONE template, no
+                escalation, no tracking ledger: the button just opens a
+                prefilled draft (openChaseMailto → the invoice's client email).
+                The quoted amount reads invoiceCurrentTotal, so it will carry
+                any late-payment charges the moment that module lands. */}
+            {invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime()) && (
+              <div>
+                <Btn variant="subtle" onClick={() => openChaseMailto(invoice, userPrefs)} className="w-full justify-center">
+                  <IMail size={13}/>Chase this invoice
+                </Btn>
+                <p className="text-[10px] text-neutral-500 mt-1.5 text-center">Opens a prefilled email asking when to expect payment.</p>
               </div>
             )}
 
