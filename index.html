@@ -18816,26 +18816,7 @@ const setDays = (updater) =>
                       onClick={() => set({ invoiceEmailMethod: 'shareSheet' })}
                     />
                   </div>
-                  {/* Overdue reminders toggle (keeps its denied-state Open Settings link). */}
-                  <div className="mt-4 pt-4 border-t border-neutral-800">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Overdue reminders</div>
-                        <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">A notification at 8am the morning after an invoice's due date, for sent invoices not yet marked paid. iOS only.</div>
-                      </div>
-                      <Toggle
-                        value={userPrefs.overdueRemindersEnabled !== false}
-                        onChange={async (v) => { set({ overdueRemindersEnabled: v }); if (v) setNotifPerm(await Notifications.requestPermission()); }}
-                        ariaLabel="Overdue reminders"
-                      />
-                    </div>
-                    {userPrefs.overdueRemindersEnabled !== false && notifPerm === 'denied' && (
-                      <div className="text-[11px] text-tm-warn mt-2 leading-snug">
-                        Notifications are off for TimeMachine - reminders won't fire.{' '}
-                        <button type="button" onClick={() => Notifications.openIOSSettings()} className="underline text-sky-300">Open&nbsp;Settings</button>
-                      </div>
-                    )}
-                  </div>
+                  {/* Overdue reminders moved to §Notifications & Live Activity (O7). */}
                 </div>
               )}
               </>)}
@@ -19165,28 +19146,52 @@ const setDays = (updater) =>
                   <Toggle value={userPrefs.hapticsEnabled !== false} onChange={(v) => set({ hapticsEnabled: v })} ariaLabel="Haptic feedback" />
                 </div>
               </div>
-              {/* Live Activity — round 3 master switch. Native feel-layer affordance;
-                  rendered on web too (matching Haptics' treatment) with a native-only
-                  note. Off → SoloLiveActivity never starts a card and the reconcile
-                  sweep ends any running one within ~1s. */}
-              <div className="mt-4 pt-4 border-t border-neutral-800">
+            </Disclosure>
+
+            {/* §7b — Notifications & Live Activity (O7 regroup): the native
+                attention surfaces in one place — the Live Activity master
+                switch (from Appearance), overdue reminders (from Invoicing's
+                sending block), and the Legwork visibility pref (from
+                Appearance; there is no stats section in Settings, and this is
+                the native-features cluster). Behaviour unchanged; the pinned
+                toggle markup moved verbatim. Off → SoloLiveActivity never
+                starts a card and the reconcile sweep ends any running one
+                within ~1s. */}
+            <Disclosure label="Notifications & Live Activity">
+              <div>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Live Activity</div>
-                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Lock Screen / Dynamic Island card with the live day total and Lunch/Wrap buttons on shoot days. iOS only - has no effect on web.</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">The lock-screen shoot-day card: live total, timer, and Lunch/Wrap buttons. iOS only.</div>
                   </div>
                   <Toggle value={userPrefs.liveActivityEnabled !== false} onChange={(v) => set({ liveActivityEnabled: v })} ariaLabel="Live Activity" />
                 </div>
               </div>
-              {/* Legwork visibility — a DISPLAY preference only (the block can
-                  be hidden from its own quiet line); never touches Health
-                  permissions or the step cache. Native-only surface. */}
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Overdue reminders</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">A notification at 8am the morning after a sent invoice's due date. iOS only.</div>
+                  </div>
+                  <Toggle
+                    value={userPrefs.overdueRemindersEnabled !== false}
+                    onChange={async (v) => { set({ overdueRemindersEnabled: v }); if (v) setNotifPerm(await Notifications.requestPermission()); }}
+                    ariaLabel="Overdue reminders"
+                  />
+                </div>
+                {userPrefs.overdueRemindersEnabled !== false && notifPerm === 'denied' && (
+                  <div className="text-[11px] text-tm-warn mt-2 leading-snug">
+                    Notifications are off for TimeMachine - reminders won't fire.{' '}
+                    <button type="button" onClick={() => Notifications.openIOSSettings()} className="underline text-sky-300">Open&nbsp;Settings</button>
+                  </div>
+                )}
+              </div>
               {IS_NATIVE && (
                 <div className="mt-4 pt-4 border-t border-neutral-800">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Show step stats</div>
-                      <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">The Legwork block on the Stats screen: Apple Health steps counted between call and wrap on shoot days.</div>
+                      <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">The Legwork block on the Stats screen. iOS only.</div>
                     </div>
                     <Toggle value={userPrefs.healthStepsHidden !== true} onChange={(v) => set({ healthStepsHidden: !v })} ariaLabel="Show step stats" />
                   </div>
