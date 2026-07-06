@@ -7688,6 +7688,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // already topmost-gated; this completes the rule for the gesture.)
         if (_sheetStack[_sheetStack.length - 1] !== idRef.current) return;
         if (e.pointerType === 'mouse' && e.button !== 0) return;
+        // Gestures starting inside [data-sheet-scroll] are SCROLLS, never
+        // dismiss-drags — the pointercancel race only saves a scroll when the
+        // browser can actually scroll (not at scrollTop 0, never in a list
+        // without a scroll container). Grabber/title stay the swipe surface.
+        if (e.target && e.target.closest && e.target.closest('[data-sheet-scroll]')) return;
         const card = cardRef.current;
         dragRef.current = {
           startY: e.clientY, startX: e.clientX,
@@ -24440,6 +24445,33 @@ const confirmDelete = (p) => setConfirmOpts({
 
     /* ═══════════════════════════ ROOT ═══════════════════════════ */
 
+    // ── Share-in chooser window (V2) ─────────────────────────────────────
+    // The shoots the chooser offers: any whose dates land within ±windowDays
+    // of the anchor, nearest first. The anchor is TODAY — the call sheet's
+    // own date would be better, but extraction runs only AFTER the user
+    // chooses (chooseImportNew / the in-production import flow), so no parsed
+    // date exists at chooser time and reordering extraction would stall the
+    // sheet behind a multi-second model pass. A shoot's dates = its day
+    // records' dates plus startDate (migrateProduction guarantees startDate,
+    // so nothing is undateable); distance = the nearest of them.
+    function shootsNearDate(productions, anchorISO, windowDays = 7) {
+      const anchor = new Date(anchorISO + 'T12:00:00').getTime();
+      if (!Number.isFinite(anchor)) return [];
+      const DAY = 86400000;
+      const out = [];
+      for (const p of productions || []) {
+        const dates = [...new Set([...(p.days || []).map(d => d.date), p.startDate].filter(Boolean))];
+        let best = Infinity;
+        for (const d of dates) {
+          const t = new Date(d + 'T12:00:00').getTime();
+          if (Number.isFinite(t)) best = Math.min(best, Math.abs(t - anchor) / DAY);
+        }
+        if (best <= windowDays) out.push({ p, dist: best });
+      }
+      out.sort((a, b) => a.dist - b.dist || String(a.p.title || '').localeCompare(String(b.p.title || '')));
+      return out.map(x => x.p);
+    }
+
     function Root() {
       const [productions, setProductions, prodError] = useStoredState("bigals_productions", [], migrateProduction);
       const [userPrefs, setUserPrefs, prefsError] = useStoredState("bigals_user_prefs", DEFAULT_USER_PREFS);
@@ -25721,14 +25753,31 @@ const confirmDelete = (p) => setConfirmOpts({
                     <div className="text-[13px] text-sky-400 font-semibold">New shoot</div>
                     <div className="text-[11px] text-neutral-500 mt-0.5">Create a shoot from this call sheet</div>
                   </button>
-                  {[...productions].reverse().map(p => (
-                    <button key={p.id} type="button" onClick={() => chooseImportTarget(p.id)}
-                      className="w-full text-left bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-3.5 py-3 transition-colors"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <div className="text-[13px] text-neutral-100 font-semibold">{p.title || 'Untitled'}</div>
-                      {p.prodCo ? <div className="text-[11px] text-neutral-500 mt-0.5">{p.prodCo}</div> : null}
-                    </button>
-                  ))}
+                  {/* The list is a REAL scroll container (V1): bounded height,
+                      and data-sheet-scroll opts its gestures out of the Sheet's
+                      swipe-dismiss — scrolling can never drag the sheet away.
+                      "New shoot" sits above it, outside the scroll, PINNED —
+                      it can never scroll out of reach. V2: only shoots within
+                      ±7 days of today, nearest first (the sheet's own parsed
+                      date isn't available pre-extraction — see shootsNearDate). */}
+                  {(() => {
+                    const nearby = shootsNearDate(productions, todayISO());
+                    if (nearby.length === 0) return (
+                      <p className="text-[11px] text-neutral-500 px-1 py-2">No shoots near this date.</p>
+                    );
+                    return (
+                      <div data-sheet-scroll className="space-y-2.5 overflow-y-auto" style={{ maxHeight: '55vh' }}>
+                        {nearby.map(p => (
+                          <button key={p.id} type="button" onClick={() => chooseImportTarget(p.id)}
+                            className="w-full text-left bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-3.5 py-3 transition-colors"
+                            style={{ WebkitTapHighlightColor: 'transparent' }}>
+                            <div className="text-[13px] text-neutral-100 font-semibold">{p.title || 'Untitled'}</div>
+                            {p.prodCo ? <div className="text-[11px] text-neutral-500 mt-0.5">{p.prodCo}</div> : null}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </div>

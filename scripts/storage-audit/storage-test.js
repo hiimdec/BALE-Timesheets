@@ -4891,7 +4891,8 @@ async function main() {
     check('II2b Sheet registers prefers-reduced-motion via matchMedia',
       /function Sheet\([\s\S]{0,4000}matchMedia\(['"]\(prefers-reduced-motion: reduce\)['"]\)/.test(html));
     check('II2c Sheet uses translate3d on the card (GPU layer)',
-      /function Sheet\([\s\S]{0,10000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
+      // Window widened 10k→12k for the V1 scroll-opt-out comment upstream.
+      /function Sheet\([\s\S]{0,12000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
     check('II2d Sheet escape handler gated on topmost stack id (no double-close on stacked sheets)',
       /function Sheet\([\s\S]{0,8000}_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current/.test(html));
     check('II2e Sheet backdrop tap dismisses via tryDismiss (honours onBeforeDismiss)',
@@ -5150,6 +5151,51 @@ async function main() {
     // ─ LL1: the Sheet stacking PRIMITIVE — only the topmost sheet may swipe ─
     check('LL1a Sheet.onPointerDown bails unless this sheet is topmost in _sheetStack (parent swipe disabled under a child)',
       /const onPointerDown = \(e\) => \{\s*if \(!swipeDismiss\) return;[\s\S]{0,400}if \(_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current\) return;/.test(html));
+    // ─ LL1b (V1): gestures starting inside [data-sheet-scroll] NEVER start a
+    //   dismiss-drag — a selection list must scroll, not dismiss. The share-in
+    //   chooser's list is such a container (bounded height, real overflow),
+    //   with "New shoot" OUTSIDE it so it can't scroll out of reach. ─
+    check('LL1b Sheet.onPointerDown ignores gestures from opted-in scrollable content (data-sheet-scroll)',
+      /const onPointerDown = \(e\) => \{[\s\S]{0,1400}e\.target\.closest\('\[data-sheet-scroll\]'\)\) return;/.test(html));
+    check('LL1c the share-in chooser list is a bounded scroll container carrying the opt-out, with New shoot PINNED outside it',
+      /<button type="button" onClick=\{chooseImportNew\}[\s\S]{0,1500}<div data-sheet-scroll className="space-y-2\.5 overflow-y-auto" style=\{\{ maxHeight: '55vh' \}\}>/.test(html));
+
+    // ─ LL1d/e (V2): the chooser offers only shoots within ±7 days of TODAY
+    //   (the parsed sheet date isn't available pre-extraction), nearest
+    //   first, with the ruled empty line. The window maths is EXTRACTED and
+    //   EXECUTED here — boundaries are money-adjacent to nothing, but a
+    //   wrong window quietly hides the right shoot. ─
+    check('LL1d the chooser renders shootsNearDate(productions, todayISO()) with the ruled empty line',
+      /const nearby = shootsNearDate\(productions, todayISO\(\)\);/.test(html) &&
+      />No shoots near this date\.<\/p>/.test(html) &&
+      /\{nearby\.map\(p => \(/.test(html));
+    (() => {
+      const s = html.indexOf('function shootsNearDate');
+      const e = html.indexOf('function Root() {');
+      const src = (s > 0 && e > s) ? html.slice(s, e) : '';
+      let fn = null;
+      try { fn = new Function(`${src}; return shootsNearDate;`)(); } catch (_) {}
+      const prod = (id, dates, startDate) => ({ id, title: id, startDate, days: dates.map((d, i) => ({ id: id + i, date: d })) });
+      let ok = false;
+      if (fn) {
+        const anchor = '2026-07-06';
+        const ps = [
+          prod('exact-7-before', ['2026-06-29'], '2026-06-29'),   // boundary IN
+          prod('exact-7-after', ['2026-07-13'], '2026-07-13'),    // boundary IN
+          prod('8-out', ['2026-07-14'], '2026-07-14'),            // just OUT
+          prod('nearest', ['2026-07-07'], '2026-07-07'),          // dist 1
+          prod('startdate-only', [], '2026-07-05'),               // startDate fallback, dist 1
+          prod('today', ['2026-07-06'], '2026-07-06'),            // dist 0
+          prod('far-day-near-day', ['2026-09-01', '2026-07-08'], '2026-09-01'), // nearest day wins, dist 2
+        ];
+        const got = fn(ps, anchor).map(p => p.id);
+        ok = JSON.stringify(got) === JSON.stringify([
+          'today', 'nearest', 'startdate-only', 'far-day-near-day', 'exact-7-after', 'exact-7-before',
+        ]) && fn([], anchor).length === 0 && fn(ps, 'not-a-date').length === 0;
+      }
+      check('LL1e shootsNearDate EXECUTED: ±7 inclusive, 8 days out, nearest-first (day dates beat startDate), startDate fallback, bad anchor safe',
+        ok);
+    })();
 
     // ─ LL2: CrewActionSheet parent routes through <Sheet> (old hand-rolled
     //   items-end backdrop + in-frame email swap are gone). ─
