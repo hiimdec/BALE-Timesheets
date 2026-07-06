@@ -22051,15 +22051,19 @@ const setDays = (updater) =>
                 into the sheet. The chase button keeps its place at the foot. */}
             {invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime()) && (() => {
               const rec = allInvoiceCharges[invoice.id] || null;
+              // T2: banner text is the SYSTEM font — a deliberate, adjudicated
+              // exception to the mono-for-money convention. While accruing it
+              // shows the penalty breakdown (interest + fee, days kept); added
+              // shows the combined figure. The full amount owed stays in the
+              // totals stack — the banner tells the penalty story only.
               if (rec) {
                 return (
                   <div
                     className="bg-neutral-900 border border-tm-pen/25 rounded-xl px-4 py-3"
                     style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' }}
                   >
-                    <div className="flex justify-between text-[10px] font-mono tracking-wider uppercase text-tm-pen/70 mb-2.5">
-                      <span>Late payment charges added</span>
-                      <span>{fmtGBP((Number(rec.interest) || 0) + (Number(rec.fixedFee) || 0))}</span>
+                    <div className="text-[11px] text-tm-pen/70 mb-2.5">
+                      Late payment charges added · {fmtGBP((Number(rec.interest) || 0) + (Number(rec.fixedFee) || 0))}
                     </div>
                     <button
                       type="button"
@@ -22078,9 +22082,8 @@ const setDays = (updater) =>
                   className="bg-neutral-900 border border-tm-pen/25 rounded-xl px-4 py-3"
                   style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' }}
                 >
-                  <div className="flex justify-between text-[10px] font-mono tracking-wider uppercase text-tm-pen/70 mb-2.5">
-                    <span>Accruing interest</span>
-                    <span>{fmtGBP(acc.interest)} · {acc.daysOverdue} day{acc.daysOverdue === 1 ? '' : 's'}</span>
+                  <div className="text-[11px] text-tm-pen/70 mb-2.5">
+                    {fmtGBP(acc.interest)} interest + £{acc.fixedFee} fee · {acc.daysOverdue} day{acc.daysOverdue === 1 ? '' : 's'}
                   </div>
                   <button
                     type="button"

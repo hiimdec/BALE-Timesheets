@@ -7014,13 +7014,16 @@ async function main() {
         /border-tm-pen\/25/.test(banner) &&
         /rgba\(244,63,94,0\.06\)/.test(banner) &&
         /bg-tm-pen\/10 border-tm-pen\/40 text-tm-pen/.test(banner));
-      check('LP12c one unit: the muted accruing line (tm-pen/70) sits WITH the add button inside the banner',
+      check('LP12c one unit: the muted breakdown line (tm-pen/70, SYSTEM font) sits WITH the add button inside the banner',
         /text-tm-pen\/70/.test(banner) &&
-        /Accruing interest/.test(banner) &&
         /const acc = computeLateCharges\(invoice, todayISO\(\)\);/.test(banner) &&
-        /Add late-payment charges/.test(banner));
-      check('LP12d with a record the banner flips to the added summary + the update route into the sheet',
-        /Late payment charges added/.test(banner) &&
+        /Add late-payment charges/.test(banner) &&
+        // T2: the figures line is the system font (no font-mono) and shows the
+        // ruled breakdown: "£X.XX interest + £Y fee · N days".
+        !/font-mono/.test(banner) &&
+        /\{fmtGBP\(acc\.interest\)\} interest \+ £\{acc\.fixedFee\} fee · \{acc\.daysOverdue\} day\{acc\.daysOverdue === 1 \? '' : 's'\}/.test(banner));
+      check('LP12d with a record the banner shows the combined figure + the update route into the sheet',
+        /Late payment charges added · \{fmtGBP\(\(Number\(rec\.interest\) \|\| 0\) \+ \(Number\(rec\.fixedFee\) \|\| 0\)\)\}/.test(banner) &&
         /Update late-payment charges/.test(banner));
       check('LP12e the old foot strip is gone and the chase button keeps its foot placement below the banner',
         !/Statutory interest and the fixed recovery fee, added to this invoice as one document\./.test(html) &&
