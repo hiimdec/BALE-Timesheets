@@ -455,8 +455,8 @@ async function main() {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
     check('M4 KEYS lists every persisted bigals_* store (source pin — both backends share the list)',
       /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
-    check('M5 PDF/email generation failures surface a toast — never a silent dead button',
-      /console\.error\('Invoice email failed', e\); \} catch \(_\) \{\}\s*showToast\("Couldn't prepare the email - try again\."\);/.test(html) &&
+    check('M5 PDF/email/chase generation failures surface a toast — never a silent dead button',
+      /console\.error\(isChase \? 'Chase email failed' : 'Invoice email failed', e\); \} catch \(_\) \{\}\s*showToast\(isChase \? "Couldn't prepare the chase email - try again\." : "Couldn't prepare the email - try again\."\);/.test(html) &&
       /console\.error\('PDF export failed', e\); \} catch \(_\) \{\}\s*showToast\("Couldn't make the PDF - try again\."\);/.test(html));
   }
 
@@ -6516,11 +6516,12 @@ async function main() {
       /invoiceEmailMethod: 'appleMail',/.test(html) &&
       /v = \{ \.\.\.initial, \.\.\.v \};/.test(html));
 
-    check('IM2 shared subject/body builder — ONE buildInvoiceEmailContent feeds ALL send paths (web mailto + native composer/share-text) so the wording cannot drift; the body template now exists EXACTLY ONCE (in the builder, not re-inlined per path)',
+    check('IM2 shared subject/body builder — ONE buildInvoiceEmailContent feeds ALL send paths (web mailto + native composer/share-text) so the wording cannot drift; the body template now exists EXACTLY ONCE (in the builder, not re-inlined per path). T3: the native effect picks the builder by intent (chase rides the same delivery with its own single-source template)',
       /function buildInvoiceEmailContent\(invoice\) \{/.test(html) &&
       /const \{ subject, body \} = buildInvoiceEmailContent\(invoice\);/.test(html) &&   // web mailto
-      /const \{ subject, body \} = buildInvoiceEmailContent\(inv\);/.test(html) &&       // native effect
-      (html.match(/Please find attached invoice/g) || []).length === 1);
+      /const \{ subject, body \} = isChase\s*\? buildChaseEmailContent\(inv, userPrefs\)\s*: buildInvoiceEmailContent\(inv\);/.test(html) &&   // native effect, intent-picked
+      (html.match(/Please find attached invoice/g) || []).length === 1 &&
+      (html.match(/Just chasing invoice/g) || []).length === 1);
 
     check('IM3 method routing — appleMail (with a Mail account) → EmailComposer.open; shareSheet OR no Mail account → the share-sheet path; the chosen method is carried into nativeSendInvoiceEmail from a userPrefs-seeded ref',
       /if \(method !== 'shareSheet' && hasAccount\) \{/.test(html) &&
@@ -6821,8 +6822,9 @@ async function main() {
     check('CE2b the chase amount quotes invoiceCurrentTotal (the late-payment extension seam)',
       /const totalStr = fmtGBP\(invoiceCurrentTotal\(invoice\)\);/.test(chase));
 
-    check('CE3 the editor button is gated on sent + isOverdueSent, opens the chase, and toasts the no-mail-handler case',
+    check('CE3 the editor button is gated on sent + isOverdueSent; native rides the print pipeline, web mailtos with a failure toast',
       /\{invoice\.status === 'sent' && isOverdueSent\(invoice, new Date\(todayISO\(\) \+ 'T12:00:00'\)\.getTime\(\)\) && \(/.test(html) &&
+      /printIntentRef\.current = 'chase';\s*emailMethodRef\.current = userPrefs\.invoiceEmailMethod \|\| 'appleMail';\s*setPrintTarget\(invoice\);/.test(html) &&
       /const r = await openChaseMailto\(invoice, userPrefs\);\s*if \(r === 'failed'\) showToast\("Couldn't open an email app - check Mail is set up\."\);/.test(html) &&
       />Chase this invoice\s*<\/Btn>/.test(html.replace(/<IMail size=\{13\}\/>/, '>')));
 
@@ -6832,17 +6834,27 @@ async function main() {
     check('CE5 recipient is the invoice\'s stored client email',
       /const recipient = \(invoice\.toEmail \|\| ''\)\.trim\(\);[\s\S]{0,120}buildChaseEmailContent\(invoice, userPrefs\);/.test(chase));
 
-    // ─ S1: native chase goes through the DEVICE-VERIFIED email ladder ─
-    check('CE6 native chase routes through nativeComposeEmail (EmailComposer ladder) — and no App.openUrl CALL survives anywhere',
-      /if \(IS_NATIVE\) \{\s*return nativeComposeEmail\(\{\s*to: recipient, subject, body,/.test(chase) &&
+    // ─ S1/T3: no dead mailto handoff can return, on any path ─
+    check('CE6 openChaseMailto is WEB-ONLY (no IS_NATIVE branch) — and no App.openUrl CALL or nativeOpenUrl survives anywhere',
+      /async function openChaseMailto\(invoice, userPrefs\) \{\s*const recipient = \(invoice\.toEmail \|\| ''\)\.trim\(\);/.test(chase) &&
+      !/openChaseMailto[\s\S]{0,600}IS_NATIVE/.test(chase.slice(chase.indexOf('async function openChaseMailto'))) &&
       !/App\.openUrl\(/.test(html) &&
       !/function nativeOpenUrl/.test(html));
-    check('CE7 the ladder: Mail composer only with an account + appleMail method, else share sheet, else \'failed\'',
+    check('CE7 the attachment-less ladder (feedback link): Mail composer only with an account + appleMail method, else share sheet, else \'failed\'',
       /async function nativeComposeEmail\(\{ to, subject, body, method \}\) \{/.test(html) &&
       /const r = await EmailComposer\.hasAccount\(\);\s*hasAccount = !!\(r && r\.hasAccount\);/.test(html) &&
       /if \(method !== 'shareSheet' && hasAccount\) \{/.test(html) &&
       /await Share\.share\(\{ title: subject \|\| '', text \}\);\s*return 'shared';/.test(html) &&
       /return 'failed';\s*\}/.test(html));
+
+    // ─ T3: the chase carries the invoice PDF through the SHARED pipeline ─
+    check('CE8a the print effect handles the chase intent with the chase template through nativeSendInvoiceEmail',
+      /if \(intent === 'email' \|\| intent === 'chase'\) \{/.test(html) &&
+      /const \{ subject, body \} = isChase\s*\? buildChaseEmailContent\(inv, userPrefs\)\s*: buildInvoiceEmailContent\(inv\);/.test(html) &&
+      /cc: isChase \? '' : \(emailCcRef\.current \|\| ''\),/.test(html));
+    check('CE8b chasing writes NO state: mark-as-sent and re-lock are guarded off the chase intent',
+      /if \(!isChase\) \{\s*if \(wasDraft\) \{\s*sendInvoice\(production, inv, \{ status: 'sent', dateSent: todayISO\(\) \}\);/.test(html) &&
+      /const wasDraft = !isChase && inv\.status === 'draft';/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════

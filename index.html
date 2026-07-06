@@ -6506,21 +6506,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const body = `Hi${contact ? ' ' + contact : ''},\n\nJust chasing invoice ${invoice.invoiceNumber}${production ? ` for ${production}` : ''} (${totalStr}), which was due on ${dueStr} and is now overdue.\n\nCould you let me know when I can expect payment? Late-payment charges will apply under the standard terms if it remains unpaid.\n\nThanks,\n${signoff}`;
       return { subject, body };
     }
-    // Chase delivery. Native: the SAME ladder the invoice email uses and the
-    // device round verified — EmailComposer, else share sheet (S1 fix; the
-    // old path handed a mailto to App.openUrl, which doesn't exist in
-    // @capacitor/app v3+, so the tap silently did nothing). Web: mailto,
-    // unchanged. Returns 'composer' | 'shared' | 'mailto' | 'failed' so the
-    // caller can surface the no-mail-handler case.
+    // Chase delivery, WEB-ONLY (mirrors openInvoiceMailto): a mailto draft —
+    // the web invoice email attaches nothing, so neither does the web chase
+    // (identical per-platform behaviour, ruled in T3). On NATIVE the chase
+    // button rides the invoice email's print pipeline instead — printIntent
+    // 'chase' renders the invoice PDF (charges section included) and delivers
+    // through nativeSendInvoiceEmail (Mail composer with the attachment, else
+    // the share sheet). The S1 lesson stands: never a mailto on native.
+    // Returns 'mailto' | 'failed'.
     async function openChaseMailto(invoice, userPrefs) {
       const recipient = (invoice.toEmail || '').trim();
       const { subject, body } = buildChaseEmailContent(invoice, userPrefs);
-      if (IS_NATIVE) {
-        return nativeComposeEmail({
-          to: recipient, subject, body,
-          method: (userPrefs && userPrefs.invoiceEmailMethod) || 'appleMail',
-        });
-      }
       const params = new URLSearchParams();
       if (subject) params.set('subject', subject);
       if (body) params.set('body', body);
@@ -21658,14 +21654,22 @@ const setDays = (updater) =>
           if (IS_NATIVE) {
             const filename = `Invoice ${printTarget.invoiceNumber || ''}.pdf`;
             const intent = printIntentRef.current;
-            if (intent === 'email') {
+            if (intent === 'email' || intent === 'chase') {
               const inv = printTarget;
-              const { subject, body } = buildInvoiceEmailContent(inv);   // shared builder — one source for all paths
+              const isChase = intent === 'chase';
+              // Shared builders — ONE source per template. The chase (T3) rides
+              // the SAME delivery as the invoice email (composer with the PDF
+              // attached, or the share-sheet fallback), differing only in its
+              // text: chase copy, no cc, and NO state writes (no mark-as-sent,
+              // no re-lock — chasing is not sending).
+              const { subject, body } = isChase
+                ? buildChaseEmailContent(inv, userPrefs)
+                : buildInvoiceEmailContent(inv);
               const method = emailMethodRef.current;
-              const wasDraft = inv.status === 'draft';
+              const wasDraft = !isChase && inv.status === 'draft';
               nativeRenderPrintViewPdfBase64Vector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 })
                 .then((base64) => nativeSendInvoiceEmail({
-                  to: inv.toEmail || '', cc: emailCcRef.current || '',
+                  to: inv.toEmail || '', cc: isChase ? '' : (emailCcRef.current || ''),
                   subject, body, base64, filename, method,
                   // Share-sheet path only: copy the To recipient(s) to the clipboard
                   // BEFORE the sheet presents (the sheet carries no recipient).
@@ -21675,19 +21679,21 @@ const setDays = (updater) =>
                   },
                 }))
                 .then((mode) => {
-                  if (wasDraft) {
-                    sendInvoice(production, inv, { status: 'sent', dateSent: todayISO() });
-                  } else {
-                    // Re-sending an already-issued invoice: re-lock so the edit-sent
-                    // UX ends in the same locked state as the web path. The setter is
-                    // stable (no stale-read), and it's a no-op when not in edit mode.
-                    setEditingSentFields(false);
+                  if (!isChase) {
+                    if (wasDraft) {
+                      sendInvoice(production, inv, { status: 'sent', dateSent: todayISO() });
+                    } else {
+                      // Re-sending an already-issued invoice: re-lock so the edit-sent
+                      // UX ends in the same locked state as the web path. The setter is
+                      // stable (no stale-read), and it's a no-op when not in edit mode.
+                      setEditingSentFields(false);
+                    }
                   }
                   if (mode === 'shared') {
                     // The recipient was copied pre-sheet; on return, remind to paste
                     // it into To and — since the sheet drops cc too — offer one-tap
                     // Copy Cc when a cc exists (the clipboard holds one value).
-                    const cc = (emailCcRef.current || '').trim();
+                    const cc = isChase ? '' : (emailCcRef.current || '').trim();
                     const lead = wasDraft ? 'Marked as sent · recipient copied - paste into To' : 'Recipient copied - paste into To';
                     showToast(
                       <span>{lead}{cc ? (
@@ -21702,8 +21708,8 @@ const setDays = (updater) =>
                 .catch((e) => {
                   // NEVER silent (T1): a generation failure with no surface
                   // reads as a dead button. Name it and invite a retry.
-                  try { console.error('Invoice email failed', e); } catch (_) {}
-                  showToast("Couldn't prepare the email - try again.");
+                  try { console.error(isChase ? 'Chase email failed' : 'Invoice email failed', e); } catch (_) {}
+                  showToast(isChase ? "Couldn't prepare the chase email - try again." : "Couldn't prepare the email - try again.");
                 })
                 .finally(() => { printIntentRef.current = 'share'; emailCcRef.current = ''; emailMethodRef.current = 'appleMail'; cleanup(); });
             } else {
@@ -22415,6 +22421,17 @@ const setDays = (updater) =>
                 <Btn
                   variant="subtle"
                   onClick={async () => {
+                    if (IS_NATIVE) {
+                      // T3: the chase carries the invoice PDF (with any charges
+                      // section) — same machinery as the invoice email: mount
+                      // the print view, render, compose/share with attachment.
+                      printIntentRef.current = 'chase';
+                      emailMethodRef.current = userPrefs.invoiceEmailMethod || 'appleMail';
+                      setPrintTarget(invoice);
+                      return;
+                    }
+                    // Web: mailto, exactly like the invoice email on web (no
+                    // attachment — mailto cannot carry files).
                     const r = await openChaseMailto(invoice, userPrefs);
                     if (r === 'failed') showToast("Couldn't open an email app - check Mail is set up.");
                   }}
