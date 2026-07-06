@@ -7688,6 +7688,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // already topmost-gated; this completes the rule for the gesture.)
         if (_sheetStack[_sheetStack.length - 1] !== idRef.current) return;
         if (e.pointerType === 'mouse' && e.button !== 0) return;
+        // Gestures starting inside [data-sheet-scroll] are SCROLLS, never
+        // dismiss-drags — the pointercancel race only saves a scroll when the
+        // browser can actually scroll (not at scrollTop 0, never in a list
+        // without a scroll container). Grabber/title stay the swipe surface.
+        if (e.target && e.target.closest && e.target.closest('[data-sheet-scroll]')) return;
         const card = cardRef.current;
         dragRef.current = {
           startY: e.clientY, startX: e.clientX,
@@ -25721,14 +25726,21 @@ const confirmDelete = (p) => setConfirmOpts({
                     <div className="text-[13px] text-sky-400 font-semibold">New shoot</div>
                     <div className="text-[11px] text-neutral-500 mt-0.5">Create a shoot from this call sheet</div>
                   </button>
-                  {[...productions].reverse().map(p => (
-                    <button key={p.id} type="button" onClick={() => chooseImportTarget(p.id)}
-                      className="w-full text-left bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-3.5 py-3 transition-colors"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <div className="text-[13px] text-neutral-100 font-semibold">{p.title || 'Untitled'}</div>
-                      {p.prodCo ? <div className="text-[11px] text-neutral-500 mt-0.5">{p.prodCo}</div> : null}
-                    </button>
-                  ))}
+                  {/* The list is a REAL scroll container (V1): bounded height,
+                      and data-sheet-scroll opts its gestures out of the Sheet's
+                      swipe-dismiss — scrolling can never drag the sheet away.
+                      "New shoot" sits above it, outside the scroll, so it can
+                      never scroll out of reach. */}
+                  <div data-sheet-scroll className="space-y-2.5 overflow-y-auto" style={{ maxHeight: '55vh' }}>
+                    {[...productions].reverse().map(p => (
+                      <button key={p.id} type="button" onClick={() => chooseImportTarget(p.id)}
+                        className="w-full text-left bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-3.5 py-3 transition-colors"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        <div className="text-[13px] text-neutral-100 font-semibold">{p.title || 'Untitled'}</div>
+                        {p.prodCo ? <div className="text-[11px] text-neutral-500 mt-0.5">{p.prodCo}</div> : null}
+                      </button>
+                    ))}
+                  </div>
                 </>
               )}
             </div>

@@ -4891,7 +4891,8 @@ async function main() {
     check('II2b Sheet registers prefers-reduced-motion via matchMedia',
       /function Sheet\([\s\S]{0,4000}matchMedia\(['"]\(prefers-reduced-motion: reduce\)['"]\)/.test(html));
     check('II2c Sheet uses translate3d on the card (GPU layer)',
-      /function Sheet\([\s\S]{0,10000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
+      // Window widened 10k→12k for the V1 scroll-opt-out comment upstream.
+      /function Sheet\([\s\S]{0,12000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
     check('II2d Sheet escape handler gated on topmost stack id (no double-close on stacked sheets)',
       /function Sheet\([\s\S]{0,8000}_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current/.test(html));
     check('II2e Sheet backdrop tap dismisses via tryDismiss (honours onBeforeDismiss)',
@@ -5150,6 +5151,14 @@ async function main() {
     // ─ LL1: the Sheet stacking PRIMITIVE — only the topmost sheet may swipe ─
     check('LL1a Sheet.onPointerDown bails unless this sheet is topmost in _sheetStack (parent swipe disabled under a child)',
       /const onPointerDown = \(e\) => \{\s*if \(!swipeDismiss\) return;[\s\S]{0,400}if \(_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current\) return;/.test(html));
+    // ─ LL1b (V1): gestures starting inside [data-sheet-scroll] NEVER start a
+    //   dismiss-drag — a selection list must scroll, not dismiss. The share-in
+    //   chooser's list is such a container (bounded height, real overflow),
+    //   with "New shoot" OUTSIDE it so it can't scroll out of reach. ─
+    check('LL1b Sheet.onPointerDown ignores gestures from opted-in scrollable content (data-sheet-scroll)',
+      /const onPointerDown = \(e\) => \{[\s\S]{0,1400}e\.target\.closest\('\[data-sheet-scroll\]'\)\) return;/.test(html));
+    check('LL1c the share-in chooser list is a bounded scroll container carrying the opt-out, with New shoot outside it',
+      /<button type="button" onClick=\{chooseImportNew\}[\s\S]{0,900}<div data-sheet-scroll className="space-y-2\.5 overflow-y-auto" style=\{\{ maxHeight: '55vh' \}\}>/.test(html));
 
     // ─ LL2: CrewActionSheet parent routes through <Sheet> (old hand-rolled
     //   items-end backdrop + in-frame email swap are gone). ─
