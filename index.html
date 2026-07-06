@@ -1041,10 +1041,39 @@
       await Browser.open({ url });
     }
 
-    // Hand a URL (e.g. mailto:) to iOS to open in the appropriate app.
-    async function nativeOpenUrl(url) {
-      const { App } = _capPlugins();
-      await App.openUrl({ url });
+    // Compose an email natively WITHOUT an attachment (the chase email, the
+    // Settings feedback link). Same decision ladder as nativeSendInvoiceEmail
+    // — the path device-verified to work: Apple Mail composer when the user's
+    // send method allows it AND a Mail account exists; otherwise the iOS
+    // share sheet with the recipient and subject folded into the text (a bare
+    // share sheet carries neither). NEVER a mailto on native: WKWebView has
+    // no mailto handler, and @capacitor/app has no openUrl — the old
+    // App.openUrl call threw into a silent catch, which was the S1
+    // dead-button bug. Returns 'composer' | 'shared' | 'failed'.
+    async function nativeComposeEmail({ to, subject, body, method }) {
+      const { EmailComposer, Share } = _capPlugins();
+      const toList = (to || '').trim() ? [(to || '').trim()] : [];
+      let hasAccount = false;
+      try {
+        if (EmailComposer && EmailComposer.hasAccount) {
+          const r = await EmailComposer.hasAccount();
+          hasAccount = !!(r && r.hasAccount);
+        }
+      } catch (_) { hasAccount = false; }
+      if (method !== 'shareSheet' && hasAccount) {
+        try {
+          await EmailComposer.open({ to: toList, subject: subject || '', body: body || '' });
+          return 'composer';
+        } catch (_) {} // composer refused — fall through to the share sheet
+      }
+      try {
+        if (Share && Share.share) {
+          const text = [to ? `To: ${to}` : '', subject || '', body || ''].filter(Boolean).join('\n\n');
+          await Share.share({ title: subject || '', text });
+          return 'shared';
+        }
+      } catch (_) {}
+      return 'failed';
     }
 
     // ── iOS Live Activity bridge (Stage 1 — display-only) ───────────────────
@@ -6433,12 +6462,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (body) params.set('body', body);
       const queryString = params.toString().replace(/\+/g, '%20');
       const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?${queryString}`;
-      if (IS_NATIVE) {
-        // WKWebView blocks mailto: via location.href; hand it to iOS instead.
-        nativeOpenUrl(mailtoUrl).catch((e) => { try { console.error('openUrl mailto failed', e); } catch (_) {} });
-      } else {
-        window.location.href = mailtoUrl;
-      }
+      // WEB-ONLY. Its single caller is handleEmail's web branch — on native
+      // the invoice email goes through nativeSendInvoiceEmail (EmailComposer /
+      // share sheet). The old IS_NATIVE branch here called App.openUrl, which
+      // does not exist in @capacitor/app v3+ and threw into a silent catch —
+      // dead code with the S1 disease, removed rather than left armed.
+      window.location.href = mailtoUrl;
     }
 
     /* ── chase email — ONE template, no escalation tiers, no tracking state.
@@ -6466,21 +6495,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const body = `Hi${contact ? ' ' + contact : ''},\n\nJust chasing invoice ${invoice.invoiceNumber}${production ? ` for ${production}` : ''} (${totalStr}), which was due on ${dueStr} and is now overdue.\n\nCould you let me know when I can expect payment? Late-payment charges will apply under the standard terms if it remains unpaid.\n\nThanks,\n${signoff}`;
       return { subject, body };
     }
-    // Same delivery split as openInvoiceMailto: mailto handed to iOS natively
-    // (WKWebView blocks location.href for mailto), location.href on web.
-    function openChaseMailto(invoice, userPrefs) {
+    // Chase delivery. Native: the SAME ladder the invoice email uses and the
+    // device round verified — EmailComposer, else share sheet (S1 fix; the
+    // old path handed a mailto to App.openUrl, which doesn't exist in
+    // @capacitor/app v3+, so the tap silently did nothing). Web: mailto,
+    // unchanged. Returns 'composer' | 'shared' | 'mailto' | 'failed' so the
+    // caller can surface the no-mail-handler case.
+    async function openChaseMailto(invoice, userPrefs) {
       const recipient = (invoice.toEmail || '').trim();
       const { subject, body } = buildChaseEmailContent(invoice, userPrefs);
+      if (IS_NATIVE) {
+        return nativeComposeEmail({
+          to: recipient, subject, body,
+          method: (userPrefs && userPrefs.invoiceEmailMethod) || 'appleMail',
+        });
+      }
       const params = new URLSearchParams();
       if (subject) params.set('subject', subject);
       if (body) params.set('body', body);
       const queryString = params.toString().replace(/\+/g, '%20');
-      const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?${queryString}`;
-      if (IS_NATIVE) {
-        nativeOpenUrl(mailtoUrl).catch((e) => { try { console.error('openUrl chase mailto failed', e); } catch (_) {} });
-      } else {
-        window.location.href = mailtoUrl;
-      }
+      window.location.href = `mailto:${encodeURIComponent(recipient)}?${queryString}`;
+      return 'mailto';
     }
 
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
@@ -19668,7 +19703,7 @@ const setDays = (updater) =>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-neutral-500">Feedback</span>
-                    <a href="mailto:feedback@timemachineapp.co.uk" onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenUrl('mailto:feedback@timemachineapp.co.uk').catch(() => {}); } : undefined} className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
+                    <a href="mailto:feedback@timemachineapp.co.uk" onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeComposeEmail({ to: 'feedback@timemachineapp.co.uk', subject: '', body: '', method: (userPrefs && userPrefs.invoiceEmailMethod) || 'appleMail' }).catch(() => {}); } : undefined} className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
                   </div>
                 </div>
               </div>
@@ -22323,7 +22358,14 @@ const setDays = (updater) =>
             )}
             {invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime()) && (
               <div>
-                <Btn variant="subtle" onClick={() => openChaseMailto(invoice, userPrefs)} className="w-full justify-center">
+                <Btn
+                  variant="subtle"
+                  onClick={async () => {
+                    const r = await openChaseMailto(invoice, userPrefs);
+                    if (r === 'failed') showToast("Couldn't open an email app - check Mail is set up.");
+                  }}
+                  className="w-full justify-center"
+                >
                   <IMail size={13}/>Chase this invoice
                 </Btn>
                 <p className="text-[10px] text-neutral-500 mt-1.5 text-center">Opens a prefilled email asking when to expect payment.</p>

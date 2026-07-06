@@ -3676,8 +3676,11 @@ async function main() {
       body.includes('fireCelebration({ force: true })'));
     check('Z5i Native browser fallback for APA link still wired',
       body.includes("nativeOpenInBrowser('https://www.a-p-a.net/apa-crew-terms/')"));
-    check('Z5j Native mailto fallback for feedback link still wired',
-      body.includes("nativeOpenUrl('mailto:feedback@timemachineapp.co.uk')"));
+    // S1: the old nativeOpenUrl('mailto:…') wiring called App.openUrl, which
+    // does not exist in @capacitor/app v3+ — the tap silently did nothing on
+    // device. The link now composes through the device-verified email ladder.
+    check('Z5j Native feedback link composes through nativeComposeEmail (the S1 fix), not the dead mailto handoff',
+      body.includes("nativeComposeEmail({ to: 'feedback@timemachineapp.co.uk'"));
 
     // ─ Z6: every OLD top-level disclosure label is gone. If any of these
     //   reappear, the regroup has been partially reverted. ─
@@ -6774,9 +6777,9 @@ async function main() {
     check('CE2b the chase amount quotes invoiceCurrentTotal (the late-payment extension seam)',
       /const totalStr = fmtGBP\(invoiceCurrentTotal\(invoice\)\);/.test(chase));
 
-    check('CE3 the editor button is gated on sent + isOverdueSent and opens the chase mailto',
+    check('CE3 the editor button is gated on sent + isOverdueSent, opens the chase, and toasts the no-mail-handler case',
       /\{invoice\.status === 'sent' && isOverdueSent\(invoice, new Date\(todayISO\(\) \+ 'T12:00:00'\)\.getTime\(\)\) && \(/.test(html) &&
-      /onClick=\{\(\) => openChaseMailto\(invoice, userPrefs\)\}/.test(html) &&
+      /const r = await openChaseMailto\(invoice, userPrefs\);\s*if \(r === 'failed'\) showToast\("Couldn't open an email app - check Mail is set up\."\);/.test(html) &&
       />Chase this invoice\s*<\/Btn>/.test(html.replace(/<IMail size=\{13\}\/>/, '>')));
 
     check('CE4 chasing writes NO state: no storage.set / updateInvoice / setProduction in the chase block',
@@ -6784,6 +6787,18 @@ async function main() {
 
     check('CE5 recipient is the invoice\'s stored client email',
       /const recipient = \(invoice\.toEmail \|\| ''\)\.trim\(\);[\s\S]{0,120}buildChaseEmailContent\(invoice, userPrefs\);/.test(chase));
+
+    // ─ S1: native chase goes through the DEVICE-VERIFIED email ladder ─
+    check('CE6 native chase routes through nativeComposeEmail (EmailComposer ladder) — and no App.openUrl CALL survives anywhere',
+      /if \(IS_NATIVE\) \{\s*return nativeComposeEmail\(\{\s*to: recipient, subject, body,/.test(chase) &&
+      !/App\.openUrl\(/.test(html) &&
+      !/function nativeOpenUrl/.test(html));
+    check('CE7 the ladder: Mail composer only with an account + appleMail method, else share sheet, else \'failed\'',
+      /async function nativeComposeEmail\(\{ to, subject, body, method \}\) \{/.test(html) &&
+      /const r = await EmailComposer\.hasAccount\(\);\s*hasAccount = !!\(r && r\.hasAccount\);/.test(html) &&
+      /if \(method !== 'shareSheet' && hasAccount\) \{/.test(html) &&
+      /await Share\.share\(\{ title: subject \|\| '', text \}\);\s*return 'shared';/.test(html) &&
+      /return 'failed';\s*\}/.test(html));
   }
 
   // ════════════════════════════════════════════════════════════════
