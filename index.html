@@ -22024,6 +22024,57 @@ const setDays = (updater) =>
               </div>
             ))}
 
+            {/* Late-payment charges banner (S2) — THE headline action on an
+                overdue invoice, in the first zone the eye hits: penalty family
+                (tm-pen), with the muted accruing line and the action reading
+                as one unit ("charges are accruing - add them"). Once a record
+                exists it flips to the added summary + an update route back
+                into the sheet. The chase button keeps its place at the foot. */}
+            {invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime()) && (() => {
+              const rec = allInvoiceCharges[invoice.id] || null;
+              if (rec) {
+                return (
+                  <div
+                    className="bg-neutral-900 border border-tm-pen/25 rounded-xl px-4 py-3"
+                    style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' }}
+                  >
+                    <div className="flex justify-between text-[10px] font-mono tracking-wider uppercase text-tm-pen/70 mb-2.5">
+                      <span>Late payment charges added</span>
+                      <span>{fmtGBP((Number(rec.interest) || 0) + (Number(rec.fixedFee) || 0))}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setChargeOverride(''); setShowChargesSheet(true); }}
+                      className="w-full inline-flex items-center justify-center gap-2 font-semibold uppercase tracking-wide border rounded-lg px-3 py-2.5 text-xs transition-all active:scale-95 bg-tm-pen/10 border-tm-pen/40 text-tm-pen hover:bg-tm-pen/20"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <IWarn size={13}/>Update late-payment charges
+                    </button>
+                  </div>
+                );
+              }
+              const acc = computeLateCharges(invoice, todayISO());
+              return (
+                <div
+                  className="bg-neutral-900 border border-tm-pen/25 rounded-xl px-4 py-3"
+                  style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' }}
+                >
+                  <div className="flex justify-between text-[10px] font-mono tracking-wider uppercase text-tm-pen/70 mb-2.5">
+                    <span>Accruing interest</span>
+                    <span>{fmtGBP(acc.interest)} · {acc.daysOverdue} day{acc.daysOverdue === 1 ? '' : 's'}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setChargeOverride(''); setShowChargesSheet(true); }}
+                    className="w-full inline-flex items-center justify-center gap-2 font-semibold uppercase tracking-wide border rounded-lg px-3 py-2.5 text-xs transition-all active:scale-95 bg-tm-pen/10 border-tm-pen/40 text-tm-pen hover:bg-tm-pen/20"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    <IWarn size={13}/>Add late-payment charges
+                  </button>
+                </div>
+              );
+            })()}
+
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-1 mb-1">
               <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Job</span>
@@ -22210,12 +22261,12 @@ const setDays = (updater) =>
                 </div>
                 {/* Late-payment charges (R3): the attached record renders under
                     the frozen Total — original figures untouched, updated Total
-                    due beneath. Before generation, an overdue invoice shows the
-                    ACCRUING figure only — muted, computed on render, never
-                    stored. */}
+                    due beneath. The ACCRUING figure lives in the S2 top banner
+                    with the add action, not here. */}
                 {(() => {
                   const rec = allInvoiceCharges[invoice.id] || null;
-                  if (rec) return (
+                  if (!rec) return null;
+                  return (
                     <>
                       <div className="flex justify-between text-[11px] font-mono py-0.5 mt-1">
                         <span className="text-neutral-500 tracking-wider uppercase">Late payment charges</span>
@@ -22227,16 +22278,6 @@ const setDays = (updater) =>
                       </div>
                     </>
                   );
-                  if (invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime())) {
-                    const acc = computeLateCharges(invoice, todayISO());
-                    return (
-                      <div className="flex justify-between text-[10px] font-mono pt-1.5 text-tm-pen/70">
-                        <span className="tracking-wider uppercase">Accruing interest</span>
-                        <span>{fmtGBP(acc.interest)} · {acc.daysOverdue} day{acc.daysOverdue === 1 ? '' : 's'}</span>
-                      </div>
-                    );
-                  }
-                  return null;
                 })()}
               </div>
             </div>
@@ -22342,20 +22383,11 @@ const setDays = (updater) =>
               </div>
             )}
 
-            {/* Late-payment charges (R3) + Chase (Q4) — overdue sent invoices
-                only. Charges: the sheet shows the full statutory working and
-                writes ONE ledger record (replaced on regeneration); the frozen
-                invoice is never touched. Chase: one template, no tracking —
-                a prefilled draft quoting invoiceCurrentTotal, which now
-                includes any attached charges. */}
-            {invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime()) && (
-              <div>
-                <Btn variant="subtle" onClick={() => { setChargeOverride(''); setShowChargesSheet(true); }} className="w-full justify-center">
-                  <IWarn size={13}/>Add late-payment charges
-                </Btn>
-                <p className="text-[10px] text-neutral-500 mt-1.5 text-center">Statutory interest and the fixed recovery fee, added to this invoice as one document.</p>
-              </div>
-            )}
+            {/* Chase (Q4) — overdue sent invoices only. One template, no
+                tracking: a prefilled draft quoting invoiceCurrentTotal (which
+                includes any attached charges). The charges affordance lives in
+                the top banner (S2); its sheet writes ONE ledger record and the
+                frozen invoice is never touched. */}
             {invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime()) && (
               <div>
                 <Btn

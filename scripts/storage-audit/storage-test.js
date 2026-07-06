@@ -6950,7 +6950,38 @@ async function main() {
       /const tot = invoiceCurrentTotal\(inv\);/.test(html) &&
       /const total = invoiceCurrentTotal\(inv\);   \/\/ frozen \+ any charges/.test(html));
     check('LP11 the ruled button label on the overdue detail',
-      />Add late-payment charges\s*<\/Btn>/.test(html.replace(/<IWarn size=\{13\}\/>/, '>')));
+      />Add late-payment charges\s*<\/button>/.test(html.replace(/<IWarn size=\{13\}\/>/g, '>')));
+
+    // ─ LP12 (S2): placement + penalty styling — the charges affordance is
+    //   the overdue invoice's HEADLINE action: top banner above the job/
+    //   line-item/totals cards, tm-pen family, accrual line + button as one
+    //   unit. The chase button keeps its foot placement and neutral style. ─
+    (() => {
+      const bannerIdx = html.indexOf('Late-payment charges banner (S2)');
+      const editorIdx = html.indexOf('function InvoiceEditorView');
+      const jobCardIdx = html.indexOf('>Job</span>', bannerIdx);
+      const lineItemsIdx = html.indexOf('Line items', bannerIdx);
+      const chaseIdx = html.indexOf('Chase this invoice', bannerIdx);
+      check('LP12a the banner sits inside the editor ABOVE the job/line-item/totals area',
+        editorIdx > 0 && bannerIdx > editorIdx && jobCardIdx > bannerIdx && lineItemsIdx > bannerIdx);
+      const bannerEnd = html.indexOf('>Job</span>', bannerIdx);
+      const banner = (bannerIdx > 0 && bannerEnd > bannerIdx) ? html.slice(bannerIdx, bannerEnd) : '';
+      check('LP12b penalty family styling: tm-pen border + tinted rose wash + tm-pen button',
+        /border-tm-pen\/25/.test(banner) &&
+        /rgba\(244,63,94,0\.06\)/.test(banner) &&
+        /bg-tm-pen\/10 border-tm-pen\/40 text-tm-pen/.test(banner));
+      check('LP12c one unit: the muted accruing line (tm-pen/70) sits WITH the add button inside the banner',
+        /text-tm-pen\/70/.test(banner) &&
+        /Accruing interest/.test(banner) &&
+        /const acc = computeLateCharges\(invoice, todayISO\(\)\);/.test(banner) &&
+        /Add late-payment charges/.test(banner));
+      check('LP12d with a record the banner flips to the added summary + the update route into the sheet',
+        /Late payment charges added/.test(banner) &&
+        /Update late-payment charges/.test(banner));
+      check('LP12e the old foot strip is gone and the chase button keeps its foot placement below the banner',
+        !/Statutory interest and the fixed recovery fee, added to this invoice as one document\./.test(html) &&
+        chaseIdx > lineItemsIdx);
+    })();
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
