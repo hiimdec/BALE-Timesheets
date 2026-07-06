@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.2.1
+
+### Share-in shoot picker
+- Sharing a call sheet in now offers only the shoots near today's date (within a week either side), nearest first, with the new shoot option pinned at the top - no more scrolling through every shoot you've ever made.
+- Fixed the picker dismissing itself when you scrolled the list. Scrolling scrolls; swiping down on the title bar or tapping outside still closes it.
+
 ## 5.2
 
 ### Automatic iCloud backup (new)
