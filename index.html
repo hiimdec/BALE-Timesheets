@@ -493,9 +493,20 @@
       // both warm an in-memory cache from these at boot. The legacy keys
       // below get absorbed (then removed) by their respective one-time
       // backend-migration step.
+      //
+      // EVERY persisted bigals_* store MUST be listed here (T1). get() is a
+      // synchronous cache read, so a key missing from this list reads null on
+      // every launch even though the backend holds it — and useStoredState
+      // then persists its default straight over the durable record. That
+      // destroyed late-payment charges on the first relaunch after they were
+      // added, and silently weakened every ledger (overdue exactly-once, LA
+      // applied-events, the health cache, the iCloud daily gate) across
+      // relaunches on native and on the IndexedDB web default.
       const KEYS = [
         'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',
         'bigals_pre_migration_backup',
+        'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',
+        'bigals_health_steps', 'bigals_icloud_backup_meta',
         'bigals_production', 'bigals_crew', 'bigals_days',
       ];
 
@@ -21688,11 +21699,19 @@ const setDays = (updater) =>
                     showToast('Email composer opened - marked as sent');
                   }
                 })
-                .catch((e) => { try { console.error('Invoice email failed', e); } catch (_) {} })
+                .catch((e) => {
+                  // NEVER silent (T1): a generation failure with no surface
+                  // reads as a dead button. Name it and invite a retry.
+                  try { console.error('Invoice email failed', e); } catch (_) {}
+                  showToast("Couldn't prepare the email - try again.");
+                })
                 .finally(() => { printIntentRef.current = 'share'; emailCcRef.current = ''; emailMethodRef.current = 'appleMail'; cleanup(); });
             } else {
               nativeExportPrintViewPdfVector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 }, filename)
-                .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
+                .catch((e) => {
+                  try { console.error('PDF export failed', e); } catch (_) {}
+                  showToast("Couldn't make the PDF - try again.");
+                })
                 .finally(cleanup);
             }
           } else {

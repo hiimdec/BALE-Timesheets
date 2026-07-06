@@ -416,6 +416,50 @@ async function main() {
     check('E3 durability: background flush persisted the write', Preferences._store.get('bigals_user_prefs') === '{"x":1}');
   }
 
+  // ===== M. LEDGER WARM — every persisted store survives a relaunch (T1) =====
+  // The T1 regression: get() is a synchronous cache read and KEYS is the only
+  // boot warm on BOTH persistent backends. bigals_invoice_charges wasn't
+  // listed, so a relaunch read null and useStoredState persisted {} over the
+  // durable record — late-payment charges were destroyed by the next launch
+  // (and every ledger silently weakened across relaunches). This EXECUTES the
+  // native boot against a seeded Preferences store and asserts every ledger
+  // key warms into the cache with the durable value intact.
+  {
+    const LEDGER_SEED = {
+      bigals_native_migrated: '1',
+      bigals_schema_version: '4',
+      bigals_productions: JSON.stringify([{ id: 'p1', title: 'Warm test', days: [], crew: [], invoices: [] }]),
+      bigals_invoice_charges: JSON.stringify({ 'i-1': { generatedAt: '2026-07-06', interest: 5.15, fixedFee: 40 } }),
+      bigals_overdue_fired: JSON.stringify({ 'i-1': { dueDate: '2026-06-01', firedAt: 1 } }),
+      bigals_la_applied_events: JSON.stringify(['ev-1']),
+      bigals_health_steps: JSON.stringify({ d1: { steps: 100 } }),
+      bigals_icloud_backup_meta: JSON.stringify({ lastWriteDay: '2026-07-06' }),
+    };
+    const Preferences = makePreferences(LEDGER_SEED);
+    const App = makeAppPlugin();
+    const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App } };
+    const sb = await runApp({ capacitor, localStorage: makeLocalStorage() });
+    await settle();
+    const storage = sb.__storage;
+    check('M1 native relaunch: the charges ledger WARMS from Preferences (the T1 vanishing-charges bug)',
+      storage.get('bigals_invoice_charges') === LEDGER_SEED.bigals_invoice_charges,
+      `got=${storage.get('bigals_invoice_charges')}`);
+    check('M2 native relaunch: every other ledger key warms too (overdue, LA events, health, iCloud meta)',
+      storage.get('bigals_overdue_fired') === LEDGER_SEED.bigals_overdue_fired &&
+      storage.get('bigals_la_applied_events') === LEDGER_SEED.bigals_la_applied_events &&
+      storage.get('bigals_health_steps') === LEDGER_SEED.bigals_health_steps &&
+      storage.get('bigals_icloud_backup_meta') === LEDGER_SEED.bigals_icloud_backup_meta);
+    check('M3 the durable record is intact after boot (no clobber through the adapter)',
+      Preferences._store.get('bigals_invoice_charges') === LEDGER_SEED.bigals_invoice_charges,
+      `store=${Preferences._store.get('bigals_invoice_charges')}`);
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    check('M4 KEYS lists every persisted bigals_* store (source pin — both backends share the list)',
+      /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
+    check('M5 PDF/email generation failures surface a toast — never a silent dead button',
+      /console\.error\('Invoice email failed', e\); \} catch \(_\) \{\}\s*showToast\("Couldn't prepare the email - try again\."\);/.test(html) &&
+      /console\.error\('PDF export failed', e\); \} catch \(_\) \{\}\s*showToast\("Couldn't make the PDF - try again\."\);/.test(html));
+  }
+
   // ===== F. PRE-MIGRATION BACKUP PRUNE — safe deletion semantics =====
   // The prune lives inside runMigrations' early-return branch (no migration
   // needed). It must NEVER fire in the same run that wrote a snapshot, and
