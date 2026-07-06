@@ -493,9 +493,20 @@
       // both warm an in-memory cache from these at boot. The legacy keys
       // below get absorbed (then removed) by their respective one-time
       // backend-migration step.
+      //
+      // EVERY persisted bigals_* store MUST be listed here (T1). get() is a
+      // synchronous cache read, so a key missing from this list reads null on
+      // every launch even though the backend holds it — and useStoredState
+      // then persists its default straight over the durable record. That
+      // destroyed late-payment charges on the first relaunch after they were
+      // added, and silently weakened every ledger (overdue exactly-once, LA
+      // applied-events, the health cache, the iCloud daily gate) across
+      // relaunches on native and on the IndexedDB web default.
       const KEYS = [
         'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',
         'bigals_pre_migration_backup',
+        'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',
+        'bigals_health_steps', 'bigals_icloud_backup_meta',
         'bigals_production', 'bigals_crew', 'bigals_days',
       ];
 
@@ -1020,16 +1031,60 @@
       return 'shared';
     }
 
+    // Multi-file sibling of nativeSaveAndShare: writes each TEXT file to the
+    // Cache dir and opens ONE share sheet carrying all of them (Share.share
+    // accepts several `files` uris — each becomes its own activity item).
+    async function nativeSaveAndShareMany(files, opts = {}) {
+      const { Filesystem, Share } = _capPlugins();
+      const uris = [];
+      for (const f of files) {
+        await Filesystem.writeFile({ path: f.filename, data: f.content, directory: 'CACHE', recursive: true, encoding: 'utf8' });
+        const { uri } = await Filesystem.getUri({ path: f.filename, directory: 'CACHE' });
+        uris.push(uri);
+      }
+      await Share.share({ title: opts.title || (files[0] && files[0].filename) || '', files: uris });
+      return 'shared';
+    }
+
     // Open a URL in the in-app Safari view (SFSafariViewController). Returns to the app.
     async function nativeOpenInBrowser(url) {
       const { Browser } = _capPlugins();
       await Browser.open({ url });
     }
 
-    // Hand a URL (e.g. mailto:) to iOS to open in the appropriate app.
-    async function nativeOpenUrl(url) {
-      const { App } = _capPlugins();
-      await App.openUrl({ url });
+    // Compose an email natively WITHOUT an attachment (the chase email, the
+    // Settings feedback link). Same decision ladder as nativeSendInvoiceEmail
+    // — the path device-verified to work: Apple Mail composer when the user's
+    // send method allows it AND a Mail account exists; otherwise the iOS
+    // share sheet with the recipient and subject folded into the text (a bare
+    // share sheet carries neither). NEVER a mailto on native: WKWebView has
+    // no mailto handler, and @capacitor/app has no openUrl — the old
+    // App.openUrl call threw into a silent catch, which was the S1
+    // dead-button bug. Returns 'composer' | 'shared' | 'failed'.
+    async function nativeComposeEmail({ to, subject, body, method }) {
+      const { EmailComposer, Share } = _capPlugins();
+      const toList = (to || '').trim() ? [(to || '').trim()] : [];
+      let hasAccount = false;
+      try {
+        if (EmailComposer && EmailComposer.hasAccount) {
+          const r = await EmailComposer.hasAccount();
+          hasAccount = !!(r && r.hasAccount);
+        }
+      } catch (_) { hasAccount = false; }
+      if (method !== 'shareSheet' && hasAccount) {
+        try {
+          await EmailComposer.open({ to: toList, subject: subject || '', body: body || '' });
+          return 'composer';
+        } catch (_) {} // composer refused — fall through to the share sheet
+      }
+      try {
+        if (Share && Share.share) {
+          const text = [to ? `To: ${to}` : '', subject || '', body || ''].filter(Boolean).join('\n\n');
+          await Share.share({ title: subject || '', text });
+          return 'shared';
+        }
+      } catch (_) {}
+      return 'failed';
     }
 
     // ── iOS Live Activity bridge (Stage 1 — display-only) ───────────────────
@@ -1210,6 +1265,47 @@
         try { const p = _capPlugins().HealthSteps; if (p && p.querySteps) { const r = await p.querySteps({ startEpoch, endEpoch }); return Number(r && r.steps) || 0; } }
         catch (e) { try { console.warn('[HealthSteps] querySteps failed', (e && e.message) || e); } catch (_) {} }
         return 0;
+      },
+    };
+
+    // ── iCloud snapshot backup bridge (R2) ──────────────────────────────────
+    // Talks to the app-embedded ICloudBackupPlugin (ubiquity container ROOT —
+    // never the Documents/ subfolder, so nothing appears in the Files app).
+    // EVERY method is a safe no-op on web and when the plugin is absent: each
+    // returns its web-safe default before touching the Capacitor bridge unless
+    // IS_NATIVE (audit:web). Failures degrade silently by design — iCloud
+    // signed out / full / offline must never surface; manual export remains
+    // the fallback.
+    const ICloudBackup = {
+      async status() {
+        if (!IS_NATIVE) return { available: false, reason: 'web' };
+        try { const p = _capPlugins().ICloudBackup; if (p && p.status) { const r = await p.status(); return { available: !!(r && r.available), reason: (r && r.reason) || '' }; } }
+        catch (e) { try { console.warn('[ICloudBackup] status failed', (e && e.message) || e); } catch (_) {} }
+        return { available: false, reason: 'plugin-missing' };
+      },
+      async write(filename, data) {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().ICloudBackup; if (p && p.writeSnapshot) { const r = await p.writeSnapshot({ filename, data }); return !!(r && r.ok); } }
+        catch (e) { try { console.warn('[ICloudBackup] write failed', (e && e.message) || e); } catch (_) {} }
+        return false;
+      },
+      async list() {
+        if (!IS_NATIVE) return [];
+        try { const p = _capPlugins().ICloudBackup; if (p && p.listSnapshots) { const r = await p.listSnapshots(); return Array.isArray(r && r.snapshots) ? r.snapshots : []; } }
+        catch (e) { try { console.warn('[ICloudBackup] list failed', (e && e.message) || e); } catch (_) {} }
+        return [];
+      },
+      async read(filename) {
+        if (!IS_NATIVE) return null;
+        try { const p = _capPlugins().ICloudBackup; if (p && p.readSnapshot) { const r = await p.readSnapshot({ filename }); return (r && typeof r.data === 'string') ? r.data : null; } }
+        catch (e) { try { console.warn('[ICloudBackup] read failed', (e && e.message) || e); } catch (_) {} }
+        return null;
+      },
+      async remove(filename) {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().ICloudBackup; if (p && p.deleteSnapshot) { const r = await p.deleteSnapshot({ filename }); return !!(r && r.ok); } }
+        catch (e) { try { console.warn('[ICloudBackup] remove failed', (e && e.message) || e); } catch (_) {} }
+        return false;
       },
     };
 
@@ -1620,19 +1716,19 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "5.1";
+    const APP_VERSION = "5.2";
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-07-05",
+      date: "2026-07-06",
       added: [
-        "September 2026 APA rates built in — applied automatically from a shoot's first day, with your negotiated rates always left alone.",
-        "Legwork: Apple Health step stats on the Stats screen — steps between call and wrap, shoot days only, all on-device.",
-        "Live Activity redesigned: a cleaner Dynamic Island, and the day total is accurate the moment you wrap.",
-        "Upcoming shoots show their booked value, shoots open on the nearest day, and the monthly average no longer counts the month in progress.",
-        "Fixes: duplicate overdue-invoice reminders; Best Boy department defaults now reach all crew; invoice list spacing.",
+        "Automatic iCloud backup — a private daily snapshot in your own iCloud, visible to no one else. Delete the app or switch phones and reinstalling offers your data back.",
+        "Late payment charges — statutory interest and the fixed recovery fee added to an overdue invoice in a tap, shown as one document with the working. Removable any time.",
+        "Chase an overdue invoice — a prefilled email with the invoice PDF attached, quoting exactly what's owed including any charges.",
+        "Accountant export — pick a tax year and get a CSV of every invoice plus a summary with month-by-month totals and mileage.",
+        "Fixes: newly added records now survive a relaunch; chase and feedback emails open reliably on iPhone; PDF and email failures say so instead of doing nothing.",
       ],
-      notes: "September 2026 APA rates, Apple Health step stats, a redesigned Live Activity, and a round of fixes. See CHANGELOG.md for full notes.",
+      notes: "Automatic iCloud backup, statutory late-payment charges, chase emails with the invoice attached, and a tax-year accountant export. See CHANGELOG.md for full notes.",
     };
 
     /* ─── Schema version & storage-safety helpers ─── */
@@ -3769,6 +3865,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     // Validates, version-checks, writes to localStorage, runs migrations, returns { ok, error }.
     // Caller is responsible for calling window.location.reload() on ok.
+    // ── backup envelope (R2) ─────────────────────────────────────────────
+    // The ledger side-channels a backup carries ALONGSIDE productions/userPrefs
+    // — behavioural ledgers (so a restored device doesn't re-fire reminders or
+    // re-apply events) and the late-payment charges ledger (money already
+    // claimed must survive a restore). Backwards compatible both ways: an old
+    // app ignores the extra field; an old backup without it leaves the
+    // device's ledgers untouched on import.
+    const BACKUP_LEDGER_KEYS = {
+      overdueFired: 'bigals_overdue_fired',
+      laAppliedEvents: 'bigals_la_applied_events',
+      invoiceCharges: 'bigals_invoice_charges',
+    };
+    // SINGLE payload builder for the manual export AND the iCloud snapshot —
+    // the two can never drift. version 2 marks the ledgers envelope.
+    function buildBackupPayload(productions, userPrefs, now = new Date()) {
+      const ledgers = {};
+      for (const [field, key] of Object.entries(BACKUP_LEDGER_KEYS)) {
+        try {
+          const raw = storage.get(key);
+          if (raw) ledgers[field] = JSON.parse(raw);
+        } catch (_) {}
+      }
+      return {
+        version: 2,
+        appVersion: APP_VERSION,
+        schemaVersion: SCHEMA_VERSION,
+        exportDate: now.toISOString(),
+        exportedAt: now.toISOString(),
+        productions,
+        userPrefs,
+        ledgers,
+      };
+    }
+
     function importBackup(rawText) {
       let parsed;
       try { parsed = JSON.parse(rawText); } catch { return { ok: false, error: "Couldn't read that file. Is it a TimeMachine backup?" }; }
@@ -3788,15 +3918,38 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // untouched (never clobber bank details / settings with defaults).
       const importedPrefs = (parsed && typeof parsed === 'object' && parsed.userPrefs &&
         typeof parsed.userPrefs === 'object' && !Array.isArray(parsed.userPrefs)) ? parsed.userPrefs : null;
+      // Ledgers restore only when the backup actually carries them (v2
+      // envelope) — a v1 backup leaves the device's ledgers untouched, the
+      // same principle as the prefs guard above.
+      const importedLedgers = (parsed && parsed.ledgers && typeof parsed.ledgers === 'object' &&
+        !Array.isArray(parsed.ledgers)) ? parsed.ledgers : null;
       const originalProductions = storage.get('bigals_productions');
       const originalSchemaVersion = storage.get(SCHEMA_VERSION_KEY);
       const originalUserPrefs = storage.get('bigals_user_prefs');
+      const originalLedgers = {};
+      if (importedLedgers) {
+        for (const key of Object.values(BACKUP_LEDGER_KEYS)) originalLedgers[key] = storage.get(key);
+      }
+      const rollbackLedgers = () => {
+        if (!importedLedgers) return;
+        for (const key of Object.values(BACKUP_LEDGER_KEYS)) {
+          if (originalLedgers[key] != null) storage.set(key, originalLedgers[key]);
+          else storage.remove(key);
+        }
+      };
       try {
         storage.set('bigals_productions', JSON.stringify(arr));
         setStoredSchemaVersion(fileSchemaVersion);
         // Merge over DEFAULT_USER_PREFS so an older-schema prefs object gains any
         // newer keys (the same normalisation useStoredState applies on read).
         if (importedPrefs) storage.set('bigals_user_prefs', JSON.stringify({ ...DEFAULT_USER_PREFS, ...importedPrefs }));
+        if (importedLedgers) {
+          for (const [field, key] of Object.entries(BACKUP_LEDGER_KEYS)) {
+            if (importedLedgers[field] !== undefined) {
+              try { storage.set(key, JSON.stringify(importedLedgers[field])); } catch (_) {}
+            }
+          }
+        }
         const result = runMigrations();
         if (result.error) {
           if (originalProductions != null) storage.set('bigals_productions', originalProductions);
@@ -3807,6 +3960,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             if (originalUserPrefs != null) storage.set('bigals_user_prefs', originalUserPrefs);
             else storage.remove('bigals_user_prefs');
           }
+          rollbackLedgers();
           console.log('Migration failed:', result.error);
           return { ok: false, error: "Couldn't bring this backup up to date - it may be damaged. Try another backup." };
         }
@@ -5316,6 +5470,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       .invoice-totals .row.grand .value { font-size: 18px; }
 
+      /* Late payment charges — one document: original lines above, the
+         statutory working here, updated Total due in the totals stack. */
+      .invoice-charges { margin-bottom: 18px; page-break-inside: avoid; break-inside: avoid; }
+      .invoice-charges .charge-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 16px;
+        padding: 5px 0;
+        border-bottom: 1px solid #f5f5f5;
+        font-size: 11px;
+      }
+      .invoice-charges .charge-row .desc { color: #404040; line-height: 1.45; }
+      .invoice-charges .charge-row .amt {
+        font-variant-numeric: tabular-nums;
+        color: var(--ink);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
       /* Notes */
       .invoice-notes { margin-bottom: 18px; page-break-inside: avoid; break-inside: avoid; }
       .invoice-notes-body { font-size: 11px; line-height: 1.5; color: #404040; }
@@ -5890,7 +6064,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     /* ── Invoice PDF document (shared by print + email blob paths) ── */
-    function InvoiceDocument({ invoice, userPrefs }) {
+    function InvoiceDocument({ invoice, userPrefs, charges = null }) {
       const fmtInvDate = (iso) => {
         if (!iso) return "";
         return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -6121,6 +6295,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </table>
             </div>
 
+            {/* Late payment charges (R3) — the attached record, rendered as
+                part of the SAME document: original lines above are untouched;
+                the working sits here and the totals stack below carries the
+                updated Total due. Absent record → byte-identical document. */}
+            {charges && (
+              <div className="invoice-charges">
+                <div className="invoice-section-label">Late payment charges (added {fmtInvDate(charges.generatedAt)})</div>
+                <div className="charge-row">
+                  <span className="desc">
+                    Statutory interest - {charges.daysOverdue} day{charges.daysOverdue === 1 ? '' : 's'} at {charges.annualRate}% a year
+                    ({charges.baseRate}% base rate plus 8%, Late Payment of Commercial Debts (Interest) Act 1998)
+                  </span>
+                  <span className="amt">{fmtGBP(charges.interest)}</span>
+                </div>
+                <div className="charge-row">
+                  <span className="desc">Fixed recovery fee (invoice of {fmtGBP(charges.principal)})</span>
+                  <span className="amt">{fmtGBP(charges.fixedFee)}</span>
+                </div>
+              </div>
+            )}
+
             {/* Totals */}
             <div className="invoice-totals">
               <div className="totals-stack">
@@ -6134,16 +6329,42 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <span className="label">VAT ({invoice.vatRate || 20}%)</span>
                       <span className="value">{fmtGBP(vatAmount)}</span>
                     </div>
+                    {charges ? (
+                      <div className="row">
+                        <span className="label">Invoice total</span>
+                        <span className="value">{fmtGBP(total)}</span>
+                      </div>
+                    ) : (
+                      <div className="row grand">
+                        <span className="label">Total due</span>
+                        <span className="value">{fmtGBP(total)}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  charges ? (
+                    <div className="row">
+                      <span className="label">Invoice total</span>
+                      <span className="value">{fmtGBP(total)}</span>
+                    </div>
+                  ) : (
                     <div className="row grand">
                       <span className="label">Total due</span>
                       <span className="value">{fmtGBP(total)}</span>
                     </div>
+                  )
+                )}
+                {charges && (
+                  <>
+                    <div className="row">
+                      <span className="label">Late payment charges</span>
+                      <span className="value">{fmtGBP((Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0))}</span>
+                    </div>
+                    <div className="row grand">
+                      <span className="label">Total due</span>
+                      <span className="value">{fmtGBP(total + (Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0))}</span>
+                    </div>
                   </>
-                ) : (
-                  <div className="row grand">
-                    <span className="label">Total due</span>
-                    <span className="value">{fmtGBP(total)}</span>
-                  </div>
                 )}
               </div>
             </div>
@@ -6195,9 +6416,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     /* ── Portal wrapper for window.print() flow ── */
-    function InvoicePrintView({ invoice, userPrefs }) {
+    function InvoicePrintView({ invoice, userPrefs, charges = null }) {
       return ReactDOM.createPortal(
-        <InvoiceDocument invoice={invoice} userPrefs={userPrefs} />,
+        <InvoiceDocument invoice={invoice} userPrefs={userPrefs} charges={charges} />,
         document.body
       );
     }
@@ -6252,12 +6473,56 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (body) params.set('body', body);
       const queryString = params.toString().replace(/\+/g, '%20');
       const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?${queryString}`;
-      if (IS_NATIVE) {
-        // WKWebView blocks mailto: via location.href; hand it to iOS instead.
-        nativeOpenUrl(mailtoUrl).catch((e) => { try { console.error('openUrl mailto failed', e); } catch (_) {} });
-      } else {
-        window.location.href = mailtoUrl;
-      }
+      // WEB-ONLY. Its single caller is handleEmail's web branch — on native
+      // the invoice email goes through nativeSendInvoiceEmail (EmailComposer /
+      // share sheet). The old IS_NATIVE branch here called App.openUrl, which
+      // does not exist in @capacitor/app v3+ and threw into a silent catch —
+      // dead code with the S1 disease, removed rather than left armed.
+      window.location.href = mailtoUrl;
+    }
+
+    /* ── chase email — ONE template, no escalation tiers, no tracking state.
+       Just a prefilled draft from the overdue invoice detail (Q4). ── */
+    // The figure a chase (or any "what's owed now" surface) quotes: the frozen
+    // document total PLUS the invoice's attached late-payment charges record,
+    // when one exists. The one seam every owed-money surface reads — chase
+    // email, list totals, outstanding sums, accountant export, the document's
+    // Total due. The snapshot itself is never mutated; charges are recomputed
+    // from the record's parts so the frozen figures stay authoritative.
+    function invoiceCurrentTotal(invoice) {
+      const frozen = invoiceVAT(invoice, invoiceSubtotal(invoice.lineItems)).total;
+      const ch = invoiceChargesFor(invoice.id);
+      return ch ? frozen + (Number(ch.interest) || 0) + (Number(ch.fixedFee) || 0) : frozen;
+    }
+    function buildChaseEmailContent(invoice, userPrefs) {
+      const subject = `Invoice ${invoice.invoiceNumber} - overdue`;
+      const contact = String(invoice.toName || '').trim();
+      const production = String(invoice.jobTitle || '').trim();
+      const totalStr = fmtGBP(invoiceCurrentTotal(invoice));
+      const dueStr = invoice.dueDate
+        ? new Date(invoice.dueDate + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+        : '';
+      const signoff = String((userPrefs && userPrefs.displayName) || invoice.fromName || '').trim();
+      const body = `Hi${contact ? ' ' + contact : ''},\n\nJust chasing invoice ${invoice.invoiceNumber}${production ? ` for ${production}` : ''} (${totalStr}), which was due on ${dueStr} and is now overdue.\n\nCould you let me know when I can expect payment? Late-payment charges will apply under the standard terms if it remains unpaid.\n\nThanks,\n${signoff}`;
+      return { subject, body };
+    }
+    // Chase delivery, WEB-ONLY (mirrors openInvoiceMailto): a mailto draft —
+    // the web invoice email attaches nothing, so neither does the web chase
+    // (identical per-platform behaviour, ruled in T3). On NATIVE the chase
+    // button rides the invoice email's print pipeline instead — printIntent
+    // 'chase' renders the invoice PDF (charges section included) and delivers
+    // through nativeSendInvoiceEmail (Mail composer with the attachment, else
+    // the share sheet). The S1 lesson stands: never a mailto on native.
+    // Returns 'mailto' | 'failed'.
+    async function openChaseMailto(invoice, userPrefs) {
+      const recipient = (invoice.toEmail || '').trim();
+      const { subject, body } = buildChaseEmailContent(invoice, userPrefs);
+      const params = new URLSearchParams();
+      if (subject) params.set('subject', subject);
+      if (body) params.set('body', body);
+      const queryString = params.toString().replace(/\+/g, '%20');
+      window.location.href = `mailto:${encodeURIComponent(recipient)}?${queryString}`;
+      return 'mailto';
     }
 
     /* ═══════════════════════════ INLINE SVG ICONS ═══════════════════════════ */
@@ -18441,10 +18706,66 @@ const setDays = (updater) =>
       );
     }
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onResetAll, productionCount = 0, topBarLayout = 'left', setTopBarLayout = () => {} }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onExportAccountant = () => {}, accountantYears = [], onResetAll, productionCount = 0, topBarLayout = 'left', setTopBarLayout = () => {} }) {
       useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
+      // Accountant export — selected tax year. Defaults to the most recent
+      // COMPLETE tax year that holds invoices, else the newest on offer.
+      const [acctYear, setAcctYear] = useState(() => {
+        const current = taxYearOf(todayISO());
+        const complete = accountantYears.filter(y => y < current);
+        return (complete[0] ?? accountantYears[0]) ?? null;
+      });
+      // iCloud backup (R2, native only): honest status line + the missed-
+      // discovery restore route. Status reads the meta ledger + the plugin;
+      // restore lists snapshots and routes through the SAME importBackup +
+      // ConfirmDialog step the file restore uses.
+      const [icloudInfo, setIcloudInfo] = useState(null);   // { available, reason, meta }
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        let dead = false;
+        (async () => {
+          let meta = {};
+          try { meta = JSON.parse(storage.get('bigals_icloud_backup_meta') || '{}') || {}; } catch (_) {}
+          const st = await ICloudBackup.status();
+          if (!dead) setIcloudInfo({ ...st, meta });
+        })();
+        return () => { dead = true; };
+      }, []);
+      const [icloudSheet, setIcloudSheet] = useState(null); // null | 'loading' | { snapshots }
+      const fmtSnapDate = (iso) => {
+        const m = String(iso || '').match(/(\d{4}-\d{2}-\d{2})/);
+        return m ? new Date(m[1] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+      };
+      const openIcloudSheet = async () => {
+        setIcloudSheet('loading');
+        const snaps = (await ICloudBackup.list())
+          .filter(s => s && typeof s.name === 'string' && /^snapshot-\d{4}-\d{2}-\d{2}\.json$/.test(s.name))
+          .sort((a, b) => b.name.localeCompare(a.name));
+        setIcloudSheet({ snapshots: snaps });
+      };
+      const pickIcloudSnapshot = async (name) => {
+        setIcloudSheet(null);
+        const raw = await ICloudBackup.read(name);
+        if (raw == null) { showToast("Couldn't download that backup. Check your connection and try again."); return; }
+        let count = null;
+        try { const parsed = JSON.parse(raw); count = Array.isArray(parsed?.productions) ? parsed.productions.length : null; } catch (_) {}
+        const n = count == null ? '' : `${count} production${count === 1 ? '' : 's'} from `;
+        setConfirmOpts({
+          title: "Restore from iCloud?",
+          message: `Restore ${n}the ${fmtSnapDate(name)} snapshot? This replaces everything currently on this device, and there's no getting it back.`,
+          confirmLabel: "Restore",
+          confirmTone: "danger",
+          onConfirm: async () => {
+            const result = importBackup(raw);
+            if (result.ok) {
+              if (storage.isNative) await storage.flush();
+              window.location.reload();
+            } else { showToast(result.error); }
+          },
+        });
+      };
       const [confirmOpts, setConfirmOpts] = useState(null);
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
@@ -19203,9 +19524,10 @@ const setDays = (updater) =>
               )}
             </Disclosure>
 
-            {/* §8 — Data & backup: storage status + the three one-off actions
-                (export, restore, reset). Reset and restore still go through
-                ConfirmDialog; flows unchanged. */}
+            {/* §8 — Data & backup: storage status + the one-off actions
+                (export, accountant export, restore, reset). Reset and restore
+                still go through ConfirmDialog; flows unchanged. The accountant
+                block only appears once an issued invoice exists somewhere. */}
             <Disclosure label="Data & backup">
               <div className="flex flex-col gap-3">
                 {(() => {
@@ -19226,15 +19548,90 @@ const setDays = (updater) =>
                     </div>
                   );
                 })()}
+                {IS_NATIVE && icloudInfo && (
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] text-neutral-400 leading-relaxed">
+                    {icloudInfo.available
+                      ? (icloudInfo.meta && icloudInfo.meta.lastWriteAt
+                          ? `Last backup: ${fmtSnapDate(icloudInfo.meta.lastWriteAt)}`
+                          : 'iCloud backup is on - the first snapshot is made when you close the app.')
+                      : 'iCloud backup unavailable - sign in to iCloud.'}
+                  </div>
+                )}
                 <div>
                   <Btn variant="ghost" onClick={onExport}><IDownload/>Export backup</Btn>
                   <p className="text-[10px] text-neutral-500 mt-1">Downloads all your productions to a single backup file. It holds your data, so keep it somewhere private.</p>
                 </div>
+                {accountantYears.length > 0 && (
+                  <div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <Field label="Accountant export">
+                          <Select
+                            value={String(accountantYears.includes(acctYear) ? acctYear : accountantYears[0])}
+                            onChange={(e) => setAcctYear(Number(e.target.value))}
+                          >
+                            {accountantYears.map(y => (
+                              <option key={y} value={String(y)}>{taxYearLabel(y)} tax year</option>
+                            ))}
+                          </Select>
+                        </Field>
+                      </div>
+                      <Btn variant="ghost" onClick={() => onExportAccountant(accountantYears.includes(acctYear) ? acctYear : accountantYears[0])}><IDownload/>Export</Btn>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-1">Two files for your accountant: a CSV of every invoice in the tax year, and a summary with totals, month by month figures and mileage.</p>
+                  </div>
+                )}
                 <div>
                   <Btn variant="ghost" onClick={() => importRef.current?.click()}><IUpload/>Restore from backup</Btn>
                   <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileSelect} />
                   <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with a previously exported backup file.</p>
                 </div>
+                {IS_NATIVE && icloudInfo && icloudInfo.available && (
+                  <div>
+                    <Btn variant="ghost" onClick={openIcloudSheet}><IUpload/>Restore from iCloud</Btn>
+                    <p className="text-[10px] text-neutral-500 mt-1">Replaces all current productions with one of the app's automatic iCloud snapshots.</p>
+                    {icloudSheet && (
+                      <div
+                        className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+                        style={{ backgroundColor: 'rgba(0,0,0,0.82)', zIndex: 80 }}
+                        onClick={() => setIcloudSheet(null)}
+                      >
+                        <div
+                          className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
+                          style={{ maxWidth: 420 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="px-5 pt-5 pb-3">
+                            <div className="text-sm font-bold text-neutral-100">Restore from iCloud</div>
+                            <p className="text-[11px] text-neutral-500 mt-1">The app keeps up to seven daily snapshots. Pick one to restore.</p>
+                          </div>
+                          <div className="px-4 pb-4 flex flex-col gap-2">
+                            {icloudSheet === 'loading' && (
+                              <div className="text-[11px] text-neutral-500 italic py-2 px-1">Looking in iCloud…</div>
+                            )}
+                            {icloudSheet !== 'loading' && icloudSheet.snapshots.length === 0 && (
+                              <div className="text-[11px] text-neutral-500 italic py-2 px-1">No snapshots yet - one is made daily when you close the app.</div>
+                            )}
+                            {icloudSheet !== 'loading' && icloudSheet.snapshots.map(s => (
+                              <button
+                                key={s.name}
+                                type="button"
+                                onClick={() => pickIcloudSnapshot(s.name)}
+                                className="w-full text-left px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-lg hover:border-neutral-600 transition-colors"
+                              >
+                                <div className="text-[13px] font-semibold text-neutral-100">{fmtSnapDate(s.name)}</div>
+                                <div className="text-[10px] text-neutral-500 mt-0.5">
+                                  {s.size > 0 ? `${Math.max(1, Math.round(s.size / 1024))} KB` : 'In iCloud'}{s.downloaded === false ? ' - will download first' : ''}
+                                </div>
+                              </button>
+                            ))}
+                            <Btn variant="ghost" onClick={() => setIcloudSheet(null)} className="w-full justify-center mt-1">Cancel</Btn>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="border-t border-neutral-800 pt-3">
                   <Btn variant="danger" onClick={() => setConfirmOpts({
                     title: "Reset everything?",
@@ -19313,7 +19710,7 @@ const setDays = (updater) =>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-neutral-500">Feedback</span>
-                    <a href="mailto:feedback@timemachineapp.co.uk" onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenUrl('mailto:feedback@timemachineapp.co.uk').catch(() => {}); } : undefined} className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
+                    <a href="mailto:feedback@timemachineapp.co.uk" onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeComposeEmail({ to: 'feedback@timemachineapp.co.uk', subject: '', body: '', method: (userPrefs && userPrefs.invoiceEmailMethod) || 'appleMail' }).catch(() => {}); } : undefined} className="text-sky-500 hover:text-sky-300 transition-colors">feedback@timemachineapp.co.uk</a>
                   </div>
                 </div>
               </div>
@@ -20605,6 +21002,202 @@ const setDays = (updater) =>
       return 'downloaded';
     }
 
+    // Multi-file variant of deliverTextFile — native: one share sheet carrying
+    // every file (nativeSaveAndShareMany); web: sequential Blob downloads (the
+    // browser has no multi-file download, so each file saves on its own).
+    async function deliverTextFiles(files, title) {
+      if (IS_NATIVE) return nativeSaveAndShareMany(files, { title });
+      for (const f of files) await deliverTextFile(f.filename, f.content, f.mime);
+      return 'downloaded';
+    }
+
+    /* ═══════════════ ACCOUNTANT EXPORT — tax-year handover ═════════════════
+     * READ-ONLY over FROZEN invoice snapshots. Every money figure comes from
+     * invoiceSubtotal(invoice.lineItems) + invoiceVAT — the exact figures the
+     * Invoices list and the sent document show. NOTHING here recomputes via
+     * buildInvoiceLineItems (contrast the accounting-format exports above,
+     * which serve a different job): a hand-edited sent invoice exports at its
+     * edited figures. Only ISSUED invoices (sent/paid) count — drafts are not
+     * documents. Engine untouched; no new storage keys. */
+
+    // UK tax year (6 April to 5 April). taxYearOf("2026-04-05") → 2025;
+    // taxYearOf("2026-04-06") → 2026. The start year names the tax year.
+    function taxYearOf(iso) {
+      const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return null;
+      return `${m[2]}-${m[3]}` >= '04-06' ? Number(m[1]) : Number(m[1]) - 1;
+    }
+    const taxYearLabel = (y) => `${y}-${String(y + 1).slice(2)}`;   // 2025 → "2025-26"
+    const taxYearBounds = (y) => ({ startISO: `${y}-04-06`, endISO: `${y + 1}-04-05` });
+
+    // The invoice's ledger date: its own invoiceDate, falling back to the
+    // creation day for any legacy record missing one.
+    const invoiceLedgerDate = (inv) => inv.invoiceDate || String(inv.createdAt || '').slice(0, 10);
+
+    // Frozen gross for one invoice — the as-sent document figure, never
+    // recomputed. This is the late-payment PRINCIPAL (charges compute on the
+    // original document, never on themselves). Accountant-export GROSS uses
+    // invoiceCurrentTotal instead — frozen + any attached charges record —
+    // so the handover matches what is actually owed.
+    const invoiceFrozenGross = (inv) => invoiceVAT(inv, invoiceSubtotal(inv.lineItems)).total;
+
+    // Issued (sent/paid) invoices whose ledger date falls in the tax year,
+    // oldest first. Returns [{ invoice, production, dateISO }].
+    function issuedInvoicesInTaxYear(productions, startYear) {
+      const { startISO, endISO } = taxYearBounds(startYear);
+      const out = [];
+      for (const p of productions || []) {
+        for (const inv of p.invoices || []) {
+          if (inv.status !== 'sent' && inv.status !== 'paid') continue;
+          const d = invoiceLedgerDate(inv);
+          if (d >= startISO && d <= endISO) out.push({ invoice: inv, production: p, dateISO: d });
+        }
+      }
+      out.sort((a, b) => a.dateISO.localeCompare(b.dateISO) ||
+        String(a.invoice.invoiceNumber || '').localeCompare(String(b.invoice.invoiceNumber || '')));
+      return out;
+    }
+
+    // Tax years the picker offers: every year holding at least one issued
+    // invoice, newest first. Empty ⇒ the Settings block stays hidden.
+    function accountantTaxYears(productions) {
+      const years = new Set();
+      for (const p of productions || []) {
+        for (const inv of p.invoices || []) {
+          if (inv.status !== 'sent' && inv.status !== 'paid') continue;
+          const y = taxYearOf(invoiceLedgerDate(inv));
+          if (y != null) years.add(y);
+        }
+      }
+      return [...years].sort((a, b) => b - a);
+    }
+
+    // CSV status: stable sentence-case words (an accountant's ledger, not the
+    // UI chip). Paid wins; otherwise the app's own overdue predicate decides.
+    const accountantStatus = (inv, todayMs) =>
+      inv.status === 'paid' ? 'Paid' : (isOverdueSent(inv, todayMs) ? 'Overdue' : 'Sent');
+
+    // One identifying cell: the client (who pays), with the production title
+    // added when it says something the client name doesn't.
+    function accountantClientCell(inv) {
+      const client = String(inv.toName || '').trim();
+      const job = String(inv.jobTitle || '').trim();
+      if (client && job && client.toLowerCase() !== job.toLowerCase()) return `${client} / ${job}`;
+      return client || job;
+    }
+
+    // The ruled six columns — one row per issued invoice dated in the year.
+    const ACCOUNTANT_CSV_HEADERS = ['Invoice date', 'Client / production', 'Invoice number', 'Gross (GBP)', 'Date paid', 'Status'];
+    function formatAccountantCsv(entries, todayMs) {
+      const rows = [ACCOUNTANT_CSV_HEADERS.join(',')];
+      for (const { invoice, dateISO } of entries) {
+        rows.push([
+          fmtExportDate(dateISO),
+          accountantClientCell(invoice),
+          invoice.invoiceNumber || '',
+          fmtExportNum(invoiceCurrentTotal(invoice)),
+          fmtExportDate(invoice.datePaid),
+          accountantStatus(invoice, todayMs),
+        ].map(csvCell).join(','));
+      }
+      return rows.join('\r\n') + '\r\n';
+    }
+
+    // Plain-text summary: headline totals, the month table, mileage. "Received"
+    // means paid by the tax year's last day, so invoiced = received + outstanding
+    // always holds (the two buckets partition the year's invoices).
+    function formatAccountantSummary(entries, productions, userPrefs, startYear, now) {
+      const { startISO, endISO } = taxYearBounds(startYear);
+      const todayStr = now.toISOString().slice(0, 10);
+      const fmtLong = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const monthName = (ym) => new Date(ym + '-01T12:00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+
+      const paidByEnd = ({ invoice }) => !!invoice.datePaid && invoice.datePaid <= endISO;
+      const sumGross = (list) => list.reduce((s, e) => s + invoiceCurrentTotal(e.invoice), 0);
+      const invoiced = sumGross(entries);
+      const received = sumGross(entries.filter(paidByEnd));
+      const outstanding = sumGross(entries.filter(e => !paidByEnd(e)));
+
+      // Apr → Mar month keys for the table.
+      const months = [];
+      for (let i = 0; i < 12; i++) {
+        const mIdx = (3 + i) % 12;
+        const y = startYear + (mIdx < 3 ? 1 : 0);
+        months.push(`${y}-${String(mIdx + 1).padStart(2, '0')}`);
+      }
+      const invoicedBy = {}, receivedBy = {};
+      for (const e of entries) {
+        const im = e.dateISO.slice(0, 7);
+        invoicedBy[im] = (invoicedBy[im] || 0) + invoiceCurrentTotal(e.invoice);
+        if (paidByEnd(e)) {
+          const rm = e.invoice.datePaid.slice(0, 7);
+          receivedBy[rm] = (receivedBy[rm] || 0) + invoiceCurrentTotal(e.invoice);
+        }
+      }
+      const row = (label, a, b) => `${label.padEnd(16)}${a.padStart(12)}${b.padStart(14)}`;
+
+      // Miles logged: the user's own day records inside the year. Days dated
+      // today or later are excluded — the same aggregate-earnings date rule the
+      // Stats screen applies (logged means driven, not pre-loaded).
+      let milesLogged = 0;
+      for (const p of productions || []) {
+        const ids = userCrewIdsInProduction(p, userPrefs);
+        if (!ids.length) continue;
+        for (const d of p.days || []) {
+          if (!ids.includes(d.crewId)) continue;
+          if (!d.date || d.date < startISO || d.date > endISO || d.date >= todayStr) continue;
+          milesLogged += Number(d.miles) || 0;
+        }
+      }
+      // Mileage invoiced: frozen Mileage lines on the year's issued invoices.
+      let mileageInvoiced = 0;
+      for (const { invoice } of entries) {
+        for (const li of invoice.lineItems || []) {
+          if (/mileage/i.test(li.label || '')) mileageInvoiced += Number(getLineTotal(li)) || 0;
+        }
+      }
+
+      const forName = (userPrefs.legalName || userPrefs.displayName || '').trim();
+      const lines = [
+        'TimeMachine accountant summary',
+        `Tax year ${taxYearLabel(startYear)} (${fmtLong(startISO)} to ${fmtLong(endISO)})`,
+      ];
+      if (forName) lines.push(`For: ${forName}`);
+      lines.push(`Generated: ${fmtLong(todayStr)}`, '');
+      lines.push(
+        `Invoices issued: ${entries.length}`,
+        `Total invoiced (gross): ${fmtGBP(invoiced)}`,
+        `Total received by ${fmtLong(endISO)}: ${fmtGBP(received)}`,
+        `Outstanding at ${fmtLong(endISO)}: ${fmtGBP(outstanding)}`,
+        '',
+        'Month by month',
+        row('Month', 'Invoiced', 'Received'),
+      );
+      for (const ym of months) {
+        lines.push(row(monthName(ym), fmtGBP(invoicedBy[ym] || 0), fmtGBP(receivedBy[ym] || 0)));
+      }
+      lines.push(row('Total', fmtGBP(invoiced), fmtGBP(received)), '');
+      lines.push(
+        'Mileage',
+        `Miles logged: ${milesLogged.toLocaleString('en-GB', { maximumFractionDigits: 1 })}`,
+        `Mileage invoiced: ${fmtGBP(mileageInvoiced)}`,
+        '',
+        'All figures are gross (including VAT where charged) and come from issued invoices dated in this tax year, exactly as sent. Draft invoices are not included. The CSV alongside lists every invoice.',
+      );
+      return lines.join('\n') + '\n';
+    }
+
+    // The two files the share sheet delivers. Pure — callers pass the clock.
+    function accountantExportFiles(productions, userPrefs, startYear, now = new Date()) {
+      const todayMs = new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime();
+      const entries = issuedInvoicesInTaxYear(productions, startYear);
+      const label = taxYearLabel(startYear);
+      return [
+        { filename: `timemachine-${label}-invoices.csv`, content: formatAccountantCsv(entries, todayMs), mime: 'text/csv' },
+        { filename: `timemachine-${label}-summary.txt`, content: formatAccountantSummary(entries, productions, userPrefs, startYear, now), mime: 'text/plain' },
+      ];
+    }
+
     function getDisplayStatus(invoice) {
       if (invoice.status === "paid") return { label: "PAID", variant: "paid" };
       if (invoice.status === "sent") {
@@ -20631,6 +21224,86 @@ const setDays = (updater) =>
       const dueMs = new Date(invoice.dueDate + 'T12:00:00').getTime();
       return Number.isFinite(dueMs) && dueMs < todayMs;
     };
+
+    /* ═══════════════ LATE PAYMENT CHARGES (R3) ══════════════════════════════
+     * Late Payment of Commercial Debts (Interest) Act 1998: statutory interest
+     * at 8% + the Bank of England base rate, simple daily, from the day AFTER
+     * the due date; plus a fixed recovery fee by invoice size. The frozen
+     * invoice snapshot is NEVER mutated — charges live in their own ledger
+     * key (bigals_invoice_charges, in the backup envelope) as ONE record per
+     * invoice, replaced whole on regeneration. The invoice renders as ONE
+     * document: original lines untouched, a charges section beneath, updated
+     * total. */
+
+    // Effective-dated by the STATUTORY REFERENCE DATE — the rate fixed on
+    // 31 Dec applies to debts due Jan–Jun; 30 Jun to Jul–Dec. Rate-cards
+    // pattern: append entries, never edit history. Values verified against
+    // the Bank of England 2026-07-05.
+    const BASE_RATES = [
+      { referenceDate: '2024-12-31', rate: 4.75 },
+      { referenceDate: '2025-06-30', rate: 4.25 },
+      { referenceDate: '2025-12-31', rate: 3.75 },
+      { referenceDate: '2026-06-30', rate: 3.75 },
+    ];
+    // Due Jan–Jun → 31 Dec of the PRIOR year; due Jul–Dec → 30 Jun same year.
+    function statutoryReferenceDate(dueISO) {
+      const m = String(dueISO || '').match(/^(\d{4})-(\d{2})/);
+      if (!m) return null;
+      const y = Number(m[1]);
+      return Number(m[2]) <= 6 ? `${y - 1}-12-31` : `${y}-06-30`;
+    }
+    // Exact reference-date match. A missing entry (stale table in an old
+    // build) falls back to the NEWEST known rate and flags stale — the
+    // generation sheet surfaces that and offers the manual override.
+    function baseRateFor(dueISO) {
+      const ref = statutoryReferenceDate(dueISO);
+      const hit = ref && BASE_RATES.find(r => r.referenceDate === ref);
+      if (hit) return { rate: hit.rate, referenceDate: ref, stale: false };
+      const newest = BASE_RATES[BASE_RATES.length - 1];
+      return { rate: newest.rate, referenceDate: ref || newest.referenceDate, stale: true };
+    }
+    // £40 under £1,000; £70 from £1,000 to £9,999.99; £100 at £10,000+.
+    function lateFeeFor(principal) {
+      const p = Number(principal) || 0;
+      if (p < 1000) return 40;
+      if (p < 10000) return 70;
+      return 100;
+    }
+    const daysBetweenISO = (fromISO, toISO) =>
+      Math.round((new Date(toISO + 'T12:00:00') - new Date(fromISO + 'T12:00:00')) / 86400000);
+    // The full working, pure. Interest runs from the day AFTER the due date:
+    // generation ON the due date → 0 days; the day after → 1. Simple
+    // (non-compounding) daily interest on the FROZEN document total; pennies
+    // rounded at the end of each figure.
+    function computeLateCharges(invoice, generationISO, overrideRate) {
+      const dueDate = invoice.dueDate || '';
+      const principal = Math.round(invoiceFrozenGross(invoice) * 100) / 100;
+      const days = dueDate ? Math.max(0, daysBetweenISO(dueDate, generationISO)) : 0;
+      const table = baseRateFor(dueDate);
+      const manual = overrideRate != null && Number.isFinite(Number(overrideRate));
+      const baseRate = manual ? Number(overrideRate) : table.rate;
+      const annualRate = 8 + baseRate;
+      const interest = Math.round(principal * (annualRate / 100) * (days / 365) * 100) / 100;
+      const fixedFee = lateFeeFor(principal);
+      return {
+        dueDate, generatedAt: generationISO, daysOverdue: days,
+        principal,
+        baseRate, baseRateSource: manual ? 'manual override' : 'table',
+        referenceDate: table.referenceDate, stale: !manual && table.stale,
+        annualRate, interest, fixedFee,
+        newTotal: Math.round((principal + interest + fixedFee) * 100) / 100,
+      };
+    }
+    /* ═ end late-payment logic ═ */
+
+    // Module mirror of the charges ledger — assigned by Root on every render
+    // so PURE helpers (invoiceCurrentTotal, the export builders) read current
+    // charges without prop-drilling. Components that must RE-RENDER on a
+    // charges change consume InvoiceChargesContext instead.
+    let __invoiceChargesCache = {};
+    const invoiceChargesFor = (invoiceId) =>
+      (__invoiceChargesCache && __invoiceChargesCache[invoiceId]) || null;
+    const InvoiceChargesContext = React.createContext({ charges: {}, write: () => {}, remove: () => {} });
 
     // Sort key for unpaid (sent + not overdue) cards: due date with a
     // defensive fallback chain — if dueDate is missing we use the next
@@ -20933,6 +21606,11 @@ const setDays = (updater) =>
       const [editingSentFields, setEditingSentFields] = React.useState(false);
       const [confirmEditSent, setConfirmEditSent] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
+      // Late-payment charges (R3): the ledger via context — the record for
+      // THIS invoice drives the totals card, the document, and the sheet.
+      const { charges: allInvoiceCharges, write: writeInvoiceCharge, remove: removeInvoiceCharge } = React.useContext(InvoiceChargesContext);
+      const [showChargesSheet, setShowChargesSheet] = React.useState(false);
+      const [chargeOverride, setChargeOverride] = React.useState('');
       // Native-only: tells the post-mount effect which delivery to run.
       //   'share'  → render PDF + iOS share sheet (existing print/share button)
       //   'email'  → render PDF + EmailComposer (new Send-on-native flow)
@@ -20976,14 +21654,22 @@ const setDays = (updater) =>
           if (IS_NATIVE) {
             const filename = `Invoice ${printTarget.invoiceNumber || ''}.pdf`;
             const intent = printIntentRef.current;
-            if (intent === 'email') {
+            if (intent === 'email' || intent === 'chase') {
               const inv = printTarget;
-              const { subject, body } = buildInvoiceEmailContent(inv);   // shared builder — one source for all paths
+              const isChase = intent === 'chase';
+              // Shared builders — ONE source per template. The chase (T3) rides
+              // the SAME delivery as the invoice email (composer with the PDF
+              // attached, or the share-sheet fallback), differing only in its
+              // text: chase copy, no cc, and NO state writes (no mark-as-sent,
+              // no re-lock — chasing is not sending).
+              const { subject, body } = isChase
+                ? buildChaseEmailContent(inv, userPrefs)
+                : buildInvoiceEmailContent(inv);
               const method = emailMethodRef.current;
-              const wasDraft = inv.status === 'draft';
+              const wasDraft = !isChase && inv.status === 'draft';
               nativeRenderPrintViewPdfBase64Vector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 })
                 .then((base64) => nativeSendInvoiceEmail({
-                  to: inv.toEmail || '', cc: emailCcRef.current || '',
+                  to: inv.toEmail || '', cc: isChase ? '' : (emailCcRef.current || ''),
                   subject, body, base64, filename, method,
                   // Share-sheet path only: copy the To recipient(s) to the clipboard
                   // BEFORE the sheet presents (the sheet carries no recipient).
@@ -20993,19 +21679,21 @@ const setDays = (updater) =>
                   },
                 }))
                 .then((mode) => {
-                  if (wasDraft) {
-                    sendInvoice(production, inv, { status: 'sent', dateSent: todayISO() });
-                  } else {
-                    // Re-sending an already-issued invoice: re-lock so the edit-sent
-                    // UX ends in the same locked state as the web path. The setter is
-                    // stable (no stale-read), and it's a no-op when not in edit mode.
-                    setEditingSentFields(false);
+                  if (!isChase) {
+                    if (wasDraft) {
+                      sendInvoice(production, inv, { status: 'sent', dateSent: todayISO() });
+                    } else {
+                      // Re-sending an already-issued invoice: re-lock so the edit-sent
+                      // UX ends in the same locked state as the web path. The setter is
+                      // stable (no stale-read), and it's a no-op when not in edit mode.
+                      setEditingSentFields(false);
+                    }
                   }
                   if (mode === 'shared') {
                     // The recipient was copied pre-sheet; on return, remind to paste
                     // it into To and — since the sheet drops cc too — offer one-tap
                     // Copy Cc when a cc exists (the clipboard holds one value).
-                    const cc = (emailCcRef.current || '').trim();
+                    const cc = isChase ? '' : (emailCcRef.current || '').trim();
                     const lead = wasDraft ? 'Marked as sent · recipient copied - paste into To' : 'Recipient copied - paste into To';
                     showToast(
                       <span>{lead}{cc ? (
@@ -21017,11 +21705,19 @@ const setDays = (updater) =>
                     showToast('Email composer opened - marked as sent');
                   }
                 })
-                .catch((e) => { try { console.error('Invoice email failed', e); } catch (_) {} })
+                .catch((e) => {
+                  // NEVER silent (T1): a generation failure with no surface
+                  // reads as a dead button. Name it and invite a retry.
+                  try { console.error(isChase ? 'Chase email failed' : 'Invoice email failed', e); } catch (_) {}
+                  showToast(isChase ? "Couldn't prepare the chase email - try again." : "Couldn't prepare the email - try again.");
+                })
                 .finally(() => { printIntentRef.current = 'share'; emailCcRef.current = ''; emailMethodRef.current = 'appleMail'; cleanup(); });
             } else {
               nativeExportPrintViewPdfVector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 }, filename)
-                .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
+                .catch((e) => {
+                  try { console.error('PDF export failed', e); } catch (_) {}
+                  showToast("Couldn't make the PDF - try again.");
+                })
                 .finally(cleanup);
             }
           } else {
@@ -21353,6 +22049,60 @@ const setDays = (updater) =>
               </div>
             ))}
 
+            {/* Late-payment charges banner (S2) — THE headline action on an
+                overdue invoice, in the first zone the eye hits: penalty family
+                (tm-pen), with the muted accruing line and the action reading
+                as one unit ("charges are accruing - add them"). Once a record
+                exists it flips to the added summary + an update route back
+                into the sheet. The chase button keeps its place at the foot. */}
+            {invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime()) && (() => {
+              const rec = allInvoiceCharges[invoice.id] || null;
+              // T2: banner text is the SYSTEM font — a deliberate, adjudicated
+              // exception to the mono-for-money convention. While accruing it
+              // shows the penalty breakdown (interest + fee, days kept); added
+              // shows the combined figure. The full amount owed stays in the
+              // totals stack — the banner tells the penalty story only.
+              if (rec) {
+                return (
+                  <div
+                    className="bg-neutral-900 border border-tm-pen/25 rounded-xl px-4 py-3"
+                    style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' }}
+                  >
+                    <div className="text-[11px] text-tm-pen/70 mb-2.5">
+                      Late payment charges added · {fmtGBP((Number(rec.interest) || 0) + (Number(rec.fixedFee) || 0))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setChargeOverride(''); setShowChargesSheet(true); }}
+                      className="w-full inline-flex items-center justify-center gap-2 font-semibold uppercase tracking-wide border rounded-lg px-3 py-2.5 text-xs transition-all active:scale-95 bg-tm-pen/10 border-tm-pen/40 text-tm-pen hover:bg-tm-pen/20"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <IWarn size={13}/>Update late-payment charges
+                    </button>
+                  </div>
+                );
+              }
+              const acc = computeLateCharges(invoice, todayISO());
+              return (
+                <div
+                  className="bg-neutral-900 border border-tm-pen/25 rounded-xl px-4 py-3"
+                  style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' }}
+                >
+                  <div className="text-[11px] text-tm-pen/70 mb-2.5">
+                    {fmtGBP(acc.interest)} interest + £{acc.fixedFee} fee · {acc.daysOverdue} day{acc.daysOverdue === 1 ? '' : 's'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setChargeOverride(''); setShowChargesSheet(true); }}
+                    className="w-full inline-flex items-center justify-center gap-2 font-semibold uppercase tracking-wide border rounded-lg px-3 py-2.5 text-xs transition-all active:scale-95 bg-tm-pen/10 border-tm-pen/40 text-tm-pen hover:bg-tm-pen/20"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    <IWarn size={13}/>Add late-payment charges
+                  </button>
+                </div>
+              );
+            })()}
+
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-1 mb-1">
               <div className="flex items-baseline gap-3 py-2 border-b border-neutral-800/60">
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500 font-bold w-14 flex-shrink-0">Job</span>
@@ -21537,6 +22287,26 @@ const setDays = (updater) =>
                   <span className="text-[12px] uppercase tracking-wider font-bold text-neutral-100">Total</span>
                   <span className="font-mono font-bold text-[16px] text-neutral-100 tracking-tight">{fmtGBP(total)}</span>
                 </div>
+                {/* Late-payment charges (R3): the attached record renders under
+                    the frozen Total — original figures untouched, updated Total
+                    due beneath. The ACCRUING figure lives in the S2 top banner
+                    with the add action, not here. */}
+                {(() => {
+                  const rec = allInvoiceCharges[invoice.id] || null;
+                  if (!rec) return null;
+                  return (
+                    <>
+                      <div className="flex justify-between text-[11px] font-mono py-0.5 mt-1">
+                        <span className="text-neutral-500 tracking-wider uppercase">Late payment charges</span>
+                        <span className="text-neutral-300 font-semibold">{fmtGBP((Number(rec.interest) || 0) + (Number(rec.fixedFee) || 0))}</span>
+                      </div>
+                      <div className="flex justify-between items-baseline pt-2 mt-1 border-t border-neutral-800/60">
+                        <span className="text-[12px] uppercase tracking-wider font-bold text-neutral-100">Total due</span>
+                        <span className="font-mono font-bold text-[16px] text-neutral-100 tracking-tight">{fmtGBP(invoiceCurrentTotal(invoice))}</span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -21640,6 +22410,122 @@ const setDays = (updater) =>
                 )}
               </div>
             )}
+
+            {/* Chase (Q4) — overdue sent invoices only. One template, no
+                tracking: a prefilled draft quoting invoiceCurrentTotal (which
+                includes any attached charges). The charges affordance lives in
+                the top banner (S2); its sheet writes ONE ledger record and the
+                frozen invoice is never touched. */}
+            {invoice.status === 'sent' && isOverdueSent(invoice, new Date(todayISO() + 'T12:00:00').getTime()) && (
+              <div>
+                <Btn
+                  variant="subtle"
+                  onClick={async () => {
+                    if (IS_NATIVE) {
+                      // T3: the chase carries the invoice PDF (with any charges
+                      // section) — same machinery as the invoice email: mount
+                      // the print view, render, compose/share with attachment.
+                      printIntentRef.current = 'chase';
+                      emailMethodRef.current = userPrefs.invoiceEmailMethod || 'appleMail';
+                      setPrintTarget(invoice);
+                      return;
+                    }
+                    // Web: mailto, exactly like the invoice email on web (no
+                    // attachment — mailto cannot carry files).
+                    const r = await openChaseMailto(invoice, userPrefs);
+                    if (r === 'failed') showToast("Couldn't open an email app - check Mail is set up.");
+                  }}
+                  className="w-full justify-center"
+                >
+                  <IMail size={13}/>Chase this invoice
+                </Btn>
+                <p className="text-[10px] text-neutral-500 mt-1.5 text-center">Opens a prefilled email asking when to expect payment.</p>
+              </div>
+            )}
+
+            {/* Late-payment charges sheet — the full working, confirm-first.
+                Confirm writes the record (write-through ledger); Remove
+                deletes it. NOTHING here touches the invoice snapshot: no
+                lineItems write, no dueDate write, no status change. */}
+            {showChargesSheet && (() => {
+              const existing = allInvoiceCharges[invoice.id] || null;
+              const preview = computeLateCharges(invoice, todayISO(), chargeOverride.trim() === '' ? null : Number(chargeOverride));
+              const refNice = preview.referenceDate ? new Date(preview.referenceDate + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+              const row = (k, v, strong) => (
+                <div className="flex justify-between gap-4 text-[12px] py-1">
+                  <span className="text-neutral-500 flex-shrink-0">{k}</span>
+                  <span className={`text-right font-mono ${strong ? 'text-neutral-100 font-bold' : 'text-neutral-200'}`}>{v}</span>
+                </div>
+              );
+              return (
+                <div
+                  className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.82)', zIndex: 80 }}
+                  onClick={() => setShowChargesSheet(false)}
+                >
+                  <div
+                    className="bg-neutral-900 w-full rounded-t-xl sm:rounded-xl shadow-2xl border border-neutral-700 overflow-hidden"
+                    style={{ maxWidth: 420 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="px-5 pt-5 pb-2">
+                      <div className="text-sm font-bold text-neutral-100">Late payment charges</div>
+                      <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">
+                        Under the Late Payment of Commercial Debts (Interest) Act 1998. The invoice stays as sent - the charges are added beneath it and the total updates.
+                      </p>
+                    </div>
+                    <div className="px-5 py-2">
+                      {row('Invoice total', fmtGBP(preview.principal))}
+                      {row('Days overdue', `${preview.daysOverdue}`)}
+                      {row('Base rate', `${preview.baseRate}%${preview.baseRateSource === 'table' ? ` (set ${refNice})` : ' (manual)'}`)}
+                      {preview.stale && (
+                        <p className="text-[10px] text-tm-warn py-1">This build's rate table may be out of date for that due date - check the current base rate and override it below if it has changed.</p>
+                      )}
+                      <div className="flex justify-between items-center gap-4 py-1">
+                        <span className="text-[12px] text-neutral-500 flex-shrink-0">Override base rate</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={chargeOverride}
+                          onChange={(e) => setChargeOverride(e.target.value.replace(/[^0-9.]/g, ''))}
+                          placeholder={`${baseRateFor(invoice.dueDate || '').rate}`}
+                          className="w-20 bg-neutral-950 border border-neutral-800 focus:border-sky-500 rounded-lg px-2 py-1 text-right text-[12px] font-mono text-neutral-100 outline-none"
+                          aria-label="Override base rate percent"
+                        />
+                      </div>
+                      {row('Interest', `${fmtGBP(preview.interest)} (${preview.daysOverdue} days at ${preview.annualRate}%)`)}
+                      {row('Fixed recovery fee', fmtGBP(preview.fixedFee))}
+                      <div className="border-t border-neutral-800 mt-1">
+                        {row('New total', fmtGBP(preview.newTotal), true)}
+                      </div>
+                    </div>
+                    <div className="px-4 pb-4 pt-1 flex flex-col gap-2">
+                      <Btn
+                        variant="primary"
+                        onClick={() => {
+                          writeInvoiceCharge(invoice.id, preview);
+                          setShowChargesSheet(false);
+                          showToast(existing ? 'Late-payment charges updated' : 'Late-payment charges added');
+                        }}
+                        className="w-full justify-center"
+                      >
+                        {existing ? 'Update charges' : 'Add to invoice'}
+                      </Btn>
+                      {existing && (
+                        <Btn
+                          variant="ghost"
+                          onClick={() => { removeInvoiceCharge(invoice.id); setShowChargesSheet(false); showToast('Late-payment charges removed'); }}
+                          className="w-full justify-center"
+                        >
+                          Remove charges
+                        </Btn>
+                      )}
+                      <Btn variant="ghost" onClick={() => setShowChargesSheet(false)} className="w-full justify-center">Cancel</Btn>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div
               className="border-t border-neutral-800 pt-4 flex gap-2"
@@ -21783,7 +22669,7 @@ const setDays = (updater) =>
             </div>
           )}
 
-          {printTarget && <InvoicePrintView invoice={printTarget} userPrefs={userPrefs} />}
+          {printTarget && <InvoicePrintView invoice={printTarget} userPrefs={userPrefs} charges={allInvoiceCharges[printTarget.id] || null} />}
 
           {/* Accounting-export fidelity guard: the recompute doesn't reproduce
               what was sent (hand-edited or shoot data changed since send).
@@ -21861,11 +22747,13 @@ const setDays = (updater) =>
 
       const todayMs = useMemo(() => new Date(todayISO() + 'T12:00:00').getTime(), []);
 
+      // Owed figures include attached late-payment charges (R3) — the context
+      // subscription re-renders this list when a record is added or removed.
+      const { charges: allInvoiceCharges } = React.useContext(InvoiceChargesContext);
       const counts = useMemo(() => {
         let draft = 0, sent = 0, paid = 0, overdue = 0, outstanding = 0;
         for (const inv of invoices) {
-          const sub = invoiceSubtotal(inv.lineItems);
-          const { vatAmount: vat, total: tot } = invoiceVAT(inv, sub);
+          const tot = invoiceCurrentTotal(inv);
           if (inv.status === 'paid') paid++;
           else if (inv.status === 'sent') {
             sent++;
@@ -21874,7 +22762,7 @@ const setDays = (updater) =>
           } else { draft++; outstanding += tot; }
         }
         return { draft, sent, paid, overdue, outstanding, all: invoices.length };
-      }, [invoices, todayMs]);
+      }, [invoices, todayMs, allInvoiceCharges]);
 
       const filteredInvoices = useMemo(() => {
         if (filterStatus === 'all') return sortedInvoices;
@@ -21946,8 +22834,7 @@ const setDays = (updater) =>
 
                 <div className="space-y-2">
                   {filteredInvoices.map((inv) => {
-                    const subtotal = invoiceSubtotal(inv.lineItems);
-                    const { vatAmount, total } = invoiceVAT(inv, subtotal);
+                    const total = invoiceCurrentTotal(inv);   // frozen + any charges
                     const dueMs = inv.dueDate ? new Date(inv.dueDate + 'T12:00:00').getTime() : null;
                     const isOverdue = inv.status === 'sent' && dueMs && dueMs < todayMs;
                     const daysOverdue = isOverdue ? Math.floor((todayMs - dueMs) / 86400000) : 0;
@@ -22499,14 +23386,17 @@ const setDays = (updater) =>
       // render uses — invoiceSubtotal + invoiceVAT — and feed it to
       // partitionInvoiceList. This way per-month sums are byte-equal
       // to what each card prints, and the helper stays pure.
+      // Owed-money figures include any attached late-payment charges (R3):
+      // invoiceCurrentTotal = frozen snapshot total + charges record. The
+      // context subscription makes the list re-render when charges change.
+      const { charges: allInvoiceCharges } = React.useContext(InvoiceChargesContext);
       const invoiceTotals = React.useMemo(() => {
         const m = new Map();
         for (const { invoice } of allInvoices) {
-          const sub = invoiceSubtotal(invoice.lineItems);
-          m.set(invoice.id, invoiceVAT(invoice, sub).total);
+          m.set(invoice.id, invoiceCurrentTotal(invoice));
         }
         return m;
-      }, [allInvoices]);
+      }, [allInvoices, allInvoiceCharges]);
       const totalFor = React.useCallback(
         (inv) => invoiceTotals.get(inv.id) || 0,
         [invoiceTotals]
@@ -23896,6 +24786,99 @@ const confirmDelete = (p) => setConfirmOpts({
         return () => { try { if (handle && handle.remove) handle.remove(); } catch (_) {} };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+      // ── iCloud snapshot backup sweep (R2) ────────────────────────────────
+      // Automatic, invisible: on backgrounding (the same appStateChange hook
+      // the storage flush uses), write ONE snapshot per calendar day to the
+      // app's private iCloud container and prune to the last 7. Every failure
+      // path returns silently — signed out / quota full / airplane mode must
+      // never surface (the manual export remains the fallback). Guards: never
+      // snapshots an EMPTY data set (a fresh install backgrounded before
+      // restore must not shadow the real snapshots with an empty one), and
+      // never before onboarding completes. Meta lives in its own ledger key.
+      const ICLOUD_BACKUP_META_KEY = 'bigals_icloud_backup_meta';
+      const icloudBackupStateRef = React.useRef({ productions: [], userPrefs: null });
+      icloudBackupStateRef.current = { productions, userPrefs };
+      const icloudBackupSweep = React.useCallback(async () => {
+        if (!IS_NATIVE) return;
+        try {
+          const { productions: prods, userPrefs: prefs } = icloudBackupStateRef.current;
+          if (!prods || prods.length === 0) return;            // nothing worth snapshotting
+          if (!prefs || !prefs.onboardingComplete) return;      // never mid-onboarding
+          const today = todayISO();
+          let meta = {};
+          try { meta = JSON.parse(storage.get(ICLOUD_BACKUP_META_KEY) || '{}') || {}; } catch (_) {}
+          if (meta.lastWriteDay === today) return;              // at most once per day
+          const st = await ICloudBackup.status();
+          if (!st.available) return;                            // silent degradation
+          const filename = `snapshot-${today}.json`;
+          const ok = await ICloudBackup.write(filename, JSON.stringify(buildBackupPayload(prods, prefs)));
+          if (!ok) return;
+          try { storage.set(ICLOUD_BACKUP_META_KEY, JSON.stringify({ lastWriteDay: today, lastWriteAt: new Date().toISOString(), lastFilename: filename })); } catch (_) {}
+          // Prune to the last 7 — names are date-stamped, so lexicographic
+          // order IS chronological order.
+          const names = (await ICloudBackup.list())
+            .map(s => s && s.name)
+            .filter(n => typeof n === 'string' && /^snapshot-\d{4}-\d{2}-\d{2}\.json$/.test(n))
+            .sort();
+          for (const n of names.slice(0, Math.max(0, names.length - 7))) {
+            try { await ICloudBackup.remove(n); } catch (_) {}
+          }
+        } catch (_) {} // invisible by design
+      }, []);
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        let handle = null;
+        try {
+          const AppPlg = _capPlugins().App;
+          if (AppPlg && AppPlg.addListener) {
+            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && !s.isActive) icloudBackupSweep(); }))
+              .then(h => { handle = h; }).catch(() => {});
+          }
+        } catch (_) {}
+        return () => { try { if (handle && handle.remove) handle.remove(); } catch (_) {} };
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      // ── Fresh-install restore discovery (R2) ─────────────────────────────
+      // Native, no data, onboarding not started → look for iCloud snapshots
+      // BEFORE onboarding renders. The plugin's metadata query is bounded at
+      // ~5s; a 6s guard here falls through to onboarding regardless. Declining
+      // is remembered for this launch only — a cold relaunch on a still-empty
+      // install offers again. Web: state initialises to 'none', zero effect.
+      const [icloudRestore, setIcloudRestore] = useState(() =>
+        (IS_NATIVE && productions.length === 0 && !userPrefs.onboardingComplete) ? 'checking' : 'none');
+      const [icloudRestoreBusy, setIcloudRestoreBusy] = useState(false);
+      const [icloudRestoreError, setIcloudRestoreError] = useState(null);
+      useEffect(() => {
+        if (icloudRestore !== 'checking') return;
+        let cancelled = false;
+        const guard = setTimeout(() => { if (!cancelled) setIcloudRestore('none'); }, 6000);
+        (async () => {
+          try {
+            const snaps = await ICloudBackup.list();
+            if (cancelled) return;
+            const usable = snaps
+              .filter(s => s && typeof s.name === 'string' && /^snapshot-\d{4}-\d{2}-\d{2}\.json$/.test(s.name))
+              .sort((a, b) => b.name.localeCompare(a.name));
+            setIcloudRestore(usable.length ? { snapshots: usable } : 'none');
+          } catch (_) { if (!cancelled) setIcloudRestore('none'); }
+          finally { clearTimeout(guard); }
+        })();
+        return () => { cancelled = true; clearTimeout(guard); };
+      }, [icloudRestore]); // eslint-disable-line react-hooks/exhaustive-deps
+      // Restore = download + the SAME importBackup every restore path uses
+      // (validation, newer-schema refusal, migration, rollback), then reload.
+      const icloudRestoreRun = async (name) => {
+        setIcloudRestoreBusy(true); setIcloudRestoreError(null);
+        try {
+          const raw = await ICloudBackup.read(name);
+          const res = raw != null ? importBackup(raw)
+            : { ok: false, error: "Couldn't download that backup. Check your connection and try again." };
+          if (res.ok) { if (storage.isNative) await storage.flush(); window.location.reload(); return; }
+          setIcloudRestoreError(res.error || "Couldn't restore that backup.");
+        } catch (_) { setIcloudRestoreError("Couldn't restore that backup."); }
+        setIcloudRestoreBusy(false);
+      };
+
       // ── Stage B: today's-active-shoot snapshot ────────────────────────────────
       // So the "log my times" voice intent can resolve the production with NO Live
       // Activity running (solo AND best-boy — id+date only). When the user opens a
@@ -24295,15 +25278,9 @@ const confirmDelete = (p) => setConfirmOpts({
       const handleExport = () => {
         const now = new Date();
         const date = now.toISOString().slice(0, 10);
-        const payload = JSON.stringify({
-          version: 1,
-          appVersion: APP_VERSION,
-          schemaVersion: SCHEMA_VERSION,
-          exportDate: now.toISOString(),
-          exportedAt: now.toISOString(),
-          productions,
-          userPrefs,
-        }, null, 2);
+        // Same envelope as the iCloud snapshot (buildBackupPayload) — the
+        // manual export now carries the ledgers too, so neither path drifts.
+        const payload = JSON.stringify(buildBackupPayload(productions, userPrefs, now), null, 2);
         const filename = `timemachine-backup-${date}.json`;
         if (IS_NATIVE) {
           // Write the JSON to the app's Cache dir and open the iOS share sheet
@@ -24320,6 +25297,68 @@ const confirmDelete = (p) => setConfirmOpts({
         }
       };
 
+      // Accountant export (Settings → Data & backup). Years offered = tax years
+      // holding at least one issued invoice; the export itself reads frozen
+      // snapshots only (see the ACCOUNTANT EXPORT block).
+      const accountantYears = React.useMemo(() => accountantTaxYears(productions), [productions]);
+
+      // ── Late-payment charges ledger (R3) ─────────────────────────────────
+      // bigals_invoice_charges: ONE record per invoice, replaced whole on
+      // regeneration, capped at 200 pruned oldest-generatedAt-first. React
+      // state (charges drive rendered totals) persisted through useStoredState
+      // — its own key, never a field on the frozen invoice. Mirrored into the
+      // module cache each render so pure helpers read current charges.
+      const [invoiceCharges, setInvoiceCharges] = useStoredState('bigals_invoice_charges', {});
+      __invoiceChargesCache = invoiceCharges;
+      const writeInvoiceCharge = React.useCallback((invoiceId, record) => {
+        setInvoiceCharges(prev => {
+          const next = { ...prev, [invoiceId]: record };
+          const ids = Object.keys(next);
+          if (ids.length > 200) {
+            ids.sort((a, b) => String((next[a] || {}).generatedAt || '').localeCompare(String((next[b] || {}).generatedAt || '')));
+            for (const id of ids.slice(0, ids.length - 200)) delete next[id];
+          }
+          return next;
+        });
+      }, [setInvoiceCharges]);
+      const removeInvoiceCharge = React.useCallback((invoiceId) => {
+        setInvoiceCharges(prev => {
+          if (!(invoiceId in prev)) return prev;
+          const next = { ...prev };
+          delete next[invoiceId];
+          return next;
+        });
+      }, [setInvoiceCharges]);
+      // Deletion rules (ruled): deleting an invoice or reverting it to draft
+      // removes its charges record; marking it paid KEEPS it (the money was
+      // genuinely owed). One reconciler instead of hooks at every mutation
+      // site — sweeps whenever productions change, and on boot it also prunes
+      // records orphaned by a backup restore. NEVER writes an invoice field.
+      useEffect(() => {
+        setInvoiceCharges(prev => {
+          const ids = Object.keys(prev);
+          if (!ids.length) return prev;
+          const liveStatus = new Map();
+          for (const p of productions) for (const inv of (p.invoices || [])) liveStatus.set(inv.id, inv.status);
+          let changed = false;
+          const next = { ...prev };
+          for (const id of ids) {
+            const status = liveStatus.get(id);
+            if (status === undefined || status === 'draft') { delete next[id]; changed = true; }
+          }
+          return changed ? next : prev;
+        });
+      }, [productions, setInvoiceCharges]);
+      const invoiceChargesCtx = React.useMemo(
+        () => ({ charges: invoiceCharges, write: writeInvoiceCharge, remove: removeInvoiceCharge }),
+        [invoiceCharges, writeInvoiceCharge, removeInvoiceCharge]
+      );
+      const handleExportAccountant = (startYear) => {
+        const files = accountantExportFiles(productions, userPrefs, Number(startYear));
+        deliverTextFiles(files, `TimeMachine accountant export ${taxYearLabel(Number(startYear))}`)
+          .catch((e) => { try { console.error('Accountant export failed', e); } catch (_) {} });
+      };
+
       const handleUpdateDays = (id, updater) => {
         setProductions(prev => prev.map(p =>
           p.id === id
@@ -24334,6 +25373,10 @@ const confirmDelete = (p) => setConfirmOpts({
           storage.remove("bigals_user_prefs");
           storage.remove(SCHEMA_VERSION_KEY);
           storage.remove(PRE_MIGRATION_BACKUP_KEY);
+          // iCloud backup meta resets with everything else; the snapshots
+          // themselves stay in iCloud (they ARE the safety net), and the
+          // empty-data sweep guard means reset never writes an empty one.
+          storage.remove("bigals_icloud_backup_meta");
           // Native: ensure the deletes hit durable storage before the WebView
           // reloads (fire-and-forget writes would otherwise race the reload).
           // Web: storage.isNative is false, so no await runs — reload is
@@ -24538,7 +25581,41 @@ const confirmDelete = (p) => setConfirmOpts({
       }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive, topBarLayout]);
 
       let screen;
-      if (!userPrefs.onboardingComplete) {
+      if (!userPrefs.onboardingComplete && icloudRestore === 'checking') {
+        // Quiet beat while the metadata query looks for snapshots (≤6s).
+        screen = (
+          <div className="min-h-screen bg-neutral-950 flex items-center justify-center px-6">
+            <div className="text-[12px] text-neutral-500">Checking iCloud for a backup…</div>
+          </div>
+        );
+      } else if (!userPrefs.onboardingComplete && icloudRestore && icloudRestore.snapshots) {
+        const newest = icloudRestore.snapshots[0];
+        const snapDate = (() => {
+          const m = (newest.name || '').match(/(\d{4}-\d{2}-\d{2})/);
+          return m ? new Date(m[1] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+        })();
+        screen = (
+          <div className="min-h-screen bg-neutral-950 flex items-center justify-center px-6" style={{ paddingTop: 'var(--sat)', paddingBottom: 'var(--sab)' }}>
+            <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+              <div className="text-[15px] font-bold text-neutral-100 mb-1.5">Restore from iCloud?</div>
+              <p className="text-[12px] text-neutral-400 leading-relaxed mb-4">
+                A TimeMachine backup from {snapDate} was found in your iCloud. Restore it, or start fresh?
+              </p>
+              {icloudRestoreError && (
+                <p className="text-[11px] text-tm-pen mb-3">{icloudRestoreError}</p>
+              )}
+              <div className="flex flex-col gap-2">
+                <Btn variant="primary" disabled={icloudRestoreBusy} onClick={() => icloudRestoreRun(newest.name)} className="w-full justify-center">
+                  {icloudRestoreBusy ? 'Restoring…' : 'Restore backup'}
+                </Btn>
+                <Btn variant="ghost" disabled={icloudRestoreBusy} onClick={() => setIcloudRestore('none')} className="w-full justify-center">
+                  Start fresh
+                </Btn>
+              </div>
+            </div>
+          </div>
+        );
+      } else if (!userPrefs.onboardingComplete) {
         screen = (
           <OnboardingScreen
             userPrefs={userPrefs}
@@ -24553,6 +25630,8 @@ const confirmDelete = (p) => setConfirmOpts({
             setUserPrefs={setUserPrefs}
             onClose={() => setShowSettings(false)}
             onExport={handleExport}
+            onExportAccountant={handleExportAccountant}
+            accountantYears={accountantYears}
             onResetAll={handleResetAll}
             productionCount={productions.length}
             topBarLayout={topBarLayout}
@@ -24595,6 +25674,7 @@ const confirmDelete = (p) => setConfirmOpts({
         <>
           <BackLevelContext.Provider value={backCtx}>
           <SubScreenContext.Provider value={subScreenCtx}>
+          <InvoiceChargesContext.Provider value={invoiceChargesCtx}>
           {screen}
           {/* H2 future-card notice — informational only: rates were already
               applied automatically underneath (exact-match rule), so this
@@ -24656,6 +25736,7 @@ const confirmDelete = (p) => setConfirmOpts({
           {/* share-in chooser lives INSIDE the provider so its Sheet-primitive back-level
               registers — a share that opens over a live shoot must pop the chooser, not the
               shoot. Transient banners / CelebrationLayer below stay outside (no back-level). */}
+          </InvoiceChargesContext.Provider>
           </SubScreenContext.Provider>
           </BackLevelContext.Provider>
           {storageError && (

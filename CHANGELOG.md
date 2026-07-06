@@ -1,5 +1,25 @@
 # Changelog
 
+## 5.2
+
+### Automatic iCloud backup (new)
+The app keeps up to seven daily snapshots of your data in your own private iCloud container — written automatically when you close the app, visible to no one else, including us. Delete the app or move phones and a fresh install offers the newest snapshot back; Settings → Data & backup gains a quiet "Restore from iCloud" list and an honest status line ("Last backup: …" / unavailable when signed out). If iCloud is off, full, or offline, nothing breaks and nothing nags — the manual export remains the fallback, and it now carries the app's ledgers alongside your productions so a restore is complete.
+
+### Late payment charges (new)
+Statutory late-payment support under the Late Payment of Commercial Debts (Interest) Act 1998: simple daily interest at 8% plus the Bank of England base rate — the rate fixed at the statutory reference date, updateable in-app and overridable on the sheet — and the fixed recovery fee (£40 / £70 / £100 by invoice size). An overdue invoice shows the accruing figure in a banner at the top of its detail; the sheet lays out the full working (days overdue, rate, interest, fee, new total) before anything is written. The invoice stays one document: original lines untouched, a charges section beneath, updated total on screen and PDF alike. Charges are removable, survive marking paid, vanish with a deleted or redrafted invoice, and never re-fire the overdue reminder. Every owed-money surface follows: invoice lists, chase emails, the accountant export.
+
+### Chase email (new)
+"Chase this invoice" on an overdue invoice opens a prefilled, polite email with the invoice PDF attached — charges section included when present — quoting the current total. Delivered the same way invoice emails leave your phone: the Apple Mail composer, or the share sheet if you prefer another app.
+
+### Accountant export (new)
+Settings → Data & backup: pick a UK tax year (6 April to 5 April) and get two files for your accountant — a CSV of every issued invoice (date, client, number, gross, date paid, status) and a plain-text summary (totals, month-by-month invoiced and received, mileage logged and invoiced). Every figure exactly as invoiced, drafts excluded.
+
+### Fixes
+- Newly added records now survive a relaunch: a storage-boot gap could quietly lose recent ledgers (late-payment charges most visibly) on the next launch. Fixed, with a regression test that boots the app against seeded storage.
+- Chase and feedback emails now open reliably on iPhone — the old handoff died silently on devices.
+- PDF and email generation failures now say so with a toast instead of doing nothing.
+- The manual backup export carries the app's ledgers (reminder history, applied events, charges) so restores are complete.
+
 ## 5.1
 
 ### September 2026 APA rates (new)

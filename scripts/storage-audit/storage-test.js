@@ -416,6 +416,50 @@ async function main() {
     check('E3 durability: background flush persisted the write', Preferences._store.get('bigals_user_prefs') === '{"x":1}');
   }
 
+  // ===== M. LEDGER WARM — every persisted store survives a relaunch (T1) =====
+  // The T1 regression: get() is a synchronous cache read and KEYS is the only
+  // boot warm on BOTH persistent backends. bigals_invoice_charges wasn't
+  // listed, so a relaunch read null and useStoredState persisted {} over the
+  // durable record — late-payment charges were destroyed by the next launch
+  // (and every ledger silently weakened across relaunches). This EXECUTES the
+  // native boot against a seeded Preferences store and asserts every ledger
+  // key warms into the cache with the durable value intact.
+  {
+    const LEDGER_SEED = {
+      bigals_native_migrated: '1',
+      bigals_schema_version: '4',
+      bigals_productions: JSON.stringify([{ id: 'p1', title: 'Warm test', days: [], crew: [], invoices: [] }]),
+      bigals_invoice_charges: JSON.stringify({ 'i-1': { generatedAt: '2026-07-06', interest: 5.15, fixedFee: 40 } }),
+      bigals_overdue_fired: JSON.stringify({ 'i-1': { dueDate: '2026-06-01', firedAt: 1 } }),
+      bigals_la_applied_events: JSON.stringify(['ev-1']),
+      bigals_health_steps: JSON.stringify({ d1: { steps: 100 } }),
+      bigals_icloud_backup_meta: JSON.stringify({ lastWriteDay: '2026-07-06' }),
+    };
+    const Preferences = makePreferences(LEDGER_SEED);
+    const App = makeAppPlugin();
+    const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App } };
+    const sb = await runApp({ capacitor, localStorage: makeLocalStorage() });
+    await settle();
+    const storage = sb.__storage;
+    check('M1 native relaunch: the charges ledger WARMS from Preferences (the T1 vanishing-charges bug)',
+      storage.get('bigals_invoice_charges') === LEDGER_SEED.bigals_invoice_charges,
+      `got=${storage.get('bigals_invoice_charges')}`);
+    check('M2 native relaunch: every other ledger key warms too (overdue, LA events, health, iCloud meta)',
+      storage.get('bigals_overdue_fired') === LEDGER_SEED.bigals_overdue_fired &&
+      storage.get('bigals_la_applied_events') === LEDGER_SEED.bigals_la_applied_events &&
+      storage.get('bigals_health_steps') === LEDGER_SEED.bigals_health_steps &&
+      storage.get('bigals_icloud_backup_meta') === LEDGER_SEED.bigals_icloud_backup_meta);
+    check('M3 the durable record is intact after boot (no clobber through the adapter)',
+      Preferences._store.get('bigals_invoice_charges') === LEDGER_SEED.bigals_invoice_charges,
+      `store=${Preferences._store.get('bigals_invoice_charges')}`);
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    check('M4 KEYS lists every persisted bigals_* store (source pin — both backends share the list)',
+      /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
+    check('M5 PDF/email/chase generation failures surface a toast — never a silent dead button',
+      /console\.error\(isChase \? 'Chase email failed' : 'Invoice email failed', e\); \} catch \(_\) \{\}\s*showToast\(isChase \? "Couldn't prepare the chase email - try again\." : "Couldn't prepare the email - try again\."\);/.test(html) &&
+      /console\.error\('PDF export failed', e\); \} catch \(_\) \{\}\s*showToast\("Couldn't make the PDF - try again\."\);/.test(html));
+  }
+
   // ===== F. PRE-MIGRATION BACKUP PRUNE — safe deletion semantics =====
   // The prune lives inside runMigrations' early-return branch (no migration
   // needed). It must NEVER fire in the same run that wrote a snapshot, and
@@ -3676,8 +3720,11 @@ async function main() {
       body.includes('fireCelebration({ force: true })'));
     check('Z5i Native browser fallback for APA link still wired',
       body.includes("nativeOpenInBrowser('https://www.a-p-a.net/apa-crew-terms/')"));
-    check('Z5j Native mailto fallback for feedback link still wired',
-      body.includes("nativeOpenUrl('mailto:feedback@timemachineapp.co.uk')"));
+    // S1: the old nativeOpenUrl('mailto:…') wiring called App.openUrl, which
+    // does not exist in @capacitor/app v3+ — the tap silently did nothing on
+    // device. The link now composes through the device-verified email ladder.
+    check('Z5j Native feedback link composes through nativeComposeEmail (the S1 fix), not the dead mailto handoff',
+      body.includes("nativeComposeEmail({ to: 'feedback@timemachineapp.co.uk'"));
 
     // ─ Z6: every OLD top-level disclosure label is gone. If any of these
     //   reappear, the regroup has been partially reverted. ─
@@ -6469,11 +6516,12 @@ async function main() {
       /invoiceEmailMethod: 'appleMail',/.test(html) &&
       /v = \{ \.\.\.initial, \.\.\.v \};/.test(html));
 
-    check('IM2 shared subject/body builder — ONE buildInvoiceEmailContent feeds ALL send paths (web mailto + native composer/share-text) so the wording cannot drift; the body template now exists EXACTLY ONCE (in the builder, not re-inlined per path)',
+    check('IM2 shared subject/body builder — ONE buildInvoiceEmailContent feeds ALL send paths (web mailto + native composer/share-text) so the wording cannot drift; the body template now exists EXACTLY ONCE (in the builder, not re-inlined per path). T3: the native effect picks the builder by intent (chase rides the same delivery with its own single-source template)',
       /function buildInvoiceEmailContent\(invoice\) \{/.test(html) &&
       /const \{ subject, body \} = buildInvoiceEmailContent\(invoice\);/.test(html) &&   // web mailto
-      /const \{ subject, body \} = buildInvoiceEmailContent\(inv\);/.test(html) &&       // native effect
-      (html.match(/Please find attached invoice/g) || []).length === 1);
+      /const \{ subject, body \} = isChase\s*\? buildChaseEmailContent\(inv, userPrefs\)\s*: buildInvoiceEmailContent\(inv\);/.test(html) &&   // native effect, intent-picked
+      (html.match(/Please find attached invoice/g) || []).length === 1 &&
+      (html.match(/Just chasing invoice/g) || []).length === 1);
 
     check('IM3 method routing — appleMail (with a Mail account) → EmailComposer.open; shareSheet OR no Mail account → the share-sheet path; the chosen method is carried into nativeSendInvoiceEmail from a userPrefs-seeded ref',
       /if \(method !== 'shareSheet' && hasAccount\) \{/.test(html) &&
@@ -6692,6 +6740,308 @@ async function main() {
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
+
+  // ════════════════════════════════════════════════════════════════
+  // AE — Accountant export (tax-year CSV + summary). The money rule this
+  // series pins: every figure comes from FROZEN invoice snapshots
+  // (invoiceSubtotal over stored lineItems + invoiceVAT) — the accountant
+  // block must never recompute through the engine or the accounting-format
+  // export path. Plus the UK tax-year boundary, issued-only scope, the
+  // ruled filenames, and the one-share-sheet delivery. Source-presence
+  // (calc engine untouched — see audit:build).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    // The accountant block proper: from taxYearOf to getDisplayStatus.
+    const aStart = html.indexOf('function taxYearOf');
+    const aEnd = html.indexOf('function getDisplayStatus');
+    const acct = (aStart > 0 && aEnd > aStart) ? html.slice(aStart, aEnd) : '';
+
+    check('AE1a UK tax-year boundary: 5 Apr belongs to the prior year, 6 Apr starts the new one',
+      /return `\$\{m\[2\]\}-\$\{m\[3\]\}` >= '04-06' \? Number\(m\[1\]\) : Number\(m\[1\]\) - 1;/.test(acct));
+    check('AE1b taxYearBounds spans 6 April to 5 April',
+      /startISO: `\$\{y\}-04-06`, endISO: `\$\{y \+ 1\}-04-05`/.test(acct));
+
+    check('AE2a frozen-gross helper intact AND the export gross follows invoiceCurrentTotal (frozen + charges)',
+      /const invoiceFrozenGross = \(inv\) => invoiceVAT\(inv, invoiceSubtotal\(inv\.lineItems\)\)\.total;/.test(acct) &&
+      /fmtExportNum\(invoiceCurrentTotal\(invoice\)\)/.test(acct) &&
+      /const sumGross = \(list\) => list\.reduce\(\(s, e\) => s \+ invoiceCurrentTotal\(e\.invoice\), 0\);/.test(acct));
+    check('AE2b the accountant block never recomputes: no engine or accounting-export call inside',
+      acct.length > 0 &&
+      !/buildInvoiceLineItems|invoiceExportFigures|calcForDisplay|calculateDay\(/.test(acct));
+
+    check('AE3 issued-only scope: sent/paid filter guards BOTH the row collector and the year list',
+      (acct.match(/inv\.status !== 'sent' && inv\.status !== 'paid'/g) || []).length >= 2);
+
+    check('AE4 ruled filenames: timemachine-<year>-invoices.csv + timemachine-<year>-summary.txt',
+      /timemachine-\$\{label\}-invoices\.csv/.test(acct) &&
+      /timemachine-\$\{label\}-summary\.txt/.test(acct));
+
+    check('AE5a received/outstanding partition the year (paid-by-year-end predicate)',
+      /const paidByEnd = \(\{ invoice \}\) => !!invoice\.datePaid && invoice\.datePaid <= endISO;/.test(acct));
+    check('AE5b miles logged excludes today/future days (aggregate-earnings date rule)',
+      /if \(!d\.date \|\| d\.date < startISO \|\| d\.date > endISO \|\| d\.date >= todayStr\) continue;/.test(acct));
+    check('AE5c mileage invoiced reads frozen Mileage lines via getLineTotal',
+      /if \(\/mileage\/i\.test\(li\.label \|\| ''\)\) mileageInvoiced \+= Number\(getLineTotal\(li\)\) \|\| 0;/.test(acct));
+
+    check('AE6a two files leave through ONE native share sheet (deliverTextFiles → nativeSaveAndShareMany)',
+      /async function deliverTextFiles\(files, title\) \{\s*if \(IS_NATIVE\) return nativeSaveAndShareMany\(files, \{ title \}\);/.test(html));
+    check('AE6b nativeSaveAndShareMany passes every uri in a single Share.share files array',
+      /await Share\.share\(\{ title: opts\.title \|\| \(files\[0\] && files\[0\]\.filename\) \|\| '', files: uris \}\);/.test(html));
+
+    check('AE7a Settings block appears only once an issued invoice exists (accountantYears gate)',
+      /\{accountantYears\.length > 0 && \(/.test(html));
+    check('AE7b year picker defaults to the most recent COMPLETE tax year',
+      /const complete = accountantYears\.filter\(y => y < current\);/.test(html) &&
+      /return \(complete\[0\] \?\? accountantYears\[0\]\) \?\? null;/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // CE — Chase email (overdue invoice detail). One template, no escalation
+  // tiers, no tracking ledger. Pins: the single-source content builder with
+  // the ruled copy, the frozen-total seam (invoiceCurrentTotal — the hook the
+  // late-payment module extends), the overdue-only gate, and that the chase
+  // path writes NO state. Source-presence (engine untouched — audit:build).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const chase = (() => {
+      const s = html.indexOf('function invoiceCurrentTotal');
+      const e = html.indexOf('INLINE SVG ICONS');
+      return (s > 0 && e > s) ? html.slice(s, e) : '';
+    })();
+
+    check('CE1a chase subject uses the hyphen convention (O4: no em dashes in UI copy)',
+      /const subject = `Invoice \$\{invoice\.invoiceNumber\} - overdue`;/.test(chase));
+    check('CE1b chase body carries the ruled sentences (chasing / expect payment / charges warning)',
+      /Just chasing invoice \$\{invoice\.invoiceNumber\}/.test(chase) &&
+      /which was due on \$\{dueStr\} and is now overdue\./.test(chase) &&
+      /Could you let me know when I can expect payment\? Late-payment charges will apply under the standard terms if it remains unpaid\./.test(chase) &&
+      /Thanks,\\n\$\{signoff\}/.test(chase));
+
+    check('CE2a invoiceCurrentTotal = FROZEN snapshot total + attached charges record (never a recompute)',
+      /function invoiceCurrentTotal\(invoice\) \{\s*const frozen = invoiceVAT\(invoice, invoiceSubtotal\(invoice\.lineItems\)\)\.total;\s*const ch = invoiceChargesFor\(invoice\.id\);\s*return ch \? frozen \+ \(Number\(ch\.interest\) \|\| 0\) \+ \(Number\(ch\.fixedFee\) \|\| 0\) : frozen;\s*\}/.test(chase));
+    check('CE2b the chase amount quotes invoiceCurrentTotal (the late-payment extension seam)',
+      /const totalStr = fmtGBP\(invoiceCurrentTotal\(invoice\)\);/.test(chase));
+
+    check('CE3 the editor button is gated on sent + isOverdueSent; native rides the print pipeline, web mailtos with a failure toast',
+      /\{invoice\.status === 'sent' && isOverdueSent\(invoice, new Date\(todayISO\(\) \+ 'T12:00:00'\)\.getTime\(\)\) && \(/.test(html) &&
+      /printIntentRef\.current = 'chase';\s*emailMethodRef\.current = userPrefs\.invoiceEmailMethod \|\| 'appleMail';\s*setPrintTarget\(invoice\);/.test(html) &&
+      /const r = await openChaseMailto\(invoice, userPrefs\);\s*if \(r === 'failed'\) showToast\("Couldn't open an email app - check Mail is set up\."\);/.test(html) &&
+      />Chase this invoice\s*<\/Btn>/.test(html.replace(/<IMail size=\{13\}\/>/, '>')));
+
+    check('CE4 chasing writes NO state: no storage.set / updateInvoice / setProduction in the chase block',
+      chase.length > 0 && !/storage\.set|updateInvoice|setProduction|setUserPrefs/.test(chase));
+
+    check('CE5 recipient is the invoice\'s stored client email',
+      /const recipient = \(invoice\.toEmail \|\| ''\)\.trim\(\);[\s\S]{0,120}buildChaseEmailContent\(invoice, userPrefs\);/.test(chase));
+
+    // ─ S1/T3: no dead mailto handoff can return, on any path ─
+    check('CE6 openChaseMailto is WEB-ONLY (no IS_NATIVE branch) — and no App.openUrl CALL or nativeOpenUrl survives anywhere',
+      /async function openChaseMailto\(invoice, userPrefs\) \{\s*const recipient = \(invoice\.toEmail \|\| ''\)\.trim\(\);/.test(chase) &&
+      !/openChaseMailto[\s\S]{0,600}IS_NATIVE/.test(chase.slice(chase.indexOf('async function openChaseMailto'))) &&
+      !/App\.openUrl\(/.test(html) &&
+      !/function nativeOpenUrl/.test(html));
+    check('CE7 the attachment-less ladder (feedback link): Mail composer only with an account + appleMail method, else share sheet, else \'failed\'',
+      /async function nativeComposeEmail\(\{ to, subject, body, method \}\) \{/.test(html) &&
+      /const r = await EmailComposer\.hasAccount\(\);\s*hasAccount = !!\(r && r\.hasAccount\);/.test(html) &&
+      /if \(method !== 'shareSheet' && hasAccount\) \{/.test(html) &&
+      /await Share\.share\(\{ title: subject \|\| '', text \}\);\s*return 'shared';/.test(html) &&
+      /return 'failed';\s*\}/.test(html));
+
+    // ─ T3: the chase carries the invoice PDF through the SHARED pipeline ─
+    check('CE8a the print effect handles the chase intent with the chase template through nativeSendInvoiceEmail',
+      /if \(intent === 'email' \|\| intent === 'chase'\) \{/.test(html) &&
+      /const \{ subject, body \} = isChase\s*\? buildChaseEmailContent\(inv, userPrefs\)\s*: buildInvoiceEmailContent\(inv\);/.test(html) &&
+      /cc: isChase \? '' : \(emailCcRef\.current \|\| ''\),/.test(html));
+    check('CE8b chasing writes NO state: mark-as-sent and re-lock are guarded off the chase intent',
+      /if \(!isChase\) \{\s*if \(wasDraft\) \{\s*sendInvoice\(production, inv, \{ status: 'sent', dateSent: todayISO\(\) \}\);/.test(html) &&
+      /const wasDraft = !isChase && inv\.status === 'draft';/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // IB — iCloud snapshot backup. Pins: the SINGLE payload builder shared by
+  // manual export and iCloud snapshot (v2 envelope carrying the behavioural
+  // ledgers + invoice charges), importBackup's guarded ledger restore with
+  // rollback, the daily/empty/onboarding sweep guards, filename + last-7
+  // prune, silent degradation, and both restore routes going through
+  // importBackup. Web build untouched (see audit:web check 6).
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+
+    check('IB1a one envelope: BACKUP_LEDGER_KEYS carries overdue-fired, LA events, invoice charges',
+      /const BACKUP_LEDGER_KEYS = \{\s*overdueFired: 'bigals_overdue_fired',\s*laAppliedEvents: 'bigals_la_applied_events',\s*invoiceCharges: 'bigals_invoice_charges',\s*\};/.test(html));
+    check('IB1b buildBackupPayload is version 2 and includes the ledgers field',
+      /version: 2,[\s\S]{0,220}productions,\s*userPrefs,\s*ledgers,\s*\};/.test(html));
+    check('IB1c the manual export uses buildBackupPayload (no second payload shape)',
+      /const payload = JSON\.stringify\(buildBackupPayload\(productions, userPrefs, now\), null, 2\);/.test(html));
+    check('IB1d the iCloud sweep writes the SAME builder\'s output',
+      /ICloudBackup\.write\(filename, JSON\.stringify\(buildBackupPayload\(prods, prefs\)\)\)/.test(html));
+
+    check('IB2a importBackup restores ledgers ONLY when the backup carries them (v1 backups leave device ledgers untouched)',
+      /const importedLedgers = \(parsed && parsed\.ledgers && typeof parsed\.ledgers === 'object' &&\s*!Array\.isArray\(parsed\.ledgers\)\) \? parsed\.ledgers : null;/.test(html) &&
+      /if \(importedLedgers\) \{\s*for \(const \[field, key\] of Object\.entries\(BACKUP_LEDGER_KEYS\)\) \{\s*if \(importedLedgers\[field\] !== undefined\)/.test(html));
+    check('IB2b migration failure rolls the ledgers back alongside productions/prefs',
+      /rollbackLedgers\(\);\s*console\.log\('Migration failed:', result\.error\);/.test(html));
+
+    check('IB3a sweep is at most once per calendar day (meta ledger gate)',
+      /if \(meta\.lastWriteDay === today\) return;/.test(html));
+    check('IB3b sweep never snapshots an empty data set or mid-onboarding',
+      /if \(!prods \|\| prods\.length === 0\) return;/.test(html) &&
+      /if \(!prefs \|\| !prefs\.onboardingComplete\) return;/.test(html));
+    check('IB3c sweep degrades silently when iCloud is unavailable',
+      /const st = await ICloudBackup\.status\(\);\s*if \(!st\.available\) return;/.test(html));
+    check('IB3d sweep arms on the backgrounding half of appStateChange',
+      /addListener\('appStateChange', \(s\) => \{ if \(s && !s\.isActive\) icloudBackupSweep\(\); \}\)/.test(html));
+
+    check('IB4a snapshots are date-stamped snapshot-YYYY-MM-DD.json',
+      /const filename = `snapshot-\$\{today\}\.json`;/.test(html));
+    check('IB4b prune keeps the last 7 (lexicographic = chronological on date-stamped names)',
+      /names\.slice\(0, Math\.max\(0, names\.length - 7\)\)/.test(html));
+
+    check('IB5a fresh-install offer routes through importBackup and reloads',
+      /const res = raw != null \? importBackup\(raw\)/.test(html));
+    check('IB5b Settings iCloud restore routes through importBackup behind the ConfirmDialog step',
+      /title: "Restore from iCloud\?",[\s\S]{0,400}const result = importBackup\(raw\);/.test(html));
+    check('IB5c the Settings status line carries the honest strings',
+      /`Last backup: \$\{fmtSnapDate\(icloudInfo\.meta\.lastWriteAt\)\}`/.test(html) &&
+      /'iCloud backup unavailable - sign in to iCloud\.'/.test(html));
+
+    check('IB6 reset-all clears the backup meta (snapshots themselves stay in iCloud)',
+      /storage\.remove\("bigals_icloud_backup_meta"\);/.test(html));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // LP — Late payment charges. The statutory logic is EXTRACTED from the
+  // source and EXECUTED here (fee-band boundaries, day-count fencepost,
+  // reference-date selection, table values, stale fallback, override), plus
+  // source pins for the money rules: the frozen invoice is never mutated
+  // (charges are their own ledger record, replaced whole on regeneration),
+  // the dueDate is never written by generation (the overdue-reminder ledger
+  // keys on it), and every owed-money surface reads invoiceCurrentTotal.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const lpStart = html.indexOf('const BASE_RATES');
+    const lpEnd = html.indexOf('/* ═ end late-payment logic ═ */');
+    const lp = (lpStart > 0 && lpEnd > lpStart) ? html.slice(lpStart, lpEnd) : '';
+
+    // Executable extraction: the LP block is self-contained except
+    // invoiceFrozenGross — stubbed to read a test principal.
+    let L = null;
+    try {
+      L = new Function(
+        'const invoiceFrozenGross = (inv) => Number(inv.__principal) || 0;\n' + lp +
+        '\nreturn { BASE_RATES, statutoryReferenceDate, baseRateFor, lateFeeFor, computeLateCharges };'
+      )();
+    } catch (_) {}
+    check('LP0 the late-payment logic block extracts and executes', !!L);
+
+    if (L) {
+      check('LP1 BASE_RATES carries the verified values (4.75 / 4.25 / 3.75 / 3.75 at the four reference dates)',
+        JSON.stringify(L.BASE_RATES) === JSON.stringify([
+          { referenceDate: '2024-12-31', rate: 4.75 },
+          { referenceDate: '2025-06-30', rate: 4.25 },
+          { referenceDate: '2025-12-31', rate: 3.75 },
+          { referenceDate: '2026-06-30', rate: 3.75 },
+        ]));
+      check('LP2 reference-date selection: due Jan–Jun → prior 31 Dec; due Jul–Dec → same-year 30 Jun (boundaries included)',
+        L.statutoryReferenceDate('2026-06-30') === '2025-12-31' &&
+        L.statutoryReferenceDate('2026-07-01') === '2026-06-30' &&
+        L.statutoryReferenceDate('2025-01-15') === '2024-12-31' &&
+        L.statutoryReferenceDate('2025-12-31') === '2025-06-30');
+      check('LP3 fee bands with exact boundaries: 999.99→£40, 1000→£70, 9999.99→£70, 10000→£100',
+        L.lateFeeFor(999.99) === 40 && L.lateFeeFor(1000) === 70 &&
+        L.lateFeeFor(9999.99) === 70 && L.lateFeeFor(10000) === 100 && L.lateFeeFor(0) === 40);
+      const inv = { id: 'i-t', __principal: 2000, dueDate: '2026-01-01' };
+      const onDue = L.computeLateCharges(inv, '2026-01-01');
+      const dayAfter = L.computeLateCharges(inv, '2026-01-02');
+      const day30 = L.computeLateCharges(inv, '2026-01-31');
+      check('LP4a day-count fencepost: generation ON the due date accrues nothing; the day after accrues one day',
+        onDue.daysOverdue === 0 && onDue.interest === 0 && dayAfter.daysOverdue === 1);
+      check('LP4b interest maths: £2,000, due 1 Jan 2026 (3.75% base → 11.75%), 30 days → £19.32; fee £70; new total £2,089.32',
+        day30.baseRate === 3.75 && day30.annualRate === 11.75 &&
+        day30.interest === 19.32 && day30.fixedFee === 70 && day30.newTotal === 2089.32);
+      const future = L.computeLateCharges({ id: 'i-f', __principal: 500, dueDate: '2027-01-15' }, '2027-02-01');
+      check('LP5a stale-table fallback: a due date past the table falls back to the newest rate and FLAGS stale',
+        future.stale === true && future.baseRate === 3.75 && future.baseRateSource === 'table');
+      const manual = L.computeLateCharges(inv, '2026-01-31', 4.0);
+      check('LP5b manual override: rate honoured, source marked, stale cleared',
+        manual.baseRate === 4 && manual.annualRate === 12 && manual.baseRateSource === 'manual override' && manual.stale === false);
+    }
+
+    // ─ Source pins: ledger discipline + rendering + the seam ─
+    check('LP6a ONE record per invoice, replaced whole; cap 200 pruned oldest-generatedAt-first',
+      /const next = \{ \.\.\.prev, \[invoiceId\]: record \};/.test(html) &&
+      /if \(ids\.length > 200\) \{/.test(html) &&
+      /String\(\(next\[a\] \|\| \{\}\)\.generatedAt \|\| ''\)\.localeCompare\(String\(\(next\[b\] \|\| \{\}\)\.generatedAt \|\| ''\)\)/.test(html));
+    check('LP6b charges live in their OWN key via useStoredState, matching the backup envelope key',
+      /useStoredState\('bigals_invoice_charges', \{\}\)/.test(html) &&
+      /invoiceCharges: 'bigals_invoice_charges',/.test(html));
+    check('LP7a deletion rules: reconciler removes records for deleted or reverted-to-draft invoices (paid keeps)',
+      /if \(status === undefined \|\| status === 'draft'\) \{ delete next\[id\]; changed = true; \}/.test(html));
+    (() => {
+      // The sheet IIFE sits between its opening expression and the editor's
+      // bottom action row — slice the CODE, not the banner comment (whose
+      // "no lineItems write" wording would trip the negative test).
+      const s = html.indexOf('{showChargesSheet && (() => {');
+      const e = s > 0 ? html.indexOf('border-t border-neutral-800 pt-4 flex gap-2', s) : -1;
+      const sheet = (s > 0 && e > s) ? html.slice(s, e) : '';
+      check('LP7b the generation sheet writes ONLY the ledger record — no invoice mutation, no dueDate write, no lineItems touch',
+        sheet.length > 0 &&
+        /writeInvoiceCharge\(invoice\.id, preview\);/.test(sheet) &&
+        /removeInvoiceCharge\(invoice\.id\);/.test(sheet) &&
+        !/updateInvoice|setProduction|lineItems|dueDate:/.test(sheet));
+    })();
+    check('LP8a the document renders charges as ONE document: charges prop, section between items and totals, updated Total due',
+      /function InvoiceDocument\(\{ invoice, userPrefs, charges = null \}\)/.test(html) &&
+      /className="invoice-charges"/.test(html) &&
+      /<span className="label">Invoice total<\/span>/.test(html) &&
+      /<span className="label">Late payment charges<\/span>/.test(html));
+    check('LP8b the editor print path passes the invoice\'s charges record into the print view',
+      /<InvoicePrintView invoice=\{printTarget\} userPrefs=\{userPrefs\} charges=\{allInvoiceCharges\[printTarget\.id\] \|\| null\} \/>/.test(html));
+    check('LP9 the accruing figure is computed on render, muted tm-pen, ONLY in the overdue detail — never stored',
+      /const acc = computeLateCharges\(invoice, todayISO\(\)\);/.test(html) &&
+      /text-tm-pen\/70/.test(html) &&
+      !/setInvoiceCharges\([^)]*acc/.test(html));
+    check('LP10 owed-money surfaces read the seam: list memo, production list outstanding, row totals',
+      /m\.set\(invoice\.id, invoiceCurrentTotal\(invoice\)\);/.test(html) &&
+      /const tot = invoiceCurrentTotal\(inv\);/.test(html) &&
+      /const total = invoiceCurrentTotal\(inv\);   \/\/ frozen \+ any charges/.test(html));
+    check('LP11 the ruled button label on the overdue detail',
+      />Add late-payment charges\s*<\/button>/.test(html.replace(/<IWarn size=\{13\}\/>/g, '>')));
+
+    // ─ LP12 (S2): placement + penalty styling — the charges affordance is
+    //   the overdue invoice's HEADLINE action: top banner above the job/
+    //   line-item/totals cards, tm-pen family, accrual line + button as one
+    //   unit. The chase button keeps its foot placement and neutral style. ─
+    (() => {
+      const bannerIdx = html.indexOf('Late-payment charges banner (S2)');
+      const editorIdx = html.indexOf('function InvoiceEditorView');
+      const jobCardIdx = html.indexOf('>Job</span>', bannerIdx);
+      const lineItemsIdx = html.indexOf('Line items', bannerIdx);
+      const chaseIdx = html.indexOf('Chase this invoice', bannerIdx);
+      check('LP12a the banner sits inside the editor ABOVE the job/line-item/totals area',
+        editorIdx > 0 && bannerIdx > editorIdx && jobCardIdx > bannerIdx && lineItemsIdx > bannerIdx);
+      const bannerEnd = html.indexOf('>Job</span>', bannerIdx);
+      const banner = (bannerIdx > 0 && bannerEnd > bannerIdx) ? html.slice(bannerIdx, bannerEnd) : '';
+      check('LP12b penalty family styling: tm-pen border + tinted rose wash + tm-pen button',
+        /border-tm-pen\/25/.test(banner) &&
+        /rgba\(244,63,94,0\.06\)/.test(banner) &&
+        /bg-tm-pen\/10 border-tm-pen\/40 text-tm-pen/.test(banner));
+      check('LP12c one unit: the muted breakdown line (tm-pen/70, SYSTEM font) sits WITH the add button inside the banner',
+        /text-tm-pen\/70/.test(banner) &&
+        /const acc = computeLateCharges\(invoice, todayISO\(\)\);/.test(banner) &&
+        /Add late-payment charges/.test(banner) &&
+        // T2: the figures line is the system font (no font-mono) and shows the
+        // ruled breakdown: "£X.XX interest + £Y fee · N days".
+        !/font-mono/.test(banner) &&
+        /\{fmtGBP\(acc\.interest\)\} interest \+ £\{acc\.fixedFee\} fee · \{acc\.daysOverdue\} day\{acc\.daysOverdue === 1 \? '' : 's'\}/.test(banner));
+      check('LP12d with a record the banner shows the combined figure + the update route into the sheet',
+        /Late payment charges added · \{fmtGBP\(\(Number\(rec\.interest\) \|\| 0\) \+ \(Number\(rec\.fixedFee\) \|\| 0\)\)\}/.test(banner) &&
+        /Update late-payment charges/.test(banner));
+      check('LP12e the old foot strip is gone and the chase button keeps its foot placement below the banner',
+        !/Statutory interest and the fixed recovery fee, added to this invoice as one document\./.test(html) &&
+        chaseIdx > lineItemsIdx);
+    })();
+  }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
   // IDB factory whose open() rejects forces the adapter into degraded

@@ -2,8 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- TimeMachine is fully offline: data lives only on-device, no tracking,
-	     no data collection, no network/analytics. -->
+	<!-- TimeMachine collects nothing: no tracking, no analytics, no server.
+	     Data lives on-device; from 5.2 the app also keeps snapshots in the
+	     USER'S OWN private iCloud container (Apple-hosted, invisible to us) —
+	     that is the user's storage, not collection, so CollectedDataTypes
+	     stays empty. FileTimestamp (C617.1) covers reading metadata of files
+	     in the app's own containers, incl. the iCloud container snapshots. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>

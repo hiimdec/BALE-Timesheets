@@ -57,6 +57,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         bridge?.registerPluginInstance(ShareSheetPlugin())
         bridge?.registerPluginInstance(NativeChromePlugin())
         bridge?.registerPluginInstance(HealthStepsPlugin())
+        bridge?.registerPluginInstance(ICloudBackupPlugin())
     }
 
     override func viewDidLoad() {
