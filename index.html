@@ -18712,7 +18712,7 @@ const setDays = (updater) =>
       );
     }
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onExportAccountant = () => {}, accountantYears = [], onResetAll, productionCount = 0, topBarLayout = 'left', setTopBarLayout = () => {} }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onExportAccountant = () => {}, accountantYears = [], onResetAll, productionCount = 0 }) {
       useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
@@ -18938,24 +18938,6 @@ const setDays = (updater) =>
               <Btn variant="ghost" onClick={() => setShowCalc(true)}><ICalc/>Cancellation calculator</Btn>
               <p className="text-[10px] text-neutral-500 mt-1">Estimate APA cancellation fees for cancelled or curtailed shoots.</p>
             </SectionCard>
-
-            {/* TEMPORARY beta A/B — top-bar layout picker. Native-chrome only; remove this whole
-                SectionCard (+ the standalone key, payload field, native centred path) before GA. */}
-            {NATIVE_CHROME_ACTIVE && (
-            <SectionCard title="Beta">
-              <div className="text-[11px] text-neutral-400 mb-2">Top bar layout</div>
-              <div className="flex bg-neutral-900 border border-neutral-800 rounded-lg p-0.5 gap-0.5">
-                {[['centred', 'Centred'], ['left', 'Left']].map(([k, l]) => (
-                  <button key={k} type="button" onClick={() => { haptic.light(); setTopBarLayout(k); }}
-                    className={`flex-1 text-[12px] font-semibold py-1.5 rounded-md transition-colors ${topBarLayout === k ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200'}`}
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-neutral-500 mt-1.5">Try both arrangements of the top bar and tell us which you prefer.</p>
-            </SectionCard>
-            )}
 
             {/* §3 — Invoicing: ONE top-level group. Order: master toggle, then the
                 identity cluster (Your details, VAT, Bank details, Logo), Numbering
@@ -25442,14 +25424,6 @@ const confirmDelete = (p) => setConfirmOpts({
       const newInvoiceActionRef = React.useRef(null);
       const homeTabRef = React.useRef('productions');
       useEffect(() => { homeTabRef.current = homeTab; }, [homeTab]);
-      // TEMPORARY beta A/B — top-bar layout ('centred' | 'left'). STANDALONE localStorage key
-      // (NOT userPrefs / not any record → no migration). Default 'left' (current shipping
-      // behaviour). Remove this block + the Settings toggle + the topBarLayout payload field +
-      // the native centred path together before GA.
-      const [topBarLayout, setTopBarLayoutState] = useState(() => {
-        try { return localStorage.getItem('tm_topbar_layout') === 'centred' ? 'centred' : 'left'; } catch (_) { return 'left'; }
-      });
-      const setTopBarLayout = (v) => { setTopBarLayoutState(v); try { localStorage.setItem('tm_topbar_layout', v); } catch (_) {} };
       // Stage 3b: the mounted SoloDayPage registers its header actions here so the native
       // bar's trailing Share / Production-settings buttons can drive its internal sheets.
       // Null when no solo shoot is mounted (the actions no-op otherwise).
@@ -25564,15 +25538,12 @@ const confirmDelete = (p) => setConfirmOpts({
         // Search; a SOLO shoot shows Share + Production settings; a BEST-BOY shoot shows
         // Production settings (+ a "more" overflow in mobile viewMode for the kebab).
         const inBBShoot = inShoot && currentProduction.bestBoyMode;
-        // Left-aligned redesign: roots put a [search, settings] UTILITY group on the right (native
-        // renders it as one cluster, plus a separate pinned + pill). Sub-screens keep settings only;
-        // shoots keep their own trailing; New Production / Settings get none.
-        // TEMPORARY beta A/B (tm_topbar_layout): the ONLY two things that differ between layouts are
-        // the wordmark alignment (native, from `topBarLayout`) and the SEARCH SLOT. LEFT (default):
-        // roots put a [search, settings] utility group trailing + a separate pinned + pill; the
-        // wordmark is left-aligned. CENTRED: search sits in the LEADING slot, settings (+ create)
-        // trailing, wordmark centred. Everything else is identical.
-        const isLeft = topBarLayout !== 'centred';
+        // Left-aligned header (fixed): roots put a [search, settings] UTILITY group on the right
+        // (native renders it as one cluster, plus a separate pinned + pill) and a left-aligned
+        // wordmark in the leading slot. Sub-screens keep settings only; shoots keep their own
+        // trailing; New Production / Settings get none. (The old centre-vs-left beta A/B was
+        // removed in Z3 - left is now the permanent layout; isLeft stays as a readable anchor.)
+        const isLeft = true;
         const trailing = inSoloShoot ? ['prodSettings', 'share']
           : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])
           : isTabRoot ? (isLeft ? ['search', 'settings'] : ['settings'])
@@ -25608,10 +25579,8 @@ const confirmDelete = (p) => setConfirmOpts({
           // Masked to activeTab==='shoots' — only there is ProductionsScreen mounted (so the
           // mirrored value is live), which avoids a stale-true showing an X on the Stats/Invoices roots.
           searchActive: isTabRoot && activeTab === 'shoots' && searchActive,
-          // TEMPORARY beta A/B — which top-bar arrangement native renders ('centred' | 'left').
-          topBarLayout,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive, topBarLayout]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
 
       let screen;
       if (!userPrefs.onboardingComplete && icloudRestore === 'checking') {
@@ -25667,8 +25636,6 @@ const confirmDelete = (p) => setConfirmOpts({
             accountantYears={accountantYears}
             onResetAll={handleResetAll}
             productionCount={productions.length}
-            topBarLayout={topBarLayout}
-            setTopBarLayout={setTopBarLayout}
           />
         );
       } else if (showStats) {

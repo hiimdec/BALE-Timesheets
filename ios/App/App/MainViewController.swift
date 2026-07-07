@@ -157,34 +157,24 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
     func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
-                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false,
-                          topBarLayout: String = "left") {
+                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false) {
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
         }
-        // ── Top-bar layout A/B (beta) ──────────────────────────────────────────────────────
-        // Two coexisting layouts, selected by `topBarLayout`. ONLY the wordmark alignment and the
-        // search slot differ; everything else (search↔X, the + + tab-aware create, New Production X,
-        // back/X) is identical. LEFT (default, current shipping): wordmark left-aligned in the
-        // leading slot; right = [search settings] utility group + a pinned [+] pill. CENTRED:
-        // wordmark centred (titleView); search in the LEADING slot; settings (+ create) trailing.
-        let isLeft = (topBarLayout != "centred")
+        // ── Top bar: left-aligned (fixed) ──────────────────────────────────────────────────
+        // The header is permanently left-aligned: the wordmark sits in the leading slot; the right
+        // holds a [search settings] utility group + a pinned [+] pill. (The old centre-vs-left beta
+        // A/B was removed in Z3 - left is the only layout now.)
 
-        // Wordmark: centred titleView (CENTRED) vs left-aligned leading customView (LEFT).
-        if isLeft {
-            navItem.titleView = nil
-            navItem.title = wordmark ? "" : title
-        } else {
-            navItem.title = title
-            navItem.titleView = wordmark ? makeWordmarkLockup(name: wordmarkName, alignment: .center) : nil
-        }
+        // Wordmark: left-aligned leading customView; no centred titleView.
+        navItem.titleView = nil
+        navItem.title = wordmark ? "" : title
 
-        // Leading: LEFT root → wordmark lockup; otherwise → back chevron, or the web's leading
-        // actions (CENTRED search / New Production close-X), with search swapping to a close-X
-        // when the web reports search active.
+        // Leading: root → wordmark lockup; a pushed screen → back chevron; otherwise the web's
+        // leading actions (New Production close-X), with search swapping to a close-X when active.
         let leadingItems: [UIBarButtonItem]
-        if isLeft && wordmark {
+        if wordmark {
             let wm = UIBarButtonItem(customView: makeWordmarkLockup(name: wordmarkName, alignment: .leading))
             if #available(iOS 26.0, *) { wm.hidesSharedBackground = true }   // brand mark, not a button pill
             leadingItems = [wm]
@@ -204,28 +194,15 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
         if #available(iOS 26.0, *) {
             navItem.leadingItemGroups = leadingItems.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: leadingItems, representativeItem: nil)]
-            if isLeft {
-                // LEFT: utility group + a SEPARATE pinned create pill (two glass clusters).
-                navItem.trailingItemGroups = utilityItems.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: utilityItems, representativeItem: nil)]
-                navItem.pinnedTrailingGroup = createItem.map { UIBarButtonItemGroup(barButtonItems: [$0], representativeItem: nil) }
-            } else {
-                // CENTRED: [+ settings] as ONE trailing group (create to the LEFT of settings); no pinned pill.
-                var items = utilityItems
-                if let c = createItem { items.insert(c, at: 0) }
-                navItem.trailingItemGroups = items.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: items, representativeItem: nil)]
-                navItem.pinnedTrailingGroup = nil
-            }
+            // Utility group + a SEPARATE pinned create pill (two glass clusters).
+            navItem.trailingItemGroups = utilityItems.isEmpty ? [] : [UIBarButtonItemGroup(barButtonItems: utilityItems, representativeItem: nil)]
+            navItem.pinnedTrailingGroup = createItem.map { UIBarButtonItemGroup(barButtonItems: [$0], representativeItem: nil) }
         } else {
             // iOS 15-25 fallback: flat arrays (one cluster). Right lays out right-to-left (index 0 = rightmost edge).
             navItem.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
             var rightItems: [UIBarButtonItem] = []
-            if isLeft {
-                if let c = createItem { rightItems.append(c) }            // create at the trailing edge
-                rightItems.append(contentsOf: utilityItems.reversed())   // …then settings, then search
-            } else {
-                rightItems.append(contentsOf: utilityItems)              // [settings]
-                if let c = createItem { rightItems.append(c) }           // create to the LEFT of settings ([+ settings])
-            }
+            if let c = createItem { rightItems.append(c) }            // create at the trailing edge
+            rightItems.append(contentsOf: utilityItems.reversed())   // …then settings, then search
             navItem.rightBarButtonItems = rightItems.isEmpty ? nil : rightItems
         }
         // Honour the web's invoicing toggle: rebuild the tab set when it flips.
@@ -360,11 +337,10 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let wordmarkName = call.getString("wordmarkName") ?? ""
         let createButton = call.getBool("createButton") ?? false
         let searchActive = call.getBool("searchActive") ?? false
-        let topBarLayout = call.getString("topBarLayout") ?? "left"   // TEMPORARY beta A/B
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
                 title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
-                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive, topBarLayout: topBarLayout)
+                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive)
             call.resolve()
         }
     }
