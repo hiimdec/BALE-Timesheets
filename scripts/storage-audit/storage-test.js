@@ -3718,8 +3718,15 @@ async function main() {
       body.includes('feedback@timemachineapp.co.uk'));
     check('Z5h Celebration Preview button calls fireCelebration({ force: true })',
       body.includes('fireCelebration({ force: true })'));
-    check('Z5i Native browser fallback for APA link still wired',
-      body.includes("nativeOpenInBrowser('https://www.a-p-a.net/apa-crew-terms/')"));
+    // Z4: the APA link opens the EXTERNAL system browser (window.open _blank →
+    // Capacitor routes to Safari) instead of the in-app SFSafariViewController,
+    // removing the age-rating "in-app web access" ambiguity. The in-app-browser
+    // helper (nativeOpenInBrowser / Browser.open) is removed entirely - it was
+    // its only caller.
+    check('Z5i APA link opens the external browser on native (window.open _blank); no in-app-browser code remains',
+      body.includes("window.open('https://www.a-p-a.net/apa-crew-terms/', '_blank')") &&
+      !body.includes('nativeOpenInBrowser') &&
+      !/Browser\.open\(/.test(body));
     // S1: the old nativeOpenUrl('mailto:…') wiring called App.openUrl, which
     // does not exist in @capacitor/app v3+ — the tap silently did nothing on
     // device. The link now composes through the device-verified email ladder.

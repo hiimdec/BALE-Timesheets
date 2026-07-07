@@ -1046,12 +1046,6 @@
       return 'shared';
     }
 
-    // Open a URL in the in-app Safari view (SFSafariViewController). Returns to the app.
-    async function nativeOpenInBrowser(url) {
-      const { Browser } = _capPlugins();
-      await Browser.open({ url });
-    }
-
     // Compose an email natively WITHOUT an attachment (the chase email, the
     // Settings feedback link). Same decision ladder as nativeSendInvoiceEmail
     // — the path device-verified to work: Apple Mail composer when the user's
@@ -19655,14 +19649,14 @@ const setDays = (updater) =>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Reference</div>
                 <a
                   href="https://www.a-p-a.net/apa-crew-terms/"
-                  onClick={IS_NATIVE ? (e) => { e.preventDefault(); nativeOpenInBrowser('https://www.a-p-a.net/apa-crew-terms/').catch(() => {}); } : undefined}
+                  onClick={IS_NATIVE ? (e) => { e.preventDefault(); window.open('https://www.a-p-a.net/apa-crew-terms/', '_blank'); } : undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between gap-3 text-sm text-neutral-300 hover:text-sky-500 transition-colors py-1 group"
                 >
                   <div>
                     <div className="font-medium">APA Recommended Terms</div>
-                    <div className="text-[10px] text-neutral-500 mt-0.5 group-hover:text-neutral-400 transition-colors">Official rate card and working terms - opens in a new tab</div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5 group-hover:text-neutral-400 transition-colors">Official rate card and working terms - opens in your browser</div>
                   </div>
                   <IExternalLink size={14} className="shrink-0 text-neutral-500 group-hover:text-sky-500 transition-colors"/>
                 </a>
