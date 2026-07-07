@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Articles - TimeMachine: APA pay, timesheets, invoicing</title>
+  <meta name="description" content="Plain-English guides to APA pay for UK film and TV crew: overtime, penalties, timesheets and invoicing, from the makers of TimeMachine.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="canonical" href="https://timemachineapp.co.uk/articles">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="TimeMachine articles - APA pay, plainly">
+  <meta property="og:description" content="Plain-English guides to APA pay for UK film and TV crew: overtime, penalties, timesheets and invoicing.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/articles">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - APA timesheets, pay and invoicing for UK crew">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TimeMachine articles - APA pay, plainly">
+  <meta name="twitter:description" content="Plain-English guides to APA pay for UK film and TV crew: overtime, penalties, timesheets and invoicing.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #737373;
+      --text-4:    #525252;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%, rgba(14,165,233,0.10) 0%, transparent 65%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100;
+      transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+
+    main { padding: 56px 0 72px; }
+    @media (min-width: 768px) { main { padding: 80px 0 96px; } }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(34px, 5vw, 52px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1; margin: 0 0 16px;
+    }
+    .intro { color: var(--text-2); font-size: 16px; line-height: 1.6; margin: 0 0 40px; max-width: 60ch; }
+
+    /* Article list */
+    .post-list { display: flex; flex-direction: column; gap: 14px; }
+    .post-card {
+      display: block; text-decoration: none;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 20px 22px;
+      transition: border-color 150ms ease, transform 150ms ease;
+    }
+    .post-card:hover { border-color: #3a3a3a; transform: translateY(-1px); }
+    .post-date {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; letter-spacing: 0.06em; color: var(--text-3);
+      text-transform: uppercase; margin-bottom: 8px;
+    }
+    .post-title { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: var(--text); margin: 0 0 8px; line-height: 1.2; }
+    .post-teaser { color: var(--text-2); font-size: 14px; line-height: 1.6; margin: 0; }
+    .post-badge {
+      display: inline-block; margin-left: 8px; vertical-align: middle;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--tm-accent); background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.25); padding: 3px 7px; border-radius: 5px;
+    }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+  </style>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
+      <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        Open the App
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/>
+          <polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+      <p class="label">From the crew</p>
+      <h1>Articles</h1>
+      <p class="intro">Plain-English guides to how APA pay actually works - overtime, penalties, timesheets and invoicing - for UK film and TV crew. No jargon, no fluff, just the bit you needed to know before you sent the invoice.</p>
+
+      <div class="post-list">
+        <!-- One self-contained file per article, listed newest first. -->
+        <a class="post-card" href="/articles/how-apa-overtime-works">
+          <div class="post-date">Coming soon</div>
+          <h2 class="post-title">How APA overtime actually works<span class="post-badge">Draft</span></h2>
+          <p class="post-teaser">When the clock ticks over into OT, at what rate, and how the day rate, the tenth-hour and the continuous working day fit together. The rules, worked through with real numbers.</p>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
