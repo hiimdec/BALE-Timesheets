@@ -1,71 +1,81 @@
-# robots.txt — TimeMachine
+# robots.txt - TimeMachine
 #
-# Goal: discourage search indexing, general crawling, and AI / training-data
-# scrapers.
+# TimeMachine is a public, free tool for UK film & TV crew. We WANT it found,
+# indexed, and cited - by search engines and by AI assistants alike. This file
+# replaces an earlier build-time version that blocked everything while the site
+# was pre-launch.
 #
-# IMPORTANT: robots.txt is advisory, not a security control. Well-behaved
-# crawlers (Google, Bing, and most major AI crawlers) honour it. Malicious or
-# non-compliant scrapers can and do ignore it. To actually block bad actors you
-# need server-side measures (auth, rate limiting, WAF) — which GitHub Pages does
-# not provide. Treat this as "polite signage", not a lock.
+# robots.txt is advisory, not a security control - but there is nothing to hide
+# here: the marketing pages are public and the app holds no data server-side.
 
-# --- Block all standard crawlers from the entire site ---
+# --- All standard crawlers: full access ---
 User-agent: *
-Disallow: /
+Allow: /
 
-# --- Explicitly block known AI / LLM training & retrieval crawlers ---
-# (Listed individually because some ignore the wildcard above.)
+# --- AI / LLM crawlers: EXPLICITLY welcome ---
+# Named individually so the intent is unambiguous - we want the site to be
+# discoverable and citable by AI assistants and search.
 
+# OpenAI
 User-agent: GPTBot
-Disallow: /
+Allow: /
 
 User-agent: ChatGPT-User
-Disallow: /
+Allow: /
 
 User-agent: OAI-SearchBot
-Disallow: /
+Allow: /
 
+# Anthropic (Claude)
 User-agent: ClaudeBot
-Disallow: /
+Allow: /
 
 User-agent: Claude-Web
-Disallow: /
+Allow: /
 
 User-agent: anthropic-ai
-Disallow: /
+Allow: /
 
-User-agent: CCBot
-Disallow: /
-
+# Google (AI / Gemini / Vertex training signal)
 User-agent: Google-Extended
-Disallow: /
+Allow: /
 
+# Perplexity
 User-agent: PerplexityBot
-Disallow: /
+Allow: /
 
+# Common Crawl (feeds many open models)
+User-agent: CCBot
+Allow: /
+
+# Apple Intelligence
 User-agent: Applebot-Extended
-Disallow: /
+Allow: /
 
-User-agent: Bytespider
-Disallow: /
-
+# Others
 User-agent: Amazonbot
-Disallow: /
+Allow: /
 
 User-agent: Meta-ExternalAgent
-Disallow: /
+Allow: /
 
 User-agent: meta-externalagent
-Disallow: /
+Allow: /
 
 User-agent: cohere-ai
-Disallow: /
+Allow: /
+
+User-agent: Bytespider
+Allow: /
 
 User-agent: Diffbot
-Disallow: /
+Allow: /
 
 User-agent: Omgilibot
-Disallow: /
+Allow: /
 
 User-agent: ImagesiftBot
-Disallow: /
+Allow: /
+
+# --- Sitemap ---
+Sitemap: https://timemachineapp.co.uk/sitemap.xml
