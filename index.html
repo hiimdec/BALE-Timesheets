@@ -245,12 +245,17 @@
       100% { opacity: 1;   transform: scale(1); }
     }
     .tm-pulse { animation: tm-pulse 2s ease-in-out infinite; }
-    /* Condition-card mount — brief fade + slide from above on chip activation */
+    /* Condition-card mount — quiet scale-and-fade on open (95%→100% + opacity
+       over ~150ms, native iOS feel). Replaced the old fade + upward slide, which
+       animated the card's sky-tinted border in and read as a templated "glowing
+       border trace". The open state now reads through tone alone (a one-step-
+       lighter background), so there is no border or glow to animate. */
     @keyframes tm-card-in {
-      from { opacity: 0; transform: translateY(-4px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from { opacity: 0; transform: scale(0.95); }
+      to   { opacity: 1; transform: scale(1); }
     }
-    .tm-card-in { animation: tm-card-in 220ms ease-out; }
+    .tm-card-in { animation: tm-card-in 150ms ease-out; }
+    @media (prefers-reduced-motion: reduce) { .tm-card-in { animation: none; } }
     /* Hero card — soft sky glow top-right + 1px sky hairline along the top edge */
     .tm-hero-card {
       background:
@@ -17761,12 +17766,15 @@ const setDays = (updater) =>
       const isWarn = variant === "condition-warn";
       const isRed = accent === "red";
       if (isCondition) {
-        const accentBorder = isWarn ? "border-tm-warn/25" : "border-sky-500/25";
-        const accentLeft   = isWarn ? "border-l-tm-warn" : "border-l-sky-500";
-        const accentText   = isWarn ? "text-tm-warn"     : "text-sky-500";
+        // Open state reads through tone, not a border/glow: bg-neutral-800 is one
+        // step lighter than the tm-card-2 (#1f1f1f) chips it opens from. The old
+        // sky/warn rounded border + 3px left bar are gone (they faded in via
+        // tm-card-in and read as a templated "glowing border trace"). accentText
+        // keeps the semantic title colour — sky normally, warn-amber on a warn card.
+        const accentText = isWarn ? "text-tm-warn" : "text-sky-500";
         return (
-          <div className={`tm-card-in bg-neutral-800/40 border ${accentBorder} border-l-[3px] ${accentLeft} rounded-[10px] overflow-hidden mb-4`}>
-            <div className={`px-4 py-3 border-b ${accentBorder} flex items-center justify-between gap-3`}>
+          <div className="tm-card-in bg-neutral-800 rounded-[10px] overflow-hidden mb-4">
+            <div className="px-4 py-3 border-b border-neutral-700/60 flex items-center justify-between gap-3">
               <div className={`text-[10px] uppercase tracking-[0.2em] ${accentText} font-bold`}>{title}</div>
               {onClose && (
                 <button
