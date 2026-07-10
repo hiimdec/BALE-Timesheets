@@ -20,6 +20,12 @@
  *        line paid them again, +30m × 2× BHR). Flat structures (weekday /
  *        Saturday) keep the top-up — genuinely owed there.
  *
+ *   A3 — Sunday/BH triple-time gated to OT. 3× after midnight is an overtime
+ *        rate (§4.4/§4.7); the old unconditional wrapAbs − 24 split paid 3×
+ *        for post-midnight hours INSIDE the basic/min-10h day and let triple
+ *        eat the min-10h top-up. Now split at max(call + basicHrs, 24) like
+ *        the weekday/Saturday branches.
+ *
  * Reference crew throughout: grade I, BDR £444 → BHR £44.40, OT £66.60,
  * 2× £88.80, 3× £133.20.
  *
@@ -153,6 +159,34 @@ function stageA2(eng, ok) {
   ok('A2g Saturday curtailed 30m WITH OT absorbs (no separate line): £699.30', !curt(satOt) && near(satOt.total, 699.30), `total=${satOt.total}`);
 }
 
+// ---- A3: Sunday/BH triple-time only for OT hours ------------------------------
+
+function stageA3(eng, ok) {
+  console.log('\nA3 · Sunday/BH post-midnight triple gated to OT');
+  const calc = (d) => eng.calculateDay(baseDay({ date: '2026-06-07', ...d }), baseCrew()); // Sunday
+  const tripleLine = (c) => c.lines.find(l => l.label.startsWith('OT Triple'));
+
+  // The spec case: net 10h, OT would only start at call+11h = 03:30 = wrap.
+  const a = calc({ callTime: '16:30', wrapTime: '03:30', wrapNextDay: true, lunchStartTime: '21:00' });
+  ok('A3a Sun 16:30→03:30(+1) net 10h: all at 2× BHR, £888.00, no triple', !tripleLine(a) && near(a.total, 888.00), `total=${a.total} triple=${!!tripleLine(a)}`);
+
+  // Min-10h day crossing midnight: the floor tops up at 2×, never 3×.
+  const b = calc({ callTime: '15:00', wrapTime: '01:30', wrapNextDay: true, lunchStartTime: '19:00' });
+  ok('A3b Sun 15:00→01:30(+1) net 9.5h: min-10h all at 2× BHR, £888.00', !tripleLine(b) && near(b.total, 888.00), `total=${b.total}`);
+
+  // Genuine OT past midnight still triples (unchanged behaviour).
+  const c = calc({ callTime: '08:00', wrapTime: '01:00', wrapNextDay: true, secondBreakStartTime: '18:00', secondBreakDurationMins: 30 });
+  ok('A3c Sun 08:00→01:00(+1): 15h at 2× + 1h OT at 3× = £1465.20', !!tripleLine(c) && near(tripleLine(c).qty, 1) && near(c.total, 1465.20), `total=${c.total} triple=${tripleLine(c) && tripleLine(c).qty}`);
+
+  // Sunday CWD (basic 9h): only the post-midnight OT hour triples.
+  const d = calc({ callTime: '16:00', wrapTime: '02:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true });
+  ok('A3d Sun CWD 16:00→02:00(+1): 9h at 2× + 1h OT at 3× = £932.40', !!tripleLine(d) && near(d.total, 932.40), `total=${d.total}`);
+
+  // Bank holiday rides the same branch.
+  const e = eng.calculateDay(baseDay({ date: '2026-08-31', callTime: '16:30', wrapTime: '03:30', wrapNextDay: true, lunchStartTime: '21:00' }), baseCrew());
+  ok('A3e BH Monday 16:30→03:30(+1): £888.00, Bank Holiday label', near(e.total, 888.00) && e.meta.dayLabel === 'Bank Holiday', `total=${e.total} label=${e.meta.dayLabel}`);
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -160,6 +194,7 @@ async function runCalcBoundaryAssertions() {
   const { ok, summary } = makeCollector();
   stageA1(eng, ok);
   stageA2(eng, ok);
+  stageA3(eng, ok);
   return summary();
 }
 

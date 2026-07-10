@@ -3121,10 +3121,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (effectiveDayType === "Shoot") {
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
-          // APA §4.7: Sun/BH is 2× BHR for all hours, but hours after 00:00 are
-          // 3× BHR and continue at triple to wrap. Split the flat day at
-          // midnight; the min-10h floor tops up the pre-midnight (2× BHR) part.
-          const tripleHrs = ceilHalf(Math.max(0, wrapAbs - 24));
+          // APA §4.4/§4.7: 3× after midnight is an OVERTIME rate — it applies
+          // only to OT hours that cross 00:00, and continues at triple to
+          // wrap. Gate the split on the OT start exactly like the weekday and
+          // Saturday branches do (fix/calc-audit A3 — the old unconditional
+          // wrapAbs − 24 split paid 3× for post-midnight hours INSIDE the
+          // basic/min-10h day, and let triple eat the min-10h top-up).
+          // OT on the hourly Sunday structure starts basicHrs after CALL —
+          // not after effectiveStart: the §2.1.4 late-call "day counted from
+          // 11:00" renormalisation belongs to the flat weekday/Sat day-fee
+          // model; on hourly-all-hours Sunday pay it would manufacture OT for
+          // afternoon calls (e.g. a 15:00 call "in OT" from 22:00).
+          const sunOtStartAbs = callH + basicHrs;
+          const tripleStart = Math.max(sunOtStartAbs, 24);
+          const tripleHrs = ceilHalf(Math.max(0, wrapAbs - tripleStart));
           const flatHrs = Math.max(0, paidHrs - tripleHrs);
           lines.push({
             label: `${sunBranchPrefix} Shoot (${sunMult}× BHR, flat)`,
