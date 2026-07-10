@@ -2597,7 +2597,16 @@
       return variances;
     }
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
-    const ceilHalf = (n) => Math.ceil(n * 2) / 2;
+    // TIME_EPS — 3.6-second tolerance for threshold comparisons and half-hour
+    // ceilings on parseHHMM-derived floats. h + m/60 is binary-inexact for most
+    // minutes, so arithmetic like (wrap − call) − basicHrs can land 1 ulp ABOVE
+    // an exact rule boundary; a bare > or Math.ceil then amplifies that noise
+    // into a full increment — a phantom 30m of OT, a phantom £10 late lunch, a
+    // phantom CWD conversion — always in the over-billing direction. Inputs are
+    // minute-granular (1 min = 0.0167h ≫ 0.001) so the epsilon can never absorb
+    // a genuine minute. Same 0.001 the 2nd-break late check has always used.
+    const TIME_EPS = 0.001;
+    const ceilHalf = (n) => Math.ceil(n * 2 - TIME_EPS) / 2;
     const computeAPArate = (bdr, multiplier, apaRounding) => { const raw = (Number(bdr) || 0) * multiplier / 10; return apaRounding ? Math.round(raw) : raw; };
 
     // Rounding: a single mode ('exact' | 'favourable' | 'apa') is the source of
@@ -2777,21 +2786,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // non-shoot day types have no meal obligation, so CWD, late-lunch
       // penalties, and 2nd-break obligations do not apply.
       const cwdApplies = (effectiveDayType === "Shoot" || effectiveDayType === "Pre-light");
-      const lunchLate = cwdApplies && !lunchMissed && lunchStartAbs > lateThreshold && lunchStartAbs <= cwdThreshold;
-      const lunchVeryLate = cwdApplies && !lunchMissed && lunchStartAbs > cwdThreshold;
+      const lunchLate = cwdApplies && !lunchMissed && lunchStartAbs > lateThreshold + TIME_EPS && lunchStartAbs <= cwdThreshold + TIME_EPS;
+      const lunchVeryLate = cwdApplies && !lunchMissed && lunchStartAbs > cwdThreshold + TIME_EPS;
       const continuousDay = cwdApplies && (lunchMissed || lunchVeryLate);
       const sbDeadline = lunchEndAbs !== null ? lunchEndAbs + 5.5 : null;
-      const secondBreakRequired = cwdApplies && !continuousDay && sbDeadline !== null && wrapAbs > sbDeadline;
+      const secondBreakRequired = cwdApplies && !continuousDay && sbDeadline !== null && wrapAbs > sbDeadline + TIME_EPS;
       const cwd1Deadline = callH + 9;
       const cwd2Deadline = callH + 12.5;
-      const cwd2Required = continuousDay && wrapAbs > cwd2Deadline;
+      const cwd2Required = continuousDay && wrapAbs > cwd2Deadline + TIME_EPS;
       const sbStartH = parseHHMM(day.secondBreakStartTime);
       const sbStartAbs = absTime(sbStartH, callH);
       const sbDuration = Number(day.secondBreakDurationMins ?? 30);
       let sbState = "given";
       if (!secondBreakRequired) sbState = "na";
       else if (sbDuration === 0 || sbStartH === null) sbState = "missed";
-      else if (sbStartAbs > sbDeadline + 0.001) sbState = "late";
+      else if (sbStartAbs > sbDeadline + TIME_EPS) sbState = "late";
       else if (sbDuration < 30) sbState = "curtailed";
       return {
         callH, wrapAbs, wrapNextDay, workedHrs,
@@ -3062,7 +3071,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // to the OT line's detail and skip the separate Curtailed 1st Break
       // line entirely.
       const curtailedMinsAbsorbedInOT = (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60 &&
-        !isNightShoot && !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > 0)
+        !isNightShoot && !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > TIME_EPS)
         ? (60 - lunchDuration)
         : 0;
       const otCurtailedSuffix = curtailedMinsAbsorbedInOT > 0 ? ` · incl. ${curtailedMinsAbsorbedInOT}m curtailed lunch` : '';
@@ -4534,7 +4543,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew, apaRounding = false) {
       if (isPmpaRole(effectiveCrew)) return null;
       const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
-      if (rest === null || rest >= 11) return null;
+      if (rest === null || rest >= 11 - TIME_EPS) return null;
       const bhr = computeAPArate(effectiveCrew.bdr, 1, apaRounding);
       const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : computeAPArate(effectiveCrew.bdr, Number(effectiveCrew.otCoef) || 1, apaRounding);
       // APA §5: crew may be engaged for up to 1 hour of TOC per break. The

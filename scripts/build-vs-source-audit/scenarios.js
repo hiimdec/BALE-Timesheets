@@ -275,6 +275,19 @@ const scenarios = [
   mk('R06', 'Both roundings on, Sat shoot with OT', {}, { date: '2026-06-06', wrapTime: '22:00' }, { apaRounding: true, favourableRounding: true }),
   mk('R07', 'OT coefficient 1.25 (junior bracket)', { otCoef: 1.25 }, { wrapTime: '22:00' }),
   mk('R08', 'Fixed otRate override (£75/h)', { otRate: 75 }, { wrapTime: '22:00' }),
+
+  // S. Boundary regression probes (fix/calc-audit) — cases that sit ON an
+  //    exact rule boundary reached from 5/10-minute-grid times, where pre-fix
+  //    FP noise tipped the calc a full increment (phantom 30m OT / phantom £10
+  //    late lunch / phantom CWD conversion). Parity probes only — the
+  //    expected-£ pins for these live in calc-boundary-assertions.js.
+  mk('S01', 'OT exactly 1.0h from 10-min grid (08:10-20:10)', {}, { callTime: '08:10', wrapTime: '20:10', lunchStartTime: '11:10', secondBreakStartTime: '17:00', secondBreakDurationMins: 30 }),
+  mk('S02', 'OT exactly 0.5h from 10-min grid (08:10-19:40)', {}, { callTime: '08:10', wrapTime: '19:40', lunchStartTime: '13:10' }),
+  mk('S03', 'Lunch exactly at +5:30 (07:05 call, 12:35 lunch)', {}, { callTime: '07:05', wrapTime: '18:05', lunchStartTime: '12:35' }),
+  mk('S04', 'Lunch exactly at +6:30 (07:05 call, 13:35 lunch)', {}, { callTime: '07:05', wrapTime: '19:05', lunchStartTime: '13:35' }),
+  mk('S05', 'Real 1h01m OT still rounds up (08:10-20:11)', {}, { callTime: '08:10', wrapTime: '20:11', lunchStartTime: '11:10', secondBreakStartTime: '17:00', secondBreakDurationMins: 30 }),
+  mk('S06', 'Curtailed lunch, wrap exactly at shifted OT threshold (18:30)', {}, { wrapTime: '18:30', lunchDurationMins: 30 }),
+  mk('S07', 'TOC rest exactly 11h (prev wrap 21:10, call 08:10)', {}, { callTime: '08:10', wrapTime: '19:10' }, {}, { date: '2026-05-31', callTime: '08:00', wrapTime: '21:10' }),
 ];
 
 module.exports = { scenarios };

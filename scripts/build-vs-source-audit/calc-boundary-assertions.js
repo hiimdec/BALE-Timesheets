@@ -1,0 +1,150 @@
+/*
+ * calc-boundary-assertions.js
+ *
+ *   $ node scripts/build-vs-source-audit/calc-boundary-assertions.js
+ *
+ * Expected-£ regression pins for the fix/calc-audit boundary fixes. The
+ * scenarios.js probe set is deliberately NOT a correctness oracle (it compares
+ * source vs built only, so a bug present in both passes) — these assertions
+ * pin the engine's output against hand-computed APA expectations at the exact
+ * boundaries the 2026-07 adversarial audit found tipping:
+ *
+ *   A1 — floating-point boundary tipping. parseHHMM floats + bare >/Math.ceil
+ *        amplified 1-ulp noise into a full increment (phantom 30m OT, phantom
+ *        £10 late lunch, phantom CWD conversion), always over-billing. Fixed
+ *        with TIME_EPS in ceilHalf and every threshold comparison.
+ *
+ * Reference crew throughout: grade I, BDR £444 → BHR £44.40, OT £66.60,
+ * 2× £88.80, 3× £133.20.
+ *
+ * Exit code: 0 if all assertions pass, 1 if any fail, 2 on harness error.
+ */
+
+const { loadSourceEngine } = require('./load-engines');
+
+// ---- Pass/fail collector (same shape as kit-assertions) --------------------
+
+function makeCollector() {
+  let pass = 0, fail = 0;
+  const failures = [];
+  const ok = (label, cond, detail) => {
+    if (cond) { pass++; console.log(`  ✓ ${label}`); }
+    else      { fail++; failures.push({ label, detail }); console.log(`  ✗ FAIL ${label}${detail ? ' — ' + detail : ''}`); }
+  };
+  const summary = () => ({ pass, fail, failures });
+  return { ok, summary };
+}
+
+// ---- Fixtures ---------------------------------------------------------------
+
+const baseCrew = (overrides = {}) => ({
+  id: 'c1', name: 'Test', role: 'Spark', department: 'Electrical',
+  bdr: 444, otCoef: 1.5, otRate: null, noOT: false, pmpa: false,
+  vatRegistered: false, vatRate: 20,
+  kitMoneyEnabled: false, kitMoneyAmount: 0,
+  isDriver: false, email: '',
+  ...overrides,
+});
+
+const baseDay = (overrides = {}) => ({
+  id: 'd1', crewId: 'c1', date: '2026-06-01', // Monday
+  callTime: '08:00', wrapTime: '19:00', wrapNextDay: false,
+  dayType: 'Shoot', lunchStartTime: '13:00', lunchDurationMins: 60,
+  noMealProvided: false,
+  secondBreakStartTime: '', secondBreakDurationMins: 0, secondBreakLogged: false,
+  cwdBreak1Given: false, cwdBreak2Given: false,
+  preCallTime: '', travelOutMins: 0, travelBackMins: 0,
+  miles: 0, mileagePostcode: '', mileageMethod: 'distance', mileageRoundTrip: false,
+  perDiemAmount: 0, expenses: [], kitMoneyAmount: 0, kitItems: [],
+  stepUpRole: '', stepUpBDR: 0, stepUpOTCoef: 1, stepUpOTRate: null,
+  ...overrides,
+});
+
+const near = (a, b, eps = 0.01) => Math.abs(a - b) < eps;
+const otQty = (calc) => calc.lines.filter(l => /^OT\b/.test(l.label)).reduce((s, l) => s + (Number(l.qty) || 0), 0);
+const hasLine = (calc, label) => calc.lines.some(l => l.label === label);
+
+// ---- A1: floating-point boundary tipping ------------------------------------
+
+function stageA1(eng, ok) {
+  console.log('\nA1 · FP boundary tipping (TIME_EPS)');
+  const calc = (d, opts = {}) => eng.calculateDay(baseDay(d), baseCrew(), opts);
+
+  // Exact 1.0h OT from a 10-minute-grid pair (pre-fix: charged 1.5h, +£33.30).
+  const a = calc({ callTime: '08:10', wrapTime: '20:10', lunchStartTime: '11:10', secondBreakStartTime: '17:00', secondBreakDurationMins: 30 });
+  ok('A1a 08:10→20:10 charges exactly 1.0h OT', near(otQty(a), 1.0), `otQty=${otQty(a)}`);
+  ok('A1a total £510.60 (BDR + 1h OT)', near(a.total, 510.60), `total=${a.total}`);
+
+  // Exact 0.5h OT; wrap lands exactly ON the 2nd-break deadline (also pinned).
+  const b = calc({ callTime: '08:10', wrapTime: '19:40', lunchStartTime: '13:10' });
+  ok('A1b 08:10→19:40 charges exactly 0.5h OT', near(otQty(b), 0.5), `otQty=${otQty(b)}`);
+  ok('A1b no phantom missed 2nd break at exact deadline', !hasLine(b, 'Missed 2nd Break'), JSON.stringify(b.lines.map(l => l.label)));
+  ok('A1b total £477.30', near(b.total, 477.30), `total=${b.total}`);
+
+  // Real 1h01m OT still rounds UP to 1.5h (epsilon must never absorb a minute).
+  const c = calc({ callTime: '08:10', wrapTime: '20:11', lunchStartTime: '11:10', secondBreakStartTime: '17:00', secondBreakDurationMins: 30 });
+  ok('A1c 1h01m real OT still rounds up to 1.5h', near(otQty(c), 1.5), `otQty=${otQty(c)}`);
+  ok('A1c total £543.90', near(c.total, 543.90), `total=${c.total}`);
+
+  // Lunch exactly AT +5:30 is on time (pre-fix: phantom £10 on some pairs).
+  const d = calc({ callTime: '07:05', wrapTime: '18:05', lunchStartTime: '12:35' });
+  ok('A1d lunch exactly at +5:30 fires no £10', !hasLine(d, 'Late 1st Break'), JSON.stringify(d.lines.map(l => l.label)));
+  ok('A1d total £444.00 flat', near(d.total, 444.00), `total=${d.total}`);
+
+  // One real minute past the deadline still fires the £10.
+  const e = calc({ callTime: '07:05', wrapTime: '18:05', lunchStartTime: '12:36' });
+  ok('A1e lunch at +5:31 still fires £10', hasLine(e, 'Late 1st Break') && near(e.total, 454.00), `total=${e.total}`);
+
+  // Lunch exactly AT +6:30 stays a late-lunch day (pre-fix: phantom CWD, +£123.20).
+  const f = calc({ callTime: '07:05', wrapTime: '19:05', lunchStartTime: '13:35' });
+  ok('A1f lunch exactly at +6:30 does NOT convert to CWD', !f.meta.continuousDay, `continuousDay=${f.meta.continuousDay}`);
+  ok('A1f late-lunch day: £10 + 1h OT = £520.60', hasLine(f, 'Late 1st Break') && near(f.total, 520.60), `total=${f.total}`);
+
+  // One real minute past 6:30 still converts. CWD breaks marked given so the
+  // pin isolates the conversion itself: BDR + 3h OT after the 9h CWD basic.
+  const g = calc({ callTime: '07:05', wrapTime: '19:05', lunchStartTime: '13:36', cwdBreak1Given: true, cwdBreak2Given: true });
+  ok('A1g lunch at +6:31 still converts to CWD (£643.80)', g.meta.continuousDay && near(g.total, 643.80), `cwd=${g.meta.continuousDay} total=${g.total}`);
+
+  // Quarter-hour times (binary-exact) behave exactly as before.
+  const h = calc({ callTime: '08:00', wrapTime: '20:00', lunchStartTime: '13:00', secondBreakStartTime: '17:00', secondBreakDurationMins: 30 });
+  ok('A1h quarter-hour 08:00→20:00 still exactly 1.0h OT, £510.60', near(otQty(h), 1.0) && near(h.total, 510.60), `otQty=${otQty(h)} total=${h.total}`);
+
+  // Curtailed lunch with wrap exactly at the shifted OT threshold: the top-up
+  // must be paid (the epsilon'd absorbed-in-OT check must not swallow it).
+  const i = calc({ wrapTime: '18:30', lunchDurationMins: 30 });
+  ok('A1i curtail top-up at exact shifted threshold: £466.20', hasLine(i, 'Curtailed 1st Break') && near(i.total, 466.20), `total=${i.total}`);
+
+  // TOC: rest of exactly 11h owes nothing; 10h59m owes a favourable-rounded 0.5h.
+  const t1 = eng.calcTOC(baseDay({ callTime: '08:00', wrapTime: '21:10' }), baseDay({ date: '2026-06-02', callTime: '08:10' }), baseCrew(), false);
+  ok('A1j TOC at exactly 11h rest → no TOC', t1 === null, JSON.stringify(t1));
+  const t2 = eng.calcTOC(baseDay({ callTime: '08:00', wrapTime: '21:11' }), baseDay({ date: '2026-06-02', callTime: '08:10' }), baseCrew(), false);
+  ok('A1k TOC at 10h59m rest → 0.5h × OT = £33.30', !!t2 && near(t2.amount, 33.30), JSON.stringify(t2));
+}
+
+// ---- Runner ------------------------------------------------------------------
+
+async function runCalcBoundaryAssertions() {
+  const eng = await loadSourceEngine();
+  const { ok, summary } = makeCollector();
+  stageA1(eng, ok);
+  return summary();
+}
+
+if (require.main === module) {
+  console.log('============================================================');
+  console.log(' calc-boundary-assertions: APA boundary regression pins');
+  console.log('============================================================');
+  runCalcBoundaryAssertions().then(({ pass, fail }) => {
+    const total = pass + fail;
+    console.log('\n============================================================');
+    if (fail === 0) {
+      console.log(` ✅ PASS — all ${total} calc boundary assertions passed.`);
+    } else {
+      console.log(` ❌ FAIL — ${fail} of ${total} calc boundary assertions failed.`);
+    }
+    console.log('============================================================');
+    process.exit(fail > 0 ? 1 : 0);
+  }).catch((e) => { console.error(e); process.exit(2); });
+}
+
+module.exports = { runCalcBoundaryAssertions };
