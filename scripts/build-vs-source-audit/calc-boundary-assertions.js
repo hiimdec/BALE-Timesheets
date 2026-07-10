@@ -14,6 +14,12 @@
  *        £10 late lunch, phantom CWD conversion), always over-billing. Fixed
  *        with TIME_EPS in ceilHalf and every threshold comparison.
  *
+ *   A2 — curtailed-lunch double-pay on HOURLY-paid structures (Sunday/Bank
+ *        Holiday and night shoots pay worked-minus-actual-lunch, so curtailed
+ *        minutes are already paid as worked time; the unconditional top-up
+ *        line paid them again, +30m × 2× BHR). Flat structures (weekday /
+ *        Saturday) keep the top-up — genuinely owed there.
+ *
  * Reference crew throughout: grade I, BDR £444 → BHR £44.40, OT £66.60,
  * 2× £88.80, 3× £133.20.
  *
@@ -121,12 +127,39 @@ function stageA1(eng, ok) {
   ok('A1k TOC at 10h59m rest → 0.5h × OT = £33.30', !!t2 && near(t2.amount, 33.30), JSON.stringify(t2));
 }
 
+// ---- A2: curtailed-lunch double-pay on hourly-paid structures ----------------
+
+function stageA2(eng, ok) {
+  console.log('\nA2 · curtailed lunch on hourly vs flat structures');
+  const calc = (d) => eng.calculateDay(baseDay(d), baseCrew());
+  const curt = (c) => hasLine(c, 'Curtailed 1st Break');
+
+  // FIXED — hourly structures: minutes already paid as worked time, no top-up.
+  const sun = calc({ date: '2026-06-07', lunchDurationMins: 30 }); // Sun 08:00-19:00
+  ok('A2a Sunday curtailed 30m: hourly pay only, £932.40, no top-up line', !curt(sun) && near(sun.total, 932.40), `total=${sun.total} line=${curt(sun)}`);
+  const sunOt = calc({ date: '2026-06-07', wrapTime: '21:00', lunchDurationMins: 30, secondBreakStartTime: '19:00', secondBreakDurationMins: 30 });
+  ok('A2b Sunday curtailed 30m with OT-region hours: £1110.00, no top-up', !curt(sunOt) && near(sunOt.total, 1110.00), `total=${sunOt.total}`);
+  const nPost = calc({ callTime: '20:00', wrapTime: '07:00', wrapNextDay: true, lunchStartTime: '01:00', lunchDurationMins: 30 });
+  ok('A2c night (post-5pm) curtailed 30m: £932.40, no top-up', !curt(nPost) && near(nPost.total, 932.40), `total=${nPost.total}`);
+  const nPre = calc({ callTime: '02:00', wrapTime: '13:00', lunchStartTime: '07:00', lunchDurationMins: 30 });
+  ok('A2d night (pre-5am) curtailed 30m: £932.40, no top-up', !curt(nPre) && near(nPre.total, 932.40), `total=${nPre.total}`);
+
+  // KEPT — flat structures: the top-up is genuinely owed (day fee fixed).
+  const sat = calc({ date: '2026-06-06', wrapTime: '18:00', lunchDurationMins: 30 });
+  ok('A2e Saturday curtailed 30m no-OT keeps top-up: £699.30', curt(sat) && near(sat.total, 699.30), `total=${sat.total} line=${curt(sat)}`);
+  const wd = calc({ wrapTime: '18:30', lunchDurationMins: 30 });
+  ok('A2f weekday curtailed 30m no-OT keeps top-up: £466.20', curt(wd) && near(wd.total, 466.20), `total=${wd.total}`);
+  const satOt = calc({ date: '2026-06-06', lunchDurationMins: 30 });
+  ok('A2g Saturday curtailed 30m WITH OT absorbs (no separate line): £699.30', !curt(satOt) && near(satOt.total, 699.30), `total=${satOt.total}`);
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
   const eng = await loadSourceEngine();
   const { ok, summary } = makeCollector();
   stageA1(eng, ok);
+  stageA2(eng, ok);
   return summary();
 }
 

@@ -288,6 +288,9 @@ const scenarios = [
   mk('S05', 'Real 1h01m OT still rounds up (08:10-20:11)', {}, { callTime: '08:10', wrapTime: '20:11', lunchStartTime: '11:10', secondBreakStartTime: '17:00', secondBreakDurationMins: 30 }),
   mk('S06', 'Curtailed lunch, wrap exactly at shifted OT threshold (18:30)', {}, { wrapTime: '18:30', lunchDurationMins: 30 }),
   mk('S07', 'TOC rest exactly 11h (prev wrap 21:10, call 08:10)', {}, { callTime: '08:10', wrapTime: '19:10' }, {}, { date: '2026-05-31', callTime: '08:00', wrapTime: '21:10' }),
+  mk('S08', 'Sunday curtailed lunch 30m (hourly pay, no top-up)', {}, { date: '2026-06-07', lunchDurationMins: 30 }),
+  mk('S09', 'Night shoot curtailed lunch 30m (hourly pay, no top-up)', {}, { callTime: '20:00', wrapTime: '07:00', wrapNextDay: true, lunchStartTime: '01:00', lunchDurationMins: 30 }),
+  mk('S10', 'Saturday curtailed lunch 30m no-OT (flat pay, top-up kept)', {}, { date: '2026-06-06', wrapTime: '18:00', lunchDurationMins: 30 }),
 ];
 
 module.exports = { scenarios };

@@ -3199,16 +3199,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // at source in deriveBreakState, so this only fires on Shoot/Pre-light.
       // Flat £10 on all day types including night shoots (APA §6.2).
       if (bs.lunchLate) lines.push({ label: "Late 1st Break", detail: "", rate: null, qty: 1, amount: 10 });
-      // Curtailed 1st Break (APA §6.2): basic hours are reduced by the curtailed minutes
-      // (lines 998-999), which already shifts the OT threshold earlier. If wrap doesn't
-      // cross the adjusted threshold (no OT worked), pay the curtailed minutes at the
-      // applicable day rate. If OT was crossed, the curtailed time is absorbed into the
-      // OT calc (informational line at £0).
-      // V4-5h-14 (F8.1): Sun/BH pay at 2× BHR, Sat at Sat multiplier × BHR.
-      // V4-7-1: night shoots have no OT (flat 2× BHR call-to-wrap), so the
-      // "absorbed in OT" branch is suppressed and curtailment always pays
-      // the curtailment minutes at 2× BHR.
-      if (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
+      // Curtailed 1st Break (APA §6.2) — FLAT-pay structures only (weekday and
+      // Saturday, where the day fee is a fixed BDR multiple that does not grow
+      // when lunch shrinks): basic hours are reduced by the curtailed minutes,
+      // which shifts the OT threshold earlier. If wrap doesn't cross the
+      // adjusted threshold (no OT worked), pay the curtailed minutes at the
+      // applicable day rate; if OT was crossed, the curtailed time is absorbed
+      // into the OT line (its detail carries "incl. Nm curtailed lunch").
+      // HOURLY-paid structures (Sunday/Bank Holiday, night shoots) are
+      // excluded (fix/calc-audit A2): they pay worked-minus-actual-lunch, so
+      // the curtailed minutes are ALREADY paid as worked time — the old
+      // unconditional top-up here double-counted them (+30m × 2× BHR).
+      if (bs.cwdApplies && !isNightShoot && !treatAsSun && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
         const shortMins = 60 - lunchDuration;
         const curtailedHrs = shortMins / 60;
         // When OT was crossed the curtailment is already absorbed into the
@@ -3217,14 +3219,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // applicable day rate.
         const otCrossed = curtailedMinsAbsorbedInOT > 0;
         if (!otCrossed) {
-          const penaltyRate = isNightShoot ? (bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding))
-                            : treatAsSun ? computeAPArate(bdr, sunMult, weekendOpts.apaRounding)
-                            : treatAsSat ? computeAPArate(bdr, satMult, weekendOpts.apaRounding)
-                            : bhr;
-          const rateLabel = isNightShoot ? '2× BHR · night shoot'
-                          : treatAsSun ? `${sunMult}× BHR`
-                          : treatAsSat ? `${satMult}× BHR`
-                          : 'BHR single time';
+          const penaltyRate = treatAsSat ? computeAPArate(bdr, satMult, weekendOpts.apaRounding) : bhr;
+          const rateLabel = treatAsSat ? `${satMult}× BHR` : 'BHR single time';
           lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m × ${rateLabel}`, rate: penaltyRate, qty: curtailedHrs, amount: curtailedHrs * penaltyRate });
         }
       }
