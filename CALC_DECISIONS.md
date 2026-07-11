@@ -48,38 +48,36 @@ break on a night shoot, and if so the amount (1h or 30m × BHR).
 
 ---
 
-## B1 — Continuous nights over 10 hours (HIGHEST-VALUE RULING)
+## B1 — Continuous nights: **RESOLVED — IMPLEMENTED** (Derrick, 2026-07-12)
 
-**Rulebook conflict.** §2.1.5: night shoot = *"flat 2 × BHR throughout, call
-to wrap — no OT rate, no triple-time-after-midnight"*, min 10h. But §2.2.2
-(CWD with night call before 05:00) and §2.2.5 (CWD with night call
-17:00–05:00): *"2 × BDR. 9h day, OT after 9h at 2 × BHR."* For a night that
-runs continuous (no first break), both sections claim to govern.
+**Ruling.** §2.2.2/§2.2.5 govern a night that runs continuous; §2.1.5's flat
+model governs basic (non-continuous) nights. Implemented on `fix/calc-audit`.
 
-**Engine today.** Every night day is paid on the §2.1.5 flat model:
-hours × 2× BHR, min 10h, regardless of whether the day was continuous.
+**PDF citations (authoritative source, re-spaced from the letter-spaced
+extraction).** §2.2.2: *"If your call time is before 5 a.m. and the day is a
+Continuous Working Day, we will pay you double basic daily rate. … Overtime
+will apply after 9 hours from the call time and is charged at double basic
+hourly rate."* §2.2.5: same structure for 5 p.m.–5 a.m. calls ("The day
+includes 9 hours in total."). Decisively, the PDF's own §2.2.2 worked
+example prices a 1st AD (£785), call 03:00 wrap 13:00, as **1×£1,570 (2×BDR
+covering 03:00–12:00) + 1×£157 (OT hour) = £1,727** — OT meters from hour
+NINE. (My earlier table here said the models "coincide up to 10h" — wrong:
+the divergence ramps from 9h and holds at 1h × 2×BHR from 10h on.)
 
-**Readings and £ impact.** The two models coincide up to 10h (verified:
-£888.00 both ways at exactly 10h — the §2.2.x structure's 2×BDR equals the
-flat model's min-10h floor). Beyond 10h the §2.2.x structure pays exactly
-**1h × 2× BHR more per day** (2×BDR buys only 9 worked hours, so OT meters
-from hour 9, not hour 10):
+**Implemented.** Night branch: when `continuousDay` (the §6.2-conversion
+flag — first break missed or started past 6.5h) AND the call date is a
+weekday, pay `2×BDR + ceilHalf(max(0, wrap − (call + 9h))) × 2×BHR` —
+clock-based, no lunch deduction (mirrors the weekday CWD), no triple after
+midnight (clause prices night-CWD OT at 2×BHR; §2.1.5's no-triple covers
+night engagements), no separate min-10h (2×BDR ≡ the old 10h floor, so ≤9h
+days are payout-identical). Basic nights stay flat (pinned, no regression).
+**Weekend/BH nights stay flat** per the explicit §2.4(iii)/(iv) night rows —
+§2.2.2/§2.2.5 carry the Mon–Fri opener with no all-days override (unlike
+§2.1.3). Engine's PDF-example output verified: **£1,727 exactly**.
 
-| Continuous night length | Engine (flat §2.1.5) | §2.2.x CWD structure | Engine short by |
-|---|---|---|---|
-| 11h | £976.80 | £1,065.60 | £88.80 |
-| 12h | £1,065.60 | £1,154.40 | £88.80 |
-| £1,516 DoP, any >10h night | — | — | £303.20/day |
-
-**Direction.** If §2.2.x should win for continuous nights, the engine
-**systematically under-pays** every continuous night over 10h — the largest
-potential recurring under-payment in the app. If §2.1.5 wins ("nights are
-flat, full stop"), the engine is correct as-is.
-
-**DERRICK TO RULE:** which section governs a continuous night over 10h —
-§2.1.5 flat, or §2.2.2/§2.2.5 CWD structure (2×BDR + OT after 9h). Check the
-actual APA PDF: the answer likely hangs on whether §2.2's CWD definition is
-meant to compose with the night-call bands or be overridden by §2.1.5.
+Probe-scenario deltas (their old values embedded the under-payment): F01
+£932.40 → £1,021.20; H06 £939.90 → £1,028.70 (before A4's separate charge).
+Pins: S14–S17 + stageB1 (7 assertions incl. the PDF example to the pound).
 
 ---
 

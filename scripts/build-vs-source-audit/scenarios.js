@@ -294,6 +294,11 @@ const scenarios = [
   mk('S11', 'Sunday crossing midnight inside basic day (no OT, no triple)', {}, { date: '2026-06-07', callTime: '16:30', wrapTime: '03:30', wrapNextDay: true, lunchStartTime: '21:00' }),
   mk('S12', 'Sunday min-10h crossing midnight (floor tops up at 2x)', {}, { date: '2026-06-07', callTime: '15:00', wrapTime: '01:30', wrapNextDay: true, lunchStartTime: '19:00' }),
   mk('S13', 'Sunday genuine OT past midnight (1h triple)', {}, { date: '2026-06-07', callTime: '08:00', wrapTime: '01:00', wrapNextDay: true, secondBreakStartTime: '18:00', secondBreakDurationMins: 30 }),
+  // B1 (§2.2.2/§2.2.5): weekday continuous nights = 2×BDR + OT after 9h at 2×BHR.
+  mk('S14', 'Weekday continuous night 12h (2xBDR + 3h OT@2xBHR)', {}, { callTime: '22:00', wrapTime: '10:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  mk('S15', "PDF §2.2.2 worked example (1st AD £785, 03:00→13:00 = £1,727)", { role: '1st AD', bdr: 785, otCoef: 1.0 }, { callTime: '03:00', wrapTime: '13:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  mk('S16', 'BASIC night 12h with lunch stays flat (no-regression)', {}, { callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '01:00', secondBreakStartTime: '07:00', secondBreakDurationMins: 30 }),
+  mk('S17', 'Saturday continuous night stays flat per §2.4(iii)', {}, { date: '2026-06-06', callTime: '22:00', wrapTime: '10:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
 ];
 
 module.exports = { scenarios };

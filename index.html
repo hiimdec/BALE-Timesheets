@@ -3077,15 +3077,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const otCurtailedSuffix = curtailedMinsAbsorbedInOT > 0 ? ` · incl. ${curtailedMinsAbsorbedInOT}m curtailed lunch` : '';
 
       if (isNightShoot) {
-        const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
-        const paidHrs = ceilHalf(Math.max(workedHrs - lunchDeduct, 10));
         const nightRate = bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding);
-        lines.push({
-          label: "Night Shoot (2× BHR)",
-          detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
-          rate: nightRate, qty: paidHrs, amount: paidHrs * nightRate,
-        });
-        if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
+        // APA §2.2.2/§2.2.5 (fix/calc-audit B1): a WEEKDAY night that runs
+        // continuous (first break missed or started past 6.5h — the same
+        // §6.2-conversion flag as the day engine) is a Continuous Working Day
+        // at night: double BDR covers 9 hours from call, then OT at 2× BHR —
+        // clock-based like every CWD (no lunch deduction), and NO triple after
+        // midnight (the clause prices night-CWD OT at double BHR; §2.1.5's
+        // no-triple language covers night engagements). No separate min-10h:
+        // 2× BDR ≡ 10h × 2× BHR, so continuous days of ≤9h pay exactly what
+        // the old flat floor paid. Confirmed by the PDF's own §2.2.2 example:
+        // 1st AD £785, call 03:00 wrap 13:00 = 2×BDR + 1h OT = £1,727 — OT
+        // starts after NINE hours, not ten. Weekend/BH nights stay flat per
+        // the explicit §2.4(iii)/(iv) night rows (honouring the production's
+        // weekend-mode toggles via treatAsSat/treatAsSun).
+        if (continuousDay && !treatAsSat && !treatAsSun) {
+          lines.push({
+            label: "Night CWD (2× BDR)",
+            detail: callWrapLabel,
+            rate: bdr * 2, qty: 1, amount: bdr * 2,
+          });
+          const nightOtHrs = ceilHalf(Math.max(0, wrapAbs - (callH + 9)));
+          if (nightOtHrs > 0) {
+            lines.push({ label: "Night CWD OT (2× BHR)", detail: `${toHHMM(callH + 9)} – ${toHHMM(wrapAbs)}`, rate: nightRate, qty: nightOtHrs, amount: nightOtHrs * nightRate });
+          }
+        } else {
+          const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
+          const paidHrs = ceilHalf(Math.max(workedHrs - lunchDeduct, 10));
+          lines.push({
+            label: "Night Shoot (2× BHR)",
+            detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
+            rate: nightRate, qty: paidHrs, amount: paidHrs * nightRate,
+          });
+          if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
+        }
       } else if (treatAsSat) {
         const satRate = computeAPArate(bdr, satMult, weekendOpts.apaRounding);
         const satOtRate = bectuOtRate ?? satRate;

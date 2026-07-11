@@ -26,6 +26,12 @@
  *        eat the min-10h top-up. Now split at max(call + basicHrs, 24) like
  *        the weekday/Saturday branches.
  *
+ *   B1 — weekday continuous nights (§2.2.2/§2.2.5, Derrick-approved): a night
+ *        that runs continuous is a CWD at night — 2× BDR covering 9h from
+ *        call + OT after 9h at 2× BHR, clock-based, no triple. Confirmed by
+ *        the PDF's own §2.2.2 example (1st AD £785, 03:00→13:00 = £1,727).
+ *        Basic nights stay flat; weekend/BH nights stay flat per §2.4(iii)/(iv).
+ *
  * Reference crew throughout: grade I, BDR £444 → BHR £44.40, OT £66.60,
  * 2× £88.80, 3× £133.20.
  *
@@ -187,6 +193,37 @@ function stageA3(eng, ok) {
   ok('A3e BH Monday 16:30→03:30(+1): £888.00, Bank Holiday label', near(e.total, 888.00) && e.meta.dayLabel === 'Bank Holiday', `total=${e.total} label=${e.meta.dayLabel}`);
 }
 
+// ---- B1: weekday continuous nights (§2.2.2/§2.2.5) ---------------------------
+
+function stageB1(eng, ok) {
+  console.log('\nB1 · weekday continuous nights: 2×BDR + OT after 9h at 2×BHR');
+  const cont = (d, crew) => eng.calculateDay(baseDay({ lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true, ...d }), baseCrew(crew || {}));
+  const cwdLine = (c) => c.lines.find(l => l.label === 'Night CWD (2× BDR)');
+  const otLine = (c) => c.lines.find(l => l.label === 'Night CWD OT (2× BHR)');
+
+  const a = cont({ callTime: '22:00', wrapTime: '10:00', wrapNextDay: true }); // 12h continuous
+  ok('B1a weekday continuous night 12h: 2×BDR + 3h OT = £1154.40', !!cwdLine(a) && !!otLine(a) && near(otLine(a).qty, 3) && near(a.total, 1154.40), `total=${a.total}`);
+  ok('B1a no triple line on a night CWD', !a.lines.some(l => l.label.startsWith('OT Triple')), JSON.stringify(a.lines.map(l => l.label)));
+
+  const b = cont({ callTime: '22:00', wrapTime: '09:00', wrapNextDay: true }); // 11h
+  ok('B1b weekday continuous night 11h: £1065.60 (2h OT)', near(b.total, 1065.60) && near(otLine(b).qty, 2), `total=${b.total}`);
+
+  // The PDF's own §2.2.2 worked example, reproduced to the pound.
+  const c = cont({ callTime: '03:00', wrapTime: '13:00' }, { role: '1st AD', bdr: 785, otCoef: 1.0 });
+  ok('B1c PDF example: 1st AD £785 03:00→13:00 = £1,570 + £157 = £1,727', near(c.total, 1727.00) && near(cwdLine(c).amount, 1570) && near(otLine(c).amount, 157), `total=${c.total}`);
+
+  const d = cont({ callTime: '22:00', wrapTime: '07:00', wrapNextDay: true }); // 9h — equals old floor
+  ok('B1d continuous night ≤9h pays 2×BDR ≡ old min-10h floor (£888.00)', near(d.total, 888.00) && !otLine(d), `total=${d.total}`);
+
+  // No-regression: a BASIC night (lunch taken on time) stays flat, no CWD lines.
+  const e = eng.calculateDay(baseDay({ callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '01:00', secondBreakStartTime: '07:00', secondBreakDurationMins: 30 }), baseCrew());
+  ok('B1e basic night 12h span + lunch stays flat £976.80, no CWD lines', near(e.total, 976.80) && !cwdLine(e) && !otLine(e), `total=${e.total}`);
+
+  // Weekend nights stay flat per §2.4(iii)/(iv).
+  const f = cont({ date: '2026-06-06', callTime: '22:00', wrapTime: '10:00', wrapNextDay: true });
+  ok('B1f SATURDAY continuous night stays flat 12h × 2×BHR = £1065.60', near(f.total, 1065.60) && !cwdLine(f), `total=${f.total}`);
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -195,6 +232,7 @@ async function runCalcBoundaryAssertions() {
   stageA1(eng, ok);
   stageA2(eng, ok);
   stageA3(eng, ok);
+  stageB1(eng, ok);
   return summary();
 }
 
