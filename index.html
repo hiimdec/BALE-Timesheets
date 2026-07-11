@@ -3143,7 +3143,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
       } else if (treatAsSun) {
         const sunRate = computeAPArate(bdr, sunMult, weekendOpts.apaRounding);
-        if (effectiveDayType === "Shoot") {
+        if (effectiveDayType === "Shoot" && continuousDay) {
+          // APA §2.4(vi) (fix/calc-audit, Derrick-approved): "Continuous
+          // Working Day if on Sundays, Bank Holidays and Statutory Holidays
+          // means you will be paid at two times your basic daily rate.
+          // Overtime commences after 9 hours from the call time. For each
+          // overtime hour, you will get paid double your basic hourly (2xBHR)
+          // rate." The old hourly model came up 1h × 2× BHR short from 10h on
+          // (2× BDR buys nine hours, so OT meters from hour 9). Clock-based
+          // like every CWD (no lunch deduction); §4.7 keeps after-midnight OT
+          // at triple — same OT-gated split as A3. No min-10h: 2× BDR ≡ the
+          // old hourly floor, so continuous days of ≤9h are payout-identical.
+          // Saturday §2.4(v) already matches the engine — untouched.
+          lines.push({ label: `${sunBranchPrefix} CWD (${sunMult}× BDR)`, detail: callWrapLabel, rate: bdr * sunMult, qty: 1, amount: bdr * sunMult });
+          const sunCwdOtStart = callH + basicHrs;   // basicHrs === 9 on a CWD
+          const otTotal = ceilHalf(Math.max(0, wrapAbs - sunCwdOtStart));
+          const tripleStart = Math.max(sunCwdOtStart, 24);
+          const tripleHrs = ceilHalf(Math.max(0, wrapAbs - tripleStart));
+          const flatOtHrs = Math.max(0, otTotal - tripleHrs);
+          if (flatOtHrs > 0) {
+            lines.push({ label: `${sunBranchPrefix} CWD OT (${sunMult}× BHR)`, detail: tripleHrs > 0 ? `${toHHMM(sunCwdOtStart)} – 00:00` : `${toHHMM(sunCwdOtStart)} – ${toHHMM(wrapAbs)}`, rate: sunRate, qty: flatOtHrs, amount: flatOtHrs * sunRate });
+          }
+          if (tripleHrs > 0) {
+            const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+            lines.push({ label: "OT Triple Time (after 00:00)", detail: `00:00 – ${toHHMM(wrapAbs)}`, rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
+          }
+        } else if (effectiveDayType === "Shoot") {
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
           // APA §4.4/§4.7: 3× after midnight is an OVERTIME rate — it applies

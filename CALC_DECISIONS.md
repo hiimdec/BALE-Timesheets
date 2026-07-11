@@ -79,6 +79,27 @@ Probe-scenario deltas (their old values embedded the under-payment): F01
 £932.40 → £1,021.20; H06 £939.90 → £1,028.70 (before A4's separate charge).
 Pins: S14–S17 + stageB1 (7 assertions incl. the PDF example to the pound).
 
+## §2.4(vi) — Sunday/BH continuous days: **RESOLVED — IMPLEMENTED** (Derrick, 2026-07-12)
+
+Surfaced during the PDF confirmation pass (was not in the original audit —
+the audit had checked the Sunday CWD against the hourly model, not §2.4(vi)).
+
+**PDF citation.** §2.4(vi): *"Continuous Working Day if on Sundays, Bank
+Holidays and Statutory Holidays means you will be paid at two times your
+basic daily rate. Overtime commences after 9 hours from the call time. For
+each overtime hour, you will get paid double your basic hourly (2xBHR)
+rate."*
+
+**Implemented.** Sunday/BH Shoot arm: when `continuousDay`, pay
+`2×BDR + OT after 9h from call at 2×BHR`, clock-based, with §4.7's
+after-midnight OT at triple retained via the A3 OT-gated split. ≤9h
+continuous days pay 2×BDR ≡ the old hourly min-10h floor (payout-identical).
+Saturday §2.4(v) already matched the engine — untouched, pinned. 12h Sunday
+CWD: £1,065.60 → **£1,154.40** (+£88.80 at £444; scales with BDR). The A3d
+boundary pin updated accordingly (£932.40 → £1,021.20 — the day fee is
+2×BDR, not hourly, under the ruled structure). Pins: S18 + stageSunCwd
+(4 assertions incl. BH-Monday labels and the Saturday no-change guard).
+
 ---
 
 ## B2 — Early-call premium on Saturday

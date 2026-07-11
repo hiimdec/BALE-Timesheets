@@ -299,6 +299,8 @@ const scenarios = [
   mk('S15', "PDF §2.2.2 worked example (1st AD £785, 03:00→13:00 = £1,727)", { role: '1st AD', bdr: 785, otCoef: 1.0 }, { callTime: '03:00', wrapTime: '13:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
   mk('S16', 'BASIC night 12h with lunch stays flat (no-regression)', {}, { callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '01:00', secondBreakStartTime: '07:00', secondBreakDurationMins: 30 }),
   mk('S17', 'Saturday continuous night stays flat per §2.4(iii)', {}, { date: '2026-06-06', callTime: '22:00', wrapTime: '10:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  // §2.4(vi): Sunday/BH continuous day = 2×BDR + OT after 9h at 2×BHR.
+  mk('S18', 'Sunday continuous day 12h (2xBDR + 3h OT@2xBHR)', {}, { date: '2026-06-07', callTime: '08:00', wrapTime: '20:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
 ];
 
 module.exports = { scenarios };

@@ -184,9 +184,11 @@ function stageA3(eng, ok) {
   const c = calc({ callTime: '08:00', wrapTime: '01:00', wrapNextDay: true, secondBreakStartTime: '18:00', secondBreakDurationMins: 30 });
   ok('A3c Sun 08:00→01:00(+1): 15h at 2× + 1h OT at 3× = £1465.20', !!tripleLine(c) && near(tripleLine(c).qty, 1) && near(c.total, 1465.20), `total=${c.total} triple=${tripleLine(c) && tripleLine(c).qty}`);
 
-  // Sunday CWD (basic 9h): only the post-midnight OT hour triples.
+  // Sunday CWD (basic 9h): only the post-midnight OT hour triples. Expected
+  // value updated by the §2.4(vi) ruling: the day fee is 2× BDR (not hourly),
+  // so 16:00→02:00 = £888 fee + 1h post-midnight OT at 3× = £1,021.20.
   const d = calc({ callTime: '16:00', wrapTime: '02:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true });
-  ok('A3d Sun CWD 16:00→02:00(+1): 9h at 2× + 1h OT at 3× = £932.40', !!tripleLine(d) && near(d.total, 932.40), `total=${d.total}`);
+  ok('A3d Sun CWD 16:00→02:00(+1): 2×BDR + 1h OT at 3× = £1021.20', !!tripleLine(d) && near(d.total, 1021.20), `total=${d.total}`);
 
   // Bank holiday rides the same branch.
   const e = eng.calculateDay(baseDay({ date: '2026-08-31', callTime: '16:30', wrapTime: '03:30', wrapNextDay: true, lunchStartTime: '21:00' }), baseCrew());
@@ -224,6 +226,25 @@ function stageB1(eng, ok) {
   ok('B1f SATURDAY continuous night stays flat 12h × 2×BHR = £1065.60', near(f.total, 1065.60) && !cwdLine(f), `total=${f.total}`);
 }
 
+// ---- §2.4(vi): Sunday/BH continuous days --------------------------------------
+
+function stageSunCwd(eng, ok) {
+  console.log('\n§2.4(vi) · Sunday/BH CWD: 2×BDR + OT after 9h at 2×BHR');
+  const cont = (d) => eng.calculateDay(baseDay({ date: '2026-06-07', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true, ...d }), baseCrew());
+
+  const a = cont({ callTime: '08:00', wrapTime: '20:00' }); // 12h Sunday CWD
+  ok('vi-a Sunday CWD 12h: 2×BDR + 3h OT@2×BHR = £1154.40', near(a.total, 1154.40) && a.lines.some(l => l.label === 'Sunday CWD (2× BDR)'), `total=${a.total}`);
+
+  const b = cont({ callTime: '08:00', wrapTime: '17:00' }); // 9h — equals old hourly floor
+  ok('vi-b Sunday CWD ≤9h pays 2×BDR ≡ old hourly min-10h (£888.00)', near(b.total, 888.00), `total=${b.total}`);
+
+  const c = cont({ date: '2026-08-31', callTime: '08:00', wrapTime: '20:00' }); // BH Monday
+  ok('vi-c BH Monday CWD 12h: £1154.40, Bank Holiday labels', near(c.total, 1154.40) && c.lines.some(l => l.label === 'Bank Holiday CWD (2× BDR)'), `total=${c.total}`);
+
+  const d = cont({ date: '2026-06-06', callTime: '08:00', wrapTime: '20:00' }); // Saturday §2.4(v) untouched
+  ok('vi-d Saturday CWD 12h unchanged: 1.5×BDR + 3h OT@1.5×BHR = £865.80', near(d.total, 865.80) && d.lines.some(l => l.label === 'Saturday Day (1.5× BDR)'), `total=${d.total}`);
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -233,6 +254,7 @@ async function runCalcBoundaryAssertions() {
   stageA2(eng, ok);
   stageA3(eng, ok);
   stageB1(eng, ok);
+  stageSunCwd(eng, ok);
   return summary();
 }
 
