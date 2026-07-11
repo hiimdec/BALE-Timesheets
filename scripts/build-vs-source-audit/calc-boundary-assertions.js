@@ -283,6 +283,34 @@ function stageA4(eng, ok) {
   ok('A4e weekday day-shift missed lunch: no night charge (£577.20)', !charge(e) && near(e.total, 577.20), `total=${e.total}`);
 }
 
+// ---- B2: Saturday early-call premium (§2.1.3 all-days rule) -------------------
+
+function stageB2(eng, ok) {
+  console.log('\nB2 · Saturday early-call premium at the Saturday OT rate');
+  const calc = (d, crew) => eng.calculateDay(baseDay({ date: '2026-06-06', lunchStartTime: '11:00', ...d }), baseCrew(crew || {}));
+  const early = (c) => c.lines.find(l => l.label.startsWith('Early Call'));
+
+  const a = calc({ callTime: '06:00', wrapTime: '17:00' });
+  ok('B2a Sat 06:00 call: +1h × 1.5×BHR = £732.60', !!early(a) && near(early(a).amount, 66.60) && near(a.total, 732.60), `total=${a.total}`);
+
+  const b = calc({ callTime: '07:00', wrapTime: '18:00', lunchStartTime: '12:00' });
+  ok('B2b Sat 07:00 call boundary: no premium, £666.00', !early(b) && near(b.total, 666.00), `total=${b.total}`);
+
+  const c = calc({ callTime: '05:30', wrapTime: '16:30' });
+  ok('B2c Sat 05:30 call: 1.5h premium = £765.90', !!early(c) && near(c.total, 765.90), `total=${c.total}`);
+
+  // §2.2.3-style: early call on a Saturday CWD — premium + OT after 9h.
+  const d = calc({ callTime: '06:00', wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true });
+  ok('B2d Sat 06:00 CWD: premium + 2h OT after 9h = £865.80', !!early(d) && near(d.total, 865.80), `total=${d.total}`);
+
+  const e = calc({ callTime: '06:00', wrapTime: '17:00' }, { role: 'Producer', bdr: 800, otCoef: 0, noOT: true });
+  ok('B2e noOT crew gets no Saturday premium (£1200.00 flat)', !early(e) && near(e.total, 1200.00), `total=${e.total}`);
+
+  // Sunday stays a documented no-op: hourly-from-call already pays 2× BHR.
+  const f = calc({ date: '2026-06-07', callTime: '06:00', wrapTime: '17:00' });
+  ok('B2f Sunday 06:00 unchanged: hourly min-10h £888.00, no premium line', !early(f) && near(f.total, 888.00), `total=${f.total}`);
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -294,6 +322,7 @@ async function runCalcBoundaryAssertions() {
   stageB1(eng, ok);
   stageSunCwd(eng, ok);
   stageA4(eng, ok);
+  stageB2(eng, ok);
   return summary();
 }
 

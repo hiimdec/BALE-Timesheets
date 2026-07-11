@@ -3116,6 +3116,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const satOtRate = bectuOtRate ?? satRate;
         if (effectiveDayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
+          // APA §2.1.3 (fix/calc-audit B2, Derrick-approved): "Early call rule
+          // applies on all days throughout a week, Monday to Sunday" — the
+          // only §2.1.x clause with an all-days override (its Mon–Fri opener
+          // is the section template). Early hours on a Saturday pay at the
+          // Saturday OT rate (§2.4(i)/§4.6), additive to the flat 1.5× BDR
+          // exactly as the weekday premium is additive to flat BDR; the OT
+          // threshold (11h from call, or 9h on a CWD) is unchanged and the
+          // 05:00–07:00 band is disjoint from the night bands. Sunday needs
+          // no code: the hourly 2×BHR-from-call structure already pays those
+          // hours at §4.7's Sunday OT rate (2× BHR).
+          if (isEarly && !crew.noOT) {
+            const earlyHrs = ceilHalf(7 - callH);
+            lines.push({ label: `Early Call (${satMult}× BHR)`, detail: `${day.callTime} – 07:00`, rate: satOtRate, qty: earlyHrs, amount: earlyHrs * satOtRate });
+          }
           // APA §4.6: Saturday OT is 1.5× BHR, but OT after 00:00 is 3× BHR and
           // continues at triple to wrap.
           const otTotal = ceilHalf(Math.max(0, effectiveHrs - basicHrs));

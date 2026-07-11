@@ -305,6 +305,10 @@ const scenarios = [
   // ruled 2×BHR; very-late (taken) converts without the charge.
   mk('S19', 'Saturday night missed 1st break (flat + 1h night charge)', {}, { date: '2026-06-06', callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
   mk('S20', 'Weekday night very-late lunch (converts, no missed charge)', {}, { callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '03:00', cwdBreak1Given: true, cwdBreak2Given: true }),
+  // B2 (§2.1.3 "all days throughout a week"): Saturday early-call premium.
+  mk('S21', 'Saturday 06:00 early call (1h premium at 1.5xBHR)', {}, { date: '2026-06-06', callTime: '06:00', wrapTime: '17:00', lunchStartTime: '11:00' }),
+  mk('S22', 'Saturday 07:00 call — no premium (boundary)', {}, { date: '2026-06-06', callTime: '07:00', wrapTime: '18:00', lunchStartTime: '12:00' }),
+  mk('S23', 'Saturday 06:00 early call + CWD (premium + OT after 9h)', {}, { date: '2026-06-06', callTime: '06:00', wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
 ];
 
 module.exports = { scenarios };

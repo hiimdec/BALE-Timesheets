@@ -1,20 +1,25 @@
-# CALC_DECISIONS — judgement calls awaiting Derrick's ruling
+# CALC_DECISIONS — rulings ledger for the calc engine
 
 The 2026-07 adversarial calc audit split its findings in two. The confirmed
-boundary bugs are FIXED on `fix/calc-audit` (TIME_EPS floating-point guard,
-curtailed-lunch double-pay on hourly structures, Sunday/BH triple gated to
-OT — see the three commits and `scripts/build-vs-source-audit/calc-boundary-assertions.js`).
-Everything below is deliberately NOT fixed: each item hinges on an internal
-contradiction or ambiguity in APA_RULES.md, and picking a reading in code
-without checking the actual APA Recommended Terms (September 2025 PDF) would
-be a guess. The engine's current behaviour is defensible in every case.
+boundary bugs were FIXED first (TIME_EPS floating-point guard, curtailed-
+lunch double-pay on hourly structures, Sunday/BH triple gated to OT). The
+judgement calls below were then **adjudicated by Derrick on 2026-07-12
+against the actual APA Recommended Terms PDF** (`APA RULES.pdf`, repo root —
+effective 1 Sept 2025), and the approved corrections implemented on
+`fix/calc-audit` with expected-£ pins in
+`scripts/build-vs-source-audit/calc-boundary-assertions.js`. Status per
+item: **RESOLVED — IMPLEMENTED**, **RESOLVED — KEEP**, **DEFERRED**, or
+backlog. Every resolved entry quotes its PDF citation.
 
-> **Editorial note first:** APA_RULES.md itself carries the contradictions
-> that block these rulings — §2.1.5 vs §2.2.2/§2.2.5 (night flat vs night
-> CWD), the §2.1.3 header "(Mon–Fri" vs its own prose "applies all 7 days",
-> and §6.2's "charged at BHR" vs the cheat sheet's "30m × BHR" for a missed
-> first break on a night shoot. Once each item below is ruled, APA_RULES.md
-> needs an editorial pass so the rulebook and the engine agree in writing.
+> **Editorial note:** APA_RULES.md (the markdown reconstruction) carried
+> contradictions the PDF resolves — §2.1.5 vs §2.2.2/§2.2.5 (basic night vs
+> continuous night: BOTH are real, distinct day types), §2.1.3's boilerplate
+> Mon–Fri opener vs its explicit "Early call rule applies on all days
+> throughout a week, Monday to Sunday" sentence (the sentence governs), and
+> §6.2's night-row amount (the first break is one hour, so 1h — the cheat
+> sheet's "30m" conflated it with the second break). APA_RULES.md still
+> needs that editorial pass so the reconstruction matches the PDF and the
+> engine; until then the PDF is the only authority.
 
 All £ figures use a grade I £444 BDR (BHR £44.40, OT £66.60, 2× £88.80,
 3× £133.20) unless stated; impacts scale linearly with BDR.
@@ -113,33 +118,46 @@ boundary pin updated accordingly (£932.40 → £1,021.20 — the day fee is
 
 ---
 
-## B2 — Early-call premium on Saturday
+## B2 — Saturday early-call premium: **RESOLVED — IMPLEMENTED** (Derrick, 2026-07-12)
 
-**Rulebook conflict.** §2.1.3's heading: *"Early Call: 05:00–07:00 (Mon–Fri,
-applies all 7 days)"* — the header says Mon–Fri, the parenthetical prose says
-all 7 days. (On Sunday/BH the question is moot: the hourly 2× BHR structure
-already pays the early hours from call.)
+**PDF citation.** §2.1.3: *"Early call rule applies on all days throughout a
+week, Monday to Sunday."* The clause's "provisions apply to weekdays ie
+Monday to Friday" opener is the section template (§2.1.4/§2.1.5 carry it
+verbatim); §2.1.3 is the only §2.1.x clause with an all-days override
+sentence, so the sentence governs.
 
-**Engine today.** No early premium on Saturday: a Sat 06:00 call pays the
-flat 1.5×BDR only (verified £666.00; premium reading would add 1h × 1.5× BHR
-= £66.60 → £732.60).
+**Implemented.** The Saturday Shoot arm emits the early-call line exactly as
+the weekday branch does: `ceilHalf(7 − callH)` hours at the **Saturday OT
+rate (1.5× BHR** per §2.4(i)/§4.6), gated on `!crew.noOT`, Shoot and CWD
+alike; the OT threshold (11h from call, 9h on a CWD) is unchanged, and the
+05:00–07:00 band is disjoint from the night bands — no double-count against
+the flat 1.5×BDR day fee. **Sunday is a documented no-op**: the hourly
+2×BHR-from-call structure already pays 05:00–07:00 at §4.7's Sunday OT rate
+(2× BHR), which is the premium.
 
-**Direction.** If "all 7 days" is right, the engine **under-pays** £66.60
-per Saturday early call (scales: 1h × Sat OT rate).
-
-**DERRICK TO RULE:** does the 05:00–07:00 early-call premium apply on
-Saturday? (Confirm against the actual terms; the September 2025 PDF's §2.1.3
-wording decides it.)
+Verified: Sat 06:00 call £666.00 → **£732.60**; Sat 05:30 → £765.90; Sat
+07:00 boundary unchanged £666.00; Sat early CWD £865.80 (premium + OT after
+9h, mirroring §2.2.3); noOT crew gets no premium; Sunday 06:00 unchanged
+£888.00. Pins: S21–S23 + stageB2 (6 assertions).
 
 ---
 
-## B3 — Travel-time threshold: span vs net worked hours
+## B3 — Travel-time threshold: **DEFERRED** (Derrick, 2026-07-12)
 
-**Rulebook text.** §3.1: *"If travel time + working time totals less than
-11 hours, no travel time is payable."* Read literally that is a GATE on net
-working time + travel. The in-app explainer documents a third model
-(absorption into the unused basic day). The engine implements none of the
-three exactly.
+**Ruling.** Do not implement — the engine's current span-based behaviour is
+retained unchanged, pending Derrick's separate decision. Rationale: the
+money moves in BOTH directions depending on day shape (shorter days with
+substantial travel would go up; full 11h-span days with sub-hour billable
+travel would stop paying), the textual basis is the softest of the four
+items, and there is no urgency. The analysis below stands ready for when it
+is picked up.
+
+**PDF text.** §3.1: *"Travel time is always paid at single time, regardless
+of time, or day of the week. If travel time & working time total less than
+11 hours, then no travel time is payable."* Read literally that is a GATE on
+net working time + travel (§6.2's note makes lunch NOT working time). The
+in-app explainer documents a third model (absorption into the unused basic
+day). The engine implements none of the three exactly.
 
 **Engine today.** Pays travel beyond `11h − SPAN`, where span = call→wrap
 INCLUDING the unpaid lunch hour. Measured (2h door-to-door each way, so 1h
@@ -159,10 +177,10 @@ the absorb reading.
 **Direction.** ±£44.40–£88.80 per travel day depending on the ruling and
 the day length. Not consistently favourable in either direction.
 
-**DERRICK TO RULE:** the intended basis — (a) gate on NET work + travel
-(≥11h → all deducted travel payable), (b) absorption into the unused basic
-day, or (c) current span-based hybrid. Also whether lunch counts as
-"working time" for the threshold.
+**When picked up, the question is:** the intended basis — (a) gate on NET
+work + travel (≥11h → all deducted travel payable), (b) absorption into the
+unused basic day, or (c) current span-based hybrid — and whether lunch
+counts as "working time" for the threshold.
 
 ---
 
@@ -182,20 +200,17 @@ comment at the `breakPenaltyRate` definition carries the same note.
 
 ---
 
-## B5 — Curtailment top-up rate on Saturday: "single time" vs prevailing rate
+## B5 — Saturday curtailment top-up rate: **RESOLVED — KEEP** (Derrick, 2026-07-12)
 
-**Rulebook.** §6.2 (curtailed, no OT worked): crew is *"paid for the
-curtailed minutes at single time."* On a Saturday no-OT day the engine pays
-the top-up at the prevailing 1.5× BHR (30m = £33.30) rather than literal
-single time (£22.20). Weekday pays 1× (literal). Note: after fix A2 this
-only arises on the FLAT structures (weekday/Saturday) — Sunday/BH and nights
-no longer emit a top-up at all (the hourly pay already covers the minutes).
+**PDF.** §6.2 (curtailed, no OT worked): crew is *"paid for the time by
+which their break was curtailed at single time."* On a Saturday no-OT day
+the engine pays the top-up at the prevailing 1.5× BHR (30m = £33.30) rather
+than literal single time (£22.20); weekday pays 1× (literal). After fix A2
+this only arises on the FLAT structures — Sunday/BH and nights no longer
+emit a top-up at all (the hourly pay already covers the minutes).
 
-**Direction.** Crew-favourable **over-charge** of +£11.10 per Saturday
-curtailment.
-
-**DERRICK TO RULE:** keep the prevailing-multiplier reading ("single time"
-= the day's non-OT rate) or align to literal 1× BHR.
+**Ruling.** Keep — crew-favourable by +£11.10 per Saturday curtailment,
+same "prevailing rate on a double/uplifted day" philosophy as B4.
 
 ---
 
@@ -222,19 +237,16 @@ into the next calc-touching release; none is reachable from the UI today).
 
 ---
 
-## B7 — PMPA simplifications (deliberate, confirm)
+## B7 — PMPA simplifications: **RESOLVED — KEEP** (Derrick, 2026-07-12)
 
 Appendix 1 §(a) crew (PM / PA / Runner / Floor Runner) are exempt from
-§2/§3/§4/§5/§6. Two engine choices to confirm:
+§2/§3/§4/§5/§6 (PDF §3 note confirmed verbatim: *"None of the provisions of
+clause 3 shall apply to PM's, PA's or Runners"*). Both engine choices
+confirmed as deliberate:
 
-1. **Travel Day pays flat BDR** rather than the §2.4(xiii) min-5h × BHR
-   (which §3 would give general crew). Over-pays vs a 5h×BHR reading
-   (£238 vs £119 for a Runner) — deliberate simplification, favourable.
-2. **Mileage is still payable** if entered, although §3 (travel expenses)
-   is excluded for PMPA. User-entered, so effectively opt-in.
-
-**DERRICK TO RULE:** confirm both simplifications (or align Travel Day to
-min-5h × BHR and suppress PMPA mileage).
+1. **Travel Day pays flat BDR** rather than min-5h × BHR — favourable
+   simplification (£238 vs £119 for a Runner).
+2. **Mileage stays payable** if entered — user-entered, effectively opt-in.
 
 ---
 
@@ -258,6 +270,11 @@ min-5h × BHR and suppress PMPA mileage).
 
 ---
 
-*Compiled 2026-07-12 on `fix/calc-audit` from the adversarial audit findings.
-Fixes A1–A3 are implemented and pinned; every item above awaits a ruling
-against the actual APA Recommended Crew Terms (September 2025).*
+*Compiled 2026-07-12 on `fix/calc-audit` from the adversarial audit findings;
+adjudicated by Derrick the same day against the actual APA Recommended Terms
+PDF. Implemented and pinned: A1–A3 (boundary bugs), B1 + §2.4(vi) (continuous
+double-rate days), A4 (night missed-break charge, ruled 2×), B2 (Saturday
+early call). Kept deliberately: B4 (night penalties at 2×), B5, B7. Deferred:
+B3 (travel threshold). Backlog: B6, B8. Remaining follow-ups: the
+APA_RULES.md editorial pass, and the optional "booked CWD" carve-out noted
+under A4.*
