@@ -3290,11 +3290,28 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (bs.cwdApplies && (lunchMissed || bs.lunchVeryLate) && day.noMealProvided) {
         lines.push({ label: "Missed Meal Allowance", detail: "", rate: null, qty: 1, amount: 7.5 });
       }
-      // 2nd Break + CWD Break penalties: night shoots use 2× BHR (matching the
-      // flat night-shoot rate per APA §2.1.5); all other day types stay at
-      // single BHR per §6.3 / §6.4.
+      // Break penalties on nights charge at 2× BHR — Derrick's ruling
+      // (2026-07-12): a deliberate crew-favourable choice, uniform across the
+      // 1st-break, 2nd-break and CWD-break charges, because the night day
+      // operates at double time. This EXCEEDS the literal single-rate reading
+      // (§6.2/§6.3 night rows say "charged at basic hourly rate", and the
+      // PDF's own §2.2.2 night-CWD example prices the missed 30m break at
+      // £39 = single BHR for a £785 1st AD) — a chosen generosity, not an
+      // oversight. Weekday/weekend day-shift penalties stay at single BHR
+      // per §6.3/§6.4.
       const breakPenaltyRate = isNightShoot ? (bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding)) : bhr;
       const breakPenaltyLabel = isNightShoot ? '2× BHR' : 'BHR';
+      // §6.2 night row (fix/calc-audit A4, Derrick-approved): "Missed break on
+      // a night shoot is charged at basic hourly rate" — and the FIRST break
+      // is one hour (§6.2: "Your first break of one hour…"), so a night shoot
+      // that misses it is charged a full hour on top of worked-time pay.
+      // Rate per the ruling above: the prevailing night 2× BHR. Gated on
+      // lunchMissed — a very-late-but-taken break converts the day via §6.2
+      // without this charge. Stacks with the B1 continuous-night conversion
+      // (separate concerns: the structure change vs the missed-break charge).
+      if (isNightShoot && bs.cwdApplies && lunchMissed) {
+        lines.push({ label: "Missed 1st Break (night)", detail: `1h × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate });
+      }
       if (secondBreakRequired) {
         if (sbState === "missed" || sbState === "late") {
           lines.push({ label: sbState === "late" ? "Late 2nd Break (treated as missed)" : "Missed 2nd Break", detail: `30m × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate * 0.5 });

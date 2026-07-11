@@ -21,30 +21,41 @@ All £ figures use a grade I £444 BDR (BHR £44.40, OT £66.60, 2× £88.80,
 
 ---
 
-## A4 — Missed first break on a night shoot: no charge is emitted
+## A4 — Night missed-break charges: **RESOLVED — IMPLEMENTED** (Derrick, 2026-07-12)
 
-**Rulebook conflict.** §6.2 (table row): *"Missed on a night shoot: Charged
-at BHR."* Cheat sheet (1st-break row): *"On night shoot: 30m × BHR."* The two
-lines agree a charge is owed but disagree on the amount (1h × BHR = £44.40 vs
-30m × BHR = £22.20).
+**PDF citations.** §6.2: *"Your first break of one hour will begin no more
+than 5½ hours after work has commenced"* and its night row: *"If Missed on a
+night shoot — Missed break on a night shoot is charged at basic hourly
+rate."* §6.3: second break is half an hour, identical night row. The break
+durations settle the amounts: the first break's charge covers 1 hour, the
+second's 30 minutes.
 
-**Engine today.** No charge line at all. The worked-through hour is paid at
-the flat night 2× BHR (it is worked time, so it lands in the hourly line) and
-the £7.50 meal allowance fires only if `noMealProvided` is set — but the
-§6.2 night-missed-break charge itself is never emitted.
+**Ruling on the rate.** Derrick rules all break penalties on nights charge
+at the prevailing **2× BHR** — a deliberate crew-favourable choice, uniform
+across the 1st-break, 2nd-break and CWD-break charges, because the night day
+operates at double time. **This exceeds the literal single-rate reading**:
+the PDF's night rows say "basic hourly rate", and its own §2.2.2 night-CWD
+example prices the missed 30m break at £39 = single BHR for a £785 1st AD.
+Recorded here explicitly as a chosen generosity, not an oversight, so it is
+defensible if a producer queries an invoice against the literal terms.
 
-**Readings.**
-1. Charge 1h × BHR on top (literal §6.2): +£44.40 per occurrence.
-2. Charge 30m × BHR on top (cheat sheet): +£22.20 per occurrence.
-3. No separate charge (current engine): the hour is already paid at 2× as
-   worked time; read "charged at BHR" as describing that pay, not a penalty.
+**Implemented.** New line "Missed 1st Break (night)": 1h × 2× BHR (£88.80
+@£444), gated on `lunchMissed` (a very-late-but-taken break converts the day
+via §6.2 **without** this charge — pinned). It stacks with the B1
+continuous-night conversion per the ruling (separate concerns: pay structure
+vs missed-break charge). The missed/late 2nd break on nights stays at
+30m × 2× BHR (unchanged, now pinned as deliberate).
 
-**Direction.** Readings 1–2 mean the engine currently **under-pays** crew by
-£22.20–£44.40 per continuous night. Frequency: high — nights routinely run
-through without a sit-down break.
+**Nuance recorded for future reference:** the app cannot distinguish a day
+*booked* as a continuous night (where no first break was ever scheduled —
+the shape of the PDF's £1,727 example, which carries no missed-break charge)
+from a night whose break was *missed*; `lunchMissed` is the only signal, so
+every no-lunch night carries the charge. Crew-favourable; if a producer
+disputes a booked-CWD night, the charge line is the item to discuss (a
+"booked CWD" flag would be the carve-out if ever needed).
 
-**DERRICK TO RULE:** whether a separate charge is owed for a missed first
-break on a night shoot, and if so the amount (1h or 30m × BHR).
+Probe delta: H06 £1,028.70 → £1,117.50. Pins: S19–S20 + stageA4
+(5 assertions), B1 pins re-anchored at line level (structure unchanged).
 
 ---
 
@@ -155,18 +166,19 @@ day, or (c) current span-based hybrid. Also whether lunch counts as
 
 ---
 
-## B4 — Break penalties on nights charged at 2× BHR
+## B4 — Break penalties on nights at 2× BHR: **RESOLVED — KEEP** (Derrick, 2026-07-12)
 
-**Rulebook.** §6.3/§6.4: missed 2nd break / CWD breaks = *"30 min × BHR"* —
-flat, no night uplift. Engine (deliberate, per the code comment "matching
-the flat night-shoot rate per APA §2.1.5"): on nights these penalties charge
-at 2× BHR (£44.40 half-hour instead of £22.20).
-
-**Direction.** Crew-favourable **over-charge** of +£22.20 per missed break
-on a night. Invoice-dispute risk if production reads §6.3 literally.
-
-**DERRICK TO RULE:** keep the night uplift or align to the literal
-30m × 1× BHR.
+**Ruling.** Keep the 2× BHR (double) rate on all night break penalties —
+1st break (the new A4 charge), 2nd break, and the CWD 9h/12.5h breaks —
+uniformly at the prevailing double rate, because the night day operates at
+double time. A **deliberate crew-favourable interpretation that exceeds the
+literal terms**: the PDF's §6.2/§6.3 night rows say "charged at basic hourly
+rate", and its own §2.2.2 night-CWD worked example prices the missed 30m
+break at £39 = single BHR (£785 1st AD). Recorded as a chosen generosity,
+not an oversight — the defence if a producer queries an invoice line against
+the literal terms is that the choice is intentional and consistently
+applied. Day-shift penalties stay at single BHR per §6.3/§6.4. The code
+comment at the `breakPenaltyRate` definition carries the same note.
 
 ---
 

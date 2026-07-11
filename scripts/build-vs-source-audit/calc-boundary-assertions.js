@@ -203,27 +203,36 @@ function stageB1(eng, ok) {
   const cwdLine = (c) => c.lines.find(l => l.label === 'Night CWD (2× BDR)');
   const otLine = (c) => c.lines.find(l => l.label === 'Night CWD OT (2× BHR)');
 
+  // NOTE: these no-lunch continuous nights are also lunchMissed, so from A4
+  // on they carry the ruled "Missed 1st Break (night)" charge (1h × 2× BHR)
+  // ON TOP of the B1 structure — the structure itself is asserted at line
+  // level so the two rulings stay independently pinned.
+  const chargeLine = (c) => c.lines.find(l => l.label === 'Missed 1st Break (night)');
+
   const a = cont({ callTime: '22:00', wrapTime: '10:00', wrapNextDay: true }); // 12h continuous
-  ok('B1a weekday continuous night 12h: 2×BDR + 3h OT = £1154.40', !!cwdLine(a) && !!otLine(a) && near(otLine(a).qty, 3) && near(a.total, 1154.40), `total=${a.total}`);
+  ok('B1a weekday continuous night 12h: 2×BDR + 3h OT (+A4 charge) = £1243.20', !!cwdLine(a) && !!otLine(a) && near(otLine(a).qty, 3) && near(a.total, 1243.20), `total=${a.total}`);
   ok('B1a no triple line on a night CWD', !a.lines.some(l => l.label.startsWith('OT Triple')), JSON.stringify(a.lines.map(l => l.label)));
 
   const b = cont({ callTime: '22:00', wrapTime: '09:00', wrapNextDay: true }); // 11h
-  ok('B1b weekday continuous night 11h: £1065.60 (2h OT)', near(b.total, 1065.60) && near(otLine(b).qty, 2), `total=${b.total}`);
+  ok('B1b weekday continuous night 11h: structure £1065.60 (+A4) = £1154.40', near(b.total, 1154.40) && near(otLine(b).qty, 2), `total=${b.total}`);
 
-  // The PDF's own §2.2.2 worked example, reproduced to the pound.
+  // The PDF's own §2.2.2 worked example — the STRUCTURE reproduces to the
+  // pound (2×BDR £1,570 + 1h OT £157); the ruled A4 charge (£157 at 2× BHR)
+  // stacks on top because a no-lunch night is lunchMissed in the app's model.
   const c = cont({ callTime: '03:00', wrapTime: '13:00' }, { role: '1st AD', bdr: 785, otCoef: 1.0 });
-  ok('B1c PDF example: 1st AD £785 03:00→13:00 = £1,570 + £157 = £1,727', near(c.total, 1727.00) && near(cwdLine(c).amount, 1570) && near(otLine(c).amount, 157), `total=${c.total}`);
+  ok('B1c PDF example structure: 2×BDR £1,570 + OT £157 (lines exact)', near(cwdLine(c).amount, 1570) && near(otLine(c).amount, 157), JSON.stringify(c.lines.map(l => l.label + ':' + l.amount)));
+  ok('B1c PDF example total incl. ruled A4 charge = £1,884.00', near(c.total, 1884.00) && near(chargeLine(c).amount, 157), `total=${c.total}`);
 
-  const d = cont({ callTime: '22:00', wrapTime: '07:00', wrapNextDay: true }); // 9h — equals old floor
-  ok('B1d continuous night ≤9h pays 2×BDR ≡ old min-10h floor (£888.00)', near(d.total, 888.00) && !otLine(d), `total=${d.total}`);
+  const d = cont({ callTime: '22:00', wrapTime: '07:00', wrapNextDay: true }); // 9h — fee equals old floor
+  ok('B1d continuous night ≤9h: fee 2×BDR ≡ old min-10h floor (line £888.00)', near(cwdLine(d).amount, 888.00) && !otLine(d) && near(d.total, 976.80), `total=${d.total}`);
 
   // No-regression: a BASIC night (lunch taken on time) stays flat, no CWD lines.
   const e = eng.calculateDay(baseDay({ callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '01:00', secondBreakStartTime: '07:00', secondBreakDurationMins: 30 }), baseCrew());
   ok('B1e basic night 12h span + lunch stays flat £976.80, no CWD lines', near(e.total, 976.80) && !cwdLine(e) && !otLine(e), `total=${e.total}`);
 
-  // Weekend nights stay flat per §2.4(iii)/(iv).
+  // Weekend nights stay flat per §2.4(iii)/(iv) (flat line £1065.60 + A4 charge).
   const f = cont({ date: '2026-06-06', callTime: '22:00', wrapTime: '10:00', wrapNextDay: true });
-  ok('B1f SATURDAY continuous night stays flat 12h × 2×BHR = £1065.60', near(f.total, 1065.60) && !cwdLine(f), `total=${f.total}`);
+  ok('B1f SATURDAY continuous night stays flat (12h × 2×BHR line) + A4 = £1154.40', near(f.total, 1154.40) && !cwdLine(f), `total=${f.total}`);
 }
 
 // ---- §2.4(vi): Sunday/BH continuous days --------------------------------------
@@ -245,6 +254,35 @@ function stageSunCwd(eng, ok) {
   ok('vi-d Saturday CWD 12h unchanged: 1.5×BDR + 3h OT@1.5×BHR = £865.80', near(d.total, 865.80) && d.lines.some(l => l.label === 'Saturday Day (1.5× BDR)'), `total=${d.total}`);
 }
 
+// ---- A4: night missed-break charges (§6.2/§6.3 night rows) -------------------
+
+function stageA4(eng, ok) {
+  console.log('\nA4 · night missed-break charges (1h first / 30m second, at ruled 2× BHR)');
+  const calc = (d) => eng.calculateDay(baseDay({ cwdBreak1Given: true, cwdBreak2Given: true, ...d }), baseCrew());
+  const charge = (c) => c.lines.find(l => l.label === 'Missed 1st Break (night)');
+
+  // Weekday continuous night with MISSED first break: B1 structure + 1h × 2×BHR.
+  const a = calc({ callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0 });
+  ok('A4a weekday night missed 1st: structure £1154.40 + £88.80 = £1243.20', !!charge(a) && near(charge(a).amount, 88.80) && near(a.total, 1243.20), `total=${a.total}`);
+
+  // Saturday night (flat structure) with MISSED first break: flat + charge.
+  const b = calc({ date: '2026-06-06', callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0 });
+  ok('A4b Saturday night missed 1st: flat £1065.60 + £88.80 = £1154.40', !!charge(b) && near(b.total, 1154.40), `total=${b.total}`);
+
+  // VERY-LATE (taken) break converts the day but carries NO missed charge.
+  const c = calc({ callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '03:00', lunchDurationMins: 60 });
+  ok('A4c night very-late lunch: converts, no missed charge (£1154.40)', !charge(c) && near(c.total, 1154.40), `total=${c.total}`);
+
+  // Missed SECOND break on a night stays 30m × 2× BHR (ruling: keep 2×).
+  const d = calc({ callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '01:00', lunchDurationMins: 60 });
+  const sb = d.lines.find(l => l.label === 'Missed 2nd Break');
+  ok('A4d night missed 2nd stays 30m × 2×BHR = £44.40 (total £1021.20)', !!sb && near(sb.amount, 44.40) && near(d.total, 1021.20), `total=${d.total}`);
+
+  // Day-shift missed lunch: NO night charge (conversion only).
+  const e = calc({ callTime: '08:00', wrapTime: '19:00', lunchStartTime: '', lunchDurationMins: 0 });
+  ok('A4e weekday day-shift missed lunch: no night charge (£577.20)', !charge(e) && near(e.total, 577.20), `total=${e.total}`);
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -255,6 +293,7 @@ async function runCalcBoundaryAssertions() {
   stageA3(eng, ok);
   stageB1(eng, ok);
   stageSunCwd(eng, ok);
+  stageA4(eng, ok);
   return summary();
 }
 
