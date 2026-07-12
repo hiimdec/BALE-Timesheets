@@ -1710,20 +1710,17 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "5.2.1";
+    const APP_VERSION = "5.3.0";
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-07-06",
+      date: "2026-07-13",
       added: [
-        "Sharing a call sheet in now offers the shoots near today's date, nearest first, with a pinned new shoot option - and fixed the picker closing itself when you scrolled it.",
-        "Automatic iCloud backup — a private daily snapshot in your own iCloud, visible to no one else. Delete the app or switch phones and reinstalling offers your data back.",
-        "Late payment charges — statutory interest and the fixed recovery fee added to an overdue invoice in a tap, shown as one document with the working. Removable any time.",
-        "Chase an overdue invoice — a prefilled email with the invoice PDF attached, quoting exactly what's owed including any charges.",
-        "Accountant export — pick a tax year and get a CSV of every invoice plus a summary with month-by-month totals and mileage.",
-        "Fixes: newly added records now survive a relaunch; chase and feedback emails open reliably on iPhone; PDF and email failures say so instead of doing nothing.",
+        "Pay calculations reviewed end to end against the APA terms, with a number of edge cases corrected - overtime on long continuous nights and on Sunday and bank holiday continuous days, night shoot break charges, Saturday early calls, travel time on every day type, and some rounding at exact times. Day-to-day calculations are unchanged; the trickier days now come out exactly right.",
+        "Saved clients get a proper home - a full-screen manager with search, your most recent clients first, tap to edit, swipe to delete. Deleting a saved client never touches an invoice you've already created.",
+        "A small visual refresh to how expandable sections open.",
       ],
-      notes: "Automatic iCloud backup, statutory late-payment charges, chase emails with the invoice attached, and a tax-year accountant export. See CHANGELOG.md for full notes.",
+      notes: "Pay accuracy improvements across the trickier day types, a full-screen saved clients manager, and a small visual polish. See CHANGELOG.md for full notes.",
     };
 
     /* ─── Schema version & storage-safety helpers ─── */

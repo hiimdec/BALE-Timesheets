@@ -1,5 +1,20 @@
 # Changelog
 
+## 5.3.0
+
+### Pay accuracy review
+We've done a thorough review of how pay is calculated against the APA terms and corrected a number of edge cases. Most day-to-day calculations are unchanged; these fixes make sure the trickier days come out exactly right. Totals on days you've already logged recompute automatically; invoices you've already sent are frozen and stay as issued.
+- Long continuous nights and Sunday or bank holiday continuous days now pay the full continuous-day structure, including overtime after nine hours.
+- A missed first break on a night shoot is now charged, and Saturday early calls now get the early-call premium.
+- Travel time is now worked out consistently on every day type - continuous, prep and pre-light days included - and always at single time.
+- Fixed a handful of rounding slips at exact times (for example a lunch starting exactly on its deadline) and a double-count where a curtailed lunch met an hourly-paid day.
+
+### Saved clients (new)
+A full-screen clients manager replaces the flat list in Settings - search by name or email, most recently used first, tap to edit, swipe to delete, with a "used in N invoices" count on each client. Deleting a saved client never changes an invoice you've already created; invoices keep their own copy of the details.
+
+### Visual
+- Expandable sections now open with a quieter scale and fade, and the open section reads through tone rather than a border.
+
 ## 5.2.1
 
 ### Share-in shoot picker
