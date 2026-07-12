@@ -142,45 +142,58 @@ Verified: Sat 06:00 call £666.00 → **£732.60**; Sat 05:30 → £765.90; Sat
 
 ---
 
-## B3 — Travel-time threshold: **DEFERRED** (Derrick, 2026-07-12)
-
-**Ruling.** Do not implement — the engine's current span-based behaviour is
-retained unchanged, pending Derrick's separate decision. Rationale: the
-money moves in BOTH directions depending on day shape (shorter days with
-substantial travel would go up; full 11h-span days with sub-hour billable
-travel would stop paying), the textual basis is the softest of the four
-items, and there is no urgency. The analysis below stands ready for when it
-is picked up.
+## B3 — Travel time on a working day: **RESOLVED — IMPLEMENTED** (Derrick, 2026-07-13)
 
 **PDF text.** §3.1: *"Travel time is always paid at single time, regardless
 of time, or day of the week. If travel time & working time total less than
-11 hours, then no travel time is payable."* Read literally that is a GATE on
-net working time + travel (§6.2's note makes lunch NOT working time). The
-in-app explainer documents a third model (absorption into the unused basic
-day). The engine implements none of the three exactly.
+11 hours, then no travel time is payable."* Plus the Travel-on-a-Basic-
+Working-Day row: paid *"less the first hour of the outward and homeward
+journey."* §6.2's note makes the lunch break not part of the working day.
 
-**Engine today.** Pays travel beyond `11h − SPAN`, where span = call→wrap
-INCLUDING the unpaid lunch hour. Measured (2h door-to-door each way, so 1h
-each way after the first-hour deduction = 2h deductible travel):
+**Derrick's model (fully specified, supersedes the old span-based
+`gap = max(0, 11 − span)` hybrid).** Billable travel — after the first-hour
+deduction EACH WAY, unchanged — pays only to the extent it exceeds the day's
+shortfall against a **net-worked full-day bar**:
 
-| Day | Net worked | Engine pays | Gate reading | Absorb reading |
-|---|---|---|---|---|
-| 08:00–19:00 (11h span) | 10h | 2h (£88.80) | 2h | 1h |
-| 08:00–18:00 (10h span) | 9h | 1h (£44.40) | 2h | 0h |
-| 08:00–17:00 (9h span) | 8h | 0h | 0h (8+2 < 11 → wait, 10 < 11 → £0) | 0h |
+```
+onClock    = netWorked (= span − lunch actually taken) + raw pre-call hours
+shortfall  = max(0, barNet − onClock)
+travelPaid = ceilHalf(max(0, billableTravel − shortfall)) × 1× BHR
+barNet     : Shoot & basic night 10 (11 on an 11-hour-day arrangement)
+             any CWD 9 · Prep/Recce/Build/De-rig 8 · Pre-light 8
+```
 
-The engine effectively counts the unpaid lunch hour as "working time" for
-the threshold. On full 11h-span days it lands on the gate reading; on
-shorter days it under-pays the gate reading by up to 1h × BHR and over-pays
-the absorb reading.
+**The three resolved parameters.**
+1. **Pre-call counts** toward onClock (raw hours; the old `preUnitHrs = 0`
+   exclusion is deleted).
+2. **Late calls are emergent** — no special term: netWorked measured from the
+   actual call against the full bar makes the notional 11:00→call hours the
+   shortfall (13:00→22:00 absorbs 2h; 12:00→22:00 absorbs 1h — both pinned).
+   Ruled: an early wrap widens the absorption to the full shortfall
+   (conservative).
+3. **Per-day-type bars** replace the hard-coded 11, as listed.
 
-**Direction.** ±£44.40–£88.80 per travel day depending on the ruling and
-the day length. Not consistently favourable in either direction.
+**Threshold-shift / curtailment reconciliation.** Curtailing lunch by X
+shifts the travel threshold X earlier via netWorked itself (a shorter lunch
+is already more worked span) — **no separate credit term**; an explicit
+credit would double-count the worked-through minutes, since
+span − actualLunch already contains them. One uniform rule with OT (whose
+basicHrs shifts by the same X). The ruled C-case: call 08:00, wrap 18:00,
+30m lunch → threshold 18:30, wrapped 30m short → travel 2h − 0.5h =
+**1.5h £66.60**, PLUS the £22.20 §6.2 curtailment top-up (each half-hour
+counted once). Day total £532.80.
 
-**When picked up, the question is:** the intended basis — (a) gate on NET
-work + travel (≥11h → all deducted travel payable), (b) absorption into the
-unused basic day, or (c) current span-based hybrid — and whether lunch
-counts as "working time" for the threshold.
+**Travel rate is always 1× BHR** — pinned on night, Saturday and Sunday-CWD
+days (worked hours at 2×/1.5×/2×, travel at £44.40/h).
+
+**£ direction vs the old span model** (all at £444, 2h billable): full CWD
+£0→£88.80, full Prep/Pre-light £0→£88.80, curtailed C-case £44.40→£66.60,
+pre-call-backed short day £44.40→£88.80 — under-payments corrected; full
+standard/Sat/Sun/night days and the fully-absorbed shapes are unchanged.
+Travel DAY (min-5h × BHR branch), PMPA (§3 excluded) and mileage untouched.
+All pre-existing scenarios byte-identical (none carried travel-time fields —
+verified before and after). Pins: scenarios S24–S36 + stageB3 (13
+assertions incl. the three 1×-rate guards).
 
 ---
 
@@ -271,10 +284,10 @@ confirmed as deliberate:
 ---
 
 *Compiled 2026-07-12 on `fix/calc-audit` from the adversarial audit findings;
-adjudicated by Derrick the same day against the actual APA Recommended Terms
-PDF. Implemented and pinned: A1–A3 (boundary bugs), B1 + §2.4(vi) (continuous
+adjudicated by Derrick against the actual APA Recommended Terms PDF.
+Implemented and pinned: A1–A3 (boundary bugs), B1 + §2.4(vi) (continuous
 double-rate days), A4 (night missed-break charge, ruled 2×), B2 (Saturday
-early call). Kept deliberately: B4 (night penalties at 2×), B5, B7. Deferred:
-B3 (travel threshold). Backlog: B6, B8. Remaining follow-ups: the
-APA_RULES.md editorial pass, and the optional "booked CWD" carve-out noted
-under A4.*
+early call), B3 (travel-time gate, net-worked model, 2026-07-13). Kept
+deliberately: B4 (night penalties at 2×), B5, B7. Backlog: B6, B8. Remaining
+follow-ups: the APA_RULES.md editorial pass, and the optional "booked CWD"
+carve-out noted under A4.*

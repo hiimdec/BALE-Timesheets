@@ -3041,9 +3041,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // them (only basic-rate travel time absorbs into unused basic-day hours).
       const preCallTripleChargeable = ceilHalf(preCallSplit.triple);
       const preCallOtChargeable = ceilHalf(preCallSplit.ot);
-      // Pre-call sits outside the basic day, so it never fills basic hours for
-      // the downstream travel-absorption gap.
-      const preUnitHrs = 0;
+      // Pre-call hours DO count toward the travel-absorption on-clock figure
+      // (fix/calc-audit B3, Derrick's ruling) — the raw preCallSplit.total is
+      // read directly in the travel block below.
       if (preCallSplit.total > 0) {
         if (isNightShoot) {
           // APA §2.1.5: night shoots pay flat 2× BHR call-to-wrap, no
@@ -3344,14 +3344,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const travelBackRaw = Math.max(0, finMins(day.travelBackMins) - 60) / 60;
       const travelHrs = travelOutRaw + travelBackRaw;
       if (travelHrs > 0) {
-        // APA §3.1: travel is payable only once travel + work exceeds 11h,
-        // regardless of day type (a flat 11h threshold, not the day's basic hours).
-        const travelGap = Math.max(0, 11 - (workedHrs + preUnitHrs));
+        // APA §3.1 travel-time gate (fix/calc-audit B3, Derrick's model):
+        // billable travel (first hour each way already deducted above) pays
+        // only to the extent it exceeds the day's shortfall against a
+        // NET-WORKED full-day bar. onClock counts what the crew actually
+        // gave: net worked hours (span minus the lunch actually taken — a
+        // curtailed lunch therefore shifts this threshold earlier by the
+        // curtailed amount, the same uniform rule as OT's basicHrs shift; no
+        // separate credit term, the shorter lunch is already more work) plus
+        // raw pre-call hours. Late calls need no special term: netWorked
+        // measured from the actual call against the full bar makes the
+        // notional 11:00→call hours the shortfall emergently, and an early
+        // wrap widens it (ruled: absorbs the full shortfall). Bars are per
+        // day type, net of the unpaid lunch where the type has one:
+        // Shoot/basic-night 10 (11 on an 11-hour-day arrangement), any CWD 9,
+        // Prep/Recce/Build/De-rig 8, Pre-light 8. Travel itself is ALWAYS
+        // 1× BHR (§3.1 "single time, regardless of time, or day of the
+        // week") — never the day's 1.5×/2× rate.
+        const travelBarNet = continuousDay ? 9
+          : effectiveDayType === "Shoot" ? (isElevenHourDay ? 11 : 10)
+          : 8; // Pre-light + Prep/Recce/Build/De-rig: 8 worked hours when full
+        const lunchTakenHrs = lunchMissed ? 0 : lunchDuration / 60;
+        const onClockHrs = (workedHrs - lunchTakenHrs) + preCallSplit.total;
+        const travelGap = Math.max(0, travelBarNet - onClockHrs);
         const chargeableTravel = ceilHalf(Math.max(0, travelHrs - travelGap));
         if (chargeableTravel > 0) {
           lines.push({ label: "Travel Time", detail: "1hr each way deducted", rate: bhr, qty: chargeableTravel, amount: chargeableTravel * bhr });
         } else {
-          notes.push(`Travel not paid (work ${workedHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ 11h threshold)`);
+          notes.push(`Travel not paid (on-clock ${onClockHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ ${travelBarNet}h full-day bar)`);
         }
       }
       const miles = Number(day.miles) || 0;

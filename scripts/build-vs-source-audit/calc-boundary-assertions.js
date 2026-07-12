@@ -32,6 +32,15 @@
  *        the PDF's own §2.2.2 example (1st AD £785, 03:00→13:00 = £1,727).
  *        Basic nights stay flat; weekend/BH nights stay flat per §2.4(iii)/(iv).
  *
+ *   B3 — travel time on a working day (§3.1, Derrick's net-worked model):
+ *        billable travel (first hour deducted each way) pays past the day's
+ *        shortfall against a NET-WORKED bar (Shoot/basic-night 10 — 11 on an
+ *        11-hour arrangement — any CWD 9, Prep/Recce/Build/De-rig 8,
+ *        Pre-light 8). onClock = (span − lunch taken) + raw pre-call hours;
+ *        curtailment shifts the threshold via net worked time (no separate
+ *        credit term); late calls emerge from the bar; travel is ALWAYS
+ *        1× BHR regardless of the day's rate.
+ *
  * Reference crew throughout: grade I, BDR £444 → BHR £44.40, OT £66.60,
  * 2× £88.80, 3× £133.20.
  *
@@ -311,6 +320,57 @@ function stageB2(eng, ok) {
   ok('B2f Sunday 06:00 unchanged: hourly min-10h £888.00, no premium line', !early(f) && near(f.total, 888.00), `total=${f.total}`);
 }
 
+// ---- B3: travel time on a working day (§3.1, net-worked model) ----------------
+
+function stageB3(eng, ok) {
+  console.log('\nB3 · travel-time gate: net-worked bars, pre-call counts, 1×BHR always');
+  const T = { travelOutMins: 120, travelBackMins: 120 }; // 2h billable after first-hour-each-way
+  const calc = (d) => eng.calculateDay(baseDay({ lunchStartTime: '13:00', ...T, ...d }), baseCrew());
+  const tl = (c) => c.lines.find(l => l.label === 'Travel Time');
+  const travelIs = (c, qty, amt) => { const t = tl(c); return !!t && near(t.qty, qty) && near(t.amount, amt) && near(t.rate, 44.40); };
+
+  ok('B3a full Shoot: 2h £88.80 (total £532.80)', (c => travelIs(c, 2, 88.80) && near(c.total, 532.80))(calc({})), '');
+  ok('B3b 1h-early wrap: 1h £44.40 (total £488.40)', (c => travelIs(c, 1, 44.40) && near(c.total, 488.40))(calc({ wrapTime: '18:00' })), '');
+
+  // The ruled C-case: curtailment shifts the threshold 30m earlier —
+  // 18:30 threshold, wrapped 18:00 → 30m absorbed → 1.5h travel, PLUS the
+  // £22.20 top-up. No double-count in either direction.
+  const c = calc({ wrapTime: '18:00', lunchDurationMins: 30 });
+  ok('B3c curtailed 30m + 1h-early wrap: 1.5h £66.60 + £22.20 top-up (total £532.80)',
+    travelIs(c, 1.5, 66.60) && c.lines.some(l => l.label === 'Curtailed 1st Break' && near(l.amount, 22.20)) && near(c.total, 532.80), `total=${c.total}`);
+
+  const d = calc({ wrapTime: '18:00', preCallTime: '07:00' });
+  ok('B3d 1h pre-call fills the 1h-early gap: 2h £88.80 (total £599.40)', travelIs(d, 2, 88.80) && near(d.total, 599.40), `total=${d.total}`);
+
+  const e = calc({ callTime: '13:00', wrapTime: '22:00', lunchStartTime: '18:00' });
+  ok('B3e late call 13:00→22:00: travel fully absorbed (£444.00, note)', !tl(e) && near(e.total, 444.00) && (e.meta.notes || []).some(n => /Travel not paid/.test(n)), `total=${e.total}`);
+
+  const f = calc({ callTime: '12:00', wrapTime: '22:00', lunchStartTime: '17:00' });
+  ok('B3f late call 12:00→22:00: 1h £44.40 (total £488.40)', travelIs(f, 1, 44.40) && near(f.total, 488.40), `total=${f.total}`);
+
+  const g = calc({ wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true });
+  ok('B3g full CWD (bar 9): 2h £88.80 (total £532.80)', travelIs(g, 2, 88.80) && near(g.total, 532.80), `total=${g.total}`);
+
+  const h = calc({ wrapTime: '15:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true });
+  ok('B3h 7h CWD: fully absorbed (£444.00)', !tl(h) && near(h.total, 444.00), `total=${h.total}`);
+
+  const i = calc({ dayType: 'Prep Day', wrapTime: '16:00', lunchStartTime: '', lunchDurationMins: 0 });
+  ok('B3i full Prep (bar 8): 2h £88.80 (total £444.00)', travelIs(i, 2, 88.80) && near(i.total, 444.00), `total=${i.total}`);
+
+  const j = calc({ dayType: 'Pre-light', wrapTime: '17:00' });
+  ok('B3j full Pre-light (bar 8): 2h £88.80 (total £444.00)', travelIs(j, 2, 88.80) && near(j.total, 444.00), `total=${j.total}`);
+
+  // 1×BHR guards on the elevated-rate days (§3.1 "single time, regardless").
+  const k = calc({ callTime: '20:00', wrapTime: '07:00', wrapNextDay: true, lunchStartTime: '01:00' });
+  ok('B3k night basic full: 2h at 1×BHR £88.80 (total £976.80)', travelIs(k, 2, 88.80) && near(k.total, 976.80), `total=${k.total}`);
+
+  const l = calc({ date: '2026-06-07', wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true });
+  ok('B3l Sunday CWD full: 2h at 1×BHR £88.80 (total £976.80)', travelIs(l, 2, 88.80) && near(l.total, 976.80), `total=${l.total}`);
+
+  const m = calc({ date: '2026-06-06' });
+  ok('B3m Saturday full Shoot: 2h at 1×BHR £88.80 (total £754.80)', travelIs(m, 2, 88.80) && near(m.total, 754.80), `total=${m.total}`);
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -323,6 +383,7 @@ async function runCalcBoundaryAssertions() {
   stageSunCwd(eng, ok);
   stageA4(eng, ok);
   stageB2(eng, ok);
+  stageB3(eng, ok);
   return summary();
 }
 

@@ -309,6 +309,23 @@ const scenarios = [
   mk('S21', 'Saturday 06:00 early call (1h premium at 1.5xBHR)', {}, { date: '2026-06-06', callTime: '06:00', wrapTime: '17:00', lunchStartTime: '11:00' }),
   mk('S22', 'Saturday 07:00 call — no premium (boundary)', {}, { date: '2026-06-06', callTime: '07:00', wrapTime: '18:00', lunchStartTime: '12:00' }),
   mk('S23', 'Saturday 06:00 early call + CWD (premium + OT after 9h)', {}, { date: '2026-06-06', callTime: '06:00', wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  // B3 (§3.1, Derrick's net-worked model): travel pays past the day's
+  // shortfall vs a per-day-type NET bar (Shoot/basic-night 10, CWD 9,
+  // Prep/Recce/Build/De-rig 8, Pre-light 8); onClock = span − lunch taken
+  // + raw pre-call; always 1× BHR. 120m each way = 2h billable throughout.
+  mk('S24', 'Travel: full Shoot day pays all 2h', {}, { travelOutMins: 120, travelBackMins: 120 }),
+  mk('S25', 'Travel: 1h-early wrap absorbs 1h', {}, { wrapTime: '18:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S26', 'Travel: 1h-early wrap + 30m lunch → 1.5h (threshold shift)', {}, { wrapTime: '18:00', lunchDurationMins: 30, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S27', 'Travel: 1h-early wrap + 1h pre-call fills the gap', {}, { wrapTime: '18:00', preCallTime: '07:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S28', 'Travel: late call 13:00→22:00 fully absorbed', {}, { callTime: '13:00', wrapTime: '22:00', lunchStartTime: '18:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S29', 'Travel: late call 12:00→22:00 absorbs 1h', {}, { callTime: '12:00', wrapTime: '22:00', lunchStartTime: '17:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S30', 'Travel: full CWD (bar 9) pays all 2h', {}, { wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S31', 'Travel: 7h CWD fully absorbed', {}, { wrapTime: '15:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S32', 'Travel: full Prep day (bar 8) pays all 2h', {}, { dayType: 'Prep Day', wrapTime: '16:00', lunchStartTime: '', lunchDurationMins: 0, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S33', 'Travel: full Pre-light (bar 8) pays all 2h', {}, { dayType: 'Pre-light', wrapTime: '17:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S34', 'Travel: night basic full — 2h at 1xBHR not 2x', {}, { callTime: '20:00', wrapTime: '07:00', wrapNextDay: true, lunchStartTime: '01:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S35', 'Travel: Sunday CWD full — 2h at 1xBHR not 2x', {}, { date: '2026-06-07', wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S36', 'Travel: Saturday full Shoot — 2h at 1xBHR not 1.5x', {}, { date: '2026-06-06', travelOutMins: 120, travelBackMins: 120 }),
 ];
 
 module.exports = { scenarios };
