@@ -1110,6 +1110,33 @@
         try { const p = _capPlugins().LiveActivity; if (p && p.endActivity) await p.endActivity(opts || {}); }
         catch (e) { try { console.warn('[LiveActivity] end failed', (e && e.message) || e); } catch (_) {} }
       },
+      // Diagnostics (fix/la-diagnostics): the flag-gated App-Group ring buffer.
+      // All web-safe no-ops. debugLog is native-gated on the flag, so callers
+      // fire it unconditionally — when diagnostics are off it costs one bool
+      // read on the native side and writes nothing.
+      async setDebugLogging(enabled) {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().LiveActivity; if (p && p.setDebugLogging) { const r = await p.setDebugLogging({ enabled: !!enabled }); return !!(r && r.enabled); } } catch (_) {}
+        return false;
+      },
+      async getDebugLogging() {
+        if (!IS_NATIVE) return false;
+        try { const p = _capPlugins().LiveActivity; if (p && p.getDebugLogging) { const r = await p.getDebugLogging(); return !!(r && r.enabled); } } catch (_) {}
+        return false;
+      },
+      async getDiagnostics() {
+        if (!IS_NATIVE) return '';
+        try { const p = _capPlugins().LiveActivity; if (p && p.getDiagnostics) { const r = await p.getDiagnostics(); return (r && r.log) || ''; } } catch (_) {}
+        return '';
+      },
+      async clearDiagnostics() {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.clearDiagnostics) await p.clearDiagnostics(); } catch (_) {}
+      },
+      async debugLog(line) {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.appendDebugLog) await p.appendDebugLog({ line: String(line || '') }); } catch (_) {}
+      },
       // Round 3 reconcile sweep support. list() returns every system-registered
       // Activity [{ id, productionId }] straight from ActivityKit — NOT the
       // plugin's single tracked handle, so it survives app restarts.
@@ -16138,17 +16165,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!desc) {
           if (startedKeyRef.current) {
             console.log('[LiveActivity] day no longer qualifies → end (immediate)');
+            LiveActivity.debugLog('controller.end (disqualified) key=' + startedKeyRef.current);
             LiveActivity.end({ immediate: true });
             startedKeyRef.current = null;
             lastSentRef.current = '';
           }
           return;
         }
+        // Compact resolved-day line for the diagnostics buffer: this is "the
+        // stored day as the app last pushed it" — compared against the
+        // ContentState snapshot the intents log at press time, it answers the
+        // stored-vs-card divergence question, and any controller.update line
+        // between plugin.start and a press shows the day was edited after the
+        // card started. Native-gated: free when diagnostics are off.
+        const dbgBrief = () => `pid=${(desc.productionId || '').slice(0, 8)} call=${desc.callEpoch} state=${desc.state} otFrom=${desc.otFrom || '-'} total=${desc.totalText} lunchLogged=${desc.lunchLogged} wrapped=${desc.wrapped}`;
         const timer = setTimeout(() => {
           const key = desc.productionId + '|' + todayISO();
           const payload = descriptorToPayload(desc);
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');
+            LiveActivity.debugLog('controller.wrapped→end ' + dbgBrief());
             LiveActivity.update(payload);   // reflect WRAPPED…
             LiveActivity.end();             // …then end (native lets it linger briefly)
             startedKeyRef.current = null;
@@ -16159,10 +16195,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             startedKeyRef.current = key;     // FIRST valid descriptor → START
             lastSentRef.current = sig;
             console.log('[LiveActivity] start', desc.totalText, desc.state);
+            LiveActivity.debugLog('controller.start ' + dbgBrief());
             LiveActivity.start(payload);
           } else if (sig !== lastSentRef.current) {
             lastSentRef.current = sig;       // same Activity, changed data → UPDATE
             console.log('[LiveActivity] update', desc.totalText, desc.state);
+            LiveActivity.debugLog('controller.update ' + dbgBrief());
             LiveActivity.update(payload);
           }
         }, 600);
@@ -18189,6 +18227,52 @@ const setDays = (updater) =>
     // clientId on apply — the same linkage manual ClientPicker selection
     // writes; unmatched companies are left to the existing
     // save-on-send / update-nudge machinery.
+    // Hidden Live Activity diagnostics row (fix/la-diagnostics). Revealed by
+    // five taps on the Live Activity title in Settings — and shown
+    // automatically whenever the flag is already ON, so it can always be found
+    // again to turn off. Drives the flag-gated App-Group ring buffer via the
+    // LiveActivity bridge; the flag lives natively (no bigals_* key). Sharing
+    // uses the system share sheet with a clipboard fallback. Native-only:
+    // renders nothing on web. (Defined here, OUTSIDE the CallSheetImport→
+    // SettingsScreen span, so the storage audit's UU1 source-slice regexes
+    // keep their anchors.)
+    function LaDiagnosticsRow({ revealed }) {
+      const [enabled, setEnabled] = useState(false);
+      const [known, setKnown] = useState(false);
+      const [shareState, setShareState] = useState('');
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        let alive = true;
+        LiveActivity.getDebugLogging().then(v => { if (alive) { setEnabled(!!v); setKnown(true); } });
+        return () => { alive = false; };
+      }, []);
+      if (!IS_NATIVE || !known || (!revealed && !enabled)) return null;
+      const btnCls = "px-3 py-2 rounded-lg border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-[11px] font-semibold text-neutral-300";
+      return (
+        <div className="mt-4 pt-4 border-t border-neutral-800">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Diagnostics logging</div>
+              <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Records what the lock-screen card and its buttons do, on this phone only, so a jammed Wrap or Lunch can be diagnosed. Leave off unless asked.</div>
+            </div>
+            <Toggle value={enabled} onChange={async (v) => { setEnabled(v); await LiveActivity.setDebugLogging(v); }} ariaLabel="Live Activity diagnostics logging" />
+          </div>
+          {enabled && (
+            <div className="flex items-center gap-2 mt-3">
+              <button type="button" className={btnCls} onClick={async () => {
+                const log = await LiveActivity.getDiagnostics();
+                const r = await shareTextOrCopy(log || '(diagnostics log is empty)', 'TimeMachine Live Activity diagnostics');
+                setShareState(r === 'copied' || r === 'prompted' ? 'Copied' : r === 'shared' ? 'Shared' : '');
+                setTimeout(() => setShareState(''), 2000);
+              }}>Share diagnostics</button>
+              <button type="button" className={btnCls} onClick={() => LiveActivity.clearDiagnostics()}>Clear</button>
+              {shareState && <span className="text-[11px] text-neutral-500">{shareState}</span>}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     function CallSheetImport({ production, setProduction, userPrefs, autoFile, onImportApplied }) {
       const [avail, setAvail] = useState(null);
       const [phase, setPhase] = useState('idle'); // idle | extracting | review
@@ -18710,6 +18794,11 @@ const setDays = (updater) =>
       useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
+      // Hidden Live Activity diagnostics reveal (fix/la-diagnostics): five taps
+      // on the Live Activity title show the row. Component state only — no
+      // persisted pref (the on/off flag itself lives natively in the App Group,
+      // so no new bigals_* key and no KEYS-list change).
+      const [laDiagTaps, setLaDiagTaps] = useState(0);
       // Accountant export — selected tax year. Defaults to the most recent
       // COMPLETE tax year that holds invoices, else the newest on offer.
       const [acctYear, setAcctYear] = useState(() => {
@@ -19467,12 +19556,13 @@ const setDays = (updater) =>
             <Disclosure label="Notifications & Live Activity">
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <div>
+                  <div onClick={() => setLaDiagTaps(t => t + 1)}>
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Live Activity</div>
                     <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">The lock-screen shoot-day card: live total, timer, and Lunch/Wrap buttons. iOS only.</div>
                   </div>
                   <Toggle value={userPrefs.liveActivityEnabled !== false} onChange={(v) => set({ liveActivityEnabled: v })} ariaLabel="Live Activity" />
                 </div>
+                <LaDiagnosticsRow revealed={laDiagTaps >= 5} />
               </div>
               <div className="mt-4 pt-4 border-t border-neutral-800">
                 <div className="flex items-center justify-between gap-3">
@@ -24547,9 +24637,11 @@ const confirmDelete = (p) => setConfirmOpts({
             // immediate.
             const wrappedSendOff = enabled && !!rec && rec.wrapped === true && !!(rec.callTime || (dd && dd.callTime));
             console.log('[LiveActivity] reconcile → end (no qualifying day)', pid, wrappedSendOff ? '(wrapped — linger)' : '(immediate)');
+            LiveActivity.debugLog('sweep.end pid=' + String(pid).slice(0, 8) + (wrappedSendOff ? ' (wrapped linger)' : ' (immediate)'));
             LiveActivity.endForProduction(pid, !wrappedSendOff);
           } else if (ids.length > 1) {
             console.log('[LiveActivity] reconcile → converge duplicates', pid, ids.length);
+            LiveActivity.debugLog('sweep.converge pid=' + String(pid).slice(0, 8) + ' cards=' + ids.length);
             for (let i = 1; i < ids.length; i++) dupeIds.push(ids[i]);
           }
         }
@@ -24567,6 +24659,7 @@ const confirmDelete = (p) => setConfirmOpts({
           try { desc = liveActivityDescriptor(pr, soloCrew, pr.days || []); } catch (_) {}
           if (!desc || desc.wrapped) continue;
           console.log('[LiveActivity] reconcile → start (qualifying day, no card)', pr.id);
+          LiveActivity.debugLog('sweep.start pid=' + String(pr.id).slice(0, 8) + ' call=' + desc.callEpoch + ' otFrom=' + (desc.otFrom || '-'));
           LiveActivity.start(descriptorToPayload(desc));
         }
       }, []);
@@ -24591,16 +24684,21 @@ const confirmDelete = (p) => setConfirmOpts({
         const ingest = async () => {
           const events = await LiveActivity.drainPendingEvents();
           if (!events || !events.length) return;
+          LiveActivity.debugLog('ingest.drained n=' + events.length);
           const today = todayISO();
           const toApply = [];
           for (const ev of events) {
             if (!ev || !ev.id) continue;
-            if (applied.has(ev.id)) { console.log('[LiveActivity] ingest skip (already applied)', ev.id); continue; }
+            if (applied.has(ev.id)) { console.log('[LiveActivity] ingest skip (already applied)', ev.id); LiveActivity.debugLog('ingest.skip (already applied) ' + ev.type + ' ' + ev.id.slice(0, 8)); continue; }
             applied.add(ev.id); // mark seen once, today or stale — never reprocessed
-            if (ev.date !== today) { console.log('[LiveActivity] ingest discard (stale date)', ev.date, ev.id); continue; }
+            // Diagnostics: the discard line below is the capture point for the
+            // known midnight-discard loss (MAINTENANCE.md) — a queued event that
+            // drains after midnight lands here and is silently dropped.
+            if (ev.date !== today) { console.log('[LiveActivity] ingest discard (stale date)', ev.date, ev.id); LiveActivity.debugLog('ingest.DISCARD (stale date) ' + ev.type + ' at=' + ev.at + ' evDate=' + ev.date + ' today=' + today); continue; }
             if (ev.type !== 'lunchNow' && ev.type !== 'wrapNow' && ev.type !== 'lunchCurtail' && ev.type !== 'setTimes') continue;
             toApply.push(ev);
             console.log('[LiveActivity] ingest apply', ev.type, ev.at, '→', ev.productionId);
+            LiveActivity.debugLog('ingest.apply ' + ev.type + ' at=' + ev.at + ' pid=' + String(ev.productionId || '').slice(0, 8));
           }
           try { storage.set(APPLIED_KEY, JSON.stringify([...applied].slice(-200))); } catch (_) {}
           if (!toApply.length) return;

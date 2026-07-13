@@ -5719,7 +5719,10 @@ async function main() {
       /function SoloLiveActivity\(\{ production, soloCrew, days, enabled = true \}\)/.test(html) &&
       /const desc = \(IS_NATIVE && enabled\) \? liveActivityDescriptor\(production, soloCrew, days\) : null;/.test(html) &&
       /if \(!IS_NATIVE\) return;/.test(html) &&
-      /if \(!desc\) \{[\s\S]{0,220}LiveActivity\.end\(\{ immediate: true \}\);/.test(html));
+      // window widened 220→360 for the fix/la-diagnostics debugLog line between
+      // the console.log and the end() call — the assertion (disqualified day →
+      // immediate end) is unchanged.
+      /if \(!desc\) \{[\s\S]{0,360}LiveActivity\.end\(\{ immediate: true \}\);/.test(html));
     check('TT2c controller mounted in SoloDayPage with production/soloCrew/days + the round-3 enabled pref',
       /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
 
@@ -5757,10 +5760,13 @@ async function main() {
       /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html) &&
       /return \{ \.\.\.production, days: mapDayNow\(production\.days, date, uid0, patch\) \};/.test(html));
     check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
-      /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,140}continue; \}/.test(html) &&
+      // windows widened 140→320 for the fix/la-diagnostics debugLog lines
+      // inside the skip/discard branches — the assertions (idempotency check,
+      // stale-date discard, both ending in `continue`) are unchanged.
+      /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,320}continue; \}/.test(html) &&
       /applied\.add\(ev\.id\);/.test(html) &&
       /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
-      /if \(ev\.date !== today\) \{[\s\S]{0,140}continue; \}/.test(html) &&
+      /if \(ev\.date !== today\) \{[\s\S]{0,320}continue; \}/.test(html) &&
       /const today = todayISO\(\);/.test(html));
     check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — and both triggers ALSO run the reconcile sweep',
       /const liveActivityAppliedRef = React\.useRef\(null\);\s*useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
@@ -5838,8 +5844,12 @@ async function main() {
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
       /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
-      /if \(!qualifies\) \{[\s\S]{0,700}LiveActivity\.endForProduction\(pid, !wrappedSendOff\);/.test(html) &&
-      /\} else if \(ids\.length > 1\) \{[\s\S]{0,160}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
+      // windows widened 700→900 / 160→340 for the fix/la-diagnostics debugLog
+      // lines beside the sweep's console.logs — the assertions (end
+      // non-qualifying via endForProduction, converge duplicates by id) are
+      // unchanged.
+      /if \(!qualifies\) \{[\s\S]{0,900}LiveActivity\.endForProduction\(pid, !wrappedSendOff\);/.test(html) &&
+      /\} else if \(ids\.length > 1\) \{[\s\S]{0,340}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
       /if \(dupeIds\.length\) LiveActivity\.endActivityIds\(dupeIds\);/.test(html));
     check('TT9e single-activity invariant — the endActivityIds bridge method is IS_NATIVE-guarded (the sweep\'s by-id duplicate-converge; native startActivity adopt-or-update is the primary dedupe, compile-verified)',
       /async endActivityIds\(ids\) \{\s*if \(!IS_NATIVE \|\| !ids \|\| !ids\.length\) return;/.test(html) &&

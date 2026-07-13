@@ -61,6 +61,59 @@ enum TMLiveActivity {
     /// nudge from wastefully holding a cold process.
     static var webviewObserving = false
 
+    // MARK: Diagnostics ring buffer (fix/la-diagnostics — flag-gated, default OFF)
+    //
+    // A small App-Group ring buffer that pins WHERE the lock-screen buttons die
+    // the next time they jam. Every entry point of the intent path logs one
+    // compact line, and the JS controller/sweep/ingest log their pushes through
+    // the plugin's appendDebugLog — so the combined buffer answers, per press:
+    // did perform() run at all → was the activity found, and in what
+    // activityState (an ended husk vs live — the 8h-cap discriminator) → did
+    // the arm update take (post-update readback) → did the confirm write reach
+    // the App-Group queue → and did the day the app LAST PUSHED (the
+    // controller.update lines) match the ContentState the card held at press
+    // time (the stored-vs-card divergence check; a controller.update line
+    // between plugin.start and the press also shows the day was edited after
+    // the card started). Flag OFF (the default): one cached UserDefaults bool
+    // read per call site, no writes, zero behaviour change. The buffer lives
+    // in the App Group, survives relaunches, and caps at 300 lines.
+    static let debugEnabledKey = "tm_la_debug_enabled"
+    static let debugLogKey = "tm_la_debug_log"
+    static let debugLogCap = 300
+
+    static var debugEnabled: Bool {
+        UserDefaults(suiteName: appGroupSuite)?.bool(forKey: debugEnabledKey) ?? false
+    }
+
+    static func dbg(_ tag: String, _ detail: String = "") {
+        guard let d = UserDefaults(suiteName: appGroupSuite),
+              d.bool(forKey: debugEnabledKey) else { return }
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        var log = d.stringArray(forKey: debugLogKey) ?? []
+        log.append("\(fmt.string(from: Date())) | \(tag)\(detail.isEmpty ? "" : " | \(detail)")")
+        if log.count > debugLogCap { log.removeFirst(log.count - debugLogCap) }
+        d.set(log, forKey: debugLogKey)
+    }
+
+    /// Compact one-line ContentState summary for the diagnostic lines.
+    @available(iOS 16.2, *)
+    static func stateBrief(_ s: TimeMachineActivityAttributes.ContentState) -> String {
+        "state=\(s.state) armed=\(s.armed.isEmpty ? "-" : s.armed)@\(Int(s.armedAt)) call=\(Int(s.callEpoch)) end=\(Int(s.endEpoch)) otFrom=\(s.otFrom.isEmpty ? "-" : s.otFrom) lunchLogged=\(s.lunchLogged) curtail=\(s.curtailMins) curve=\(s.wrapCurve.count / 2)pts"
+    }
+
+    /// The activity exactly as the intent path resolves it — NIL, or id +
+    /// activityState + ContentState. activityState is the ended-husk
+    /// discriminator: a card still visible on the lock screen but .ended /
+    /// .dismissed here explains dead buttons outright (arm and confirm both
+    /// no-op against an ended activity, with no visible feedback).
+    @available(iOS 16.2, *)
+    static func activityBrief(_ productionId: String) -> String {
+        guard let a = current(productionId) else { return "activity=NIL" }
+        return "activity=\(a.id.prefix(8)) activityState=\(String(describing: a.activityState)) \(stateBrief(a.content.state))"
+    }
+
     /// CRITICAL PATH — append one event to the App-Group queue. Must be
     /// rock-solid and independent of the chip flip. Matches the in-app "Now"
     /// writers exactly: `at` = LOCAL HH:MM (no rounding); `date` = UTC
@@ -104,6 +157,7 @@ enum TMLiveActivity {
         var queue = defaults.array(forKey: pendingEventsKey) as? [[String: Any]] ?? []
         queue.append(event)
         defaults.set(queue, forKey: pendingEventsKey)
+        dbg("appendEvent", "type=\(type) at=\(at) pid=\(productionId.prefix(8)) queueLen=\(queue.count)")
         return at
     }
 
@@ -242,7 +296,10 @@ enum TMLiveActivity {
     /// newer one. The FIRST operation of an arm tap; nothing precedes it.
     @available(iOS 16.2, *)
     static func arm(_ productionId: String, action: String) async -> Double {
-        guard let activity = current(productionId) else { return 0 }
+        guard let activity = current(productionId) else {
+            dbg("arm.\(action)", "activity=NIL — arm impossible")
+            return 0
+        }
         let cur = activity.content.state
         let stamp = Date().timeIntervalSince1970
         let next = TimeMachineActivityAttributes.ContentState(
@@ -251,6 +308,11 @@ enum TMLiveActivity {
             armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
         )
         await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        // Post-update readback: on a live activity this echoes the arm we just
+        // wrote; an ended activity silently ignores update, so the readback
+        // stays "" — the smoking gun for arm-taps that never render.
+        let readback = current(productionId)?.content.state.armed ?? "NIL"
+        dbg("arm.\(action)", "stamp=\(Int(stamp)) readback=\(readback.isEmpty ? "(empty — update did not take)" : readback)")
         return stamp
     }
 
@@ -263,6 +325,9 @@ enum TMLiveActivity {
         guard let activity = current(productionId) else { return }
         let cur = activity.content.state
         guard cur.armed == action, cur.armedAt == stamp else { return }
+        // Repeated arm→auto-reset pairs with no confirm between them are the
+        // re-arm-loop signature: taps landing on a card that shows no feedback.
+        dbg("disarm.\(action)", "stamp=\(Int(stamp)) (arm expired unconfirmed)")
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
@@ -449,10 +514,16 @@ struct LunchNowIntent: LiveActivityIntent {
     init(productionId: String) { self.productionId = productionId }
 
     func perform() async throws -> some IntentResult {
+        // Diagnostics entry line — the per-press snapshot (flag-gated; one
+        // UserDefaults bool read when off). Captures whether the intent ran at
+        // all, whether the activity resolved, its activityState (ended husk?),
+        // and the full ContentState for the stored-vs-card divergence check.
+        TMLiveActivity.dbg("perform.lunch", TMLiveActivity.activityBrief(productionId))
         // Two-tap: first tap ARMS, the confirming second tap writes the event.
         let armed = TMLiveActivity.armedAction(productionId)
         if armed == "lunch" {
             // CONFIRM: the App-Group append is the critical, direct write.
+            TMLiveActivity.dbg("confirm.lunch", "pid=\(productionId.prefix(8))")
             TMLiveActivity.appendEvent(type: "lunchNow", productionId: productionId)
             await TMLiveActivity.confirmLunch(productionId)                         // instant lunchLogged + hour-end + disarm
             await TMLiveActivity.requestBackgroundDrain()                           // best-effort live total
@@ -484,6 +555,8 @@ struct WrapNowIntent: LiveActivityIntent {
     init(productionId: String) { self.productionId = productionId }
 
     func perform() async throws -> some IntentResult {
+        // Diagnostics entry line — see LunchNowIntent for the rationale.
+        TMLiveActivity.dbg("perform.wrap", TMLiveActivity.activityBrief(productionId))
         // Two-tap: first tap ARMS, the confirming second tap writes the event.
         let armed = TMLiveActivity.armedAction(productionId)
         if armed == "wrap" {
@@ -494,6 +567,7 @@ struct WrapNowIntent: LiveActivityIntent {
             // still updatable, THEN the linger end. A cold process no-ops the
             // drain and the curve total stands; the wrap write itself reaches
             // records on the normal foreground drain either way.
+            TMLiveActivity.dbg("confirm.wrap", "pid=\(productionId.prefix(8))")
             TMLiveActivity.appendEvent(type: "wrapNow", productionId: productionId)
             await TMLiveActivity.confirmWrap(productionId)
             await TMLiveActivity.requestBackgroundDrain()
@@ -533,6 +607,8 @@ struct CurtailIntent: LiveActivityIntent {
     init(productionId: String) { self.productionId = productionId }
 
     func perform() async throws -> some IntentResult {
+        // Diagnostics entry line — see LunchNowIntent for the rationale.
+        TMLiveActivity.dbg("perform.curtail", TMLiveActivity.activityBrief(productionId))
         // Single-tap with a 5s undo window. If a curtail is ALREADY pending
         // (armed=="curtail" and fresh), THIS tap is the Undo → cancel, write
         // nothing. Otherwise capture the whole-minute duration (now − lunchStart)
