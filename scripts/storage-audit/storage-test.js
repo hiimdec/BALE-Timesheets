@@ -5809,16 +5809,17 @@ async function main() {
       /const staleEpoch = onLunchNow \? lunchEndEpoch : \(callEpoch \? callEpoch \+ 16 \* 3600 : 0\);/.test(html) &&
       // the pre-fix flat form must be gone — this is the regression the bug was
       !/const staleEpoch = callEpoch \? callEpoch \+ 16 \* 3600 : 0;/.test(html));
-    check('TT8c3 native lunch-end wake — TMLiveActivity.lunchStaleDate mirrors the SwiftUI isOnLunch (lunchLogged && curtailMins==0 && lunchEndEpoch>now → Date(lunchEndEpoch), else nil); confirmLunch + EVERY intent-side activity.update routes staleDate through it — no staleDate: nil left to clobber the wake',
+    check('TT8c3 native lunch-end wake — TMLiveActivity.lunchStaleDate mirrors the SwiftUI isOnLunch (lunchLogged && curtailMins==0 && lunchEndEpoch>now → Date(lunchEndEpoch), else nil); confirmLunch + EVERY intent-side activity.update routes staleDate through it — since fix/la-husk Fix 2 via cappedStaleDate(lunchStaleDate(next), capEpoch:) so the semantic wake is ALSO clamped to the lifetime cap (min(semantic, cap)); no staleDate: nil left to clobber the wake',
       (() => {
         const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
         const helperOk = /static func lunchStaleDate\(_ s: TimeMachineActivityAttributes\.ContentState\) -> Date\? \{/.test(intents) &&
           /guard s\.lunchLogged, s\.curtailMins == 0,\s*s\.lunchEndEpoch > Date\(\)\.timeIntervalSince1970 else \{ return nil \}/.test(intents) &&
           /return Date\(timeIntervalSince1970: s\.lunchEndEpoch\)/.test(intents);
-        // confirmLunch (the primary fix path) routes through the helper, not nil
-        const confirmOk = /static func confirmLunch[\s\S]*?await activity\.update\(ActivityContent\(state: next, staleDate: lunchStaleDate\(next\)\)\)/.test(intents);
+        // confirmLunch (the primary fix path) routes through the helper — now
+        // wrapped in the Fix 2 lifetime-cap clamp, never nil
+        const confirmOk = /static func confirmLunch[\s\S]*?await activity\.update\(ActivityContent\(state: next, staleDate: cappedStaleDate\(lunchStaleDate\(next\), capEpoch: next\.capEpoch\)\)\)/.test(intents);
         // applied broadly, and NO bare staleDate: nil remains in the intents file
-        const appliedCount = (intents.match(/staleDate: lunchStaleDate\(next\)\)/g) || []).length;
+        const appliedCount = (intents.match(/staleDate: cappedStaleDate\(lunchStaleDate\(next\), capEpoch: next\.capEpoch\)\)/g) || []).length;
         const noNil = !/staleDate: nil/.test(intents);
         return helperOk && confirmOk && appliedCount >= 8 && noNil;
       })());
@@ -6565,6 +6566,45 @@ async function main() {
           /if \(!wrappedSendOff\) huskIds\.push\(h\.id\);/.test(html) &&
           /LiveActivity\.endActivityIds\(huskIds\);/.test(html);
         return listOk && adoptOk && sweepOk;
+      })());
+
+    // ─ TT22: lifetime cap + EXPIRED branch (fix/la-husk Fix 2 — never lie) ─
+    check('TT22a the card must never lie — ContentState gains OPTIONAL capEpoch (Double?, init-defaulted nil → synthesized decodeIfPresent keeps in-flight old-schema cards decoding); the plugin stamps cap = now + lifetimeCap (7h45m) at Activity.request, records requestedAt in the App-Group map, backfills on ADOPT (state ?? map ?? now+cap) and PRESERVES it across updates (state ?? map, nil → unclamped old behaviour); every staleDate clamps via cappedStaleDate min(semantic, cap); the widget branches EXPIRED on isStale && capEpoch != nil && now >= cap − 60s (never a wrapped card — frozen truthful record), rendering the neutral chip, NO timer/buttons, the total resolved from the wrapCurve AT the cap via wrapTotalText(_:at:) with the honest DAY TOTAL AT {HH:mm} micro-label; the no-arg wrapTotalText(cur) overload survives for the wrap-confirm freeze (TT21a)',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const attrs = readSafe('ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift');
+        const plugin = readSafe('ios/App/App/LiveActivityPlugin.swift');
+        const intents = readSafe('ios/App/TimeMachineWidget/TimeMachineIntents.swift');
+        const la = readSafe('ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift');
+        const schemaOk = /public var capEpoch: Double\?/.test(attrs) &&
+          /capEpoch: Double\? = nil/.test(attrs) &&
+          /self\.capEpoch = capEpoch/.test(attrs);
+        const helpersOk = /static let lifetimeCap: TimeInterval = 7 \* 3600 \+ 45 \* 60/.test(intents) &&
+          /static let startedAtKey = "tm_la_started_at"/.test(intents) &&
+          /static func cappedStaleDate\(_ semantic: Date\?, capEpoch: Double\?\) -> Date\? \{/.test(intents) &&
+          /return min\(semantic, cap\)/.test(intents) &&
+          /static func hhmmText\(epoch: Double\) -> String \{/.test(intents) &&
+          /static func wrapTotalText\(_ s: TimeMachineActivityAttributes\.ContentState, at epoch: Double\) -> String \{/.test(intents) &&
+          // every intent-side constructor carries the cap forward
+          (intents.match(/wrapCurve: cur\.wrapCurve, capEpoch: cur\.capEpoch/g) || []).length >= 8;
+        const pluginOk = /let cap = Date\(\)\.timeIntervalSince1970 \+ TMLiveActivity\.lifetimeCap/.test(plugin) &&
+          /TMLiveActivity\.recordRequestedAt\(activity\.id\)/.test(plugin) &&
+          /let cap = adopt\.content\.state\.capEpoch\s*\?\? TMLiveActivity\.requestedAt\(adopt\.id\)\.map \{ \$0 \+ TMLiveActivity\.lifetimeCap \}\s*\?\? Date\(\)\.timeIntervalSince1970 \+ TMLiveActivity\.lifetimeCap/.test(plugin) &&
+          /let cap = activity\.content\.state\.capEpoch\s*\?\? TMLiveActivity\.requestedAt\(activity\.id\)\.map \{ \$0 \+ TMLiveActivity\.lifetimeCap \}/.test(plugin) &&
+          (plugin.match(/TMLiveActivity\.cappedStaleDate\(staleDate, capEpoch: cap\)/g) || []).length >= 2;
+        const viewOk = /private func isExpired\(_ s: TimeMachineActivityAttributes\.ContentState, isStale: Bool\) -> Bool \{/.test(la) &&
+          /guard isStale, s\.state != "wrapped", let cap = s\.capEpoch else \{ return false \}/.test(la) &&
+          /return Date\(\)\.timeIntervalSince1970 >= cap - 60/.test(la) &&
+          /case "expired": return "EXPIRED"/.test(la) &&
+          /microLabel\("DAY TOTAL AT \\\(TMLiveActivity\.hhmmText\(epoch: cap\)\)"\)/.test(la) &&
+          /moneyText\(TMLiveActivity\.wrapTotalText\(context\.state, at: cap\), font: moneyFont\)/.test(la) &&
+          /This card has expired\. Open TimeMachine to log lunch or wrap\./.test(la) &&
+          /Card expired\. Open the app\./.test(la);
+        // the EXPIRED body carries no ticking timer and no intent buttons
+        const expiredSlice = (la.match(/private var expiredBody[\s\S]*?\n    \}/) || [''])[0];
+        const inertOk = expiredSlice.length > 100 &&
+          !/timerProjectionRow|elapsedTimer|actionButtons|Button\(intent:/.test(expiredSlice);
+        return schemaOk && helpersOk && pluginOk && viewOk && inertOk;
       })());
 
     // ─ TT21: wrap confirm drain-hold — corrected total INSIDE the send-off ─

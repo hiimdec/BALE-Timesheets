@@ -123,10 +123,18 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 
         DispatchQueue.main.async {
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
-            let content = ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve),
-                staleDate: staleDate
-            )
+            // fix/la-husk Fix 2: capEpoch is NATIVE-OWNED — JS never sends it.
+            // The cap differs per branch (a fresh request starts a fresh ~8h
+            // lifetime; an adopted card keeps the one its request started), so
+            // the content is built per-branch from the cap. Every staleDate is
+            // clamped to min(semantic, cap) — the pre-cap wake that lets the
+            // widget render its truthful EXPIRED branch instead of husking.
+            let makeContent: (Double?) -> ActivityContent<TimeMachineActivityAttributes.ContentState> = { cap in
+                ActivityContent(
+                    state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve, capEpoch: cap),
+                    staleDate: TMLiveActivity.cappedStaleDate(staleDate, capEpoch: cap)
+                )
+            }
             // SINGLE-ACTIVITY INVARIANT (duplicate-card fix). "Start" is issued
             // by the controller on every fresh mount (its startedKeyRef is
             // mount-local) and on cold relaunch — where the in-memory
@@ -149,17 +157,28 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             let strays = all.filter { $0.id != adopt?.id }
             if let adopt = adopt {
                 self.currentActivity = adopt
-                TMLiveActivity.dbg("plugin.start", "pid=\(productionId.prefix(8)) ADOPT id=\(adopt.id.prefix(8)) strays=\(strays.count) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom)")
+                // Cap backfill for the adopted card: its own ContentState first
+                // (the request stamped it), else the App-Group requestedAt map
+                // (cold relaunch of a card whose state predates/lost the field),
+                // else start the clock now (never leave a live card uncapped —
+                // a late cap only errs towards expiring EARLY, never lying late).
+                let cap = adopt.content.state.capEpoch
+                    ?? TMLiveActivity.requestedAt(adopt.id).map { $0 + TMLiveActivity.lifetimeCap }
+                    ?? Date().timeIntervalSince1970 + TMLiveActivity.lifetimeCap
+                TMLiveActivity.dbg("plugin.start", "pid=\(productionId.prefix(8)) ADOPT id=\(adopt.id.prefix(8)) strays=\(strays.count) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom) cap=\(Int(cap))")
                 Task {
-                    await adopt.update(content)
+                    await adopt.update(makeContent(cap))
                     for s in strays { await s.end(nil, dismissalPolicy: .immediate) }
                     call.resolve(["id": adopt.id, "adopted": true])
                 }
             } else {
                 do {
-                    let activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
+                    // A fresh request starts a fresh iOS lifetime: cap = now + 7h45m.
+                    let cap = Date().timeIntervalSince1970 + TMLiveActivity.lifetimeCap
+                    let activity = try Activity.request(attributes: attributes, content: makeContent(cap), pushType: nil)
                     self.currentActivity = activity
-                    TMLiveActivity.dbg("plugin.start", "pid=\(productionId.prefix(8)) REQUEST id=\(activity.id.prefix(8)) strays=\(strays.count) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom)")
+                    TMLiveActivity.recordRequestedAt(activity.id)
+                    TMLiveActivity.dbg("plugin.start", "pid=\(productionId.prefix(8)) REQUEST id=\(activity.id.prefix(8)) strays=\(strays.count) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom) cap=\(Int(cap))")
                     call.resolve(["id": activity.id])
                     Task { for s in strays { await s.end(nil, dismissalPolicy: .immediate) } }
                 } catch {
@@ -199,11 +218,17 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             // ContentState, not the start-fixed Attributes). armed:"" — an app-driven
             // update always clears any pending two-tap arm (the app never sends a
             // non-empty armed): the backstop reset for an arm that never confirmed.
+            // fix/la-husk Fix 2: the cap is PRESERVED across updates — the card's
+            // own state first, the requestedAt map as backfill. nil (an in-flight
+            // pre-cap card with no map entry) → no clamp, no EXPIRED branch:
+            // exactly the old behaviour until that card is re-minted.
+            let cap = activity.content.state.capEpoch
+                ?? TMLiveActivity.requestedAt(activity.id).map { $0 + TMLiveActivity.lifetimeCap }
             await activity.update(ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve),
-                staleDate: staleDate
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve, capEpoch: cap),
+                staleDate: TMLiveActivity.cappedStaleDate(staleDate, capEpoch: cap)
             ))
-            TMLiveActivity.dbg("plugin.update", "state=\(state) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom) total=\(totalText)")
+            TMLiveActivity.dbg("plugin.update", "state=\(state) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom) total=\(totalText) cap=\(cap.map { String(Int($0)) } ?? "-")")
             call.resolve()
         }
     }

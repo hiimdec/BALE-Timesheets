@@ -90,8 +90,22 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
         /// (default) → endWrapped keeps the pushed totalText (the pre-curve
         /// freeze). Display-only, same discipline as totalText.
         public var wrapCurve: [Double]
+        /// Lifetime-cap epoch (fix/la-husk Fix 2 — "the card must never lie").
+        /// Set NATIVELY at Activity.request time to requestedAt + ~7h45m (just
+        /// inside iOS's ~8h Live Activity lifetime cap) and carried through
+        /// every reconstruction. Every ActivityContent staleDate is clamped to
+        /// min(semantic wake, cap), so the LAST re-render the system will ever
+        /// grant fires just before iOS kills updates — and the view branches to
+        /// a truthful EXPIRED card (no ticking timer, total resolved from the
+        /// wrapCurve AT this epoch) instead of ticking a dead husk. OPTIONAL,
+        /// deliberately: synthesized Codable decodes it via decodeIfPresent, so
+        /// an IN-FLIGHT activity started on the previous schema decodes with
+        /// nil (no cap known → no clamp, no EXPIRED branch — the old behaviour)
+        /// rather than failing to decode at all. Display/lifecycle only — the
+        /// calc never reads it.
+        public var capEpoch: Double?
 
-        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchEndEpoch: Double = 0, otFrom: String = "", curtailMins: Int = 0, lunchLogged: Bool = false, wrapCurve: [Double] = []) {
+        public init(totalText: String, state: String, callEpoch: Double = 0, anchorLabel: String = "", endEpoch: Double = 0, armed: String = "", armedAt: Double = 0, cwd: Bool = false, lunchEndEpoch: Double = 0, otFrom: String = "", curtailMins: Int = 0, lunchLogged: Bool = false, wrapCurve: [Double] = [], capEpoch: Double? = nil) {
             self.totalText = totalText
             self.state = state
             self.callEpoch = callEpoch
@@ -105,6 +119,7 @@ public struct TimeMachineActivityAttributes: ActivityAttributes {
             self.curtailMins = curtailMins
             self.lunchLogged = lunchLogged
             self.wrapCurve = wrapCurve
+            self.capEpoch = capEpoch
         }
     }
 
