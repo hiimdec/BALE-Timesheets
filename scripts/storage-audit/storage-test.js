@@ -6535,18 +6535,36 @@ async function main() {
       })());
 
     // ─ TT18: sweep start branch — centralised lifecycle, no double-start ─
-    check('TT18a reconcile sweep STARTS a qualifying card (descriptor-driven, wrapped excluded) for productions with no card and no mounted controller; descriptorToPayload is the ONE payload shape shared by controller + sweep; SoloLiveActivity registers/deregisters its pid in laControllerPids (mount/unmount) and the start branch skips owned pids; the early bail on an empty activity list is GONE (an empty list is exactly when a start is needed)',
+    check('TT18a reconcile sweep STARTS a qualifying card (descriptor-driven, wrapped excluded) for productions with no LIVE card; descriptorToPayload is the ONE payload shape shared by controller + sweep; SoloLiveActivity still registers/deregisters its pid in laControllerPids (ownership record) but the start branch NO LONGER skips owned pids (fix/la-husk — the deferral blocked re-minting a system-ended card; the plugin\'s adopt-or-request serialisation on the native main queue is the real double-start guard); the early bail on an empty activity list is GONE (an empty list is exactly when a start is needed)',
       (() => {
         const helperOk = /function descriptorToPayload\(desc\) \{/.test(html) &&
           /const payload = descriptorToPayload\(desc\);/.test(html);
         const registryOk = /const laControllerPids = new Set\(\);/.test(html) &&
           /laControllerPids\.add\(pid\);/.test(html) &&
           /return \(\) => \{ laControllerPids\.delete\(pid\); \};/.test(html);
-        const startOk = /if \(!pr \|\| byPid\.has\(pr\.id\) \|\| laControllerPids\.has\(pr\.id\)\) continue;/.test(html) &&
+        const startOk = /if \(!pr \|\| byPid\.has\(pr\.id\)\) continue;/.test(html) &&
+          !/laControllerPids\.has\(pr\.id\)/.test(html) &&
           /if \(!desc \|\| desc\.wrapped\) continue;/.test(html) &&
           /LiveActivity\.start\(descriptorToPayload\(desc\)\);/.test(html);
         const bailGoneOk = !/const acts = await LiveActivity\.list\(\);\s*if \(!acts \|\| !acts\.length\) return;/.test(html);
         return helperOk && registryOk && startOk && bailGoneOk;
+      })());
+    check('TT18b husk clearance (fix/la-husk) — listActivities carries activityState (active/stale/ended/dismissed/unknown); the sweep counts ONLY live cards in byPid (missing state = live, old-plugin tolerance), collects ended/dismissed husks and dismisses them via endActivityIds so the start branch re-mints — EXEMPTING the wrapped send-off linger (a wrapped day\'s ended card is deliberate); startActivity ADOPTS only a live card, so an ended pid-match joins the strays (re-ended .immediate) and a FRESH activity is requested in its place',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const plugin = readSafe('ios/App/App/LiveActivityPlugin.swift');
+        const listOk = /case \.active:\s+state = "active"/.test(plugin) &&
+          /case \.stale:\s+state = "stale"/.test(plugin) &&
+          /case \.ended:\s+state = "ended"/.test(plugin) &&
+          /case \.dismissed:\s+state = "dismissed"/.test(plugin) &&
+          /"activityState": state/.test(plugin);
+        const adoptOk = /\$0\.activityState == \.active \|\| \$0\.activityState == \.stale/.test(plugin) &&
+          /all\.first \{ \$0\.attributes\.productionId == productionId && isLive\(\$0\) \}/.test(plugin);
+        const sweepOk = /const live = !a\.activityState \|\| a\.activityState === 'active' \|\| a\.activityState === 'stale';/.test(html) &&
+          /if \(!live\) \{ husks\.push\(a\); continue; \}/.test(html) &&
+          /if \(!wrappedSendOff\) huskIds\.push\(h\.id\);/.test(html) &&
+          /LiveActivity\.endActivityIds\(huskIds\);/.test(html);
+        return listOk && adoptOk && sweepOk;
       })());
 
     // ─ TT21: wrap confirm drain-hold — corrected total INSIDE the send-off ─

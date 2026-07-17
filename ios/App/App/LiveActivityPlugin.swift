@@ -134,8 +134,18 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             // dedupe against the system registry, not the handle: if a card for
             // THIS production already exists, ADOPT + UPDATE it (never request a
             // second); end every other TimeMachine card so exactly one remains.
+            // fix/la-husk (d): adopt only a LIVE card (active/stale). A
+            // system-ended husk is not updatable — adopting it would update()
+            // into the void and resolve {adopted:true} while the lock screen
+            // keeps a dead card. Ended/dismissed pid-matches fall into the
+            // strays instead: the .immediate re-end is the dismissal attempt
+            // that clears a lingering husk where the registry still holds it,
+            // and a FRESH activity is requested in its place.
             let all = Activity<TimeMachineActivityAttributes>.activities
-            let adopt = all.first { $0.attributes.productionId == productionId }
+            let isLive: (Activity<TimeMachineActivityAttributes>) -> Bool = {
+                $0.activityState == .active || $0.activityState == .stale
+            }
+            let adopt = all.first { $0.attributes.productionId == productionId && isLive($0) }
             let strays = all.filter { $0.id != adopt?.id }
             if let adopt = adopt {
                 self.currentActivity = adopt
@@ -229,8 +239,21 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // would silently no-op).
     @objc func listActivities(_ call: CAPPluginCall) {
         guard #available(iOS 16.2, *) else { call.resolve(["activities": []]); return }
-        let acts = Activity<TimeMachineActivityAttributes>.activities.map {
-            ["id": $0.id, "productionId": $0.attributes.productionId]
+        let acts = Activity<TimeMachineActivityAttributes>.activities.map { act -> [String: Any] in
+            // fix/la-husk (a): carry activityState so the sweep can tell a LIVE
+            // card from a system-ended husk still sitting in the registry —
+            // {id, productionId} alone made it structurally blind, and a husk
+            // counted as "covered", blocking the re-mint.
+            let state: String
+            switch act.activityState {
+            case .active:     state = "active"
+            case .stale:      state = "stale"
+            case .ended:      state = "ended"
+            case .dismissed:  state = "dismissed"
+            case .pending:    state = "pending"   // push-to-start only; this app never mints one
+            @unknown default: state = "unknown"
+            }
+            return ["id": act.id, "productionId": act.attributes.productionId, "activityState": state]
         }
         call.resolve(["activities": acts])
     }
