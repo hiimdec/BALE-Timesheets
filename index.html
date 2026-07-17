@@ -12744,7 +12744,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return (
         <div style={{ paddingBottom: 'var(--sab)' }}>
-          <div className="sticky top-0 z-40 bg-black border-b border-sky-500 -mx-4 -mt-6 px-4" style={{ paddingTop: 'var(--sat)' }}>
+          {/* Web: black header band. Native chrome: only the crew-identity row
+              stays in the band → neutral-950, matching bar + content (no OLED seam). */}
+          <div className={`sticky top-0 z-40 ${NATIVE_CHROME_ACTIVE ? 'bg-neutral-950' : 'bg-black'} border-b border-sky-500 -mx-4 -mt-6 px-4`} style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-6xl mx-auto pt-3 pb-3.5">
               {/* Redundant back+title row suppressed under native chrome (native bar owns it);
                   the crew-identity row + kebab below is page content and stays. */}
@@ -20579,7 +20581,11 @@ const setDays = (updater) =>
 
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
+          {/* Web: the standard black header band. Under native chrome the title
+              row is suppressed and only the filter chips remain in this band, so
+              it paints neutral-950 — matching the native bar above and the content
+              below; bg-black left a visible seam on OLED. */}
+          <div className={`border-b border-sky-500 ${NATIVE_CHROME_ACTIVE ? 'bg-neutral-950' : 'bg-black'} sticky top-0 z-40`} style={{ paddingTop: 'var(--sat)' }}>
             {!NATIVE_CHROME_ACTIVE && (
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
               <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
@@ -21938,7 +21944,9 @@ const setDays = (updater) =>
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
-          <div className="border-b border-neutral-800 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
+          {/* Web: black header band. Native chrome: only the kebab row stays in
+              the band → neutral-950, matching bar + content (no OLED seam). */}
+          <div className={`border-b border-neutral-800 ${NATIVE_CHROME_ACTIVE ? 'bg-neutral-950' : 'bg-black'} sticky top-0 z-40`} style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
               {/* Back + title suppressed under native chrome (native bar owns them); the kebab
                   (More options) is kept, right-aligned via the flex-1 spacer. */}
@@ -22760,7 +22768,9 @@ const setDays = (updater) =>
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
-          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
+          {/* Web: black header band. Native chrome: only the New Invoice row stays
+              in the band → neutral-950, matching bar + content (no OLED seam). */}
+          <div className={`border-b border-sky-500 ${NATIVE_CHROME_ACTIVE ? 'bg-neutral-950' : 'bg-black'} sticky top-0 z-40`} style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
               {/* Back + title suppressed under native chrome (native bar owns them); the
                   New Invoice action is kept, right-aligned via the flex-1 spacer. */}
