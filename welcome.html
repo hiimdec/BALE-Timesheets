@@ -73,13 +73,24 @@
     }
     body { min-height: 100vh; }
 
-    /* subtle radial — sky tint at the top */
+    /* subtle radial — sky tint at the top. The tail is EASED (multi-stop,
+       ~halving alpha per stop, out to 100% of the ellipse): a linear ramp at
+       these low alphas has only ~25 8-bit levels to spend, and ending it at a
+       65% stop packed them into ~150px — which quantised into a visible band
+       with a hard bottom edge on OLED. Spreading the last levels over the full
+       radius makes each step wider than the eye can register. */
     body::before {
       content: ""; position: absolute; inset: 0 0 auto 0; height: 80vh;
       z-index: -1; pointer-events: none;
       background:
-        radial-gradient(70% 55% at 50% -10%, rgba(14,165,233,0.16) 0%, transparent 65%),
-        radial-gradient(40% 30% at 80% 15%, rgba(125,211,252,0.06) 0%, transparent 70%);
+        radial-gradient(70% 55% at 50% -10%,
+          rgba(14,165,233,0.16) 0%, rgba(14,165,233,0.09) 25%,
+          rgba(14,165,233,0.04) 50%, rgba(14,165,233,0.016) 70%,
+          rgba(14,165,233,0.006) 86%, transparent 100%),
+        radial-gradient(40% 30% at 80% 15%,
+          rgba(125,211,252,0.06) 0%, rgba(125,211,252,0.03) 35%,
+          rgba(125,211,252,0.012) 65%, rgba(125,211,252,0.005) 85%,
+          transparent 100%);
     }
 
     /* ─────────────────────────────────────────────────────

@@ -53,10 +53,15 @@
       text-rendering: optimizeLegibility;
       line-height: 1.6;
     }
+    /* Eased tail (see welcome.html): a short linear stop quantised into a
+       hard-edged band on OLED; multi-stop falloff to 100% reads as a true fade. */
     body::before {
       content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
       z-index: -1; pointer-events: none;
-      background: radial-gradient(50% 40% at 50% -5%, rgba(14,165,233,0.10) 0%, transparent 65%);
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
     }
 
     a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
