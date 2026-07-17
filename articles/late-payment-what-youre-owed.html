@@ -144,9 +144,10 @@
 
     /* Rate table - figures mono (BRAND: money/data only), chrome from the
        card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
     .rate-table {
       width: 100%; border-collapse: separate; border-spacing: 0;
-      margin: 16px 0 20px;
+      margin: 0;
       background: var(--card); border: 1px solid var(--border);
       border-radius: 12px; overflow: hidden;
     }
@@ -248,6 +249,7 @@
       <p><strong>Statutory interest</strong> at 8% above the Bank of England base rate, calculated daily from the day after payment was due until the day it is paid.</p>
       <p><strong>A fixed recovery fee</strong>, on top of the interest, based on the size of the debt:</p>
 
+      <div class="table-scroll">
       <table class="rate-table">
         <thead>
           <tr>
@@ -261,6 +263,7 @@
           <tr><td>£10,000 or more</td><td>£100</td></tr>
         </tbody>
       </table>
+      </div>
 
       <p>That fee is per invoice, not per chase. It exists to cover the cost of you having to go and get your own money.</p>
       <p>You do not need the client's permission. You do not need it written into your contract. It is a statutory entitlement, and it applies automatically once payment is late.</p>

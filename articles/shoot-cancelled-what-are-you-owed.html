@@ -144,9 +144,10 @@
 
     /* Rate table - figures mono (BRAND: money/data only), chrome from the
        card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
     .rate-table {
       width: 100%; border-collapse: separate; border-spacing: 0;
-      margin: 16px 0 20px;
+      margin: 0;
       background: var(--card); border: 1px solid var(--border);
       border-radius: 12px; overflow: hidden;
     }
@@ -238,6 +239,7 @@
       <h2>The scale</h2>
       <p>Notice given before the engagement, and what you're owed:</p>
 
+      <div class="table-scroll">
       <table class="rate-table">
         <thead>
           <tr>
@@ -252,6 +254,7 @@
           <tr><td>The day before</td><td>100% of the agreed fee</td></tr>
         </tbody>
       </table>
+      </div>
 
       <p>Two things jump out.</p>
       <p>The first is that <strong>seven days' notice pays you nothing at all</strong>. Not a reduced rate. Nothing. If they cancel a week out, that's a clean release and you're expected to go and find other work.</p>
