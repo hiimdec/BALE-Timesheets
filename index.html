@@ -19494,11 +19494,16 @@ const setDays = (updater) =>
                 )}
               </div>
               {IS_NATIVE && (
+                // This subtitle is the app's ALWAYS-VISIBLE HealthKit
+                // identification: it renders on any native install with no
+                // name and no shoot days set, so App Review can find the
+                // declared Apple Health functionality without setup. It must
+                // keep naming Apple Health and the read-steps purpose.
                 <div className="mt-4 pt-4 border-t border-neutral-800">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Show step stats</div>
-                      <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">The Legwork block on the Stats screen. iOS only.</div>
+                      <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Legwork on the Stats screen uses Apple Health to read your step count on shoot days. iOS only.</div>
                     </div>
                     <Toggle value={userPrefs.healthStepsHidden !== true} onChange={(v) => set({ healthStepsHidden: !v })} ariaLabel="Show step stats" />
                   </div>
@@ -20169,7 +20174,12 @@ const setDays = (updater) =>
         return { total, n, skipped, hardest, wage };
       }, [stepsByDay, dayEntries]);
 
-      if (phase === 'loading' || phase === 'unavailable') return null;
+      // Only the genuine loading state renders nothing. 'unavailable' used to
+      // return null too, which erased the whole section (header included) on
+      // devices without HealthKit - exactly where App Review went looking for
+      // the declared Health functionality and found no trace (the 2.5.1
+      // iPad-review rejections). It now renders the identification line below.
+      if (phase === 'loading') return null;
 
       const quipCard = (label, f, quip) => (
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
@@ -20186,6 +20196,9 @@ const setDays = (updater) =>
       return (
         <>
           <SectionHdr>Legwork</SectionHdr>
+          {phase === 'unavailable' && (
+            <p className="text-xs text-neutral-500">Legwork uses Apple Health to count steps on shoot days. Apple Health is not available on this device.</p>
+          )}
           {phase === 'preask' && (
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
               <p className="text-xs text-neutral-400 leading-relaxed mb-3">Connect Apple Health and TimeMachine will count your steps between call and wrap. Shoot days only, and only on this phone.</p>
