@@ -1715,20 +1715,17 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "5.2.1";
+    const APP_VERSION = "5.3.0";
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-07-06",
+      date: "2026-07-13",
       added: [
-        "Sharing a call sheet in now offers the shoots near today's date, nearest first, with a pinned new shoot option - and fixed the picker closing itself when you scrolled it.",
-        "Automatic iCloud backup — a private daily snapshot in your own iCloud, visible to no one else. Delete the app or switch phones and reinstalling offers your data back.",
-        "Late payment charges — statutory interest and the fixed recovery fee added to an overdue invoice in a tap, shown as one document with the working. Removable any time.",
-        "Chase an overdue invoice — a prefilled email with the invoice PDF attached, quoting exactly what's owed including any charges.",
-        "Accountant export — pick a tax year and get a CSV of every invoice plus a summary with month-by-month totals and mileage.",
-        "Fixes: newly added records now survive a relaunch; chase and feedback emails open reliably on iPhone; PDF and email failures say so instead of doing nothing.",
+        "Pay calculations reviewed end to end against the APA terms, with a number of edge cases corrected - overtime on long continuous nights and on Sunday and bank holiday continuous days, night shoot break charges, Saturday early calls, travel time on every day type, and some rounding at exact times. Day-to-day calculations are unchanged; the trickier days now come out exactly right.",
+        "Saved clients get a proper home - a full-screen manager with search, your most recent clients first, tap to edit, swipe to delete. Deleting a saved client never touches an invoice you've already created.",
+        "A small visual refresh to how expandable sections open.",
       ],
-      notes: "Automatic iCloud backup, statutory late-payment charges, chase emails with the invoice attached, and a tax-year accountant export. See CHANGELOG.md for full notes.",
+      notes: "Pay accuracy improvements across the trickier day types, a full-screen saved clients manager, and a small visual polish. See CHANGELOG.md for full notes.",
     };
 
     /* ─── Schema version & storage-safety helpers ─── */
@@ -2602,7 +2599,16 @@
       return variances;
     }
     const absTime = (t, callH) => { if (t === null || callH === null) return null; return t < callH ? t + 24 : t; };
-    const ceilHalf = (n) => Math.ceil(n * 2) / 2;
+    // TIME_EPS — 3.6-second tolerance for threshold comparisons and half-hour
+    // ceilings on parseHHMM-derived floats. h + m/60 is binary-inexact for most
+    // minutes, so arithmetic like (wrap − call) − basicHrs can land 1 ulp ABOVE
+    // an exact rule boundary; a bare > or Math.ceil then amplifies that noise
+    // into a full increment — a phantom 30m of OT, a phantom £10 late lunch, a
+    // phantom CWD conversion — always in the over-billing direction. Inputs are
+    // minute-granular (1 min = 0.0167h ≫ 0.001) so the epsilon can never absorb
+    // a genuine minute. Same 0.001 the 2nd-break late check has always used.
+    const TIME_EPS = 0.001;
+    const ceilHalf = (n) => Math.ceil(n * 2 - TIME_EPS) / 2;
     const computeAPArate = (bdr, multiplier, apaRounding) => { const raw = (Number(bdr) || 0) * multiplier / 10; return apaRounding ? Math.round(raw) : raw; };
 
     // Rounding: a single mode ('exact' | 'favourable' | 'apa') is the source of
@@ -2782,21 +2788,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // non-shoot day types have no meal obligation, so CWD, late-lunch
       // penalties, and 2nd-break obligations do not apply.
       const cwdApplies = (effectiveDayType === "Shoot" || effectiveDayType === "Pre-light");
-      const lunchLate = cwdApplies && !lunchMissed && lunchStartAbs > lateThreshold && lunchStartAbs <= cwdThreshold;
-      const lunchVeryLate = cwdApplies && !lunchMissed && lunchStartAbs > cwdThreshold;
+      const lunchLate = cwdApplies && !lunchMissed && lunchStartAbs > lateThreshold + TIME_EPS && lunchStartAbs <= cwdThreshold + TIME_EPS;
+      const lunchVeryLate = cwdApplies && !lunchMissed && lunchStartAbs > cwdThreshold + TIME_EPS;
       const continuousDay = cwdApplies && (lunchMissed || lunchVeryLate);
       const sbDeadline = lunchEndAbs !== null ? lunchEndAbs + 5.5 : null;
-      const secondBreakRequired = cwdApplies && !continuousDay && sbDeadline !== null && wrapAbs > sbDeadline;
+      const secondBreakRequired = cwdApplies && !continuousDay && sbDeadline !== null && wrapAbs > sbDeadline + TIME_EPS;
       const cwd1Deadline = callH + 9;
       const cwd2Deadline = callH + 12.5;
-      const cwd2Required = continuousDay && wrapAbs > cwd2Deadline;
+      const cwd2Required = continuousDay && wrapAbs > cwd2Deadline + TIME_EPS;
       const sbStartH = parseHHMM(day.secondBreakStartTime);
       const sbStartAbs = absTime(sbStartH, callH);
       const sbDuration = Number(day.secondBreakDurationMins ?? 30);
       let sbState = "given";
       if (!secondBreakRequired) sbState = "na";
       else if (sbDuration === 0 || sbStartH === null) sbState = "missed";
-      else if (sbStartAbs > sbDeadline + 0.001) sbState = "late";
+      else if (sbStartAbs > sbDeadline + TIME_EPS) sbState = "late";
       else if (sbDuration < 30) sbState = "curtailed";
       return {
         callH, wrapAbs, wrapNextDay, workedHrs,
@@ -3037,9 +3043,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // them (only basic-rate travel time absorbs into unused basic-day hours).
       const preCallTripleChargeable = ceilHalf(preCallSplit.triple);
       const preCallOtChargeable = ceilHalf(preCallSplit.ot);
-      // Pre-call sits outside the basic day, so it never fills basic hours for
-      // the downstream travel-absorption gap.
-      const preUnitHrs = 0;
+      // Pre-call hours DO count toward the travel-absorption on-clock figure
+      // (fix/calc-audit B3, Derrick's ruling) — the raw preCallSplit.total is
+      // read directly in the travel block below.
       if (preCallSplit.total > 0) {
         if (isNightShoot) {
           // APA §2.1.5: night shoots pay flat 2× BHR call-to-wrap, no
@@ -3067,26 +3073,65 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // to the OT line's detail and skip the separate Curtailed 1st Break
       // line entirely.
       const curtailedMinsAbsorbedInOT = (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60 &&
-        !isNightShoot && !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > 0)
+        !isNightShoot && !treatAsSun && !crew.noOT && (effectiveHrs - basicHrs) > TIME_EPS)
         ? (60 - lunchDuration)
         : 0;
       const otCurtailedSuffix = curtailedMinsAbsorbedInOT > 0 ? ` · incl. ${curtailedMinsAbsorbedInOT}m curtailed lunch` : '';
 
       if (isNightShoot) {
-        const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
-        const paidHrs = ceilHalf(Math.max(workedHrs - lunchDeduct, 10));
         const nightRate = bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding);
-        lines.push({
-          label: "Night Shoot (2× BHR)",
-          detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
-          rate: nightRate, qty: paidHrs, amount: paidHrs * nightRate,
-        });
-        if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
+        // APA §2.2.2/§2.2.5 (fix/calc-audit B1): a WEEKDAY night that runs
+        // continuous (first break missed or started past 6.5h — the same
+        // §6.2-conversion flag as the day engine) is a Continuous Working Day
+        // at night: double BDR covers 9 hours from call, then OT at 2× BHR —
+        // clock-based like every CWD (no lunch deduction), and NO triple after
+        // midnight (the clause prices night-CWD OT at double BHR; §2.1.5's
+        // no-triple language covers night engagements). No separate min-10h:
+        // 2× BDR ≡ 10h × 2× BHR, so continuous days of ≤9h pay exactly what
+        // the old flat floor paid. Confirmed by the PDF's own §2.2.2 example:
+        // 1st AD £785, call 03:00 wrap 13:00 = 2×BDR + 1h OT = £1,727 — OT
+        // starts after NINE hours, not ten. Weekend/BH nights stay flat per
+        // the explicit §2.4(iii)/(iv) night rows (honouring the production's
+        // weekend-mode toggles via treatAsSat/treatAsSun).
+        if (continuousDay && !treatAsSat && !treatAsSun) {
+          lines.push({
+            label: "Night CWD (2× BDR)",
+            detail: callWrapLabel,
+            rate: bdr * 2, qty: 1, amount: bdr * 2,
+          });
+          const nightOtHrs = ceilHalf(Math.max(0, wrapAbs - (callH + 9)));
+          if (nightOtHrs > 0) {
+            lines.push({ label: "Night CWD OT (2× BHR)", detail: `${toHHMM(callH + 9)} – ${toHHMM(wrapAbs)}`, rate: nightRate, qty: nightOtHrs, amount: nightOtHrs * nightRate });
+          }
+        } else {
+          const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
+          const paidHrs = ceilHalf(Math.max(workedHrs - lunchDeduct, 10));
+          lines.push({
+            label: "Night Shoot (2× BHR)",
+            detail: `${callWrapLabel}${lunchDeduct ? ` · ${Math.round(lunchDeduct * 60)}m lunch` : ""}`,
+            rate: nightRate, qty: paidHrs, amount: paidHrs * nightRate,
+          });
+          if (workedHrs - lunchDeduct < 10) notes.push("Min call 10h applied");
+        }
       } else if (treatAsSat) {
         const satRate = computeAPArate(bdr, satMult, weekendOpts.apaRounding);
         const satOtRate = bectuOtRate ?? satRate;
         if (effectiveDayType === "Shoot") {
           lines.push({ label: `Saturday Day (${satMult}× BDR)`, detail: callWrapLabel + (isElevenHourDay ? " · 11-hour day" : ""), rate: bdr * satMult, qty: 1, amount: bdr * satMult });
+          // APA §2.1.3 (fix/calc-audit B2, Derrick-approved): "Early call rule
+          // applies on all days throughout a week, Monday to Sunday" — the
+          // only §2.1.x clause with an all-days override (its Mon–Fri opener
+          // is the section template). Early hours on a Saturday pay at the
+          // Saturday OT rate (§2.4(i)/§4.6), additive to the flat 1.5× BDR
+          // exactly as the weekday premium is additive to flat BDR; the OT
+          // threshold (11h from call, or 9h on a CWD) is unchanged and the
+          // 05:00–07:00 band is disjoint from the night bands. Sunday needs
+          // no code: the hourly 2×BHR-from-call structure already pays those
+          // hours at §4.7's Sunday OT rate (2× BHR).
+          if (isEarly && !crew.noOT) {
+            const earlyHrs = ceilHalf(7 - callH);
+            lines.push({ label: `Early Call (${satMult}× BHR)`, detail: `${day.callTime} – 07:00`, rate: satOtRate, qty: earlyHrs, amount: earlyHrs * satOtRate });
+          }
           // APA §4.6: Saturday OT is 1.5× BHR, but OT after 00:00 is 3× BHR and
           // continues at triple to wrap.
           const otTotal = ceilHalf(Math.max(0, effectiveHrs - basicHrs));
@@ -3114,13 +3159,48 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
       } else if (treatAsSun) {
         const sunRate = computeAPArate(bdr, sunMult, weekendOpts.apaRounding);
-        if (effectiveDayType === "Shoot") {
+        if (effectiveDayType === "Shoot" && continuousDay) {
+          // APA §2.4(vi) (fix/calc-audit, Derrick-approved): "Continuous
+          // Working Day if on Sundays, Bank Holidays and Statutory Holidays
+          // means you will be paid at two times your basic daily rate.
+          // Overtime commences after 9 hours from the call time. For each
+          // overtime hour, you will get paid double your basic hourly (2xBHR)
+          // rate." The old hourly model came up 1h × 2× BHR short from 10h on
+          // (2× BDR buys nine hours, so OT meters from hour 9). Clock-based
+          // like every CWD (no lunch deduction); §4.7 keeps after-midnight OT
+          // at triple — same OT-gated split as A3. No min-10h: 2× BDR ≡ the
+          // old hourly floor, so continuous days of ≤9h are payout-identical.
+          // Saturday §2.4(v) already matches the engine — untouched.
+          lines.push({ label: `${sunBranchPrefix} CWD (${sunMult}× BDR)`, detail: callWrapLabel, rate: bdr * sunMult, qty: 1, amount: bdr * sunMult });
+          const sunCwdOtStart = callH + basicHrs;   // basicHrs === 9 on a CWD
+          const otTotal = ceilHalf(Math.max(0, wrapAbs - sunCwdOtStart));
+          const tripleStart = Math.max(sunCwdOtStart, 24);
+          const tripleHrs = ceilHalf(Math.max(0, wrapAbs - tripleStart));
+          const flatOtHrs = Math.max(0, otTotal - tripleHrs);
+          if (flatOtHrs > 0) {
+            lines.push({ label: `${sunBranchPrefix} CWD OT (${sunMult}× BHR)`, detail: tripleHrs > 0 ? `${toHHMM(sunCwdOtStart)} – 00:00` : `${toHHMM(sunCwdOtStart)} – ${toHHMM(wrapAbs)}`, rate: sunRate, qty: flatOtHrs, amount: flatOtHrs * sunRate });
+          }
+          if (tripleHrs > 0) {
+            const tripleRate = bectuOtRate ?? computeAPArate(bdr, 3, weekendOpts.apaRounding);
+            lines.push({ label: "OT Triple Time (after 00:00)", detail: `00:00 – ${toHHMM(wrapAbs)}`, rate: tripleRate, qty: tripleHrs, amount: tripleHrs * tripleRate });
+          }
+        } else if (effectiveDayType === "Shoot") {
           const lunchDeduct = lunchMissed ? 0 : lunchDuration / 60;
           const paidHrs = Math.max(workedHrs - lunchDeduct, 10);
-          // APA §4.7: Sun/BH is 2× BHR for all hours, but hours after 00:00 are
-          // 3× BHR and continue at triple to wrap. Split the flat day at
-          // midnight; the min-10h floor tops up the pre-midnight (2× BHR) part.
-          const tripleHrs = ceilHalf(Math.max(0, wrapAbs - 24));
+          // APA §4.4/§4.7: 3× after midnight is an OVERTIME rate — it applies
+          // only to OT hours that cross 00:00, and continues at triple to
+          // wrap. Gate the split on the OT start exactly like the weekday and
+          // Saturday branches do (fix/calc-audit A3 — the old unconditional
+          // wrapAbs − 24 split paid 3× for post-midnight hours INSIDE the
+          // basic/min-10h day, and let triple eat the min-10h top-up).
+          // OT on the hourly Sunday structure starts basicHrs after CALL —
+          // not after effectiveStart: the §2.1.4 late-call "day counted from
+          // 11:00" renormalisation belongs to the flat weekday/Sat day-fee
+          // model; on hourly-all-hours Sunday pay it would manufacture OT for
+          // afternoon calls (e.g. a 15:00 call "in OT" from 22:00).
+          const sunOtStartAbs = callH + basicHrs;
+          const tripleStart = Math.max(sunOtStartAbs, 24);
+          const tripleHrs = ceilHalf(Math.max(0, wrapAbs - tripleStart));
           const flatHrs = Math.max(0, paidHrs - tripleHrs);
           lines.push({
             label: `${sunBranchPrefix} Shoot (${sunMult}× BHR, flat)`,
@@ -3195,16 +3275,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // at source in deriveBreakState, so this only fires on Shoot/Pre-light.
       // Flat £10 on all day types including night shoots (APA §6.2).
       if (bs.lunchLate) lines.push({ label: "Late 1st Break", detail: "", rate: null, qty: 1, amount: 10 });
-      // Curtailed 1st Break (APA §6.2): basic hours are reduced by the curtailed minutes
-      // (lines 998-999), which already shifts the OT threshold earlier. If wrap doesn't
-      // cross the adjusted threshold (no OT worked), pay the curtailed minutes at the
-      // applicable day rate. If OT was crossed, the curtailed time is absorbed into the
-      // OT calc (informational line at £0).
-      // V4-5h-14 (F8.1): Sun/BH pay at 2× BHR, Sat at Sat multiplier × BHR.
-      // V4-7-1: night shoots have no OT (flat 2× BHR call-to-wrap), so the
-      // "absorbed in OT" branch is suppressed and curtailment always pays
-      // the curtailment minutes at 2× BHR.
-      if (bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
+      // Curtailed 1st Break (APA §6.2) — FLAT-pay structures only (weekday and
+      // Saturday, where the day fee is a fixed BDR multiple that does not grow
+      // when lunch shrinks): basic hours are reduced by the curtailed minutes,
+      // which shifts the OT threshold earlier. If wrap doesn't cross the
+      // adjusted threshold (no OT worked), pay the curtailed minutes at the
+      // applicable day rate; if OT was crossed, the curtailed time is absorbed
+      // into the OT line (its detail carries "incl. Nm curtailed lunch").
+      // HOURLY-paid structures (Sunday/Bank Holiday, night shoots) are
+      // excluded (fix/calc-audit A2): they pay worked-minus-actual-lunch, so
+      // the curtailed minutes are ALREADY paid as worked time — the old
+      // unconditional top-up here double-counted them (+30m × 2× BHR).
+      if (bs.cwdApplies && !isNightShoot && !treatAsSun && !lunchMissed && lunchDuration > 0 && lunchDuration < 60) {
         const shortMins = 60 - lunchDuration;
         const curtailedHrs = shortMins / 60;
         // When OT was crossed the curtailment is already absorbed into the
@@ -3213,14 +3295,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // applicable day rate.
         const otCrossed = curtailedMinsAbsorbedInOT > 0;
         if (!otCrossed) {
-          const penaltyRate = isNightShoot ? (bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding))
-                            : treatAsSun ? computeAPArate(bdr, sunMult, weekendOpts.apaRounding)
-                            : treatAsSat ? computeAPArate(bdr, satMult, weekendOpts.apaRounding)
-                            : bhr;
-          const rateLabel = isNightShoot ? '2× BHR · night shoot'
-                          : treatAsSun ? `${sunMult}× BHR`
-                          : treatAsSat ? `${satMult}× BHR`
-                          : 'BHR single time';
+          const penaltyRate = treatAsSat ? computeAPArate(bdr, satMult, weekendOpts.apaRounding) : bhr;
+          const rateLabel = treatAsSat ? `${satMult}× BHR` : 'BHR single time';
           lines.push({ label: "Curtailed 1st Break", detail: `${shortMins}m × ${rateLabel}`, rate: penaltyRate, qty: curtailedHrs, amount: curtailedHrs * penaltyRate });
         }
       }
@@ -3230,11 +3306,28 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (bs.cwdApplies && (lunchMissed || bs.lunchVeryLate) && day.noMealProvided) {
         lines.push({ label: "Missed Meal Allowance", detail: "", rate: null, qty: 1, amount: 7.5 });
       }
-      // 2nd Break + CWD Break penalties: night shoots use 2× BHR (matching the
-      // flat night-shoot rate per APA §2.1.5); all other day types stay at
-      // single BHR per §6.3 / §6.4.
+      // Break penalties on nights charge at 2× BHR — Derrick's ruling
+      // (2026-07-12): a deliberate crew-favourable choice, uniform across the
+      // 1st-break, 2nd-break and CWD-break charges, because the night day
+      // operates at double time. This EXCEEDS the literal single-rate reading
+      // (§6.2/§6.3 night rows say "charged at basic hourly rate", and the
+      // PDF's own §2.2.2 night-CWD example prices the missed 30m break at
+      // £39 = single BHR for a £785 1st AD) — a chosen generosity, not an
+      // oversight. Weekday/weekend day-shift penalties stay at single BHR
+      // per §6.3/§6.4.
       const breakPenaltyRate = isNightShoot ? (bectuOtRate ?? computeAPArate(bdr, 2, weekendOpts.apaRounding)) : bhr;
       const breakPenaltyLabel = isNightShoot ? '2× BHR' : 'BHR';
+      // §6.2 night row (fix/calc-audit A4, Derrick-approved): "Missed break on
+      // a night shoot is charged at basic hourly rate" — and the FIRST break
+      // is one hour (§6.2: "Your first break of one hour…"), so a night shoot
+      // that misses it is charged a full hour on top of worked-time pay.
+      // Rate per the ruling above: the prevailing night 2× BHR. Gated on
+      // lunchMissed — a very-late-but-taken break converts the day via §6.2
+      // without this charge. Stacks with the B1 continuous-night conversion
+      // (separate concerns: the structure change vs the missed-break charge).
+      if (isNightShoot && bs.cwdApplies && lunchMissed) {
+        lines.push({ label: "Missed 1st Break (night)", detail: `1h × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate });
+      }
       if (secondBreakRequired) {
         if (sbState === "missed" || sbState === "late") {
           lines.push({ label: sbState === "late" ? "Late 2nd Break (treated as missed)" : "Missed 2nd Break", detail: `30m × ${breakPenaltyLabel}`, rate: null, qty: 1, amount: breakPenaltyRate * 0.5 });
@@ -3253,14 +3346,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const travelBackRaw = Math.max(0, finMins(day.travelBackMins) - 60) / 60;
       const travelHrs = travelOutRaw + travelBackRaw;
       if (travelHrs > 0) {
-        // APA §3.1: travel is payable only once travel + work exceeds 11h,
-        // regardless of day type (a flat 11h threshold, not the day's basic hours).
-        const travelGap = Math.max(0, 11 - (workedHrs + preUnitHrs));
+        // APA §3.1 travel-time gate (fix/calc-audit B3, Derrick's model):
+        // billable travel (first hour each way already deducted above) pays
+        // only to the extent it exceeds the day's shortfall against a
+        // NET-WORKED full-day bar. onClock counts what the crew actually
+        // gave: net worked hours (span minus the lunch actually taken — a
+        // curtailed lunch therefore shifts this threshold earlier by the
+        // curtailed amount, the same uniform rule as OT's basicHrs shift; no
+        // separate credit term, the shorter lunch is already more work) plus
+        // raw pre-call hours. Late calls need no special term: netWorked
+        // measured from the actual call against the full bar makes the
+        // notional 11:00→call hours the shortfall emergently, and an early
+        // wrap widens it (ruled: absorbs the full shortfall). Bars are per
+        // day type, net of the unpaid lunch where the type has one:
+        // Shoot/basic-night 10 (11 on an 11-hour-day arrangement), any CWD 9,
+        // Prep/Recce/Build/De-rig 8, Pre-light 8. Travel itself is ALWAYS
+        // 1× BHR (§3.1 "single time, regardless of time, or day of the
+        // week") — never the day's 1.5×/2× rate.
+        const travelBarNet = continuousDay ? 9
+          : effectiveDayType === "Shoot" ? (isElevenHourDay ? 11 : 10)
+          : 8; // Pre-light + Prep/Recce/Build/De-rig: 8 worked hours when full
+        const lunchTakenHrs = lunchMissed ? 0 : lunchDuration / 60;
+        const onClockHrs = (workedHrs - lunchTakenHrs) + preCallSplit.total;
+        const travelGap = Math.max(0, travelBarNet - onClockHrs);
         const chargeableTravel = ceilHalf(Math.max(0, travelHrs - travelGap));
         if (chargeableTravel > 0) {
           lines.push({ label: "Travel Time", detail: "1hr each way deducted", rate: bhr, qty: chargeableTravel, amount: chargeableTravel * bhr });
         } else {
-          notes.push(`Travel not paid (work ${workedHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ 11h threshold)`);
+          notes.push(`Travel not paid (on-clock ${onClockHrs.toFixed(1)}h + travel ${travelHrs.toFixed(1)}h ≤ ${travelBarNet}h full-day bar)`);
         }
       }
       const miles = Number(day.miles) || 0;
@@ -4589,7 +4702,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function calcTOC(prevResolvedDay, currResolvedDay, effectiveCrew, apaRounding = false) {
       if (isPmpaRole(effectiveCrew)) return null;
       const rest = restHoursBetween(prevResolvedDay, currResolvedDay);
-      if (rest === null || rest >= 11) return null;
+      if (rest === null || rest >= 11 - TIME_EPS) return null;
       const bhr = computeAPArate(effectiveCrew.bdr, 1, apaRounding);
       const otRate = (effectiveCrew.otRate != null && effectiveCrew.otRate > 0) ? Number(effectiveCrew.otRate) : computeAPArate(effectiveCrew.bdr, Number(effectiveCrew.otCoef) || 1, apaRounding);
       // APA §5: crew may be engaged for up to 1 hour of TOC per break. The

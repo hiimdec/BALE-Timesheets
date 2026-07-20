@@ -275,6 +275,57 @@ const scenarios = [
   mk('R06', 'Both roundings on, Sat shoot with OT', {}, { date: '2026-06-06', wrapTime: '22:00' }, { apaRounding: true, favourableRounding: true }),
   mk('R07', 'OT coefficient 1.25 (junior bracket)', { otCoef: 1.25 }, { wrapTime: '22:00' }),
   mk('R08', 'Fixed otRate override (£75/h)', { otRate: 75 }, { wrapTime: '22:00' }),
+
+  // S. Boundary regression probes (fix/calc-audit) — cases that sit ON an
+  //    exact rule boundary reached from 5/10-minute-grid times, where pre-fix
+  //    FP noise tipped the calc a full increment (phantom 30m OT / phantom £10
+  //    late lunch / phantom CWD conversion). Parity probes only — the
+  //    expected-£ pins for these live in calc-boundary-assertions.js.
+  mk('S01', 'OT exactly 1.0h from 10-min grid (08:10-20:10)', {}, { callTime: '08:10', wrapTime: '20:10', lunchStartTime: '11:10', secondBreakStartTime: '17:00', secondBreakDurationMins: 30 }),
+  mk('S02', 'OT exactly 0.5h from 10-min grid (08:10-19:40)', {}, { callTime: '08:10', wrapTime: '19:40', lunchStartTime: '13:10' }),
+  mk('S03', 'Lunch exactly at +5:30 (07:05 call, 12:35 lunch)', {}, { callTime: '07:05', wrapTime: '18:05', lunchStartTime: '12:35' }),
+  mk('S04', 'Lunch exactly at +6:30 (07:05 call, 13:35 lunch)', {}, { callTime: '07:05', wrapTime: '19:05', lunchStartTime: '13:35' }),
+  mk('S05', 'Real 1h01m OT still rounds up (08:10-20:11)', {}, { callTime: '08:10', wrapTime: '20:11', lunchStartTime: '11:10', secondBreakStartTime: '17:00', secondBreakDurationMins: 30 }),
+  mk('S06', 'Curtailed lunch, wrap exactly at shifted OT threshold (18:30)', {}, { wrapTime: '18:30', lunchDurationMins: 30 }),
+  mk('S07', 'TOC rest exactly 11h (prev wrap 21:10, call 08:10)', {}, { callTime: '08:10', wrapTime: '19:10' }, {}, { date: '2026-05-31', callTime: '08:00', wrapTime: '21:10' }),
+  mk('S08', 'Sunday curtailed lunch 30m (hourly pay, no top-up)', {}, { date: '2026-06-07', lunchDurationMins: 30 }),
+  mk('S09', 'Night shoot curtailed lunch 30m (hourly pay, no top-up)', {}, { callTime: '20:00', wrapTime: '07:00', wrapNextDay: true, lunchStartTime: '01:00', lunchDurationMins: 30 }),
+  mk('S10', 'Saturday curtailed lunch 30m no-OT (flat pay, top-up kept)', {}, { date: '2026-06-06', wrapTime: '18:00', lunchDurationMins: 30 }),
+  mk('S11', 'Sunday crossing midnight inside basic day (no OT, no triple)', {}, { date: '2026-06-07', callTime: '16:30', wrapTime: '03:30', wrapNextDay: true, lunchStartTime: '21:00' }),
+  mk('S12', 'Sunday min-10h crossing midnight (floor tops up at 2x)', {}, { date: '2026-06-07', callTime: '15:00', wrapTime: '01:30', wrapNextDay: true, lunchStartTime: '19:00' }),
+  mk('S13', 'Sunday genuine OT past midnight (1h triple)', {}, { date: '2026-06-07', callTime: '08:00', wrapTime: '01:00', wrapNextDay: true, secondBreakStartTime: '18:00', secondBreakDurationMins: 30 }),
+  // B1 (§2.2.2/§2.2.5): weekday continuous nights = 2×BDR + OT after 9h at 2×BHR.
+  mk('S14', 'Weekday continuous night 12h (2xBDR + 3h OT@2xBHR)', {}, { callTime: '22:00', wrapTime: '10:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  mk('S15', "PDF §2.2.2 example (1st AD £785: structure £1,570+£157, +A4 night charge)", { role: '1st AD', bdr: 785, otCoef: 1.0 }, { callTime: '03:00', wrapTime: '13:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  mk('S16', 'BASIC night 12h with lunch stays flat (no-regression)', {}, { callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '01:00', secondBreakStartTime: '07:00', secondBreakDurationMins: 30 }),
+  mk('S17', 'Saturday continuous night stays flat per §2.4(iii)', {}, { date: '2026-06-06', callTime: '22:00', wrapTime: '10:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  // §2.4(vi): Sunday/BH continuous day = 2×BDR + OT after 9h at 2×BHR.
+  mk('S18', 'Sunday continuous day 12h (2xBDR + 3h OT@2xBHR)', {}, { date: '2026-06-07', callTime: '08:00', wrapTime: '20:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  // A4 (§6.2/§6.3 night rows): missed 1st break on a night charges 1h at the
+  // ruled 2×BHR; very-late (taken) converts without the charge.
+  mk('S19', 'Saturday night missed 1st break (flat + 1h night charge)', {}, { date: '2026-06-06', callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  mk('S20', 'Weekday night very-late lunch (converts, no missed charge)', {}, { callTime: '20:00', wrapTime: '08:00', wrapNextDay: true, lunchStartTime: '03:00', cwdBreak1Given: true, cwdBreak2Given: true }),
+  // B2 (§2.1.3 "all days throughout a week"): Saturday early-call premium.
+  mk('S21', 'Saturday 06:00 early call (1h premium at 1.5xBHR)', {}, { date: '2026-06-06', callTime: '06:00', wrapTime: '17:00', lunchStartTime: '11:00' }),
+  mk('S22', 'Saturday 07:00 call — no premium (boundary)', {}, { date: '2026-06-06', callTime: '07:00', wrapTime: '18:00', lunchStartTime: '12:00' }),
+  mk('S23', 'Saturday 06:00 early call + CWD (premium + OT after 9h)', {}, { date: '2026-06-06', callTime: '06:00', wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true }),
+  // B3 (§3.1, Derrick's net-worked model): travel pays past the day's
+  // shortfall vs a per-day-type NET bar (Shoot/basic-night 10, CWD 9,
+  // Prep/Recce/Build/De-rig 8, Pre-light 8); onClock = span − lunch taken
+  // + raw pre-call; always 1× BHR. 120m each way = 2h billable throughout.
+  mk('S24', 'Travel: full Shoot day pays all 2h', {}, { travelOutMins: 120, travelBackMins: 120 }),
+  mk('S25', 'Travel: 1h-early wrap absorbs 1h', {}, { wrapTime: '18:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S26', 'Travel: 1h-early wrap + 30m lunch → 1.5h (threshold shift)', {}, { wrapTime: '18:00', lunchDurationMins: 30, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S27', 'Travel: 1h-early wrap + 1h pre-call fills the gap', {}, { wrapTime: '18:00', preCallTime: '07:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S28', 'Travel: late call 13:00→22:00 fully absorbed', {}, { callTime: '13:00', wrapTime: '22:00', lunchStartTime: '18:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S29', 'Travel: late call 12:00→22:00 absorbs 1h', {}, { callTime: '12:00', wrapTime: '22:00', lunchStartTime: '17:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S30', 'Travel: full CWD (bar 9) pays all 2h', {}, { wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S31', 'Travel: 7h CWD fully absorbed', {}, { wrapTime: '15:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S32', 'Travel: full Prep day (bar 8) pays all 2h', {}, { dayType: 'Prep Day', wrapTime: '16:00', lunchStartTime: '', lunchDurationMins: 0, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S33', 'Travel: full Pre-light (bar 8) pays all 2h', {}, { dayType: 'Pre-light', wrapTime: '17:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S34', 'Travel: night basic full — 2h at 1xBHR not 2x', {}, { callTime: '20:00', wrapTime: '07:00', wrapNextDay: true, lunchStartTime: '01:00', travelOutMins: 120, travelBackMins: 120 }),
+  mk('S35', 'Travel: Sunday CWD full — 2h at 1xBHR not 2x', {}, { date: '2026-06-07', wrapTime: '17:00', lunchStartTime: '', lunchDurationMins: 0, cwdBreak1Given: true, cwdBreak2Given: true, travelOutMins: 120, travelBackMins: 120 }),
+  mk('S36', 'Travel: Saturday full Shoot — 2h at 1xBHR not 1.5x', {}, { date: '2026-06-06', travelOutMins: 120, travelBackMins: 120 }),
 ];
 
 module.exports = { scenarios };
