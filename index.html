@@ -4434,6 +4434,56 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return { clientId: fresh.id, nextClients: [...list, fresh] };
     }
 
+    /* ═══════════════ SAVED-CLIENTS management helpers ══════════════════════
+     * Pure, READ-ONLY over productions. Saved clients live in userPrefs.clients
+     * ({ id, name, address, email }); an invoice NEVER references a client id —
+     * it carries its OWN copied client fields (clientFieldsFromProduction), so
+     * these stats and the delete are display/list-only and can never touch a
+     * frozen invoice. The app's client↔production link is production.clientId,
+     * so "invoices for a client" = invoices on productions carrying that id. */
+
+    // Usage stats for one saved client: how many invoices reference it (via
+    // production.clientId), the most recent one's timestamp (for the sort), and
+    // that invoice's job title (for the row subtitle). A production the user
+    // never linked (typed a name, never saved) simply doesn't count — the number
+    // is an informational hint, and deletion is safe regardless.
+    function clientUsageStats(clientId, productions) {
+      if (!clientId) return { count: 0, lastTs: 0, lastJob: '' };
+      let count = 0, lastTs = 0, lastJob = '';
+      for (const p of productions || []) {
+        if (p.clientId !== clientId) continue;
+        for (const inv of (p.invoices || [])) {
+          count++;
+          const dstr = inv.invoiceDate || String(inv.createdAt || '').slice(0, 10);
+          const ts = dstr ? new Date(dstr + 'T12:00:00').getTime() : 0;
+          const t = Number.isFinite(ts) ? ts : 0;
+          if (t >= lastTs) { lastTs = t; lastJob = inv.jobTitle || p.title || ''; }
+        }
+      }
+      return { count, lastTs, lastJob };
+    }
+
+    // Most-recently-used first (by the newest linked invoice); clients never
+    // used (lastTs 0) sink to the bottom, alphabetical among themselves. Ties
+    // (same last date, or both unused) break alphabetically by name.
+    function sortClientsByRecency(clients, productions) {
+      return (clients || [])
+        .map(c => ({ c, s: clientUsageStats(c.id, productions) }))
+        .sort((a, b) =>
+          (b.s.lastTs - a.s.lastTs) ||
+          String(a.c.name || '').toLowerCase().localeCompare(String(b.c.name || '').toLowerCase()))
+        .map(x => x.c);
+    }
+
+    // Case-insensitive filter across client/company name AND email.
+    function filterClients(clients, query) {
+      const q = (query || '').trim().toLowerCase();
+      if (!q) return clients || [];
+      return (clients || []).filter(c =>
+        String(c && c.name || '').toLowerCase().includes(q) ||
+        String(c && c.email || '').toLowerCase().includes(q));
+    }
+
     function createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId) {
       const crewMember = (production.crew || []).find(c => c.id === userCrewId);
       const prefix = userPrefs.invoicePrefix || "INV-";
@@ -18716,7 +18766,147 @@ const setDays = (updater) =>
       );
     }
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onExportAccountant = () => {}, accountantYears = [], onResetAll, productionCount = 0 }) {
+    /* ═══════════════════════ CLIENTS management screen ════════════════════
+     * Full-screen (pushed from Settings, native back / web back chevron). Search
+     * + most-recently-used sort + tap-to-edit + swipe-to-delete over the SAME
+     * userPrefs.clients store — NO new storage, NO migration. Deleting removes a
+     * client from the saved list only; invoices carry their own frozen copy and
+     * are never touched. */
+    function ClientsScreen({ userPrefs, setUserPrefs, productions, onClose }) {
+      useBackLevel(true, onClose, 'clients');   // native back returns to Settings
+      const clients = userPrefs.clients || [];
+      const [query, setQuery] = useState('');
+      const [openRowId, setOpenRowId] = useState(null);   // SwipeableRow: one open at a time
+      const [editing, setEditing] = useState(null);       // { id, name, email, address, isNew } | null
+
+      const sorted = React.useMemo(() => sortClientsByRecency(clients, productions), [clients, productions]);
+      const visible = React.useMemo(() => filterClients(sorted, query), [sorted, query]);
+
+      const openEdit = (c) => setEditing({ id: c.id, name: c.name || '', email: c.email || '', address: c.address || '', isNew: false });
+      const openAdd  = () => setEditing({ id: uid(), name: '', email: '', address: '', isNew: true });
+      const deleteClient = (id) => setUserPrefs(p => ({ ...p, clients: (p.clients || []).filter(c => c.id !== id) }));
+      const saveEdit = () => {
+        if (!editing) return;
+        const name = (editing.name || '').trim();
+        const email = (editing.email || '').trim();
+        const address = editing.address || '';
+        // A brand-new client with nothing typed → discard, don't add an empty.
+        if (editing.isNew && !name && !email && !address.trim()) { setEditing(null); return; }
+        const rec = { id: editing.id, name, email, address };
+        setUserPrefs(p => {
+          const list = p.clients || [];
+          const exists = list.some(c => c.id === editing.id);
+          return { ...p, clients: exists ? list.map(c => c.id === editing.id ? rec : c) : [...list, rec] };
+        });
+        setEditing(null);
+      };
+
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 24px)' }}>
+          {/* Web header (native bar owns the back + "Clients" title on device). */}
+          {!NATIVE_CHROME_ACTIVE && (
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onClose} className="text-neutral-400 hover:text-sky-500 transition-colors p-1 -ml-1" aria-label="Back">
+                <IArrowLeft size={16}/>
+              </button>
+              <div className="flex-1 text-center font-bold uppercase tracking-tight text-sm">Clients</div>
+              <button onClick={openAdd} className="text-sky-500 hover:text-sky-400 transition-colors p-1 -mr-1" aria-label="Add client">
+                <IPlus size={18}/>
+              </button>
+            </div>
+          </div>
+          )}
+
+          <div className="max-w-2xl mx-auto px-4 py-4">
+            {/* Search + Add (content-level, so the Add is reachable on native too). */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none"><ISearch size={14}/></span>
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search name or email"
+                  className="w-full bg-neutral-900 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 rounded-lg pl-9 pr-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none"
+                />
+              </div>
+              <Btn variant="ghost" onClick={openAdd} className="flex-shrink-0"><IPlus size={13}/>Add</Btn>
+            </div>
+
+            {clients.length === 0 ? (
+              <div className="text-center py-16 text-neutral-600">
+                <div className="flex justify-center mb-3"><IUsers size={40}/></div>
+                <div className="text-sm">No saved clients yet.</div>
+                <div className="text-[12px] text-neutral-700 mt-1">Add one and it's ready for every invoice.</div>
+              </div>
+            ) : visible.length === 0 ? (
+              <div className="text-center py-12 text-neutral-600 text-sm">No clients match that search.</div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {visible.map((c) => {
+                  const stats = clientUsageStats(c.id, productions);
+                  const subtitle = c.email || stats.lastJob || '';
+                  return (
+                    <SwipeableRow key={c.id} rowId={c.id} openRowId={openRowId} setOpenRowId={setOpenRowId}
+                      onTap={() => openEdit(c)} onDelete={() => deleteClient(c.id)}>
+                      <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[14px] font-bold text-neutral-100 truncate">{c.name || 'Unnamed client'}</div>
+                          {subtitle && <div className="text-[12px] text-neutral-500 truncate mt-0.5">{subtitle}</div>}
+                          {stats.count > 0 && (
+                            <div className="text-[10px] text-neutral-600 mt-1 uppercase tracking-[0.14em]">Used in {stats.count} invoice{stats.count === 1 ? '' : 's'}</div>
+                          )}
+                        </div>
+                        <IChevronRight size={16} className="text-neutral-600 flex-shrink-0"/>
+                      </div>
+                    </SwipeableRow>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Edit / Add sheet — the existing client fields. */}
+          <Sheet open={!!editing} onClose={() => setEditing(null)} title={editing && editing.isNew ? 'Add client' : 'Edit client'}>
+            {editing && (
+              <div className="px-5 pb-2 space-y-3">
+                <Field label="Client / company name">
+                  <Input type="text" value={editing.name} placeholder="Client / company name" onChange={(e) => setEditing(s => ({ ...s, name: e.target.value }))} />
+                </Field>
+                <Field label="Email">
+                  <Input type="email" value={editing.email} placeholder="billing@example.com" onChange={(e) => setEditing(s => ({ ...s, email: e.target.value }))} />
+                </Field>
+                <Field label="Address">
+                  <textarea
+                    value={editing.address}
+                    rows={3}
+                    placeholder={"Address line 1\nLine 2\nPostcode"}
+                    onChange={(e) => setEditing(s => ({ ...s, address: e.target.value }))}
+                    className="w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none resize-none font-mono leading-snug"
+                    style={{ fontFamily: 'inherit' }}
+                  />
+                </Field>
+                {!editing.isNew && (() => {
+                  const st = clientUsageStats(editing.id, productions);
+                  return st.count > 0 ? (
+                    <p className="text-[11px] text-neutral-500 leading-relaxed">Used in {st.count} invoice{st.count === 1 ? '' : 's'}. Deleting removes it from your saved clients only - those invoices keep their own copy of the details.</p>
+                  ) : null;
+                })()}
+                <div className="flex gap-2 pt-1">
+                  {!editing.isNew && (
+                    <Btn variant="danger" onClick={() => { deleteClient(editing.id); setEditing(null); }} className="flex-shrink-0"><ITrash size={13}/>Delete</Btn>
+                  )}
+                  <Btn variant="primary" onClick={saveEdit} className="flex-1 justify-center">{editing.isNew ? 'Add client' : 'Save'}</Btn>
+                </div>
+              </div>
+            )}
+          </Sheet>
+        </div>
+      );
+    }
+
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onExportAccountant = () => {}, accountantYears = [], onResetAll, productionCount = 0, onManageClients = () => {} }) {
       useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
@@ -19162,72 +19352,30 @@ const setDays = (updater) =>
                 )}
               </div>
 
-              {/* 9. Saved clients (gated) + the on-device privacy footer. */}
+              {/* 9. Saved clients (gated) + the on-device privacy footer. The flat
+                  inline editor was replaced by a pushed full-screen Clients screen
+                  (search / recency sort / swipe-delete) - this is the entry row. */}
               {invoicingEnabled(userPrefs) && (<>
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Saved clients</div>
                 {(() => {
-                  const items = userPrefs.clients || [];
-                  const updateClient = (id, patch) =>
-                    set({ clients: items.map(c => c.id === id ? { ...c, ...patch } : c) });
-                  const removeClient = (id) =>
-                    set({ clients: items.filter(c => c.id !== id) });
-                  const addClient = () =>
-                    set({ clients: [...items, { id: uid(), name: "", address: "", email: "" }] });
+                  const count = (userPrefs.clients || []).length;
                   return (
-                    <div className="flex flex-col gap-2">
-                      <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
-                        Companies and clients you bill - invoices and new productions auto-fill from this list.
-                      </div>
-                      {items.length === 0 && (
-                        <div className="text-[11px] text-neutral-600 italic py-2">No clients yet. Add your first and it's ready for every invoice.</div>
-                      )}
-                      {items.length > 0 && (
-                        <div className="flex flex-col gap-2">
-                          {items.map((client) => (
-                            <div
-                              key={client.id}
-                              className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 relative"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => removeClient(client.id)}
-                                className="absolute top-2 right-2 text-neutral-600 hover:text-tm-pen transition-colors p-1"
-                                style={{ WebkitTapHighlightColor: 'transparent' }}
-                                aria-label={`Remove ${client.name || 'client'}`}
-                              >
-                                <IX size={14}/>
-                              </button>
-                              <input
-                                type="text"
-                                value={client.name || ''}
-                                onChange={(e) => updateClient(client.id, { name: e.target.value })}
-                                placeholder="Client / company name"
-                                className="w-full bg-transparent text-[14px] font-bold text-neutral-100 placeholder-neutral-600 focus:outline-none pr-7"
-                              />
-                              <input
-                                type="email"
-                                value={client.email || ''}
-                                onChange={(e) => updateClient(client.id, { email: e.target.value })}
-                                placeholder="billing@example.com"
-                                className="w-full bg-transparent text-[12px] text-neutral-400 placeholder-neutral-600 focus:outline-none mt-0.5"
-                              />
-                              <textarea
-                                value={client.address || ''}
-                                onChange={(e) => updateClient(client.id, { address: e.target.value })}
-                                rows={3}
-                                placeholder={"Address line 1\nLine 2\nPostcode"}
-                                className="w-full bg-transparent text-[11px] text-neutral-500 placeholder-neutral-700 focus:outline-none resize-none mt-1.5 font-mono leading-snug"
-                                style={{ fontFamily: 'inherit' }}
-                              />
-                            </div>
-                          ))}
+                    <button
+                      type="button"
+                      onClick={onManageClients}
+                      className="w-full flex items-center gap-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-4 py-3 transition-colors text-left"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <span className="text-neutral-400"><IUsers size={18}/></span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[14px] font-semibold text-neutral-100">Manage clients</div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">
+                          {count === 0 ? 'Companies and clients you bill - auto-fill every invoice.' : `${count} saved`}
                         </div>
-                      )}
-                      <Btn variant="ghost" onClick={addClient} className="mt-1.5 self-start">
-                        <IPlus size={13}/>Add client
-                      </Btn>
-                    </div>
+                      </div>
+                      <IChevronRight size={16} className="text-neutral-600 flex-shrink-0"/>
+                    </button>
                   );
                 })()}
               </div>
@@ -25010,6 +25158,7 @@ const confirmDelete = (p) => setConfirmOpts({
       };
 
       const [showSettings, setShowSettings] = useState(false);
+      const [showClients, setShowClients] = useState(false);   // pushed from Settings (Manage clients)
       const [showStats, setShowStats] = useState(false);
       const [showNewProduction, setShowNewProduction] = useState(false);
       const [showMigrationBanner, setShowMigrationBanner] = useState(migrationResult.ran === true);
@@ -25539,8 +25688,9 @@ const confirmDelete = (p) => setConfirmOpts({
         // no root search/settings actions, and no tab bar (it keeps its own web X to close).
         // A tab-root SUB-screen (Stats Earnings, invoice wizard) is also NOT a root: it carries
         // a native back + plain title, no wordmark/actions/tab bar — same as a pushed screen.
-        const isTabRoot = userPrefs.onboardingComplete && !inShoot && !showSettings && !showNewProduction && !activeSubScreen;
+        const isTabRoot = userPrefs.onboardingComplete && !inShoot && !showSettings && !showClients && !showNewProduction && !activeSubScreen;
         const title = inShoot ? (currentProduction.title || 'Untitled production')
+          : showClients ? 'Clients'                // pushed over Settings — checked first
           : showSettings ? 'Settings'
           : showNewProduction ? 'New production'   // pushed screen — plain title, no wordmark
           : activeSubScreen ? activeSubScreen.title   // tab-root sub-screen (e.g. "Earnings")
@@ -25569,7 +25719,7 @@ const confirmDelete = (p) => setConfirmOpts({
           : [];
         NativeChrome.update({
           title,
-          backVisible: inShoot || showSettings || !!activeSubScreen,
+          backVisible: inShoot || showSettings || showClients || !!activeSubScreen,
           activeTab,
           tabBarVisible: isTabRoot,
           trailing,
@@ -25592,7 +25742,7 @@ const confirmDelete = (p) => setConfirmOpts({
           // mirrored value is live), which avoids a stale-true showing an X on the Stats/Invoices roots.
           searchActive: isTabRoot && activeTab === 'shoots' && searchActive,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showClients, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
 
       let screen;
       if (!userPrefs.onboardingComplete && icloudRestore === 'checking') {
@@ -25637,6 +25787,17 @@ const confirmDelete = (p) => setConfirmOpts({
             onComplete={() => {}}
           />
         );
+      } else if (showClients) {
+        // Pushed FROM Settings (showSettings stays true underneath); checked
+        // before showSettings so it renders on top, and back returns to Settings.
+        screen = (
+          <ClientsScreen
+            userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
+            productions={productions}
+            onClose={() => setShowClients(false)}
+          />
+        );
       } else if (showSettings) {
         screen = (
           <SettingsScreen
@@ -25648,6 +25809,7 @@ const confirmDelete = (p) => setConfirmOpts({
             accountantYears={accountantYears}
             onResetAll={handleResetAll}
             productionCount={productions.length}
+            onManageClients={() => setShowClients(true)}
           />
         );
       } else if (showStats) {

@@ -4475,11 +4475,11 @@ async function main() {
       html.includes('const [confirmDelete, setConfirmDelete] = useState(false);') &&
       html.includes('onConfirm={doDelete}'));
 
-    // ─ FF10: 3 production card variants + 1 invoice card variant = 4
-    //   SwipeableRow usage sites. ─
+    // ─ FF10: 3 production card variants + 1 invoice card variant + 1 clients
+    //   row (CL) = 5 SwipeableRow usage sites. ─
     const swipeUsages = (html.match(/<SwipeableRow\b/g) || []).length;
-    check('FF10 SwipeableRow rendered at 4 call sites (hero + full + compact production + invoice card)',
-      swipeUsages === 4,
+    check('FF10 SwipeableRow rendered at 5 call sites (hero + full + compact production + invoice card + clients row)',
+      swipeUsages === 5,
       `<SwipeableRow> usages=${swipeUsages}`);
 
     // ─ FF11: red Delete button label + ITrash icon inside SwipeableRow. ─
@@ -6624,7 +6624,10 @@ async function main() {
   // Source-presence only.
   {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
-    const importFn = (html.match(/function CallSheetImport\(\{ production, setProduction, userPrefs, autoFile, onImportApplied \}\)[\s\S]*?\n    \}\n\n    function SettingsScreen/) || [''])[0];
+    // NB: slice ends at CallSheetImport's own close. The ClientsScreen (CL)
+    // now sits between CallSheetImport and SettingsScreen, so the terminator
+    // anchors on the CLIENTS comment that immediately follows CallSheetImport.
+    const importFn = (html.match(/function CallSheetImport\(\{ production, setProduction, userPrefs, autoFile, onImportApplied \}\)[\s\S]*?\n    \}\n\n    \/\* ═+ CLIENTS management screen/) || [''])[0];
 
     check('UU1a CallSheet bridge defines isAvailable/pickDocument/extract, each returning BEFORE touching _capPlugins() unless IS_NATIVE',
       /const CallSheet = \{/.test(html) &&
@@ -7094,6 +7097,76 @@ async function main() {
         !/Statutory interest and the fixed recovery fee, added to this invoice as one document\./.test(html) &&
         chaseIdx > lineItemsIdx);
     })();
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // CL — Saved-clients management screen. The client store is UNCHANGED
+  // (userPrefs.clients { id, name, address, email }; no new key, no
+  // migration). This series EXECUTES the sort/filter/usage helpers and
+  // pins the frozen-copy safety: deleting a client touches the saved list
+  // ONLY — invoices carry their own copied fields and are never mutated.
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    const s = html.indexOf('function clientUsageStats');
+    const e = html.indexOf('function createNewInvoice');
+    const src = (s > 0 && e > s) ? html.slice(s, e) : '';
+    let H = null;
+    try { H = new Function(`${src}; return { clientUsageStats, sortClientsByRecency, filterClients };`)(); } catch (_) {}
+    check('CL0 the client helpers extract and execute', !!H);
+
+    if (H) {
+      // productions: p1 (clientId A, 2 invoices, latest 2026-03), p2 (clientId B,
+      // 1 invoice 2026-06), p3 (clientId A, 1 invoice 2026-01). Client C: unused.
+      const prods = [
+        { id: 'p1', clientId: 'A', title: 'Night Shoot', invoices: [
+          { invoiceDate: '2026-01-10', jobTitle: 'Jan job' },
+          { invoiceDate: '2026-03-20', jobTitle: 'Mar job' } ] },
+        { id: 'p2', clientId: 'B', title: 'Promo', invoices: [ { invoiceDate: '2026-06-01', jobTitle: 'Jun job' } ] },
+        { id: 'p3', clientId: 'A', title: 'Reshoot', invoices: [ { invoiceDate: '2026-02-14', jobTitle: 'Feb job' } ] },
+      ];
+      const clients = [
+        { id: 'A', name: 'Big Al Productions', email: 'al@bigal.example' },
+        { id: 'B', name: 'Agency X', email: 'billing@agencyx.example' },
+        { id: 'C', name: 'Aardvark Films', email: 'hi@aardvark.example' },
+      ];
+      const statsA = H.clientUsageStats('A', prods);
+      check('CL1 usage stats: count across ALL productions carrying the clientId, newest invoice wins',
+        statsA.count === 3 && statsA.lastJob === 'Mar job');
+      check('CL1b an unused client → zero count, no last job',
+        H.clientUsageStats('C', prods).count === 0 && H.clientUsageStats('C', prods).lastTs === 0);
+      const order = H.sortClientsByRecency(clients, prods).map(c => c.id);
+      // B latest = Jun (newest) → first; A latest = Mar → second; C unused → last.
+      check('CL2 sort: most-recently-used first, unused sink to the bottom (B, A, C)',
+        JSON.stringify(order) === JSON.stringify(['B', 'A', 'C']));
+      // Two unused clients tie-break alphabetically by name.
+      const twoUnused = H.sortClientsByRecency(
+        [{ id: 'z', name: 'Zeta' }, { id: 'a', name: 'Alpha' }], []).map(c => c.id);
+      check('CL2b unused clients sort alphabetically among themselves', JSON.stringify(twoUnused) === JSON.stringify(['a', 'z']));
+      check('CL3 filter matches name OR email, case-insensitive',
+        H.filterClients(clients, 'AGENCY').length === 1 &&
+        H.filterClients(clients, 'bigal.example')[0].id === 'A' &&
+        H.filterClients(clients, '').length === 3);
+    }
+
+    // ─ Source pins: the screen, its store, and the frozen-copy safety ─
+    check('CL4 ClientsScreen: swipe rows tap-to-edit + swipe-to-delete over the SAME store',
+      /function ClientsScreen\(\{ userPrefs, setUserPrefs, productions, onClose \}\)/.test(html) &&
+      /<SwipeableRow key=\{c\.id\}[\s\S]{0,160}onTap=\{\(\) => openEdit\(c\)\} onDelete=\{\(\) => deleteClient\(c\.id\)\}>/.test(html));
+    (() => {
+      const cs = html.indexOf('function ClientsScreen');
+      const ce = html.indexOf('function SettingsScreen');
+      const screen = (cs > 0 && ce > cs) ? html.slice(cs, ce) : '';
+      check('CL5 deleting a client filters userPrefs.clients ONLY — no invoice / production / clientId write',
+        /const deleteClient = \(id\) => setUserPrefs\(p => \(\{ \.\.\.p, clients: \(p\.clients \|\| \[\]\)\.filter\(c => c\.id !== id\) \}\)\);/.test(screen) &&
+        !/setProduction|invoices:|lineItems|clientId:/.test(screen));
+    })();
+    check('CL6 Settings row pushes the screen (onManageClients); Root routes showClients BEFORE showSettings with title Clients',
+      /onClick=\{onManageClients\}/.test(html) &&
+      /\} else if \(showClients\) \{[\s\S]{0,400}<ClientsScreen/.test(html) &&
+      /\} else if \(showSettings\) \{/.test(html) &&
+      /showClients \? 'Clients'[\s\S]{0,120}showSettings \? 'Settings'/.test(html));
+    check('CL7 no new storage key — clients stay in userPrefs (no bigals_clients)',
+      !/bigals_clients/.test(html));
   }
 
   // K3 — IDB UNHEALTHY → LS-as-primary, not partial IDB. A broken
