@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>How APA overtime actually works - TimeMachine</title>
-  <meta name="description" content="When overtime starts on an APA day, at what rate, and how the day rate, the tenth hour and the continuous working day fit together. Worked through with real numbers.">
+  <meta name="description" content="The three overtime grades, when OT starts for early and late calls, triple time after midnight, and the round-up rule. Worked through with real numbers.">
   <meta name="theme-color" content="#0a0a0a">
   <link rel="canonical" href="https://timemachineapp.co.uk/articles/how-apa-overtime-works">
 
   <meta property="og:site_name" content="TimeMachine">
   <meta property="og:title" content="How APA overtime actually works">
-  <meta property="og:description" content="When overtime starts on an APA day, at what rate, and how the day rate, the tenth hour and the continuous working day fit together.">
+  <meta property="og:description" content="The three overtime grades, when OT starts for early and late calls, triple time after midnight, and the round-up rule. Worked through with real numbers.">
   <meta property="og:url" content="https://timemachineapp.co.uk/articles/how-apa-overtime-works">
   <meta property="og:type" content="article">
   <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
@@ -19,7 +19,7 @@
   <meta property="og:image:alt" content="TimeMachine - APA timesheets, pay and invoicing for UK crew">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="How APA overtime actually works">
-  <meta name="twitter:description" content="When overtime starts on an APA day, at what rate, and how the day rate, the tenth hour and the continuous working day fit together.">
+  <meta name="twitter:description" content="The three overtime grades, when OT starts for early and late calls, triple time after midnight, and the round-up rule. Worked through with real numbers.">
   <meta name="twitter:image" content="https://timemachineapp.co.uk/og.png">
 
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -53,10 +53,16 @@
       text-rendering: optimizeLegibility;
       line-height: 1.6;
     }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
     body::before {
       content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
       z-index: -1; pointer-events: none;
-      background: radial-gradient(50% 40% at 50% -5%, rgba(14,165,233,0.10) 0%, transparent 65%);
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
     }
 
     a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
@@ -137,21 +143,29 @@
     li::marker { color: var(--tm-accent); }
     strong { color: var(--text); font-weight: 600; }
 
-    .summary-pill {
-      background: rgba(14,165,233,0.06);
-      border: 1px solid rgba(14,165,233,0.20);
-      border-radius: 12px; padding: 18px 20px; margin: 24px 0 8px;
+    /* Rate table - figures mono (BRAND: money/data only), chrome from the
+       card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
+    .rate-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
     }
-    .summary-pill p { margin: 0; color: var(--text); font-size: 15px; line-height: 1.6; }
-    .summary-pill .head {
-      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
-      font-weight: 800; color: var(--tm-accent); margin-bottom: 6px;
+    .rate-table th {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; color: var(--text-3); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
     }
+    .rate-table td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 14px; color: var(--text);
+      padding: 12px 16px;
+    }
+    .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
 
-    /* A gentle marker for sections whose full copy is still to be written. */
-    .stub-note {
-      font-size: 13px; color: var(--text-4); font-style: italic; margin-top: 6px;
-    }
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
 
     .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
     .btn {
@@ -182,10 +196,10 @@
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     "headline": "How APA overtime actually works",
-    "description": "When overtime starts on an APA day, at what rate, and how the day rate, the tenth hour and the continuous working day fit together.",
+    "description": "The three overtime grades, when OT starts for early and late calls, triple time after midnight, and the round-up rule. Worked through with real numbers.",
     "url": "https://timemachineapp.co.uk/articles/how-apa-overtime-works",
     "image": "https://timemachineapp.co.uk/og.png",
-    "datePublished": "2026-07-06",
+    "datePublished": "2026-07-17",
     "author": { "@type": "Organization", "name": "TimeMachine" },
     "publisher": { "@type": "Organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" },
     "mainEntityOfPage": "https://timemachineapp.co.uk/articles/how-apa-overtime-works"
@@ -221,37 +235,109 @@
 
       <p class="label">Article</p>
       <h1>How APA overtime actually works</h1>
-      <p class="byline">Draft - full breakdown to follow - TimeMachine</p>
+      <p class="byline">TimeMachine</p>
 
-      <div class="summary-pill">
-        <div class="head">In short</div>
-        <p>Overtime is not just "after ten hours". It depends on your booked day, the rate you agreed, and what counts as working time. This guide walks through each piece with real numbers.</p>
+      <p>Here is the bit that surprises people: <strong>the more you earn, the less your overtime is worth.</strong></p>
+      <p>Not less in total. Less per hour, relative to your own rate. A lighting technician on £444 gets time and a half. A DoP on £1,516 gets time. Same agreement, same overtime, wildly different multiplier, and it is deliberate.</p>
+      <p>If you have ever been vaguely annoyed that your overtime didn't feel like it added up, this is probably why.</p>
+
+      <h2>The two numbers everything is built on</h2>
+      <p><strong>Your basic daily rate (BDR)</strong> is what you agreed. Appendix 1 of the APA Recommended Crew Terms lists a minimum and maximum for every grade, and what you negotiate sits somewhere in that band.</p>
+      <p><strong>Your basic hourly rate (BHR)</strong> is exactly one tenth of your BDR. Not one eleventh, even though the day is eleven hours. One tenth. A £444 day gives you a £44 hour.</p>
+      <p>Every overtime calculation in the agreement is BHR multiplied by something. That's it. The whole system is one number and a coefficient.</p>
+
+      <h2>The three grades</h2>
+      <p>Which coefficient you get depends purely on your day rate:</p>
+
+      <div class="table-scroll">
+      <table class="rate-table">
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            <th scope="col">Basic daily rate</th>
+            <th scope="col">Overtime coefficient</th>
+            <th scope="col">You get</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Grade I</td><td>£0 to £444</td><td>1.5</td><td>Time and a half</td></tr>
+          <tr><td>Grade II</td><td>£445 to £676</td><td>1.25</td><td>Time and a quarter</td></tr>
+          <tr><td>Grade III</td><td>£677 and above</td><td>1.0</td><td>Flat time</td></tr>
+        </tbody>
+      </table>
       </div>
 
-      <p>This article is a work in progress - the structure below is in place and the full, worked-through copy is on its way. It will always defer to the published APA Recommended Crew Terms, and to your own agreement where you have negotiated something different.</p>
+      <p>A lighting technician on the £444 ceiling is Grade I, so their overtime hour is £44 × 1.5 = £67.</p>
+      <p>A gaffer on £568 is Grade II, so theirs is £57 × 1.25 = £71.</p>
+      <p>A DoP on £1,516 is Grade III. Their overtime hour is £152 × 1.0 = £152. Enormous in absolute terms, and no uplift whatsoever for the fact that it's overtime.</p>
+      <p>The logic is that the higher rates are already priced to absorb long days. Whether you find that convincing is up to you, but it's the deal, and it's worth knowing which side of £444 and £677 you're sitting on, because a fiver on your day rate can move you a whole grade and cost you money on every overtime hour you work for the rest of the job.</p>
 
-      <h2>When overtime starts</h2>
-      <p>What your booked day covers, where the standard day ends, and the point at which the clock moves into overtime.</p>
-      <p class="stub-note">Full section to follow.</p>
+      <h2>When overtime actually starts</h2>
+      <p>The basic working day is <strong>eleven hours in total</strong>: ten working hours and one hour for lunch. Overtime applies after eleven hours from your call.</p>
+      <p>So an 08:00 call means overtime starts at 19:00. Not 18:00. The unpaid lunch hour is inside the eleven.</p>
+      <p>That changes with your call time:</p>
+      <p><strong>Standard call (7am to 11am).</strong> Overtime after eleven hours from call.</p>
+      <p><strong>Early call (5am to 7am).</strong> The hours between 5am and 7am are paid at your overtime rate straight away, then the rest of the day is charged as a normal basic day. Overtime still starts eleven hours after your actual call. A 05:00 call means two hours at OT immediately, then BDR, then overtime again from 16:00.</p>
+      <p>The early call rule applies <strong>all seven days of the week</strong>, Monday to Sunday. Not just weekdays.</p>
+      <p><strong>Late call (11am to 5pm).</strong> The basic day is deemed to start at 11am no matter how late you're actually called. So a 13:00 call still runs its eleven hours from 11am, and overtime starts at 22:00. You are, in effect, being paid for two hours you didn't work. Which is also why a late call day that wraps early can leave you with nothing extra.</p>
 
-      <h2>The overtime rate</h2>
-      <p>How the overtime rate is worked out from your basic daily rate, and why the hourly figure is not simply the day rate divided by the hours.</p>
-      <p class="stub-note">Full section to follow.</p>
+      <h2>The rounding rule is in your favour</h2>
+      <p>Section 4.5: overtime is charged per minute, and <strong>you are entitled to round up to thirty minutes</strong>.</p>
+      <p>Work ten minutes of overtime, charge thirty. Work thirty five minutes, charge an hour.</p>
+      <p>It rounds up, always, in your direction. That's not a courtesy, it's the agreement.</p>
 
-      <h2>The tenth hour and beyond</h2>
-      <p>How the later hours of a long day are treated, and how that stacks on top of the earlier overtime.</p>
-      <p class="stub-note">Full section to follow.</p>
+      <h2>Triple time after midnight</h2>
+      <p>Any <strong>overtime</strong> worked between midnight and 5am is paid at three times your basic hourly rate. And once you're into it, you stay in it: the triple rate continues until wrap, even past 5am.</p>
+      <p>The word doing the work there is <em>overtime</em>. Triple is an overtime rate. If you're still inside your basic eleven hours at half past midnight, you're on your basic day rate, not triple. The two conditions have to stack: past your eleven hours, and past midnight.</p>
+      <p>Getting this wrong in either direction is common. Crew undercharge by assuming midnight alone triggers it. Productions occasionally overcharge themselves by paying triple for basic hours.</p>
 
-      <h2>The continuous working day</h2>
-      <p>What a continuous working day is, when a missed or late break changes the picture, and how it feeds back into what you are owed.</p>
-      <p class="stub-note">Full section to follow.</p>
+      <h2>Weekends</h2>
+      <p>Saturdays and Sundays don't use your overtime coefficient at all. They use a flat multiplier on every hour worked:</p>
+
+      <div class="table-scroll">
+      <table class="rate-table">
+        <thead>
+          <tr>
+            <th scope="col">Day</th>
+            <th scope="col">Rate</th>
+            <th scope="col">Minimum call</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Saturday</td><td>1.5 × BHR for all hours worked</td><td>10 hours</td></tr>
+          <tr><td>Sunday, bank holiday, statutory holiday</td><td>2 × BHR for all hours worked</td><td>10 hours</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>The minimum call matters. Six hours on a Sunday still pays ten.</p>
+      <p>Overtime after midnight is still triple, based on your basic hourly rate. And going past 5am doesn't start a new engagement, you stay on the triple rate through to wrap.</p>
 
       <h2>A worked example</h2>
-      <p>One real day, start to finish: the call, the wrap, the breaks, and the number at the bottom - with every step shown.</p>
-      <p class="stub-note">Full worked example to follow.</p>
+      <p>Lighting technician, £444 day, Grade I, £44 hourly, £67 overtime.</p>
+      <p>Call 08:00, wrap 22:00.</p>
+      <ul>
+        <li>08:00 to 19:00 is the basic eleven hours: <strong>£444</strong></li>
+        <li>19:00 to 22:00 is three hours of overtime at £67: <strong>£201</strong></li>
+        <li><strong>Total: £645</strong></li>
+      </ul>
+      <p>Not fourteen hours multiplied by anything. Eleven hours as a fixed day fee, then hours at a coefficient. That's the shape of every calculation in the agreement.</p>
 
-      <h2>Let the app do the sums</h2>
-      <p>TimeMachine applies all of the above automatically from your call and wrap times, so you can check a day in seconds rather than arguing with a calculator at midnight.</p>
+      <h2>What we built</h2>
+      <p>TimeMachine works all of this out from your call and wrap. It knows your grade from your day rate, applies the right coefficient, starts overtime at the right hour for your call type, rounds up to the half hour in your favour, and switches to triple at the right moment on the right hours.</p>
+      <p>You can absolutely do it by hand. Most people do it in the Notes app at 1am and get it slightly wrong.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>BHR is one tenth of BDR. Everything else is that number times a coefficient.</li>
+        <li>Grade I (up to £444) is 1.5×. Grade II (£445 to £676) is 1.25×. Grade III (£677+) is 1.0×.</li>
+        <li>The basic day is eleven hours including the unpaid lunch. Overtime starts after eleven.</li>
+        <li>Late call? The day is deemed to start at 11am regardless.</li>
+        <li>Early call? 5am to 7am is paid at OT, and it applies all seven days.</li>
+        <li>Overtime rounds up to the nearest thirty minutes, in your favour.</li>
+        <li>Triple after midnight applies to overtime hours only, and continues past 5am to wrap.</li>
+        <li>Saturday is 1.5× BHR all day. Sunday and bank holidays are 2× BHR all day. Both have a ten hour minimum.</li>
+      </ul>
 
       <div class="cta-row">
         <a href="https://timemachineapp.co.uk/" class="btn">
@@ -259,6 +345,8 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
       </div>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA). It references the publicly available APA Recommended Crew Terms as a rate reference only. Rates quoted are from the September 2025 card. This article is general information, not legal or financial advice.</p>
     </div>
   </main>
 

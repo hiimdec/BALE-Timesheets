@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Night shoots: what you're owed - TimeMachine</title>
+  <meta name="description" content="Basic nights are flat double hourly with a ten hour minimum. Continuous nights pay double the daily rate plus overtime. Which one you're on, explained.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="canonical" href="https://timemachineapp.co.uk/articles/night-shoots-what-youre-owed">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="Night shoots: what you're actually owed">
+  <meta property="og:description" content="Basic nights are flat double hourly with a ten hour minimum. Continuous nights pay double the daily rate plus overtime. Which one you're on, explained.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/articles/night-shoots-what-youre-owed">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - APA timesheets, pay and invoicing for UK crew">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Night shoots: what you're actually owed">
+  <meta name="twitter:description" content="Basic nights are flat double hourly with a ten hour minimum. Continuous nights pay double the daily rate plus overtime. Which one you're on, explained.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #737373;
+      --text-4:    #525252;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100; transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+
+    main { padding: 40px 0 72px; }
+    @media (min-width: 768px) { main { padding: 56px 0 96px; } }
+
+    .back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-3);
+      text-decoration: none; margin-bottom: 28px;
+    }
+    .back:hover { color: var(--tm-accent); }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(30px, 4.6vw, 46px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.04; margin: 0 0 14px;
+    }
+    .byline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin: 0 0 32px;
+    }
+    h2 {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+      margin: 40px 0 10px; color: var(--text);
+    }
+    p, li { color: var(--text-2); font-size: 16px; line-height: 1.7; }
+    p + p { margin-top: 14px; }
+    ul { padding-left: 18px; margin: 8px 0 14px; }
+    li { margin: 6px 0; }
+    li::marker { color: var(--tm-accent); }
+    strong { color: var(--text); font-weight: 600; }
+
+    /* Rate table - figures mono (BRAND: money/data only), chrome from the
+       card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
+    .rate-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .rate-table th {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; color: var(--text-3); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
+    }
+    .rate-table td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 14px; color: var(--text);
+      padding: 12px 16px;
+    }
+    .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
+
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--tm-accent); color: #050505;
+      font-weight: 800; font-size: 14px; letter-spacing: 0.02em;
+      padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    }
+    .btn:hover { background: var(--tm-accent-2); color: #050505; }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Night shoots: what you're actually owed",
+    "description": "Basic nights are flat double hourly with a ten hour minimum. Continuous nights pay double the daily rate plus overtime. Which one you're on, explained.",
+    "url": "https://timemachineapp.co.uk/articles/night-shoots-what-youre-owed",
+    "image": "https://timemachineapp.co.uk/og.png",
+    "datePublished": "2026-07-17",
+    "author": { "@type": "Organization", "name": "TimeMachine" },
+    "publisher": { "@type": "Organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" },
+    "mainEntityOfPage": "https://timemachineapp.co.uk/articles/night-shoots-what-youre-owed"
+  }
+  </script>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
+      <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        Open the App
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/>
+          <polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+      <a href="/articles" class="back">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        All articles
+      </a>
+
+      <p class="label">Article</p>
+      <h1>Night shoots: what you're actually owed</h1>
+      <p class="byline">TimeMachine</p>
+
+      <p>Nights have a reputation for being complicated. They're not. A basic night shoot is the simplest calculation in the whole agreement, and it's simple because almost every rule you're used to gets switched off.</p>
+      <p>The complication is that there are two kinds of night, they look identical on a call sheet, and they pay very differently.</p>
+
+      <h2>What counts as a night</h2>
+      <p>Section 2.1.5: all work <strong>commencing between 5pm and 5am</strong> is night work.</p>
+      <p>It's the call time that decides it, not the hours. A 16:30 call that runs to three in the morning is not a night shoot. A 17:00 call that wraps at midnight is. The clock at the moment you're called is the only thing the rule looks at.</p>
+      <p>There's also section 2.1.2, which covers a call <strong>before 5am</strong> and works the same way. Between them, they cover the whole overnight window.</p>
+
+      <h2>The basic night: flat, and that's the point</h2>
+      <p>If you're called for a night shoot:</p>
+      <ul>
+        <li>You're paid <strong>double your basic hourly rate</strong> for every hour worked</li>
+        <li>From call to wrap</li>
+        <li>With a <strong>minimum call of ten hours</strong></li>
+        <li><strong>No overtime</strong></li>
+        <li><strong>No triple time after midnight</strong></li>
+        <li>The rate does not change at any point, from the first hour to the last</li>
+      </ul>
+      <p>That's it. That's the whole calculation. Hours worked, times two hourly, minimum ten.</p>
+      <p>The minimum call is worth saying out loud: work six hours on a night and you're paid ten. The production booked your night, so they bought your night.</p>
+      <p>And the flatness is genuinely unusual. Every other day type in the agreement has a threshold where the rate changes. A night doesn't. You can work sixteen hours through the middle of the night and every single hour is the same number. No escalation, no midnight cliff, nothing.</p>
+      <p><strong>Going past 5am is not a new day.</strong> You continue at double hourly until wrap. You don't tip into a day rate, you don't start a fresh engagement, and you're not owed anything extra for the sunrise.</p>
+      <p><strong>Lunch is unpaid and deducted.</strong> An 18:00 call wrapping at 05:00 is eleven hours on the clock, minus an hour for lunch, so ten paid hours at double hourly.</p>
+
+      <h2>Weekends make no difference</h2>
+      <p>This one catches people constantly.</p>
+
+      <div class="table-scroll">
+      <table class="rate-table">
+        <thead>
+          <tr>
+            <th scope="col">Night shoot on</th>
+            <th scope="col">Rate</th>
+            <th scope="col">Minimum call</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Weekday</td><td>2 × BHR</td><td>10 hours</td></tr>
+          <tr><td>Saturday</td><td>2 × BHR</td><td>10 hours</td></tr>
+          <tr><td>Sunday or bank holiday</td><td>2 × BHR</td><td>10 hours</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>A Saturday night is double hourly. Not 1.5 times double. A Sunday night is double hourly. Not double double.</p>
+      <p>The agreement says it in as many words: <strong>there is no such thing as a double-double rate.</strong></p>
+      <p>And if your night call is on a Saturday and the engagement rolls into Sunday, the rate stays the same throughout. The Saturday night rule follows the engagement. It doesn't reset at midnight and it doesn't upgrade.</p>
+      <p>The reason this feels wrong is that a Sunday <em>day</em> is double hourly too, and a Sunday day has no minimum ten. So a Sunday night and a Sunday day can pay identically for the same hours, which doesn't feel like it reflects who had the worse time. That's the deal as written.</p>
+
+      <h2>The other kind of night, and this is the expensive one</h2>
+      <p>Everything above describes a <strong>basic</strong> night. There's a second kind, and it pays substantially more.</p>
+      <p>If a night shoot is a <strong>continuous working day</strong>, sections 2.2.2 and 2.2.5 apply instead:</p>
+      <ul>
+        <li>You're paid <strong>double your basic daily rate</strong></li>
+        <li>The day includes <strong>nine hours</strong></li>
+        <li><strong>Overtime applies after nine hours from call</strong>, charged at double your basic hourly rate</li>
+      </ul>
+      <p>That is a completely different calculation. The flat model has no overtime at all. The continuous model has overtime after nine hours.</p>
+      <p>They agree exactly at ten hours, and diverge after that. Beyond ten hours, the flat model is short by an hour of double hourly, per hour, and it grows.</p>
+      <p>The agreement's own worked example makes the point better than any explanation. A 1st AD on £785, continuous night, call 03:00, wrap 13:00. The APA's own arithmetic charges the nine hour block at double the daily rate, and then charges the tenth hour separately at double the hourly rate. Ten hours, but not ten hours of one thing. Nine as a fixed fee, then overtime on top.</p>
+      <p>If you've been calculating your continuous nights as flat double hourly, you have been undercharging them, and so has almost everyone else.</p>
+
+      <h2>How to tell which one you're on</h2>
+      <p>Same test as any other day. A continuous working day is nine hours of continuous work with no breaks, and a normal day converts to one automatically if your first break hasn't started within six and a half hours of the main unit call.</p>
+      <p>So a night where lunch went late enough is a continuous night, whether anyone said so or not, and it's owed the continuous night calculation.</p>
+
+      <h2>Breaks on a night</h2>
+      <p>Breaks apply the same way as a standard day shoot: a first break and a second break.</p>
+      <p>The difference is what a missed one costs. On a night shoot, a <strong>missed break is charged at your basic hourly rate</strong>. The first break is an hour, so a missed first break on a night is an hour at BHR. The second break is half an hour, so a missed second is thirty minutes at BHR.</p>
+      <p>Note the rate. The whole night is running at double hourly, but the break penalty is written at basic hourly.</p>
+
+      <h2>What we built</h2>
+      <p>TimeMachine handles both night models. It knows a night from your call time, applies the flat double hourly with the ten hour minimum, deducts the unpaid lunch, and doesn't apply overtime or triple time where they don't belong.</p>
+      <p>And when a night is continuous, whether booked that way or converted by a late break, it switches to the double daily plus overtime after nine hours structure, which is the one that's worth more and the one that's most often missed.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>A night is any call between 5pm and 5am. It's the call time that decides, not the hours.</li>
+        <li>Basic night: double hourly for every hour, call to wrap, minimum ten hours.</li>
+        <li>No overtime. No triple after midnight. The rate never changes.</li>
+        <li>Past 5am is not a new day. Lunch is unpaid and deducted.</li>
+        <li>Saturday night, Sunday night, weekday night: all double hourly. There's no double-double.</li>
+        <li><strong>A continuous night is different</strong>: double the daily rate, plus overtime after nine hours at double hourly.</li>
+        <li>The two models agree at ten hours and diverge after. Above ten, flat is the wrong answer.</li>
+        <li>Missed breaks on a night are charged at basic hourly, not double.</li>
+      </ul>
+
+      <div class="cta-row">
+        <a href="https://timemachineapp.co.uk/" class="btn">
+          Open TimeMachine
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA). It references the publicly available APA Recommended Crew Terms as a rate reference only. This article is general information, not legal or financial advice.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

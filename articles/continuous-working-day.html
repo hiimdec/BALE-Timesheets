@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>The continuous working day, explained - TimeMachine</title>
+  <meta name="description" content="Nine hours, no breaks, overtime two hours earlier. How a late first break converts an ordinary shoot day to continuous, and what that's worth.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="canonical" href="https://timemachineapp.co.uk/articles/continuous-working-day">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="The continuous working day, and how you end up on one without being told">
+  <meta property="og:description" content="Nine hours, no breaks, overtime two hours earlier. How a late first break converts an ordinary shoot day to continuous, and what that's worth.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/articles/continuous-working-day">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - APA timesheets, pay and invoicing for UK crew">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="The continuous working day, and how you end up on one without being told">
+  <meta name="twitter:description" content="Nine hours, no breaks, overtime two hours earlier. How a late first break converts an ordinary shoot day to continuous, and what that's worth.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #737373;
+      --text-4:    #525252;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100; transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+
+    main { padding: 40px 0 72px; }
+    @media (min-width: 768px) { main { padding: 56px 0 96px; } }
+
+    .back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-3);
+      text-decoration: none; margin-bottom: 28px;
+    }
+    .back:hover { color: var(--tm-accent); }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(30px, 4.6vw, 46px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.04; margin: 0 0 14px;
+    }
+    .byline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin: 0 0 32px;
+    }
+    h2 {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+      margin: 40px 0 10px; color: var(--text);
+    }
+    p, li { color: var(--text-2); font-size: 16px; line-height: 1.7; }
+    p + p { margin-top: 14px; }
+    ul { padding-left: 18px; margin: 8px 0 14px; }
+    li { margin: 6px 0; }
+    li::marker { color: var(--tm-accent); }
+    strong { color: var(--text); font-weight: 600; }
+
+    /* Rate table - figures mono (BRAND: money/data only), chrome from the
+       card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
+    .rate-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .rate-table th {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; color: var(--text-3); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
+    }
+    .rate-table td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 14px; color: var(--text);
+      padding: 12px 16px;
+    }
+    .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
+
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--tm-accent); color: #050505;
+      font-weight: 800; font-size: 14px; letter-spacing: 0.02em;
+      padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    }
+    .btn:hover { background: var(--tm-accent-2); color: #050505; }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "The continuous working day, and how you end up on one without being told",
+    "description": "Nine hours, no breaks, overtime two hours earlier. How a late first break converts an ordinary shoot day to continuous, and what that's worth.",
+    "url": "https://timemachineapp.co.uk/articles/continuous-working-day",
+    "image": "https://timemachineapp.co.uk/og.png",
+    "datePublished": "2026-07-17",
+    "author": { "@type": "Organization", "name": "TimeMachine" },
+    "publisher": { "@type": "Organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" },
+    "mainEntityOfPage": "https://timemachineapp.co.uk/articles/continuous-working-day"
+  }
+  </script>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
+      <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        Open the App
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/>
+          <polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+      <a href="/articles" class="back">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        All articles
+      </a>
+
+      <p class="label">Article</p>
+      <h1>The continuous working day, and how you end up on one without being told</h1>
+      <p class="byline">TimeMachine</p>
+
+      <p>Most crew think a continuous working day is something you get booked for. A specific kind of job, agreed in advance, where everyone knows the deal.</p>
+      <p>It can be. But it can also just happen to you, halfway through an ordinary shoot day, because lunch ran late. Nobody announces it. The day quietly changes shape, and your pay changes with it.</p>
+      <p>If you don't know the trigger, you won't know it fired.</p>
+
+      <h2>What a continuous working day actually is</h2>
+      <p>Section 2.2 of the APA Recommended Crew Terms: a continuous working day is any day you work for a <strong>continuous period of nine hours with no breaks</strong>.</p>
+      <p>That's the trade. No lunch hour. In exchange:</p>
+      <ul>
+        <li>The day is <strong>nine hours</strong>, not eleven</li>
+        <li><strong>Overtime starts after nine hours</strong> from your call, not eleven</li>
+        <li>The production provides food and drink at an appropriate time during the day</li>
+        <li>The standard call is between 7am at the earliest and 11am at the latest</li>
+      </ul>
+      <p>The important number is nine. On a normal day your overtime starts eleven hours after call. On a continuous day it starts at nine. That's two extra hours of overtime on the same wrap time, and it's the whole reason the day type matters.</p>
+      <p>Call 08:00, wrap 20:00. On a normal day that's one hour of overtime. On a continuous day it's three.</p>
+
+      <h2>The breaks you're still owed</h2>
+      <p>Continuous doesn't mean you never stop. It means you don't get the standard hour.</p>
+      <p><strong>After nine hours</strong> you're entitled to a thirty minute break. If you don't get it, you're paid thirty minutes at your basic hourly rate as compensation.</p>
+      <p><strong>After twelve and a half hours</strong> there's a further thirty minute break, with the same rule if it's missed.</p>
+      <p>And critically: <strong>these breaks can't be delayed.</strong> There's no late-break penalty on a continuous day. The break is either given at the appropriate time or it isn't, and if it isn't, the missed break penalty is payable. Being handed your break an hour late is the same as not being handed it at all.</p>
+
+      <h2>The trigger nobody tells you about</h2>
+      <p>Here's the part worth tattooing somewhere.</p>
+      <p>Section 6.2 governs your first break on a normal shoot day. Your first break of one hour should begin no more than five and a half hours after work commences. If it's delayed, you get a £10 penalty.</p>
+      <p>But: <strong>if your first break has not commenced within six and a half hours of the main unit call, the day becomes a continuous working day</strong>, and the provisions of section 2.2 apply from that point.</p>
+      <p>Not "you get a bigger penalty." The day type changes.</p>
+      <p>And when it does, the £10 late lunch penalty stops being payable. The agreement is explicit about that. You don't get both. The day converting <em>is</em> the compensation.</p>
+      <p>So: lunch at five and a half hours plus a bit is a tenner. Lunch at six and a half hours and one minute is a completely different day, with overtime starting two hours earlier than you thought it would.</p>
+      <p>That is very often worth considerably more than a tenner, and almost nobody claims it, because nobody on set says "right, that's six and a half, we're continuous now."</p>
+
+      <h2>Weekends and nights</h2>
+      <p>The continuous rule stacks with the day you're working, and each combination has its own arithmetic:</p>
+
+      <div class="table-scroll">
+      <table class="rate-table">
+        <thead>
+          <tr>
+            <th scope="col">Day</th>
+            <th scope="col">Structure</th>
+            <th scope="col">Overtime after 9 hours</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Weekday</td><td>Basic daily rate</td><td>Your OT rate (grade coefficient × BHR)</td></tr>
+          <tr><td>Saturday</td><td>1.5 × basic daily rate</td><td>1.5 × BHR</td></tr>
+          <tr><td>Sunday, bank holiday</td><td>2 × basic daily rate</td><td>2 × BHR</td></tr>
+          <tr><td>Night (call 5pm to 5am, or before 5am)</td><td>2 × basic daily rate</td><td>2 × BHR</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>Note what happens on the weekend and night versions: it's a <strong>multiple of your daily rate</strong>, plus overtime after nine hours. That's different to how the equivalent non-continuous days work, and it's the single most commonly missed thing in the whole agreement.</p>
+      <p>A basic night shoot is flat: double hourly rate, every hour, no overtime ever. A <strong>continuous</strong> night is not. It's double the daily rate, plus overtime after nine hours at double the hourly rate. On a long night, those two models diverge by real money, and the flat one is the wrong answer.</p>
+      <p>Call types shift the start point the same way they do on a normal day. An early call (5am to 7am) pays those hours at your overtime rate, then runs nine hours from your actual call. A late call (11am to 5pm) is deemed to start at 11am, so overtime lands nine hours after that.</p>
+
+      <h2>Why this gets missed</h2>
+      <p>Continuous working days are unglamorous. There's no moment where anything changes visibly. You just... don't stop, and eat something standing up near the truck, and at some point the day ends.</p>
+      <p>The conversion trigger is worse, because it's a clock nobody's watching. Six and a half hours from a 07:00 call is 13:30. If lunch goes at 13:35, the day changed and there was no announcement, no note on the call sheet, and no producer volunteering the fact.</p>
+      <p>If you're not tracking your first break against the call time, you'll never know it happened.</p>
+
+      <h2>What we built</h2>
+      <p>TimeMachine tracks your first break against your call and tells you when it's late, when it's very late, and when the day has converted to continuous. When it converts, the engine switches the whole day to the continuous structure and moves your overtime start from eleven hours to nine, automatically, with the right rate for whatever day of the week it is.</p>
+      <p>It also stops the £10 penalty at that point, because the agreement says you don't get both, and an invoice that charges both is an invoice a production can argue with.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>A continuous working day is nine hours, no breaks. Overtime starts at nine hours, not eleven.</li>
+        <li>Thirty minute break after nine hours, another after twelve and a half. They can't be delayed.</li>
+        <li>If your first break hasn't started within six and a half hours of call, <strong>your day becomes continuous automatically</strong>.</li>
+        <li>When it converts, the £10 late lunch penalty no longer applies. You get one or the other.</li>
+        <li>Saturday: 1.5 × daily rate, OT at 1.5 × hourly after nine hours.</li>
+        <li>Sunday and bank holidays: 2 × daily rate, OT at 2 × hourly after nine hours.</li>
+        <li>A continuous night is 2 × daily rate plus overtime after nine. A basic night is flat 2 × hourly with no overtime at all. They are not the same day.</li>
+      </ul>
+
+      <div class="cta-row">
+        <a href="https://timemachineapp.co.uk/" class="btn">
+          Open TimeMachine
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA). It references the publicly available APA Recommended Crew Terms as a rate reference only. This article is general information, not legal or financial advice.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

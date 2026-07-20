@@ -126,11 +126,6 @@
       transition: border-color 150ms ease, transform 150ms ease;
     }
     .post-card:hover { border-color: #3a3a3a; transform: translateY(-1px); }
-    .post-date {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      font-size: 11px; letter-spacing: 0.06em; color: var(--text-3);
-      text-transform: uppercase; margin-bottom: 8px;
-    }
     .post-title { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: var(--text); margin: 0 0 8px; line-height: 1.2; }
     .post-teaser { color: var(--text-2); font-size: 14px; line-height: 1.6; margin: 0; }
     .post-badge {
@@ -183,10 +178,25 @@
 
       <div class="post-list">
         <!-- One self-contained file per article, listed newest first. -->
+        <a class="post-card" href="/articles/night-shoots-what-youre-owed">
+          <h2 class="post-title">Night shoots: what you're actually owed</h2>
+          <p class="post-teaser">Flat double hourly with a ten hour minimum, no overtime, no triple. Unless it's a continuous night, which pays more and looks identical on the call sheet.</p>
+        </a>
+        <a class="post-card" href="/articles/continuous-working-day">
+          <h2 class="post-title">The continuous working day, and how you end up on one without being told</h2>
+          <p class="post-teaser">Nine hours, no breaks, overtime from nine hours not eleven. If your first break starts late enough, an ordinary day converts automatically, and nobody announces it.</p>
+        </a>
         <a class="post-card" href="/articles/how-apa-overtime-works">
-          <div class="post-date">Coming soon</div>
-          <h2 class="post-title">How APA overtime actually works<span class="post-badge">Draft</span></h2>
-          <p class="post-teaser">When the clock ticks over into OT, at what rate, and how the day rate, the tenth-hour and the continuous working day fit together. The rules, worked through with real numbers.</p>
+          <h2 class="post-title">How APA overtime actually works</h2>
+          <p class="post-teaser">BHR is a tenth of your day rate, and the three grades decide your multiplier. When overtime starts, the round-up rule, and triple time after midnight.</p>
+        </a>
+        <a class="post-card" href="/articles/late-payment-what-youre-owed">
+          <h2 class="post-title">Late payment: the seven day rule, and what you can charge when they miss it</h2>
+          <p class="post-teaser">The APA terms say seven days. The industry drifted to thirty. The statutory interest and fixed recovery fees you can add when an invoice runs late.</p>
+        </a>
+        <a class="post-card" href="/articles/shoot-cancelled-what-are-you-owed">
+          <h2 class="post-title">Your shoot got cancelled. What are you owed?</h2>
+          <p class="post-teaser">Seven days' notice pays nothing, the day before pays the lot. The APA cancellation scale, how the days are counted, and the multi-day rule that catches people out.</p>
         </a>
       </div>
     </div>
