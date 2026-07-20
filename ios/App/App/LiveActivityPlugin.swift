@@ -42,7 +42,12 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "endForProduction", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endActivityIds", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "drainPendingEvents", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "setActiveShoot", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "setActiveShoot", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setDebugLogging", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getDebugLogging", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getDiagnostics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearDiagnostics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "appendDebugLog", returnType: CAPPluginReturnPromise)
     ]
 
     // App Group shared with the widget extension. The Stage-2 App Intents
@@ -70,6 +75,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // updateActivity in the background window. Idempotent on the JS side.
     override public func load() {
         TMLiveActivity.webviewObserving = true
+        TMLiveActivity.dbg("plugin.load", "webview booted")
         NotificationCenter.default.addObserver(
             self, selector: #selector(onDrainRequest),
             name: Notification.Name("TMLiveActivityDrainRequest"), object: nil)
@@ -117,10 +123,18 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 
         DispatchQueue.main.async {
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
-            let content = ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve),
-                staleDate: staleDate
-            )
+            // fix/la-husk Fix 2: capEpoch is NATIVE-OWNED — JS never sends it.
+            // The cap differs per branch (a fresh request starts a fresh ~8h
+            // lifetime; an adopted card keeps the one its request started), so
+            // the content is built per-branch from the cap. Every staleDate is
+            // clamped to min(semantic, cap) — the pre-cap wake that lets the
+            // widget render its truthful EXPIRED branch instead of husking.
+            let makeContent: (Double?) -> ActivityContent<TimeMachineActivityAttributes.ContentState> = { cap in
+                ActivityContent(
+                    state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve, capEpoch: cap),
+                    staleDate: TMLiveActivity.cappedStaleDate(staleDate, capEpoch: cap)
+                )
+            }
             // SINGLE-ACTIVITY INVARIANT (duplicate-card fix). "Start" is issued
             // by the controller on every fresh mount (its startedKeyRef is
             // mount-local) and on cold relaunch — where the in-memory
@@ -128,23 +142,47 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             // dedupe against the system registry, not the handle: if a card for
             // THIS production already exists, ADOPT + UPDATE it (never request a
             // second); end every other TimeMachine card so exactly one remains.
+            // fix/la-husk (d): adopt only a LIVE card (active/stale). A
+            // system-ended husk is not updatable — adopting it would update()
+            // into the void and resolve {adopted:true} while the lock screen
+            // keeps a dead card. Ended/dismissed pid-matches fall into the
+            // strays instead: the .immediate re-end is the dismissal attempt
+            // that clears a lingering husk where the registry still holds it,
+            // and a FRESH activity is requested in its place.
             let all = Activity<TimeMachineActivityAttributes>.activities
-            let adopt = all.first { $0.attributes.productionId == productionId }
+            let isLive: (Activity<TimeMachineActivityAttributes>) -> Bool = {
+                $0.activityState == .active || $0.activityState == .stale
+            }
+            let adopt = all.first { $0.attributes.productionId == productionId && isLive($0) }
             let strays = all.filter { $0.id != adopt?.id }
             if let adopt = adopt {
                 self.currentActivity = adopt
+                // Cap backfill for the adopted card: its own ContentState first
+                // (the request stamped it), else the App-Group requestedAt map
+                // (cold relaunch of a card whose state predates/lost the field),
+                // else start the clock now (never leave a live card uncapped —
+                // a late cap only errs towards expiring EARLY, never lying late).
+                let cap = adopt.content.state.capEpoch
+                    ?? TMLiveActivity.requestedAt(adopt.id).map { $0 + TMLiveActivity.lifetimeCap }
+                    ?? Date().timeIntervalSince1970 + TMLiveActivity.lifetimeCap
+                TMLiveActivity.dbg("plugin.start", "pid=\(productionId.prefix(8)) ADOPT id=\(adopt.id.prefix(8)) strays=\(strays.count) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom) cap=\(Int(cap))")
                 Task {
-                    await adopt.update(content)
+                    await adopt.update(makeContent(cap))
                     for s in strays { await s.end(nil, dismissalPolicy: .immediate) }
                     call.resolve(["id": adopt.id, "adopted": true])
                 }
             } else {
                 do {
-                    let activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
+                    // A fresh request starts a fresh iOS lifetime: cap = now + 7h45m.
+                    let cap = Date().timeIntervalSince1970 + TMLiveActivity.lifetimeCap
+                    let activity = try Activity.request(attributes: attributes, content: makeContent(cap), pushType: nil)
                     self.currentActivity = activity
+                    TMLiveActivity.recordRequestedAt(activity.id)
+                    TMLiveActivity.dbg("plugin.start", "pid=\(productionId.prefix(8)) REQUEST id=\(activity.id.prefix(8)) strays=\(strays.count) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom) cap=\(Int(cap))")
                     call.resolve(["id": activity.id])
                     Task { for s in strays { await s.end(nil, dismissalPolicy: .immediate) } }
                 } catch {
+                    TMLiveActivity.dbg("plugin.start.fail", error.localizedDescription)
                     call.reject("Failed to start Live Activity: \(error.localizedDescription)")
                 }
             }
@@ -155,7 +193,13 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func updateActivity(_ call: CAPPluginCall) {
         guard #available(iOS 16.2, *) else { call.resolve(); return }
-        guard let activity = currentActivity as? Activity<TimeMachineActivityAttributes> else { call.resolve(); return }
+        guard let activity = currentActivity as? Activity<TimeMachineActivityAttributes> else {
+            // The silent stale-content window: after a cold relaunch the system
+            // card survives but this in-memory handle is nil until the next
+            // startActivity adopts it — every update lands here and vanishes.
+            TMLiveActivity.dbg("plugin.update.noop", "handle=nil (cold-relaunch window) state=\(call.getString("state") ?? "?")")
+            call.resolve(); return
+        }
         let totalText = call.getString("totalText") ?? ""
         let state = call.getString("state") ?? "oncall"
         let callEpoch = call.getDouble("callEpoch") ?? 0
@@ -174,10 +218,17 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             // ContentState, not the start-fixed Attributes). armed:"" — an app-driven
             // update always clears any pending two-tap arm (the app never sends a
             // non-empty armed): the backstop reset for an arm that never confirmed.
+            // fix/la-husk Fix 2: the cap is PRESERVED across updates — the card's
+            // own state first, the requestedAt map as backfill. nil (an in-flight
+            // pre-cap card with no map entry) → no clamp, no EXPIRED branch:
+            // exactly the old behaviour until that card is re-minted.
+            let cap = activity.content.state.capEpoch
+                ?? TMLiveActivity.requestedAt(activity.id).map { $0 + TMLiveActivity.lifetimeCap }
             await activity.update(ActivityContent(
-                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve),
-                staleDate: staleDate
+                state: TimeMachineActivityAttributes.ContentState(totalText: totalText, state: state, callEpoch: callEpoch, anchorLabel: anchorLabel, endEpoch: endEpoch, armed: "", armedAt: 0, cwd: cwd, lunchEndEpoch: lunchEndEpoch, otFrom: otFrom, curtailMins: curtailMins, lunchLogged: lunchLogged, wrapCurve: wrapCurve, capEpoch: cap),
+                staleDate: TMLiveActivity.cappedStaleDate(staleDate, capEpoch: cap)
             ))
+            TMLiveActivity.dbg("plugin.update", "state=\(state) call=\(Int(callEpoch)) otFrom=\(otFrom.isEmpty ? "-" : otFrom) total=\(totalText) cap=\(cap.map { String(Int($0)) } ?? "-")")
             call.resolve()
         }
     }
@@ -186,12 +237,16 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func endActivity(_ call: CAPPluginCall) {
         guard #available(iOS 16.2, *) else { call.resolve(); return }
-        guard let activity = currentActivity as? Activity<TimeMachineActivityAttributes> else { call.resolve(); return }
+        guard let activity = currentActivity as? Activity<TimeMachineActivityAttributes> else {
+            TMLiveActivity.dbg("plugin.end.noop", "handle=nil")
+            call.resolve(); return
+        }
         self.currentActivity = nil
         // immediate:true (disqualified day / setting off) dismisses NOW; the
         // default keeps the brief linger so a wrapped card gets its send-off.
         // The JS controller also sets a staleDate as a wider safety net.
         let immediate = call.getBool("immediate") ?? false
+        TMLiveActivity.dbg("plugin.end", "id=\(activity.id.prefix(8)) immediate=\(immediate)")
         Task {
             await activity.end(
                 ActivityContent(state: activity.content.state, staleDate: nil),
@@ -209,8 +264,21 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // would silently no-op).
     @objc func listActivities(_ call: CAPPluginCall) {
         guard #available(iOS 16.2, *) else { call.resolve(["activities": []]); return }
-        let acts = Activity<TimeMachineActivityAttributes>.activities.map {
-            ["id": $0.id, "productionId": $0.attributes.productionId]
+        let acts = Activity<TimeMachineActivityAttributes>.activities.map { act -> [String: Any] in
+            // fix/la-husk (a): carry activityState so the sweep can tell a LIVE
+            // card from a system-ended husk still sitting in the registry —
+            // {id, productionId} alone made it structurally blind, and a husk
+            // counted as "covered", blocking the re-mint.
+            let state: String
+            switch act.activityState {
+            case .active:     state = "active"
+            case .stale:      state = "stale"
+            case .ended:      state = "ended"
+            case .dismissed:  state = "dismissed"
+            case .pending:    state = "pending"   // push-to-start only; this app never mints one
+            @unknown default: state = "unknown"
+            }
+            return ["id": act.id, "productionId": act.attributes.productionId, "activityState": state]
         }
         call.resolve(["activities": acts])
     }
@@ -225,13 +293,16 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             currentActivity = nil
         }
         Task {
+            var ended = 0
             for activity in Activity<TimeMachineActivityAttributes>.activities
             where activity.attributes.productionId == productionId {
                 await activity.end(
                     ActivityContent(state: activity.content.state, staleDate: nil),
                     dismissalPolicy: immediate ? .immediate : .after(Date().addingTimeInterval(5 * 60))
                 )
+                ended += 1
             }
+            TMLiveActivity.dbg("plugin.endForProduction", "pid=\(productionId.prefix(8)) immediate=\(immediate) ended=\(ended)")
             call.resolve()
         }
     }
@@ -250,8 +321,48 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             for activity in Activity<TimeMachineActivityAttributes>.activities where ids.contains(activity.id) {
                 await activity.end(ActivityContent(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
             }
+            TMLiveActivity.dbg("plugin.endIds", "converged=\(ids.count)")
             call.resolve()
         }
+    }
+
+    // MARK: - Diagnostics (fix/la-diagnostics — flag-gated ring buffer)
+
+    // The JS-facing surface for TMLiveActivity's App-Group ring buffer: the
+    // hidden Settings toggle flips the flag, "Share diagnostics" reads the
+    // joined log, and appendDebugLog lets the controller/sweep/ingest add
+    // their lines (native-gated on the same flag, so JS calls it
+    // unconditionally at zero cost when off). No ActivityKit use — safe on
+    // every OS version.
+
+    @objc func setDebugLogging(_ call: CAPPluginCall) {
+        let enabled = call.getBool("enabled") ?? false
+        UserDefaults(suiteName: Self.appGroupSuite)?.set(enabled, forKey: TMLiveActivity.debugEnabledKey)
+        if enabled {
+            let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+            let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+            TMLiveActivity.dbg("debug.enabled", "app v\(v) (\(b)) iOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        }
+        call.resolve(["enabled": enabled])
+    }
+
+    @objc func getDebugLogging(_ call: CAPPluginCall) {
+        call.resolve(["enabled": TMLiveActivity.debugEnabled])
+    }
+
+    @objc func getDiagnostics(_ call: CAPPluginCall) {
+        let log = UserDefaults(suiteName: Self.appGroupSuite)?.stringArray(forKey: TMLiveActivity.debugLogKey) ?? []
+        call.resolve(["log": log.joined(separator: "\n"), "count": log.count])
+    }
+
+    @objc func clearDiagnostics(_ call: CAPPluginCall) {
+        UserDefaults(suiteName: Self.appGroupSuite)?.removeObject(forKey: TMLiveActivity.debugLogKey)
+        call.resolve()
+    }
+
+    @objc func appendDebugLog(_ call: CAPPluginCall) {
+        TMLiveActivity.dbg("js", call.getString("line") ?? "")
+        call.resolve()
     }
 
     // MARK: - drainPendingEvents (Stage 2)
@@ -270,6 +381,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let events = defaults.array(forKey: Self.pendingEventsKey) as? [[String: Any]] ?? []
         if !events.isEmpty {
             defaults.removeObject(forKey: Self.pendingEventsKey)
+            TMLiveActivity.dbg("plugin.drain", "handed over \(events.count) event(s) to JS")
         }
         call.resolve(["events": events])
     }

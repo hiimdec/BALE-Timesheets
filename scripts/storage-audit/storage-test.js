@@ -5719,7 +5719,10 @@ async function main() {
       /function SoloLiveActivity\(\{ production, soloCrew, days, enabled = true \}\)/.test(html) &&
       /const desc = \(IS_NATIVE && enabled\) \? liveActivityDescriptor\(production, soloCrew, days\) : null;/.test(html) &&
       /if \(!IS_NATIVE\) return;/.test(html) &&
-      /if \(!desc\) \{[\s\S]{0,220}LiveActivity\.end\(\{ immediate: true \}\);/.test(html));
+      // window widened 220→360 for the fix/la-diagnostics debugLog line between
+      // the console.log and the end() call — the assertion (disqualified day →
+      // immediate end) is unchanged.
+      /if \(!desc\) \{[\s\S]{0,360}LiveActivity\.end\(\{ immediate: true \}\);/.test(html));
     check('TT2c controller mounted in SoloDayPage with production/soloCrew/days + the round-3 enabled pref',
       /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
 
@@ -5757,10 +5760,13 @@ async function main() {
       /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html) &&
       /return \{ \.\.\.production, days: mapDayNow\(production\.days, date, uid0, patch\) \};/.test(html));
     check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
-      /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,140}continue; \}/.test(html) &&
+      // windows widened 140→320 for the fix/la-diagnostics debugLog lines
+      // inside the skip/discard branches — the assertions (idempotency check,
+      // stale-date discard, both ending in `continue`) are unchanged.
+      /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,320}continue; \}/.test(html) &&
       /applied\.add\(ev\.id\);/.test(html) &&
       /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
-      /if \(ev\.date !== today\) \{[\s\S]{0,140}continue; \}/.test(html) &&
+      /if \(ev\.date !== today\) \{[\s\S]{0,320}continue; \}/.test(html) &&
       /const today = todayISO\(\);/.test(html));
     check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — and both triggers ALSO run the reconcile sweep',
       /const liveActivityAppliedRef = React\.useRef\(null\);\s*useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
@@ -5803,16 +5809,17 @@ async function main() {
       /const staleEpoch = onLunchNow \? lunchEndEpoch : \(callEpoch \? callEpoch \+ 16 \* 3600 : 0\);/.test(html) &&
       // the pre-fix flat form must be gone — this is the regression the bug was
       !/const staleEpoch = callEpoch \? callEpoch \+ 16 \* 3600 : 0;/.test(html));
-    check('TT8c3 native lunch-end wake — TMLiveActivity.lunchStaleDate mirrors the SwiftUI isOnLunch (lunchLogged && curtailMins==0 && lunchEndEpoch>now → Date(lunchEndEpoch), else nil); confirmLunch + EVERY intent-side activity.update routes staleDate through it — no staleDate: nil left to clobber the wake',
+    check('TT8c3 native lunch-end wake — TMLiveActivity.lunchStaleDate mirrors the SwiftUI isOnLunch (lunchLogged && curtailMins==0 && lunchEndEpoch>now → Date(lunchEndEpoch), else nil); confirmLunch + EVERY intent-side activity.update routes staleDate through it — since fix/la-husk Fix 2 via cappedStaleDate(lunchStaleDate(next), capEpoch:) so the semantic wake is ALSO clamped to the lifetime cap (min(semantic, cap)); no staleDate: nil left to clobber the wake',
       (() => {
         const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
         const helperOk = /static func lunchStaleDate\(_ s: TimeMachineActivityAttributes\.ContentState\) -> Date\? \{/.test(intents) &&
           /guard s\.lunchLogged, s\.curtailMins == 0,\s*s\.lunchEndEpoch > Date\(\)\.timeIntervalSince1970 else \{ return nil \}/.test(intents) &&
           /return Date\(timeIntervalSince1970: s\.lunchEndEpoch\)/.test(intents);
-        // confirmLunch (the primary fix path) routes through the helper, not nil
-        const confirmOk = /static func confirmLunch[\s\S]*?await activity\.update\(ActivityContent\(state: next, staleDate: lunchStaleDate\(next\)\)\)/.test(intents);
+        // confirmLunch (the primary fix path) routes through the helper — now
+        // wrapped in the Fix 2 lifetime-cap clamp, never nil
+        const confirmOk = /static func confirmLunch[\s\S]*?await activity\.update\(ActivityContent\(state: next, staleDate: cappedStaleDate\(lunchStaleDate\(next\), capEpoch: next\.capEpoch\)\)\)/.test(intents);
         // applied broadly, and NO bare staleDate: nil remains in the intents file
-        const appliedCount = (intents.match(/staleDate: lunchStaleDate\(next\)\)/g) || []).length;
+        const appliedCount = (intents.match(/staleDate: cappedStaleDate\(lunchStaleDate\(next\), capEpoch: next\.capEpoch\)\)/g) || []).length;
         const noNil = !/staleDate: nil/.test(intents);
         return helperOk && confirmOk && appliedCount >= 8 && noNil;
       })());
@@ -5838,8 +5845,12 @@ async function main() {
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
       /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
-      /if \(!qualifies\) \{[\s\S]{0,700}LiveActivity\.endForProduction\(pid, !wrappedSendOff\);/.test(html) &&
-      /\} else if \(ids\.length > 1\) \{[\s\S]{0,160}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
+      // windows widened 700→900 / 160→340 for the fix/la-diagnostics debugLog
+      // lines beside the sweep's console.logs — the assertions (end
+      // non-qualifying via endForProduction, converge duplicates by id) are
+      // unchanged.
+      /if \(!qualifies\) \{[\s\S]{0,900}LiveActivity\.endForProduction\(pid, !wrappedSendOff\);/.test(html) &&
+      /\} else if \(ids\.length > 1\) \{[\s\S]{0,340}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
       /if \(dupeIds\.length\) LiveActivity\.endActivityIds\(dupeIds\);/.test(html));
     check('TT9e single-activity invariant — the endActivityIds bridge method is IS_NATIVE-guarded (the sweep\'s by-id duplicate-converge; native startActivity adopt-or-update is the primary dedupe, compile-verified)',
       /async endActivityIds\(ids\) \{\s*if \(!IS_NATIVE \|\| !ids \|\| !ids\.length\) return;/.test(html) &&
@@ -6525,18 +6536,75 @@ async function main() {
       })());
 
     // ─ TT18: sweep start branch — centralised lifecycle, no double-start ─
-    check('TT18a reconcile sweep STARTS a qualifying card (descriptor-driven, wrapped excluded) for productions with no card and no mounted controller; descriptorToPayload is the ONE payload shape shared by controller + sweep; SoloLiveActivity registers/deregisters its pid in laControllerPids (mount/unmount) and the start branch skips owned pids; the early bail on an empty activity list is GONE (an empty list is exactly when a start is needed)',
+    check('TT18a reconcile sweep STARTS a qualifying card (descriptor-driven, wrapped excluded) for productions with no LIVE card; descriptorToPayload is the ONE payload shape shared by controller + sweep; SoloLiveActivity still registers/deregisters its pid in laControllerPids (ownership record) but the start branch NO LONGER skips owned pids (fix/la-husk — the deferral blocked re-minting a system-ended card; the plugin\'s adopt-or-request serialisation on the native main queue is the real double-start guard); the early bail on an empty activity list is GONE (an empty list is exactly when a start is needed)',
       (() => {
         const helperOk = /function descriptorToPayload\(desc\) \{/.test(html) &&
           /const payload = descriptorToPayload\(desc\);/.test(html);
         const registryOk = /const laControllerPids = new Set\(\);/.test(html) &&
           /laControllerPids\.add\(pid\);/.test(html) &&
           /return \(\) => \{ laControllerPids\.delete\(pid\); \};/.test(html);
-        const startOk = /if \(!pr \|\| byPid\.has\(pr\.id\) \|\| laControllerPids\.has\(pr\.id\)\) continue;/.test(html) &&
+        const startOk = /if \(!pr \|\| byPid\.has\(pr\.id\)\) continue;/.test(html) &&
+          !/laControllerPids\.has\(pr\.id\)/.test(html) &&
           /if \(!desc \|\| desc\.wrapped\) continue;/.test(html) &&
           /LiveActivity\.start\(descriptorToPayload\(desc\)\);/.test(html);
         const bailGoneOk = !/const acts = await LiveActivity\.list\(\);\s*if \(!acts \|\| !acts\.length\) return;/.test(html);
         return helperOk && registryOk && startOk && bailGoneOk;
+      })());
+    check('TT18b husk clearance (fix/la-husk) — listActivities carries activityState (active/stale/ended/dismissed/unknown); the sweep counts ONLY live cards in byPid (missing state = live, old-plugin tolerance), collects ended/dismissed husks and dismisses them via endActivityIds so the start branch re-mints — EXEMPTING the wrapped send-off linger (a wrapped day\'s ended card is deliberate); startActivity ADOPTS only a live card, so an ended pid-match joins the strays (re-ended .immediate) and a FRESH activity is requested in its place',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const plugin = readSafe('ios/App/App/LiveActivityPlugin.swift');
+        const listOk = /case \.active:\s+state = "active"/.test(plugin) &&
+          /case \.stale:\s+state = "stale"/.test(plugin) &&
+          /case \.ended:\s+state = "ended"/.test(plugin) &&
+          /case \.dismissed:\s+state = "dismissed"/.test(plugin) &&
+          /"activityState": state/.test(plugin);
+        const adoptOk = /\$0\.activityState == \.active \|\| \$0\.activityState == \.stale/.test(plugin) &&
+          /all\.first \{ \$0\.attributes\.productionId == productionId && isLive\(\$0\) \}/.test(plugin);
+        const sweepOk = /const live = !a\.activityState \|\| a\.activityState === 'active' \|\| a\.activityState === 'stale';/.test(html) &&
+          /if \(!live\) \{ husks\.push\(a\); continue; \}/.test(html) &&
+          /if \(!wrappedSendOff\) huskIds\.push\(h\.id\);/.test(html) &&
+          /LiveActivity\.endActivityIds\(huskIds\);/.test(html);
+        return listOk && adoptOk && sweepOk;
+      })());
+
+    // ─ TT22: lifetime cap + EXPIRED branch (fix/la-husk Fix 2 — never lie) ─
+    check('TT22a the card must never lie — ContentState gains OPTIONAL capEpoch (Double?, init-defaulted nil → synthesized decodeIfPresent keeps in-flight old-schema cards decoding); the plugin stamps cap = now + lifetimeCap (7h45m) at Activity.request, records requestedAt in the App-Group map, backfills on ADOPT (state ?? map ?? now+cap) and PRESERVES it across updates (state ?? map, nil → unclamped old behaviour); every staleDate clamps via cappedStaleDate min(semantic, cap); the widget branches EXPIRED on isStale && capEpoch != nil && now >= cap − 60s (never a wrapped card — frozen truthful record), rendering the neutral chip, NO timer/buttons, the total resolved from the wrapCurve AT the cap via wrapTotalText(_:at:) with the honest DAY TOTAL AT {HH:mm} micro-label; the no-arg wrapTotalText(cur) overload survives for the wrap-confirm freeze (TT21a)',
+      (() => {
+        const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+        const attrs = readSafe('ios/App/TimeMachineWidget/TimeMachineActivityAttributes.swift');
+        const plugin = readSafe('ios/App/App/LiveActivityPlugin.swift');
+        const intents = readSafe('ios/App/TimeMachineWidget/TimeMachineIntents.swift');
+        const la = readSafe('ios/App/TimeMachineWidget/TimeMachineLiveActivity.swift');
+        const schemaOk = /public var capEpoch: Double\?/.test(attrs) &&
+          /capEpoch: Double\? = nil/.test(attrs) &&
+          /self\.capEpoch = capEpoch/.test(attrs);
+        const helpersOk = /static let lifetimeCap: TimeInterval = 7 \* 3600 \+ 45 \* 60/.test(intents) &&
+          /static let startedAtKey = "tm_la_started_at"/.test(intents) &&
+          /static func cappedStaleDate\(_ semantic: Date\?, capEpoch: Double\?\) -> Date\? \{/.test(intents) &&
+          /return min\(semantic, cap\)/.test(intents) &&
+          /static func hhmmText\(epoch: Double\) -> String \{/.test(intents) &&
+          /static func wrapTotalText\(_ s: TimeMachineActivityAttributes\.ContentState, at epoch: Double\) -> String \{/.test(intents) &&
+          // every intent-side constructor carries the cap forward
+          (intents.match(/wrapCurve: cur\.wrapCurve, capEpoch: cur\.capEpoch/g) || []).length >= 8;
+        const pluginOk = /let cap = Date\(\)\.timeIntervalSince1970 \+ TMLiveActivity\.lifetimeCap/.test(plugin) &&
+          /TMLiveActivity\.recordRequestedAt\(activity\.id\)/.test(plugin) &&
+          /let cap = adopt\.content\.state\.capEpoch\s*\?\? TMLiveActivity\.requestedAt\(adopt\.id\)\.map \{ \$0 \+ TMLiveActivity\.lifetimeCap \}\s*\?\? Date\(\)\.timeIntervalSince1970 \+ TMLiveActivity\.lifetimeCap/.test(plugin) &&
+          /let cap = activity\.content\.state\.capEpoch\s*\?\? TMLiveActivity\.requestedAt\(activity\.id\)\.map \{ \$0 \+ TMLiveActivity\.lifetimeCap \}/.test(plugin) &&
+          (plugin.match(/TMLiveActivity\.cappedStaleDate\(staleDate, capEpoch: cap\)/g) || []).length >= 2;
+        const viewOk = /private func isExpired\(_ s: TimeMachineActivityAttributes\.ContentState, isStale: Bool\) -> Bool \{/.test(la) &&
+          /guard isStale, s\.state != "wrapped", let cap = s\.capEpoch else \{ return false \}/.test(la) &&
+          /return Date\(\)\.timeIntervalSince1970 >= cap - 60/.test(la) &&
+          /case "expired": return "EXPIRED"/.test(la) &&
+          /microLabel\("DAY TOTAL AT \\\(TMLiveActivity\.hhmmText\(epoch: cap\)\)"\)/.test(la) &&
+          /moneyText\(TMLiveActivity\.wrapTotalText\(context\.state, at: cap\), font: moneyFont\)/.test(la) &&
+          /This card has expired\. Open TimeMachine to log lunch or wrap\./.test(la) &&
+          /Card expired\. Open the app\./.test(la);
+        // the EXPIRED body carries no ticking timer and no intent buttons
+        const expiredSlice = (la.match(/private var expiredBody[\s\S]*?\n    \}/) || [''])[0];
+        const inertOk = expiredSlice.length > 100 &&
+          !/timerProjectionRow|elapsedTimer|actionButtons|Button\(intent:/.test(expiredSlice);
+        return schemaOk && helpersOk && pluginOk && viewOk && inertOk;
       })());
 
     // ─ TT21: wrap confirm drain-hold — corrected total INSIDE the send-off ─

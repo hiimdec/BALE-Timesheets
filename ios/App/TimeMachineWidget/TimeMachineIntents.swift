@@ -61,6 +61,118 @@ enum TMLiveActivity {
     /// nudge from wastefully holding a cold process.
     static var webviewObserving = false
 
+    // MARK: Diagnostics ring buffer (fix/la-diagnostics — flag-gated, default OFF)
+    //
+    // A small App-Group ring buffer that pins WHERE the lock-screen buttons die
+    // the next time they jam. Every entry point of the intent path logs one
+    // compact line, and the JS controller/sweep/ingest log their pushes through
+    // the plugin's appendDebugLog — so the combined buffer answers, per press:
+    // did perform() run at all → was the activity found, and in what
+    // activityState (an ended husk vs live — the 8h-cap discriminator) → did
+    // the arm update take (post-update readback) → did the confirm write reach
+    // the App-Group queue → and did the day the app LAST PUSHED (the
+    // controller.update lines) match the ContentState the card held at press
+    // time (the stored-vs-card divergence check; a controller.update line
+    // between plugin.start and the press also shows the day was edited after
+    // the card started). Flag OFF (the default): one cached UserDefaults bool
+    // read per call site, no writes, zero behaviour change. The buffer lives
+    // in the App Group, survives relaunches, and caps at 300 lines.
+    static let debugEnabledKey = "tm_la_debug_enabled"
+    static let debugLogKey = "tm_la_debug_log"
+    static let debugLogCap = 300
+
+    static var debugEnabled: Bool {
+        UserDefaults(suiteName: appGroupSuite)?.bool(forKey: debugEnabledKey) ?? false
+    }
+
+    static func dbg(_ tag: String, _ detail: String = "") {
+        guard let d = UserDefaults(suiteName: appGroupSuite),
+              d.bool(forKey: debugEnabledKey) else { return }
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        var log = d.stringArray(forKey: debugLogKey) ?? []
+        log.append("\(fmt.string(from: Date())) | \(tag)\(detail.isEmpty ? "" : " | \(detail)")")
+        if log.count > debugLogCap { log.removeFirst(log.count - debugLogCap) }
+        d.set(log, forKey: debugLogKey)
+    }
+
+    /// Compact one-line ContentState summary for the diagnostic lines.
+    @available(iOS 16.2, *)
+    static func stateBrief(_ s: TimeMachineActivityAttributes.ContentState) -> String {
+        "state=\(s.state) armed=\(s.armed.isEmpty ? "-" : s.armed)@\(Int(s.armedAt)) call=\(Int(s.callEpoch)) end=\(Int(s.endEpoch)) otFrom=\(s.otFrom.isEmpty ? "-" : s.otFrom) lunchLogged=\(s.lunchLogged) curtail=\(s.curtailMins) curve=\(s.wrapCurve.count / 2)pts cap=\(s.capEpoch.map { String(Int($0)) } ?? "-")"
+    }
+
+    // MARK: Lifetime cap (fix/la-husk Fix 2 — "the card must never lie")
+
+    /// iOS ends every Live Activity ~8h after Activity.request, freezing the
+    /// card as a lock-screen husk (self-ticking timer, dead buttons). This is
+    /// the pre-cap wake margin: capEpoch = requestedAt + 7h45m — the last
+    /// staleDate the system will still honour, spent on re-rendering the card
+    /// into its truthful EXPIRED branch just before iOS kills updates.
+    static let lifetimeCap: TimeInterval = 7 * 3600 + 45 * 60
+
+    /// App-Group map {activityId: requestedAt epoch}. Written at every
+    /// Activity.request so an ADOPT (cold relaunch — the in-memory handle is
+    /// lost but the system card survives) can backfill capEpoch for a card
+    /// whose ContentState predates the field or lost it. Pruned to the 8
+    /// newest — there is only ever one card per production and the map is a
+    /// backstop, not a registry.
+    static let startedAtKey = "tm_la_started_at"
+
+    static func recordRequestedAt(_ activityId: String) {
+        guard let d = UserDefaults(suiteName: appGroupSuite) else { return }
+        var map = (d.dictionary(forKey: startedAtKey) as? [String: Double]) ?? [:]
+        map[activityId] = Date().timeIntervalSince1970
+        if map.count > 8 {
+            let keep = map.sorted { $0.value > $1.value }.prefix(8)
+            map = Dictionary(uniqueKeysWithValues: Array(keep))
+        }
+        d.set(map, forKey: startedAtKey)
+    }
+
+    static func requestedAt(_ activityId: String) -> Double? {
+        guard let d = UserDefaults(suiteName: appGroupSuite) else { return nil }
+        return (d.dictionary(forKey: startedAtKey) as? [String: Double])?[activityId]
+    }
+
+    /// Clamp a semantic staleDate (the lunch-end wake) to the lifetime cap:
+    /// min(semantic, cap). ActivityKit holds ONE staleDate slot, and it fires
+    /// ONCE — this clamp decides how the slot is spent. Lunch-end before the
+    /// cap → the lunch wake fires exactly as shipped (and the post-lunch
+    /// update re-arms the slot with the cap). No semantic wake → the cap
+    /// alone. nil cap (in-flight pre-cap card) → semantic only, the old
+    /// behaviour. Disclosed platform constraint, not deferred work: with no
+    /// server, every re-mint mechanism is foreground-triggered, so a day with
+    /// lunch logged and ZERO interactions between lunch-end and wrap spends
+    /// the slot on the lunch wake and the cap cannot also fire — the EXPIRED
+    /// branch then renders on the next system-granted render instead.
+    static func cappedStaleDate(_ semantic: Date?, capEpoch: Double?) -> Date? {
+        guard let cap = capEpoch.map({ Date(timeIntervalSince1970: $0) }) else { return semantic }
+        guard let semantic else { return cap }
+        return min(semantic, cap)
+    }
+
+    /// Local-time "HH:mm" for an epoch — the EXPIRED view's honest timestamp
+    /// ("DAY TOTAL AT 16:45"). Same locale discipline as appendEvent's `at`.
+    static func hhmmText(epoch: Double) -> String {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_GB_POSIX")
+        fmt.dateFormat = "HH:mm"
+        return fmt.string(from: Date(timeIntervalSince1970: epoch))
+    }
+
+    /// The activity exactly as the intent path resolves it — NIL, or id +
+    /// activityState + ContentState. activityState is the ended-husk
+    /// discriminator: a card still visible on the lock screen but .ended /
+    /// .dismissed here explains dead buttons outright (arm and confirm both
+    /// no-op against an ended activity, with no visible feedback).
+    @available(iOS 16.2, *)
+    static func activityBrief(_ productionId: String) -> String {
+        guard let a = current(productionId) else { return "activity=NIL" }
+        return "activity=\(a.id.prefix(8)) activityState=\(String(describing: a.activityState)) \(stateBrief(a.content.state))"
+    }
+
     /// CRITICAL PATH — append one event to the App-Group queue. Must be
     /// rock-solid and independent of the chip flip. Matches the in-app "Now"
     /// writers exactly: `at` = LOCAL HH:MM (no rounding); `date` = UTC
@@ -104,6 +216,7 @@ enum TMLiveActivity {
         var queue = defaults.array(forKey: pendingEventsKey) as? [[String: Any]] ?? []
         queue.append(event)
         defaults.set(queue, forKey: pendingEventsKey)
+        dbg("appendEvent", "type=\(type) at=\(at) pid=\(productionId.prefix(8)) queueLen=\(queue.count)")
         return at
     }
 
@@ -175,7 +288,9 @@ enum TMLiveActivity {
     /// EXACTLY: a still-on-lunch state (logged, uncurtailed, hour-end still ahead) →
     /// the lunch-end Date; anything else → nil (the prior behaviour, so a curtail /
     /// wrap / post-lunch update carries no wake). Every intent-side update routes its
-    /// staleDate through this, so a mid-lunch tap can never clobber the wake.
+    /// staleDate through this — then through cappedStaleDate (the lifetime-cap
+    /// clamp, Fix 2) — so a mid-lunch tap can never clobber the wake and no
+    /// staleDate can ever be scheduled past the point iOS stops honouring them.
     @available(iOS 16.2, *)
     static func lunchStaleDate(_ s: TimeMachineActivityAttributes.ContentState) -> Date? {
         guard s.lunchLogged, s.curtailMins == 0,
@@ -194,8 +309,17 @@ enum TMLiveActivity {
     /// outputs, looked up.
     @available(iOS 16.2, *)
     static func wrapTotalText(_ s: TimeMachineActivityAttributes.ContentState) -> String {
+        wrapTotalText(s, at: Date().timeIntervalSince1970)
+    }
+
+    /// The same curve lookup at an EXPLICIT moment (fix/la-husk Fix 2): the
+    /// EXPIRED view resolves the day total AT capEpoch — the last instant the
+    /// card could still tell the truth — never at "now", which on a husk can
+    /// be hours past the day the curve describes.
+    @available(iOS 16.2, *)
+    static func wrapTotalText(_ s: TimeMachineActivityAttributes.ContentState, at epoch: Double) -> String {
         guard s.wrapCurve.count >= 2 else { return s.totalText }
-        let now = Date().timeIntervalSince1970
+        let now = epoch
         var pence = s.wrapCurve[s.wrapCurve.count - 1]
         var i = 0
         while i + 1 < s.wrapCurve.count {
@@ -242,15 +366,23 @@ enum TMLiveActivity {
     /// newer one. The FIRST operation of an arm tap; nothing precedes it.
     @available(iOS 16.2, *)
     static func arm(_ productionId: String, action: String) async -> Double {
-        guard let activity = current(productionId) else { return 0 }
+        guard let activity = current(productionId) else {
+            dbg("arm.\(action)", "activity=NIL — arm impossible")
+            return 0
+        }
         let cur = activity.content.state
         let stamp = Date().timeIntervalSince1970
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+            armed: action, armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
-        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
+        // Post-update readback: on a live activity this echoes the arm we just
+        // wrote; an ended activity silently ignores update, so the readback
+        // stays "" — the smoking gun for arm-taps that never render.
+        let readback = current(productionId)?.content.state.armed ?? "NIL"
+        dbg("arm.\(action)", "stamp=\(Int(stamp)) readback=\(readback.isEmpty ? "(empty — update did not take)" : readback)")
         return stamp
     }
 
@@ -263,12 +395,15 @@ enum TMLiveActivity {
         guard let activity = current(productionId) else { return }
         let cur = activity.content.state
         guard cur.armed == action, cur.armedAt == stamp else { return }
+        // Repeated arm→auto-reset pairs with no confirm between them are the
+        // re-arm-loop signature: taps landing on a card that shows no feedback.
+        dbg("disarm.\(action)", "stamp=\(Int(stamp)) (arm expired unconfirmed)")
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
-        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
     }
 
     /// CONFIRM-side update — flips the chip state and clears the arm, preserving
@@ -283,9 +418,9 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: cur.endEpoch,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
-        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
     }
 
     /// CONFIRM Wrap — flip the card to WRAPPED with the curve-resolved total
@@ -306,9 +441,9 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: Date().timeIntervalSince1970,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
-        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
     }
 
     /// BEST-EFFORT — end the WRAPPED card with a short dismissal window so it
@@ -328,13 +463,13 @@ enum TMLiveActivity {
             callEpoch: cur.callEpoch,
             anchorLabel: cur.anchorLabel,
             endEpoch: (alreadyWrapped && cur.endEpoch > 0) ? cur.endEpoch : Date().timeIntervalSince1970,
-            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+            armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch, otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
         // A normal end-of-day wrap is post-lunch (or curtailed) → helper returns
         // nil, behaviour unchanged. A rare wrap DURING the lunch hour keeps the
         // wake so the lingering wrapped card refreshes at lunch-end (drops the
         // stuck lunch countdown for the frozen day timer).
-        let wrapped = ActivityContent(state: next, staleDate: lunchStaleDate(next))
+        let wrapped = ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch))
         await activity.update(wrapped)
         await activity.end(wrapped, dismissalPolicy: .after(Date().addingTimeInterval(5 * 60)))
     }
@@ -353,9 +488,9 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "curtail", armedAt: stamp, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: mins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+            otFrom: cur.otFrom, curtailMins: mins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
-        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
         return stamp
     }
 
@@ -369,9 +504,9 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
-        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
     }
 
     /// COMMIT a pending curtail IF it is still the exact armed instance — the
@@ -393,9 +528,9 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: cur.lunchEndEpoch,
-            otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve
+            otFrom: cur.otFrom, curtailMins: cur.curtailMins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
-        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
         await requestBackgroundDrain()
     }
 
@@ -415,9 +550,9 @@ enum TMLiveActivity {
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
             armed: "", armedAt: 0, cwd: cur.cwd, lunchEndEpoch: flooredMin + 3600,
-            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: true, wrapCurve: cur.wrapCurve
+            otFrom: cur.otFrom, curtailMins: 0, lunchLogged: true, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
-        await activity.update(ActivityContent(state: next, staleDate: lunchStaleDate(next)))
+        await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
     }
 
     /// BEST-EFFORT (Issue C) — if the app's WKWebView/JS is alive in this process
@@ -449,10 +584,16 @@ struct LunchNowIntent: LiveActivityIntent {
     init(productionId: String) { self.productionId = productionId }
 
     func perform() async throws -> some IntentResult {
+        // Diagnostics entry line — the per-press snapshot (flag-gated; one
+        // UserDefaults bool read when off). Captures whether the intent ran at
+        // all, whether the activity resolved, its activityState (ended husk?),
+        // and the full ContentState for the stored-vs-card divergence check.
+        TMLiveActivity.dbg("perform.lunch", TMLiveActivity.activityBrief(productionId))
         // Two-tap: first tap ARMS, the confirming second tap writes the event.
         let armed = TMLiveActivity.armedAction(productionId)
         if armed == "lunch" {
             // CONFIRM: the App-Group append is the critical, direct write.
+            TMLiveActivity.dbg("confirm.lunch", "pid=\(productionId.prefix(8))")
             TMLiveActivity.appendEvent(type: "lunchNow", productionId: productionId)
             await TMLiveActivity.confirmLunch(productionId)                         // instant lunchLogged + hour-end + disarm
             await TMLiveActivity.requestBackgroundDrain()                           // best-effort live total
@@ -484,6 +625,8 @@ struct WrapNowIntent: LiveActivityIntent {
     init(productionId: String) { self.productionId = productionId }
 
     func perform() async throws -> some IntentResult {
+        // Diagnostics entry line — see LunchNowIntent for the rationale.
+        TMLiveActivity.dbg("perform.wrap", TMLiveActivity.activityBrief(productionId))
         // Two-tap: first tap ARMS, the confirming second tap writes the event.
         let armed = TMLiveActivity.armedAction(productionId)
         if armed == "wrap" {
@@ -494,6 +637,7 @@ struct WrapNowIntent: LiveActivityIntent {
             // still updatable, THEN the linger end. A cold process no-ops the
             // drain and the curve total stands; the wrap write itself reaches
             // records on the normal foreground drain either way.
+            TMLiveActivity.dbg("confirm.wrap", "pid=\(productionId.prefix(8))")
             TMLiveActivity.appendEvent(type: "wrapNow", productionId: productionId)
             await TMLiveActivity.confirmWrap(productionId)
             await TMLiveActivity.requestBackgroundDrain()
@@ -533,6 +677,8 @@ struct CurtailIntent: LiveActivityIntent {
     init(productionId: String) { self.productionId = productionId }
 
     func perform() async throws -> some IntentResult {
+        // Diagnostics entry line — see LunchNowIntent for the rationale.
+        TMLiveActivity.dbg("perform.curtail", TMLiveActivity.activityBrief(productionId))
         // Single-tap with a 5s undo window. If a curtail is ALREADY pending
         // (armed=="curtail" and fresh), THIS tap is the Undo → cancel, write
         // nothing. Otherwise capture the whole-minute duration (now − lunchStart)

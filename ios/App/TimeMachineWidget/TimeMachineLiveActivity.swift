@@ -12,6 +12,9 @@
 //    • chip slot (top-right): WRAPPED (green) > CWD (tm-pen red, flag computed
 //      by the web layer — the money-relevant state outranks AT LUNCH) >
 //      AT LUNCH (amber) — empty while ON CALL with no warning
+//    • past the iOS lifetime cap the WHOLE card branches to a neutral EXPIRED
+//      state (fix/la-husk Fix 2): no timer, no buttons, total resolved AT the
+//      cap and timestamped — a husk must never impersonate a live card
 //    • uppercase, letter-spaced micro-labels (DAY TOTAL, CALL 08:00 / PRE-CALL …)
 //    • system font for non-numeric text; data is the hero
 //    • elapsed timer = ActivityKit's native Text(timerInterval:) — ticks
@@ -55,6 +58,7 @@ private func chipColor(_ state: String) -> Color {
     switch state {
     case "lunch":   return .tmAmber
     case "wrapped": return .tmGood
+    case "expired": return .tmMuted   // fix/la-husk Fix 2 — neutral, not a live state
     default:        return .tmSky
     }
 }
@@ -62,6 +66,7 @@ private func chipLabel(_ state: String) -> String {
     switch state {
     case "lunch":   return "ON LUNCH"
     case "wrapped": return "WRAPPED"
+    case "expired": return "EXPIRED"
     default:        return "ON CALL"
     }
 }
@@ -142,6 +147,22 @@ private func warnChip(_ label: String) -> some View {
 private func isOnLunch(_ s: TimeMachineActivityAttributes.ContentState) -> Bool {
     s.lunchLogged && s.curtailMins == 0 && s.lunchEndEpoch > 0 &&
         Date().timeIntervalSince1970 < s.lunchEndEpoch
+}
+
+// The EXPIRED predicate (fix/la-husk Fix 2 — "the card must never lie"). iOS
+// ends every Live Activity ~8h after request; a husk keeps ticking its
+// self-updating timer with dead buttons. The plugin clamps every staleDate to
+// min(semantic wake, capEpoch = requestedAt + 7h45m), so the LAST re-render
+// the system grants lands here. isStale alone is NOT enough — the lunch-end
+// wake (the shipped lunch-exit fix) ALSO re-renders via staleness, and that
+// card is very much alive. The discriminator is time: stale AND within 60s of
+// (or past) the cap → the lifetime is over, render EXPIRED; stale but the cap
+// is still ahead → a semantic wake, render live (isOnLunch resolves it). A
+// nil cap (in-flight pre-Fix-2 card) can never expire — old behaviour until
+// re-minted. A wrapped card is a frozen truthful record and never expires.
+private func isExpired(_ s: TimeMachineActivityAttributes.ContentState, isStale: Bool) -> Bool {
+    guard isStale, s.state != "wrapped", let cap = s.capEpoch else { return false }
+    return Date().timeIntervalSince1970 >= cap - 60
 }
 
 // The single chip slot. Priority: WRAPPED > CWD > ON LUNCH — the money-relevant
@@ -345,6 +366,23 @@ struct TimeMachineLockScreenView: View {
     let context: ActivityViewContext<TimeMachineActivityAttributes>
 
     var body: some View {
+        Group {
+            if isExpired(context.state, isStale: context.isStale) {
+                expiredBody
+            } else {
+                liveBody
+            }
+        }
+        // Pin the stack to the full offered width, leading-aligned: a child
+        // row that can't fit then truncates in place instead of widening the
+        // stack past the card and getting centre-clipped at both edges.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .activityBackgroundTint(.tmBg)
+        .activitySystemActionForegroundColor(.tmSky)
+    }
+
+    private var liveBody: some View {
         VStack(alignment: .leading, spacing: 6) {
             // Line 1: production name · state chip. The name shrinks (to 75%)
             // then tail-truncates rather than overflowing: an over-wide row
@@ -378,13 +416,40 @@ struct TimeMachineLockScreenView: View {
                 actionButtons(context.attributes.productionId, armed: context.state.armed, lunchLogged: context.state.lunchLogged, curtailMins: context.state.curtailMins, onLunch: isOnLunch(context.state))
             }
         }
-        // Pin the stack to the full offered width, leading-aligned: a child
-        // row that can't fit then truncates in place instead of widening the
-        // stack past the card and getting centre-clipped at both edges.
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .activityBackgroundTint(.tmBg)
-        .activitySystemActionForegroundColor(.tmSky)
+    }
+
+    // The truthful end-of-lifetime card (fix/la-husk Fix 2). No ticking timer
+    // (the elapsed figure would keep counting a day iOS stopped tracking), no
+    // buttons (their intents no-op against an ended activity — the original
+    // dead-buttons failure), no live chip. The total is resolved from the
+    // wrapCurve AT capEpoch — the last instant the card could still tell the
+    // truth — and labelled with that timestamp so it never claims to be
+    // current. The prompt is the only action left that works: open the app
+    // (which re-mints a correct card via the Fix 1 sweep).
+    private var expiredBody: some View {
+        let cap = context.state.capEpoch ?? 0
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(context.attributes.productionName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.tmMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.75)
+                Spacer()
+                stateChip("expired")
+            }
+            HStack {
+                microLabel("DAY TOTAL AT \(TMLiveActivity.hhmmText(epoch: cap))")
+                Spacer()
+                microLabel(context.state.anchorLabel)
+            }
+            moneyText(TMLiveActivity.wrapTotalText(context.state, at: cap), font: moneyFont)
+            Text("This card has expired. Open TimeMachine to log lunch or wrap.")
+                .font(.system(size: 12))
+                .foregroundColor(.tmFaint)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
@@ -407,8 +472,12 @@ struct TimeMachineLiveActivity: Widget {
                 // timer. maxHeight .infinity centres leading/trailing
                 // content vertically as far as the system allows.
                 DynamicIslandExpandedRegion(.leading) {
+                    // fix/la-husk Fix 2: every island presentation dims to the
+                    // neutral "expired" state past the lifetime cap — same
+                    // predicate as the lock screen, routed through chipColor
+                    // so dot and chip can never disagree.
                     HStack(spacing: 7) {
-                        Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
+                        Circle().fill(chipColor(isExpired(context.state, isStale: context.isStale) ? "expired" : (isOnLunch(context.state) ? "lunch" : context.state.state))).frame(width: 8, height: 8)
                         Text(context.attributes.productionName)
                             // Title treatment (K1/K2): primary ink, 18pt
                             // bold — clearly outranks the CALL/OT microlabel
@@ -428,28 +497,44 @@ struct TimeMachineLiveActivity: Widget {
                     .frame(maxHeight: .infinity)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    moneyText(context.state.totalText, font: moneyFontIsland)
-                        .frame(maxHeight: .infinity)
+                    // Expired: the total AT the cap (the honest figure), same
+                    // hero treatment; live: the pushed total, unchanged.
+                    if isExpired(context.state, isStale: context.isStale) {
+                        moneyText(TMLiveActivity.wrapTotalText(context.state, at: context.state.capEpoch ?? 0), font: moneyFontIsland)
+                            .frame(maxHeight: .infinity)
+                    } else {
+                        moneyText(context.state.totalText, font: moneyFontIsland)
+                            .frame(maxHeight: .infinity)
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    let secondary = expandedSecondaryLine(context.state)
-                    if !secondary.isEmpty {
-                        microLabel(secondary)
+                    if isExpired(context.state, isStale: context.isStale) {
+                        Text("Card expired. Open the app.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.tmMuted)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.leading, 4)
+                    } else {
+                        let secondary = expandedSecondaryLine(context.state)
+                        if !secondary.isEmpty {
+                            microLabel(secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 4)
+                        }
                     }
                 }
             } compactLeading: {
-                Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
+                Circle().fill(chipColor(isExpired(context.state, isStale: context.isStale) ? "expired" : (isOnLunch(context.state) ? "lunch" : context.state.state))).frame(width: 8, height: 8)
             } compactTrailing: {
                 // Money is deliberately absent from the always-visible
                 // presentations (compact/minimal show the status dot only);
                 // the day total lives in the expanded island and lock screen.
                 EmptyView()
             } minimal: {
-                Circle().fill(chipColor(isOnLunch(context.state) ? "lunch" : context.state.state)).frame(width: 8, height: 8)
+                Circle().fill(chipColor(isExpired(context.state, isStale: context.isStale) ? "expired" : (isOnLunch(context.state) ? "lunch" : context.state.state))).frame(width: 8, height: 8)
             }
             .widgetURL(URL(string: "timemachine://today"))
             .keylineTint(.tmSky)
