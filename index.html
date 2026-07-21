@@ -10654,10 +10654,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // Pass 3 — per-month "not yet counted" hint. Walks productions
       // with the SAME user-scoping (userCrewIdsInProduction) the
       // enrichedDays reducer uses; doesn't run calc or duplicate
-      // earnings. Days where date >= today bucket into that month's
-      // notYetCounted (mirrors the existing single-counter behaviour
-      // at the month level).
-      const todayStr = todayISO();
+      // earnings. Pending days bucket into that month's notYetCounted,
+      // MIRRORING the reducer's rule exactly (past counts; wrapped-today
+      // counts; unwrapped-today and all future dates are pending) so the
+      // hero and the month rows always agree about the same day. Local
+      // calendar date for the same reason as the reducer (not todayISO()'s
+      // UTC date - the rollover must be local midnight).
+      const nowD = new Date();
+      const todayStr = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}-${String(nowD.getDate()).padStart(2, '0')}`;
       const notYetByMonth = new Map();
       for (const p of (productions || [])) {
         const userCrewIds = userCrewIdsInProduction(p, userPrefs);
@@ -10665,7 +10669,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         for (const day of (p.days || [])) {
           if (!day || !day.date) continue;
           if (!userCrewIds.includes(day.crewId)) continue;
-          if (day.date < todayStr) continue;
+          if (day.date < todayStr || (day.date === todayStr && day.wrapped === true)) continue;
           const mo = day.date.slice(0, 7);
           notYetByMonth.set(mo, (notYetByMonth.get(mo) || 0) + 1);
         }
@@ -20616,7 +20620,13 @@ const setDays = (updater) =>
 
       const { enrichedDays, excludedCount, notYetCountedDays } = useMemo(() => {
         const now = new Date();
-        const today = now.toISOString().slice(0, 10);
+        // LOCAL calendar date, not toISOString()'s UTC date: day.date comes
+        // from local pickers, so the count rollover must be local midnight
+        // (the UTC form made it 1am during BST, and skewed the ytd window
+        // edge the same way). Deliberately scoped to the two aggregation
+        // sites (here + aggregateMonthly pass 3); todayISO() elsewhere is
+        // untouched - its Live Activity sweep skew is a MAINTENANCE item.
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         let startISO, endISO;
         if (filter === 'taxyear') {
           const yr = (now.getMonth() < 3 || (now.getMonth() === 3 && now.getDate() < 6)) ? now.getFullYear() - 1 : now.getFullYear();
@@ -20639,17 +20649,19 @@ const setDays = (updater) =>
             if ((p.days || []).some(inWindow)) excluded++;
             continue;
           }
-          // Aggregate-earnings date rule: a day counts only if its date is
-          // strictly before today. Today's live shoot and any pre-loaded future
-          // days are excluded across every filter mode ('all', 'taxyear',
-          // 'ytd') so the hero earnings reflect what has actually been worked,
-          // not what's just been pre-loaded into the calendar. Days that fall
-          // inside the window but are today-or-later are tallied separately
-          // so the UI can surface a subtle "N day(s) not yet counted" hint.
+          // Aggregate-earnings date rule: a day counts once it is FINISHED.
+          // Days dated before today always count. A day dated TODAY counts
+          // only once wrapped (day.wrapped === true - the total is frozen,
+          // so it can't wobble the hero); a live unwrapped day stays
+          // pending. Future dates stay pending unconditionally (strict >),
+          // wrapped or not. Pending days are tallied separately so the UI
+          // can surface the "N day(s) not yet counted" hint. Note: only the
+          // solo flows set day.wrapped - Best Boy multi-crew days keep the
+          // day-after behaviour (recorded in MAINTENANCE.md).
           for (const day of (p.days || [])) {
             if (!userCrewIds.includes(day.crewId)) continue;
             if (!inWindow(day)) continue;
-            if (day.date >= today) { notYetCounted++; continue; }
+            if (day.date > today || (day.date === today && day.wrapped !== true)) { notYetCounted++; continue; }
             const crew = (p.crew || []).find(c => c.id === day.crewId);
             if (!crew) continue;
             try {
@@ -21020,6 +21032,20 @@ const setDays = (updater) =>
                   <div className="flex justify-center mb-4 text-neutral-700"><IStats size={48}/></div>
                   <h3 className="text-xl font-semibold mb-2">No stats yet for {displayName}</h3>
                   <p className="text-sm text-neutral-400 max-w-xs mx-auto">Stats count the days you're listed on crew. Add your name to a shoot and they'll start adding up.</p>
+                  {/* Pending days exist but none has counted yet - without
+                      this the user (or a reviewer) sees a bare "No stats
+                      yet" while a live shoot is sitting right there. Same
+                      card and copy as the data-branch hint. */}
+                  {notYetCountedDays > 0 && (
+                    <div className="mt-6 max-w-xs mx-auto bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4 text-left">
+                      <div className="text-xs font-semibold text-sky-400 mb-1">
+                        {notYetCountedDays} day{notYetCountedDays !== 1 ? 's' : ''} not yet counted
+                      </div>
+                      <p className="text-xs text-neutral-400 leading-relaxed">
+                        {notYetCountedDays === 1 ? 'A scheduled day is' : `${notYetCountedDays} scheduled days are`} today or upcoming, so {notYetCountedDays === 1 ? "it's" : "they're"} not yet included in earnings. {notYetCountedDays === 1 ? "It'll" : "They'll"} count once wrapped, or the day after.
+                      </p>
+                    </div>
+                  )}
                   {IS_NATIVE && (
                     <p className="text-xs text-neutral-500 max-w-xs mx-auto mt-6">Legwork uses Apple Health to count your steps on shoot days, once you've completed a day.</p>
                   )}
@@ -21159,7 +21185,7 @@ const setDays = (updater) =>
                       {notYetCountedDays} day{notYetCountedDays !== 1 ? 's' : ''} not yet counted
                     </div>
                     <p className="text-xs text-neutral-400 leading-relaxed">
-                      {notYetCountedDays === 1 ? 'A scheduled day is' : `${notYetCountedDays} scheduled days are`} today or upcoming, so {notYetCountedDays === 1 ? "it's" : "they're"} not yet included in earnings. {notYetCountedDays === 1 ? "It'll" : "They'll"} roll in the day after each shoot.
+                      {notYetCountedDays === 1 ? 'A scheduled day is' : `${notYetCountedDays} scheduled days are`} today or upcoming, so {notYetCountedDays === 1 ? "it's" : "they're"} not yet included in earnings. {notYetCountedDays === 1 ? "It'll" : "They'll"} count once wrapped, or the day after.
                     </p>
                   </div>
                 )}
