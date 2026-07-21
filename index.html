@@ -20987,6 +20987,14 @@ const setDays = (updater) =>
           </div>
 
           <div className="max-w-2xl mx-auto px-4 pt-4 pb-32">
+            {/* App Review (2.5.1, fourth rejection): the Apple Health
+                identification must be reachable WITHOUT completing a day.
+                The Legwork section only mounts once enrichedDays is
+                non-empty (a past-dated day on the user's crew), so both
+                empty states below carry a muted line naming Apple Health
+                and the Legwork feature — visible from a totally fresh
+                install on the Stats tab itself. Native only (the feature
+                and the identification are iOS-only). */}
             {!displayName ? (
               <div className="py-20 text-center">
                 <div className="flex justify-center mb-4 text-neutral-700"><IStats size={48}/></div>
@@ -20997,12 +21005,18 @@ const setDays = (updater) =>
                     <IGear size={14}/>Settings
                   </button>
                 )}
+                {IS_NATIVE && (
+                  <p className="text-xs text-neutral-500 max-w-xs mx-auto mt-6">Legwork uses Apple Health to count your steps on shoot days, once you've completed a day.</p>
+                )}
               </div>
             ) : enrichedDays.length === 0 ? (
               <div className="py-20 text-center">
                 <div className="flex justify-center mb-4 text-neutral-700"><IStats size={48}/></div>
                 <h3 className="text-xl font-semibold mb-2">No stats yet for {displayName}</h3>
                 <p className="text-sm text-neutral-400 max-w-xs mx-auto">Stats count the days you're listed on crew. Add your name to a shoot and they'll start adding up.</p>
+                {IS_NATIVE && (
+                  <p className="text-xs text-neutral-500 max-w-xs mx-auto mt-6">Legwork uses Apple Health to count your steps on shoot days, once you've completed a day.</p>
+                )}
               </div>
             ) : (
               <>
