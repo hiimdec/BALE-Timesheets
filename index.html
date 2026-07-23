@@ -3,7 +3,27 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>TimeMachine</title>
+  <!-- SEO: the root URL is the app AND the page ranking for tool queries
+       (apa calculator / apa rate calculator / apa pay calculator). Title and
+       description target those; the non-affiliation line is in the meta, the
+       onboarding copy, and the noscript fallback below. -->
+  <title>APA pay and rate calculator for UK film crew - TimeMachine</title>
+  <meta name="description" content="Free APA rate and pay calculator for UK film crew. Day rates, overtime, penalties, travel and nights from your call and wrap times. Not an APA product.">
+  <link rel="canonical" href="https://timemachineapp.co.uk/">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="APA pay and rate calculator for UK film crew - TimeMachine">
+  <meta property="og:description" content="Free APA rate and pay calculator for UK film crew. Day rates, overtime, penalties, travel and nights from your call and wrap times. Not an APA product.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - APA timesheets, pay and invoicing for UK crew">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="APA pay and rate calculator for UK film crew - TimeMachine">
+  <meta name="twitter:description" content="Free APA rate and pay calculator for UK film crew. Day rates, overtime, penalties, travel and nights from your call and wrap times. Not an APA product.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og.png">
 
   <!-- PWA / iOS Home Screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -454,6 +474,9 @@
 
 </head>
 <body>
+  <noscript>
+    <p>TimeMachine is a free APA rate and pay calculator for UK film crew: day rates, overtime, penalties, travel and night shoots, worked out from your call and wrap times, with timesheets and invoicing. It references the publicly available APA Recommended Crew Terms as a rate standard and is not an APA product. JavaScript is required to run the app.</p>
+  </noscript>
   <div id="root">
     <div class="app-loading" style="flex-direction:column; gap:18px; background:#0a0a0a;">
       <svg width="132" viewBox="83.5 202 857 620" xmlns="http://www.w3.org/2000/svg"
@@ -17830,7 +17853,7 @@ const setDays = (updater) =>
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-3">Step 1 of 3</div>
                   <h1 className="text-2xl font-bold tracking-tight text-neutral-100 mb-2">Welcome to<br/>TimeMachine</h1>
-                  <p className="text-sm text-neutral-400 leading-relaxed">The APA timesheet calculator for UK commercial crew. Let's get your rates sorted.</p>
+                  <p className="text-sm text-neutral-400 leading-relaxed">The APA pay and timesheet calculator for UK commercial crew. Let's get your rates sorted.</p>
                 </div>
 
                 <Field label="Your name" hint="Appears on your exported timesheets">
@@ -17846,6 +17869,11 @@ const setDays = (updater) =>
                   <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 mb-2">Beta · Local only</div>
                   Your data stays on this device. No cloud sync yet - use <span className="text-neutral-300 font-medium">Settings → Export backup</span> to keep a copy.
                 </div>
+
+                {/* Non-affiliation, stated where every new visitor (and a
+                    fresh crawler render) lands - the same line the meta
+                    description and noscript carry. */}
+                <p className="text-[11px] text-neutral-500 leading-relaxed">TimeMachine references the APA Recommended Crew Terms as a rate standard. It is not an APA product.</p>
 
                 <Btn variant="primary" size="lg" className="w-full justify-center" onClick={() => setStep(2)}>Continue</Btn>
                 <button className="w-full text-center text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1" onClick={completeOnboarding}>Skip setup</button>
