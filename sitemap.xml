@@ -20,9 +20,39 @@
   </url>
   <url>
     <loc>https://timemachineapp.co.uk/articles</loc>
-    <lastmod>2026-07-17</lastmod>
+    <lastmod>2026-07-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://timemachineapp.co.uk/articles/apa-mileage-what-you-can-claim</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://timemachineapp.co.uk/articles/time-off-the-clock</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://timemachineapp.co.uk/articles/breaks-and-penalties</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://timemachineapp.co.uk/articles/how-apa-rates-work</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://timemachineapp.co.uk/articles/night-shoots-what-youre-owed</loc>

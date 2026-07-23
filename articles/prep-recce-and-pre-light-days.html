@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Prep, recce and pre-light days - TimeMachine</title>
+  <meta name="description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="canonical" href="https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="Prep, recce, build and pre-light days: the eight hour day nobody explains">
+  <meta property="og:description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - APA timesheets, pay and invoicing for UK crew">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Prep, recce, build and pre-light days: the eight hour day nobody explains">
+  <meta name="twitter:description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #737373;
+      --text-4:    #525252;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100; transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+
+    main { padding: 40px 0 72px; }
+    @media (min-width: 768px) { main { padding: 56px 0 96px; } }
+
+    .back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-3);
+      text-decoration: none; margin-bottom: 28px;
+    }
+    .back:hover { color: var(--tm-accent); }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(30px, 4.6vw, 46px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.04; margin: 0 0 14px;
+    }
+    .byline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin: 0 0 32px;
+    }
+    h2 {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+      margin: 40px 0 10px; color: var(--text);
+    }
+    p, li { color: var(--text-2); font-size: 16px; line-height: 1.7; }
+    p + p { margin-top: 14px; }
+    ul, ol { padding-left: 18px; margin: 8px 0 14px; }
+    li { margin: 6px 0; }
+    li::marker { color: var(--tm-accent); }
+    strong { color: var(--text); font-weight: 600; }
+
+    /* Rate table - figures mono (BRAND: money/data only), chrome from the
+       card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
+    .rate-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .rate-table th {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; color: var(--text-3); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
+    }
+    .rate-table td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 14px; color: var(--text);
+      padding: 12px 16px;
+    }
+    .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
+
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--tm-accent); color: #050505;
+      font-weight: 800; font-size: 14px; letter-spacing: 0.02em;
+      padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    }
+    .btn:hover { background: var(--tm-accent-2); color: #050505; }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Prep, recce, build and pre-light days: the eight hour day nobody explains",
+    "description": "Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.",
+    "url": "https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days",
+    "image": "https://timemachineapp.co.uk/og.png",
+    "datePublished": "2026-07-23",
+    "author": { "@type": "Organization", "name": "TimeMachine" },
+    "publisher": { "@type": "Organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" },
+    "mainEntityOfPage": "https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days"
+  }
+  </script>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
+      <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        Open the App
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/>
+          <polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+      <a href="/articles" class="back">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        All articles
+      </a>
+
+      <p class="label">Article</p>
+      <h1>Prep, recce, build and pre-light days: the eight hour day nobody explains</h1>
+      <p class="byline">TimeMachine</p>
+
+      <p>A shoot day is eleven hours. Everyone knows that. Far fewer people can tell you how long a prep day is, and it is not the same number.</p>
+      <p>Non-shooting days run on a completely different structure, with a shorter day, an earlier overtime threshold, and one carve-out that means a few roles ignore all of it.</p>
+
+      <h2>What counts as a non-shooting day</h2>
+      <p>A non-shooting day is a working day on which shooting does not take place. The terms list them: rest day, prep day, recce day, pre-light day, construction (build) day, strike day.</p>
+      <p>The default is <strong>eight hours, charged at your basic hourly rate, with overtime after eight hours at the standard overtime rate.</strong></p>
+      <p>Not eleven. Eight.</p>
+
+      <h2>The individual day types</h2>
+      <p><strong>Prep day, recce day, construction day, strike day</strong></p>
+      <p>Eight hours at your basic hourly rate. Overtime begins after eight hours at the standard overtime rate.</p>
+      <p>There is a wrinkle in the summary table worth knowing: if a first break is given, overtime starts after nine hours instead of eight. So being given a proper break pushes your overtime threshold out by an hour, because the break sits inside the day.</p>
+      <p>Meal breaks on these days are at the producer's discretion, and there is no meal compensation if food is not provided.</p>
+      <p><strong>Pre-light day</strong></p>
+      <p>Crew working on a dedicated location or at a studio as instructed by production.</p>
+      <p><strong>Eight hours plus one hour for lunch</strong>, charged at your basic hourly rate. Overtime begins <strong>after nine hours</strong> at the standard overtime rate.</p>
+      <p>So a pre-light is a nine hour envelope containing eight paid hours, in the same way a shoot day is an eleven hour envelope containing ten. It is the only non-shooting day that includes a lunch hour by default, and the only one carrying the £7.50 meal allowance if a meal is not provided.</p>
+      <p><strong>Rest day</strong></p>
+      <p>You are on location at production's request, but filming is not happening.</p>
+      <p>A flat fee equal to your <strong>basic daily rate</strong>. No overtime, no penalties, no meal compensation. Any day of the week.</p>
+      <p>It is the simplest calculation in the whole agreement: one flat figure, nothing added, nothing to track.</p>
+      <p><strong>Travel day</strong></p>
+      <p>Paid at your basic hourly rate regardless of the time or the day of the week, with a <strong>minimum call of five hours</strong>.</p>
+      <p>So a three hour travel day still pays five hours. Worth knowing, because travel days are short and the minimum is easy to overlook.</p>
+
+      <h2>The carve-out that catches people</h2>
+      <p>The non-shooting day structure <strong>does not apply to DoPs, art directors or location managers.</strong></p>
+      <p>For those roles, every day of engagement is treated as a basic working day: ten hours plus one for lunch, with overtime after eleven hours. A DoP on a recce is on an eleven hour day, not an eight hour one.</p>
+      <p>If you are one of those three, none of the above applies to you. If you are booking or accounting for one of them, the same.</p>
+
+      <h2>Weekends and bank holidays</h2>
+      <p>The non-shooting structures carry weekend multipliers of their own:</p>
+
+      <div class="table-scroll">
+      <table class="rate-table">
+        <thead>
+          <tr>
+            <th scope="col">Day type</th>
+            <th scope="col">Saturday</th>
+            <th scope="col">Sunday and bank holidays</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Prep, recce, build, strike</td><td>1.5 × hourly for 8 hours, OT after 8 at 1.5 × BHR</td><td>2 × hourly for 8 hours, OT after 8 at 2 × BHR</td></tr>
+          <tr><td>Pre-light</td><td>1.5 × hourly for 8 hours, OT after 9 at 1.5 × BHR</td><td>2 × hourly for 8 hours, OT after 9 at 2 × BHR</td></tr>
+          <tr><td>Rest day</td><td>Basic daily rate, fixed, no OT</td><td>Basic daily rate, fixed, no OT</td></tr>
+          <tr><td>Travel day</td><td>Basic hourly, min 5 hours</td><td>Basic hourly, min 5 hours</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>Note that rest days and travel days do <strong>not</strong> get a weekend multiplier. A Sunday rest day pays your basic daily rate, the same as a Wednesday one. A Sunday travel day pays your basic hourly rate, the same as any other.</p>
+
+      <h2>Food</h2>
+      <p>Production is not obliged to provide food or compensate for food expenses on non-shooting days, <strong>apart from pre-light</strong>. Pre-light is the exception: it carries a one hour break and the £7.50 allowance if a meal is not provided.</p>
+
+      <h2>Why this gets miscalculated</h2>
+      <p>Prep and rig days feel like shoot days. Same crew, same trucks, same hours on your feet. So people reach for the shoot day structure and invoice eleven hours, or wait for overtime that started three hours ago.</p>
+      <p>The eight hour threshold is the single most useful thing to remember here. On a prep day, overtime starts a lot earlier than instinct says it does.</p>
+
+      <h2>What we built</h2>
+      <p>TimeMachine handles each non-shooting day type on its own structure: the eight hour day for prep, recce, build and strike, the eight plus one for pre-light, the flat fee for rest days, and the five hour minimum on travel days, with the correct weekend multipliers applied automatically. Set the day type and the rest follows.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>Non-shooting days are <strong>eight hours</strong>, at basic hourly rate, overtime after eight.</li>
+        <li>Pre-light is <strong>eight plus one hour lunch</strong>, overtime after nine, and carries the £7.50 meal allowance.</li>
+        <li>Rest day is a <strong>flat basic daily rate</strong>. No overtime, no penalties, any day of the week.</li>
+        <li>Travel day is basic hourly with a <strong>five hour minimum</strong>.</li>
+        <li>Saturday is 1.5 ×, Sunday and bank holidays are 2 ×, on the prep and pre-light structures. Rest and travel days get no multiplier.</li>
+        <li><strong>DoPs, art directors and location managers are exempt</strong> and work eleven hour basic days throughout.</li>
+      </ul>
+
+      <div class="cta-row">
+        <a href="https://timemachineapp.co.uk/" class="btn">
+          Open TimeMachine
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA). It references the publicly available APA Recommended Crew Terms as a rate reference only. This article is general information, not legal or financial advice.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
