@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>TimeMachine - APA pay, timesheets and invoices for UK crew</title>
-  <meta name="description" content="The APA timesheet calculator for UK commercial crew. On the web, and now on iPhone via TestFlight. Free during beta.">
+  <meta name="description" content="The APA timesheet calculator for UK commercial crew. On the web and on iPhone. Free.">
   <meta name="theme-color" content="#0a0a0a">
   <link rel="canonical" href="https://timemachineapp.co.uk/welcome">
 
   <meta property="og:site_name" content="TimeMachine">
   <meta property="og:title" content="TimeMachine - APA pay, timesheets and invoices for UK crew">
-  <meta property="og:description" content="The APA timesheet calculator for UK commercial crew. On the web, and now on iPhone via TestFlight. Free during beta.">
+  <meta property="og:description" content="The APA timesheet calculator for UK commercial crew. On the web and on iPhone. Free.">
   <meta property="og:url" content="https://timemachineapp.co.uk/welcome">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://timemachineapp.co.uk/og.png">
@@ -19,7 +19,7 @@
   <meta property="og:image:alt" content="TimeMachine - APA timesheets, pay and invoicing for UK crew">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="TimeMachine - APA pay, timesheets and invoices for UK crew">
-  <meta name="twitter:description" content="The APA timesheet calculator for UK commercial crew. On the web, and now on iPhone via TestFlight. Free during beta.">
+  <meta name="twitter:description" content="The APA timesheet calculator for UK commercial crew. On the web and on iPhone. Free.">
   <meta name="twitter:image" content="https://timemachineapp.co.uk/og.png">
 
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -191,19 +191,6 @@
       line-height: 1;
       font-weight: 900;
     }
-    .beta-tag {
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--tm-accent-2);
-      background: rgba(14,165,233,0.08);
-      border: 1px solid rgba(14,165,233,0.25);
-      padding: 5px 9px;
-      border-radius: 6px;
-      margin-top: 2px;
-    }
-
     /* ─────────────────────────────────────────────────────
        Rotation fade utility — for personalised demo states
        ───────────────────────────────────────────────────── */
@@ -667,7 +654,7 @@
     }
 
     /* ─────────────────────────────────────────────────────
-       v5 additions — iOS beta CTA, provenance, iOS callout
+       v5 additions — store CTA, provenance, iOS callout
        ───────────────────────────────────────────────────── */
     .provenance {
       font-size: 12px;
@@ -682,19 +669,13 @@
     }
     .provenance a:hover { color: var(--tm-accent); }
 
-    .cta.ios {
+    .cta.secondary {
       background: var(--card);
       color: var(--text);
       border: 1px solid var(--border);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
     }
-    .cta.ios:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
-    .cta.ios .tf {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      color: var(--text-3);
-    }
+    .cta.secondary:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
 
     a.platform-pill { text-decoration: none; }
 
@@ -750,7 +731,7 @@
       vertical-align: middle;
       white-space: nowrap;
     }
-    .ios-callout .tf-link {
+    .ios-callout .store-link {
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -760,8 +741,8 @@
       color: var(--tm-accent);
       text-decoration: none;
     }
-    .ios-callout .tf-link:hover { color: var(--tm-accent-2); }
-    .ios-callout .tf-link svg { width: 12px; height: 12px; }
+    .ios-callout .store-link:hover { color: var(--tm-accent-2); }
+    .ios-callout .store-link svg { width: 12px; height: 12px; }
   </style>
 
   <script type="application/ld+json">
@@ -791,7 +772,6 @@
         <span class="brand-owner rot" data-rot="owner">YOUR</span>
         <span class="brand-mark">TIMEMACHINE</span>
       </div>
-      <span class="beta-tag">Beta</span>
     </header>
 
     <!-- ─────────────── Hero ─────────────── -->
@@ -814,24 +794,25 @@
       </p>
 
       <!-- CTAs -->
+      <!-- TODO(launch): swap the placeholder App Store URL below (id0000000000) for the real listing URL -->
       <div class="ctas">
-        <a href="https://timemachineapp.co.uk/" class="cta primary">
-          Open the web app
+        <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" class="cta primary" target="_blank" rel="noopener">
+          Download on the App Store
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"/>
             <polyline points="12 5 19 12 12 19"/>
           </svg>
         </a>
-        <a href="https://testflight.apple.com/join/fgudZ7Vq" class="cta ios" target="_blank" rel="noopener">
-          Get the iOS beta <span class="tf">&middot; TestFlight</span>
+        <a href="https://timemachineapp.co.uk/" class="cta secondary">
+          Open the web app
         </a>
         <a href="how-it-works.html" class="cta ghost">See how it works</a>
       </div>
 
       <!-- Platform notice -->
       <div class="platform-row">
+        <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" class="platform-pill live" target="_blank" rel="noopener">iPhone · App Store</a>
         <span class="platform-pill live">Web app · live now</span>
-        <a href="https://testflight.apple.com/join/fgudZ7Vq" class="platform-pill live" target="_blank" rel="noopener">iOS beta · TestFlight</a>
       </div>
 
       <!-- Glimpse of the in-app hero card - rotates through real-feeling examples -->
@@ -919,8 +900,8 @@
         <li><strong>Call-sheet reader.</strong> Import a call sheet and it fills in the invoicing details for you, on-device. Nothing leaves the phone. <span class="ios-tag">iPhone 15 Pro+</span></li>
         <li><strong>iCloud backup.</strong> A quiet daily snapshot in your own iCloud - nobody else can see it. New phone or reinstalled app, your shoots come back. <span class="ios-tag">iPhone</span></li>
       </ul>
-      <a href="https://testflight.apple.com/join/fgudZ7Vq" class="tf-link" target="_blank" rel="noopener">
-        Join the iOS beta on TestFlight
+      <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" class="store-link" target="_blank" rel="noopener">
+        Download on the App Store
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </a>
     </div>
@@ -942,13 +923,13 @@
     <div class="tip">
       <div class="tip-label">◇ Pro tip</div>
       <p>
-        On Android or desktop, open the app in your browser and tap <strong>Share &rarr; Add to Home Screen</strong> - it behaves like an installed app. On iPhone, get the native beta on <strong>TestFlight</strong>.
+        On Android or desktop, open the app in your browser and tap <strong>Share &rarr; Add to Home Screen</strong> - it behaves like an installed app. On iPhone, get the native app from the <strong>App Store</strong>.
       </p>
     </div>
 
     <!-- ─────────────── Signoff ─────────────── -->
     <p class="signoff">
-      By a spark, for the crew. <span class="brand-tint">Free during beta.</span>
+      By a spark, for the crew. <span class="brand-tint">Free.</span>
     </p>
 
     <!-- ─────────────── Footer ─────────────── -->
@@ -958,7 +939,7 @@
         <div class="foot-links">
           <a href="how-it-works.html">How it works</a>
           <a href="/articles">Articles</a>
-          <a href="https://testflight.apple.com/join/fgudZ7Vq" target="_blank" rel="noopener">iOS beta</a>
+          <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" target="_blank" rel="noopener">App Store</a>
           <a href="privacy.html">Privacy</a>
           <a href="mailto:feedback@timemachineapp.co.uk">feedback@</a>
         </div>

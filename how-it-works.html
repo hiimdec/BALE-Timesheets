@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>How TimeMachine works - APA pay, OT and invoicing</title>
-  <meta name="description" content="TimeMachine - the APA timesheet calculator for UK commercial crew. See what it does, how it costs your day, and where to get the iOS beta.">
+  <meta name="description" content="TimeMachine - the APA timesheet calculator for UK commercial crew. See what it does, how it costs your day, and where to get it.">
   <meta name="theme-color" content="#0a0a0a">
   <link rel="canonical" href="https://timemachineapp.co.uk/how-it-works">
 
@@ -315,12 +315,6 @@
       border: 1px solid var(--border-soft);
       color: var(--text-3);
     }
-    .tag-pill.beta {
-      background: var(--card);
-      border: 1px solid var(--border);
-      color: var(--text-2);
-    }
-
     .hero h1 {
       font-weight: 900;
       letter-spacing: -0.04em;
@@ -1197,14 +1191,13 @@
     .nav-ctas { display: flex; align-items: center; gap: 16px; }
     a.tag-pill { text-decoration: none; }
 
-    .btn.ios {
+    .btn.secondary {
       background: var(--card);
       color: var(--text);
       border: 1px solid var(--border);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
     }
-    .btn.ios:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
-    .btn.ios .tf { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-3); }
+    .btn.secondary:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
 
     .ios-band {
       background:
@@ -1254,14 +1247,14 @@
       border: 1px solid var(--border); border-radius: 5px;
       padding: 2px 6px; white-space: nowrap;
     }
-    .ios-band .tf-link {
+    .ios-band .store-link {
       display: inline-flex; align-items: center; gap: 8px;
       margin-top: 26px;
       font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
       color: var(--tm-accent); text-decoration: none;
     }
-    .ios-band .tf-link:hover { color: var(--tm-accent-2); }
-    .ios-band .tf-link svg { width: 14px; height: 14px; }
+    .ios-band .store-link:hover { color: var(--tm-accent-2); }
+    .ios-band .store-link svg { width: 14px; height: 14px; }
 
     /* Show-the-maths toggle */
     .maths-detail { margin-top: 22px; }
@@ -1343,7 +1336,8 @@
     <div class="container top-nav-inner">
       <a href="welcome.html" class="nav-brand">TIMEMACHINE</a>
       <div class="nav-ctas">
-        <a href="https://testflight.apple.com/join/fgudZ7Vq" class="nav-cta" target="_blank" rel="noopener">iOS beta</a>
+        <!-- TODO(launch): swap the placeholder App Store URL (id0000000000) for the real listing URL, here and in every store link below -->
+        <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" class="nav-cta" target="_blank" rel="noopener">App Store</a>
         <a href="https://timemachineapp.co.uk/" class="nav-cta">
           Open the App
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -1361,9 +1355,8 @@
       <div class="hero-grid">
         <div class="hero-content">
           <div class="hero-tags">
+            <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" class="tag-pill live" target="_blank" rel="noopener">iPhone · App Store</a>
             <span class="tag-pill live">Web app · live now</span>
-            <a href="https://testflight.apple.com/join/fgudZ7Vq" class="tag-pill live" target="_blank" rel="noopener">iOS beta · TestFlight</a>
-            <span class="tag-pill beta">Beta</span>
           </div>
 
           <h1>
@@ -1397,15 +1390,15 @@
           </div>
 
           <div class="hero-ctas">
-            <a href="https://timemachineapp.co.uk/" class="btn primary">
-              Open the web app
+            <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" class="btn primary" target="_blank" rel="noopener">
+              Download on the App Store
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12"/>
                 <polyline points="12 5 19 12 12 19"/>
               </svg>
             </a>
-            <a href="https://testflight.apple.com/join/fgudZ7Vq" class="btn ios" target="_blank" rel="noopener">
-              Get the iOS beta <span class="tf">&middot; TestFlight</span>
+            <a href="https://timemachineapp.co.uk/" class="btn secondary">
+              Open the web app
             </a>
             <a href="#features" class="btn ghost">See what it does</a>
           </div>
@@ -1706,7 +1699,7 @@
       <p class="label">On iPhone</p>
       <h2 style="margin-bottom: 12px;">The same app, with native hands.</h2>
       <p style="color: var(--text-2); max-width: 640px; font-size: 16px; line-height: 1.6;">
-        Everything above works in any browser. Install the iPhone beta and a few things only a native app can do switch on, built for the bits of the day when your hands are full.
+        Everything above works in any browser. Install the iPhone app and a few things only a native app can do switch on, built for the bits of the day when your hands are full.
       </p>
 
       <div class="la-wrap">
@@ -1757,8 +1750,8 @@
         </div>
       </div>
 
-      <a href="https://testflight.apple.com/join/fgudZ7Vq" class="tf-link" target="_blank" rel="noopener">
-        Join the iOS beta on TestFlight
+      <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" class="store-link" target="_blank" rel="noopener">
+        Download on the App Store
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </a>
     </div>
@@ -2056,14 +2049,14 @@
       <div class="split">
         <div class="col">
           <p class="label">The fine print, plainly</p>
-          <h2>Free during beta. Local. No login. No catch.</h2>
+          <h2>Free. Local. No login. No catch.</h2>
         </div>
         <div class="col">
           <div class="trust-rows">
             <div class="trust-row">
               <div class="ic">£</div>
               <div>
-                <h3>Free during the beta</h3>
+                <h3>Free</h3>
                 <p>Free now, and staying free for a while yet. If that ever changes, you&rsquo;ll get plenty of notice - nothing you&rsquo;ve logged gets held to ransom.</p>
               </div>
             </div>
@@ -2081,7 +2074,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </div>
               <div>
-                <h3>It's beta - and honest about it</h3>
+                <h3>Honest about the maths</h3>
                 <p>Built around the published APA terms, but always sense-check your final number before sending. Spotted a bug? <a href="mailto:feedback@timemachineapp.co.uk" style="color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px;">Tell me.</a></p>
               </div>
             </div>
@@ -2110,7 +2103,7 @@
             Where can I run it?
             <span class="plus">+</span>
           </summary>
-          <p>Any modern browser, right now - iPhone, Android, laptop. On iPhone there's now a native beta on <a href="https://testflight.apple.com/join/fgudZ7Vq" target="_blank" rel="noopener">TestFlight</a>, with the App Store release to follow. On Android or desktop, tap <strong>Share → Add to Home Screen</strong> and the web app behaves like an installed one.</p>
+          <p>Any modern browser, right now - iPhone, Android, laptop. On iPhone there's a native app on the <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" target="_blank" rel="noopener">App Store</a>. On Android or desktop, tap <strong>Share → Add to Home Screen</strong> and the web app behaves like an installed one.</p>
         </details>
         <details class="faq-item">
           <summary>
@@ -2138,7 +2131,7 @@
             What's coming next?
             <span class="plus">+</span>
           </summary>
-          <p>The iPhone beta is live on <a href="https://testflight.apple.com/join/fgudZ7Vq" target="_blank" rel="noopener">TestFlight</a> - the App Store release is next. After that: more invoice templates, deeper Siri, and whatever more than three people ask for.</p>
+          <p>More invoice templates, deeper Siri, and whatever more than three people ask for.</p>
         </details>
       </div>
     </div>
@@ -2150,7 +2143,7 @@
       <p class="label">Crew using it</p>
       <h2 style="margin-bottom: 12px;">Real quotes coming.</h2>
       <p style="color: var(--text-3); max-width: 600px; font-size: 15px;">
-        TimeMachine is in beta and these slots are waiting for crew who&rsquo;ve actually used it on a shoot. If that&rsquo;s you and you&rsquo;ve got 30 seconds - <a href="mailto:feedback@timemachineapp.co.uk" style="color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px;">send a line</a>.
+        These slots are waiting for crew who&rsquo;ve actually used it on a shoot. If that&rsquo;s you and you&rsquo;ve got 30 seconds - <a href="mailto:feedback@timemachineapp.co.uk" style="color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px;">send a line</a>.
       </p>
       <div class="testimonials">
         <div class="testimonial">
@@ -2190,20 +2183,20 @@
   <section class="final-cta">
     <div class="container">
       <p class="label" style="display: flex; justify-content: center;">Stop doing the maths in your phone calculator</p>
-      <h2><span class="em">Open the app.</span></h2>
+      <h2><span class="em">Get the app.</span></h2>
       <div style="display:flex; flex-wrap:wrap; gap:12px; justify-content:center;">
-        <a href="https://timemachineapp.co.uk/" class="btn primary">
-          Open the web app
+        <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" class="btn primary" target="_blank" rel="noopener">
+          Download on the App Store
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"/>
             <polyline points="12 5 19 12 12 19"/>
           </svg>
         </a>
-        <a href="https://testflight.apple.com/join/fgudZ7Vq" class="btn ios" target="_blank" rel="noopener">
-          Get the iOS beta <span class="tf">&middot; TestFlight</span>
+        <a href="https://timemachineapp.co.uk/" class="btn secondary">
+          Open the web app
         </a>
       </div>
-      <p class="sub">No login. Free during beta. Web app or iPhone.</p>
+      <p class="sub">No login. Free. iPhone or web.</p>
     </div>
   </section>
 
@@ -2213,7 +2206,7 @@
       <span>APA Sept 2025</span>
       <div class="footer-links">
         <a href="https://timemachineapp.co.uk/">App</a>
-        <a href="https://testflight.apple.com/join/fgudZ7Vq" target="_blank" rel="noopener">iOS beta</a>
+        <a href="https://apps.apple.com/gb/app/timemachine/id0000000000" target="_blank" rel="noopener">App Store</a>
         <a href="welcome.html">Welcome</a>
         <a href="/articles">Articles</a>
         <a href="privacy.html">Privacy</a>
