@@ -2,16 +2,15 @@
 
 Parked work with a known trigger date or event. Each item states its trigger, the exact change, and why it is parked rather than done.
 
-## Launch day (App Store approval of 5.3.0)
+## Launch day (App Store approval of 5.3.0) — DONE 24 July 2026
 
-**Status: the copy swaps are DONE and RECONCILED — staged on the `launch/website-go-live` branch, which now also contains the five published articles (content/articles-first-two merged 2026-07-20; every article page carries the App Store nav CTA).** All beta/TestFlight framing across welcome.html, how-it-works.html, privacy.html and the articles pages was replaced with App Store framing (the ruled four from the earlier version of this section, plus every remnant a fresh scan found). The one deliberate survivor: privacy.html's "if you're ever running a beta build through TestFlight" paragraph, which is conditionally worded and stays accurate for any future beta build. The fix/site-hero-glow branch merges cleanly with this one and may deploy earlier, during review.
+**The app is live on the App Store.** For future reference:
 
-Remaining manual actions ON launch day, before/at merge of `launch/website-go-live` (TODO(launch) — the two irreducible day-of steps):
+- **App Store URL (country-neutral, use this form everywhere):** `https://apps.apple.com/app/id6775970098`
+- **App Store ID:** `6775970098`
+- Never use country-coded forms (`/gb/`, `/us/`) in links - the neutral URL redirects to the visitor's own storefront.
 
-| Action | Where | Detail |
-|---|---|---|
-| TODO(launch): paste the real App Store URL | all site pages | Find-and-replace the placeholder `https://apps.apple.com/gb/app/timemachine/id0000000000` (18 links across 9 files, plus two `TODO(launch)` comments; re-run `grep -rn "id0000000000"` on the day and expect 20 matching lines before the swap, zero after) |
-| TODO(launch): set the privacy effective date | privacy.html | Currently "Effective 10 July 2026" (staging date, marked with a `TODO(launch)` comment) — set to the actual launch date |
+Executed on the day: `launch/website-go-live` merged to main (clean, pre-reconciled); the App Store nav CTA extended to all ten article pages; every placeholder link (26 grep lines: 23 links across 14 pages plus TODO comments) replaced with the neutral URL - zero remain; privacy.html effective date set to 24 July 2026 and its version line to v5.3.0. The one deliberate TestFlight survivor stays: privacy's conditionally worded "if you're ever running a beta build through TestFlight" paragraph, accurate for any future beta.
 
 ## 1 September 2026 — marketing rate labels
 

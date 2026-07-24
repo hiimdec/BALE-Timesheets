@@ -104,6 +104,7 @@
     }
     .nav-cta:hover { color: var(--tm-accent-2); }
     .nav-cta svg { width: 12px; height: 12px; }
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
 
     main { padding: 40px 0 72px; }
     @media (min-width: 768px) { main { padding: 56px 0 96px; } }
@@ -239,13 +240,16 @@
   <nav class="top-nav">
     <div class="container top-nav-inner">
       <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
-      <a href="https://timemachineapp.co.uk/" class="nav-cta">
-        Open the App
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="5" y1="12" x2="19" y2="12"/>
-          <polyline points="12 5 19 12 12 19"/>
-        </svg>
-      </a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="https://timemachineapp.co.uk/" class="nav-cta">
+          Open the App
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+      </div>
     </div>
   </nav>
 
