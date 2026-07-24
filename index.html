@@ -70,12 +70,49 @@
       future: { hoverOnlyWhenSupported: true },
       theme: {
         extend: {
+          // Stage-1 theme refactor: every palette colour resolves through a
+          // CSS variable defined in this file's :root (channel triplets, with
+          // the hex each held on the definition line). The <alpha-value>
+          // placeholder keeps every opacity-modified utility (bg-sky-500/25,
+          // ring-sky-500/40, /[0.03] arbitrary alphas) compositing exactly as
+          // before. This block MUST stay a verbatim copy of the one in
+          // tailwind.config.js (the native build's static stylesheet) —
+          // audit:theme enforces the lockstep. Stock families not listed
+          // (red/amber/orange/green error+success states, white/black scrims)
+          // are deliberately outside the theme system and stay fixed.
           colors: {
-            'tm-warn': '#ff8a3d',    // warm orange — warnings, OT segment
-            'tm-pen':  '#f43f5e',    // hot pink-red — penalties
-            'tm-good': '#4ade80',    // vibrant green — extras bucket, "ok / sent / paid" states
-            'tm-kit':  '#a78bfa',    // violet — kit money segment in breakdown buckets
-            'tm-card-2': '#1f1f1f',  // one step lighter than card — for chips/pills that need to lift
+            neutral: {
+              100: 'rgb(var(--tm-neutral-100) / <alpha-value>)',
+              200: 'rgb(var(--tm-neutral-200) / <alpha-value>)',
+              300: 'rgb(var(--tm-neutral-300) / <alpha-value>)',
+              400: 'rgb(var(--tm-neutral-400) / <alpha-value>)',
+              500: 'rgb(var(--tm-neutral-500) / <alpha-value>)',
+              600: 'rgb(var(--tm-neutral-600) / <alpha-value>)',
+              700: 'rgb(var(--tm-neutral-700) / <alpha-value>)',
+              800: 'rgb(var(--tm-neutral-800) / <alpha-value>)',
+              900: 'rgb(var(--tm-neutral-900) / <alpha-value>)',
+              950: 'rgb(var(--tm-neutral-950) / <alpha-value>)',
+            },
+            sky: {
+              100: 'rgb(var(--tm-sky-100) / <alpha-value>)',
+              200: 'rgb(var(--tm-sky-200) / <alpha-value>)',
+              300: 'rgb(var(--tm-sky-300) / <alpha-value>)',
+              400: 'rgb(var(--tm-sky-400) / <alpha-value>)',
+              500: 'rgb(var(--tm-sky-500) / <alpha-value>)',
+              600: 'rgb(var(--tm-sky-600) / <alpha-value>)',
+              700: 'rgb(var(--tm-sky-700) / <alpha-value>)',
+              800: 'rgb(var(--tm-sky-800) / <alpha-value>)',
+              900: 'rgb(var(--tm-sky-900) / <alpha-value>)',
+              950: 'rgb(var(--tm-sky-950) / <alpha-value>)',
+            },
+            fuchsia: {
+              400: 'rgb(var(--tm-fuchsia-400) / <alpha-value>)',
+            },
+            'tm-warn': 'rgb(var(--tm-warn) / <alpha-value>)',    // warm orange — warnings, OT segment
+            'tm-pen':  'rgb(var(--tm-pen) / <alpha-value>)',     // hot pink-red — penalties
+            'tm-good': 'rgb(var(--tm-good) / <alpha-value>)',    // vibrant green — extras bucket, "ok / sent / paid" states
+            'tm-kit':  'rgb(var(--tm-kit) / <alpha-value>)',     // violet — kit money segment in breakdown buckets
+            'tm-card-2': 'rgb(var(--tm-card-2) / <alpha-value>)',// one step lighter than card — for chips/pills that need to lift
           }
         }
       }
@@ -94,6 +131,44 @@
 
   <style>
     :root {
+      /* ── Theme palette channels (stage 1) ─────────────────────────────────
+         Every colour the app renders resolves through these variables: both
+         Tailwind configs (the inline one below and tailwind.config.js — kept
+         in lockstep, enforced by audit:theme) reference them in the
+         rgb(var(--x) / <alpha-value>) form, and the residual raw-hex sites in
+         this file were converted to var() equivalents. Values are
+         space-separated RGB channels so opacity utilities (bg-sky-500/25)
+         keep compositing. These defaults ARE today's palette — stage 1 is a
+         pure refactor, byte-identical rendering. Alternate palettes (stage 2)
+         override these values on a root class; they never touch call sites.
+         The two PDF stylesheets (PRINT_STYLES / INVOICE_PRINT_STYLES) are
+         raw-hex documents and deliberately do NOT resolve through these. */
+      --tm-neutral-100: 245 245 245;  /* #f5f5f5 */
+      --tm-neutral-200: 229 229 229;  /* #e5e5e5 */
+      --tm-neutral-300: 212 212 212;  /* #d4d4d4 */
+      --tm-neutral-400: 163 163 163;  /* #a3a3a3 */
+      --tm-neutral-500: 115 115 115;  /* #737373 */
+      --tm-neutral-600: 82 82 82;     /* #525252 */
+      --tm-neutral-700: 64 64 64;     /* #404040 */
+      --tm-neutral-800: 38 38 38;     /* #262626 */
+      --tm-neutral-900: 23 23 23;     /* #171717 */
+      --tm-neutral-950: 10 10 10;     /* #0a0a0a */
+      --tm-sky-100: 224 242 254;      /* #e0f2fe */
+      --tm-sky-200: 186 230 253;      /* #bae6fd */
+      --tm-sky-300: 125 211 252;      /* #7dd3fc */
+      --tm-sky-400: 56 189 248;       /* #38bdf8 */
+      --tm-sky-500: 14 165 233;       /* #0ea5e9 */
+      --tm-sky-600: 2 132 199;        /* #0284c7 */
+      --tm-sky-700: 3 105 161;        /* #0369a1 */
+      --tm-sky-800: 7 89 133;         /* #075985 */
+      --tm-sky-900: 12 74 110;        /* #0c4a6e */
+      --tm-sky-950: 8 47 73;          /* #082f49 */
+      --tm-fuchsia-400: 232 121 249;  /* #e879f9 */
+      --tm-warn: 255 138 61;          /* #ff8a3d */
+      --tm-pen: 244 63 94;            /* #f43f5e */
+      --tm-good: 74 222 128;          /* #4ade80 */
+      --tm-kit: 167 139 250;          /* #a78bfa */
+      --tm-card-2: 31 31 31;          /* #1f1f1f */
       --tm-pill-paper: #e6e9ed;    /* cool light grey — was warm cream */
       --pill-paper: #e6e9ed;
       --pill-ink: #15171a;
@@ -161,8 +236,8 @@
        native momentum + edge-bounce via the .overflow-* block below. */
     html, body {
       overscroll-behavior: none;
-      background: #0a0a0a;
-      color: #f5f5f5;
+      background: rgb(var(--tm-neutral-950));
+      color: rgb(var(--tm-neutral-100));
     }
 
     /* 9. Font stack leads with -apple-system so iOS picks SF Pro directly.
@@ -249,9 +324,9 @@
       opacity: 1 !important;
       -webkit-appearance: auto !important;
       appearance: auto !important;
-      background: #171717;
-      color: #f5f5f5;
-      outline: 2px solid #0ea5e9;
+      background: rgb(var(--tm-neutral-900));
+      color: rgb(var(--tm-neutral-100));
+      outline: 2px solid rgb(var(--tm-sky-500));
       outline-offset: -2px;
       border-radius: inherit;
       padding: 0 8px;
@@ -296,8 +371,8 @@
     /* Hero card — soft sky glow top-right + 1px sky hairline along the top edge */
     .tm-hero-card {
       background:
-        radial-gradient(120% 100% at 100% 0%, rgba(14,165,233,0.10) 0%, transparent 50%),
-        #171717;
+        radial-gradient(120% 100% at 100% 0%, rgb(var(--tm-sky-500) / 0.10) 0%, transparent 50%),
+        rgb(var(--tm-neutral-900));
       position: relative;
       overflow: hidden;
     }
@@ -306,7 +381,7 @@
       position: absolute;
       top: 0; left: 0; right: 0;
       height: 1px;
-      background: linear-gradient(90deg, transparent, #0ea5e9, transparent);
+      background: linear-gradient(90deg, transparent, rgb(var(--tm-sky-500)), transparent);
       pointer-events: none;
     }
     /* Reusable bottom pill — cool grey paper, fine crosshatch grain texture,
@@ -344,7 +419,7 @@
       pointer-events: none;
     }
     .tm-pill-nav-btn-add {
-      background: #0ea5e9;
+      background: rgb(var(--tm-sky-500));
       border-color: rgba(0,0,0,0.15);
       color: #000;
     }
@@ -386,9 +461,9 @@
     /* Big total card — gross-tinted container with subtle sky glow + GROSS micro-label */
     .tm-big-total {
       background:
-        radial-gradient(120% 100% at 0% 0%, rgba(14,165,233,0.06) 0%, transparent 60%),
-        #171717;
-      border: 1px solid #262626;
+        radial-gradient(120% 100% at 0% 0%, rgb(var(--tm-sky-500) / 0.06) 0%, transparent 60%),
+        rgb(var(--tm-neutral-900));
+      border: 1px solid rgb(var(--tm-neutral-800));
       border-radius: 18px;
       padding: 18px;
       margin: 0 16px 16px;
@@ -403,7 +478,7 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 9px;
       letter-spacing: 0.22em;
-      color: #525252;
+      color: rgb(var(--tm-neutral-600));
       font-weight: 700;
       pointer-events: none;
     }
@@ -431,11 +506,11 @@
       justify-content: center;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 17px;
-      color: rgb(115, 115, 115);
+      color: rgb(var(--tm-neutral-500));
       transition: color 80ms ease, font-size 80ms ease, font-weight 80ms ease;
     }
     .tm-wheel-item-active {
-      color: rgb(245, 245, 245);
+      color: rgb(var(--tm-neutral-100));
       font-weight: 700;
       font-size: 19px;
     }
@@ -444,8 +519,8 @@
       left: 16px; right: 16px;
       top: 80px; height: 40px;
       pointer-events: none;
-      border-top: 1px solid rgb(64, 64, 64);
-      border-bottom: 1px solid rgb(64, 64, 64);
+      border-top: 1px solid rgb(var(--tm-neutral-700));
+      border-bottom: 1px solid rgb(var(--tm-neutral-700));
       background: rgba(255, 255, 255, 0.025);
     }
 
@@ -495,15 +570,19 @@
     <p>TimeMachine is a free APA rate and pay calculator for UK film crew: day rates, overtime, penalties, travel and night shoots, worked out from your call and wrap times, with timesheets and invoicing. It references the publicly available APA Recommended Crew Terms as a rate standard and is not an APA product. JavaScript is required to run the app.</p>
   </noscript>
   <div id="root">
-    <div class="app-loading" style="flex-direction:column; gap:18px; background:#0a0a0a;">
+    <div class="app-loading" style="flex-direction:column; gap:18px; background:rgb(var(--tm-neutral-950));">
+      <!-- Boot mark: bars stay RAW HEX in stage 1 (unchanged behaviour). NOT a
+           standing rule — the app ships alternate icons and a stage-2 theme is
+           expected to restyle the mark to match its icon variant, so these are
+           a stage-2 decision, not a brand invariant. -->
       <svg width="132" viewBox="83.5 202 857 620" xmlns="http://www.w3.org/2000/svg"
            aria-hidden="true" style="animation:tm-splash-pulse 1.6s ease-in-out infinite;">
         <rect x="83.5" y="202" width="857" height="148" rx="74" fill="#0ea5e9"></rect>
         <rect x="83.5" y="438" width="553" height="148" rx="74" fill="#ff8a3d"></rect>
         <rect x="83.5" y="674" width="268" height="148" rx="74" fill="#f43f5e"></rect>
       </svg>
-      <div style="font-weight:600; font-size:18px; color:#f5f5f5; letter-spacing:-0.01em;">TimeMachine</div>
-      <div style="font-size:13px; color:#737373;">Loading…</div>
+      <div style="font-weight:600; font-size:18px; color:rgb(var(--tm-neutral-100)); letter-spacing:-0.01em;">TimeMachine</div>
+      <div style="font-size:13px; color:rgb(var(--tm-neutral-500));">Loading…</div>
     </div>
   </div>
 
@@ -8803,7 +8882,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <Btn
                 variant="primary"
                 onClick={copyBreakdown}
-                style={{ boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
+                style={{ boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}>
                 <ICopy size={14}/>{copied ? "Copied!" : "Copy breakdown"}
               </Btn>
             </div>
@@ -9621,7 +9700,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="flex items-center gap-1.5">
                   <button type="button" onClick={() => setShowPreCallInfo(s => !s)}
                     className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
-                    style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
+                    style={{ width: 24, height: 24, background: 'rgb(var(--tm-sky-400) / 0.15)', color: 'rgb(var(--tm-sky-300))', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Pre-call info">
                     <IInfo size={12}/>
                   </button>
@@ -9747,7 +9826,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="flex items-center gap-1.5">
                   <button type="button" onClick={() => setShowTravelInfo(s => !s)}
                     className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
-                    style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
+                    style={{ width: 24, height: 24, background: 'rgb(var(--tm-sky-400) / 0.15)', color: 'rgb(var(--tm-sky-300))', WebkitTapHighlightColor: 'transparent' }}
                     aria-label="Travel time calculation info">
                     <IInfo size={12}/>
                   </button>
@@ -10402,7 +10481,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Travel Time</span>
                           <button type="button" onClick={() => setShowTravelInfo(s => !s)}
                             className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
-                            style={{ width: 24, height: 24, background: 'rgba(56,189,248,0.15)', color: '#7dd3fc', WebkitTapHighlightColor: 'transparent' }}
+                            style={{ width: 24, height: 24, background: 'rgb(var(--tm-sky-400) / 0.15)', color: 'rgb(var(--tm-sky-300))', WebkitTapHighlightColor: 'transparent' }}
                             aria-label="Travel time calculation info">
                             <IInfo size={12}/>
                           </button>
@@ -12188,7 +12267,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           })()}
 
           <div className="px-4 -mt-0.5 mb-4 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-neutral-500 font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgba(14,165,233,0.6)' }}/>
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" style={{ boxShadow: '0 0 6px rgb(var(--tm-sky-500) / 0.6)' }}/>
             APPLIES TO ALL UNLESS OVERRIDDEN BELOW
           </div>
 
@@ -12380,7 +12459,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     type="button"
                     onClick={() => setShowLunchSheet(false)}
                     className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
-                    style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                    style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}
                   >
                     Done
                   </button>
@@ -12682,7 +12761,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 type="button"
                 onClick={handleSaveEmail}
                 className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}
               >
                 Save email
               </button>
@@ -12807,7 +12886,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               disabled={!canSave}
               className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-neutral-800 disabled:text-neutral-500 text-black text-sm font-bold transition-colors"
               style={{
-                boxShadow: canSave ? '0 4px 16px rgba(14,165,233,0.25)' : 'none',
+                boxShadow: canSave ? '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' : 'none',
                 WebkitTapHighlightColor: 'transparent',
               }}
             >
@@ -13043,7 +13122,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   type="button"
                   onClick={handleAddToThisDay}
                   className="px-4 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-black text-[12px] font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-2"
-                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}
                 >
                   <IPlus size={13}/>Add to this day
                 </button>
@@ -13519,7 +13598,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   type="button"
                   onClick={() => setShowLunchEdit(false)}
                   className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
-                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}
                 >
                   Done
                 </button>
@@ -13595,7 +13674,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   type="button"
                   onClick={() => setEditingNote(false)}
                   className="w-full mt-4 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-bold transition-colors"
-                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}
                 >
                   Done
                 </button>
@@ -14732,7 +14811,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onClick={() => onOpenSave?.()}
             className="fixed left-1/2 -translate-x-1/2 z-20 bg-sky-500 hover:bg-sky-400 text-black text-[12px] font-bold uppercase tracking-wider py-2.5 px-6 rounded-full transition-colors flex items-center gap-2"
             style={{
-              boxShadow: '0 8px 24px rgba(14,165,233,0.4)',
+              boxShadow: '0 8px 24px rgb(var(--tm-sky-500) / 0.4)',
               WebkitTapHighlightColor: 'transparent',
               bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 24px)',
             }}
@@ -15096,7 +15175,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 disabled={selectedCount === 0}
                 className="w-full px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-neutral-800 disabled:text-neutral-500 text-black text-sm font-bold transition-colors flex items-center justify-center gap-2"
                 style={{
-                  boxShadow: selectedCount > 0 ? '0 4px 16px rgba(14,165,233,0.25)' : 'none',
+                  boxShadow: selectedCount > 0 ? '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' : 'none',
                   WebkitTapHighlightColor: 'transparent'
                 }}
               >
@@ -15167,7 +15246,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       });
 
       return (
-        <div className="tm-native-overlay" style={{ position: 'fixed', inset: 0, zIndex: 60, background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
+        <div className="tm-native-overlay" style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgb(var(--tm-neutral-950))', display: 'flex', flexDirection: 'column' }}>
           {/* Header — back + centered title are suppressed under native chrome (the native bar
               owns them); the SHARE action is kept in a slim right-aligned row. */}
           <div style={{ paddingTop: 'calc(var(--sat) + 4px)', flexShrink: 0 }}>
@@ -15304,7 +15383,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
             {/* By-day list */}
             {sorted.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#525252', paddingTop: 24, fontSize: 13 }}>No days entered yet</div>
+              <div style={{ textAlign: 'center', color: 'rgb(var(--tm-neutral-600))', paddingTop: 24, fontSize: 13 }}>No days entered yet</div>
             ) : (
               <>
                 <h4 className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold mb-2 mx-4">BY DAY</h4>
@@ -15447,7 +15526,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <button type="button"
                   onClick={() => { setShowShareMenu(false); onExportPDF(); }}
                   className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
-                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
+                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}>
                   <IDownload size={15}/>Export PDF
                 </button>
               )}
@@ -15683,7 +15762,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   type="button"
                   onClick={() => { onPick(day.id); onClose(); }}
                   className={`w-full flex items-center gap-3 px-5 py-3.5 border-b border-neutral-800 text-left transition-colors ${isCurrent ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
-                  style={isCurrent ? { borderLeft: '3px solid #0ea5e9' } : { borderLeft: '3px solid transparent' }}
+                  style={isCurrent ? { borderLeft: '3px solid rgb(var(--tm-sky-500))' } : { borderLeft: '3px solid transparent' }}
                 >
                   <div className="text-xs font-bold text-neutral-400 w-8 flex-shrink-0">D{idx + 1}</div>
                   <div className="flex-1 min-w-0">
@@ -17039,7 +17118,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <button type="button"
                 onClick={() => { setShowExportSheet(false); handleExportPDF(); }}
                 className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
-                style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}>
+                style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}>
                 <IDownload size={15}/>Timesheet (PDF)
               </button>
               <button type="button"
@@ -17808,7 +17887,7 @@ const setDays = (updater) =>
               onClick={handleCreate}
               disabled={!canCreate}
               className="w-full justify-center py-3 text-sm"
-              style={canCreate ? { boxShadow: '0 4px 16px rgba(14,165,233,0.25)' } : undefined}
+              style={canCreate ? { boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' } : undefined}
             >
               Create
             </Btn>
@@ -19510,7 +19589,7 @@ const setDays = (updater) =>
                 <div className="text-[10px] text-neutral-500 mb-3">Recommended: square, under 200KB. Renders at ~100px on your invoices.</div>
                 {userPrefs.logoBase64 ? (
                   <div className="flex items-center gap-3">
-                    <img src={userPrefs.logoBase64} alt="Logo preview" style={{ maxWidth: 100, maxHeight: 100, borderRadius: 8, background: '#262626' }} />
+                    <img src={userPrefs.logoBase64} alt="Logo preview" style={{ maxWidth: 100, maxHeight: 100, borderRadius: 8, background: 'rgb(var(--tm-neutral-800))' }} />
                     <Btn variant="ghost" size="sm" onClick={() => set({ logoBase64: "" })}>Remove logo</Btn>
                   </div>
                 ) : (
@@ -22406,7 +22485,7 @@ const setDays = (updater) =>
             </div>
             <button onClick={() => setActionSheetItem(item)}
               className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-neutral-500/30"
-              aria-label="Line options" style={{ width: 36, height: 36, background: 'rgba(115,115,115,0.15)', color: '#a3a3a3', WebkitTapHighlightColor: 'transparent' }}>
+              aria-label="Line options" style={{ width: 36, height: 36, background: 'rgb(var(--tm-neutral-500) / 0.15)', color: 'rgb(var(--tm-neutral-400))', WebkitTapHighlightColor: 'transparent' }}>
               <IKebab size={16}/>
             </button>
           </div>
@@ -23004,7 +23083,7 @@ const setDays = (updater) =>
                     variant="primary"
                     onClick={handleEmail}
                     className="flex-[1.4] justify-center"
-                    style={{ boxShadow: '0 4px 16px rgba(14,165,233,0.25)' }}
+                    style={{ boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}
                   >
                     <IMail size={13}/>Send via email
                   </Btn>
@@ -26306,9 +26385,9 @@ const confirmDelete = (p) => setConfirmOpts({
             </div>
           )}
           {showMigrationBanner && (
-            <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)', left: 12, right: 12, zIndex: 9998, background: '#0c1e33', border: '1px solid #0ea5e9', borderRadius: 12, color: '#e0f2fe', padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+            <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)', left: 12, right: 12, zIndex: 9998, background: '#0c1e33', border: '1px solid rgb(var(--tm-sky-500))', borderRadius: 12, color: 'rgb(var(--tm-sky-100))', padding: '10px 14px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
               <span>Your data was updated to the latest format - everything is fine.</span>
-              <button onClick={() => setShowMigrationBanner(false)} style={{ color: '#7dd3fc', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} aria-label="Dismiss">×</button>
+              <button onClick={() => setShowMigrationBanner(false)} style={{ color: 'rgb(var(--tm-sky-300))', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} aria-label="Dismiss">×</button>
             </div>
           )}
           {migrationResult.error && (
@@ -26319,7 +26398,7 @@ const confirmDelete = (p) => setConfirmOpts({
             </div>
           )}
           {versionToast && (
-            <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)', left: 12, right: 12, zIndex: 9997, background: '#052e16', border: '1px solid #4ade80', borderRadius: 12, color: '#bbf7d0', padding: '10px 14px', fontSize: 12, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+            <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)', left: 12, right: 12, zIndex: 9997, background: '#052e16', border: '1px solid rgb(var(--tm-good))', borderRadius: 12, color: '#bbf7d0', padding: '10px 14px', fontSize: 12, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
               Updated to TimeMachine v{APP_VERSION} ✓
             </div>
           )}

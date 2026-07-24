@@ -21,12 +21,47 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // Stage-1 theme refactor: every palette colour resolves through a CSS
+      // variable defined in index.html's :root (channel triplets, hex noted
+      // per line there). The <alpha-value> placeholder keeps every
+      // opacity-modified utility compositing exactly as before. This block
+      // MUST stay a verbatim copy of the inline tailwind.config in
+      // index.html — audit:theme enforces the lockstep. Stock families not
+      // listed (red/amber/orange/green error+success states, white/black
+      // scrims) are deliberately outside the theme system and stay fixed.
       colors: {
-        'tm-warn': '#ff8a3d',    // warm orange — warnings, OT segment
-        'tm-pen':  '#f43f5e',    // hot pink-red — penalties
-        'tm-good': '#4ade80',    // vibrant green — extras bucket, "ok / sent / paid" states
-        'tm-kit':  '#a78bfa',    // violet — kit money segment in breakdown buckets
-        'tm-card-2': '#1f1f1f',  // one step lighter than card — for chips/pills that need to lift
+        neutral: {
+          100: 'rgb(var(--tm-neutral-100) / <alpha-value>)',
+          200: 'rgb(var(--tm-neutral-200) / <alpha-value>)',
+          300: 'rgb(var(--tm-neutral-300) / <alpha-value>)',
+          400: 'rgb(var(--tm-neutral-400) / <alpha-value>)',
+          500: 'rgb(var(--tm-neutral-500) / <alpha-value>)',
+          600: 'rgb(var(--tm-neutral-600) / <alpha-value>)',
+          700: 'rgb(var(--tm-neutral-700) / <alpha-value>)',
+          800: 'rgb(var(--tm-neutral-800) / <alpha-value>)',
+          900: 'rgb(var(--tm-neutral-900) / <alpha-value>)',
+          950: 'rgb(var(--tm-neutral-950) / <alpha-value>)',
+        },
+        sky: {
+          100: 'rgb(var(--tm-sky-100) / <alpha-value>)',
+          200: 'rgb(var(--tm-sky-200) / <alpha-value>)',
+          300: 'rgb(var(--tm-sky-300) / <alpha-value>)',
+          400: 'rgb(var(--tm-sky-400) / <alpha-value>)',
+          500: 'rgb(var(--tm-sky-500) / <alpha-value>)',
+          600: 'rgb(var(--tm-sky-600) / <alpha-value>)',
+          700: 'rgb(var(--tm-sky-700) / <alpha-value>)',
+          800: 'rgb(var(--tm-sky-800) / <alpha-value>)',
+          900: 'rgb(var(--tm-sky-900) / <alpha-value>)',
+          950: 'rgb(var(--tm-sky-950) / <alpha-value>)',
+        },
+        fuchsia: {
+          400: 'rgb(var(--tm-fuchsia-400) / <alpha-value>)',
+        },
+        'tm-warn': 'rgb(var(--tm-warn) / <alpha-value>)',    // warm orange — warnings, OT segment
+        'tm-pen':  'rgb(var(--tm-pen) / <alpha-value>)',     // hot pink-red — penalties
+        'tm-good': 'rgb(var(--tm-good) / <alpha-value>)',    // vibrant green — extras bucket, "ok / sent / paid" states
+        'tm-kit':  'rgb(var(--tm-kit) / <alpha-value>)',     // violet — kit money segment in breakdown buckets
+        'tm-card-2': 'rgb(var(--tm-card-2) / <alpha-value>)',// one step lighter than card — for chips/pills that need to lift
       },
     },
   },
