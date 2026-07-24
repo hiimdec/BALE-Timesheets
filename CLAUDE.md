@@ -1,6 +1,8 @@
 # TimeMachine — operating rules for Claude Code
 
 This is the source of truth: the actual repo code (the local working copy, kept in sync with GitHub origin) wins over any summary, memory, or assumption. Verify against the code.
+
+**Fresh session?** Read HANDOVER.md for the current release state (5.3.0 live on the App Store), the working disciplines in practice, and every parked item with context. MAINTENANCE.md holds the parked work; CALC_DECISIONS.md holds the calc rulings ledger.
 ## Build topology
 The self-contained root `index.html` (React 18 + Tailwind + in-browser Babel via CDN) is the file the web app is built from. We edit it in the LOCAL working copy. It does not go live until it's committed and pushed to `main` on GitHub, which Netlify then auto-deploys to timemachineapp.co.uk.`/dist` is esbuild output for the Capacitor iOS wrap, gitignored. Not served to web.
 Data: localStorage on web, @capacitor/preferences on native.
