@@ -67,12 +67,20 @@
       line-height: 1.5;
     }
 
+    /* Eased tail (see welcome.html): a short linear stop quantised into a
+       hard-edged band on OLED; multi-stop falloff to 100% reads as a true fade. */
     body::before {
       content: ""; position: absolute; inset: 0 0 auto 0; height: 90vh;
       z-index: -1; pointer-events: none;
       background:
-        radial-gradient(60% 50% at 50% -5%, rgba(14,165,233,0.14) 0%, transparent 60%),
-        radial-gradient(40% 30% at 85% 12%, rgba(125,211,252,0.05) 0%, transparent 70%);
+        radial-gradient(60% 50% at 50% -5%,
+          rgba(14,165,233,0.14) 0%, rgba(14,165,233,0.08) 25%,
+          rgba(14,165,233,0.035) 50%, rgba(14,165,233,0.014) 70%,
+          rgba(14,165,233,0.005) 86%, transparent 100%),
+        radial-gradient(40% 30% at 85% 12%,
+          rgba(125,211,252,0.05) 0%, rgba(125,211,252,0.025) 35%,
+          rgba(125,211,252,0.01) 65%, rgba(125,211,252,0.004) 85%,
+          transparent 100%);
     }
 
     .mono {
