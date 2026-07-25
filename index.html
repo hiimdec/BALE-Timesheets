@@ -200,6 +200,11 @@
          ink (full strength / the ruled 38%). */
       --tm-pill-digit-ink: #171717;
       --tm-pill-digit-faint: #a3a3a3;
+      /* BB pill "View breakdown" caption — same legacy-exact treatment as the
+         digit inks (found by the audit:theme leak scan): default keeps the
+         shipped #737373 verbatim; poppy derives from the ink at the topline's
+         55% ratio. */
+      --tm-pill-caption: #737373;
       /* Safe-area insets routed through vars so native chrome can neutralise them
          (the native bars cover the device safe area). Web default = the real env(). */
       --sat: env(safe-area-inset-top);
@@ -249,6 +254,7 @@
       --tm-pill-ink: 42 20 32;        /* #2a1420 */
       --tm-pill-digit-ink: rgb(var(--tm-pill-ink));
       --tm-pill-digit-faint: rgb(var(--tm-pill-ink) / 0.38);
+      --tm-pill-caption: rgb(var(--tm-pill-ink) / 0.55);
     }
     /* Poppy-only: hairline between segment-bar buckets. BASIC (pink) sits
        flush against PEN (coral) whenever the OT bucket is zero, and the two
@@ -257,6 +263,23 @@
     html.tm-theme-poppy .tm-seg-bar > * + * {
       box-shadow: inset 1px 0 0 rgb(var(--tm-neutral-950));
     }
+    /* Poppy-only: the select chevron. The chevron is an SVG DATA URI (the
+       base `select` rule below) — a separate document, so var() cannot
+       resolve inside it; each theme carries a static URI with the same
+       geometry and its own sky-500 stroke. The base rule is byte-identical
+       to stage 1; audit:theme's leak scan exempts exactly these two rules.
+       Covers all nine selects. */
+    html.tm-theme-poppy select { background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f472b6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); }
+    /* Poppy-only: caret + selection PAINT (web-side; default untouched).
+       PARKED (E): the truly native affordances — text-selection handles, the
+       select popup menu tint, the keyboard accessory bar — still follow the
+       webview's native tintColor (systemBlue) in poppy. The fix is a one-line
+       guarded `webView.tintColor` addition to applyChromeTheme
+       (MainViewController.swift), parked to ride the NEXT native commit
+       rather than trigger its own xcodebuild cycle (transient interaction
+       surfaces, ruled not worth a build alone). */
+    html.tm-theme-poppy input, html.tm-theme-poppy textarea { caret-color: rgb(var(--tm-sky-500)); }
+    html.tm-theme-poppy ::selection { background: rgb(var(--tm-sky-500) / 0.35); }
     /* ───────────── Native chrome layout (full-screen webview, bars overlay) ─────────────
        The native nav + tab bar overlay the webview; content scrolls UNDER them (the glass
        look). body.tm-native is set by Root() only when NATIVE_CHROME && IS_NATIVE. The native
@@ -14673,7 +14696,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <button onClick={onViewCalc} aria-label="View breakdown"
               style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--tm-pill-digit-ink)', WebkitTapHighlightColor: 'transparent', overflow: 'hidden' }}>
               <span style={{ fontWeight: 700, fontSize: 18, fontFamily: 'monospace', lineHeight: 1 }}>{fmtGBP(total)}</span>
-              <span style={{ fontSize: 10, color: '#737373', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View breakdown</span>
+              <span style={{ fontSize: 10, color: 'var(--tm-pill-caption)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>View breakdown</span>
             </button>
             {useNewRight ? (
               <button onClick={hasNext ? onNext : undefined}
@@ -18199,7 +18222,7 @@ const setDays = (updater) =>
       const isRed = accent === "red";
       if (isCondition) {
         // Open state reads through tone, not a border/glow: bg-neutral-800 is one
-        // step lighter than the tm-card-2 (#1f1f1f) chips it opens from. The old
+        // step lighter than the tm-card-2 chips it opens from. The old
         // sky/warn rounded border + 3px left bar are gone (they faded in via
         // tm-card-in and read as a templated "glowing border trace"). accentText
         // keeps the semantic title colour — sky normally, warn-amber on a warn card.
@@ -22732,7 +22755,7 @@ const setDays = (updater) =>
                 return (
                   <div
                     className="bg-neutral-900 border border-tm-pen/25 rounded-xl px-4 py-3"
-                    style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' }}
+                    style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgb(var(--tm-pen) / 0.06) 0%, transparent 60%)' }}
                   >
                     <div className="text-[11px] text-tm-pen/70 mb-2.5">
                       Late payment charges added · {fmtGBP((Number(rec.interest) || 0) + (Number(rec.fixedFee) || 0))}
@@ -22752,7 +22775,7 @@ const setDays = (updater) =>
               return (
                 <div
                   className="bg-neutral-900 border border-tm-pen/25 rounded-xl px-4 py-3"
-                  style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' }}
+                  style={{ backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgb(var(--tm-pen) / 0.06) 0%, transparent 60%)' }}
                 >
                   <div className="text-[11px] text-tm-pen/70 mb-2.5">
                     {fmtGBP(acc.interest)} interest + £{acc.fixedFee} fee · {acc.daysOverdue} day{acc.daysOverdue === 1 ? '' : 's'}
@@ -23514,7 +23537,7 @@ const setDays = (updater) =>
                         className={`w-full text-left rounded-xl p-3.5 border transition-colors active:bg-neutral-800 ${isOverdue ? 'bg-neutral-900 border-tm-pen/25 hover:border-tm-pen/40' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
                         style={{
                           WebkitTapHighlightColor: 'transparent',
-                          ...(isOverdue ? { backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' } : {})
+                          ...(isOverdue ? { backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgb(var(--tm-pen) / 0.06) 0%, transparent 60%)' } : {})
                         }}>
                         <div className="flex items-baseline justify-between mb-1">
                           <span className="text-[10px] font-mono tracking-wider text-neutral-500 font-semibold">{inv.invoiceNumber}</span>
@@ -24174,7 +24197,7 @@ const setDays = (updater) =>
                     className={`w-full text-left rounded-xl p-3 border transition-colors ${isOverdue ? 'bg-neutral-900 border-tm-pen/25 hover:border-tm-pen/40' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
                     style={{
                       WebkitTapHighlightColor: 'transparent',
-                      ...(isOverdue ? { backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgba(244,63,94,0.06) 0%, transparent 60%)' } : {})
+                      ...(isOverdue ? { backgroundImage: 'radial-gradient(80% 60% at 100% 0%, rgb(var(--tm-pen) / 0.06) 0%, transparent 60%)' } : {})
                     }}>
                     <div className="flex items-baseline justify-between gap-2 mb-1">
                       <span className="text-[10px] font-mono tracking-wider text-neutral-500 font-semibold truncate">{invoice.invoiceNumber}</span>

@@ -204,9 +204,10 @@ function main() {
   ok('--tm-pill-ink defined once per scope as an RGB channel triplet',
     defsIn(rootScope, '--tm-pill-ink').filter(isTriplet).length === 1 &&
     defsIn(poppyScope, '--tm-pill-ink').filter(isTriplet).length === 1);
-  ok('--tm-pill-digit-ink / --tm-pill-digit-faint defined once per scope',
+  ok('--tm-pill-digit-ink / --tm-pill-digit-faint / --tm-pill-caption defined once per scope',
     defsIn(rootScope, '--tm-pill-digit-ink').length === 1 && defsIn(poppyScope, '--tm-pill-digit-ink').length === 1 &&
-    defsIn(rootScope, '--tm-pill-digit-faint').length === 1 && defsIn(poppyScope, '--tm-pill-digit-faint').length === 1);
+    defsIn(rootScope, '--tm-pill-digit-faint').length === 1 && defsIn(poppyScope, '--tm-pill-digit-faint').length === 1 &&
+    defsIn(rootScope, '--tm-pill-caption').length === 1 && defsIn(poppyScope, '--tm-pill-caption').length === 1);
 
   // ── 3. POPPY PALETTE PINS ─────────────────────────────────────────────────
   console.log('3. Poppy pins (the ruled palette, exact — do not adjust)');
@@ -229,6 +230,106 @@ function main() {
     const css = extractTemplateLiteral(html, name);
     ok(`${name} found and contains no var(--tm- reference (${css.length} chars)`,
       css.length > 1000 && !css.includes('var(--tm-'));
+  }
+
+  // ── 5. LITERAL LEAK SCAN ──────────────────────────────────────────────────
+  // The class of miss that let the select chevron ship blue in poppy: a token
+  // VALUE hardcoded in an encoding a literal grep for "#hex" cannot see. The
+  // scan hunts all 26 default token values in three encodings — #hex (any
+  // case), %23hex (URL-encoded, the chevron's data URI), and rgb/rgba
+  // comma-triplets (the overdue-glow form) — and requires ZERO occurrences
+  // outside the documented exempt zones, which are exactly the deliberate
+  // static faces of the palette:
+  //   the two print stylesheets (raw-hex documents by design), the :root and
+  //   poppy definition blocks (the tokens' homes), the two select chevron
+  //   rules (data URIs cannot resolve var(); one static URI per theme), the
+  //   boot-mark fallback fill= attributes, the crash fallback (must survive a
+  //   broken stylesheet), the two parked bespoke banners, the theme-color
+  //   meta (flipped by JS), and the GridPage print-header inline style (print
+  //   DOM that renders outside the print stylesheets' literals).
+  // Deliberately NOT scanned: space-form rgb(R G B ...) triplets — that is
+  // the var-resolved output form and scanning it would need var-context
+  // awareness for no known leak vector.
+  console.log('5. Literal leak scan (no token value in any encoding outside the exempt zones)');
+  {
+    const DEFAULT_TOKENS = {
+      '--tm-neutral-100': '#f5f5f5', '--tm-neutral-200': '#e5e5e5', '--tm-neutral-300': '#d4d4d4',
+      '--tm-neutral-400': '#a3a3a3', '--tm-neutral-500': '#737373', '--tm-neutral-600': '#525252',
+      '--tm-neutral-700': '#404040', '--tm-neutral-800': '#262626', '--tm-neutral-900': '#171717',
+      '--tm-neutral-950': '#0a0a0a',
+      '--tm-sky-100': '#e0f2fe', '--tm-sky-200': '#bae6fd', '--tm-sky-300': '#7dd3fc',
+      '--tm-sky-400': '#38bdf8', '--tm-sky-500': '#0ea5e9', '--tm-sky-600': '#0284c7',
+      '--tm-sky-700': '#0369a1', '--tm-sky-800': '#075985', '--tm-sky-900': '#0c4a6e',
+      '--tm-sky-950': '#082f49',
+      '--tm-fuchsia-400': '#e879f9', '--tm-warn': '#ff8a3d', '--tm-pen': '#f43f5e',
+      '--tm-good': '#4ade80', '--tm-kit': '#a78bfa', '--tm-card-2': '#1f1f1f',
+    };
+    const literalRange = (constName) => {
+      const marker = `const ${constName} = \``;
+      const at = html.indexOf(marker);
+      if (at === -1) throw new Error(`leak scan: ${constName} marker missing`);
+      return [at, html.indexOf('`', at + marker.length) + 1];
+    };
+    const blockRange = (marker) => {
+      const at = html.indexOf(marker);
+      if (at === -1) throw new Error(`leak scan: ${marker} missing`);
+      const open = html.indexOf('{', at);
+      let depth = 0;
+      for (let i = open; i < html.length; i++) {
+        if (html[i] === '{') depth++;
+        else if (html[i] === '}') { depth--; if (depth === 0) return [at, i + 1]; }
+      }
+      throw new Error(`leak scan: unclosed block for ${marker}`);
+    };
+    const regexRanges = (re) => [...html.matchAll(re)].map(m => [m.index, m.index + m[0].length]);
+    const exempt = [
+      literalRange('PRINT_STYLES'),
+      literalRange('INVOICE_PRINT_STYLES'),
+      blockRange(':root {'),
+      blockRange('html.tm-theme-poppy {'),
+      // Both chevron rules (base + poppy) — static data-URI SVGs.
+      ...regexRanges(/select \{[^}]*data:image\/svg[^}]*\}/g),
+      // Boot-mark fallback fills (style= carries the var; fill= is the fallback).
+      ...regexRanges(/<rect [^>]*fill="#(?:0ea5e9|ff8a3d|f43f5e)"[^>]*>/g),
+      // Crash fallback — deliberately var-free; span the WHOLE concatenated
+      // statement (its second line carries #f5f5f5).
+      ...regexRanges(/root\.innerHTML = '<div style="position:fixed;inset:0;background:#0a0a0a[\s\S]*?<\/div>';/g),
+      // The theme-color meta's runtime WRITER (the reconcile effect) — the
+      // mechanism that flips the meta necessarily holds both bg literals.
+      ...regexRanges(/poppy \? '#160a10' : '#0a0a0a'/g),
+      // Print-DOM inline styles that render OUTSIDE the print stylesheets'
+      // literals: the rate-row separators and the empty-cell dash (PrintView /
+      // GridPage JSX — print documents, deliberately raw like the stylesheets).
+      ...regexRanges(/<span style=\{\{color:'#d4d4d4'\}\}>/g),
+      // The two parked bespoke banners (KNOWN POPPY CLASH comments nearby).
+      ...regexRanges(/background: '#0c1e33'[^\n]*/g),
+      ...regexRanges(/background: '#052e16'[^\n]*/g),
+      // theme-color meta — flipped by JS at runtime; the attribute is static.
+      ...regexRanges(/<meta name="theme-color" content="#0a0a0a">/g),
+      // GridPage print-header meta line — print DOM outside the print literals.
+      ...regexRanges(/className="meta" style=\{\{fontSize:'10\.5px',color:'#525252',marginTop:6\}\}/g),
+    ];
+    const inExempt = (i) => exempt.some(([a, b]) => i >= a && i < b);
+    const leaks = [];
+    for (const [name, hex] of Object.entries(DEFAULT_TOKENS)) {
+      const h = hex.slice(1);
+      const v = parseInt(h, 16), r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255;
+      const res = [
+        new RegExp(`#${h}`, 'gi'),
+        new RegExp(`%23${h}`, 'gi'),
+        new RegExp(`rgba?\\(\\s*${r}\\s*,\\s*${g}\\s*,\\s*${b}\\b`, 'g'),
+      ];
+      for (const re of res) {
+        for (const m of html.matchAll(re)) {
+          if (!inExempt(m.index)) {
+            const line = html.slice(0, m.index).split('\n').length;
+            leaks.push(`${name} ${m[0]} @line ${line}`);
+          }
+        }
+      }
+    }
+    ok(`zero token-value literals outside the exempt zones (26 tokens × 3 encodings)`,
+      leaks.length === 0, leaks.slice(0, 6).join(' | '));
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────

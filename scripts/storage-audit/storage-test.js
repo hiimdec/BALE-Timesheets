@@ -7152,7 +7152,10 @@ async function main() {
       const banner = (bannerIdx > 0 && bannerEnd > bannerIdx) ? html.slice(bannerIdx, bannerEnd) : '';
       check('LP12b penalty family styling: tm-pen border + tinted rose wash + tm-pen button',
         /border-tm-pen\/25/.test(banner) &&
-        /rgba\(244,63,94,0\.06\)/.test(banner) &&
+        // Widened 2026-07 with the approved literal-leak fix: the wash literal
+        // rgba(244,63,94,0.06) became rgb(var(--tm-pen) / 0.06) — computed-
+        // identical in default, themable in poppy.
+        /rgb\(var\(--tm-pen\) \/ 0\.06\)/.test(banner) &&
         /bg-tm-pen\/10 border-tm-pen\/40 text-tm-pen/.test(banner));
       check('LP12c one unit: the muted breakdown line (tm-pen/70, SYSTEM font) sits WITH the add button inside the banner',
         /text-tm-pen\/70/.test(banner) &&
