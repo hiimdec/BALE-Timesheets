@@ -19950,6 +19950,10 @@ const setDays = (updater) =>
                     {[
                       { key: 'default', label: 'Default', desc: 'The original TimeMachine icon.' },
                       { key: 'Scribble', label: 'Scribble', desc: 'Hand-drawn alternate icon.' },
+                      // key must equal the appiconset name exactly (the AppIcon
+                      // bridge is name-based). Independent of userPrefs.theme by
+                      // design - icon choice never follows the theme toggle.
+                      { key: 'Poppy', label: 'Poppy', desc: 'An alternate icon.' },
                     ].map((opt) => (
                       <RoundingOptionCard
                         key={opt.key}

@@ -6474,22 +6474,26 @@ async function main() {
       /\{IS_NATIVE && \([\s\S]{0,220}>App icon<\/div>/.test(html) &&
       /\{ key: 'Scribble', label: 'Scribble'/.test(html) &&
       /onClick=\{\(\) => \{ setIconName\(opt\.key\); AppIcon\.set\(opt\.key\)\.then\(setIconName\); \}\}/.test(html));
-    check('TT15c native wiring — AppIconPlugin (jsName AppIcon, getAppIcon/setAppIcon, main-thread + supportsAlternateIcons-guarded setAlternateIconName) registered in MainViewController; Scribble.appiconset in the catalog; ALTERNATE_APPICON_NAMES=Scribble + INCLUDE_ALL_APPICON_ASSETS=YES in BOTH app-target configs; the plugin compiled (Sources)',
+    check('TT15c native wiring — AppIconPlugin (jsName AppIcon, getAppIcon/setAppIcon, main-thread + supportsAlternateIcons-guarded setAlternateIconName) registered in MainViewController; Scribble + Poppy appiconsets in the catalog; ALTERNATE_APPICON_NAMES="Scribble Poppy" + INCLUDE_ALL_APPICON_ASSETS=YES in BOTH app-target configs; the plugin compiled (Sources)',
       (() => {
         const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
         const plugin = readSafe('ios/App/App/AppIconPlugin.swift');
         const mvc = readSafe('ios/App/App/MainViewController.swift');
         const pbx = readSafe('ios/App/App.xcodeproj/project.pbxproj');
         const contents = readSafe('ios/App/App/Assets.xcassets/Scribble.appiconset/Contents.json');
+        const poppyContents = readSafe('ios/App/App/Assets.xcassets/Poppy.appiconset/Contents.json');
         const pluginOk = /@objc\(AppIconPlugin\)/.test(plugin) && /public let jsName = "AppIcon"/.test(plugin) &&
           /func getAppIcon\(_ call: CAPPluginCall\)/.test(plugin) && /func setAppIcon\(_ call: CAPPluginCall\)/.test(plugin) &&
           /UIApplication\.shared\.setAlternateIconName/.test(plugin) && /supportsAlternateIcons/.test(plugin) &&
           /DispatchQueue\.main\.async/.test(plugin);
         const regOk = /registerPluginInstance\(AppIconPlugin\(\)\)/.test(mvc);
-        const buildOk = (pbx.match(/ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = Scribble;/g) || []).length === 2 &&
+        // Widened 2026-07 with the approved Poppy icon: the setting literal grew
+        // from `Scribble` to `"Scribble Poppy"` (both configs), and the pin now
+        // also requires the Poppy asset so a half-wired icon can never pass.
+        const buildOk = (pbx.match(/ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "Scribble Poppy";/g) || []).length === 2 &&
           (pbx.match(/ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;/g) || []).length === 2 &&
           /AppIconPlugin\.swift in Sources/.test(pbx);
-        const assetOk = /Scribble-1024\.png/.test(contents);
+        const assetOk = /Scribble-1024\.png/.test(contents) && /Poppy-1024\.png/.test(poppyContents);
         return pluginOk && regOk && buildOk && assetOk;
       })());
 
