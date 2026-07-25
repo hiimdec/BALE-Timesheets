@@ -44,6 +44,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private let navItem = UINavigationItem()
     private let tabBar = UITabBar()
     private var chromeEnabled = false
+    private var chromeTheme = "default"   // palette applied by the web's update() pushes; see applyChromeTheme
     private var invoicesShown = true   // current tab set; rebuilt when the web's invoicing toggle flips
     private lazy var backButton = UIBarButtonItem(
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
@@ -154,10 +155,47 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
+    // ── Native chrome theming (poppy) ────────────────────────────────────────
+    // The web pushes `theme` with every NativeChrome.update. Palette code runs
+    // ONLY when the value CHANGES — chromeTheme starts "default", so a default
+    // session never executes ANY of it: no explicit tint is ever set and the
+    // implicit systemBlue controls stay bit-identical to today (the structural
+    // default guard Derrick pinned). Restoring default rebuilds the exact
+    // setupChrome appearance (#0a0a0a, clear hairline) and nils the tints
+    // (nil = inherit = systemBlue). Wordmark colours are read from chromeTheme
+    // inside makeWordmarkLockup, which applyChromeState rebuilds on every call
+    // — so the lockup recolours on the same update that flips the theme.
+    private func applyChromeTheme(_ theme: String) {
+        guard theme != chromeTheme else { return }
+        chromeTheme = theme
+        let poppy = theme == "poppy"
+        let barBg = poppy
+            ? UIColor(red: 22.0/255.0, green: 10.0/255.0, blue: 16.0/255.0, alpha: 1)    // #160a10 (poppy neutral-950)
+            : UIColor(red: 10.0/255.0, green: 10.0/255.0, blue: 10.0/255.0, alpha: 1)    // #0a0a0a (bg-neutral-950)
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithOpaqueBackground()
+        navAppearance.backgroundColor = barBg
+        navAppearance.shadowColor = .clear
+        navBar.standardAppearance = navAppearance
+        navBar.scrollEdgeAppearance = navAppearance
+        navBar.compactAppearance = navAppearance
+        if #available(iOS 15.0, *) { navBar.compactScrollEdgeAppearance = navAppearance }
+        // Controls + active tab tint. Poppy pins the explicit pink; default
+        // restores nil so the inherited systemBlue is exactly the untouched bar.
+        let tint = poppy ? UIColor(red: 244.0/255.0, green: 114.0/255.0, blue: 182.0/255.0, alpha: 1) : nil   // #f472b6 (poppy sky-500)
+        navBar.tintColor = tint
+        tabBar.tintColor = tint
+        navBar.setNeedsLayout()
+        tabBar.setNeedsLayout()
+    }
+
     // MARK: - Web → native (NativeChromePlugin forwards here, main thread)
 
     func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
-                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false) {
+                          wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false,
+                          theme: String = "default") {
+        // Theme FIRST — the lockup rebuild below must read the new chromeTheme.
+        applyChromeTheme(theme)
         if !chromeEnabled {
             chromeEnabled = true
             navBar.isHidden = false
@@ -229,8 +267,15 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private func makeWordmarkLockup(name: String, alignment: UIStackView.Alignment) -> UIView {
         let mark: CGFloat = 19
         let possSize = (mark * 0.52).rounded()
-        let blue = UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)   // text-sky-500
-        let grey = UIColor(red: 115.0/255.0, green: 115.0/255.0, blue: 115.0/255.0, alpha: 1)  // text-neutral-500
+        // Theme-aware since the poppy chrome stage: poppy re-points both labels
+        // at the poppy tokens; default keeps the literal web tokens unchanged.
+        let poppy = chromeTheme == "poppy"
+        let blue = poppy
+            ? UIColor(red: 244.0/255.0, green: 114.0/255.0, blue: 182.0/255.0, alpha: 1)   // #f472b6 (poppy sky-500)
+            : UIColor(red: 14.0/255.0, green: 165.0/255.0, blue: 233.0/255.0, alpha: 1)    // text-sky-500
+        let grey = poppy
+            ? UIColor(red: 154.0/255.0, green: 111.0/255.0, blue: 133.0/255.0, alpha: 1)   // #9a6f85 (poppy neutral-500)
+            : UIColor(red: 115.0/255.0, green: 115.0/255.0, blue: 115.0/255.0, alpha: 1)   // text-neutral-500
 
         let stack = UIStackView()
         stack.axis = .vertical
@@ -337,10 +382,14 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let wordmarkName = call.getString("wordmarkName") ?? ""
         let createButton = call.getBool("createButton") ?? false
         let searchActive = call.getBool("searchActive") ?? false
+        // Chrome palette: 'default' | 'poppy'. Absent on older web bundles →
+        // "default", which applies nothing (the structural default guard).
+        let theme = call.getString("theme") ?? "default"
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
                 title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
-                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive)
+                wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive,
+                theme: theme)
             call.resolve()
         }
     }

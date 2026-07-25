@@ -26328,8 +26328,13 @@ const confirmDelete = (p) => setConfirmOpts({
           // Masked to activeTab==='shoots' — only there is ProductionsScreen mounted (so the
           // mirrored value is live), which avoids a stale-true showing an X on the Stats/Invoices roots.
           searchActive: isTabRoot && activeTab === 'shoots' && searchActive,
+          // Native chrome palette. 'default' | 'poppy' — native applies palette
+          // code ONLY when the value changes, and a default session never runs
+          // any of it (the structural default guard: no explicit tint is ever
+          // set, the implicit systemBlue stays bit-identical to today).
+          theme: userPrefs.theme === 'poppy' ? 'poppy' : 'default',
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showClients, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showClients, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, userPrefs && userPrefs.theme, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
 
       let screen;
       if (!userPrefs.onboardingComplete && icloudRestore === 'checking') {
