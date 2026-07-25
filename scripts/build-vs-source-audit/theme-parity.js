@@ -3,7 +3,7 @@
  *
  *   $ node scripts/build-vs-source-audit/theme-parity.js
  *
- * Theme-token lockstep suite. Three permanent invariants:
+ * Theme-token lockstep suite. Four permanent invariants:
  *
  *   1. CONFIG PARITY — the colour palette in index.html's inline
  *      tailwind.config (the web app, Play CDN) and tailwind.config.js at the
@@ -12,13 +12,22 @@
  *      web and native render different colours with every other audit still
  *      green — no assertion elsewhere can see it.
  *
- *   2. VAR RESOLUTION — every CSS variable referenced by either config
- *      (the `var(--tm-…)` form) is defined exactly once in index.html as a
+ *   2. VAR RESOLUTION, PER THEME SCOPE — every CSS variable referenced by
+ *      either config (the `var(--tm-…)` form) is defined exactly once in the
+ *      :root block AND exactly once in the html.tm-theme-poppy block, as a
  *      space-separated RGB channel triplet ("14 165 233"). An undefined or
  *      malformed variable does not error at runtime — the utility silently
- *      renders as transparent/invalid, which no build step catches.
+ *      renders as transparent/invalid, which no build step catches. The pill
+ *      vars (paper hex + ink triplet + digit derivations) are checked for
+ *      per-scope presence too, though the configs never reference them.
  *
- *   3. PRINT ISOLATION — PRINT_STYLES and INVOICE_PRINT_STYLES contain no
+ *   3. POPPY PALETTE PINS — the poppy scope's 26 palette triplets plus the
+ *      pill paper/ink resolve to EXACTLY the hexes Derrick supplied on
+ *      2026-07-24 (single-curve, gamut-checked, ruled "do not adjust").
+ *      Any drift — a typo, a helpful rounding, a stray re-derivation — goes
+ *      red here. Assertion added with the approved stage-2 theme commit.
+ *
+ *   4. PRINT ISOLATION — PRINT_STYLES and INVOICE_PRINT_STYLES contain no
  *      `var(--tm-` reference. Invoices and timesheets are documents sent to
  *      production companies; they are raw-hex stylesheets by design and must
  *      never resolve through the theme system, in any theme, ever.
@@ -39,6 +48,25 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..', '..');
 
+// The poppy palette as ruled (hex, verbatim from Derrick 2026-07-24).
+const POPPY_PINS = {
+  '--tm-neutral-950': '#160a10', '--tm-neutral-900': '#2a1420',
+  '--tm-neutral-800': '#452438', '--tm-neutral-700': '#5d3b4b',
+  '--tm-neutral-600': '#6d4a58', '--tm-neutral-500': '#9a6f85',
+  '--tm-neutral-400': '#cfa0b9', '--tm-neutral-300': '#ebcfdf',
+  '--tm-neutral-200': '#f4e0eb', '--tm-neutral-100': '#fdeff7',
+  '--tm-sky-100': '#fce7f1', '--tm-sky-200': '#fccee5',
+  '--tm-sky-300': '#f9a8d4', '--tm-sky-400': '#fc88c7',
+  '--tm-sky-500': '#f472b6', '--tm-sky-600': '#ce5897',
+  '--tm-sky-700': '#a8467b', '--tm-sky-800': '#8e3f68',
+  '--tm-sky-900': '#783658', '--tm-sky-950': '#52243c',
+  '--tm-fuchsia-400': '#8be6f5',
+  '--tm-warn': '#ffcb7d', '--tm-pen': '#ff7d6e',
+  '--tm-good': '#c5e79c', '--tm-kit': '#c3b1fc',
+  '--tm-card-2': '#351a2a',
+};
+const POPPY_PILL = { paper: '#f7e3ee', ink: '#2a1420' };
+
 // ---- Pass/fail collector (kit-assertions house pattern) --------------------
 
 function makeCollector() {
@@ -54,10 +82,6 @@ function makeCollector() {
 
 // ---- Extraction helpers ----------------------------------------------------
 
-// Brace-match an object literal starting at the `{` at (or after) `from`.
-// Values are plain strings / nested objects; no braces occur inside the
-// string values, so raw counting is exact. Comments are legal JS and pass
-// straight through to the evaluator.
 function extractBraceBlock(src, from) {
   const open = src.indexOf('{', from);
   if (open === -1) return null;
@@ -72,10 +96,6 @@ function extractBraceBlock(src, from) {
   return null;
 }
 
-// The inline config's colours: locate `tailwind.config = {`, then its
-// `colors:` key, then evaluate the object literal. Evaluation (rather than
-// regex scraping) means comments and formatting can change freely without
-// breaking the audit — only the actual values are compared.
 function inlineConfigColors(html) {
   const cfgAt = html.indexOf('tailwind.config = {');
   if (cfgAt === -1) throw new Error('inline `tailwind.config = {` not found in index.html');
@@ -88,9 +108,6 @@ function inlineConfigColors(html) {
   return new Function(`return (${colorsBlock});`)();
 }
 
-// Template-literal extractor for the two print stylesheets. The literals are
-// pure CSS with no interior backticks; fail loudly if a marker ever moves so
-// the audit can never silently skip the isolation check.
 function extractTemplateLiteral(html, constName) {
   const marker = `const ${constName} = \``;
   const at = html.indexOf(marker);
@@ -101,8 +118,18 @@ function extractTemplateLiteral(html, constName) {
   return html.slice(start, end);
 }
 
-// Collect every var(--tm-…) name referenced anywhere in a config colours
-// object (flat values and one level of nested family objects).
+// Theme scope blocks. Both markers are unique: ':root {' appears once (the
+// print stylesheets define no :root), and 'html.tm-theme-poppy {' with the
+// brace matches only the override block (the hairline rule's selector
+// continues past the class before its brace).
+function themeScope(html, marker) {
+  const at = html.indexOf(marker);
+  if (at === -1) throw new Error(`\`${marker}\` not found in index.html`);
+  const block = extractBraceBlock(html, at);
+  if (!block) throw new Error(`could not brace-match the ${marker} block`);
+  return block;
+}
+
 function collectThemeVars(colors, out = new Set()) {
   for (const v of Object.values(colors)) {
     if (v && typeof v === 'object') { collectThemeVars(v, out); continue; }
@@ -112,7 +139,17 @@ function collectThemeVars(colors, out = new Set()) {
   return out;
 }
 
-// Stable deep-compare with a path trail for readable failure output.
+// All definitions of `name` inside a scope block, values trimmed.
+function defsIn(scope, name) {
+  return [...scope.matchAll(new RegExp(`${name}:\\s*([^;\\n]+);`, 'g'))].map(m => m[1].trim());
+}
+
+const isTriplet = v => /^\d{1,3} \d{1,3} \d{1,3}$/.test(v) && v.split(' ').every(c => Number(c) <= 255);
+const hexToTriplet = hex => {
+  const v = parseInt(hex.slice(1), 16);
+  return `${(v >> 16) & 255} ${(v >> 8) & 255} ${v & 255}`;
+};
+
 function deepDiff(a, b, trail, diffs) {
   const isObjA = a && typeof a === 'object';
   const isObjB = b && typeof b === 'object';
@@ -135,7 +172,7 @@ function main() {
   const { ok, summary } = makeCollector();
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
-  console.log('\ntheme-parity — config lockstep, var resolution, print isolation\n');
+  console.log('\ntheme-parity — config lockstep, per-scope resolution, poppy pins, print isolation\n');
 
   // ── 1. CONFIG PARITY ──────────────────────────────────────────────────────
   console.log('1. Config parity (inline web config vs tailwind.config.js)');
@@ -146,26 +183,48 @@ function main() {
   ok('inline tailwind.config colours deep-equal tailwind.config.js colours',
     diffs.length === 0, diffs.slice(0, 5).join(' | '));
 
-  // ── 2. VAR RESOLUTION ─────────────────────────────────────────────────────
-  console.log('2. Var resolution (every referenced --tm-* var defined once, as channels)');
-  const vars = [...collectThemeVars(inline)].concat([...collectThemeVars(native)])
-    .filter((v, i, arr) => arr.indexOf(v) === i)
-    .sort();
+  // ── 2. VAR RESOLUTION, PER THEME SCOPE ────────────────────────────────────
+  console.log('2. Var resolution (each var defined exactly once per theme scope, as channels)');
+  const rootScope = themeScope(html, ':root {');
+  const poppyScope = themeScope(html, 'html.tm-theme-poppy {');
+  const vars = [...collectThemeVars(inline)].sort();
   if (vars.length === 0) {
-    ok('no theme variables referenced by either config (pre-refactor state) — nothing to resolve', true);
+    ok('no theme variables referenced by either config — nothing to resolve', true);
   }
   for (const name of vars) {
-    // Definition form: `--tm-x: R G B;` — the colon anchors the exact name.
-    const defs = [...html.matchAll(new RegExp(`${name}:\\s*([^;\\n]+);`, 'g'))].map(m => m[1].trim());
-    const triplet = defs.length === 1 && /^\d{1,3} \d{1,3} \d{1,3}$/.test(defs[0]) &&
-      defs[0].split(' ').every(c => Number(c) <= 255);
-    ok(`${name} defined exactly once as an RGB channel triplet`,
-      triplet,
-      defs.length !== 1 ? `${defs.length} definitions found` : `value "${defs[0]}"`);
+    const inRoot = defsIn(rootScope, name);
+    const inPoppy = defsIn(poppyScope, name);
+    ok(`${name} defined once per scope as an RGB channel triplet`,
+      inRoot.length === 1 && isTriplet(inRoot[0]) && inPoppy.length === 1 && isTriplet(inPoppy[0]),
+      `root=${JSON.stringify(inRoot)} poppy=${JSON.stringify(inPoppy)}`);
   }
+  // Pill system: not config-referenced, but part of the theme contract.
+  ok('--tm-pill-paper defined once per scope (whole-colour hex)',
+    defsIn(rootScope, '--tm-pill-paper').length === 1 && defsIn(poppyScope, '--tm-pill-paper').length === 1);
+  ok('--tm-pill-ink defined once per scope as an RGB channel triplet',
+    defsIn(rootScope, '--tm-pill-ink').filter(isTriplet).length === 1 &&
+    defsIn(poppyScope, '--tm-pill-ink').filter(isTriplet).length === 1);
+  ok('--tm-pill-digit-ink / --tm-pill-digit-faint defined once per scope',
+    defsIn(rootScope, '--tm-pill-digit-ink').length === 1 && defsIn(poppyScope, '--tm-pill-digit-ink').length === 1 &&
+    defsIn(rootScope, '--tm-pill-digit-faint').length === 1 && defsIn(poppyScope, '--tm-pill-digit-faint').length === 1);
 
-  // ── 3. PRINT ISOLATION ────────────────────────────────────────────────────
-  console.log('3. Print isolation (PRINT_STYLES / INVOICE_PRINT_STYLES never theme)');
+  // ── 3. POPPY PALETTE PINS ─────────────────────────────────────────────────
+  console.log('3. Poppy pins (the ruled palette, exact — do not adjust)');
+  let pinned = 0;
+  const wrong = [];
+  for (const [name, hex] of Object.entries(POPPY_PINS)) {
+    const got = defsIn(poppyScope, name)[0];
+    if (got === hexToTriplet(hex)) pinned++;
+    else wrong.push(`${name}: expected ${hexToTriplet(hex)} (${hex}), got "${got}"`);
+  }
+  ok(`all 26 poppy palette triplets match the ruled hexes exactly (${pinned}/26)`,
+    pinned === 26, wrong.slice(0, 4).join(' | '));
+  ok(`poppy pill paper is ${POPPY_PILL.paper} and pill ink is ${POPPY_PILL.ink}`,
+    defsIn(poppyScope, '--tm-pill-paper')[0] === POPPY_PILL.paper &&
+    defsIn(poppyScope, '--tm-pill-ink')[0] === hexToTriplet(POPPY_PILL.ink));
+
+  // ── 4. PRINT ISOLATION ────────────────────────────────────────────────────
+  console.log('4. Print isolation (PRINT_STYLES / INVOICE_PRINT_STYLES never theme)');
   for (const name of ['PRINT_STYLES', 'INVOICE_PRINT_STYLES']) {
     const css = extractTemplateLiteral(html, name);
     ok(`${name} found and contains no var(--tm- reference (${css.length} chars)`,
