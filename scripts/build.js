@@ -147,6 +147,12 @@ async function main() {
     jsxFragment: 'React.Fragment',
     target: 'es2017',
     format: 'iife', // wrap so top-level declarations don't leak to window
+    // The iife wrap otherwise lets esbuild drop top-level symbols nothing
+    // references YET (found when the share codec landed one commit ahead of
+    // its callers and vanished from the bundle). The build's contract is a
+    // 1:1 transform of the source — audits compare ENGINES across the two,
+    // so the bundle must carry every top-level declaration verbatim.
+    treeShaking: false,
   });
   fs.writeFileSync(path.join(ASSETS, 'app.js'), result.code);
   log('precompiled JSX -> assets/app.js');

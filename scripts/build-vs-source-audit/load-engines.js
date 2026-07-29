@@ -63,6 +63,10 @@ const ENGINE_NAMES = [
   // over the user's dealt items. Same helper / same user-crew-id resolution
   // as the invoice path → stats-vs-invoice reconcile by construction.
   'computeProductionKitDiscount',
+  // Shoot-share wire codec (v1, frozen): the share-link-assertions suite
+  // pins the canonical fixture, the round-trip, and the refusal paths.
+  'encodeShareLink',
+  'decodeShareLink',
 ];
 
 const EXPORT_LINE =
@@ -121,6 +125,11 @@ function makeSandbox() {
     Uint32Array, Int32Array, Float32Array, Float64Array, DataView,
     Intl, encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
     Proxy, Reflect,
+    // Shoot-share codec dependencies — Node's own WHATWG globals passed
+    // through so encode/decode (CompressionStream deflate-raw, base64url)
+    // run in the sandbox exactly as they do in the browser.
+    TextEncoder, TextDecoder, atob, btoa, Blob, Response,
+    CompressionStream, DecompressionStream,
   };
 
   sandbox.globalThis = sandbox;

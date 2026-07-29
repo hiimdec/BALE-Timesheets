@@ -6,10 +6,11 @@
   "scripts": {
     "generate-icons": "node scripts/generate-icons.js",
     "build": "node scripts/build.js",
-    "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js && node scripts/build-vs-source-audit/kit-assertions.js && node scripts/build-vs-source-audit/calc-boundary-assertions.js",
+    "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js && node scripts/build-vs-source-audit/kit-assertions.js && node scripts/build-vs-source-audit/calc-boundary-assertions.js && node scripts/build-vs-source-audit/share-link-assertions.js",
     "audit:build:exec": "node scripts/build-vs-source-audit/compare.js",
     "audit:build:textual": "node scripts/build-vs-source-audit/textual-diff.js",
     "audit:kit": "node scripts/build-vs-source-audit/kit-assertions.js",
+    "audit:share": "node scripts/build-vs-source-audit/share-link-assertions.js",
     "audit:storage": "node scripts/storage-audit/storage-test.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
     "test": "echo \"Error: no test specified\" && exit 1"

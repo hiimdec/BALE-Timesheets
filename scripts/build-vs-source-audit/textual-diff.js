@@ -52,6 +52,9 @@ const BUILD_OPTS = {
   jsxFragment: 'React.Fragment',
   target: 'es2017',
   format: 'iife',
+  // Mirrors build.js (added with the share codec): the iife wrap otherwise
+  // drops top-level symbols that land one commit ahead of their callers.
+  treeShaking: false,
 };
 
 function extractBabelScriptBody(html) {

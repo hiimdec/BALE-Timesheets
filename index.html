@@ -1076,6 +1076,149 @@
       return 'shared';
     }
 
+    /* ═══════════════ SHOOT-SHARE WIRE CODEC — v1, FROZEN ═══════════════
+       The whole shoot rides INSIDE the link (URL fragment): no backend,
+       nothing stored server-side, the payload never reaches Netlify.
+       Frozen at gate 2 (2026-07-29, recorded in the session memory +
+       pinned in scripts/build-vs-source-audit/share-link-assertions.js):
+
+         https://timemachineapp.co.uk/s#  +  base64url(deflate-raw(JSON))
+         envelope { v, n, s:[5 shoot strings], d:[arity-14 day tuples] }
+
+       THE WIRE IS ITS OWN CONTRACT, never a reflection of the storage
+       schema. The encoder is an ALLOWLIST — it names the 19 shared fields
+       explicitly and never object-spreads a record, so kit, expenses
+       (bar the single derived per-diem value), step-up, notes, state
+       flags and anything about the sender's identity/payee CANNOT cross
+       by construction. When the schema later renames or re-models a
+       field, this mapping absorbs it and the wire does not move; v bumps
+       only when the SHARED MEANING changes. Every shipped decoder stays
+       frozen forever so old links import on every future version. */
+    const SHARE_WIRE_VERSION = 1;
+    const SHARE_MAX_SUPPORTED_WIRE_VERSION = 1;
+    const SHARE_SCAFFOLD = 'https://timemachineapp.co.uk/s#';
+    const SHARE_DAY_CAP = 14;
+    // Day-type enum, frozen in DEFAULT_HOURS order. Index IS the wire value.
+    const SHARE_DAY_TYPES = ["Shoot", "Pre-light", "Prep Day", "Recce", "Build Day", "De-rig", "Travel Day", "Rest Day"];
+
+    const _shareB64url = (bytes) => {
+      let s = '';
+      for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+      return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    };
+    const _shareB64urlDecode = (str) => {
+      const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    };
+    // CompressionStream is the built-in deflate (Safari 16.4+; the app floor
+    // is iOS 17). deflate-raw = no zlib header, matching the frozen wire.
+    async function _shareDeflate(bytes) {
+      const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    async function _shareInflate(bytes) {
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+
+    // Encode a solo shoot into a share URL.
+    //   → { ok:true, url } | { ok:false, reason:'empty'|'cap'|'invalid' }
+    // Reads the RESOLVED day (record ← defaults cascade) so the link carries
+    // what the sender actually sees. Per-diem per the recorded rule: the
+    // builtin-perdiem expense instance first, the legacy day scalar as
+    // read-compat fallback, 0 = the absent sentinel (nothing personal
+    // travels; the receiver adds their own). Cap enforced here — a refusal,
+    // never a silent trim.
+    async function encodeShareLink(production, days, crewMember) {
+      const sorted = [...(days || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      if (!sorted.length) return { ok: false, reason: 'empty' };
+      if (sorted.length > SHARE_DAY_CAP) return { ok: false, reason: 'cap' };
+      const T = /^([01]\d|2[0-3]):[0-5]\d$/;
+      const d = [];
+      for (const day of sorted) {
+        const r = resolveDay(production, day, crewMember);
+        const typeIdx = SHARE_DAY_TYPES.indexOf(r.dayType);
+        const call = r.callTime || '', lunchS = r.lunchStartTime || '', wrap = r.wrapTime || '';
+        if (typeIdx === -1 || !T.test(call) || !T.test(lunchS) || !T.test(wrap)) return { ok: false, reason: 'invalid' };
+        const exps = r.expenses || [];
+        const pdInstance = exps.find(e => e && e.presetId === 'builtin-perdiem');
+        const perDiemPounds = pdInstance ? (Number(pdInstance.amount) || 0) : (Number(r.perDiemAmount) || 0);
+        const sbStart = (r.secondBreakStartTime || '') || null;
+        d.push([
+          r.date, typeIdx, call, lunchS, Math.round(Number(r.lunchDurationMins) || 0),
+          sbStart, sbStart === null ? null : Math.round(Number(r.secondBreakDurationMins) || 0),
+          (r.preCallTime || '') || null,
+          wrap, r.wrapNextDay ? 1 : 0,
+          Math.round(Number(r.travelOutMins) || 0), Math.round(Number(r.travelBackMins) || 0),
+          Math.round(perDiemPounds * 100), Number(r.miles) || 0,
+        ]);
+      }
+      const payload = {
+        v: SHARE_WIRE_VERSION, n: d.length,
+        s: [production.title || '', production.jobReference || '', production.prodCo || '',
+            production.toAddress || '', production.invoicingEmail || ''],
+        d,
+      };
+      const bytes = new TextEncoder().encode(JSON.stringify(payload));
+      return { ok: true, url: SHARE_SCAFFOLD + _shareB64url(await _shareDeflate(bytes)) };
+    }
+
+    // Decode a share fragment. THE single entry for every received link:
+    //   → { ok:true, shoot } | { ok:false, reason:'newer'|'damaged' }
+    // The version gate runs BEFORE any field is read; a link from a newer
+    // format refuses cleanly ("update the app") — never a partial import.
+    // Every structural failure (inflate/parse from messenger truncation,
+    // wrong arity, count mismatch, malformed time/date/int/null) refuses as
+    // damaged. There is NO partial-accept path; the import preview renders
+    // only from a decode that validated completely.
+    async function decodeShareLink(fragment) {
+      const damaged = { ok: false, reason: 'damaged' };
+      let obj;
+      try {
+        if (typeof fragment !== 'string' || !fragment || fragment.length > 20000 || /[^A-Za-z0-9_-]/.test(fragment)) return damaged;
+        obj = JSON.parse(new TextDecoder().decode(await _shareInflate(_shareB64urlDecode(fragment))));
+      } catch (_) { return damaged; }
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return damaged;
+      if (!Number.isInteger(obj.v) || obj.v < 1) return damaged;
+      if (obj.v > SHARE_MAX_SUPPORTED_WIRE_VERSION) return { ok: false, reason: 'newer' };
+      // ── v1 validator (frozen; future versions get their own, this one never changes) ──
+      const T = /^([01]\d|2[0-3]):[0-5]\d$/;
+      const D = /^\d{4}-\d{2}-\d{2}$/;
+      const str = (x, max) => typeof x === 'string' && x.length <= max;
+      const int = (x, min, max) => Number.isInteger(x) && x >= min && x <= max;
+      const num = (x, min, max) => typeof x === 'number' && Number.isFinite(x) && x >= min && x <= max;
+      const s = obj.s, dd = obj.d;
+      if (!Array.isArray(s) || s.length !== 5 || !s.every(x => str(x, 1000))) return damaged;
+      if (!Array.isArray(dd) || !int(obj.n, 1, SHARE_DAY_CAP) || obj.n !== dd.length) return damaged;
+      const days = [];
+      for (const t of dd) {
+        if (!Array.isArray(t) || t.length !== 14) return damaged;
+        const [date, type, call, lunchS, lunchD, sbS, sbD, preC, wrap, wrapND, tOut, tBack, pdPence, miles] = t;
+        if (!str(date, 10) || !D.test(date) || Number.isNaN(Date.parse(date + 'T12:00:00'))) return damaged;
+        if (!int(type, 0, 7)) return damaged;
+        if (typeof call !== 'string' || !T.test(call)) return damaged;
+        if (typeof lunchS !== 'string' || !T.test(lunchS)) return damaged;
+        if (!int(lunchD, 0, 240)) return damaged;
+        if (!((sbS === null && sbD === null) || (typeof sbS === 'string' && T.test(sbS) && int(sbD, 0, 240)))) return damaged;
+        if (!(preC === null || (typeof preC === 'string' && T.test(preC)))) return damaged;
+        if (typeof wrap !== 'string' || !T.test(wrap)) return damaged;
+        if (wrapND !== 0 && wrapND !== 1) return damaged;
+        if (!int(tOut, 0, 1440) || !int(tBack, 0, 1440)) return damaged;
+        if (!int(pdPence, 0, 100000)) return damaged;
+        if (!num(miles, 0, 2000)) return damaged;
+        days.push({
+          date, dayType: SHARE_DAY_TYPES[type], callTime: call,
+          lunchStartTime: lunchS, lunchDurationMins: lunchD,
+          secondBreakStartTime: sbS || '', secondBreakDurationMins: sbS === null ? 0 : sbD,
+          preCallTime: preC || '', wrapTime: wrap, wrapNextDay: wrapND === 1,
+          travelOutMins: tOut, travelBackMins: tBack, perDiemPence: pdPence, miles,
+        });
+      }
+      return { ok: true, shoot: { title: s[0], jobReference: s[1], prodCo: s[2], toAddress: s[3], invoicingEmail: s[4], days } };
+    }
+
     // Multi-file sibling of nativeSaveAndShare: writes each TEXT file to the
     // Cache dir and opens ONE share sheet carrying all of them (Share.share
     // accepts several `files` uris — each becomes its own activity item).
