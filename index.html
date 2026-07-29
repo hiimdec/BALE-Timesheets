@@ -14113,7 +14113,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
             <SectionCard title="Basics">
               <Field label="Production title">
-                <Input value={production.title || ""} onChange={set("title")} placeholder="e.g. Walkers / Lays - Minds Eye" />
+                <Input value={production.title || ""} onChange={set("title")} placeholder="Production name" />
               </Field>
               <Field label="Production company">
                 <ClientPicker
@@ -14171,14 +14171,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 />
               </Field>
               <Field label="Job reference">
-                <Input value={production.jobReference || ""} onChange={set("jobReference")} placeholder="e.g. Vodafone Q3, PO#1234" />
+                <Input value={production.jobReference || ""} onChange={set("jobReference")} placeholder="Job reference" />
               </Field>
               <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
                 <Input
                   value={production.invoicingEmail || ""}
                   onChange={(e) => { nudge.disarmOnChange(); setProduction(p => ({ ...p, invoicingEmail: e.target.value })); }}
                   onBlur={nudge.armOnBlur}
-                  placeholder="e.g. accounts@example.com"
+                  placeholder="Invoicing email"
                 />
               </Field>
               <ClientUpdateNudge
@@ -18015,7 +18015,7 @@ const setDays = (updater) =>
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder={`e.g. Acme Brand Film ${new Date().getFullYear()}`}
+                  placeholder="Production name"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey || true) && canCreate) handleCreate(); }}
