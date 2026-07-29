@@ -17191,6 +17191,40 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 <IMessage size={15}/>Timesheet (Text)
               </button>
+              {/* Shoot-share link (v1: solo shoots only — this sheet IS the solo
+                  view, so BB never renders it; native-only, the web build hides
+                  it). Encodes the whole shoot into the /s# universal link via
+                  the frozen codec and hands the URL to the native share sheet
+                  (@capacitor/share — the house share vehicle; never a
+                  hand-built mailto:, per the gate-1 length finding). The
+                  14-day cap REFUSES with a message, never a silent trim. */}
+              {IS_NATIVE && (
+                <button type="button"
+                  onClick={async () => {
+                    setShowExportSheet(false);
+                    const res = await encodeShareLink(production, days, soloCrew);
+                    if (!res.ok) {
+                      showToast(res.reason === 'cap'
+                        ? `Share links carry up to ${SHARE_DAY_CAP} days - this shoot has ${days.length}.`
+                        : res.reason === 'empty'
+                          ? 'Nothing to share yet - add a day first.'
+                          : "Couldn't make the link for this shoot.");
+                      return;
+                    }
+                    try {
+                      const { Share } = _capPlugins();
+                      await Share.share({ url: res.url });
+                    } catch (e) {
+                      // The share sheet's own cancel rejects — that's not an error.
+                      const msg = (e && e.message) || '';
+                      if (!/cancel/i.test(msg)) showToast("Couldn't open the share sheet - try again.");
+                    }
+                  }}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IShare size={15}/>Share shoot link
+                </button>
+              )}
               {invoicingEnabled(userPrefs) && (
                 <button type="button"
                   onClick={() => { setShowExportSheet(false); generateOrExport(); }}
