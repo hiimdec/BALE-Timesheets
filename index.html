@@ -10057,7 +10057,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <div className="text-[10px] uppercase tracking-[0.2em] text-sky-500 font-bold mb-2">Cost Breakdown</div>
                   <table className="w-full border-collapse text-[11px]">
                     <tbody>
-                      {activeCalc.lines.map((l, i) => {
+                      {splitNightLinesForDisplay(activeCalc.lines).map((l, i) => {
                         const c = lineColor(l);
                         const cls = lineCls(c);
                         const qtyFmt = typeof l.qty === 'number' ? (Number.isInteger(l.qty) ? l.qty : l.qty.toFixed(2).replace(/\.?0+$/, '')) : l.qty;
@@ -10065,8 +10065,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <tr key={i} className="border-b border-neutral-800/50">
                             <td className={`py-1 pr-2 font-semibold leading-tight ${cls.label}`}>{l.label}</td>
                             <td className="py-1 pr-2 text-neutral-500 leading-tight text-[10px] hidden sm:table-cell">{l.detail}</td>
-                            <td className={`py-1 pr-2 font-mono text-right whitespace-nowrap ${cls.label}`}>{l.rate != null ? fmtGBP(l.rate) : ''}</td>
-                            <td className={`py-1 pr-2 font-mono text-right whitespace-nowrap ${cls.label}`}>{l.rate != null && l.qty != null ? `×${qtyFmt}` : ''}</td>
+                            <td className={`py-1 pr-2 font-mono text-right whitespace-nowrap ${cls.label}`}>{l.rate != null && !l.displayFlat ? fmtGBP(l.rate) : ''}</td>
+                            <td className={`py-1 pr-2 font-mono text-right whitespace-nowrap ${cls.label}`}>{l.rate != null && l.qty != null && !l.displayFlat ? `×${qtyFmt}` : ''}</td>
                             <td className={`py-1 font-mono text-right whitespace-nowrap ${cls.amt}`}>{fmtGBP(l.amount)}</td>
                           </tr>
                         );
@@ -14923,6 +14923,51 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    // ── Night-shoot display split (Derrick's ruling, 2026-07-29) ─────────────
+    // PRESENTATION ONLY — calcForDisplay is untouched and every total stays
+    // byte-identical. The plain-night folded line ("Night Shoot (2× BHR)",
+    // whose qty is the engine's own PAID hours: span − unpaid lunch, floored
+    // at 10 per §2.1.5) renders as a flat 10h-minimum fee (≡ 2× BDR at exact
+    // rates) plus a separate same-rate "Night OT" overage line when paid
+    // hours exceed the floor — never at exactly 10 or below (no £0.00 lines).
+    // The split reads the line's OWN qty/rate/amount, never recomputes from
+    // the span; the overage amount is the engine amount minus the minimum, so
+    // the two lines re-sum to the engine figure exactly, in every rounding
+    // mode. §2.1.5 is explicit the rate never changes on a night, so the
+    // overage line is the same 2× BHR, not a different OT rate. The
+    // continuous-night shape ("Night CWD …", the B1 ruling) does not match
+    // the label and passes through untouched, as does every other line.
+    // Weekend nights share the same label and the same §2.4(iii)/(iv) flat
+    // model, so they split identically. Consumers: the app's breakdown
+    // surfaces only — invoices and the print timesheets keep the engine's
+    // folded line (frozen documents, not display surfaces), and the shoot-
+    // total bucket bar aggregates the ORIGINAL lines upstream, unchanged.
+    const NIGHT_SPLIT_LABEL = 'Night Shoot (2× BHR)';
+    const NIGHT_MIN_HOURS = 10;
+    function splitNightLinesForDisplay(lines) {
+      const out = [];
+      for (const l of (lines || [])) {
+        const qty = l ? Number(l.qty) : NaN;
+        if (!l || l.label !== NIGHT_SPLIT_LABEL || l.rate == null || !(qty >= NIGHT_MIN_HOURS)) { out.push(l); continue; }
+        const minAmount = NIGHT_MIN_HOURS * l.rate;
+        // The flat minimum fee: single figure, no hours×rate workings (same
+        // display rule as BDR — it is the night's day-style fee).
+        out.push({ ...l, qty: NIGHT_MIN_HOURS, amount: minAmount, displayFlat: true });
+        const overQty = qty - NIGHT_MIN_HOURS;
+        if (overQty > 0) {
+          out.push({
+            ...l,
+            label: 'Night OT (2× BHR)',   // \bOT\b → the categoriser buckets it 'ot' (orange) in the row renderers
+            qty: overQty,
+            amount: l.amount - minAmount,
+            detail: 'beyond the 10h minimum',
+            workings: `${overQty}h × ${fmtGBP(l.rate)}`,
+          });
+        }
+      }
+      return out;
+    }
+
     function BreakdownLineRow({ line }) {
       const bucket = categorizeBreakdownLine(line);
       const isPenalty = line.rate === null || bucket === 'pen';
@@ -14932,15 +14977,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       : bucket === 'kit' ? 'text-tm-kit'
                       : bucket === 'extras' ? 'text-tm-good'
                       : 'text-neutral-100';
-      const qtyRate = (line.qty != null && line.rate != null)
+      const qtyRate = (line.qty != null && line.rate != null && !line.displayFlat)
         ? `${Number(line.qty).toFixed(typeof line.qty === 'number' && line.qty % 1 ? 1 : 0)} × ${fmtGBP(line.rate)}`
         : '';
       return (
-        <div className="flex items-baseline gap-2 text-[11px]">
-          <span className={`flex-1 truncate ${isPenalty ? 'text-tm-pen' : 'text-neutral-300'}`}>{line.label}</span>
-          <span className="font-mono text-neutral-500 tabular-nums hidden sm:inline">{qtyRate}</span>
-          <span className={`font-mono tabular-nums w-[68px] text-right ${amountCls}`}>{fmtGBP(line.amount)}</span>
-        </div>
+        <>
+          <div className="flex items-baseline gap-2 text-[11px]">
+            <span className={`flex-1 truncate ${isPenalty ? 'text-tm-pen' : 'text-neutral-300'}`}>{line.label}</span>
+            <span className="font-mono text-neutral-500 tabular-nums hidden sm:inline">{qtyRate}</span>
+            <span className={`font-mono tabular-nums w-[68px] text-right ${amountCls}`}>{fmtGBP(line.amount)}</span>
+          </div>
+          {line.workings && (
+            <div className="text-[10px] text-neutral-500 font-mono leading-tight">{line.workings}</div>
+          )}
+        </>
       );
     }
 
@@ -15016,7 +15066,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <span className="ml-auto font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(total)}</span>
                         </div>
                         <div className="px-3.5 py-2 flex flex-col gap-1">
-                          {calc.lines.map((line, i) => <BreakdownLineRow key={i} line={line}/>)}
+                          {splitNightLinesForDisplay(calc.lines).map((line, i) => <BreakdownLineRow key={i} line={line}/>)}
                         </div>
                       </div>
                     );
@@ -15100,7 +15150,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                         <span className="ml-auto font-mono text-sm font-bold text-neutral-100 tabular-nums">{fmtGBP(total)}</span>
                       </div>
                       <div className="px-3.5 py-2 flex flex-col gap-1">
-                        {calc && calc.lines.map((line, i) => <BreakdownLineRow key={i} line={line}/>)}
+                        {calc && splitNightLinesForDisplay(calc.lines).map((line, i) => <BreakdownLineRow key={i} line={line}/>)}
                       </div>
                     </div>
                   ))}
@@ -15507,7 +15557,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             <div className="text-[11px] text-neutral-600">No line items</div>
                           ) : (
                             <div className="space-y-1">
-                              {calc.lines.map((line, i) => {
+                              {splitNightLinesForDisplay(calc.lines).map((line, i) => {
                                 const bucket = categorizeBreakdownLine(line.label);
                                 const colorClass =
                                   bucket === 'ot'     ? 'text-tm-warn' :
@@ -15516,9 +15566,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                                   bucket === 'extras' ? 'text-tm-good' :
                                                         'text-neutral-200';
                                 return (
-                                  <div key={i} className="flex items-baseline justify-between gap-3 text-[11px] font-mono">
-                                    <span className="text-neutral-400 flex-1 min-w-0 truncate">{line.label}</span>
-                                    <span className={`font-bold ${colorClass} flex-shrink-0`}>{fmtGBP(line.amount)}</span>
+                                  <div key={i}>
+                                    <div className="flex items-baseline justify-between gap-3 text-[11px] font-mono">
+                                      <span className="text-neutral-400 flex-1 min-w-0 truncate">{line.label}</span>
+                                      <span className={`font-bold ${colorClass} flex-shrink-0`}>{fmtGBP(line.amount)}</span>
+                                    </div>
+                                    {line.workings && (
+                                      <div className="text-[10px] text-neutral-500 font-mono leading-tight">{line.workings}</div>
+                                    )}
                                   </div>
                                 );
                               })}

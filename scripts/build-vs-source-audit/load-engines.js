@@ -67,6 +67,10 @@ const ENGINE_NAMES = [
   // pins the canonical fixture, the round-trip, and the refusal paths.
   'encodeShareLink',
   'decodeShareLink',
+  // Night-shoot display split (presentation-only restructure of the plain
+  // night line): exposed so the re-sum property is provable against the
+  // engine's own output.
+  'splitNightLinesForDisplay',
 ];
 
 const EXPORT_LINE =
