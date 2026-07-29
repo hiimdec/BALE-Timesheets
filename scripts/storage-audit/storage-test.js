@@ -5768,12 +5768,20 @@ async function main() {
       /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
       /if \(ev\.date !== today\) \{[\s\S]{0,320}continue; \}/.test(html) &&
       /const today = todayISO\(\);/.test(html));
-    check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — and both triggers ALSO run the reconcile sweep',
+    check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — both triggers route through the ONE drainThenSweep wrapper (drain strictly before sweep; sweep deferred to the change-sweep when events applied)',
+      // Rewritten for the la-ordering fix (re-mint race): the old concurrent
+      // `ingest(); liveActivityReconcile();` pair at both triggers IS the bug
+      // shape — a sweep win re-minted a husked card from a record that had
+      // not yet absorbed a queued card press. The executed ordering contract
+      // (bound, fail-safe, deferral) lives in la-ordering-assertions.js; this
+      // pin holds the WIRING: one wrapper, two triggers, old pair gone.
       /const liveActivityAppliedRef = React\.useRef\(null\);\s*useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /LiveActivity\.drainPendingEvents\(\)/.test(html) &&
-      /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) \{ ingest\(\); liveActivityReconcile\(\); \} \}\)/.test(html) &&
-      /ingest\(\); \/\/ launch drain/.test(html) &&
-      /liveActivityReconcile\(\); \/\/ launch sweep/.test(html));
+      /const drainThenSweep = \(\) => laDrainThenSweep\(ingest, liveActivityReconcile\)/.test(html) &&
+      /drainThenSweep\(\); \/\/ launch/.test(html) &&
+      /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) drainThenSweep\(\); \}\)/.test(html) &&
+      !/if \(s && s\.isActive\) \{ ingest\(\); liveActivityReconcile\(\); \}/.test(html) &&
+      !/ingest\(\); \/\/ launch drain/.test(html));
 
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',

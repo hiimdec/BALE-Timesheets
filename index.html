@@ -16525,6 +16525,41 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return payload;
     }
 
+    // Ordered drain→sweep for the two racy entry points (cold launch + every
+    // foreground). The reconcile sweep reads laSweepStateRef — last-RENDERED
+    // productions — while ingest writes the record via setProductions, which
+    // commits on React's schedule; firing the two concurrently let the sweep
+    // re-mint a husked card from a record that had not yet absorbed a queued
+    // card press (the resurrected-Lunch-button bug). This helper does not try
+    // to WIN that race — it removes it:
+    //   drain applied nothing (the common foreground) → sweep immediately;
+    //     the record did not change, so nothing stale is possible.
+    //   drain applied events → SKIP the entry sweep; the post-commit
+    //     change-sweep (the [productions] effect) re-runs reconcile ~1s after
+    //     commit from a provably-fresh ref.
+    //   drain stalled past boundMs (resolves -1) or threw (0) → sweep anyway:
+    //     degraded mode equals the old behaviour — reconcile must never
+    //     freeze (husks would linger forever), and a late-landing drain is
+    //     still corrected by the change-sweep post-commit.
+    // The skip condition is !(applied > 0) DELIBERATELY: if a future edit
+    // miswires an ingest return path back to undefined, the comparison fails
+    // safe into "sweep runs" — degrading to the old race, never to silent
+    // no-sweep. Top-level and dependency-injected so the ordering contract is
+    // executable in the audit sandbox (la-ordering-assertions.js).
+    async function laDrainThenSweep(drain, sweep, boundMs = 4000) {
+      let applied = 0;
+      let timer = null;
+      try {
+        applied = await Promise.race([
+          drain(),
+          new Promise((res) => { timer = setTimeout(() => res(-1), boundMs); }),
+        ]);
+      } catch (_) { applied = 0; }
+      finally { if (timer) clearTimeout(timer); }
+      if (!(applied > 0)) sweep();
+      return applied;
+    }
+
     // Lifecycle-ownership registry (module scope): the pids whose Live
     // Activity start/update is owned by a MOUNTED SoloLiveActivity controller.
     // fix/la-husk: the reconcile sweep's start branch NO LONGER consults this
@@ -25385,9 +25420,12 @@ const confirmDelete = (p) => setConfirmOpts({
           liveActivityAppliedRef.current = new Set(seed);
         }
         const applied = liveActivityAppliedRef.current;
+        // Resolves to the number of events APPLIED (0 on the empty paths) —
+        // laDrainThenSweep's skip-or-sweep decision reads this. The drain and
+        // apply logic itself is unchanged by the return contract.
         const ingest = async () => {
           const events = await LiveActivity.drainPendingEvents();
-          if (!events || !events.length) return;
+          if (!events || !events.length) return 0;
           LiveActivity.debugLog('ingest.drained n=' + events.length);
           const today = todayISO();
           const toApply = [];
@@ -25405,7 +25443,7 @@ const confirmDelete = (p) => setConfirmOpts({
             LiveActivity.debugLog('ingest.apply ' + ev.type + ' at=' + ev.at + ' pid=' + String(ev.productionId || '').slice(0, 8));
           }
           try { storage.set(APPLIED_KEY, JSON.stringify([...applied].slice(-200))); } catch (_) {}
-          if (!toApply.length) return;
+          if (!toApply.length) return 0;
           setProductions(prevProds => prevProds.map(pr => {
             let next = pr;
             for (const ev of toApply) {
@@ -25417,15 +25455,20 @@ const confirmDelete = (p) => setConfirmOpts({
             }
             return next;
           }));
+          return toApply.length;
         };
-        ingest(); // launch drain
-        liveActivityReconcile(); // launch sweep — clears orphaned/disqualified cards
+        // Both racy entry points route through this ONE wrapper so launch and
+        // foreground cannot drift; a deferral is explicit in Diagnostics
+        // rather than inferred from an absent sweep line.
+        const drainThenSweep = () => laDrainThenSweep(ingest, liveActivityReconcile)
+          .then((n) => { if (n > 0) LiveActivity.debugLog('sweep.deferred (drained=' + n + ')'); });
+        drainThenSweep(); // launch: drain first, then sweep (or defer it to the change-sweep)
         let handle = null;
         let laHandle = null;
         try {
           const AppPlg = _capPlugins().App;
           if (AppPlg && AppPlg.addListener) {
-            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && s.isActive) { ingest(); liveActivityReconcile(); } }))
+            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && s.isActive) drainThenSweep(); }))
               .then(h => { handle = h; }).catch(() => {});
           }
           // Issue C — best-effort background apply. The LiveActivityIntent runs in

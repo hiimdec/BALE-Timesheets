@@ -71,6 +71,10 @@ const ENGINE_NAMES = [
   // night line): exposed so the re-sum property is provable against the
   // engine's own output.
   'splitNightLinesForDisplay',
+  // Live Activity drain→sweep ordering (the re-mint race fix): pure,
+  // dependency-injected control flow — la-ordering-assertions.js executes
+  // its four race cases with stubbed drain/sweep in this sandbox.
+  'laDrainThenSweep',
 ];
 
 const EXPORT_LINE =
