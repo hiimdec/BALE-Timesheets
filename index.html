@@ -25666,6 +25666,113 @@ const confirmDelete = (p) => setConfirmOpts({
         } catch (_) {}
         return () => { try { if (urlHandle && urlHandle.remove) urlHandle.remove(); } catch (_) {} };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+      // ── Shoot-share link import (gate 3) ─────────────────────────────────────
+      // The universal link https://timemachineapp.co.uk/s#<payload> arrives via
+      // the SAME channel as the call-sheet share-in above (appUrlOpen +
+      // getLaunchUrl for cold starts, dedupe ref for the double-fire) — a
+      // SIBLING listener: the call-sheet handler filters to file: URLs, this
+      // one to https: on the /s path, so they can never interfere. The full
+      // URL including the fragment reaches the app (universal links preserve
+      // it); decodeShareLink is the single validated entry (version gate,
+      // refuse-newer, refuse-damaged). Consume-once: state AND the dedupe ref
+      // clear on sheet close, so re-tapping the same link later is a fresh,
+      // deliberate preview — safe, because import always CREATES (never
+      // merges; a duplicate is visible and hand-reconcilable).
+      const [shareLinkImport, setShareLinkImport] = useState(null);   // decodeShareLink result | null — preview open while set
+      const lastShareLinkRef = React.useRef('');
+      useEffect(() => {
+        if (!IS_NATIVE) return;
+        const handleShareUrl = async (url) => {
+          try {
+            if (!url || !/^https:/i.test(url)) return;
+            let u; try { u = new URL(url); } catch (_) { return; }
+            if (u.hostname !== 'timemachineapp.co.uk' || u.pathname !== '/s') return;
+            const frag = (u.hash || '').replace(/^#/, '');
+            if (!frag) return;
+            if (lastShareLinkRef.current === url) return; // launch-url + event double-fire
+            lastShareLinkRef.current = url;
+            setShareLinkImport(await decodeShareLink(frag));
+          } catch (_) {}
+        };
+        let urlHandle = null;
+        try {
+          const AppPlg = _capPlugins().App;
+          if (AppPlg && AppPlg.addListener) {
+            Promise.resolve(AppPlg.addListener('appUrlOpen', (d) => { if (d && d.url) handleShareUrl(d.url); }))
+              .then(h => { urlHandle = h; }).catch(() => {});
+          }
+          if (AppPlg && AppPlg.getLaunchUrl) {
+            Promise.resolve(AppPlg.getLaunchUrl()).then(r => { if (r && r.url) handleShareUrl(r.url); }).catch(() => {});
+          }
+        } catch (_) {}
+        return () => { try { if (urlHandle && urlHandle.remove) urlHandle.remove(); } catch (_) {} };
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      const closeShareLinkImport = () => { setShareLinkImport(null); lastShareLinkRef.current = ''; };
+      // Import ALWAYS creates a new production — the handleNewProduction shape
+      // verbatim (receiver as crew[0] from their OWN prefs and rate), days via
+      // makeBlankDay + explicit assignment of the wire fields (records born at
+      // the current schema; nothing wrapped/logged — times are the plan).
+      // Nonzero per diem constructs the builtin-perdiem instance (the recorded
+      // canonical home); zero constructs nothing and the receiver's own preset
+      // default applies at add-time. No new storage keys — bigals_productions
+      // through the normal setProductions path.
+      const handleShareLinkImport = () => {
+        const st = shareLinkImport;
+        if (!st || !st.ok) return;
+        const shoot = st.shoot;
+        const role = userPrefs.defaultRole || "Lighting Technician";
+        const seeded = seedRateFromPrefs(userPrefs, role, null);
+        const crewId = uid();
+        const newDays = shoot.days.map(d => ({
+          ...makeBlankDay(crewId),
+          date: d.date, dayType: d.dayType,
+          callTime: d.callTime, lunchStartTime: d.lunchStartTime, lunchDurationMins: d.lunchDurationMins,
+          secondBreakStartTime: d.secondBreakStartTime, secondBreakDurationMins: d.secondBreakDurationMins,
+          preCallTime: d.preCallTime, wrapTime: d.wrapTime, wrapNextDay: d.wrapNextDay,
+          travelOutMins: d.travelOutMins, travelBackMins: d.travelBackMins, miles: d.miles,
+          expenses: d.perDiemPence > 0
+            ? [{ id: uid(), presetId: 'builtin-perdiem', name: 'Per Diem', amount: d.perDiemPence / 100, detail: '' }]
+            : [],
+        }));
+        const p = {
+          id: uid(),
+          title: shoot.title || 'Shared shoot',
+          prodCo: shoot.prodCo || '',
+          jobReference: shoot.jobReference || '',
+          toAddress: shoot.toAddress || '',
+          invoicingEmail: shoot.invoicingEmail || '',
+          ccEmail: '',
+          crew: [{
+            id: crewId,
+            name: userPrefs.displayName || "You",
+            role,
+            bdr: seeded.bdr,
+            otCoef: seeded.otCoef,
+            otRate: seeded.otRate,
+            vatRegistered: userPrefs.vatRegistered ?? false,
+            vatRate: userPrefs.vatRate ?? 20,
+            kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
+            kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
+            isDriver: false,
+            email: '',
+          }],
+          days: newDays,
+          defaultDay: DEFAULT_PRODUCTION_DAY,
+          bestBoyMode: false,
+          viewMode: 'mobile',
+          iAmCrewId: null,
+          dayDefaults: {},
+          isElevenHourDay: false,
+          roundingMode: roundingModeOf(userPrefs),
+          startDate: (shoot.days[0] && shoot.days[0].date) || todayISO(),
+          isNew: true,
+        };
+        setProductions((prev) => [...prev, p]);
+        closeShareLinkImport();
+        setOpenId(p.id);
+      };
+
       const chooseImportTarget = (productionId) => {
         const file = sharedImport;
         setSharedImport(null);
@@ -26416,6 +26523,94 @@ const confirmDelete = (p) => setConfirmOpts({
             onConfirm={() => setRateCardNotice(null)}
             onCancel={() => setRateCardNotice(null)}
           />
+          {/* Shoot-share import preview (gate 3) — renders ONLY from a fully
+              validated decode; nothing touches storage until Import. The two
+              refusal states render as plain dialogs: refused-newer offers the
+              App Store, refused-damaged asks for a resend. Never a partial
+              import. IS_NATIVE-gated at the source (the listener that sets
+              shareLinkImport), so web never mounts this. */}
+          {shareLinkImport && !shareLinkImport.ok && (
+            <ConfirmDialog
+              open
+              title={shareLinkImport.reason === 'newer' ? 'Update needed' : "Couldn't read the link"}
+              message={shareLinkImport.reason === 'newer'
+                ? 'This link was made by a newer version of TimeMachine. Update the app to import it.'
+                : 'This link is damaged or incomplete - ask them to send it again.'}
+              confirmLabel={shareLinkImport.reason === 'newer' ? 'Update' : 'OK'}
+              confirmTone="primary"
+              cancelLabel={shareLinkImport.reason === 'newer' ? 'Cancel' : null}
+              onConfirm={() => {
+                const newer = shareLinkImport.reason === 'newer';
+                closeShareLinkImport();
+                if (newer) { try { window.open('https://apps.apple.com/app/id6775970098'); } catch (_) {} }
+              }}
+              onCancel={closeShareLinkImport}
+            />
+          )}
+          {shareLinkImport && shareLinkImport.ok && (() => {
+            const shoot = shareLinkImport.shoot;
+            const sDays = shoot.days;
+            const typeTally = sDays.reduce((m, d) => { m[d.dayType] = (m[d.dayType] || 0) + 1; return m; }, {});
+            const typeSplit = Object.entries(typeTally).map(([t, c]) => `${c} ${t.toLowerCase()}`).join(' + ');
+            const first = sDays[0].date, last = sDays[sDays.length - 1].date;
+            const range = first === last ? fmtDateShort(first) : `${fmtDateShort(first)} - ${fmtDateShort(last)}`;
+            const pdVals = [...new Set(sDays.filter(d => d.perDiemPence > 0).map(d => d.perDiemPence))];
+            const pdLabel = pdVals.length === 0 ? null
+              : pdVals.length === 1 ? `£${(pdVals[0] / 100).toFixed(2).replace(/\.00$/, '')}/day`
+              : `£${(Math.min(...pdVals) / 100).toFixed(2).replace(/\.00$/, '')}-£${(Math.max(...pdVals) / 100).toFixed(2).replace(/\.00$/, '')}/day`;
+            const mileageDays = sDays.filter(d => d.miles > 0).length;
+            const travelDays = sDays.filter(d => d.travelOutMins > 0 || d.travelBackMins > 0).length;
+            const sbDays = sDays.filter(d => d.secondBreakStartTime).length;
+            const sameTitle = (productions || []).some(pp => (pp.title || '').trim().toLowerCase() === (shoot.title || '').trim().toLowerCase() && (shoot.title || '').trim());
+            const facts = [
+              `${sDays.length} ${sDays.length === 1 ? 'day' : 'days'} · ${typeSplit}`,
+              range,
+              pdLabel ? `Per diem ${pdLabel}` : null,
+              mileageDays ? `Mileage on ${mileageDays} ${mileageDays === 1 ? 'day' : 'days'}` : null,
+              travelDays ? `Travel time on ${travelDays} ${travelDays === 1 ? 'day' : 'days'}` : null,
+              sbDays ? `2nd break on ${sbDays} ${sbDays === 1 ? 'day' : 'days'}` : null,
+            ].filter(Boolean);
+            return (
+              <Sheet open onClose={closeShareLinkImport}>
+                <div className="px-5 pt-1 pb-3">
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1">Shared shoot</div>
+                  <div className="text-base font-bold text-neutral-100">{shoot.title || 'Untitled shoot'}</div>
+                  {(shoot.prodCo || shoot.jobReference) && (
+                    <div className="text-[12px] text-neutral-400 mt-0.5">
+                      {[shoot.prodCo, shoot.jobReference].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </div>
+                <div className="px-5 pb-3 space-y-1">
+                  {facts.map((f, i) => (
+                    <div key={i} className="text-[13px] text-neutral-300 font-mono">{f}</div>
+                  ))}
+                </div>
+                {(shoot.toAddress || shoot.invoicingEmail) && (
+                  <div className="px-5 pb-3">
+                    {shoot.toAddress && <div className="text-[11px] text-neutral-500 leading-tight">{shoot.toAddress}</div>}
+                    {shoot.invoicingEmail && <div className="text-[11px] text-neutral-500 mt-0.5">{shoot.invoicingEmail}</div>}
+                  </div>
+                )}
+                <div className="px-5 pb-3 text-[11px] text-neutral-500 leading-tight">
+                  Imports as a new shoot with your rate. Times are the plan - nothing is logged.
+                  {sameTitle && <span className="text-tm-warn"> You already have a shoot with this name - importing creates a second one.</span>}
+                </div>
+                <div className="px-4 pb-4 flex flex-col gap-2">
+                  <button type="button" onClick={handleShareLinkImport}
+                    className="w-full px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    Import
+                  </button>
+                  <button type="button" onClick={closeShareLinkImport}
+                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    Cancel
+                  </button>
+                </div>
+              </Sheet>
+            );
+          })()}
           {/* Stage 3 share-in chooser — a shared file has no shoot context, so
               ask. Existing shoot rows are most-recent-first; "New shoot" runs
               extraction first (title pre-fill) then the EXISTING creation flow.
