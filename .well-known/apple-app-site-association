@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["7TYG2Q28MA.uk.co.timemachineapp.app"],
+        "components": [
+          { "/": "/s", "#": "*", "comment": "shoot-share links only - nothing else on the domain opens the app" }
+        ]
+      }
+    ]
+  }
+}
