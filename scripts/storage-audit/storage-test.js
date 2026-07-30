@@ -5234,9 +5234,13 @@ async function main() {
     check('LL4a child onClose closes only the child (setEmailEditing(false)) — parent <Sheet> stays mounted',
       /<Sheet open onClose=\{\(\) => setEmailEditing\(false\)\}/.test(html));
     check('LL4b parent onClose is the caller onClose — dismissing it unmounts the whole CrewActionSheet (stack torn down)',
-      /function CrewActionSheet\([\s\S]{0,1200}<Sheet open onClose=\{onClose\}>/.test(html) &&
+      // windows widened 1200→1400 / 3000→3400 for the BB "Share shoot link"
+      // ActionItem (signature gained onShareLink; the item sits between Send
+      // text and Set email) — the assertions (Sheet onClose wiring, Cancel →
+      // onClose, both inside CrewActionSheet) are unchanged.
+      /function CrewActionSheet\([\s\S]{0,1400}<Sheet open onClose=\{onClose\}>/.test(html) &&
       // the parent Cancel button + Sheet both route to onClose
-      /function CrewActionSheet\([\s\S]{0,3000}onClick=\{onClose\}[\s\S]{0,400}<\/Sheet>/.test(html));
+      /function CrewActionSheet\([\s\S]{0,3400}onClick=\{onClose\}[\s\S]{0,400}<\/Sheet>/.test(html));
 
     // ─ LL5: the two ExportTab pickers route through <Sheet>, no guard. ─
     check('LL5a WeekPickerSheet routes through <Sheet open={open}> (no onBeforeDismiss)',

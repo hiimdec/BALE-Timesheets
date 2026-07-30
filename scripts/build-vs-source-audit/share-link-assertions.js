@@ -22,12 +22,22 @@
  *     compressed with node's zlib deflateRaw, which also proves the decoder
  *     accepts streams from a different deflate implementation.
  *
+ *   - BB EXTRACTION (B1-B6): extractCrewShareDays feeds one BB crew
+ *     member's calendar (own records + Rest Day stubs) into the SAME frozen
+ *     encoder. Pins: the worked/varying/rested/absent fixture round-trips to
+ *     the exact expected shoot; a BB link is BYTE-IDENTICAL to a solo link
+ *     of the same days; BB noise (kit, other crew, non-per-diem expenses)
+ *     cannot leak; cap/empty refuse through the BB path; every tuple equals
+ *     the direct resolveDay output; a legacy truckCallTime pre-call travels
+ *     (the calc pays that alias, so the link must carry it). B1/B2 run on
+ *     the BUILT engine too.
+ *
  * Wiring: audit:build (after theme-parity) · standalone audit:share.
  * Exit code: 0 all pass, 1 any fail, 2 harness error.
  */
 
 const zlib = require('zlib');
-const { loadSourceEngine } = require('./load-engines');
+const { loadSourceEngine, loadBuiltEngine } = require('./load-engines');
 
 // ── The canonical fixture (gate-2 freeze; scaffold ratified to /s#) ─────────
 const FIXTURE_LINK = 'https://timemachineapp.co.uk/s#bc5NS8NAEAbgv7K850mZ_Uga9lQVC4VWLOJBQg4xG7Fk3S35EET875K0h4qFYQbmhWfmG5-wkhBgNaGHLbBrmq6tBrEJ_dhVoW7E3oCw2-xNolhlCecShNvonXiJvhXrg__oxXZwIOjOibWPsSMhc_H4fjgexdPQNc1AYhuDi0Hc36kbYR6eQajqOo5h6Fev0buv6Nu3iVrUcTG2KAkOtihwPpqwBkkC55YZBKnnmTGF0fuLBrmcEyaTTsXEJV0wZorAyzOjrD4xkCdZT2k2b6F4njzlGZNOmclkf7j0Gqf_f6X0Var8-QU';
@@ -92,6 +102,67 @@ const fragOf = (envelope) => b64url(zlib.deflateRawSync(Buffer.from(JSON.stringi
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+// ── BB extraction fixture (B-pins) ──────────────────────────────────────────
+// Sam's five calendar days: lean (cascade), varying (explicit wrap + travel +
+// per-diem instance + a non-per-diem expense that must NOT travel), dept late
+// day (dayDefaults leg), rested-with-preserved-override, and ABSENT (Jo works,
+// Sam has no record → Rest Day stub). Kit and a second crew member are noise
+// the allowlist must drop.
+const BB_CREW_SAM = { id: 'sam', name: 'Sam Spark', role: 'Lighting Technician', bdr: 500, otCoef: 1.5, otRate: null, noOT: false };
+const BB_PRODUCTION = {
+  title: 'Harbour Nights', jobReference: 'HN-2026-114', prodCo: 'Copper Kettle Films',
+  toAddress: '12 Quay Lane, Bristol BS1 4DZ', invoicingEmail: 'accounts@copperkettle.co.uk',
+  bestBoyMode: true,
+  defaultDay: { callTime: '07:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60, dayType: 'Shoot' },
+  dayDefaults: { '2026-08-06': { wrapTime: '21:00' } },
+  crew: [BB_CREW_SAM, { id: 'jo', name: 'Jo Gaffer', role: 'Gaffer', bdr: 650 }],
+  days: [
+    { id: 'b1', crewId: 'sam', date: '2026-08-04', kitItems: [{ itemId: 'k1', name: 'Radio kit', rate: 15 }], kitMoneyAmount: 50, expenses: [] },
+    { id: 'b2', crewId: 'sam', date: '2026-08-05', wrapTime: '19:45', travelOutMins: 30, travelBackMins: 30,
+      expenses: [{ id: 'e1', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 35, detail: '' },
+                 { id: 'e2', presetId: 'parking', name: 'Parking', amount: 12, detail: 'NCP' }] },
+    { id: 'b3', crewId: 'sam', date: '2026-08-06' },
+    { id: 'b4', crewId: 'sam', date: '2026-08-07', dayType: 'Rest Day', wrapTime: '19:45' },
+    { id: 'b5', crewId: 'jo', date: '2026-08-04' },
+    { id: 'b6', crewId: 'jo', date: '2026-08-08', preCallTime: '06:00' },
+  ],
+};
+const bbDay = (o) => ({
+  date: o.date, dayType: o.type, callTime: '07:00', lunchStartTime: '13:00', lunchDurationMins: 60,
+  secondBreakStartTime: '', secondBreakDurationMins: 0, preCallTime: '', wrapTime: o.wrap, wrapNextDay: false,
+  travelOutMins: o.tOut || 0, travelBackMins: o.tBack || 0, perDiemPence: o.pd || 0, miles: 0,
+});
+const BB_EXPECTED_SHOOT = {
+  title: 'Harbour Nights', jobReference: 'HN-2026-114', prodCo: 'Copper Kettle Films',
+  toAddress: '12 Quay Lane, Bristol BS1 4DZ', invoicingEmail: 'accounts@copperkettle.co.uk',
+  days: [
+    bbDay({ date: '2026-08-04', type: 'Shoot', wrap: '19:00' }),
+    bbDay({ date: '2026-08-05', type: 'Shoot', wrap: '19:45', tOut: 30, tBack: 30, pd: 3500 }),
+    bbDay({ date: '2026-08-06', type: 'Shoot', wrap: '21:00' }),
+    bbDay({ date: '2026-08-07', type: 'Rest Day', wrap: '19:45' }),
+    bbDay({ date: '2026-08-08', type: 'Rest Day', wrap: '19:00' }),
+  ],
+};
+// The solo twin: the decoded shoot rebuilt as explicit solo records (the
+// import constructor's field mapping). Encoding it through the solo call
+// shape must reproduce the BB link BYTE-FOR-BYTE.
+const soloTwinOf = (shoot) => ({
+  title: shoot.title, jobReference: shoot.jobReference, prodCo: shoot.prodCo,
+  toAddress: shoot.toAddress, invoicingEmail: shoot.invoicingEmail,
+  defaultDay: {}, dayDefaults: {}, crew: [],
+  days: shoot.days.map((sd, i) => ({
+    id: 'tw' + i, crewId: 'c1', date: sd.date, dayType: sd.dayType,
+    callTime: sd.callTime, wrapTime: sd.wrapTime, wrapNextDay: sd.wrapNextDay,
+    lunchStartTime: sd.lunchStartTime, lunchDurationMins: sd.lunchDurationMins,
+    secondBreakStartTime: sd.secondBreakStartTime, secondBreakDurationMins: sd.secondBreakDurationMins,
+    preCallTime: sd.preCallTime, travelOutMins: sd.travelOutMins, travelBackMins: sd.travelBackMins,
+    miles: sd.miles, perDiemAmount: 0,
+    expenses: sd.perDiemPence > 0
+      ? [{ id: 'pd-tw' + i, presetId: 'builtin-perdiem', name: 'Per Diem', amount: sd.perDiemPence / 100, detail: '' }]
+      : [],
+  })),
+});
+
 async function main() {
   const eng = await loadSourceEngine();
   const { encodeShareLink, decodeShareLink } = eng;
@@ -145,6 +216,58 @@ async function main() {
   const fifteen = Array.from({ length: 15 }, (_, i) => mkFixtureDay({ id: 'x' + i, date: `2026-09-${String(i + 1).padStart(2, '0')}`, dayType: 'Shoot', call: '08:00', lunchS: '13:00', lunchD: 60, wrap: '19:00', tOut: 0, tBack: 0, miles: 0, pd: 0 }));
   ok('S16 encoder refuses 15 days with reason cap (never a silent trim)', eq(await encodeShareLink(FIXTURE_PRODUCTION, fifteen, FIXTURE_CREW), { ok: false, reason: 'cap' }));
   ok('S17 encoder refuses an empty shoot', eq(await encodeShareLink(FIXTURE_PRODUCTION, [], FIXTURE_CREW), { ok: false, reason: 'empty' }));
+
+  // ── BB extraction (B-pins) — source engine, then B1/B2 on the built ──────
+  console.log('');
+  const runBB = async (tag, E) => {
+    const spanDays = E.extractCrewShareDays(BB_PRODUCTION, 'sam');
+    const bbRes = await E.encodeShareLink(BB_PRODUCTION, spanDays, BB_CREW_SAM);
+    const bbFrag = bbRes.ok ? bbRes.url.split('#')[1] : '';
+    const bbDec = bbRes.ok ? await E.decodeShareLink(bbFrag) : { ok: false };
+    ok(`B1${tag} BB extraction (worked/varying/late/rested/absent) round-trips to the exact expected shoot`,
+      bbRes.ok === true && bbDec.ok === true && eq(bbDec.shoot, BB_EXPECTED_SHOOT),
+      bbDec.ok ? undefined : 'encode/decode failed');
+    const twin = soloTwinOf(BB_EXPECTED_SHOOT);
+    const twinRes = await E.encodeShareLink(twin, twin.days, { id: 'c1', name: 'Twin', role: 'Spark', bdr: 444, otCoef: 1.5, otRate: null, noOT: false });
+    ok(`B2${tag} the BB link is BYTE-IDENTICAL to the solo link of the same days`,
+      bbRes.ok && twinRes.ok === true && twinRes.url === bbRes.url,
+      twinRes.ok ? `bb …${bbFrag.slice(-12)} vs solo …${(twinRes.url || '').split('#')[1]?.slice(-12)}` : 'twin encode failed');
+    return { spanDays, bbRes, bbFrag, bbDec };
+  };
+  const { spanDays, bbRes, bbFrag, bbDec } = await runBB('/src', eng);
+
+  const leaked = JSON.stringify(bbDec.ok ? bbDec.shoot : {});
+  ok('B3 nothing BB-specific leaks (kit, other crew, non-per-diem expenses, names, rates)',
+    bbDec.ok &&
+    !/Radio kit|Parking|Sam Spark|Jo Gaffer|kitMoney|kitItems|bdr|06:00/.test(leaked) &&
+    bbDec.shoot.days.every(d => eq(Object.keys(d).sort(), ['callTime', 'date', 'dayType', 'lunchDurationMins', 'lunchStartTime', 'miles', 'perDiemPence', 'preCallTime', 'secondBreakDurationMins', 'secondBreakStartTime', 'travelBackMins', 'travelOutMins', 'wrapNextDay', 'wrapTime'].sort())));
+
+  const manyDates = { ...BB_PRODUCTION, days: Array.from({ length: 15 }, (_, i) => ({ id: 'm' + i, crewId: 'jo', date: `2026-09-${String(i + 1).padStart(2, '0')}` })) };
+  ok('B4 cap and empty refuse through the BB path',
+    eq(await eng.encodeShareLink(manyDates, eng.extractCrewShareDays(manyDates, 'sam'), BB_CREW_SAM), { ok: false, reason: 'cap' }) &&
+    eq(await eng.encodeShareLink({ ...BB_PRODUCTION, days: [] }, eng.extractCrewShareDays({ ...BB_PRODUCTION, days: [] }, 'sam'), BB_CREW_SAM), { ok: false, reason: 'empty' }));
+
+  let bbEnv = null;
+  try { bbEnv = JSON.parse(zlib.inflateRawSync(Buffer.from(bbFrag.replace(/-/g, '+').replace(/_/g, '/'), 'base64')).toString()); } catch (_) {}
+  ok('B5 every encoded tuple equals the direct resolveDay output (the detail-view match, executed)',
+    !!bbEnv && spanDays.every((day, i) => {
+      const r = eng.resolveDay(BB_PRODUCTION, day, BB_CREW_SAM);
+      const t = bbEnv.d[i];
+      return t[0] === r.date && t[2] === r.callTime && t[3] === r.lunchStartTime &&
+        t[4] === Math.round(Number(r.lunchDurationMins) || 0) && t[8] === r.wrapTime &&
+        t[1] === ['Shoot', 'Pre-light', 'Prep Day', 'Recce', 'Build Day', 'De-rig', 'Travel Day', 'Rest Day'].indexOf(r.dayType);
+    }));
+
+  const legacyProd = { ...BB_PRODUCTION, days: [{ id: 'L1', crewId: 'sam', date: '2026-08-04', truckCallTime: '05:30' }] };
+  const legacyDec = await (async () => {
+    const r = await eng.encodeShareLink(legacyProd, eng.extractCrewShareDays(legacyProd, 'sam'), BB_CREW_SAM);
+    return r.ok ? eng.decodeShareLink(r.url.split('#')[1]) : { ok: false };
+  })();
+  ok('B6 a legacy truckCallTime pre-call travels (the calc pays it, so the link carries it)',
+    legacyDec.ok === true && legacyDec.shoot.days[0].preCallTime === '05:30');
+
+  const built = loadBuiltEngine();
+  await runBB('/built', built);
 
   console.log(`\n${fail === 0 ? '✅ PASS' : '❌ FAIL'} — ${pass} passed, ${fail} failed\n`);
   process.exit(fail > 0 ? 1 : 0);

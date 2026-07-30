@@ -1165,6 +1165,30 @@
       return { ok: true, url: SHARE_SCAFFOLD + _shareB64url(await _shareDeflate(bytes)) };
     }
 
+    // One BB crew member's share-day array for the FROZEN encoder above: the
+    // production calendar (every date holding at least one record), the
+    // member's own record where one exists, a Rest Day stub where none does —
+    // so the link keeps the shoot's day numbering and un-ticked days travel
+    // as type 7. The encoder resolves each entry through the SAME resolveDay
+    // cascade the member's detail view renders, so the link carries exactly
+    // what the sender sees. preCallTime is normalised from the legacy
+    // truckCallTime alias HERE because the calc pays that alias
+    // (calculateDay's back-compat read) while resolveDay does not surface
+    // it — without this an untouched legacy record would show paid pre-call
+    // on screen yet drop it from the link. Nothing else is reshaped: the
+    // encoder's 19-field allowlist is the leak gate.
+    function extractCrewShareDays(production, crewId) {
+      const all = production.days || [];
+      const dates = [...new Set(all.map(d => d.date))].sort();
+      return dates.map(date => {
+        const rec = all.find(d => d.date === date && d.crewId === crewId);
+        if (!rec) return { crewId, date, dayType: 'Rest Day' };
+        return (!rec.preCallTime && rec.truckCallTime)
+          ? { ...rec, preCallTime: rec.truckCallTime }
+          : rec;
+      });
+    }
+
     // Decode a share fragment. THE single entry for every received link:
     //   → { ok:true, shoot } | { ok:false, reason:'newer'|'damaged' }
     // The version gate runs BEFORE any field is read; a link from a newer
@@ -12747,7 +12771,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function CrewActionSheet({ crewMember, mode, onClose, onSavePDF, onSendText, onSetEmail, onEditCrew, onRemoveFromDay, canRemove }) {
+    function CrewActionSheet({ crewMember, mode, onClose, onSavePDF, onSendText, onShareLink, onSetEmail, onEditCrew, onRemoveFromDay, canRemove }) {
       // Wave 3: parent action sheet + a real CHILD email-editor sheet stacked
       // ON TOP (the old in-frame emailEditing swap is gone). The Sheet infra
       // (_sheetStack + per-instance zIndex) layers them: the child has its own
@@ -12786,6 +12810,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="px-4 pt-3 pb-4 flex flex-col gap-2">
               <ActionItem icon={IDownload} label="Save PDF" onClick={() => { onSavePDF(); onClose(); }} />
               <ActionItem icon={IMessage} label="Send text breakdown" onClick={() => { onSendText(); onClose(); }} />
+              {onShareLink && (
+                <ActionItem icon={IShare} label="Share shoot link" onClick={() => { onShareLink(); onClose(); }} />
+              )}
               <ActionItem icon={IMail} label={hasEmail ? 'Change email' : 'Set email'} onClick={() => setEmailEditing(true)} />
               <ActionItem icon={IPencil} label="Edit name & role" onClick={() => { onEditCrew(); onClose(); }} />
               {mode === 'drilldown' && canRemove && (
@@ -13690,6 +13717,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const r = await shareTextOrCopy(text, `${crewMember.name || 'Crew'} Timesheet`);
                 if ((r === 'copied' || r === 'prompted') && typeof showToast === 'function') showToast('Copied to clipboard');
               }}
+              onShareLink={IS_NATIVE ? async () => {
+                const spanDays = extractCrewShareDays(production, crewMember.id);
+                const res = await encodeShareLink(production, spanDays, crewMember);
+                if (!res.ok) {
+                  if (typeof showToast === 'function') showToast(res.reason === 'cap'
+                    ? `Share links carry up to ${SHARE_DAY_CAP} days - this shoot has ${spanDays.length}.`
+                    : res.reason === 'empty'
+                      ? 'Nothing to share yet - add a day first.'
+                      : "Couldn't make the link for this shoot.");
+                  return;
+                }
+                try {
+                  const { Share } = _capPlugins();
+                  await Share.share({ url: res.url });
+                } catch (e) {
+                  // The share sheet's own cancel rejects — not an error.
+                  const msg = (e && e.message) || '';
+                  if (!/cancel/i.test(msg) && typeof showToast === 'function') showToast("Couldn't open the share sheet - try again.");
+                }
+              } : null}
               onSetEmail={(email) => setProduction(p => ({
                 ...p,
                 crew: (p.crew || []).map(c => c.id === crewMember.id ? { ...c, email } : c)
@@ -14903,6 +14950,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const r = await shareTextOrCopy(text, `${activeCrewSheet.name || 'Crew'} Timesheet`);
                 if ((r === 'copied' || r === 'prompted') && typeof showToast === 'function') showToast('Copied to clipboard');
               }}
+              onShareLink={IS_NATIVE ? async () => {
+                const spanDays = extractCrewShareDays(production, activeCrewSheet.id);
+                const res = await encodeShareLink(production, spanDays, activeCrewSheet);
+                if (!res.ok) {
+                  if (typeof showToast === 'function') showToast(res.reason === 'cap'
+                    ? `Share links carry up to ${SHARE_DAY_CAP} days - this shoot has ${spanDays.length}.`
+                    : res.reason === 'empty'
+                      ? 'Nothing to share yet - add a day first.'
+                      : "Couldn't make the link for this shoot.");
+                  return;
+                }
+                try {
+                  const { Share } = _capPlugins();
+                  await Share.share({ url: res.url });
+                } catch (e) {
+                  // The share sheet's own cancel rejects — not an error.
+                  const msg = (e && e.message) || '';
+                  if (!/cancel/i.test(msg) && typeof showToast === 'function') showToast("Couldn't open the share sheet - try again.");
+                }
+              } : null}
               onSetEmail={(email) => setProduction(p => ({
                 ...p,
                 crew: (p.crew || []).map(c => c.id === activeCrewSheet.id ? { ...c, email } : c)

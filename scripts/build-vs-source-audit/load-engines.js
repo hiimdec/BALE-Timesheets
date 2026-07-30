@@ -67,6 +67,11 @@ const ENGINE_NAMES = [
   // pins the canonical fixture, the round-trip, and the refusal paths.
   'encodeShareLink',
   'decodeShareLink',
+  // BB individual-share extraction (feeds the frozen encoder above): the
+  // suite's B-pins prove a BB-extracted link is byte-identical to a solo
+  // link of the same days and that the legacy truckCallTime pre-call
+  // travels.
+  'extractCrewShareDays',
   // Night-shoot display split (presentation-only restructure of the plain
   // night line): exposed so the re-sum property is provable against the
   // engine's own output.
