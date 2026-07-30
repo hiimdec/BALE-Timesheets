@@ -5565,7 +5565,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       .grid-row {
         display: grid;
-        grid-template-columns: 26mm repeat(7, 19mm) 18mm;
+        /* Total col 18mm→22mm: a right-aligned £X,XXX.00 (12px body / 14px
+           foot, bold tabular) overflowed 18mm and the cell's overflow:hidden
+           clipped the £ and the grey fill on the LEFT. Sum held at 177mm —
+           day cols donate 0.5mm each, crew 0.5mm — so the table width is
+           unchanged. Fits four-figure totals at both sizes with headroom; a
+           FIVE-figure week total (£10,000+) would need ~24mm and would clip
+           again — enlarge here if that day comes. */
+        grid-template-columns: 25.5mm repeat(7, 18.5mm) 22mm;
         border-bottom: 1px solid #e5e5e5;
       }
       .grid-row:last-child { border-bottom: none; }
@@ -5602,7 +5609,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       .grid-body .grid-cell.row-total {
         background: #fafafa; flex-direction: column;
-        justify-content: center; align-items: flex-end; padding: 6px 8px;
+        justify-content: center; align-items: flex-end; padding: 6px 6px;
       }
       .grid-body .name { font-size: 10px; font-weight: 700; color: #171717; line-height: 1.2; }
       .grid-body .role { font-size: 8px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 600; }
@@ -5634,7 +5641,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; color: #525252; font-weight: 700;
       }
       .grid-foot .grid-cell.row-total {
-        flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 8px;
+        flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 6px;
       }
       .grid-foot .day-total-val { font-size: 11px; font-weight: 800; color: #171717; }
       .grid-foot .day-total-hrs { font-size: 8px; color: #737373; margin-top: 1px; }
