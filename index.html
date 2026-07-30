@@ -1960,6 +1960,60 @@
       notes: "Pay accuracy improvements across the trickier day types, a full-screen saved clients manager, and a small visual polish. See CHANGELOG.md for full notes.",
     };
 
+    // ── Help & announcements ──────────────────────────────────────────────
+    // ONE content source for three surfaces: the Settings manual ("How to
+    // use TimeMachine", all entries), the one-time intro popup (teaser:true
+    // entries only), and the per-release what's-new popup (WHATS_NEW below).
+    // The manual covers NON-OBVIOUS features only — the test is "would
+    // someone miss or misunderstand this if we didn't say it". Poppy stays
+    // out on purpose (it's an easter egg, and announced once in a what's-new
+    // edition instead).
+    const HELP_CONTENT = {
+      framing: "Most of TimeMachine is self-explanatory. These are the bits worth knowing about.",
+      entries: [
+        { key: 'depth',    teaser: true,  title: "More than call to wrap",
+          blurb: "Call, lunch and wrap cover a basic day. Pre-call, expenses, travel time and stepping up are there for the days that need them. The rest is worked out for you." },
+        { key: 'bestboy',  teaser: true,  title: "Solo or Best Boy",
+          blurb: "Run just yourself, or switch a production to Best Boy mode and run the whole crew in parallel. Everyone's times, everyone's money, one screen." },
+        { key: 'callsheet', teaser: true, title: "Call sheet reader",
+          blurb: "Point it at a call sheet and it fills in the times. iPhone 15 Pro and above." },
+        { key: 'la',       teaser: false, title: "Live Activity",
+          blurb: "Your day total on the lock screen, ticking as you work. Lunch and wrap from there too, no need to open the app. Starts when you set a call time for today." },
+        { key: 'siri',     teaser: false, title: "Siri",
+          blurb: "\"Hey Siri, wrap now in TimeMachine.\" Lunch works too." },
+        { key: 'cancel',   teaser: false, title: "Cancellation calculator",
+          blurb: "Works out what you're owed when a job's pulled." },
+        { key: 'invoice',  teaser: false, title: "Invoicing",
+          blurb: "Send an invoice in a few taps. Late payment interest is a couple more. Export for your accountant, or straight to QuickBooks." },
+        { key: 'share',    teaser: false, title: "Share a shoot",
+          blurb: "Send a shoot to a mate on the app. Dates, times and production details open straight in theirs. Rates stay yours." },
+        { key: 'money',    teaser: false, title: "In real money",
+          blurb: "Your day total in units that matter. Sausage rolls, pints, tanks of petrol. Settings, Appearance, Pill comparison." },
+      ],
+    };
+
+    // The what's-new edition. WHATS_NEW_VERSION is a LITERAL, bumped by hand
+    // only when a release deserves a popup — it must EQUAL APP_VERSION to
+    // fire, so a patch that bumps APP_VERSION alone silently retires the old
+    // edition (fails safe: forget to bump = no popup = no harm). Seen-state
+    // is seenWhatsNewVersion in userPrefs, stamped on dismissal — and also
+    // stamped when the INTRO fires (the intro covers everything, so its
+    // edition never shows to that user; what's-new starts mattering at the
+    // NEXT edition).
+    const WHATS_NEW_VERSION = "5.3.0";
+    const WHATS_NEW = {
+      title: "What's new",
+      items: [
+        { title: "Quick set",
+          blurb: "Set one time across several crew at once. Two sparks go to lunch early, tap tap, done." },
+        { title: "Share links",
+          blurb: "Send a shoot, or one crew member's days, to anyone on the app." },
+        { title: "Poppy mode",
+          blurb: "Pink. Named after a trainee. Settings, Appearance." },
+      ],
+      footer: "New in Settings: How to use TimeMachine - the features you might not have found.",
+    };
+
     /* ─── Schema version & storage-safety helpers ─── */
 
     const SCHEMA_VERSION = 4;
@@ -2580,6 +2634,14 @@
       ],
       onboardingComplete: false,
       lastSeenAppVersion: "",
+      // Help & announcements seen-flags. Additive via merge-over-defaults —
+      // no migration, no schema bump (the theme-pref pattern). seenIntro:
+      // the one-time intro popup was dismissed (never re-shows).
+      // seenWhatsNewVersion: the last WHATS_NEW_VERSION whose popup was
+      // dismissed — also stamped by the intro (its content supersedes the
+      // current edition, so the collision rule is durable, not per-launch).
+      seenIntro: false,
+      seenWhatsNewVersion: "",
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off'
       // to hide the compare line entirely. Default is 'off' so new users
       // land on a clean pill (£ amount only) and pick a comparison
@@ -18324,6 +18386,40 @@ const setDays = (updater) =>
       };
     }
 
+    /* ═══════════════════════════ HELP & ANNOUNCEMENTS ═══════════════════════════ */
+
+    // ONE modal for every announcement surface (the intro popup and each
+    // what's-new edition). Data-driven so a future edition is copy, not
+    // code. Built on Sheet: scrim, swipe/back dismissal and the native
+    // back-level all come for free — every exit path lands in onClose, so
+    // the seen-flag stamp can never be bypassed.
+    function InfoModal({ title, framing, items, footer, closeLabel = 'Got it', onClose }) {
+      return (
+        <Sheet open onClose={onClose} title={title}>
+          <div className="px-5 pb-5 flex flex-col gap-4">
+            {framing && <p className="text-[12px] text-neutral-400 leading-relaxed">{framing}</p>}
+            <div className="flex flex-col gap-3.5">
+              {items.map((it) => (
+                <div key={it.title}>
+                  <div className="text-[13px] font-semibold text-neutral-100">{it.title}</div>
+                  <div className="text-[12px] text-neutral-400 leading-relaxed mt-0.5">{it.blurb}</div>
+                </div>
+              ))}
+            </div>
+            {footer && <p className="text-[11px] text-neutral-500 leading-relaxed border-t border-neutral-800/60 pt-3">{footer}</p>}
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-[13px] font-bold uppercase tracking-wider transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              {closeLabel}
+            </button>
+          </div>
+        </Sheet>
+      );
+    }
+
     /* ═══════════════════════════ ONBOARDING ═══════════════════════════ */
 
     function OnboardingScreen({ userPrefs, set, onComplete }) {
@@ -20522,6 +20618,21 @@ const setDays = (updater) =>
                   })}><IReset/>Reset all data</Btn>
                   <p className="text-[10px] text-neutral-500 mt-1">Clears all your productions and settings. There's no getting them back.</p>
                 </div>
+              </div>
+            </Disclosure>
+
+            {/* §8b — How to use TimeMachine: the permanent manual. Renders
+                the SAME HELP_CONTENT the intro popup teases — one source,
+                no duplicated blurbs. Non-obvious features only. */}
+            <Disclosure label="How to use TimeMachine">
+              <p className="text-[12px] text-neutral-400 leading-relaxed mb-4">{HELP_CONTENT.framing}</p>
+              <div className="flex flex-col gap-3.5">
+                {HELP_CONTENT.entries.map((it) => (
+                  <div key={it.key}>
+                    <div className="text-[13px] font-semibold text-neutral-100">{it.title}</div>
+                    <div className="text-[12px] text-neutral-400 leading-relaxed mt-0.5">{it.blurb}</div>
+                  </div>
+                ))}
               </div>
             </Disclosure>
 
@@ -26196,9 +26307,29 @@ const confirmDelete = (p) => setConfirmOpts({
         } catch {}
       }, []); // runs once on mount only
 
-      // Show version-update toast if the user has seen a previous version.
+      // Help & announcements — both popups are LIVE-DERIVED from prefs (no
+      // latch state): dismissal stamps the flag, the condition goes false,
+      // the modal unmounts. Intro fires for anyone without seenIntro
+      // (existing users see it once on this release); dismissing it ALSO
+      // stamps the current what's-new edition — the intro covers
+      // everything, so this edition never shows to that user and what's-new
+      // first activates at the NEXT bumped edition. A pending share-link
+      // import or call-sheet share-in owns its launch: the popups yield
+      // WITHOUT stamping and fire on the next clean launch.
+      const introDue = userPrefs.onboardingComplete && !userPrefs.seenIntro;
+      const whatsNewDue = !introDue &&
+        WHATS_NEW_VERSION === APP_VERSION &&
+        userPrefs.seenWhatsNewVersion !== WHATS_NEW_VERSION;
+      const dismissIntro = () => setUserPrefs(p => ({ ...p, seenIntro: true, seenWhatsNewVersion: WHATS_NEW_VERSION }));
+      const dismissWhatsNew = () => setUserPrefs(p => ({ ...p, seenWhatsNewVersion: WHATS_NEW_VERSION }));
+
+      // Show version-update toast if the user has seen a previous version —
+      // unless a popup fires this launch (a release never announces itself
+      // twice; editionless patches keep the toast).
       useEffect(() => {
-        if (userPrefs.lastSeenAppVersion && userPrefs.lastSeenAppVersion !== APP_VERSION) {
+        const popupDueAtMount = (userPrefs.onboardingComplete && !userPrefs.seenIntro) ||
+          (WHATS_NEW_VERSION === APP_VERSION && userPrefs.seenWhatsNewVersion !== WHATS_NEW_VERSION);
+        if (!popupDueAtMount && userPrefs.lastSeenAppVersion && userPrefs.lastSeenAppVersion !== APP_VERSION) {
           setVersionToast(true);
           setTimeout(() => setVersionToast(false), 3000);
         }
@@ -27038,6 +27169,23 @@ const confirmDelete = (p) => setConfirmOpts({
             <div style={{ position: 'fixed', bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)', left: 12, right: 12, zIndex: 9997, background: '#052e16', border: '1px solid #4ade80', borderRadius: 12, color: '#bbf7d0', padding: '10px 14px', fontSize: 12, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
               Updated to TimeMachine v{APP_VERSION} ✓
             </div>
+          )}
+          {introDue && !shareLinkImport && !openImportFile && (
+            <InfoModal
+              title="Worth knowing"
+              framing="Most of TimeMachine is self-explanatory. A few things aren't obvious:"
+              items={HELP_CONTENT.entries.filter(e => e.teaser)}
+              footer="The full list is in Settings, under How to use TimeMachine."
+              onClose={dismissIntro}
+            />
+          )}
+          {whatsNewDue && !shareLinkImport && !openImportFile && (
+            <InfoModal
+              title={WHATS_NEW.title}
+              items={WHATS_NEW.items}
+              footer={WHATS_NEW.footer}
+              onClose={dismissWhatsNew}
+            />
           )}
           <CelebrationLayer prefs={userPrefs} />
         </>
