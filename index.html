@@ -5033,6 +5033,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return { ...production, days: mapDayNow(production.days, date, uid0, { wrapTime: t, wrapped: true }) };
     }
 
+    // Quick set (BB): ONE time field written across N selected crew as
+    // explicit per-crew overrides — the SINGLE-EDIT write batched, nothing
+    // more. Time fields mirror updateTimeField's V4-5h-11 collapse exactly
+    // (a value matching the RAW date-level dept default deletes the
+    // override so the cascade resumes; getDayDefaults absent → no collapse,
+    // the write stays explicit — the same comparison, same defaults source,
+    // so the variance state equals a manual single edit's byte-for-byte).
+    // preCallTime mirrors updateField's plain sparse write (no collapse —
+    // the reset chip is the way back). Only records on the given date for
+    // the given crewIds are touched, and only the ONE field — a sparse
+    // write, never a day snapshot. Pure: input production is not mutated.
+    function applyQuickSet(production, date, crewIds, field, value) {
+      const ids = new Set(crewIds || []);
+      const dd = getDayDefaults(production, date);
+      const collapse = (field === 'callTime' || field === 'lunchStartTime' || field === 'wrapTime')
+        && !!dd && value === dd[field];
+      return {
+        ...production,
+        days: (production.days || []).map(d => {
+          if (d.date !== date || !ids.has(d.crewId)) return d;
+          if (collapse) { const next = { ...d }; delete next[field]; return next; }
+          return { ...d, [field]: value };
+        }),
+      };
+    }
+
     // Solo wrap-edit intent: typing a wrap time that has ALREADY PASSED is
     // recording reality — the day is over — so it sets the same explicit
     // `wrapped` flag the card's Wrap button path writes, and the Live
@@ -11761,6 +11787,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // register it explicitly — back closes the lunch sheet, not the whole day view.
       useBackLevel(showLunchSheet, () => setShowLunchSheet(false), 'bbmobile-lunch');
       const [showAddCrew, setShowAddCrew] = useState(false);
+      // Quick set: a temporary MODE over the existing crew list — one time
+      // field, N selected crew, one batched write (applyQuickSet). null when
+      // inactive. Native back exits the mode like the lunch sheet.
+      const [quickSet, setQuickSet] = useState(null); // { field, value, selected: [] } | null
+      useBackLevel(!!quickSet, () => setQuickSet(null), 'bbmobile-quickset');
+      const qsToggle = (crewId) => setQuickSet(q => q && {
+        ...q,
+        selected: q.selected.includes(crewId) ? q.selected.filter(id => id !== crewId) : [...q.selected, crewId],
+      });
+      const qsApply = () => {
+        if (!quickSet || !quickSet.value || quickSet.selected.length === 0) return;
+        onPushUndo('Quick set applied');
+        setProduction(p => applyQuickSet(p, currentDate, quickSet.selected, quickSet.field, quickSet.value));
+        showToast?.(`Set for ${quickSet.selected.length} crew`);
+        setQuickSet(null);
+      };
       const [expandedVarianceCrewIds, setExpandedVarianceCrewIds] = useState(() => new Set());
       const [expandedDeptExtras, setExpandedDeptExtras] = useState(() => new Set());
       const deptExtraRefs = useRef({});
@@ -12081,6 +12123,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return (
         <div style={{ paddingBottom: 'var(--sab)' }}>
+          {/* Quick set mode: everything except the crew list + bottom panel
+              recedes — the dim IS the mode signal, so selection can reuse
+              the house sky active-state without a new colour. */}
+          <div className={quickSet ? 'opacity-30 pointer-events-none transition-opacity' : 'transition-opacity'}>
           <div className="px-3 py-3 flex items-center gap-2">
             <button
               onClick={() => hasPrev && setCurrentDate(sortedDates[currentIdx - 1])}
@@ -12441,30 +12487,55 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </>
             );
           })()}
+          </div>
 
           <div className="px-4 mb-2.5 flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CREW</span>
             <span className="flex-1 h-px bg-neutral-800/60"/>
+            {!quickSet && crew.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setQuickSet({ field: 'callTime', value: '', selected: [] })}
+                className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 hover:text-sky-400 border border-sky-500/30 hover:border-sky-500/50 rounded px-1.5 py-0.5 transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Quick set
+              </button>
+            )}
             <span className="text-[10px] font-mono text-neutral-500 font-bold">{activeCrewCount} OF {crew.length}</span>
           </div>
 
           <div className="px-4">
             {sortedCrew.map(({ member, isMe, isOff, dayTotal, chips, offReason, variances }) => {
               const hasVariance = !isOff && (variances?.length || 0) > 0;
+              // Quick set mode: rows become tap-to-select. Off rows are out
+              // of scope (the write needs a record on the day) and recede;
+              // selected rows take the house SKY active state — the dim
+              // carries the mode signal, so no new colour.
+              const qsSelected = !!quickSet && !isOff && quickSet.selected.includes(member.id);
               return (
               <button
                 key={member.id}
                 type="button"
-                onClick={() => onCrewTap?.(member)}
+                onClick={() => { if (quickSet) { if (!isOff) qsToggle(member.id); } else onCrewTap?.(member); }}
                 className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border mb-1.5 transition-colors text-left ${
-                  isMe
+                  qsSelected
+                    ? 'bg-sky-500/[0.06] border-sky-500/60'
+                    : isMe
                     ? 'bg-sky-500/[0.03] border-sky-500/25'
                     : isOff
                     ? 'bg-transparent border-neutral-800 border-dashed opacity-60'
                     : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
-                }`}
+                } ${quickSet && isOff ? 'opacity-30 pointer-events-none' : ''}`}
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
+                {quickSet && !isOff && (
+                  <span className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
+                    qsSelected ? 'bg-sky-500 border-sky-500 text-black' : 'border-neutral-600 text-transparent'
+                  }`}>
+                    <ICheck size={12}/>
+                  </span>
+                )}
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px] flex-shrink-0 ${
                   isMe ? 'bg-sky-500/15 text-sky-400' : 'bg-tm-card-2 text-neutral-400'
                 }`}>
@@ -12502,12 +12573,69 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <button
               type="button"
               onClick={() => setShowAddCrew(true)}
-              className="w-full px-4 py-3.5 rounded-xl border border-dashed border-neutral-700 hover:border-sky-500 hover:bg-sky-500/[0.03] hover:text-sky-400 text-neutral-500 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors flex items-center justify-center gap-2 mt-2 mb-2"
+              className={`w-full px-4 py-3.5 rounded-xl border border-dashed border-neutral-700 hover:border-sky-500 hover:bg-sky-500/[0.03] hover:text-sky-400 text-neutral-500 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors flex items-center justify-center gap-2 mt-2 mb-2 ${quickSet ? 'opacity-30 pointer-events-none' : ''}`}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               <IPlus size={13}/>Add to today's crew
             </button>
+            {quickSet && <div className="h-64"/>}
           </div>
+
+          {quickSet && (
+            <div
+              className="fixed left-0 right-0 bottom-0 z-30 bg-neutral-900 border-t border-neutral-800 px-4 pt-3"
+              style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 14px)' }}
+            >
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-neutral-200">
+                  Quick set · {quickSet.selected.length} selected
+                </span>
+                <span className="flex-1"/>
+                <button
+                  type="button"
+                  onClick={() => setQuickSet(null)}
+                  aria-label="Cancel quick set"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <IX size={16}/>
+                </button>
+              </div>
+              <div className="flex gap-1.5 mb-2.5">
+                {[['callTime', 'Call'], ['lunchStartTime', 'Lunch'], ['wrapTime', 'Wrap'], ['preCallTime', 'Pre-call']].map(([f, label]) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setQuickSet(q => q && { ...q, field: f })}
+                    className={`flex-1 px-2 py-2 rounded-lg border text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                      quickSet.field === f
+                        ? 'bg-sky-500/[0.08] border-sky-500/60 text-sky-400'
+                        : 'bg-tm-card-2 border-neutral-800 text-neutral-500 hover:border-neutral-700'
+                    }`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="time"
+                value={quickSet.value}
+                onChange={(e) => setQuickSet(q => q && { ...q, value: e.target.value })}
+                className="w-full min-h-[52px] bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5 text-[22px] font-mono text-neutral-100 text-center focus:outline-none focus:border-sky-500 mb-2.5"
+                style={{ WebkitAppearance: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={qsApply}
+                disabled={!quickSet.value || quickSet.selected.length === 0}
+                className="w-full py-3 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-neutral-800 disabled:text-neutral-600 text-black text-[13px] font-bold uppercase tracking-wider transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Set
+              </button>
+            </div>
+          )}
 
           {showLunchSheet && (() => {
             const defs = getDayDefaults(production, currentDate);

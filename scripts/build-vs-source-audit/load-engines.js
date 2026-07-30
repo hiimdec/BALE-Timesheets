@@ -84,6 +84,10 @@ const ENGINE_NAMES = [
   // variance-detection-assertions.js executes the cascade-feed fixtures so
   // the crew-list highlight can never silently starve again.
   'getCrewVariances',
+  // Quick set (BB): the batched one-field multi-crew write —
+  // quick-set-assertions.js proves it is the single-edit write over N
+  // (sparse, collapse rule mirrored, purity, totals re-derive).
+  'applyQuickSet',
 ];
 
 const EXPORT_LINE =
