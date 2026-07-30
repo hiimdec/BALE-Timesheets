@@ -1165,28 +1165,26 @@
       return { ok: true, url: SHARE_SCAFFOLD + _shareB64url(await _shareDeflate(bytes)) };
     }
 
-    // One BB crew member's share-day array for the FROZEN encoder above: the
-    // production calendar (every date holding at least one record), the
-    // member's own record where one exists, a Rest Day stub where none does —
-    // so the link keeps the shoot's day numbering and un-ticked days travel
-    // as type 7. The encoder resolves each entry through the SAME resolveDay
-    // cascade the member's detail view renders, so the link carries exactly
-    // what the sender sees. preCallTime is normalised from the legacy
-    // truckCallTime alias HERE because the calc pays that alias
+    // One BB crew member's share-day array for the FROZEN encoder above:
+    // their WORKED days only (ruled 2026-07-30 — rest/un-ticked days are
+    // simply absent; each day carries its own date on the wire, so worked
+    // days land on their correct calendar dates regardless of gaps). A
+    // record resolving to Rest Day through the type cascade is skipped the
+    // same as no record at all; a member with no worked days refuses as
+    // 'empty' downstream. The encoder resolves each entry through the SAME
+    // resolveDay cascade the member's detail view renders, so the link
+    // carries exactly what the sender sees. preCallTime is normalised from
+    // the legacy truckCallTime alias HERE because the calc pays that alias
     // (calculateDay's back-compat read) while resolveDay does not surface
     // it — without this an untouched legacy record would show paid pre-call
     // on screen yet drop it from the link. Nothing else is reshaped: the
     // encoder's 19-field allowlist is the leak gate.
     function extractCrewShareDays(production, crewId) {
-      const all = production.days || [];
-      const dates = [...new Set(all.map(d => d.date))].sort();
-      return dates.map(date => {
-        const rec = all.find(d => d.date === date && d.crewId === crewId);
-        if (!rec) return { crewId, date, dayType: 'Rest Day' };
-        return (!rec.preCallTime && rec.truckCallTime)
+      return (production.days || [])
+        .filter(d => d.crewId === crewId && resolveEffectiveDayType(production, d.date, d) !== 'Rest Day')
+        .map(rec => (!rec.preCallTime && rec.truckCallTime)
           ? { ...rec, preCallTime: rec.truckCallTime }
-          : rec;
-      });
+          : rec);
     }
 
     // Decode a share fragment. THE single entry for every received link:

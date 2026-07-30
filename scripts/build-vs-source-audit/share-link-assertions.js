@@ -23,12 +23,15 @@
  *     accepts streams from a different deflate implementation.
  *
  *   - BB EXTRACTION (B1-B6): extractCrewShareDays feeds one BB crew
- *     member's calendar (own records + Rest Day stubs) into the SAME frozen
- *     encoder. Pins: the worked/varying/rested/absent fixture round-trips to
- *     the exact expected shoot; a BB link is BYTE-IDENTICAL to a solo link
- *     of the same days; BB noise (kit, other crew, non-per-diem expenses)
- *     cannot leak; cap/empty refuse through the BB path; every tuple equals
- *     the direct resolveDay output; a legacy truckCallTime pre-call travels
+ *     member's WORKED days (ruled 2026-07-30: rest/un-ticked days are
+ *     simply absent — days carry their own dates, so gaps need nothing)
+ *     into the SAME frozen encoder. Pins: the fixture (lean/varying/dept-
+ *     late worked days; a rested record and an absent date both SKIPPED)
+ *     round-trips to the exact expected shoot; a BB link is BYTE-IDENTICAL
+ *     to a solo link of the same days; BB noise (kit, other crew,
+ *     non-per-diem expenses) cannot leak; cap counts WORKED days and a
+ *     no-worked-days member refuses as empty; every tuple equals the
+ *     direct resolveDay output; a legacy truckCallTime pre-call travels
  *     (the calc pays that alias, so the link must carry it). B1/B2 run on
  *     the BUILT engine too.
  *
@@ -103,11 +106,12 @@ const clone = (x) => JSON.parse(JSON.stringify(x));
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // ── BB extraction fixture (B-pins) ──────────────────────────────────────────
-// Sam's five calendar days: lean (cascade), varying (explicit wrap + travel +
-// per-diem instance + a non-per-diem expense that must NOT travel), dept late
-// day (dayDefaults leg), rested-with-preserved-override, and ABSENT (Jo works,
-// Sam has no record → Rest Day stub). Kit and a second crew member are noise
-// the allowlist must drop.
+// Sam's calendar: three WORKED days — lean (cascade), varying (explicit wrap
+// + travel + per-diem instance + a non-per-diem expense that must NOT
+// travel), dept late day (dayDefaults leg) — plus a rested record and an
+// ABSENT date (Jo works, Sam has no record), both of which must be SKIPPED
+// (worked-days-only ruling). Kit and a second crew member are noise the
+// allowlist must drop.
 const BB_CREW_SAM = { id: 'sam', name: 'Sam Spark', role: 'Lighting Technician', bdr: 500, otCoef: 1.5, otRate: null, noOT: false };
 const BB_PRODUCTION = {
   title: 'Harbour Nights', jobReference: 'HN-2026-114', prodCo: 'Copper Kettle Films',
@@ -139,8 +143,6 @@ const BB_EXPECTED_SHOOT = {
     bbDay({ date: '2026-08-04', type: 'Shoot', wrap: '19:00' }),
     bbDay({ date: '2026-08-05', type: 'Shoot', wrap: '19:45', tOut: 30, tBack: 30, pd: 3500 }),
     bbDay({ date: '2026-08-06', type: 'Shoot', wrap: '21:00' }),
-    bbDay({ date: '2026-08-07', type: 'Rest Day', wrap: '19:45' }),
-    bbDay({ date: '2026-08-08', type: 'Rest Day', wrap: '19:00' }),
   ],
 };
 // The solo twin: the decoded shoot rebuilt as explicit solo records (the
@@ -224,9 +226,9 @@ async function main() {
     const bbRes = await E.encodeShareLink(BB_PRODUCTION, spanDays, BB_CREW_SAM);
     const bbFrag = bbRes.ok ? bbRes.url.split('#')[1] : '';
     const bbDec = bbRes.ok ? await E.decodeShareLink(bbFrag) : { ok: false };
-    ok(`B1${tag} BB extraction (worked/varying/late/rested/absent) round-trips to the exact expected shoot`,
-      bbRes.ok === true && bbDec.ok === true && eq(bbDec.shoot, BB_EXPECTED_SHOOT),
-      bbDec.ok ? undefined : 'encode/decode failed');
+    ok(`B1${tag} BB extraction round-trips WORKED days to the exact expected shoot (rested + absent SKIPPED)`,
+      bbRes.ok === true && bbDec.ok === true && eq(bbDec.shoot, BB_EXPECTED_SHOOT) && spanDays.length === 3,
+      bbDec.ok ? `span ${spanDays.length}` : 'encode/decode failed');
     const twin = soloTwinOf(BB_EXPECTED_SHOOT);
     const twinRes = await E.encodeShareLink(twin, twin.days, { id: 'c1', name: 'Twin', role: 'Spark', bdr: 444, otCoef: 1.5, otRate: null, noOT: false });
     ok(`B2${tag} the BB link is BYTE-IDENTICAL to the solo link of the same days`,
@@ -242,9 +244,11 @@ async function main() {
     !/Radio kit|Parking|Sam Spark|Jo Gaffer|kitMoney|kitItems|bdr|06:00/.test(leaked) &&
     bbDec.shoot.days.every(d => eq(Object.keys(d).sort(), ['callTime', 'date', 'dayType', 'lunchDurationMins', 'lunchStartTime', 'miles', 'perDiemPence', 'preCallTime', 'secondBreakDurationMins', 'secondBreakStartTime', 'travelBackMins', 'travelOutMins', 'wrapNextDay', 'wrapTime'].sort())));
 
-  const manyDates = { ...BB_PRODUCTION, days: Array.from({ length: 15 }, (_, i) => ({ id: 'm' + i, crewId: 'jo', date: `2026-09-${String(i + 1).padStart(2, '0')}` })) };
-  ok('B4 cap and empty refuse through the BB path',
-    eq(await eng.encodeShareLink(manyDates, eng.extractCrewShareDays(manyDates, 'sam'), BB_CREW_SAM), { ok: false, reason: 'cap' }) &&
+  const manyWorked = { ...BB_PRODUCTION, days: Array.from({ length: 15 }, (_, i) => ({ id: 'm' + i, crewId: 'sam', date: `2026-09-${String(i + 1).padStart(2, '0')}` })) };
+  const samNever = { ...BB_PRODUCTION, days: [{ id: 'j1', crewId: 'jo', date: '2026-08-04' }, { id: 'j2', crewId: 'jo', date: '2026-08-05' }] };
+  ok('B4 cap counts WORKED days; a member with no worked days refuses as empty',
+    eq(await eng.encodeShareLink(manyWorked, eng.extractCrewShareDays(manyWorked, 'sam'), BB_CREW_SAM), { ok: false, reason: 'cap' }) &&
+    eq(await eng.encodeShareLink(samNever, eng.extractCrewShareDays(samNever, 'sam'), BB_CREW_SAM), { ok: false, reason: 'empty' }) &&
     eq(await eng.encodeShareLink({ ...BB_PRODUCTION, days: [] }, eng.extractCrewShareDays({ ...BB_PRODUCTION, days: [] }, 'sam'), BB_CREW_SAM), { ok: false, reason: 'empty' }));
 
   let bbEnv = null;
