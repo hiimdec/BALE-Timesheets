@@ -17417,7 +17417,12 @@ const setDays = (updater) =>
     const next = typeof updater === "function" ? updater(prev.days ?? []) : updater;
     return { ...prev, days: next.map(migrateDay) };
   });
-      const [tab, setTab] = useState(production.bestBoyMode ? (production.isNew ? "setup" : "days") : "days");
+      // Every open lands on the day page — Setup is button-access only (tab
+      // bar / mobile nav / grid add-crew), never auto-opened. The old
+      // first-open Setup detour keyed on production.isNew; the flag itself
+      // still gets set at creation and cleared below (stored shape untouched),
+      // it just no longer routes.
+      const [tab, setTab] = useState("days");
       const [prevTab, setPrevTab] = useState('days');
       const prevTabRef = useRef(tab);
       useEffect(() => {
