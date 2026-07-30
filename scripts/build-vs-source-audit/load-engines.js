@@ -88,6 +88,10 @@ const ENGINE_NAMES = [
   // quick-set-assertions.js proves it is the single-edit write over N
   // (sparse, collapse rule mirrored, purity, totals re-derive).
   'applyQuickSet',
+  // Day-off model (ruled 2026-07-30): the un-tick/remove write + the
+  // day-off-assertions suite (true-zero calc, blank-times resolution,
+  // un-tick produces Day off not the paid Rest Day, wire omission).
+  'applyRemoveFromDay',
 ];
 
 const EXPORT_LINE =

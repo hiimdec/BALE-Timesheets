@@ -1180,8 +1180,17 @@
     // on screen yet drop it from the link. Nothing else is reshaped: the
     // encoder's 19-field allowlist is the leak gate.
     function extractCrewShareDays(production, crewId) {
+      // 'Day off' (the £0 not-engaged state) never travels — the frozen v1
+      // wire has no ninth type and needs none. Rest days stay dropped per
+      // the b2a80f0 worked-days ruling (whether a deliberate PAID Rest Day
+      // should now travel as type 7 under the Day-off model is flagged for
+      // Derrick's ruling — the wire supports it whenever ruled).
       return (production.days || [])
-        .filter(d => d.crewId === crewId && resolveEffectiveDayType(production, d.date, d) !== 'Rest Day')
+        .filter(d => {
+          if (d.crewId !== crewId) return false;
+          const t = resolveEffectiveDayType(production, d.date, d);
+          return t !== 'Rest Day' && t !== 'Day off';
+        })
         .map(rec => (!rec.preCallTime && rec.truckCallTime)
           ? { ...rec, preCallTime: rec.truckCallTime }
           : rec);
@@ -2418,7 +2427,13 @@
       if (n >= 445) return 1.25;
       return 1.5;
     }
-    const DAY_TYPES = ["Shoot", "Pre-light", "Prep Day", "Recce", "Build Day", "De-rig", "Travel Day", "Rest Day"];
+    // "Day off" (9th, ruled 2026-07-30): the crew member is NOT engaged —
+    // genuinely £0, distinct from the APA Rest Day (engaged non-shooting,
+    // paid flat BDR). Un-tick/remove-from-day assigns Day off; Rest Day is
+    // now a deliberate assignment only. NEVER added to SHARE_DAY_TYPES —
+    // the frozen v1 wire carries worked days only, so the 9th type never
+    // travels and the 0-7 decoder range stays untouched.
+    const DAY_TYPES = ["Shoot", "Pre-light", "Prep Day", "Recce", "Build Day", "De-rig", "Travel Day", "Rest Day", "Day off"];
     const DISCRETIONARY_LUNCH_DAY_TYPES = ["Prep Day", "Recce", "Build Day", "De-rig"];
 
     // UK England & Wales bank holidays (gov.uk-verified). APA §2.4 treats
@@ -2529,6 +2544,7 @@
       "De-rig": 8,
       "Travel Day": 5,
       "Rest Day": 0,
+      "Day off": 0,
     };
     const ROLES_WITH_BWD_OVERRIDE = ["DoP", "Art Director", "Location Manager"];
     // DEFAULT_USER_PREFS — user-level defaults that seed new productions and crew.
@@ -2827,9 +2843,9 @@
     // the day record has a non-empty value AND it differs from default.
     function getCrewVariances({ dayRecord, defaults, crewMember = null }) {
       if (!dayRecord || !defaults) return [];
-      // V4-5h-11: respect cascade for Rest Day detection.
+      // V4-5h-11: respect cascade for off-day detection (Rest Day + Day off).
       const effectiveDayType = dayRecord.dayType ?? defaults.dayType;
-      if (effectiveDayType === 'Rest Day') return [];
+      if (effectiveDayType === 'Rest Day' || effectiveDayType === 'Day off') return [];
       const variances = [];
       if (dayRecord.callTime && dayRecord.callTime !== defaults.callTime) {
         variances.push({ kind: 'override', label: 'CALL', detail: `${dayRecord.callTime} · default ${defaults.callTime}` });
@@ -3171,6 +3187,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         merged.travelOutMins = dateDefaults.travelOutMins ?? 0;
         merged.travelBackMins = dateDefaults.travelBackMins ?? 0;
       }
+      // Day off resolves NO times — type-first, overriding even explicit
+      // stored values. The stored fields stay on the RECORD (a re-tick or
+      // re-type restores them); they must not RESOLVE while the member is
+      // off, or the inherited call/wrap would leak into turnaround maths
+      // and displays (the phantom-TOC mechanism). New-type rule only: the
+      // eight existing types resolve exactly as before this line.
+      if (merged.dayType === "Day off") {
+        merged.callTime = undefined;
+        merged.wrapTime = undefined;
+        merged.lunchStartTime = undefined;
+        merged.lunchDurationMins = undefined;
+        merged.preCallTime = "";
+        merged.secondBreakStartTime = "";
+      }
       // Expenses rework: per-diem + expenses are STRICTLY per-day now — no
       // dayDefaults value-presence cascade. MIGRATIONS[4] materialised any
       // previously-inherited expenses/per-diem onto each day's own array before
@@ -3218,6 +3248,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "Rest Day", notes: [], secondBreakRequired: false, continuousDay: false },
           lines: [{ label: "Rest Day (flat BDR)", detail: "", rate: null, qty: 1, amount: bdr }],
           total: bdr,
+        };
+      }
+
+      // Day off: the crew member is not engaged this day — genuinely £0.
+      // No BDR, no OT, no penalties, no TOC, no meal compensation. Lines are
+      // EMPTY (not a £0 line) so invoices, print totals, text exports and
+      // stats sum nothing without per-surface filters. The APA has no such
+      // type because unengaged days are simply not invoiced; in-app it is
+      // the un-tick/remove state (ruled 2026-07-30, forward-only — existing
+      // Rest Day records untouched).
+      if (effectiveDayType === "Day off") {
+        return {
+          meta: { workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "Day off", notes: [], secondBreakRequired: false, continuousDay: false },
+          lines: [],
+          total: 0,
         };
       }
 
@@ -5121,6 +5166,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
+    // Remove-from-day / un-tick (Day-off model, ruled 2026-07-30): the record
+    // becomes dayType 'Day off' — the £0 not-engaged state — NOT the paid APA
+    // Rest Day the old write assigned (the over-payment bug: every un-tick
+    // was billing a flat BDR the day view never showed). Every other field is
+    // preserved, so a re-type restores the member's times exactly. Pure:
+    // input production is not mutated.
+    function applyRemoveFromDay(production, dayId) {
+      return {
+        ...production,
+        days: (production.days || []).map(d => d.id === dayId ? { ...d, dayType: 'Day off' } : d),
+      };
+    }
+
     // Solo wrap-edit intent: typing a wrap time that has ALREADY PASSED is
     // recording reality — the day is over — so it sets the same explicit
     // `wrapped` flag the card's Wrap button path writes, and the Live
@@ -5251,7 +5309,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (production.title) lines.push(production.title);
       if (production.prodCo) lines.push(production.prodCo);
       lines.push('');
-      const sorted = [...entries].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      // Day-off model: worked days only — a Day off is not engaged and not
+      // billed, so it doesn't appear in the text at all. (Skipping it in the
+      // prev-chain is safe: restHoursBetween is calendar-aware, so a gap of
+      // a full day off can never manufacture a turnaround.)
+      const sorted = [...entries]
+        .filter(d => resolveEffectiveDayType(production, d.date, d) !== 'Day off')
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       let grandTotal = 0;
       let prevEntry = null;
       sorted.forEach((d) => {
@@ -5325,6 +5389,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         "Shoot": "shoot", "Pre-light": "prelight", "Recce": "recce",
         "Prep Day": "prep", "Build Day": "prep",
         "De-rig": "derig", "Travel Day": "travel", "Rest Day": "rest",
+        "Day off": "rest",
       };
       return map[dayType] || "shoot";
     }
@@ -5691,6 +5756,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .cell-stack .total-val { font-size: 10px; font-weight: 700; color: #171717; line-height: 1; }
 
       .rest-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: rgba(185,28,28,0.5); font-weight: 700; }
+      .dayoff-label { font-size: 11px; color: #d4d4d4; font-weight: 700; }
 
       .row-total .total-val { font-size: 12px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
       .row-total .total-hrs { font-size: 8px; color: #737373; margin-top: 2px; }
@@ -6166,7 +6232,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               const tintClass = isSat ? 'sat' : isSun ? 'sun' : '';
 
               if (!day) {
-                // Rest day
+                // No record — the member simply isn't on this date. Renders
+                // as the inert "Day off" filler (Day-off model: the old
+                // "Rest" label conflated day-off with the PAID APA Rest Day).
                 return (
                   <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
                     <div className="date">
@@ -6174,7 +6242,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <div className="num tnum">{dateNum}</div>
                       <div className="mo tnum">{mo}</div>
                     </div>
-                    <div className="body"><span className="label">Rest</span></div>
+                    <div className="body"><span className="label">Day off</span></div>
                     <div className="total"><div className="lbl">-</div></div>
                   </div>
                 );
@@ -6184,8 +6252,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               // dayDefaults with the raw day record leaving them undefined, so
               // display must read the resolved values (the calc already does).
               const resolved = resolveDay(production, day, crewMember);
-              // Day with data — but check if it's a Rest Day type
-              if (resolved.dayType === "Rest Day") {
+              // Day off record: same inert filler — £0, nothing billed.
+              if (resolved.dayType === "Day off") {
                 return (
                   <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
                     <div className="date">
@@ -6193,8 +6261,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <div className="num tnum">{dateNum}</div>
                       <div className="mo tnum">{mo}</div>
                     </div>
-                    <div className="body"><span className="label">Rest</span></div>
+                    <div className="body"><span className="label">Day off</span></div>
                     <div className="total"><div className="lbl">-</div></div>
+                  </div>
+                );
+              }
+              // Rest Day: the APA paid engaged type — shows its REAL amount
+              // (the header total always included it; the old '-' row was the
+              // hidden-money half of the split-brain).
+              if (resolved.dayType === "Rest Day") {
+                const restCalc = calcForDisplay(production, day, crewMember, null);
+                return (
+                  <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
+                    <div className="date">
+                      <div className="dow">{dow}</div>
+                      <div className="num tnum">{dateNum}</div>
+                      <div className="mo tnum">{mo}</div>
+                    </div>
+                    <div className="body"><span className="label">Rest Day</span></div>
+                    <div className="total"><div className="val tnum">{fmtGBP(restCalc.total)}</div></div>
                   </div>
                 );
               }
@@ -6316,7 +6401,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         let tot = 0, hrs = 0;
         crew.forEach((c, ci) => {
           const day = (byCA[c.id] || {})[dateISO];
-          if (!day || day.dayType === "Rest Day") return;
+          // Day-off model: a Day off contributes nothing; a REST DAY is paid
+          // and now COUNTS here (fixes the row-vs-column inconsistency —
+          // row totals always included it). Resolved type, not raw.
+          if (!day || resolveDay(production, day, c).dayType === "Day off") return;
           const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
           const calc = calcForDisplay(production, day, c, prev);
@@ -6383,10 +6471,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const colCls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
                       const day = (byCA[c.id] || {})[dateISO];
                       const resolved = day ? resolveDay(production, day, c) : null;
-                      if (!day || resolved.dayType === "Rest Day") {
+                      // Day-off model: no record or a Day off record = the
+                      // muted dash (off, £0). A REST DAY is the paid APA type
+                      // and shows its real amount, distinct by design.
+                      if (!day || resolved.dayType === "Day off") {
                         return (
                           <div key={dateISO} className={`grid-cell${colCls ? ' ' + colCls : ''}`}>
-                            <span className="rest-label">Rest</span>
+                            <span className="dayoff-label">–</span>
+                          </div>
+                        );
+                      }
+                      if (resolved.dayType === "Rest Day") {
+                        const restCalc = calcForDisplay(production, day, c, null);
+                        return (
+                          <div key={dateISO} className={`grid-cell${colCls ? ' ' + colCls : ''}`}>
+                            <div className="cell-stack">
+                              <div className="top"><span className="rest-label">Rest</span></div>
+                              <span className="total-val tnum">{fmtGBP(restCalc.total)}</span>
+                            </div>
                           </div>
                         );
                       }
@@ -10253,16 +10355,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const bgBase  = isWeekend ? "bg-neutral-900/30" : "";
 
       if (!day) {
+        // No record — un-entered. Reads as the ADD affordance, deliberately
+        // distinct from a Day off record's dash (Day-off model: the old
+        // "Rest" filler conflated day-off with the PAID APA Rest Day).
         return (
           <td onClick={() => onAddDay(member.id, date)}
             className={`px-2 py-2 text-center cursor-pointer hover:bg-sky-950/40 transition-colors ${borderR} ${bgBase}`}
             style={{ minWidth: 80 }}>
-            <span className="text-[9px] text-neutral-700 uppercase tracking-wider leading-none">Rest</span>
+            <span className="text-[9px] text-neutral-700 uppercase tracking-wider leading-none">Add</span>
           </td>
         );
       }
 
       const resolved = resolveDay(production, day, member);
+      // Day off record: the muted dash — off deliberately, £0, still
+      // tappable to retype the day back to a working type.
+      if (resolved.dayType === "Day off") {
+        return (
+          <td onClick={() => onEditDay(day)}
+            className={`px-2 py-2 text-center cursor-pointer hover:bg-neutral-900/60 transition-colors ${borderR} ${bgBase}`}
+            style={{ minWidth: 80 }}>
+            <span className="text-[13px] text-neutral-600 font-bold leading-none">–</span>
+          </td>
+        );
+      }
       const { meta, lines } = calcForDisplay(production, day, member, prevDay);
 
       const hasOT    = meta.otHrs > 0;
@@ -11953,10 +12069,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
           // V4-5h-11: respect cascade — explicit override wins, else inherit dept
           // default. Use the full resolveDay cascade (dayDefaults ← defaultDay ←
-          // DEFAULT_PRODUCTION_DAY) so an inherited Rest Day is recognised too.
+          // DEFAULT_PRODUCTION_DAY) so an inherited off-day is recognised too.
+          // Day-off model (ruled 2026-07-30): "Day off" is the £0 off-state
+          // (un-tick/remove). "Rest Day" is the APA paid engaged type and now
+          // COUNTS as a working day here — its flat BDR shows in the crew row
+          // and day total ("stays visually a paid day"), which also surfaces
+          // any legacy mislabelled rest record for hand-correction.
           const effectiveDayType = resolveDay(production, dayRecord, member).dayType;
-          if (effectiveDayType === 'Rest Day') {
-            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Rest Day', dayRecord };
+          if (effectiveDayType === 'Day off') {
+            return { member, isMe, isOff: true, dayTotal: 0, calc: null, chips: [], offReason: 'Day off', dayRecord };
           }
 
           const prevDayRecord = prevDate
@@ -13903,7 +14024,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <CrewActionSheet
               crewMember={crewMember}
               mode="drilldown"
-              canRemove={!!dayRecord && dayRecord.dayType !== 'Rest Day'}
+              canRemove={!!dayRecord && dayRecord.dayType !== 'Day off'}
               onClose={() => setShowCrewActions(false)}
               onSavePDF={() => onTriggerCrewTimesheet?.(crewMember)}
               onSendText={async () => {
@@ -13939,10 +14060,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onEditCrew={() => setShowEditCrew(true)}
               onRemoveFromDay={() => {
                 if (!dayRecord) return;
-                setProduction(p => ({
-                  ...p,
-                  days: p.days.map(d => d.id === dayRecord.id ? { ...d, dayType: 'Rest Day' } : d)
-                }));
+                setProduction(p => applyRemoveFromDay(p, dayRecord.id));
               }}
             />
           )}
@@ -17561,10 +17679,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <button type="button"
                   onClick={async () => {
                     setShowExportSheet(false);
-                    const res = await encodeShareLink(production, days, soloCrew);
+                    // Day-off model: un-worked days (Day off / rest) are
+                    // filtered BEFORE the frozen encoder — an unknown type
+                    // must never reach it (it would refuse 'invalid'), and
+                    // the v1 wire carries worked days only.
+                    const spanDays = soloCrew ? extractCrewShareDays(production, soloCrew.id) : (days ?? []);
+                    const res = await encodeShareLink(production, spanDays, soloCrew);
                     if (!res.ok) {
                       showToast(res.reason === 'cap'
-                        ? `Share links carry up to ${SHARE_DAY_CAP} days - this shoot has ${days.length}.`
+                        ? `Share links carry up to ${SHARE_DAY_CAP} days - this shoot has ${spanDays.length}.`
                         : res.reason === 'empty'
                           ? 'Nothing to share yet - add a day first.'
                           : "Couldn't make the link for this shoot.");
@@ -25475,10 +25598,15 @@ const confirmDelete = (p) => setConfirmOpts({
                       onClick={async () => {
                         const p = actionSheet;
                         setActionSheet(null);
-                        const res = await encodeShareLink(p, p.days ?? [], (p.crew ?? [])[0] || null);
+                        // Day-off model: same worked-days filter as every
+                        // other sender — un-worked days never reach the
+                        // frozen encoder.
+                        const soloC = (p.crew ?? [])[0] || null;
+                        const spanDays = soloC ? extractCrewShareDays(p, soloC.id) : (p.days ?? []);
+                        const res = await encodeShareLink(p, spanDays, soloC);
                         if (!res.ok) {
                           showToast(res.reason === 'cap'
-                            ? `Share links carry up to ${SHARE_DAY_CAP} days - this shoot has ${(p.days ?? []).length}.`
+                            ? `Share links carry up to ${SHARE_DAY_CAP} days - this shoot has ${spanDays.length}.`
                             : res.reason === 'empty'
                               ? 'Nothing to share yet - add a day first.'
                               : "Couldn't make the link for this shoot.");
