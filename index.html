@@ -11860,13 +11860,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [production, currentDate, sortedDates]);
 
       const crewWithVariances = useMemo(() => {
-        const defaults = production.dayDefaults?.[currentDate];
+        // Resolve the SAME cascade the dept card resolves (deptBase below):
+        // DEFAULT_PRODUCTION_DAY ← production.defaultDay ← dayDefaults[date].
+        // The raw date-level read starved getCrewVariances on cascade-riding
+        // days (next-day/bulk-created dates have no dayDefaults entry, so the
+        // !defaults bail returned [] for everyone and the fuchsia name/accordion
+        // never fired despite real stored overrides — the detail view's own
+        // presence checks kept working, which is how the divergence hid).
+        const defaults = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}), ...(production.dayDefaults?.[currentDate] ?? {}) };
         return crewWithCalcs.map(entry => {
           if (entry.isOff) return { ...entry, variances: [] };
           const variances = getCrewVariances({ dayRecord: entry.dayRecord, defaults, crewMember: entry.member });
           return { ...entry, variances };
         });
-      }, [crewWithCalcs, production.dayDefaults, currentDate]);
+      }, [crewWithCalcs, production.defaultDay, production.dayDefaults, currentDate]);
 
       const dayBuckets = useMemo(() => {
         const totals = { basic: 0, ot: 0, pen: 0 };

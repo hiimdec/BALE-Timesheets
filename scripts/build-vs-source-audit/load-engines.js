@@ -75,6 +75,10 @@ const ENGINE_NAMES = [
   // dependency-injected control flow — la-ordering-assertions.js executes
   // its four race cases with stubbed drain/sweep in this sandbox.
   'laDrainThenSweep',
+  // BB per-day variance detector (fuchsia highlight / VARIANCES accordion):
+  // variance-detection-assertions.js executes the cascade-feed fixtures so
+  // the crew-list highlight can never silently starve again.
+  'getCrewVariances',
 ];
 
 const EXPORT_LINE =
