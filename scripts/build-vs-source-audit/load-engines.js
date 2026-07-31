@@ -92,6 +92,10 @@ const ENGINE_NAMES = [
   // day-off-assertions suite (true-zero calc, blank-times resolution,
   // un-tick produces Day off not the paid Rest Day, wire omission).
   'applyRemoveFromDay',
+  // Who's-on-today (the BB day ticker): the batched presence write in both
+  // directions — day-presence-assertions.js proves tick/un-tick round-trips,
+  // never double-appends, and leaves the turnaround feed correct.
+  'applyDayPresence',
 ];
 
 const EXPORT_LINE =

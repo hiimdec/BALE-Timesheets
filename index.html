@@ -4497,6 +4497,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function augmentCalc(calc, resolvedDay, crewMember) {
+      // Day off = NOT ENGAGED, so nothing is owed — not expenses, not kit
+      // money, not travel or mileage. calculateDay already returns £0 with
+      // no lines, but augmentation runs AFTER it, so without this guard a
+      // record's leftover per diem (or kit / travel) kept billing on a day
+      // the crew member did not work — caught by the day-ticker pins, since
+      // un-ticking preserves the whole record by design. Every other type is
+      // untouched.
+      if (resolvedDay && resolvedDay.dayType === 'Day off') return calc;
       const extra = [];
       // ── Kit Inventory Stage 2 ──
       // Itemised lines first: one per kitItems entry with a positive rate.
@@ -5177,6 +5185,50 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         ...production,
         days: (production.days || []).map(d => d.id === dayId ? { ...d, dayType: 'Day off' } : d),
       };
+    }
+
+    // Who's-on-today (BB day ticker). ONE batched write for N crew on ONE
+    // date, in either direction — the shipped single-crew writes, generalised:
+    //   present=false  → dayType 'Day off' (applyRemoveFromDay's exact write)
+    //   present=true   → DELETE the explicit dayType so the cascade resupplies
+    //                    the working type (the resetField pattern), and create
+    //                    a lean record for any selected crew who has none.
+    // The create path mirrors addDenseDay: cascade-inheriting (no time fields),
+    // `wrapped` stamped on past dates, kit auto-apply scoped to the user's own
+    // row. Guarded on (date, crewId) so it can never double-append. If the
+    // cascade itself resolves to Day off (the dept default for the date is a
+    // day off), an explicit working type is written instead — ticking someone
+    // ON must always produce a working day. Pure: input is not mutated.
+    function applyDayPresence(production, date, crewIds, present, opts = {}) {
+      const ids = new Set(crewIds || []);
+      if (ids.size === 0) return production;
+      const days = production.days || [];
+      if (!present) {
+        return {
+          ...production,
+          days: days.map(d => (d.date === date && ids.has(d.crewId)) ? { ...d, dayType: 'Day off' } : d),
+        };
+      }
+      const fallbackType = (production.defaultDay && production.defaultDay.dayType) || DEFAULT_PRODUCTION_DAY.dayType;
+      const workingType = fallbackType === 'Day off' ? DEFAULT_PRODUCTION_DAY.dayType : fallbackType;
+      const seen = new Set();
+      const next = days.map(d => {
+        if (d.date !== date || !ids.has(d.crewId)) return d;
+        seen.add(d.crewId);
+        const cleared = { ...d };
+        delete cleared.dayType;
+        return resolveEffectiveDayType(production, date, cleared) === 'Day off'
+          ? { ...cleared, dayType: workingType }
+          : cleared;
+      });
+      const created = [];
+      for (const id of ids) {
+        if (seen.has(id)) continue;
+        const blank = { ...makeBlankDay(id), date, wrapped: !!(date && date < todayISO()) };
+        if (resolveEffectiveDayType(production, date, blank) === 'Day off') blank.dayType = workingType;
+        created.push(applyKitAutoApply(blank, opts.userPrefs || {}, null, opts.myCrewId || null));
+      }
+      return { ...production, days: created.length ? [...next, ...created] : next };
     }
 
     // Solo wrap-edit intent: typing a wrap time that has ALREADY PASSED is
@@ -11988,6 +12040,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         showToast?.(`Set for ${quickSet.selected.length} crew`);
         setQuickSet(null);
       };
+
+      const [presenceConfirm, setPresenceConfirm] = useState(null);
       const [expandedVarianceCrewIds, setExpandedVarianceCrewIds] = useState(() => new Set());
       const [expandedDeptExtras, setExpandedDeptExtras] = useState(() => new Set());
       const deptExtraRefs = useRef({});
@@ -12191,6 +12245,48 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return [...me, ...active, ...off];
       }, [crewWithVariances]);
 
+      // ── Who's on today (the day ticker) ────────────────────────────────
+      // Ticks ride the EXISTING crew rows — one list, in place. Every write
+      // goes through applyDayPresence (the pinned pure helper) and pushes one
+      // undo entry, batch or single. Un-ticking a crew member who VARIES from
+      // the default day asks first: their bespoke times survive the round trip
+      // (the record is preserved, only dayType moves), but losing a day's pay
+      // by accident on someone you deliberately set up is worth one tap.
+      // Declared AFTER sortedCrew — allOn reads it.
+      const presenceOpts = { userPrefs, myCrewId: getEffectiveUserCrewId(production, userPrefs) };
+      const writePresence = (crewIds, present, label) => {
+        if (!crewIds.length) return;
+        onPushUndo(label);
+        setProduction(p => applyDayPresence(p, currentDate, crewIds, present, presenceOpts));
+      };
+      const togglePresence = (entry) => {
+        if (entry.isOff) { writePresence([entry.member.id], true, 'Added to the day'); return; }
+        const doIt = () => writePresence([entry.member.id], false, 'Removed from the day');
+        if ((entry.variances?.length || 0) > 0) {
+          setPresenceConfirm({
+            title: 'Take them off this day?',
+            message: `${entry.member.name || 'This crew member'} has variances - times that differ from the day's default. They'll earn nothing this day. Their times are kept if you put them back.`,
+            confirmLabel: 'Take them off',
+            onConfirm: doIt,
+          });
+        } else doIt();
+      };
+      const allOn = sortedCrew.length > 0 && sortedCrew.every(c => !c.isOff);
+      const toggleAll = () => {
+        if (!sortedCrew.length) return;
+        if (!allOn) { writePresence(sortedCrew.map(c => c.member.id), true, 'Whole crew on'); return; }
+        const varying = sortedCrew.filter(c => (c.variances?.length || 0) > 0);
+        const doIt = () => writePresence(sortedCrew.map(c => c.member.id), false, 'Whole crew off');
+        if (varying.length) {
+          setPresenceConfirm({
+            title: 'Take the whole crew off?',
+            message: `${varying.length} of them ${varying.length === 1 ? 'has' : 'have'} variances - times that differ from the day's default. Nobody earns anything this day. Their times are kept if you put them back.`,
+            confirmLabel: 'Take them all off',
+            onConfirm: doIt,
+          });
+        } else doIt();
+      };
+
       const activeCrew = crewWithCalcs.filter(c => !c.isOff);
       const grandTotal = activeCrew.reduce((s, c) => s + c.dayTotal, 0);
       const activeCrewCount = activeCrew.length;
@@ -12232,7 +12328,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const isAtLastDate = sortedDates.length === 0 || currentIdx >= sortedDates.length - 1;
 
       const addDenseDay = (date, dayType) => {
-        const type = dayType || production.defaultDay?.dayType || 'Shoot';
+        // Blank new days (ruled 2026-07-31): with no explicit type asked for,
+        // a new day populates every crew member as DAY OFF (£0) and the Best
+        // Boy ticks who worked. Records stay DENSE — that is what makes the
+        // flip safe: the date exists so navigation works, and the positional
+        // turnaround feed reads a real record whose blank resolved times
+        // correctly yield no TOC (the gap across a full day off is >=24h).
+        // A caller passing an explicit type still gets that type verbatim.
+        const type = dayType || 'Day off';
         const existing = new Set(days.filter(d => d.date === date).map(d => d.crewId));
         const toAdd = crew.filter(m => !existing.has(m.id));
         if (toAdd.length === 0) return;
@@ -12683,14 +12786,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CREW</span>
             <span className="flex-1 h-px bg-neutral-800/60"/>
             {!quickSet && crew.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setQuickSet({ field: 'callTime', value: '', selected: [] })}
-                className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 hover:text-sky-400 border border-sky-500/30 hover:border-sky-500/50 rounded px-1.5 py-0.5 transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                Quick set
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 hover:text-sky-400 border border-sky-500/30 hover:border-sky-500/50 rounded px-1.5 py-0.5 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  {allOn ? 'None' : 'All'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickSet({ field: 'callTime', value: '', selected: [] })}
+                  className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 hover:text-sky-400 border border-sky-500/30 hover:border-sky-500/50 rounded px-1.5 py-0.5 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  Quick set
+                </button>
+              </>
             )}
             <span className="text-[10px] font-mono text-neutral-500 font-bold">{activeCrewCount} OF {crew.length}</span>
           </div>
@@ -12723,6 +12836,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <span className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
                     qsSelected ? 'bg-sky-500 border-sky-500 text-black' : 'border-neutral-600 text-transparent'
                   }`}>
+                    <ICheck size={12}/>
+                  </span>
+                )}
+                {/* Who's-on tick — its own tap target inside the row, so the
+                    row body still drills down. role=checkbox + stopPropagation
+                    is the house pattern (the VAR reset chips do the same);
+                    a nested <button> would be invalid inside the row button. */}
+                {!quickSet && (
+                  <span
+                    role="checkbox"
+                    aria-checked={!isOff}
+                    aria-label={`${isOff ? 'Add' : 'Remove'} ${member.name || 'crew member'} ${isOff ? 'to' : 'from'} this day`}
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); togglePresence({ member, isOff, variances }); }}
+                    onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); togglePresence({ member, isOff, variances }); } }}
+                    className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors ${
+                      isOff ? 'border-neutral-700 text-transparent hover:border-neutral-500' : 'bg-sky-500 border-sky-500 text-black'
+                    }`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
                     <ICheck size={12}/>
                   </span>
                 )}
@@ -12886,6 +13019,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               production={production}
             />
           )}
+
+          <ConfirmDialog
+            open={!!presenceConfirm}
+            title={presenceConfirm?.title}
+            message={presenceConfirm?.message}
+            confirmLabel={presenceConfirm?.confirmLabel || 'Confirm'}
+            confirmTone="danger"
+            cancelLabel="Cancel"
+            onConfirm={() => { const f = presenceConfirm?.onConfirm; setPresenceConfirm(null); if (f) f(); }}
+            onCancel={() => setPresenceConfirm(null)}
+          />
         </div>
       );
     }
@@ -17882,7 +18026,9 @@ const setDays = (updater) =>
       };
 
       const addDenseDay = (date, dayType) => {
-        const type = dayType || production.defaultDay?.dayType || 'Shoot';
+        // Blank new days (ruled 2026-07-31) — see the BestBoyMobileDayView
+        // copy for the full rationale. Dense Day-off records, not working days.
+        const type = dayType || 'Day off';
         const existing = new Set((production.days || []).filter(d => d.date === date).map(d => d.crewId));
         const toAdd = (production.crew || []).filter(m => !existing.has(m.id));
         if (toAdd.length === 0) return;
