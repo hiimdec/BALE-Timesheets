@@ -12029,6 +12029,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // inactive. Native back exits the mode like the lunch sheet.
       const [quickSet, setQuickSet] = useState(null); // { field, value, selected: [] } | null
       useBackLevel(!!quickSet, () => setQuickSet(null), 'bbmobile-quickset');
+      // "On today" ticking MODE (device-testing fix): the presence tick boxes
+      // are HIDDEN by default — always-visible ones got knocked by accident
+      // and sat in the way of the drill-down tap. Entering the mode shows
+      // them, rows become tap-to-tick, Done exits. tickOrder freezes the row
+      // ORDER at mode entry (member ids): sortedCrew groups me → active → off,
+      // so ticking would otherwise re-sort mid-interaction and names would
+      // jump around. Data stays LIVE (ticks update state and £); only the
+      // order is pinned. Crew added mid-mode append at the end.
+      const [onToday, setOnToday] = useState(false);
+      const [tickOrder, setTickOrder] = useState(null);
+      const exitOnToday = () => { setOnToday(false); setTickOrder(null); };
+      useBackLevel(onToday, exitOnToday, 'bbmobile-ontoday');
       const qsToggle = (crewId) => setQuickSet(q => q && {
         ...q,
         selected: q.selected.includes(crewId) ? q.selected.filter(id => id !== crewId) : [...q.selected, crewId],
@@ -12272,6 +12284,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         } else doIt();
       };
       const allOn = sortedCrew.length > 0 && sortedCrew.every(c => !c.isOff);
+      const enterOnToday = () => { setTickOrder(sortedCrew.map(c => c.member.id)); setOnToday(true); };
+      // The list the rows render from: sortedCrew normally; the frozen
+      // entry-order while ticking (live data, pinned order — no jumping).
+      const displayCrew = (onToday && tickOrder)
+        ? [
+            ...tickOrder.map(id => sortedCrew.find(c => c.member.id === id)).filter(Boolean),
+            ...sortedCrew.filter(c => !tickOrder.includes(c.member.id)),
+          ]
+        : sortedCrew;
       const toggleAll = () => {
         if (!sortedCrew.length) return;
         if (!allOn) { writePresence(sortedCrew.map(c => c.member.id), true, 'Whole crew on'); return; }
@@ -12785,15 +12806,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <div className="px-4 mb-2.5 flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">CREW</span>
             <span className="flex-1 h-px bg-neutral-800/60"/>
-            {!quickSet && crew.length > 0 && (
+            {!quickSet && !onToday && crew.length > 0 && (
               <>
                 <button
                   type="button"
-                  onClick={toggleAll}
+                  onClick={enterOnToday}
                   className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 hover:text-sky-400 border border-sky-500/30 hover:border-sky-500/50 rounded px-1.5 py-0.5 transition-colors"
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
-                  {allOn ? 'None' : 'All'}
+                  On today
                 </button>
                 <button
                   type="button"
@@ -12805,11 +12826,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </button>
               </>
             )}
+            {onToday && (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 hover:text-sky-400 border border-sky-500/30 hover:border-sky-500/50 rounded px-1.5 py-0.5 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  {allOn ? 'None' : 'All'}
+                </button>
+                <button
+                  type="button"
+                  onClick={exitOnToday}
+                  className="text-[10px] uppercase tracking-[0.18em] font-bold bg-sky-500 hover:bg-sky-400 text-black rounded px-2 py-0.5 transition-colors inline-flex items-center gap-1"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <ICheck size={10}/>Done
+                </button>
+              </>
+            )}
             <span className="text-[10px] font-mono text-neutral-500 font-bold">{activeCrewCount} OF {crew.length}</span>
           </div>
 
           <div className="px-4">
-            {sortedCrew.map(({ member, isMe, isOff, dayTotal, chips, offReason, variances }) => {
+            {displayCrew.map(({ member, isMe, isOff, dayTotal, chips, offReason, variances }) => {
               const hasVariance = !isOff && (variances?.length || 0) > 0;
               // Quick set mode: rows become tap-to-select. Off rows are out
               // of scope (the write needs a record on the day) and recede;
@@ -12820,7 +12861,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <button
                 key={member.id}
                 type="button"
-                onClick={() => { if (quickSet) { if (!isOff) qsToggle(member.id); } else onCrewTap?.(member); }}
+                onClick={() => {
+                  if (onToday) { togglePresence({ member, isOff, variances }); return; }
+                  if (quickSet) { if (!isOff) qsToggle(member.id); return; }
+                  onCrewTap?.(member);
+                }}
                 className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border mb-1.5 transition-colors text-left ${
                   qsSelected
                     ? 'bg-sky-500/[0.06] border-sky-500/60'
@@ -12839,22 +12884,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <ICheck size={12}/>
                   </span>
                 )}
-                {/* Who's-on tick — its own tap target inside the row, so the
-                    row body still drills down. role=checkbox + stopPropagation
-                    is the house pattern (the VAR reset chips do the same);
-                    a nested <button> would be invalid inside the row button. */}
-                {!quickSet && (
+                {/* Who's-on tick — visible ONLY in the "On today" mode (the
+                    always-visible version got knocked by accident and blocked
+                    the drill-down tap). In the mode the WHOLE ROW is the tap
+                    target; the box is the state indicator, aria-hidden so the
+                    row button's own label carries the semantics. */}
+                {onToday && (
                   <span
-                    role="checkbox"
-                    aria-checked={!isOff}
-                    aria-label={`${isOff ? 'Add' : 'Remove'} ${member.name || 'crew member'} ${isOff ? 'to' : 'from'} this day`}
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); togglePresence({ member, isOff, variances }); }}
-                    onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); togglePresence({ member, isOff, variances }); } }}
-                    className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors ${
-                      isOff ? 'border-neutral-700 text-transparent hover:border-neutral-500' : 'bg-sky-500 border-sky-500 text-black'
+                    aria-hidden="true"
+                    className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-colors ${
+                      isOff ? 'border-neutral-700 text-transparent' : 'bg-sky-500 border-sky-500 text-black'
                     }`}
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
                   >
                     <ICheck size={12}/>
                   </span>
