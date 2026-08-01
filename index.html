@@ -12240,13 +12240,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return totals;
       }, [crewWithCalcs]);
 
-      const anyCrewInOT = crewWithCalcs.some(c => !c.isOff && (c.calc?.meta?.otHrs || 0) > 0);
-      const anyCrewLunchLate = crewWithCalcs.some(c =>
-        !c.isOff && c.calc?.lines?.some(l => /late 1st|l1\b/i.test(l.label))
-      );
-      const anyCrewLunchCurtailed = crewWithCalcs.some(c =>
-        !c.isOff && c.calc?.lines?.some(l => /curtailed 1st/i.test(l.label))
-      );
+      // (Removed: anyCrewInOT / anyCrewLunchLate / anyCrewLunchCurtailed.
+      // They aggregated INDIVIDUAL crew calc lines and leaked into the DEPT
+      // DEFAULTS header — one member's Quick-set late lunch painted the
+      // DEFAULT lunch row red with a LUNCH LATE chip even though the default
+      // lunch was on time. The dept header now derives its flags from the
+      // displayed default times only (defaultsLunchLate / Curtailed below,
+      // the same treatment the WRAP card's defaultsWrapImpliesOT already
+      // had); individual lateness belongs to the member's own row, chips and
+      // the VARIANCES section. anyCrewInOT had no consumers left at all.)
 
       const dayConditions = useMemo(() => {
         // V4-5h-14 (F6.2): split warn vs penalty. Penalty = money owed (tm-pen).
@@ -12374,6 +12376,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const otThreshold = production.isElevenHourDay ? 11 : 10;
         return workHrs > otThreshold;
       })();
+      // Same displayed-times-only rule for the LUNCH row: late iff the
+      // DEFAULT lunch itself starts more than 5.5h after the DEFAULT call
+      // (the engine's lateThreshold, APA §6.2), curtailed iff the DEFAULT
+      // duration is under the hour. Individual crew overrides never paint
+      // this header — their lateness shows on their own row and in
+      // VARIANCES.
+      const defaultsLunchLate = (() => {
+        const callH = parseHHMM(deptCall);
+        const lunchH = parseHHMM(deptLunchStart);
+        if (callH === null || lunchH === null) return false;
+        const lunchAbs = lunchH < callH ? lunchH + 24 : lunchH;
+        return lunchAbs > callH + 5.5 + TIME_EPS;
+      })();
+      const defaultsLunchCurtailed = deptLunchMins !== null && deptLunchMins > 0 && deptLunchMins < 60;
 
       const currentIdx = sortedDates.indexOf(currentDate);
       const dayNumber = currentIdx >= 0 ? currentIdx + 1 : null;
@@ -12585,17 +12601,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <button
               type="button"
               onClick={() => setShowLunchSheet(true)}
-              className={`w-full border rounded-xl px-3.5 py-3 flex items-center gap-3 text-left transition-colors flex-wrap ${(anyCrewLunchLate || anyCrewLunchCurtailed) ? 'bg-tm-pen/[0.04] border-tm-pen/30 hover:border-tm-pen/50' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
+              className={`w-full border rounded-xl px-3.5 py-3 flex items-center gap-3 text-left transition-colors flex-wrap ${(defaultsLunchLate || defaultsLunchCurtailed) ? 'bg-tm-pen/[0.04] border-tm-pen/30 hover:border-tm-pen/50' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'}`}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              <div className={`text-[10px] uppercase tracking-wider font-bold ${(anyCrewLunchLate || anyCrewLunchCurtailed) ? 'text-tm-pen' : 'text-neutral-500'}`}>LUNCH</div>
+              <div className={`text-[10px] uppercase tracking-wider font-bold ${(defaultsLunchLate || defaultsLunchCurtailed) ? 'text-tm-pen' : 'text-neutral-500'}`}>LUNCH</div>
               {deptLunchStart ? (
                 <>
                   <div className="font-mono text-sm text-neutral-100 tabular-nums">{deptLunchStart} → {deptLunchEnd || '-'}</div>
-                  {anyCrewLunchLate && (
+                  {defaultsLunchLate && (
                     <span className="text-[9px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">LUNCH LATE</span>
                   )}
-                  {anyCrewLunchCurtailed && (
+                  {defaultsLunchCurtailed && (
                     <span className="text-[9px] font-bold uppercase tracking-wider text-tm-pen bg-tm-pen/10 border border-tm-pen/25 rounded px-1.5 py-0.5">CURTAILED</span>
                   )}
                   {deptLunchMins !== null && <div className="text-[11px] text-neutral-500 ml-auto"><span className="font-mono">{deptLunchMins}</span> mins</div>}
