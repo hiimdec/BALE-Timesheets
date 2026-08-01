@@ -12045,6 +12045,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         ...q,
         selected: q.selected.includes(crewId) ? q.selected.filter(id => id !== crewId) : [...q.selected, crewId],
       });
+      // Pre-fill for the Quick set field (device-testing fix: a blank time
+      // box gave nothing to adjust against). The current effective default
+      // for the date via the same cascade the dept card shows; pre-call has
+      // no universal default, so it anchors on the call time — the value
+      // you wind BACK from — when none is set for the date.
+      const qsDefaultValue = (field) => {
+        const base = { ...DEFAULT_PRODUCTION_DAY, ...(production.defaultDay ?? {}), ...(getDayDefaults(production, currentDate) ?? {}) };
+        if (field === 'preCallTime') return base.preCallTime || base.callTime || '';
+        return base[field] || '';
+      };
       const qsApply = () => {
         if (!quickSet || !quickSet.value || quickSet.selected.length === 0) return;
         onPushUndo('Quick set applied');
@@ -12818,7 +12828,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQuickSet({ field: 'callTime', value: '', selected: [] })}
+                  onClick={() => setQuickSet({ field: 'callTime', value: qsDefaultValue('callTime'), selected: [] })}
                   className="text-[10px] uppercase tracking-[0.18em] font-bold text-sky-500 hover:text-sky-400 border border-sky-500/30 hover:border-sky-500/50 rounded px-1.5 py-0.5 transition-colors"
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
@@ -12848,6 +12858,63 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             )}
             <span className="text-[10px] font-mono text-neutral-500 font-bold">{activeCrewCount} OF {crew.length}</span>
           </div>
+
+          {/* Quick set panel — INLINE, ABOVE the crew list (device-testing
+              fix: the old fixed bottom sheet sat under the day-total bar and
+              the Set button was unreachable). Same enter-a-mode-over-the-
+              crew-list pattern as On today; nothing can overlay it here. */}
+          {quickSet && (
+            <div className="mx-4 mb-2.5 bg-neutral-900 border border-sky-500/30 rounded-xl px-3.5 pt-3 pb-3.5">
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-neutral-200">
+                  Quick set · {quickSet.selected.length} selected
+                </span>
+                <span className="flex-1"/>
+                <button
+                  type="button"
+                  onClick={() => setQuickSet(null)}
+                  aria-label="Cancel quick set"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <IX size={16}/>
+                </button>
+              </div>
+              <div className="flex gap-1.5 mb-2.5">
+                {[['callTime', 'Call'], ['lunchStartTime', 'Lunch'], ['wrapTime', 'Wrap'], ['preCallTime', 'Pre-call']].map(([f, label]) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setQuickSet(q => q && { ...q, field: f, value: qsDefaultValue(f) })}
+                    className={`flex-1 px-2 py-2 rounded-lg border text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                      quickSet.field === f
+                        ? 'bg-sky-500/[0.08] border-sky-500/60 text-sky-400'
+                        : 'bg-tm-card-2 border-neutral-800 text-neutral-500 hover:border-neutral-700'
+                    }`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="time"
+                value={quickSet.value}
+                onChange={(e) => setQuickSet(q => q && { ...q, value: e.target.value })}
+                className="w-full min-h-[52px] bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5 text-[22px] font-mono text-neutral-100 text-center focus:outline-none focus:border-sky-500 mb-2.5"
+                style={{ WebkitAppearance: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={qsApply}
+                disabled={!quickSet.value || quickSet.selected.length === 0}
+                className="w-full py-3 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-neutral-800 disabled:text-neutral-600 text-black text-[13px] font-bold uppercase tracking-wider transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Set
+              </button>
+            </div>
+          )}
 
           <div className="px-4">
             {displayCrew.map(({ member, isMe, isOff, dayTotal, chips, offReason, variances }) => {
@@ -12941,64 +13008,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             >
               <IPlus size={13}/>Add to today's crew
             </button>
-            {quickSet && <div className="h-64"/>}
           </div>
-
-          {quickSet && (
-            <div
-              className="fixed left-0 right-0 bottom-0 z-30 bg-neutral-900 border-t border-neutral-800 px-4 pt-3"
-              style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 14px)' }}
-            >
-              <div className="flex items-center gap-2 mb-2.5">
-                <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-neutral-200">
-                  Quick set · {quickSet.selected.length} selected
-                </span>
-                <span className="flex-1"/>
-                <button
-                  type="button"
-                  onClick={() => setQuickSet(null)}
-                  aria-label="Cancel quick set"
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <IX size={16}/>
-                </button>
-              </div>
-              <div className="flex gap-1.5 mb-2.5">
-                {[['callTime', 'Call'], ['lunchStartTime', 'Lunch'], ['wrapTime', 'Wrap'], ['preCallTime', 'Pre-call']].map(([f, label]) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setQuickSet(q => q && { ...q, field: f })}
-                    className={`flex-1 px-2 py-2 rounded-lg border text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                      quickSet.field === f
-                        ? 'bg-sky-500/[0.08] border-sky-500/60 text-sky-400'
-                        : 'bg-tm-card-2 border-neutral-800 text-neutral-500 hover:border-neutral-700'
-                    }`}
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="time"
-                value={quickSet.value}
-                onChange={(e) => setQuickSet(q => q && { ...q, value: e.target.value })}
-                className="w-full min-h-[52px] bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5 text-[22px] font-mono text-neutral-100 text-center focus:outline-none focus:border-sky-500 mb-2.5"
-                style={{ WebkitAppearance: 'none' }}
-              />
-              <button
-                type="button"
-                onClick={qsApply}
-                disabled={!quickSet.value || quickSet.selected.length === 0}
-                className="w-full py-3 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-neutral-800 disabled:text-neutral-600 text-black text-[13px] font-bold uppercase tracking-wider transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                Set
-              </button>
-            </div>
-          )}
 
           {showLunchSheet && (() => {
             const defs = getDayDefaults(production, currentDate);
