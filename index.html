@@ -13125,10 +13125,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           })()}
 
           {showAddCrew && (
-            <QuickAddCrewSheet
+            <AddCrewPage
+              production={production}
               onClose={() => setShowAddCrew(false)}
               onSubmit={handleAddNewCrew}
-              production={production}
             />
           )}
 
@@ -13461,6 +13461,134 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
+    // Add-crew FULL PAGE (device ruling 2026-07-31): the bottom sheet fought
+    // the soft keyboard — bottom-anchored fields under a keyboard need
+    // lift/shrink compensation that kept misbehaving on device. A full page
+    // ends the class of problem structurally: the fields sit at the TOP of
+    // the screen in normal document flow, above any keyboard by
+    // construction — ZERO custom keyboard code (no visualViewport, no
+    // listeners, no scrollIntoView). Three essentials only (name, role,
+    // rate); email moved to the crew member's EDIT surfaces, where it was
+    // already editable (the edit sheet below, the crew action sheet's Set
+    // email, and inline in the Save Timesheets flow). Rendered as an opaque
+    // overlay ABOVE the still-mounted day view, so back/Cancel returns to
+    // exactly the prior state — the day view never unmounts.
+    function AddCrewPage({ production, onClose, onSubmit }) {
+      const initialBdr = String(roleDefaultsFor(production)['Lighting Technician'].bdr ?? '');
+      const [name, setName] = useState('');
+      const [role, setRole] = useState('Lighting Technician');
+      const [bdr, setBdr] = useState(initialBdr);
+      const dirty = name.trim().length > 0 || role !== 'Lighting Technician' || bdr !== initialBdr;
+      const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(dirty);
+      const requestClose = () => { if (onBeforeDismiss()) onClose(); };
+      useBackLevel(true, requestClose, 'bbmobile-addcrew');
+      const canSave = name.trim().length > 0;
+      const handleSubmit = () => {
+        if (!canSave) return;
+        // The exact submit shape the sheet's add branch produced — same
+        // handleAddNewCrew consumer, email now simply empty (set later on
+        // the edit surfaces; the crew.email storage field is unchanged).
+        const roleDefaults = roleDefaultsFor(production)[role] || {};
+        onSubmit({
+          name: name.trim(),
+          role: role.trim() || 'Lighting Technician',
+          bdr: Number(bdr) || 0,
+          otCoef: roleDefaults.otCoef ?? 1.5,
+          otRate: roleDefaults.otRate ?? null,
+          email: '',
+        });
+      };
+      return (
+        <>
+        <div className="fixed inset-0 z-[60] bg-neutral-950 flex flex-col" style={{ paddingTop: 'var(--sat)' }}>
+          <div className="px-4 pt-3 pb-3 border-b border-neutral-800 flex-shrink-0">
+            <button
+              type="button"
+              onClick={requestClose}
+              className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 hover:text-sky-500 transition-colors font-bold mb-1 flex items-center gap-1"
+              aria-label="Back to the day view"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              <span className="text-neutral-600">‹</span>{(production?.title || 'Production').toUpperCase()}
+            </button>
+            <div className="text-[22px] font-extrabold tracking-tight text-neutral-100">Add to today's crew</div>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-4" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)' }}>
+            <div className="flex flex-col gap-4 max-w-md mx-auto">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Name</div>
+                <input
+                  type="text"
+                  autoFocus
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Crew name"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
+                <input
+                  type="text"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="Lighting Technician"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Base day rate (£)</div>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={bdr}
+                  onChange={(e) => setBdr(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-base font-mono text-neutral-100 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canSave}
+                className="w-full mt-2 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-neutral-800 disabled:text-neutral-500 text-black text-sm font-bold transition-colors"
+                style={{
+                  boxShadow: canSave ? '0 4px 16px rgba(14,165,233,0.25)' : 'none',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                Add to crew
+              </button>
+              <button
+                type="button"
+                onClick={requestClose}
+                className="w-full px-4 py-2 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+              <p className="text-[11px] text-neutral-500 leading-relaxed">
+                Email lives on the crew member's edit screen - add it there when you need to send timesheets.
+              </p>
+            </div>
+          </div>
+        </div>
+        <ConfirmDialog
+          open={showDiscard}
+          title="Discard changes?"
+          message="Your unsaved changes will be lost."
+          confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"
+          onConfirm={() => { setShowDiscard(false); onClose(); }}
+          onCancel={() => setShowDiscard(false)}
+        />
+        </>
+      );
+    }
+
+    // EDIT-ONLY since the add flow moved to AddCrewPage above — both
+    // remaining call sites (the drilldown's "Edit name & role" and the
+    // overview's edit) pass crewMember. Email stays HERE: this is the crew
+    // member's edit screen the add page points at.
     function QuickAddCrewSheet({ onClose, onSubmit, crewMember = null, production = null }) {
       const isEditMode = crewMember !== null;
       const [name, setName] = useState(crewMember?.name || '');
