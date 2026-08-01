@@ -8419,23 +8419,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const backdropTransition = reduceMotion ? 'none' : SHEET_BACKDROP_TRANSITION;
       const z = SHEET_BASE_Z + zSlot * 10;
 
-      // Keyboard avoidance (OPT-IN via keyboardAvoid): the wrapper is
-      // anchored to the LAYOUT viewport, but the iOS soft keyboard overlays
-      // it without resizing the webview, so a bottom sheet's fields can sit
-      // behind the keyboard. visualViewport reports the visible region;
-      // padding the flex-end wrapper by the overlap lifts the card to the
-      // keyboard's top edge. Web desktop: overlap is 0, a no-op. Opt-in so
-      // only sheets that ask (the add-crew editor) change behaviour.
-      const [kbLift, setKbLift] = useState(0);
+      // Keyboard avoidance (OPT-IN via keyboardAvoid), take two — the first
+      // attempt lifted the card by the keyboard overlap and FAILED on device:
+      // the card has no height cap and no internal scroll region (children
+      // flow directly inside overflow-hidden), so lifting a ~550px card
+      // above a ~480px visual viewport pushed its top — the name field —
+      // off-screen with nothing scrollable to bring it back. The fix is BOTH
+      // halves: LIFT the card's bottom to the keyboard's top edge (padding
+      // on the flex-end wrapper) AND SHRINK the card to the visual
+      // viewport's height, with the children in a scroll region (see the
+      // card below) so every field stays reachable above the keyboard.
+      // The maths holds when iOS pans the visual viewport (offsetTop > 0):
+      // keyboard top in layout coords = offsetTop + vv.height, so lift =
+      // innerHeight - that; the card, capped to vv.height - 16, can never
+      // extend above the visible region. Overlap 0 (desktop, keyboard down)
+      // → no lift, no cap: behaviour identical to a plain sheet.
+      const [kb, setKb] = useState({ lift: 0, avail: 0 });
       React.useEffect(() => {
         if (!keyboardAvoid || !mounted) return;
         const vv = window.visualViewport;
         if (!vv) return;
-        const update = () => setKbLift(Math.max(0, window.innerHeight - (vv.offsetTop + vv.height)));
+        const update = () => {
+          const overlap = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+          setKb({ lift: overlap, avail: overlap > 0 ? Math.max(220, vv.height - 16) : 0 });
+        };
         update();
         vv.addEventListener('resize', update);
         vv.addEventListener('scroll', update);
-        return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); setKbLift(0); };
+        return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); setKb({ lift: 0, avail: 0 }); };
       }, [keyboardAvoid, mounted]);
 
       return (
@@ -8445,7 +8456,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           style={{
             zIndex: z,
             pointerEvents: visible ? 'auto' : 'none',
-            ...(keyboardAvoid ? { paddingBottom: kbLift, transition: 'padding-bottom 0.25s ease' } : {}),
+            ...(keyboardAvoid ? { paddingBottom: kb.lift, transition: 'padding-bottom 0.25s ease' } : {}),
           }}
         >
           {/* Dimmed backdrop. Tap dismisses (subject to onBeforeDismiss). */}
@@ -8466,13 +8477,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {/* Sheet card */}
           <div
             ref={cardRef}
-            className={`relative w-full bg-neutral-900 border border-neutral-700 border-b-0 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden ${contentClassName}`}
+            className={`relative w-full bg-neutral-900 border border-neutral-700 border-b-0 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden ${keyboardAvoid ? 'flex flex-col' : ''} ${contentClassName}`}
             style={{
               maxWidth: `${maxWidth}px`,
               transform: cardTransform,
               transition: cardTransition,
               paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)',
               touchAction: swipeDismiss ? 'pan-y' : undefined,
+              ...(keyboardAvoid && kb.avail ? { maxHeight: kb.avail } : {}),
             }}
             onTransitionEnd={onTransitionEnd}
             onPointerDown={onPointerDown}
@@ -8483,15 +8495,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             {/* Grabber — visual cue + drag target. Always rendered (the
                 whole card is draggable when swipeDismiss is on, this is
                 just the affordance the user reads first). */}
-            <div className="pt-2.5 pb-1.5 flex justify-center select-none pointer-events-none">
+            <div className="pt-2.5 pb-1.5 flex justify-center select-none pointer-events-none flex-shrink-0">
               <div className="w-9 h-1 rounded-full bg-neutral-600" />
             </div>
             {title && (
-              <div className="px-5 pt-1 pb-3">
+              <div className="px-5 pt-1 pb-3 flex-shrink-0">
                 <div className="text-sm font-bold text-neutral-100">{title}</div>
               </div>
             )}
-            {children}
+            {keyboardAvoid ? (
+              // The shrink half: children live in a scroll region so a card
+              // capped to the space above the keyboard SCROLLS instead of
+              // clipping. The wrapper is PERMANENT for keyboardAvoid sheets
+              // (conditionally mounting it when the keyboard appears would
+              // remount the inputs and drop focus mid-typing); with no cap
+              // it grows to content height — layout-identical. Non-opt-in
+              // sheets keep their exact previous DOM.
+              <div className="min-h-0 flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+                {children}
+              </div>
+            ) : children}
           </div>
         </div>
       );
@@ -13479,18 +13502,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return (
         <>
         <Sheet open onClose={onClose} onBeforeDismiss={onBeforeDismiss} maxWidth={480} keyboardAvoid>
-          {/* keyboardAvoid lifts the card above the soft keyboard; the focus
-              handler covers the residual case (tall card, later fields):
-              whichever input takes focus scrolls itself into view once the
-              keyboard has settled. Focus events bubble, so one handler on
-              the container serves every field. */}
+          {/* keyboardAvoid (take two) lifts the card's bottom to the
+              keyboard AND caps its height to the visible region, with the
+              Sheet's own scroll wrapper carrying the overflow — so the name
+              field stays on screen and every later field scrolls into reach.
+              The focus handler is a light assist only: block 'nearest'
+              scrolls the focused input within the Sheet's wrapper without
+              ever yanking the card (the old 'center' page-level scroll
+              fought iOS's native reveal and is gone). No inner maxHeight —
+              the Sheet's wrapper is the single scroll container now. */}
           <div
-            className="px-5 overflow-y-auto"
-            style={{ maxHeight: '80vh' }}
+            className="px-5"
             onFocus={(e) => {
               const t = e.target;
               if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) {
-                setTimeout(() => { try { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} }, 300);
+                setTimeout(() => { try { t.scrollIntoView({ block: 'nearest' }); } catch (_) {} }, 350);
               }
             }}
           >

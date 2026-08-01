@@ -4907,12 +4907,14 @@ async function main() {
       /if \(typeof onBeforeDismiss === 'function'\)/.test(html));
     check('II2f Sheet sets touchAction pan-y only when swipeDismiss',
       // Anchor inside the Sheet function (it's ~9.4KB so widen the window).
-      // Windows widened 12000→13500 for the opt-in keyboardAvoid block
-      // (visualViewport lift, device-testing fix) — the assertions
-      // themselves (touchAction conditional, safe-area padding) unchanged.
-      /function Sheet\([\s\S]{0,13500}touchAction: swipeDismiss \? 'pan-y' : undefined/.test(html));
+      // Windows widened 12000→13500 for the opt-in keyboardAvoid block,
+      // then →15500 for its take-two (lift AND shrink: the kb state carries
+      // {lift, avail}, the card gains a capped-height scroll region) — the
+      // pinned assertions themselves (touchAction conditional, safe-area
+      // padding) are unchanged throughout.
+      /function Sheet\([\s\S]{0,15500}touchAction: swipeDismiss \? 'pan-y' : undefined/.test(html));
     check('II2g Sheet card pads safe-area-inset-bottom (routed through --sab + the native bottom-bar clearance)',
-      /function Sheet\([\s\S]{0,13500}calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ 16px\)/.test(html));
+      /function Sheet\([\s\S]{0,15500}calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ 16px\)/.test(html));
     check('II2h Sheet stack push/splice in mount/unmount effect (per-instance id)',
       /function Sheet\([\s\S]{0,4000}_sheetStack\.push\(id\)/.test(html) &&
       /_sheetStack\.splice\([\s\S]{0,80}1\)/.test(html));
