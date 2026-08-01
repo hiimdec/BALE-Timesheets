@@ -8198,7 +8198,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // Escape while this is non-empty; on WEB only the TOPMOST alert responds to
     // Escape / backdrop, so stacked alerts never all dismiss from one keypress.
     const _confirmAlertStack = [];
-    function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', children }) {
+    function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, children }) {
       const [mounted, setMounted] = React.useState(open);
       // Native back: every open Sheet IS a dismissable back-level. Registering here (the
       // shared primitive) means EVERY sheet — editors, pickers, action/kebab sheets, the
@@ -8419,11 +8419,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const backdropTransition = reduceMotion ? 'none' : SHEET_BACKDROP_TRANSITION;
       const z = SHEET_BASE_Z + zSlot * 10;
 
+      // Keyboard avoidance (OPT-IN via keyboardAvoid): the wrapper is
+      // anchored to the LAYOUT viewport, but the iOS soft keyboard overlays
+      // it without resizing the webview, so a bottom sheet's fields can sit
+      // behind the keyboard. visualViewport reports the visible region;
+      // padding the flex-end wrapper by the overlap lifts the card to the
+      // keyboard's top edge. Web desktop: overlap is 0, a no-op. Opt-in so
+      // only sheets that ask (the add-crew editor) change behaviour.
+      const [kbLift, setKbLift] = useState(0);
+      React.useEffect(() => {
+        if (!keyboardAvoid || !mounted) return;
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const update = () => setKbLift(Math.max(0, window.innerHeight - (vv.offsetTop + vv.height)));
+        update();
+        vv.addEventListener('resize', update);
+        vv.addEventListener('scroll', update);
+        return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); setKbLift(0); };
+      }, [keyboardAvoid, mounted]);
+
       return (
         <div
           data-sheet="1"
           className="fixed inset-0 flex items-end justify-center sm:p-4"
-          style={{ zIndex: z, pointerEvents: visible ? 'auto' : 'none' }}
+          style={{
+            zIndex: z,
+            pointerEvents: visible ? 'auto' : 'none',
+            ...(keyboardAvoid ? { paddingBottom: kbLift, transition: 'padding-bottom 0.25s ease' } : {}),
+          }}
         >
           {/* Dimmed backdrop. Tap dismisses (subject to onBeforeDismiss). */}
           <div
@@ -13439,8 +13462,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       return (
         <>
-        <Sheet open onClose={onClose} onBeforeDismiss={onBeforeDismiss} maxWidth={480}>
-          <div className="px-5 overflow-y-auto" style={{ maxHeight: '80vh' }}>
+        <Sheet open onClose={onClose} onBeforeDismiss={onBeforeDismiss} maxWidth={480} keyboardAvoid>
+          {/* keyboardAvoid lifts the card above the soft keyboard; the focus
+              handler covers the residual case (tall card, later fields):
+              whichever input takes focus scrolls itself into view once the
+              keyboard has settled. Focus events bubble, so one handler on
+              the container serves every field. */}
+          <div
+            className="px-5 overflow-y-auto"
+            style={{ maxHeight: '80vh' }}
+            onFocus={(e) => {
+              const t = e.target;
+              if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) {
+                setTimeout(() => { try { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} }, 300);
+              }
+            }}
+          >
             <div className="text-base font-bold text-neutral-100 mb-3">{isEditMode ? `Edit ${crewMember.name || 'crew'}` : "Add to today's crew"}</div>
 
             <div className="space-y-3">
