@@ -5631,23 +5631,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .chip-cwd { background: #d97706; color: white; }
       .chip-toc { background: #dc2626; color: white; }
       .chip-ns  { background: #1e1b4b; color: white; }
-      /* Legend SWATCHES — take four, ruled after THREE pill attempts
-         squashed on the device PDF (inline-flex, fixed-height, padding-
-         grown). The PDF rasteriser is html2canvas hosted on WebKit; it
-         paints a box and its glyphs from two separately derived models, and
-         every text-in-a-coloured-box construction let them diverge at
-         legend size. A fixed-size box with NO TEXT INSIDE is geometrically
-         immune: there is nothing to centre, so nothing can squash. The code
-         (OT / L1 / …) and label sit beside it as plain text. Colour mapping
-         unchanged; the day-cell chips keep the shared pill rules (they
-         render fine at cell size). */
-      .legend .sw { display: inline-block; width: 13px; height: 13px; border-radius: 4px; flex-shrink: 0; }
-      .legend .sw-ot  { background: #dc2626; }
-      .legend .sw-msb { background: #d97706; }
-      .legend .sw-cwd { background: #d97706; }
-      .legend .sw-toc { background: #dc2626; }
-      .legend .sw-ns  { background: #1e1b4b; }
-      .legend .item b { font-weight: 700; color: #525252; }
 
       /* ── Shared footer ── */
       .doc-footer {
@@ -5761,14 +5744,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       .grid-row {
         display: grid;
-        /* Total col 18mm→22mm: a right-aligned £X,XXX.00 (12px body / 14px
-           foot, bold tabular) overflowed 18mm and the cell's overflow:hidden
-           clipped the £ and the grey fill on the LEFT. Sum held at 177mm —
-           day cols donate 0.5mm each, crew 0.5mm — so the table width is
-           unchanged. Fits four-figure totals at both sizes with headroom; a
-           FIVE-figure week total (£10,000+) would need ~24mm and would clip
-           again — enlarge here if that day comes. */
-        grid-template-columns: 25.5mm repeat(7, 18.5mm) 22mm;
+        /* Total col 18mm→22mm: a right-aligned £X,XXX.00 (bold tabular)
+           overflowed 18mm and the cell's overflow:hidden clipped the £ and
+           the grey fill on the LEFT. RESHAPED after the legend regression
+           report: the SEVEN DAY COLUMNS are back at their original 19mm and
+           the row-total paddings at their original 8px — only the CREW
+           column donates (26→22mm), keeping the sum at 177mm, and the foot
+           week-total drops 14→12px (matching the body rows) so it fits the
+           original padding. Nothing outside the crew/total columns differs
+           from the pre-8b7511b table. Fits all four-figure totals
+           (tabular-nums = deterministic width); a FIVE-figure week total
+           (£10,000+) remains the documented ceiling. */
+        grid-template-columns: 22mm repeat(7, 19mm) 22mm;
         border-bottom: 1px solid #e5e5e5;
       }
       .grid-row:last-child { border-bottom: none; }
@@ -5805,7 +5792,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       .grid-body .grid-cell.row-total {
         background: #fafafa; flex-direction: column;
-        justify-content: center; align-items: flex-end; padding: 6px 6px;
+        justify-content: center; align-items: flex-end; padding: 6px 8px;
       }
       .grid-body .name { font-size: 10px; font-weight: 700; color: #171717; line-height: 1.2; }
       .grid-body .role { font-size: 8px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 600; }
@@ -5838,13 +5825,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; color: #525252; font-weight: 700;
       }
       .grid-foot .grid-cell.row-total {
-        flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 6px;
+        flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 8px;
       }
       .grid-foot .day-total-val { font-size: 11px; font-weight: 800; color: #171717; }
       .grid-foot .day-total-hrs { font-size: 8px; color: #737373; margin-top: 1px; }
       .grid-foot .grid-cell.sat { background: #fef3c7; }
       .grid-foot .grid-cell.sun { background: #fee2e2; }
-      .grid-foot .grid-cell.row-total .week-total { font-size: 14px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
+      /* 14→12px (matches the body-row totals): at 14px a four-figure
+         week total needs ~24mm; at 12px it fits the 22mm column with the
+         ORIGINAL 8px padding — the piece that lets the paddings and day
+         columns stay at their pre-8b7511b values. */
+      .grid-foot .grid-cell.row-total .week-total { font-size: 12px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
 
       @media print {
         #root { display: none !important; }
@@ -6186,19 +6177,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ── Chip Legend (shared) ── */
     function ChipLegend() {
-      // Swatches, not pills (ruled after three pill attempts squashed on the
-      // device PDF): the code and label are PLAIN TEXT beside a fixed-size
-      // coloured box with nothing inside it — geometrically immune to the
-      // html2canvas box-vs-glyph divergence. Colour mapping unchanged.
+      // REVERTED to the exact pre-8b7511b pill construction (ruled: the
+      // legend rendered fine on device PDFs before the total-column fix,
+      // and every legend rework since made it worse). The £-clip re-fix now
+      // lives entirely inside the TOTAL column (see .grid-row), leaving the
+      // legend and the shared chip rules byte-identical to their last-known-
+      // good state — this is also the controlled experiment: if the legend
+      // still squashes on the next device PDF, the 8b7511b-coupling theory
+      // is disproven; if it renders clean, goal achieved either way.
       return (
         <div className="legend">
-          <span className="item"><span className="sw sw-ot"/><b>OT</b> Overtime</span>
-          <span className="item"><span className="sw sw-msb"/><b>L1</b> Late 1st break</span>
-          <span className="item"><span className="sw sw-msb"/><b>L2</b> Late 2nd break</span>
-          <span className="item"><span className="sw sw-msb"/><b>MSB</b> Missed 2nd break</span>
-          <span className="item"><span className="sw sw-cwd"/><b>CWD</b> Cont. Working Day</span>
-          <span className="item"><span className="sw sw-toc"/><b>TOC</b> Turnaround</span>
-          <span className="item"><span className="sw sw-ns"/><b>NS</b> Night Shoot</span>
+          <span className="item"><span className="chip-ot">OT</span> Overtime</span>
+          <span className="item"><span className="chip-msb">L1</span> Late 1st break</span>
+          <span className="item"><span className="chip-msb">L2</span> Late 2nd break</span>
+          <span className="item"><span className="chip-msb">MSB</span> Missed 2nd break</span>
+          <span className="item"><span className="chip-cwd">CWD</span> Cont. Working Day</span>
+          <span className="item"><span className="chip-toc">TOC</span> Turnaround</span>
+          <span className="item"><span className="chip-ns">NS</span> Night Shoot</span>
         </div>
       );
     }
