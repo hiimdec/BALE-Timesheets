@@ -12165,6 +12165,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             bdr: form.bdr,
             otCoef: form.otCoef,
             otRate: form.otRate,
+            ...(form.noOT ? { noOT: true } : {}),
             vatRegistered: false,
             vatRate: 20,
             kitMoneyEnabled: false,
@@ -13504,13 +13505,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // The exact submit shape the sheet's add branch produced — same
         // handleAddNewCrew consumer, email now simply empty (set later on
         // the edit surfaces; the crew.email storage field is unchanged).
+        // Role comes from the strict picker so it is always a canonical
+        // card name; noOT rides along for the roles that carry it
+        // (Director/Producer) — a field the calc already reads.
         const roleDefaults = roleDefaultsFor(production)[role] || {};
         onSubmit({
           name: name.trim(),
-          role: role.trim() || 'Lighting Technician',
+          role,
           bdr: Number(bdr) || 0,
           otCoef: roleDefaults.otCoef ?? 1.5,
           otRate: roleDefaults.otRate ?? null,
+          ...(roleDefaults.noOT ? { noOT: true } : {}),
           email: '',
         });
       };
@@ -13550,13 +13555,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
-                <input
-                  type="text"
+                {/* Strict role picker — option structure + rate-on-pick lifted
+                    from the step-up picker (the app's existing role→rate
+                    surface): one select, departments as optgroup headings,
+                    roleDefaultsFor as the only rate source. Picking a role
+                    fills the rate below; the rate stays editable after. */}
+                <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  placeholder="Lighting Technician"
+                  onChange={(e) => {
+                    const nextRole = e.target.value;
+                    const d = roleDefaultsFor(production)[nextRole] || {};
+                    setRole(nextRole);
+                    setBdr(String(d.bdr ?? ''));
+                  }}
                   className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
-                />
+                >
+                  {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}
+                </select>
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Base day rate (£)</div>
@@ -13630,20 +13645,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!canSave) return;
         const roleDefaults = roleDefaultsFor(production)[role] || {};
         if (isEditMode) {
-          onSubmit({
+          const updated = {
             ...crewMember,
             name: name.trim(),
-            role: role.trim() || 'Lighting Technician',
+            role,
             bdr: Number(bdr) || 0,
             email: email.trim(),
-          });
+          };
+          // Re-derive the OT profile ONLY when the role actually changed —
+          // an untouched role keeps whatever custom otCoef/otRate the
+          // member carries. On change, noOT tracks the new role both ways:
+          // set for Director/Producer, removed when re-picked away (a
+          // stale true would zero OT the new role is owed).
+          if (role !== crewMember.role) {
+            updated.otCoef = roleDefaults.otCoef ?? 1.5;
+            updated.otRate = roleDefaults.otRate ?? null;
+            if (roleDefaults.noOT) updated.noOT = true; else delete updated.noOT;
+          }
+          onSubmit(updated);
         } else {
           onSubmit({
             name: name.trim(),
-            role: role.trim() || 'Lighting Technician',
+            role,
             bdr: Number(bdr) || 0,
             otCoef: roleDefaults.otCoef ?? 1.5,
             otRate: roleDefaults.otRate ?? null,
+            ...(roleDefaults.noOT ? { noOT: true } : {}),
             email: email.trim(),
           });
         }
@@ -13686,13 +13713,28 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Role</div>
-                <input
-                  type="text"
+                {/* Same strict picker as AddCrewPage (step-up's option
+                    structure + rate-on-pick). A stored role that isn't a
+                    canonical card name — free-typed before the picker
+                    existed — renders as ONE extra top option, selected, so
+                    the display stays truthful; saving untouched changes
+                    nothing, re-picking replaces it. No blanking, no
+                    rewrite. */}
+                <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  placeholder="Lighting Technician"
+                  onChange={(e) => {
+                    const nextRole = e.target.value;
+                    const d = roleDefaultsFor(production)[nextRole] || {};
+                    setRole(nextRole);
+                    setBdr(String(d.bdr ?? ''));
+                  }}
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-base text-neutral-100 focus:outline-none focus:border-sky-500"
-                />
+                >
+                  {!Object.prototype.hasOwnProperty.call(ROLE_TO_DEPT, role) && (
+                    <option value={role}>{role} (custom - re-pick to set rate)</option>
+                  )}
+                  {Object.entries(DEPARTMENTS).map(([dept, roles]) => <optgroup key={dept} label={dept}>{Object.keys(roles).map((r) => <option key={r} value={r}>{r}</option>)}</optgroup>)}
+                </select>
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1.5">Base day rate (£)</div>
