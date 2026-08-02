@@ -13500,7 +13500,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
       return (
         <>
-        <div className="fixed inset-0 z-[60] bg-neutral-950 flex flex-col" style={{ paddingTop: 'var(--sat)' }}>
+        {/* tm-native-overlay is the house top-inset for full-screen overlay
+            routes: under native chrome it pads by --tm-native-top (the full
+            nav-bar clearance), so the title and NAME label start BELOW the
+            bar. An inline --sat pad here previously OVERRODE that class rule
+            (inline beats class) and cleared only the status bar — the top
+            of the page sat tucked under the nav header on device. */}
+        <div className="fixed inset-0 z-[60] bg-neutral-950 flex flex-col tm-native-overlay">
           <div className="px-4 pt-3 pb-3 border-b border-neutral-800 flex-shrink-0">
             <button
               type="button"
