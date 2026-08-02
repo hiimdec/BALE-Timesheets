@@ -5631,6 +5631,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .chip-cwd { background: #d97706; color: white; }
       .chip-toc { background: #dc2626; color: white; }
       .chip-ns  { background: #1e1b4b; color: white; }
+      /* Legend pills, print-safe box (device PDF fix): the inline-flex +
+         line-height:1 + sub-pixel padding pills above leave the pill height
+         for the renderer to INFER, and the native PDF rasteriser inferred it
+         collapsed — thin bands with the label bleeding past the pill edge.
+         An explicit height with a MATCHING line-height (the classic
+         email/print pill) leaves nothing to infer: the text centres by
+         construction inside a full-height capsule. Scoped to .legend ONLY —
+         the day-cell chips render fine and stay on the shared rules. */
+      .legend .chip-ot, .legend .chip-msb, .legend .chip-toc,
+      .legend .chip-ns, .legend .chip-cwd {
+        display: inline-block;
+        height: 14px; line-height: 12px;
+        padding: 0 6px; border-radius: 7px;
+        text-align: center; vertical-align: middle;
+        box-sizing: border-box;
+      }
+      .legend .chip-cwd, .legend .chip-toc, .legend .chip-ns { line-height: 14px; }
 
       /* ── Shared footer ── */
       .doc-footer {
