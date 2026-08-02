@@ -5631,27 +5631,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .chip-cwd { background: #d97706; color: white; }
       .chip-toc { background: #dc2626; color: white; }
       .chip-ns  { background: #1e1b4b; color: white; }
-      /* Legend pills, take three — built against the ACTUAL PDF renderer.
-         The "native" timesheet PDF is html2canvas (scale 3) + jsPDF; Swift
-         only shares the file. html2canvas re-implements CSS layout and
-         paints the pill BOX and the glyphs from two different models — so
-         every construction that DECLARES the box height independently of
-         the text (attempt 1: inline-flex + line-height:1; attempt 2: fixed
-         height + line-height centring) lets the two diverge: a collapsed
-         band with glyphs bleeding past it. Reproduced on canvas (CWD
-         painted 30px where the DOM said 42). A PADDING-GROWN box cannot
-         diverge: no height property, no line-height game — the box is the
-         text's own flow height plus padding, both derived from the same
-         metrics. The oldest, most-trodden path in html2canvas. Scoped to
-         .legend ONLY; the day-cell chips stay on the shared rules. */
-      .legend .chip-ot, .legend .chip-msb, .legend .chip-toc,
-      .legend .chip-ns, .legend .chip-cwd {
-        display: inline-block;
-        height: auto;
-        line-height: normal;
-        padding: 2.5px 6px 3px;
-        border-radius: 7px;
-      }
+      /* Legend SWATCHES — take four, ruled after THREE pill attempts
+         squashed on the device PDF (inline-flex, fixed-height, padding-
+         grown). The PDF rasteriser is html2canvas hosted on WebKit; it
+         paints a box and its glyphs from two separately derived models, and
+         every text-in-a-coloured-box construction let them diverge at
+         legend size. A fixed-size box with NO TEXT INSIDE is geometrically
+         immune: there is nothing to centre, so nothing can squash. The code
+         (OT / L1 / …) and label sit beside it as plain text. Colour mapping
+         unchanged; the day-cell chips keep the shared pill rules (they
+         render fine at cell size). */
+      .legend .sw { display: inline-block; width: 13px; height: 13px; border-radius: 4px; flex-shrink: 0; }
+      .legend .sw-ot  { background: #dc2626; }
+      .legend .sw-msb { background: #d97706; }
+      .legend .sw-cwd { background: #d97706; }
+      .legend .sw-toc { background: #dc2626; }
+      .legend .sw-ns  { background: #1e1b4b; }
+      .legend .item b { font-weight: 700; color: #525252; }
 
       /* ── Shared footer ── */
       .doc-footer {
@@ -6190,15 +6186,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ── Chip Legend (shared) ── */
     function ChipLegend() {
+      // Swatches, not pills (ruled after three pill attempts squashed on the
+      // device PDF): the code and label are PLAIN TEXT beside a fixed-size
+      // coloured box with nothing inside it — geometrically immune to the
+      // html2canvas box-vs-glyph divergence. Colour mapping unchanged.
       return (
         <div className="legend">
-          <span className="item"><span className="chip-ot">OT</span> Overtime</span>
-          <span className="item"><span className="chip-msb">L1</span> Late 1st break</span>
-          <span className="item"><span className="chip-msb">L2</span> Late 2nd break</span>
-          <span className="item"><span className="chip-msb">MSB</span> Missed 2nd break</span>
-          <span className="item"><span className="chip-cwd">CWD</span> Cont. Working Day</span>
-          <span className="item"><span className="chip-toc">TOC</span> Turnaround</span>
-          <span className="item"><span className="chip-ns">NS</span> Night Shoot</span>
+          <span className="item"><span className="sw sw-ot"/><b>OT</b> Overtime</span>
+          <span className="item"><span className="sw sw-msb"/><b>L1</b> Late 1st break</span>
+          <span className="item"><span className="sw sw-msb"/><b>L2</b> Late 2nd break</span>
+          <span className="item"><span className="sw sw-msb"/><b>MSB</b> Missed 2nd break</span>
+          <span className="item"><span className="sw sw-cwd"/><b>CWD</b> Cont. Working Day</span>
+          <span className="item"><span className="sw sw-toc"/><b>TOC</b> Turnaround</span>
+          <span className="item"><span className="sw sw-ns"/><b>NS</b> Night Shoot</span>
         </div>
       );
     }
