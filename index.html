@@ -15665,18 +15665,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => onOpenSave?.()}
-            className="fixed left-1/2 -translate-x-1/2 z-20 bg-sky-500 hover:bg-sky-400 text-black text-[12px] font-bold uppercase tracking-wider py-2.5 px-6 rounded-full transition-colors flex items-center gap-2"
-            style={{
-              boxShadow: '0 8px 24px rgba(14,165,233,0.4)',
-              WebkitTapHighlightColor: 'transparent',
-              bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 24px)',
-            }}
+          {/* Centred by a full-width FLEX wrapper, not a transform. The old
+              left-1/2 -translate-x-1/2 centring collided with the universal
+              press rule (:active applies transform: scale(0.97), which
+              REPLACES the whole transform) — on press the -50% translate
+              vanished and the button lurched right by half its width. With
+              flex centring there is nothing positional in the transform, so
+              the press scale composes from the button's own centre and the
+              button stays put through press-and-release. */}
+          <div
+            className="fixed left-0 right-0 z-20 flex justify-center pointer-events-none"
+            style={{ bottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 24px)' }}
           >
-            <IMail size={14}/>Save Timesheets
-          </button>
+            <button
+              type="button"
+              onClick={() => onOpenSave?.()}
+              className="pointer-events-auto bg-sky-500 hover:bg-sky-400 text-black text-[12px] font-bold uppercase tracking-wider py-2.5 px-6 rounded-full transition-colors flex items-center gap-2"
+              style={{
+                boxShadow: '0 8px 24px rgba(14,165,233,0.4)',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              <IMail size={14}/>Save Timesheets
+            </button>
+          </div>
 
           {activeCrewSheet && (
             <CrewActionSheet
