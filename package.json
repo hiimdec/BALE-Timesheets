@@ -6,10 +6,16 @@
   "scripts": {
     "generate-icons": "node scripts/generate-icons.js",
     "build": "node scripts/build.js",
-    "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js && node scripts/build-vs-source-audit/kit-assertions.js && node scripts/build-vs-source-audit/calc-boundary-assertions.js && node scripts/build-vs-source-audit/theme-parity.js",
+    "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js && node scripts/build-vs-source-audit/kit-assertions.js && node scripts/build-vs-source-audit/calc-boundary-assertions.js && node scripts/build-vs-source-audit/share-link-assertions.js && node scripts/build-vs-source-audit/la-ordering-assertions.js && node scripts/build-vs-source-audit/variance-detection-assertions.js && node scripts/build-vs-source-audit/quick-set-assertions.js && node scripts/build-vs-source-audit/day-off-assertions.js && node scripts/build-vs-source-audit/day-presence-assertions.js && node scripts/build-vs-source-audit/theme-parity.js",
     "audit:build:exec": "node scripts/build-vs-source-audit/compare.js",
     "audit:build:textual": "node scripts/build-vs-source-audit/textual-diff.js",
     "audit:kit": "node scripts/build-vs-source-audit/kit-assertions.js",
+    "audit:share": "node scripts/build-vs-source-audit/share-link-assertions.js",
+    "audit:la": "node scripts/build-vs-source-audit/la-ordering-assertions.js",
+    "audit:variance": "node scripts/build-vs-source-audit/variance-detection-assertions.js",
+    "audit:quickset": "node scripts/build-vs-source-audit/quick-set-assertions.js",
+    "audit:dayoff": "node scripts/build-vs-source-audit/day-off-assertions.js",
+    "audit:presence": "node scripts/build-vs-source-audit/day-presence-assertions.js",
     "audit:theme": "node scripts/build-vs-source-audit/theme-parity.js",
     "audit:storage": "node scripts/storage-audit/storage-test.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
@@ -36,8 +42,6 @@
     "@capacitor/status-bar": "^8.0.2",
     "canvas": "^3.2.3",
     "capacitor-email-composer": "^8.0.0",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^2.5.2",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

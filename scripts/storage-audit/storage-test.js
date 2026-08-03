@@ -4907,9 +4907,14 @@ async function main() {
       /if \(typeof onBeforeDismiss === 'function'\)/.test(html));
     check('II2f Sheet sets touchAction pan-y only when swipeDismiss',
       // Anchor inside the Sheet function (it's ~9.4KB so widen the window).
-      /function Sheet\([\s\S]{0,12000}touchAction: swipeDismiss \? 'pan-y' : undefined/.test(html));
+      // Windows widened 12000→13500 for the opt-in keyboardAvoid block,
+      // then →15500 for its take-two (lift AND shrink: the kb state carries
+      // {lift, avail}, the card gains a capped-height scroll region) — the
+      // pinned assertions themselves (touchAction conditional, safe-area
+      // padding) are unchanged throughout.
+      /function Sheet\([\s\S]{0,15500}touchAction: swipeDismiss \? 'pan-y' : undefined/.test(html));
     check('II2g Sheet card pads safe-area-inset-bottom (routed through --sab + the native bottom-bar clearance)',
-      /function Sheet\([\s\S]{0,12000}calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ 16px\)/.test(html));
+      /function Sheet\([\s\S]{0,15500}calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ 16px\)/.test(html));
     check('II2h Sheet stack push/splice in mount/unmount effect (per-instance id)',
       /function Sheet\([\s\S]{0,4000}_sheetStack\.push\(id\)/.test(html) &&
       /_sheetStack\.splice\([\s\S]{0,80}1\)/.test(html));
@@ -5234,9 +5239,13 @@ async function main() {
     check('LL4a child onClose closes only the child (setEmailEditing(false)) — parent <Sheet> stays mounted',
       /<Sheet open onClose=\{\(\) => setEmailEditing\(false\)\}/.test(html));
     check('LL4b parent onClose is the caller onClose — dismissing it unmounts the whole CrewActionSheet (stack torn down)',
-      /function CrewActionSheet\([\s\S]{0,1200}<Sheet open onClose=\{onClose\}>/.test(html) &&
+      // windows widened 1200→1400 / 3000→3400 for the BB "Share shoot link"
+      // ActionItem (signature gained onShareLink; the item sits between Send
+      // text and Set email) — the assertions (Sheet onClose wiring, Cancel →
+      // onClose, both inside CrewActionSheet) are unchanged.
+      /function CrewActionSheet\([\s\S]{0,1400}<Sheet open onClose=\{onClose\}>/.test(html) &&
       // the parent Cancel button + Sheet both route to onClose
-      /function CrewActionSheet\([\s\S]{0,3000}onClick=\{onClose\}[\s\S]{0,400}<\/Sheet>/.test(html));
+      /function CrewActionSheet\([\s\S]{0,3400}onClick=\{onClose\}[\s\S]{0,400}<\/Sheet>/.test(html));
 
     // ─ LL5: the two ExportTab pickers route through <Sheet>, no guard. ─
     check('LL5a WeekPickerSheet routes through <Sheet open={open}> (no onBeforeDismiss)',
@@ -5768,12 +5777,20 @@ async function main() {
       /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
       /if \(ev\.date !== today\) \{[\s\S]{0,320}continue; \}/.test(html) &&
       /const today = todayISO\(\);/.test(html));
-    check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — and both triggers ALSO run the reconcile sweep',
+    check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — both triggers route through the ONE drainThenSweep wrapper (drain strictly before sweep; sweep deferred to the change-sweep when events applied)',
+      // Rewritten for the la-ordering fix (re-mint race): the old concurrent
+      // `ingest(); liveActivityReconcile();` pair at both triggers IS the bug
+      // shape — a sweep win re-minted a husked card from a record that had
+      // not yet absorbed a queued card press. The executed ordering contract
+      // (bound, fail-safe, deferral) lives in la-ordering-assertions.js; this
+      // pin holds the WIRING: one wrapper, two triggers, old pair gone.
       /const liveActivityAppliedRef = React\.useRef\(null\);\s*useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /LiveActivity\.drainPendingEvents\(\)/.test(html) &&
-      /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) \{ ingest\(\); liveActivityReconcile\(\); \} \}\)/.test(html) &&
-      /ingest\(\); \/\/ launch drain/.test(html) &&
-      /liveActivityReconcile\(\); \/\/ launch sweep/.test(html));
+      /const drainThenSweep = \(\) => laDrainThenSweep\(ingest, liveActivityReconcile\)/.test(html) &&
+      /drainThenSweep\(\); \/\/ launch/.test(html) &&
+      /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) drainThenSweep\(\); \}\)/.test(html) &&
+      !/if \(s && s\.isActive\) \{ ingest\(\); liveActivityReconcile\(\); \}/.test(html) &&
+      !/ingest\(\); \/\/ launch drain/.test(html));
 
     // ─ TT7: productionId targeting + the single shared wrap path ─
     check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
@@ -7120,9 +7137,37 @@ async function main() {
     })();
     check('LP8a the document renders charges as ONE document: charges prop, section between items and totals, updated Total due',
       /function InvoiceDocument\(\{ invoice, userPrefs, charges = null \}\)/.test(html) &&
-      /className="invoice-charges"/.test(html) &&
-      /<span className="label">Invoice total<\/span>/.test(html) &&
-      /<span className="label">Late payment charges<\/span>/.test(html));
+      /className="inv-charges"/.test(html) &&
+      /<span className="inv-tlabel">Invoice total<\/span>/.test(html) &&
+      /<span className="inv-tlabel">Late payment charges<\/span>/.test(html));
+    // -- DB: the invoice's frozen day-by-day snapshot (stored-data shape) --
+    // The breakdown used to live as prose inside `notes`. It is now a
+    // structured field on the invoice record, so it carries the same kind of
+    // pin the other persisted invoice shapes do: built from the SAME calc
+    // chain, written where the prose was written, frozen by the draft gate,
+    // and rendered with a legacy fallback so no existing record is mutated.
+    check('DB1 buildDayBreakdown derives from the SAME calc chain (calcForDisplay + prev-day thread), worked days only',
+      /function buildDayBreakdown\(production, userPrefs, userCrewId\)/.test(html) &&
+      /resolveEffectiveDayType\(production, d\.date, d\) !== 'Day off'/.test(html) &&
+      /calcForDisplay\(production, d, crewMember, prevEntry\)/.test(html) &&
+      /prevEntry = d;/.test(html));
+    check('DB2 the snapshot shape is {date, dayType, lines[], total} with per-line label/rate/qty/amount',
+      /date: d\.date,/.test(html) &&
+      /dayType: resolved\.dayType \|\| '',/.test(html) &&
+      /lines: \(calc\.lines \|\| \[\]\)\.map\(l => \(\{/.test(html) &&
+      /total: Number\(calc\.total\) \|\| 0,/.test(html));
+    check('DB3 a new invoice stores the snapshot and starts with EMPTY notes (notes is manual-only now)',
+      /const dayBreakdown = buildDayBreakdown\(production, userPrefs, userCrewId\);/.test(html) &&
+      /\n        dayBreakdown,\n/.test(html) &&
+      !/buildDefaultNotes/.test(html));
+    check('DB4 FROZEN: the snapshot is re-derived only inside the draft-gated re-sync, never for sent/paid',
+      /if \(!inv \|\| inv\.status !== "draft"\) return;/.test(html) &&
+      /if \(userCrewId\) updates\.dayBreakdown = buildDayBreakdown\(production, userPrefs, userCrewId\);/.test(html));
+    check('DB5 the document prefers its OWN snapshot, falls back to legacy notes prose, and never duplicates it',
+      /const snapshot = Array\.isArray\(invoice\.dayBreakdown\) \? invoice\.dayBreakdown : null;/.test(html) &&
+      /const manualNotes = invoice\.notesEdited === true \? legacyNotes : '';/.test(html) &&
+      /const showLegacyBreakdown = \(!snapshot \|\| snapshot\.length === 0\) && invoice\.notesEdited !== true && !!legacyNotes;/.test(html));
+
     check('LP8b the editor print path passes the invoice\'s charges record into the print view',
       /<InvoicePrintView invoice=\{printTarget\} userPrefs=\{userPrefs\} charges=\{allInvoiceCharges\[printTarget\.id\] \|\| null\} \/>/.test(html));
     check('LP9 the accruing figure is computed on render, muted tm-pen, ONLY in the overdue detail — never stored',

@@ -63,6 +63,39 @@ const ENGINE_NAMES = [
   // over the user's dealt items. Same helper / same user-crew-id resolution
   // as the invoice path → stats-vs-invoice reconcile by construction.
   'computeProductionKitDiscount',
+  // Shoot-share wire codec (v1, frozen): the share-link-assertions suite
+  // pins the canonical fixture, the round-trip, and the refusal paths.
+  'encodeShareLink',
+  'decodeShareLink',
+  // BB individual-share extraction (feeds the frozen encoder above): the
+  // suite's B-pins prove a BB-extracted link is byte-identical to a solo
+  // link of the same days and that the legacy truckCallTime pre-call
+  // travels.
+  'extractCrewShareDays',
+  // Night-shoot display split (presentation-only restructure of the plain
+  // night line): exposed so the re-sum property is provable against the
+  // engine's own output.
+  'splitNightLinesForDisplay',
+  // Live Activity drain→sweep ordering (the re-mint race fix): pure,
+  // dependency-injected control flow — la-ordering-assertions.js executes
+  // its four race cases with stubbed drain/sweep in this sandbox.
+  'laDrainThenSweep',
+  // BB per-day variance detector (fuchsia highlight / VARIANCES accordion):
+  // variance-detection-assertions.js executes the cascade-feed fixtures so
+  // the crew-list highlight can never silently starve again.
+  'getCrewVariances',
+  // Quick set (BB): the batched one-field multi-crew write —
+  // quick-set-assertions.js proves it is the single-edit write over N
+  // (sparse, collapse rule mirrored, purity, totals re-derive).
+  'applyQuickSet',
+  // Day-off model (ruled 2026-07-30): the un-tick/remove write + the
+  // day-off-assertions suite (true-zero calc, blank-times resolution,
+  // un-tick produces Day off not the paid Rest Day, wire omission).
+  'applyRemoveFromDay',
+  // Who's-on-today (the BB day ticker): the batched presence write in both
+  // directions — day-presence-assertions.js proves tick/un-tick round-trips,
+  // never double-appends, and leaves the turnaround feed correct.
+  'applyDayPresence',
 ];
 
 const EXPORT_LINE =
@@ -121,6 +154,11 @@ function makeSandbox() {
     Uint32Array, Int32Array, Float32Array, Float64Array, DataView,
     Intl, encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
     Proxy, Reflect,
+    // Shoot-share codec dependencies — Node's own WHATWG globals passed
+    // through so encode/decode (CompressionStream deflate-raw, base64url)
+    // run in the sandbox exactly as they do in the browser.
+    TextEncoder, TextDecoder, atob, btoa, Blob, Response,
+    CompressionStream, DecompressionStream,
   };
 
   sandbox.globalThis = sandbox;

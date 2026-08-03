@@ -282,6 +282,14 @@ function main() {
       throw new Error(`leak scan: unclosed block for ${marker}`);
     };
     const regexRanges = (re) => [...html.matchAll(re)].map(m => [m.index, m.index + m[0].length]);
+    // Start-marker → end-marker span (for regions that aren't a brace block).
+    const spanBetween = (s, e) => {
+      const a = html.indexOf(s);
+      if (a === -1) throw new Error(`leak scan: span start missing: ${s}`);
+      const b = html.indexOf(e, a);
+      if (b === -1) throw new Error(`leak scan: span end missing: ${e}`);
+      return [a, b];
+    };
     const exempt = [
       literalRange('PRINT_STYLES'),
       literalRange('INVOICE_PRINT_STYLES'),
@@ -308,6 +316,21 @@ function main() {
       ...regexRanges(/<meta name="theme-color" content="#0a0a0a">/g),
       // GridPage print-header meta line — print DOM outside the print literals.
       ...regexRanges(/className="meta" style=\{\{fontSize:'10\.5px',color:'#525252',marginTop:6\}\}/g),
+      // The print COMPONENT blocks. PRINT_STYLES / INVOICE_PRINT_STYLES cover
+      // the stylesheets, but the redesigned timesheet and invoice also carry
+      // raw colour in JSX — the SVG chip tables, the segment-bar segment
+      // fills, the summary swatches and the repeat-strip ink. These are
+      // FINANCIAL DOCUMENTS sent to clients: they must render identically in
+      // every theme, so their literals are deliberate and permanent. (The
+      // matching print-isolation guarantee is invariant 4 plus the fact that
+      // the native PDF packager ships a bare <html> with no theme class.)
+      spanBetween('/* ══════════ TSD — the redesigned timesheet document ══════════', '/* ── PrintView portal ── */'),
+      spanBetween('// ── Invoice presentation helpers ─────', '/* ── Portal wrapper for window.print() flow ── */'),
+      // The crash screen stays RAW on purpose: if the theme system itself is
+      // what broke, a themed error screen renders invisible. Same reasoning as
+      // the pre-existing root.innerHTML crash fallback above.
+      ...regexRanges(/class RootErrorBoundary[\s\S]*?\n      \}\n/g),
+      ...regexRanges(/className="meta" style=\{\{fontSize:'10\.5px',color:'#525252',marginTop:6\}\}/g),
     ];
     const inExempt = (i) => exempt.some(([a, b]) => i >= a && i < b);
     const leaks = [];
@@ -330,6 +353,43 @@ function main() {
     }
     ok(`zero token-value literals outside the exempt zones (26 tokens × 3 encodings)`,
       leaks.length === 0, leaks.slice(0, 6).join(' | '));
+  }
+
+  // ── 6. CLASS-FAMILY GUARD ─────────────────────────────────────────────────
+  // The leak scan (5) catches raw token VALUES. This catches the other way a
+  // colour escapes the theme: a Tailwind utility from a family the theme
+  // system never remaps. `bg-orange-500` renders identically in both themes
+  // and no other assertion can see it — it simply ships un-themed.
+  //
+  // Every colour utility in index.html must therefore resolve to one of:
+  //   REMAPPED  — neutral / sky / fuchsia / tm-* (these read the CSS vars, so
+  //               poppy re-colours them for free);
+  //   ACHROMATIC— white / black / transparent / current / inherit (deliberately
+  //               theme-invariant: on-accent ink, scrims, dividers);
+  //   ALLOWLIST — semantic stock colours that MUST NOT follow the brand hue,
+  //               because their meaning is the colour: destructive red, warning
+  //               amber, and the named orange button variant. A pink "delete"
+  //               would be actively harmful, so these are pinned, not themed.
+  // A new family outside all three fails here rather than shipping unnoticed.
+  console.log('6. Class-family guard (no colour utility outside remapped / achromatic / allowlist)');
+  {
+    const REMAPPED   = new Set(['neutral', 'sky', 'fuchsia']);
+    const ACHROMATIC = new Set(['white', 'black', 'transparent', 'current', 'inherit']);
+    const ALLOWLIST  = new Set(['red', 'amber', 'orange']);
+    const PROPS = 'bg|text|border|ring|divide|from|to|via|placeholder|caret|accent|decoration|outline|shadow|fill|stroke';
+    const FAMILIES = 'slate|gray|zinc|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|blue|indigo|violet|purple|pink|rose|neutral|sky|fuchsia|white|black|transparent|current|inherit';
+    const re = new RegExp(`\\b(?:${PROPS})-(${FAMILIES})(?:-\\d{2,3})?(?:\\/\\d{1,3})?\\b`, 'g');
+    const seen = new Map();
+    for (const m of html.matchAll(re)) {
+      const fam = m[1];
+      if (REMAPPED.has(fam) || ACHROMATIC.has(fam) || ALLOWLIST.has(fam)) continue;
+      const line = html.slice(0, m.index).split('\n').length;
+      if (!seen.has(m[0])) seen.set(m[0], line);
+    }
+    // tm-* utilities are matched separately: they are custom names, not families.
+    const offenders = [...seen].map(([cls, line]) => `${cls} @line ${line}`);
+    ok('every colour utility belongs to a remapped family, the achromatic set, or the pinned allowlist',
+      offenders.length === 0, offenders.slice(0, 8).join(' | '));
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────
