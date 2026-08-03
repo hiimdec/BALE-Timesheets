@@ -6070,7 +6070,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function TsdChip({ kind, lg }) {
       const g = TSD_CHIP[kind];
       if (!g) return null;
-      const w = lg ? g.lgW : g.w;
+      // +1 unit of box on the RIGHT only (device-calibrated): with the ink
+      // anchored at the ORIGINAL centre, WebKit's rendering of the tracked
+      // caps read marginally tighter on the right pill edge than the left.
+      // The extra unit equalises the optical margins; vertical geometry is
+      // untouched (the 5784e1f padding is correct).
+      const baseW = lg ? g.lgW : g.w;
+      const w = baseW + 1;
       const h = lg ? 19 : 16;
       const px = (v) => (v * 0.794).toFixed(1) + 'px';
       return (
@@ -6078,7 +6084,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {g.stroke
             ? <rect x="0.5" y="0.5" width={w - 1} height={h - 1} rx={(h - 1) / 2} fill={g.fill} stroke={g.stroke} strokeWidth="1" />
             : <rect width={w} height={h} rx={h / 2} fill={g.fill} />}
-          <text x={w / 2} y={lg ? 12.9 : 11} textAnchor="middle" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize={lg ? 9.5 : 8.5} fontWeight="700" letterSpacing={lg ? 0.7 : 0.5} fill={g.ink}>{g.label}</text>
+          <text x={baseW / 2} y={lg ? 12.9 : 11} textAnchor="middle" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize={lg ? 9.5 : 8.5} fontWeight="700" letterSpacing={lg ? 0.7 : 0.5} fill={g.ink}>{g.label}</text>
         </svg>
       );
     }
