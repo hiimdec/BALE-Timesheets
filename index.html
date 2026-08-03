@@ -6965,97 +6965,97 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const snapHours = snapshot ? snapshot.reduce((s, d) => s + (Number(d.hours) || 0), 0) : 0;
       const snapTotal = snapshot ? snapshot.reduce((s, d) => s + (Number(d.total) || 0), 0) : 0;
 
-      const renderBackPage = () => {
-        if (!hasBreakdown && !manualNotes) return null;
-        return (
-          <div className="inv-page" key="inv-back">
-            <div className="inv-repeat">
-              <span><strong>{invoice.invoiceNumber}</strong>{invoice.fromName ? ` · ${invoice.fromName}` : ''}{invoice.jobTitle ? ` · ${invoice.jobTitle}` : ''}{invoice.toName ? ` · ${invoice.toName}` : ''}</span>
-              <span className="inv-mono" style={{ fontWeight: 700, color: '#404040' }}>{fmtGBP(dueAmount)}</span>
-            </div>
-
-            {hasBreakdown && (
-              <>
-                <div className="inv-bdhead">
-                  <div className="inv-sectlabel">Detailed breakdown</div>
-                  <div style={{ flex: 1 }} />
-                  <div className="inv-bdnote">Every figure reconciles to the line items on page 1</div>
-                </div>
-
-                {snapshot && snapshot.length > 0 ? (
-                  <div className="inv-bdcrew">
-                    <div className="inv-bdcrew-hdr">
-                      <div className="inv-bdcrew-left">
-                        <div className="inv-bdcrew-name">{invoice.fromName || ''}</div>
-                        <div className="inv-bdcrew-role">{invoice.jobRole || ''}</div>
-                      </div>
-                      <div className="inv-bdcrew-right">
-                        <div className="inv-bdcrew-hrs inv-mono">{snapHours.toFixed(1)}h</div>
-                        <div className="inv-bdcrew-amt inv-mono">{fmtGBP(snapTotal)}</div>
-                      </div>
-                    </div>
-                    {snapshot.map((day, di) => (
-                      <div key={day.date || di} className="inv-bdday">
-                        <div className="inv-bdday-hdr">
-                          <div className="inv-bdday-name">{fmtDayHeading(day.date)}</div>
-                          <div className="inv-bdday-type">{day.dayType}{day.stepUpRole ? ` · stepped up: ${day.stepUpRole}` : ''}</div>
-                          {(day.callTime && day.wrapTime)
-                            ? <div className="inv-bdday-times inv-mono">{day.callTime} – {day.wrapTime} · {(Number(day.hours) || 0).toFixed(1)}h</div>
-                            : ((Number(day.hours) || 0) > 0 ? <div className="inv-bdday-times inv-mono">{(Number(day.hours) || 0).toFixed(1)}h</div> : null)}
-                        </div>
-                        <div className="inv-bdlines">
-                          {(day.lines || []).map((l, li) => {
-                            const bits = [];
-                            if (l.detail) bits.push(l.detail);
-                            if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) bits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
-                            return (
-                              <React.Fragment key={li}>
-                                <div className={`inv-bl-label${invChipKind(l.label) ? ' withchip' : ''}`}>
-                                  {invChipKind(l.label) && <InvChip kind={invChipKind(l.label)} />}
-                                  <span>{l.label}</span>
-                                </div>
-                                <div className="inv-bl-basis inv-mono">{bits.join(' · ')}</div>
-                                <div className="inv-bl-amt inv-mono">{fmtGBP(l.amount)}</div>
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-                        <div className="inv-bdsub">
-                          <div />
-                          <div className="inv-bdsub-label">Day subtotal</div>
-                          <div className="inv-bdsub-amt inv-mono">{fmtGBP(day.total)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="inv-legacy" style={{ marginTop: '19.1px' }}>
-                    {legacyNotes.split(/\n\n+/).map((block, i) => <div key={i} className="inv-legacy-block">{block}</div>)}
-                  </div>
-                )}
-
-                <div className="inv-grand" style={{ marginTop: '23.8px', height: '60.3px' }}>
-                  <div><div className="inv-grandlabel">Invoiced total</div></div>
-                  <div className="inv-grandval inv-mono">{fmtGBP(dueAmount)}</div>
-                </div>
-              </>
-            )}
-
-            {manualNotes && (
-              <div className="inv-notes">
-                <div className="inv-sect" style={{ margin: hasBreakdown ? '22.2px 0 0' : '0 0 0' }}>
-                  <div className="inv-sectlabel">Notes</div>
-                  <div className="inv-sectrule" />
-                </div>
-                <div className="inv-notes-body">{manualNotes}</div>
-              </div>
-            )}
-
-            <PageFoot n={2} of={2} />
+      // ── The breakdown as PACKABLE BLOCKS ───────────────────────────────
+      // Not a pre-built page: a list of {h, el} the packer can place. That is
+      // what lets page-1 overspill and the breakdown share page 2, and lets
+      // the breakdown continue at WHOLE-DAY boundaries — every day block is
+      // atomic, so a day's lines and its DAY SUBTOTAL always travel together.
+      const BD_HEAD_H = 42, BD_CREW_H = 40, BD_DAY_FIXED = 45, BD_LINE = 18, BD_TOTAL_H = 86, BD_NOTE_H = 46;
+      const breakdownBlocks = [];
+      if (hasBreakdown) {
+        breakdownBlocks.push({ h: BD_HEAD_H, el: (
+          <div className="inv-bdhead" key="bd-head">
+            <div className="inv-sectlabel">Detailed breakdown</div>
+            <div style={{ flex: 1 }} />
+            <div className="inv-bdnote">Every figure reconciles to the line items on page 1</div>
           </div>
-        );
-      };
-      const backPage = renderBackPage ? renderBackPage() : null;
+        ) });
+        if (snapshot && snapshot.length > 0) {
+          breakdownBlocks.push({ h: BD_CREW_H, el: (
+            <div className="inv-bdcrew" key="bd-crew" style={{ marginTop: 0 }}>
+              <div className="inv-bdcrew-hdr">
+                <div className="inv-bdcrew-left">
+                  <div className="inv-bdcrew-name">{invoice.fromName || ''}</div>
+                  <div className="inv-bdcrew-role">{invoice.jobRole || ''}</div>
+                </div>
+                <div className="inv-bdcrew-right">
+                  <div className="inv-bdcrew-hrs inv-mono">{snapHours.toFixed(1)}h</div>
+                  <div className="inv-bdcrew-amt inv-mono">{fmtGBP(snapTotal)}</div>
+                </div>
+              </div>
+            </div>
+          ) });
+          snapshot.forEach((day, di) => {
+            const lineCount = (day.lines || []).length;
+            breakdownBlocks.push({ h: BD_DAY_FIXED + BD_LINE * lineCount, el: (
+              <div key={`bd-${day.date || di}`} className="inv-bdday">
+                <div className="inv-bdday-hdr">
+                  <div className="inv-bdday-name">{fmtDayHeading(day.date)}</div>
+                  <div className="inv-bdday-type">{day.dayType}{day.stepUpRole ? ` · stepped up: ${day.stepUpRole}` : ''}</div>
+                  {(day.callTime && day.wrapTime)
+                    ? <div className="inv-bdday-times inv-mono">{day.callTime} – {day.wrapTime} · {(Number(day.hours) || 0).toFixed(1)}h</div>
+                    : ((Number(day.hours) || 0) > 0 ? <div className="inv-bdday-times inv-mono">{(Number(day.hours) || 0).toFixed(1)}h</div> : null)}
+                </div>
+                <div className="inv-bdlines">
+                  {(day.lines || []).map((l, li) => {
+                    const bits = [];
+                    if (l.detail) bits.push(l.detail);
+                    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) bits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
+                    return (
+                      <React.Fragment key={li}>
+                        <div className={`inv-bl-label${invChipKind(l.label) ? ' withchip' : ''}`}>
+                          {invChipKind(l.label) && <InvChip kind={invChipKind(l.label)} />}
+                          <span>{l.label}</span>
+                        </div>
+                        <div className="inv-bl-basis inv-mono">{bits.join(' · ')}</div>
+                        <div className="inv-bl-amt inv-mono">{fmtGBP(l.amount)}</div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+                <div className="inv-bdsub">
+                  <div />
+                  <div className="inv-bdsub-label">Day subtotal</div>
+                  <div className="inv-bdsub-amt inv-mono">{fmtGBP(day.total)}</div>
+                </div>
+              </div>
+            ) });
+          });
+        } else {
+          legacyNotes.split(/\n\n+/).forEach((block, i) => {
+            breakdownBlocks.push({ h: BD_DAY_FIXED, el: (
+              <div key={`lg-${i}`} className="inv-legacy inv-legacy-block" style={{ marginTop: i === 0 ? '19.1px' : '8px' }}>{block}</div>
+            ) });
+          });
+        }
+        breakdownBlocks.push({ h: BD_TOTAL_H, el: (
+          <div className="inv-grand" key="bd-total" style={{ marginTop: '23.8px', height: '60.3px' }}>
+            <div><div className="inv-grandlabel">Invoiced total</div></div>
+            <div className="inv-grandval inv-mono">{fmtGBP(dueAmount)}</div>
+          </div>
+        ) });
+      }
+      if (manualNotes) {
+        breakdownBlocks.push({ h: BD_NOTE_H, el: (
+          <div className="inv-notes" key="bd-notes">
+            <div className="inv-sect" style={{ margin: '0 0 0' }}>
+              <div className="inv-sectlabel">Notes</div>
+              <div className="inv-sectrule" />
+            </div>
+            <div className="inv-notes-body">{manualNotes}</div>
+          </div>
+        ) });
+      }
       const HEAD_MATTER = (
         <>
               <div className="inv-hdr">
@@ -7187,10 +7187,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
       const NOTE_BLOCK = (
         <>
-<div className="inv-note">Please quote the invoice reference with payment.{backPage ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
+<div className="inv-note">Please quote the invoice reference with payment.{breakdownBlocks.length ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
         </>
       );
-      const totalPages = backPage ? 2 : 1;
 
       return (
         <div id="invoice-print-view" style={IS_NATIVE ? { position: 'fixed', left: '-10000px', top: 0, zIndex: -1 } : undefined}>
@@ -7255,35 +7254,58 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 s.rows.forEach((r, ri) => items.push({ h: ROW, el: <React.Fragment key={`${s.key}-${ri}`}>{r}</React.Fragment> }));
               });
 
-              const chunks = [];
-              let cur = [], rem = BUDGET - HEADH - THEAD - BARH;
-              items.forEach(it => {
-                if (rem < it.h && cur.length) { chunks.push(cur); cur = []; rem = BUDGET - SLIM - THEAD; }
-                cur.push(it.el); rem -= it.h;
-              });
-              chunks.push(cur);
-
-              // The tail is no longer one lump: TOTALS, PAYMENT DETAILS and the
-              // note are packed as SEPARATE blocks, so the total stays with the
-              // line items whenever it fits and only what genuinely doesn't fit
-              // moves on. PAYMENT DETAILS remains ATOMIC — it is one block that
-              // moves whole; it is never split, so the banking guarantee holds.
+              // TOTALS, PAYMENT DETAILS and the note are separate blocks, so the
+              // total stays with the line items whenever it fits. PAYMENT DETAILS
+              // is ATOMIC — one block that moves whole, never split.
               const tailBlocks = [
                 { h: totalsH, el: TOTALS_BLOCK },
                 ...(bankFields.length ? [{ h: bankH, el: BANK_BLOCK }] : []),
                 { h: noteH, el: NOTE_BLOCK },
               ];
-              const onLastChunk = [], extraPages = [];
-              let tailRem = rem;
-              let spill = null;
-              tailBlocks.forEach(b => {
-                if (spill === null && tailRem >= b.h) { onLastChunk.push(b.el); tailRem -= b.h; return; }
-                if (spill === null) { spill = [b.el]; tailRem = BUDGET - SLIM - b.h; return; }
-                if (tailRem >= b.h) { spill.push(b.el); tailRem -= b.h; }
-                else { extraPages.push(spill); spill = [b.el]; tailRem = BUDGET - SLIM - b.h; }
+
+              // ── PHASE 1 — page 1 ONLY ─────────────────────────────────────
+              // Rule 1: page 1 is a self-contained invoice (line items, total,
+              // payment details). Breakdown blocks are simply not offered to
+              // this phase, so they can never land here even when space remains.
+              const p1Rows = [];
+              let rem = BUDGET - HEADH - THEAD - BARH;
+              let ri = 0;
+              for (; ri < items.length; ri++) {
+                if (rem < items[ri].h) break;
+                p1Rows.push(items[ri].el); rem -= items[ri].h;
+              }
+              const p1Tail = [];
+              let ti = 0;
+              if (ri === items.length) {          // tail only once the table is complete
+                for (; ti < tailBlocks.length; ti++) {
+                  if (rem < tailBlocks[ti].h) break;
+                  p1Tail.push(tailBlocks[ti].el); rem -= tailBlocks[ti].h;
+                }
+              }
+
+              // ── PHASE 2 — pages 2+ ────────────────────────────────────────
+              // Rule 2: whatever page 1 could not hold flows here FIRST, and the
+              // breakdown follows below it on the same page.
+              // Rule 3: every block here is placed whole — a day that will not
+              // fit the remaining space moves entirely to the next page, so no
+              // day is split and no DAY SUBTOTAL is orphaned.
+              const rest = [
+                ...items.slice(ri).map(b => ({ h: b.h, el: b.el, kind: 'row' })),
+                ...tailBlocks.slice(ti).map(b => ({ h: b.h, el: b.el, kind: 'plain' })),
+                ...breakdownBlocks.map(b => ({ h: b.h, el: b.el, kind: 'plain' })),
+              ];
+              const laterPages = [];
+              let page = [], pRem = BUDGET - SLIM, tableOpen = false;
+              rest.forEach(b => {
+                const need = b.h + (b.kind === 'row' && !tableOpen ? THEAD : 0);
+                if (pRem < need && page.length) {
+                  laterPages.push(page); page = []; pRem = BUDGET - SLIM; tableOpen = false;
+                }
+                if (b.kind === 'row' && !tableOpen) { pRem -= THEAD; tableOpen = true; }
+                page.push(b); pRem -= b.h;
               });
-              if (spill) extraPages.push(spill);
-              const total = chunks.length + extraPages.length + (backPage ? 1 : 0);
+              if (page.length) laterPages.push(page);
+              const total = 1 + laterPages.length;
 
               const repeat = (
                 <div className="inv-repeat">
@@ -7309,28 +7331,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </table>
               );
 
-              return chunks.map((rows, ci) => {
-                const isLast = ci === chunks.length - 1;
-                return (
-                  <div className="inv-page" key={`inv-front-${ci}`}>
-                    {ci === 0 ? HEAD_MATTER : repeat}
-                    {ci > 0 && <div className="inv-sect"><div className="inv-sectlabel">Line items (continued)</div><div className="inv-sectrule" /></div>}
-                    {tableFor(rows)}
-                    {isLast && <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />}
-                    {isLast && onLastChunk}
-                    <PageFoot n={ci + 1} of={total} />
-                  </div>
-                );
-              }).concat(extraPages.map((blocks, xi) => (
-                <div className="inv-page" key={`inv-tail-${xi}`}>
+              // Consecutive row-blocks on a later page share one table.
+              const renderBlocks = (blocks) => {
+                const out = []; let run = [];
+                const flush = () => { if (run.length) { out.push(tableFor(run.map(b => b.el))); run = []; } };
+                blocks.forEach(b => { if (b.kind === 'row') run.push(b); else { flush(); out.push(b.el); } });
+                flush();
+                return out.map((el, k) => <React.Fragment key={k}>{el}</React.Fragment>);
+              };
+
+              return [(
+                <div className="inv-page" key="inv-p1">
+                  {HEAD_MATTER}
+                  {tableFor(p1Rows)}
+                  <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />
+                  {p1Tail}
+                  <PageFoot n={1} of={total} />
+                </div>
+              )].concat(laterPages.map((blocks, xi) => (
+                <div className="inv-page" key={`inv-p${xi + 2}`}>
                   {repeat}
-                  {blocks}
-                  <PageFoot n={chunks.length + xi + 1} of={total} />
+                  {blocks.some(b => b.kind === 'row') && (
+                    <div className="inv-sect"><div className="inv-sectlabel">Line items (continued)</div><div className="inv-sectrule" /></div>
+                  )}
+                  {renderBlocks(blocks)}
+                  <PageFoot n={xi + 2} of={total} />
                 </div>
               )));
           })()}
-
-          {backPage}
         </div>
       );
     }
