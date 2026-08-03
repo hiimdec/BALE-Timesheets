@@ -5486,7 +5486,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       });
     }
 
-    // Returns {index, start, end, label}[] — used by ExportTab and TimesheetPage.
+    // Returns {index, start, end, label}[] — used by ExportTab and the print components.
     function computeWeeks(production, days) {
       if (production.weekStarts?.length > 0) {
         return [...production.weekStarts].sort().map((mondayISO, idx) => {
@@ -5549,191 +5549,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         page-break-after: always; break-after: page;
       }
       .page:last-child { page-break-after: auto; break-after: auto; }
-      .page.ts-page   { padding: 14mm; }
-
-      /* ── Shared header ── */
-      .doc-header {
-        display: flex; justify-content: space-between;
-        align-items: flex-start; padding-bottom: 12px;
-        border-bottom: 1px solid #d4d4d4; gap: 16px;
-      }
-      .doc-header .label {
-        font-size: 9px; text-transform: uppercase;
-        letter-spacing: 0.18em; color: #737373;
-        font-weight: 700; margin-bottom: 6px;
-      }
-      .doc-header .right { text-align: right; flex-shrink: 0; }
-      .doc-header .right .total {
-        font-size: 22px; font-weight: 800;
-        line-height: 1; margin-top: 4px; letter-spacing: -0.01em;
-      }
-      .ts-page .doc-header .right .total { font-size: 26px; }
-      .doc-header .right .breakdown { font-size: 10.5px; color: #525252; margin-top: 5px; }
-
-      /* ── Timesheet header ── */
-      .doc-header .name-role {
-        font-size: 22px; font-weight: 800;
-        letter-spacing: -0.01em; line-height: 1; margin-bottom: 4px;
-      }
-      .doc-header .name-role .role { font-weight: 500; color: #525252; font-size: 14px; }
-      .doc-header .meta { font-size: 10.5px; color: #525252; margin-top: 4px; line-height: 1.5; }
-      .doc-header .meta strong { color: #171717; font-weight: 600; }
-      .doc-header .rate-row {
-        display: inline-flex; align-items: center; gap: 8px;
-        font-size: 10.5px; color: #525252;
-        margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e5e5;
-      }
-      .doc-header .rate-row .num { font-weight: 700; color: #171717; }
-
-      /* ── Grid header ── */
-      .doc-header .title {
-        font-size: 22px; font-weight: 800;
-        letter-spacing: -0.01em; line-height: 1; margin-bottom: 4px;
-      }
-
-      /* ── Chip legend ── */
-      .legend {
-        display: flex; align-items: center; flex-wrap: wrap;
-        gap: 8px 12px; padding: 8px 0 6px;
-        font-size: 9px; color: #737373;
-        border-bottom: 1px solid #f5f5f5;
-      }
-      .legend .item { display: inline-flex; align-items: center; gap: 5px; }
-
-      /* ── Day-type chips ── */
-      .chip-day {
-        display: inline-flex; align-items: center; justify-content: center;
-        font-weight: 600; letter-spacing: 0.04em;
-        padding: 2px 6px 2.5px; border-radius: 6px;
-        line-height: 1; white-space: nowrap; flex-shrink: 0;
-      }
-      .ts-page   .chip-day { font-size: 9px;  padding: 2px 8px; }
-      .chip-day.shoot    { background: #082f49; color: white; }
-      .chip-day.prelight { background: #075985; color: white; }
-      .chip-day.recce    { background: #0284c7; color: white; }
-      .chip-day.prep,
-      .chip-day.build    { background: #0ea5e9; color: #082f49; }
-      .chip-day.derig,
-      .chip-day.strike   { background: #7dd3fc; color: #082f49; }
-      .chip-day.travel   { background: white; color: #075985; border: 1px solid #075985; padding: 1px 5px 1.5px; }
-
-      /* ── Penalty chips ── */
-      .chip-ot, .chip-msb, .chip-toc, .chip-ns, .chip-cwd {
-        display: inline-flex; align-items: center; justify-content: center;
-        font-weight: 700; font-size: 8px;
-        letter-spacing: 0.06em; text-transform: uppercase;
-        padding: 1.5px 5px 2px; border-radius: 5px;
-        line-height: 1; white-space: nowrap; flex-shrink: 0;
-      }
-      .ts-page .chip-ot,
-      .ts-page .chip-msb,
-      .ts-page .chip-toc,
-      .ts-page .chip-ns,
-      .ts-page .chip-cwd { font-size: 8.5px; padding: 1.5px 6px 2px; }
-      .chip-ot  { border: 1px solid #dc2626; color: #dc2626; background: white; }
-      .chip-msb { border: 1px solid #d97706; color: #d97706; background: white; }
-      .chip-cwd { background: #d97706; color: white; }
-      .chip-toc { background: #dc2626; color: white; }
-      .chip-ns  { background: #1e1b4b; color: white; }
-
-      /* ── Shared footer ── */
-      .doc-footer {
-        margin-top: 10px; padding-top: 10px;
-        border-top: 1px solid #d4d4d4;
-        display: flex; justify-content: space-between;
-        align-items: flex-end; gap: 16px;
-        font-size: 9px; color: #737373;
-      }
-      .doc-footer .pay-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-      .doc-footer .pay-info .lbl {
-        text-transform: uppercase; letter-spacing: 0.1em;
-        font-weight: 700; color: #525252;
-      }
-      .doc-footer .pay-info .val { color: #171717; font-weight: 500; }
-      .doc-footer .brand { text-align: right; line-height: 1.5; }
-      .doc-footer .brand .name { font-weight: 700; color: #404040; letter-spacing: 0.05em; }
-
-      /* ══════════ TIMESHEET LAYOUT ══════════ */
-
-      .day-list {
-        flex: 1;
-        display: grid;
-        grid-template-rows: repeat(6, 1fr) 0.45fr;
-        gap: 6px;
-        padding-top: 10px;
-        min-height: 0;
-      }
-      .day {
-        border: 1px solid #d4d4d4; border-radius: 10px;
-        display: grid; grid-template-columns: 44px 1fr 100px;
-        gap: 12px; padding: 8px 12px; align-items: stretch;
-      }
-
-      /* Date col */
-      .day .date {
-        border-right: 1px solid #e5e5e5; padding-right: 8px;
-        display: flex; flex-direction: column; justify-content: center;
-      }
-      .day .date .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
-      .day .date .num { font-size: 18px; font-weight: 800; line-height: 1; margin-top: 3px; }
-      .day .date .mo  { font-size: 8px; color: #737373; margin-top: 3px; line-height: 1; }
-
-      /* Body col */
-      .day .body { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; }
-      .day .head-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-      .day .times { font-size: 10px; color: #404040; font-weight: 600; margin-left: auto; }
-      .day .times .hrs { color: #737373; font-weight: 500; margin-left: 4px; }
-
-      /* Line items */
-      .day .lines {
-        display: grid; grid-template-columns: 1fr auto;
-        gap: 1px 16px; font-size: 10px; color: #404040; line-height: 1.35;
-      }
-      .day .lines .ll { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-      .day .lines .lr { font-weight: 600; color: #171717; }
-      .day .lines .ll strong { font-weight: 600; color: #171717; }
-      .day .lines .ll .sep { color: #a3a3a3; margin: 0 4px; }
-      .day .lines .ll .penalty { color: #b45309; font-weight: 600; }
-      .day .lines .ll .ot { color: #b91c1c; font-weight: 600; }
-
-      /* Total col */
-      .day .total {
-        border-left: 1px solid #e5e5e5; padding-left: 10px;
-        display: flex; flex-direction: column; justify-content: center; text-align: right;
-      }
-      .day .total .lbl { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: #737373; font-weight: 700; line-height: 1; }
-      .day .total .val { font-size: 16px; font-weight: 800; line-height: 1; margin-top: 5px; color: #171717; letter-spacing: -0.01em; }
-      .day .total .sub { font-size: 8px; color: #737373; margin-top: 4px; line-height: 1; }
-      .day-note { font-style: italic; font-size: 9.5px; color: #525252; padding: 5px 0 2px; line-height: 1.4; white-space: pre-wrap; }
-
-      /* Rest day */
-      .day.rest { border-color: #e5e5e5; background: #fafafa; }
-      .day.rest .body { flex-direction: row; align-items: center; justify-content: center; }
-      .day.rest .body .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.25em; color: #a3a3a3; font-weight: 700; }
-      .day.rest .total .lbl { color: #d4d4d4; }
-      .day.rest .total .val { color: #d4d4d4; font-size: 12px; font-weight: 600; }
-
-      /* Sat tint */
-      .day.sat { background: #fffbeb; border-color: #fcd34d; }
-      .day.sat .date { border-right-color: rgba(252,211,77,0.5); }
-      .day.sat .date .dow  { color: #b45309; }
-      .day.sat .date .num  { color: #78350f; }
-      .day.sat .date .mo   { color: rgba(180,83,9,0.7); }
-      .day.sat .total { border-left-color: rgba(252,211,77,0.5); }
-      .day.sat .total .lbl { color: #b45309; }
-      .day.sat .total .val { color: #78350f; }
-      .day.sat .total .sub { color: rgba(180,83,9,0.7); }
-
-      /* Sun/BH tint */
-      .day.sun { background: #fef2f2; border-color: #fca5a5; }
-      .day.sun .date { border-right-color: rgba(252,165,165,0.5); }
-      .day.sun .date .dow  { color: #b91c1c; }
-      .day.sun .date .num  { color: #7f1d1d; }
-      .day.sun .date .mo   { color: rgba(185,28,28,0.7); }
-      .day.sun .total { border-left-color: rgba(252,165,165,0.5); }
-      .day.sun .total .lbl { color: rgba(185,28,28,0.7); }
-      .day.rest.sun { background: #fef2f2; border-color: #fca5a5; }
-      .day.rest.sun .body .label { color: rgba(185,28,28,0.6); }
 
       /* ══════════ TSD — redesigned timesheet document (vector path) ══════════
          Faithful translation of the approved artefact: layout frame in mm
@@ -5853,6 +5668,36 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .tsd-bdsub-label { text-align: right; font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1.5; text-transform: uppercase; }
       .tsd-bdsub-amt { text-align: right; font-size: 8.3px; font-weight: 700; color: #171717; line-height: 1.3; }
       .tsd-cont { font-size: 7.1px; color: #a3a3a3; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+
+      /* solo (individual) week table */
+      .tsd-sd-th { background: #fafafa; border-top: 1px solid #e6e6e6; border-bottom: 1px solid #262626; padding: 7.9px 6.4px 8.7px; text-align: left; }
+      .tsd-sd-th.right { text-align: right; }
+      .tsd-sd-th.first { padding-left: 1.6px; }
+      .tsd-sd-th.last { padding-right: 1.6px; }
+      .tsd-sd-td { border-bottom: 1px solid #f2f2f2; padding: 7.1px 6.4px 7.9px; font-size: 8.7px; text-align: left; vertical-align: middle; }
+      .tsd-sd-td.right { text-align: right; }
+      .tsd-sd-td.first { padding-left: 1.6px; }
+      .tsd-sd-td.last { padding-right: 1.6px; }
+      tr.tsd-sd-worked .tsd-sd-td { padding: 9.5px 6.4px 10.3px; }
+      .tsd-sd-dow { font-size: 6.4px; font-weight: 700; letter-spacing: .16em; color: #a3a3a3; text-transform: uppercase; }
+      .tsd-sd-date { font-size: 8.7px; font-weight: 600; color: #a3a3a3; }
+      tr.tsd-sd-worked .tsd-sd-dow { color: #737373; }
+      tr.tsd-sd-worked .tsd-sd-date { font-size: 9.1px; font-weight: 700; color: #171717; }
+      .tsd-sd-times { font-size: 8.7px; color: #404040; }
+      .tsd-sd-type { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #525252; text-transform: uppercase; }
+      .tsd-sd-type.off { color: #a3a3a3; }
+      .tsd-sd-hrs { font-size: 9.1px; font-weight: 600; color: #171717; }
+      .tsd-sd-chips { display: flex; gap: 3.2px; }
+      .tsd-sd-amt { font-size: 8.7px; color: #171717; }
+      .tsd-sd-amt.pen { color: #be123c; }
+      .tsd-sd-total { font-size: 9.5px; font-weight: 700; color: #0a0a0a; }
+      .tsd-sd-foot-td { background: #fafafa; border-top: 1.5px solid #171717; padding: 9.5px 6.4px 10.3px; text-align: left; vertical-align: middle; }
+      .tsd-sd-foot-td.right { text-align: right; }
+      .tsd-sd-foot-label { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #171717; text-transform: uppercase; }
+      .tsd-sd-foot-sub { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #a3a3a3; text-transform: uppercase; }
+      .tsd-sd-foot-val { font-size: 9.1px; font-weight: 700; color: #171717; }
+      .tsd-sd-foot-val.pen { color: #be123c; }
+      .tsd-sd-foot-grand { font-size: 10.3px; font-weight: 800; letter-spacing: -.01em; color: #0a0a0a; }
 
       @media print {
         #root { display: none !important; }
@@ -6193,259 +6038,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     `;
 
     /* ── Chip Legend (shared) ── */
-    function ChipLegend() {
-      // REVERTED to the exact pre-8b7511b pill construction (ruled: the
-      // legend rendered fine on device PDFs before the total-column fix,
-      // and every legend rework since made it worse). The £-clip re-fix now
-      // lives entirely inside the TOTAL column (see .grid-row), leaving the
-      // legend and the shared chip rules byte-identical to their last-known-
-      // good state — this is also the controlled experiment: if the legend
-      // still squashes on the next device PDF, the 8b7511b-coupling theory
-      // is disproven; if it renders clean, goal achieved either way.
-      return (
-        <div className="legend">
-          <span className="item"><span className="chip-ot">OT</span> Overtime</span>
-          <span className="item"><span className="chip-msb">L1</span> Late 1st break</span>
-          <span className="item"><span className="chip-msb">L2</span> Late 2nd break</span>
-          <span className="item"><span className="chip-msb">MSB</span> Missed 2nd break</span>
-          <span className="item"><span className="chip-cwd">CWD</span> Cont. Working Day</span>
-          <span className="item"><span className="chip-toc">TOC</span> Turnaround</span>
-          <span className="item"><span className="chip-ns">NS</span> Night Shoot</span>
-        </div>
-      );
-    }
-
-    /* ── Penalty chip row (shared helper) ── */
-    function PenChips({ flags }) {
-      const chips = [];
-      if (flags.hasOT)        chips.push(<span key="ot"  className="chip-ot">OT</span>);
-      if (flags.hasL1)        chips.push(<span key="l1"  className="chip-msb">L1</span>);
-      if (flags.hasL2)        chips.push(<span key="l2"  className="chip-msb">L2</span>);
-      if (flags.hasMSB)       chips.push(<span key="msb" className="chip-msb">MSB</span>);
-      if (flags.hasCWD)       chips.push(<span key="cwd" className="chip-cwd">CWD</span>);
-      if (flags.hasTOC)       chips.push(<span key="toc" className="chip-toc">TOC</span>);
-      if (flags.isNightShoot) chips.push(<span key="ns"  className="chip-ns">NS</span>);
-      return chips.length ? <React.Fragment>{chips}</React.Fragment> : null;
-    }
-
-    /* ── Single timesheet page ── */
-    function TimesheetPage({ crewMember, weekDates, allDaysForCrew, production, pageNum, totalPages, weekIndex, totalWeeks, grandTotal, grandHrs, grandOTHrs, isFirstPage, userPrefs }) {
-      // Build per-day calc for this week
-      const dayMap = {};
-      (allDaysForCrew || []).forEach(d => { dayMap[d.date] = d; });
-
-      // Format week range label
-      const rangeStart = new Date(weekDates[0] + "T12:00:00");
-      const rangeEnd   = new Date(weekDates[6] + "T12:00:00");
-      const fmtRange = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      const rangeLabel = `${fmtRange(rangeStart)} – ${fmtRange(rangeEnd)}`;
-
-      // Header meta line
-      const metaParts = [
-        production.title || 'Untitled Production',
-        production.prodCo,
-        rangeLabel,
-        production.jobReference,
-      ].filter(Boolean);
-
-      // BDR / OT rate display
-      const bdr = Number(crewMember.bdr) || 0;
-      const bhr = computeAPArate(bdr, 1, roundingApa(production));
-      const otRate = (crewMember.otRate != null && crewMember.otRate > 0)
-        ? Number(crewMember.otRate)
-        : computeAPArate(bdr, Number(crewMember.otCoef) || 1.5, roundingApa(production));
-
-      return (
-        <div className="page ts-page">
-          {/* Header */}
-          <div className="doc-header">
-            <div>
-              <div className="label">{isFirstPage ? 'Crew Timesheet' : `Crew Timesheet · continued`}</div>
-              <div className="name-role">
-                {crewMember.name || 'Unnamed'}
-                {crewMember.role ? <span className="role"> · {crewMember.role}</span> : null}
-              </div>
-              <div className="meta">
-                <strong>{production.title || 'Untitled Production'}</strong>
-                {production.prodCo ? ` · ${production.prodCo}` : ''}
-                <br/>
-                {rangeLabel}
-                {production.jobReference ? ` · ${production.jobReference}` : ''}
-              </div>
-              {isFirstPage && bdr > 0 && (
-                <div className="rate-row">
-                  <span className="num">{fmtGBP(bdr)}</span><span>BDR</span>
-                  <span style={{color:'#d4d4d4'}}>·</span>
-                  <span className="num">{fmtGBP(otRate)}</span><span>OT/h</span>
-                  <span style={{color:'#d4d4d4'}}>·</span>
-                  <span>{(Number(crewMember.otCoef)||1.5)}×</span>
-                </div>
-              )}
-            </div>
-            <div className="right">
-              {isFirstPage ? (
-                <>
-                  <div className="label">Total · {allDaysForCrew.length} day{allDaysForCrew.length !== 1 ? 's' : ''}</div>
-                  <div className="total tnum">{fmtGBP(grandTotal)}</div>
-                  <div className="breakdown tnum">
-                    {grandHrs.toFixed(1)}h worked
-                    {grandOTHrs > 0 ? ` · ${grandOTHrs.toFixed(1)}h OT` : ''}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="label">{`Week ${weekIndex + 1} of ${totalWeeks}`}</div>
-                  <div className="breakdown tnum">{rangeLabel}</div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {isFirstPage && <ChipLegend />}
-
-          {/* Day rows */}
-          <div className="day-list">
-            {weekDates.map(dateISO => {
-              const day = dayMap[dateISO];
-              const d = new Date(dateISO + "T12:00:00");
-              const dow = d.toLocaleDateString('en-GB', { weekday: 'short' });
-              const dayNum = d.getDay(); // 0=Sun,6=Sat
-              const isSat = dayNum === 6;
-              const isSun = dayNum === 0;
-              const mo = d.toLocaleDateString('en-GB', { month: 'short' });
-              const dateNum = d.getDate();
-              const tintClass = isSat ? 'sat' : isSun ? 'sun' : '';
-
-              if (!day) {
-                // No record — the member simply isn't on this date. Renders
-                // as the inert "Day off" filler (Day-off model: the old
-                // "Rest" label conflated day-off with the PAID APA Rest Day).
-                return (
-                  <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
-                    <div className="date">
-                      <div className="dow">{dow}</div>
-                      <div className="num tnum">{dateNum}</div>
-                      <div className="mo tnum">{mo}</div>
-                    </div>
-                    <div className="body"><span className="label">Day off</span></div>
-                    <div className="total"><div className="lbl">-</div></div>
-                  </div>
-                );
-              }
-
-              // Resolve cascaded fields — call/wrap/dayType can live in
-              // dayDefaults with the raw day record leaving them undefined, so
-              // display must read the resolved values (the calc already does).
-              const resolved = resolveDay(production, day, crewMember);
-              // Day off record: same inert filler — £0, nothing billed.
-              if (resolved.dayType === "Day off") {
-                return (
-                  <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
-                    <div className="date">
-                      <div className="dow">{dow}</div>
-                      <div className="num tnum">{dateNum}</div>
-                      <div className="mo tnum">{mo}</div>
-                    </div>
-                    <div className="body"><span className="label">Day off</span></div>
-                    <div className="total"><div className="lbl">-</div></div>
-                  </div>
-                );
-              }
-              // Rest Day: the APA paid engaged type — shows its REAL amount
-              // (the header total always included it; the old '-' row was the
-              // hidden-money half of the split-brain).
-              if (resolved.dayType === "Rest Day") {
-                const restCalc = calcForDisplay(production, day, crewMember, null);
-                return (
-                  <div key={dateISO} className={`day rest${tintClass ? ' ' + tintClass : ''}`}>
-                    <div className="date">
-                      <div className="dow">{dow}</div>
-                      <div className="num tnum">{dateNum}</div>
-                      <div className="mo tnum">{mo}</div>
-                    </div>
-                    <div className="body"><span className="label">Rest Day</span></div>
-                    <div className="total"><div className="val tnum">{fmtGBP(restCalc.total)}</div></div>
-                  </div>
-                );
-              }
-
-              const prevDay = allDaysForCrew
-                .filter(x => x.date < dateISO)
-                .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0] || null;
-              const calc = calcForDisplay(production, day, crewMember, prevDay);
-              const flags = penaltyFlags(calc);
-              const isBH = flags.isBankHoliday;
-              const rowTint = isBH || isSun ? 'sun' : isSat ? 'sat' : '';
-
-              const callTime = resolved.callTime || '';
-              const wrapTime = resolved.wrapTime || '';
-              const workedHrs = calc.meta?.workedHrs || 0;
-              const otHrs = calc.meta?.otHrs || 0;
-              const chipClass = dayTypeChipClass(resolved.dayType);
-
-              return (
-                <div key={dateISO} className={`day${rowTint ? ' ' + rowTint : ''}`}>
-                  <div className="date">
-                    <div className="dow">{dow}</div>
-                    <div className="num tnum">{dateNum}</div>
-                    <div className="mo tnum">{mo}</div>
-                  </div>
-                  <div className="body">
-                    <div className="head-line">
-                      <span className={`chip-day ${chipClass}`}>{resolved.dayType}</span>
-                      <PenChips flags={flags} />
-                      {callTime && wrapTime && (
-                        <span className="times tnum">{callTime} → {wrapTime} <span className="hrs">{workedHrs.toFixed(1)}h</span></span>
-                      )}
-                    </div>
-                    <div className="lines">
-                      {calc.lines.map((line, i) => {
-                        const isOT = /\bot\b|\bovertime\b/i.test(line.label || '');
-                        const isPen = line.rate === null && !line.isTOC;
-                        return (
-                          <React.Fragment key={i}>
-                            <span className="ll">
-                              {isOT
-                                ? <>{line.detail ? <>{line.detail}<span className="sep">-</span></> : null}<span className="ot">{formatOTDuration(line.qty)}h {line.label}</span></>
-                                : isPen
-                                ? <><span className="penalty">{line.label}</span>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
-                                : <><strong>{line.label}</strong>{line.detail ? <><span className="sep">·</span>{line.detail}</> : null}</>
-                              }
-                            </span>
-                            <span className="lr tnum">{fmtGBP(line.amount)}</span>
-                          </React.Fragment>
-                        );
-                      })}
-                    </div>
-                    {day.note && day.note.trim() && <div className="day-note">{day.note}</div>}
-                  </div>
-                  <div className="total">
-                    <div className="lbl">Day Total</div>
-                    <div className="val tnum">{fmtGBP(calc.total)}</div>
-                    {otHrs > 0 && <div className="sub tnum">{otHrs.toFixed(1)}h OT</div>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Footer */}
-          <div className="doc-footer">
-            <div className="pay-info">
-              {isFirstPage && userPrefs?.vatRegistered && userPrefs?.vatNumber
-                ? <span><span className="lbl">VAT No.</span> <span className="val tnum">{userPrefs.vatNumber}</span></span>
-                : null}
-            </div>
-            <div className="brand">
-              <div className="name">TIMEMACHINE</div>
-              <div className="tnum">Page {pageNum} of {totalPages}</div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    /* ── Grid page ── */
     /* ══════════ TSD — the redesigned timesheet document ══════════
        Vector-path print components (NativePdf WKWebView on device, plain
        window.print() on web — same engine class). Data comes ONLY from
@@ -6592,25 +6184,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function TsdMetaStrip({ production, preparedBy, genDate }) {
+    // cells: [{label, value, mono}] — the grid doc passes 4, the solo doc 5;
+    // the grid auto-flows equal columns either way.
+    function TsdMetaStrip({ cells }) {
       return (
-        <div className="tsd-meta">
-          <div className="tsd-metacell">
-            <div className="tsd-metalabel">Production company</div>
-            <div className="tsd-metaval">{production.prodCo || '—'}</div>
-          </div>
-          <div className="tsd-metacell">
-            <div className="tsd-metalabel">Job ref</div>
-            <div className="tsd-metaval tsd-mono">{production.jobReference || '—'}</div>
-          </div>
-          <div className="tsd-metacell">
-            <div className="tsd-metalabel">Prepared by</div>
-            <div className="tsd-metaval">{preparedBy || '—'}</div>
-          </div>
-          <div className="tsd-metacell">
-            <div className="tsd-metalabel">Generated</div>
-            <div className="tsd-metaval tsd-mono">{genDate}</div>
-          </div>
+        <div className="tsd-meta" style={{ gridTemplateColumns: `repeat(${cells.length}, 1fr)` }}>
+          {cells.map((c, i) => (
+            <div key={i} className="tsd-metacell">
+              <div className="tsd-metalabel">{c.label}</div>
+              <div className={`tsd-metaval${c.mono ? ' tsd-mono' : ''}`}>{c.value || '—'}</div>
+            </div>
+          ))}
         </div>
       );
     }
@@ -7003,7 +6587,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   totalValue={fmtGBP(model.total)}
                   totalSub={`${model.hrs.toFixed(1)}h${model.otHrs > 0 ? ` · ${model.otHrs.toFixed(1)}h OT` : ''}`}
                 />
-                <TsdMetaStrip production={model.production} preparedBy={model.preparedBy} genDate={model.genDate} />
+                <TsdMetaStrip cells={[
+                  { label: 'Production company', value: model.production.prodCo },
+                  { label: 'Job ref', value: model.production.jobReference, mono: true },
+                  { label: 'Prepared by', value: model.preparedBy },
+                  { label: 'Generated', value: model.genDate, mono: true },
+                ]} />
                 <TsdSummary model={model} barId="grid" />
                 <TsdKeySection />
               </>
@@ -7030,212 +6619,201 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return out;
     }
 
-    /* Legacy raster-era GridPage — DEAD as of the vector cutover (no
-       callers; PrintView's grid branch builds TSD pages above). Removed
-       wholesale in the solo-redesign commit alongside the old TimesheetPage. */
-    function _legacyGridPageDead({ crew, weekDates, allDays, production, weekIndex, totalWeeks, pageNum, totalPages, isFirstPage, userPrefs }) {
-      const week = { start: weekDates[0], end: weekDates[6] };
-      const rangeStart = new Date(weekDates[0] + "T12:00:00");
-      const rangeEnd   = new Date(weekDates[6] + "T12:00:00");
-      const fmtShort = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      const rangeLabel = `${fmtShort(rangeStart)} – ${fmtShort(rangeEnd)}`;
-
-      // Build lookup: daysByCrewAndDate[crewId][date] = day object
-      const byCA = {};
-      (allDays || []).forEach(d => {
-        if (d.date >= week.start && d.date <= week.end) {
-          if (!byCA[d.crewId]) byCA[d.crewId] = {};
-          byCA[d.crewId][d.date] = d;
-        }
+    // ── TSD solo (individual) document ──────────────────────────────────
+    // One week = one 9-column day table (DAY / CALL–WRAP / TYPE / HOURS /
+    // CONDITIONS / BASIC / OVERTIME / PENALTIES / TOTAL). Per-day money
+    // columns come from bucketCalcTotals on the SAME cached calc the
+    // summary sums, so the table reconciles to the cards by construction.
+    function TsdSoloWeekTable({ model, week, weekNo }) {
+      const { byDate } = model.perCrew[0];
+      const dates = week.dates;
+      const dash = <span className="tsd-dash">–</span>;
+      const money = (v, pen) => v > 0.005 ? <span className={`tsd-sd-amt tsd-mono${pen ? ' pen' : ''}`}>{fmtGBP(v)}</span> : dash;
+      let workedCount = 0; const workedTypes = new Set();
+      let hrs = 0; const wb = { basic: 0, ot: 0, pen: 0 }; let tot = 0;
+      dates.forEach(dateISO => {
+        const e = byDate[dateISO];
+        if (!e || e.resolved.dayType === 'Day off') return;
+        const db = bucketCalcTotals(e.calc);
+        wb.basic += db.basic; wb.ot += db.ot; wb.pen += db.pen;
+        tot += e.calc.total; hrs += e.calc.meta?.workedHrs || 0;
+        if (e.resolved.dayType !== 'Rest Day') { workedCount++; workedTypes.add(e.resolved.dayType); }
       });
-
-      // Grand totals
-      let weekTotal = 0, weekHrs = 0, weekOTHrs = 0;
-      const crewTotals = crew.map(c => {
-        const crewDays = Object.values(byCA[c.id] || {});
-        const sorted = [...(allDays || [])].filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-        let tot = 0, hrs = 0, otHrs = 0;
-        crewDays.forEach(day => {
-          const prev = sorted.filter(x => x.date < day.date).pop() || null;
-          const calc = calcForDisplay(production, day, c, prev);
-          tot += calc.total;
-          hrs += calc.meta?.workedHrs || 0;
-          otHrs += calc.meta?.otHrs || 0;
-        });
-        weekTotal += tot;
-        weekHrs += hrs;
-        weekOTHrs += otHrs;
-        return { tot, hrs };
-      });
-
-      // Column day totals
-      const colTotals = weekDates.map(dateISO => {
-        let tot = 0, hrs = 0;
-        crew.forEach((c, ci) => {
-          const day = (byCA[c.id] || {})[dateISO];
-          // Day-off model: a Day off contributes nothing; a REST DAY is paid
-          // and now COUNTS here (fixes the row-vs-column inconsistency —
-          // row totals always included it). Resolved type, not raw.
-          if (!day || resolveDay(production, day, c).dayType === "Day off") return;
-          const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-          const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
-          const calc = calcForDisplay(production, day, c, prev);
-          tot += calc.total;
-          hrs += calc.meta?.workedHrs || 0;
-        });
-        return { tot, hrs };
-      });
-
-      const now = new Date();
-      const genLabel = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-        + ' · ' + now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-
+      const footType = workedCount > 0
+        ? (workedTypes.size === 1
+            ? `${workedCount} ${[...workedTypes][0]} day${workedCount === 1 ? '' : 's'}`
+            : `${workedCount} worked day${workedCount === 1 ? '' : 's'}`)
+        : '—';
       return (
-        <div className="page grid-page">
-          {/* Header */}
-          <div className="doc-header">
-            <div>
-              <div className="label">Production Grid</div>
-              <div className="title">{production.title || 'Untitled Production'}</div>
-              <div className="meta" style={{fontSize:'10.5px',color:'#525252',marginTop:6}}>
-                {[production.prodCo, `Week ${weekIndex + 1} of ${totalWeeks}`, `${crew.length} crew`, rangeLabel].filter(Boolean).join(' · ')}
-              </div>
-            </div>
-            <div className="right">
-              <div className="label">Week Total</div>
-              <div className="total tnum">{fmtGBP(weekTotal)}</div>
-              <div className="breakdown tnum">{weekHrs.toFixed(0)}h{weekOTHrs > 0 ? ` · ${weekOTHrs.toFixed(0)}h OT` : ''}</div>
-            </div>
+        <div>
+          <div className="tsd-sect" style={{ margin: '25.4px 0 9.5px' }}>
+            <div className="tsd-sectlabel">Week {weekNo}</div>
+            <div className="tsd-sectsub tsd-mono">{tsdFmtRange(dates[0], dates[6]).toUpperCase()}</div>
+            <div className="tsd-sectrule" />
           </div>
-
-          {isFirstPage && <ChipLegend />}
-
-          {/* Grid */}
-          <div className="grid-wrap">
-            <div className="grid-table">
-              <div className="grid-row grid-head">
-                <div className="grid-cell crew-col"></div>
-                {weekDates.map(dateISO => {
-                  const d = new Date(dateISO + "T12:00:00");
-                  const dn = d.getDay();
-                  const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
-                  return (
-                    <div key={dateISO} className={`grid-cell${cls ? ' ' + cls : ''}`}>
-                      <div className="dow">{d.toLocaleDateString('en-GB',{weekday:'short'})}</div>
-                      <div className="num">{d.getDate()}</div>
-                      <div className="mo tnum">{d.toLocaleDateString('en-GB',{month:'short'})}</div>
-                    </div>
-                  );
-                })}
-                <div className="grid-cell total-col"><div className="dow">Total</div></div>
-              </div>
-
-              {crew.map((c, ci) => {
-                const allCrewDays = (allDays || []).filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+          <table className="tsd-tbl">
+            <colgroup>
+              <col style={{ width: '22mm' }} /><col style={{ width: '24mm' }} /><col style={{ width: '18mm' }} />
+              <col style={{ width: '14mm' }} /><col style={{ width: '30mm' }} /><col style={{ width: '20mm' }} />
+              <col style={{ width: '20mm' }} /><col style={{ width: '20mm' }} /><col style={{ width: '18.5mm' }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className="tsd-sd-th first"><div className="tsd-colhead">Day</div></th>
+                <th className="tsd-sd-th"><div className="tsd-colhead">Call – wrap</div></th>
+                <th className="tsd-sd-th"><div className="tsd-colhead">Type</div></th>
+                <th className="tsd-sd-th right"><div className="tsd-colhead">Hours</div></th>
+                <th className="tsd-sd-th"><div className="tsd-colhead">Conditions</div></th>
+                <th className="tsd-sd-th right"><div className="tsd-colhead">Basic</div></th>
+                <th className="tsd-sd-th right"><div className="tsd-colhead">Overtime</div></th>
+                <th className="tsd-sd-th right"><div className="tsd-colhead">Penalties</div></th>
+                <th className="tsd-sd-th right last"><div className="tsd-colhead">Total</div></th>
+              </tr>
+            </thead>
+            <tbody>
+              {dates.map(dateISO => {
+                const d = new Date(dateISO + 'T12:00:00');
+                const dow = d.toLocaleDateString('en-GB', { weekday: 'short' });
+                const dateLbl = `${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`;
+                const e = byDate[dateISO];
+                const off = !e || e.resolved.dayType === 'Day off';
+                const worked = !off && e.resolved.dayType !== 'Rest Day';
+                const db = off ? null : bucketCalcTotals(e.calc);
+                const wh = e ? (e.calc.meta?.workedHrs || 0) : 0;
+                const chips = [];
+                if (worked) {
+                  ['hasOT', 'hasL1', 'hasL2', 'hasMSB', 'hasCWD', 'hasTOC'].forEach(f => {
+                    if (e.flags[f]) chips.push({ hasOT: 'OT', hasL1: 'L1', hasL2: 'L2', hasMSB: 'MSB', hasCWD: 'CWD', hasTOC: 'TOC' }[f]);
+                  });
+                  if (e.flags.isNightShoot) chips.push('NS');
+                }
                 return (
-                  <div key={c.id} className="grid-row grid-body">
-                    <div className="grid-cell crew">
-                      <div className="name">{c.name}</div>
-                      <div className="role">{c.role} · {fmtGBP(c.bdr)}</div>
-                    </div>
-                    {weekDates.map(dateISO => {
-                      const dn = new Date(dateISO + "T12:00:00").getDay();
-                      const colCls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
-                      const day = (byCA[c.id] || {})[dateISO];
-                      const resolved = day ? resolveDay(production, day, c) : null;
-                      // Day-off model: no record or a Day off record = the
-                      // muted dash (off, £0). A REST DAY is the paid APA type
-                      // and shows its real amount, distinct by design.
-                      if (!day || resolved.dayType === "Day off") {
-                        return (
-                          <div key={dateISO} className={`grid-cell${colCls ? ' ' + colCls : ''}`}>
-                            <span className="dayoff-label">–</span>
-                          </div>
-                        );
-                      }
-                      if (resolved.dayType === "Rest Day") {
-                        const restCalc = calcForDisplay(production, day, c, null);
-                        return (
-                          <div key={dateISO} className={`grid-cell${colCls ? ' ' + colCls : ''}`}>
-                            <div className="cell-stack">
-                              <div className="top"><span className="rest-label">Rest</span></div>
-                              <span className="total-val tnum">{fmtGBP(restCalc.total)}</span>
-                            </div>
-                          </div>
-                        );
-                      }
-                      const prev = allCrewDays.filter(x => x.date < dateISO).pop() || null;
-                      const calc = calcForDisplay(production, day, c, prev);
-                      const flags = penaltyFlags(calc);
-                      const isBH = flags.isBankHoliday;
-                      const cellCls = (isBH || dn === 0) ? 'sun' : dn === 6 ? 'sat' : '';
-                      const hrs = calc.meta?.workedHrs || 0;
-                      const chipCls = dayTypeChipClass(resolved.dayType);
-                      const penNodes = [];
-                      if (flags.hasOT)        penNodes.push(<span key="ot"  className="chip-ot">OT</span>);
-                      if (flags.hasL1)        penNodes.push(<span key="l1"  className="chip-msb">L1</span>);
-                      if (flags.hasL2)        penNodes.push(<span key="l2"  className="chip-msb">L2</span>);
-                      if (flags.hasMSB)       penNodes.push(<span key="msb" className="chip-msb">MSB</span>);
-                      if (flags.hasCWD)       penNodes.push(<span key="cwd" className="chip-cwd">CWD</span>);
-                      if (flags.hasTOC)       penNodes.push(<span key="toc" className="chip-toc">TOC</span>);
-                      if (flags.isNightShoot) penNodes.push(<span key="ns"  className="chip-ns">NS</span>);
-                      return (
-                        <div key={dateISO} className={`grid-cell${cellCls ? ' ' + cellCls : ''}`}>
-                          <div className="cell-stack">
-                            <div className="top">
-                              <span className={`chip-day ${chipCls}`}>{resolved.dayType}</span>
-                              <span className="hrs-line tnum">{hrs.toFixed(1)}h</span>
-                              {penNodes.length > 0 && <div className="pens">{penNodes}</div>}
-                            </div>
-                            <span className="total-val tnum">{fmtGBP(calc.total)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div className="grid-cell row-total">
-                      <div className="total-val tnum">{fmtGBP(crewTotals[ci].tot)}</div>
-                      <div className="total-hrs tnum">{crewTotals[ci].hrs.toFixed(1)}h</div>
-                    </div>
-                  </div>
+                  <tr key={dateISO} className={worked ? 'tsd-sd-worked' : undefined}>
+                    <td className="tsd-sd-td first"><span className="tsd-sd-dow">{dow}</span> <span className="tsd-sd-date tsd-mono">{dateLbl}</span></td>
+                    <td className="tsd-sd-td">{worked && e.resolved.callTime && e.resolved.wrapTime
+                      ? <span className="tsd-sd-times tsd-mono">{e.resolved.callTime} – {e.resolved.wrapTime}</span> : dash}</td>
+                    <td className="tsd-sd-td"><span className={`tsd-sd-type${off ? ' off' : ''}`}>{off ? 'Day off' : e.resolved.dayType}</span></td>
+                    <td className="tsd-sd-td right">{wh > 0 ? <span className="tsd-sd-hrs tsd-mono">{wh.toFixed(1)}h</span> : dash}</td>
+                    <td className="tsd-sd-td">{chips.length ? <div className="tsd-sd-chips">{chips.map(k => <TsdChip key={k} kind={k} />)}</div> : dash}</td>
+                    <td className="tsd-sd-td right">{money(db ? db.basic : 0)}</td>
+                    <td className="tsd-sd-td right">{money(db ? db.ot : 0)}</td>
+                    <td className="tsd-sd-td right">{money(db ? db.pen : 0, true)}</td>
+                    <td className="tsd-sd-td right last">{db && e.calc.total > 0.005
+                      ? <span className="tsd-sd-total tsd-mono">{fmtGBP(e.calc.total)}</span> : dash}</td>
+                  </tr>
                 );
               })}
-
-              <div className="grid-row grid-foot">
-                <div className="grid-cell crew">Day Totals</div>
-                {weekDates.map((dateISO, i) => {
-                  const dn = new Date(dateISO + "T12:00:00").getDay();
-                  const cls = dn === 6 ? 'sat' : dn === 0 ? 'sun' : '';
-                  const ct = colTotals[i];
-                  return (
-                    <div key={dateISO} className={`grid-cell${cls ? ' ' + cls : ''}`}>
-                      {ct.tot > 0
-                        ? <><div className="day-total-val tnum">{fmtGBP(ct.tot)}</div><div className="day-total-hrs tnum">{ct.hrs.toFixed(1)}h</div></>
-                        : <span style={{color:'#d4d4d4'}}>-</span>}
-                    </div>
-                  );
-                })}
-                <div className="grid-cell row-total">
-                  <div className="week-total tnum">{fmtGBP(weekTotal)}</div>
-                  <div className="day-total-hrs tnum">{weekHrs.toFixed(0)}h</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="doc-footer">
-            <div className="pay-info">
-              {production.prodCo && <span><span className="lbl">Production:</span> <span className="val">{production.prodCo}</span></span>}
-              {production.invoicingEmail && <span><span className="lbl">Email:</span> <span className="val">{production.invoicingEmail}</span></span>}
-              <span><span className="lbl">Generated:</span> <span className="val tnum">{genLabel}</span></span>
-            </div>
-            <div className="brand">
-              <div className="name">TIMEMACHINE</div>
-              <div className="tnum">Page {pageNum} of {totalPages} · Week {weekIndex + 1}</div>
-            </div>
-          </div>
+              <tr>
+                <td className="tsd-sd-foot-td first"><div className="tsd-sd-foot-label">Week totals</div></td>
+                <td className="tsd-sd-foot-td">{dash}</td>
+                <td className="tsd-sd-foot-td"><span className="tsd-sd-foot-sub">{footType}</span></td>
+                <td className="tsd-sd-foot-td right">{hrs > 0 ? <span className="tsd-sd-foot-val tsd-mono">{hrs.toFixed(1)}h</span> : dash}</td>
+                <td className="tsd-sd-foot-td">{dash}</td>
+                <td className="tsd-sd-foot-td right">{wb.basic > 0.005 ? <span className="tsd-sd-foot-val tsd-mono">{fmtGBP(wb.basic)}</span> : dash}</td>
+                <td className="tsd-sd-foot-td right">{wb.ot > 0.005 ? <span className="tsd-sd-foot-val tsd-mono">{fmtGBP(wb.ot)}</span> : dash}</td>
+                <td className="tsd-sd-foot-td right">{wb.pen > 0.005 ? <span className="tsd-sd-foot-val pen tsd-mono">{fmtGBP(wb.pen)}</span> : dash}</td>
+                <td className="tsd-sd-foot-td right last"><span className="tsd-sd-foot-grand tsd-mono">{fmtGBP(tot)}</span></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       );
+    }
+
+    function assembleTsdSoloPages(model) {
+      const PAGE_BUDGET = 1024, HDR_META = 103, SUMMARY = 120, KEY = 78, SLIM = 30;
+      const SOLO_FIXED = 100, SOLO_ROW = 26, SOLO_WORKED_ROW = 33, NOTE = 33;
+      const BD_HEAD = 40, BD_DAY_FIXED = 44, BD_LINE = 18.2, SAFETY = 1.05;
+      const { crew, byDate } = model.perCrew[0];
+      const title = crew.name || 'Crew';
+
+      const weekEls = model.weeksDates.map((week, i) => {
+        const onRows = week.dates.filter(d => byDate[d] && byDate[d].resolved.dayType !== 'Day off').length;
+        const h = (SOLO_FIXED + SOLO_ROW * (7 - onRows) + SOLO_WORKED_ROW * onRows) * SAFETY;
+        return { h, el: <TsdSoloWeekTable key={week.dates[0]} model={model} week={week} weekNo={i + 1} /> };
+      });
+      const tablePages = [];
+      let cur = null, rem = 0;
+      weekEls.forEach(({ h, el }) => {
+        if (!cur || rem < h) {
+          cur = [];
+          tablePages.push(cur);
+          rem = PAGE_BUDGET - (tablePages.length === 1 ? (HDR_META + SUMMARY + KEY) : SLIM) - NOTE;
+        }
+        cur.push(el);
+        rem -= h;
+      });
+      if (!tablePages.length) tablePages.push([]);
+
+      const entries = Object.values(byDate)
+        .filter(e => (e.calc.lines || []).length > 0)
+        .sort((a, b) => a.day.date.localeCompare(b.day.date));
+      const bdPages = [];
+      let bpage = null, brem = 0;
+      const newBdPage = () => { bpage = []; bdPages.push(bpage); brem = PAGE_BUDGET - SLIM - BD_HEAD; };
+      if (entries.length) newBdPage();
+      entries.forEach(entry => {
+        const dh = (BD_DAY_FIXED + BD_LINE * (entry.calc.lines || []).length) * SAFETY;
+        if (brem < dh) newBdPage();
+        bpage.push(<TsdBreakdownDay key={entry.day.date} entry={entry} />);
+        brem -= dh;
+      });
+
+      const totalPages = tablePages.length + bdPages.length;
+      const repeatStrip = (
+        <div className="tsd-repeat" style={{ paddingBottom: '7.1px', borderBottom: '1px solid #e6e6e6', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span><strong>{title}</strong> · {model.production.title || 'Untitled Production'} · {model.weeksLabel} · {model.rangeLabel}</span>
+          <span className="tsd-mono" style={{ fontWeight: 700, color: '#404040' }}>{fmtGBP(model.total)}</span>
+        </div>
+      );
+      const out = [];
+      tablePages.forEach((children, i) => {
+        out.push(
+          <div key={`sd-g${i}`} className="page tsd-page">
+            {i === 0 ? (
+              <>
+                <TsdDocHeader
+                  kicker="Timesheet · Individual"
+                  title={title}
+                  sub={<>{crew.role || ''}{crew.bdr != null ? <> · <span className="tsd-mono">BDR {fmtGBP(crew.bdr)}</span></> : null} · {model.weeksLabel} · <span className="tsd-mono">{model.rangeLabel}</span></>}
+                  totalLabel={model.totalLabel}
+                  totalValue={fmtGBP(model.total)}
+                  totalSub={`${model.hrs.toFixed(1)}h${model.otHrs > 0 ? ` · ${model.otHrs.toFixed(1)}h OT` : ''}`}
+                />
+                <TsdMetaStrip cells={[
+                  { label: 'Production', value: model.production.title },
+                  { label: 'Company', value: model.production.prodCo },
+                  { label: 'Job ref', value: model.production.jobReference, mono: true },
+                  { label: 'Prepared by', value: model.preparedBy },
+                  { label: 'Generated', value: model.genDate, mono: true },
+                ]} />
+                <TsdSummary model={model} barId="solo" />
+                <TsdKeySection />
+              </>
+            ) : repeatStrip}
+            {children}
+            {i === tablePages.length - 1 ? (
+              <div className="tsd-apanote">Basic includes the booked day rate and any day-rate uplift (continuous working day, night shoot). Overtime and break contraventions are itemised in the detailed breakdown.</div>
+            ) : null}
+            <TsdPageFoot genStamp={model.genStamp} pageNum={i + 1} totalPages={totalPages} />
+          </div>
+        );
+      });
+      bdPages.forEach((children, i) => {
+        out.push(
+          <div key={`sd-b${i}`} className="page tsd-page">
+            {repeatStrip}
+            <div className="tsd-bdhead" style={{ marginTop: '20.6px' }}>
+              <div className="tsd-sectlabel">Detailed breakdown{i > 0 ? ' · continued' : ''}</div>
+              <div style={{ flex: 1 }} />
+              <div className="tsd-bdnote"><TsdTick />Every figure reconciles to the week table</div>
+            </div>
+            {children}
+            <TsdPageFoot genStamp={model.genStamp} pageNum={tablePages.length + i + 1} totalPages={totalPages} />
+          </div>
+        );
+      });
+      return out;
     }
 
     /* ── PrintView portal ── */
@@ -7247,48 +6825,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const pages = [];
 
       if (mode === "timesheet" && crewMember) {
-        const crewDays = (days || [])
-          .filter(d => d.crewId === crewMember.id)
-          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
-        // Compute grand totals
-        let grandTotal = 0, grandHrs = 0, grandOTHrs = 0;
-        crewDays.forEach((day, i) => {
-          const prev = crewDays[i - 1] || null;
-          const calc = calcForDisplay(production, day, crewMember, prev);
-          grandTotal  += calc.total;
-          grandHrs    += calc.meta?.workedHrs || 0;
-          grandOTHrs  += calc.meta?.otHrs     || 0;
-        });
-
-        // Determine which weeks to render
         const weeksToRender = exportWeekIndex !== null && exportWeekIndex !== undefined
           ? [weeks[exportWeekIndex]].filter(Boolean)
           : weeks;
 
-        const totalPages = weeksToRender.length;
-
-        weeksToRender.forEach((wk, pi) => {
-          const weekDates = weekDateRange(wk.start);
-          pages.push(
-            <TimesheetPage
-              key={wk.start}
-              crewMember={crewMember}
-              weekDates={weekDates}
-              allDaysForCrew={crewDays}
-              production={production}
-              pageNum={pi + 1}
-              totalPages={totalPages}
-              weekIndex={wk.index}
-              totalWeeks={weeks.length}
-              grandTotal={grandTotal}
-              grandHrs={grandHrs}
-              grandOTHrs={grandOTHrs}
-              isFirstPage={pi === 0}
-              userPrefs={userPrefs}
-            />
-          );
-        });
+        // TSD solo document: the same single-calc-pass model as the grid
+        // (crew list of one), assembled into the individual layout.
+        const model = buildTsdGridModel(production, [crewMember], days, weeksToRender, weeks.length, userPrefs);
+        pages.push(...assembleTsdSoloPages(model));
       }
 
       if (mode === "grid" && crewList) {
