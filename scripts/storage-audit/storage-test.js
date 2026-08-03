@@ -7133,9 +7133,9 @@ async function main() {
     })();
     check('LP8a the document renders charges as ONE document: charges prop, section between items and totals, updated Total due',
       /function InvoiceDocument\(\{ invoice, userPrefs, charges = null \}\)/.test(html) &&
-      /className="invoice-charges"/.test(html) &&
-      /<span className="label">Invoice total<\/span>/.test(html) &&
-      /<span className="label">Late payment charges<\/span>/.test(html));
+      /className="inv-charges"/.test(html) &&
+      /<span className="inv-tlabel">Invoice total<\/span>/.test(html) &&
+      /<span className="inv-tlabel">Late payment charges<\/span>/.test(html));
     check('LP8b the editor print path passes the invoice\'s charges record into the print view',
       /<InvoicePrintView invoice=\{printTarget\} userPrefs=\{userPrefs\} charges=\{allInvoiceCharges\[printTarget\.id\] \|\| null\} \/>/.test(html));
     check('LP9 the accruing figure is computed on render, muted tm-pen, ONLY in the overdue detail — never stored',

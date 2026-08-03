@@ -5669,325 +5669,133 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     `;
 
     const INVOICE_PRINT_STYLES = `
+      * { box-sizing: border-box; margin: 0; padding: 0; }
       #invoice-print-view, #invoice-print-view * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
         color-adjust: exact !important;
       }
       #invoice-print-view {
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        color: #171717;
-        -webkit-font-smoothing: antialiased;
-        --ink: #171717;
-        --muted: #525252;
-        --hint: #737373;
-        --accent: #0284c7;
-        --hairline: #e5e5e5;
-        --rule: #171717;
-        --tint: #f0f9ff;
-        --soft: #fafafa;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: #171717; -webkit-font-smoothing: antialiased;
       }
-      .invoice-page {
-        width: 100%;
-        min-height: 277mm; /* A4 297mm − @page top+bottom margins 10mm+10mm */
-        padding: 0;
-        background: white;
-        display: flex;
-        flex-direction: column;
-        box-sizing: border-box;
+      /* Same page model as the device-proven timesheet: full-bleed A4 with the
+         design's own padding, 1mm under the sheet (the slack rule), and the
+         break rules unconditional so the plugin's WebView honours them. */
+      .inv-page {
+        width: 210mm; height: 296mm; background: white; overflow: hidden;
+        position: relative; padding: 11.3mm 11.8mm 0; font-size: 8.7px;
+        page-break-after: always; break-after: page;
       }
-      .invoice-page * { box-sizing: border-box; }
-      .invoice-page .tnum { font-variant-numeric: tabular-nums; }
-      /* Block wrapper so break-inside: avoid works — Chrome ignores it on flex children */
-      .invoice-content { display: block; flex: 1; min-width: 0; }
+      .inv-page:last-child { page-break-after: auto; break-after: auto; }
+      .inv-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
 
-      /* Header */
-      .invoice-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        padding-bottom: 16px;
-        border-bottom: 1px solid var(--accent);
-        gap: 24px;
-        margin-bottom: 24px;
-      }
-      .invoice-header .brand-block { min-width: 0; }
-      .invoice-header .brand-name {
-        font-size: 28px;
-        font-weight: 800;
-        line-height: 1;
-        letter-spacing: -0.01em;
-        color: var(--ink);
-      }
-      .invoice-header .brand-meta {
-        font-size: 11px;
-        color: var(--muted);
-        margin-top: 6px;
-        line-height: 1.5;
-      }
-      .invoice-header .brand-logo {
-        max-width: 200px;
-        max-height: 80px;
-        object-fit: contain;
-        display: block;
-      }
-      .invoice-header .right {
-        text-align: right;
-        flex-shrink: 0;
-      }
-      .invoice-header .invoice-label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.18em;
-        color: var(--accent);
-        font-weight: 700;
-        margin-bottom: 4px;
-      }
-      .invoice-header .invoice-number {
-        font-size: 28px;
-        font-weight: 800;
-        line-height: 1;
-        letter-spacing: -0.01em;
-        color: var(--ink);
-      }
-      .invoice-header .dates {
-        font-size: 11px;
-        color: var(--muted);
-        margin-top: 8px;
-        line-height: 1.6;
-      }
-      .invoice-header .dates strong { color: var(--ink); font-weight: 600; }
+      .inv-hdr { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15.9px; border-bottom: 1.5px solid #171717; }
+      .inv-logo { max-width: 133px; max-height: 63.5px; display: block; object-fit: contain; }
+      .inv-brandname { font-size: 15.1px; font-weight: 800; letter-spacing: -.02em; color: #0a0a0a; line-height: 1.15; }
+      .inv-brandsub { font-size: 8.7px; color: #737373; line-height: 1; margin-top: 5.6px; }
+      .inv-kicker { font-size: 7.1px; font-weight: 700; letter-spacing: .2em; color: #0284c7; line-height: 1; text-transform: uppercase; }
+      .inv-number { font-size: 21.4px; font-weight: 800; letter-spacing: -.03em; color: #0a0a0a; line-height: 1; margin-top: 7.9px; }
+      .inv-datestrip { display: flex; justify-content: flex-end; gap: 17.5px; margin-top: 11.1px; }
+      .inv-datelabel { font-size: 6.4px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .inv-dateval { font-size: 9.1px; font-weight: 600; color: #404040; line-height: 1; margin-top: 4.8px; }
+      .inv-dateval.due { color: #171717; }
+      .inv-datediv { width: 1px; height: 20.6px; background: #e6e6e6; }
 
-      /* Section labels */
-      .invoice-section-label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.18em;
-        color: var(--accent);
-        font-weight: 700;
-        margin-bottom: 8px;
-      }
+      .inv-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 31.8px; margin-top: 22.2px; }
+      .inv-partylabel { font-size: 6.4px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .inv-partyname { font-size: 9.9px; font-weight: 700; color: #171717; line-height: 1; margin-top: 8.7px; }
+      .inv-partyline { font-size: 8.7px; color: #525252; line-height: 1.65; margin-top: 4.8px; white-space: pre-line; }
+      .inv-partymeta { font-size: 7.9px; color: #737373; line-height: 1; margin-top: 6.4px; }
 
-      /* Parties */
-      .invoice-parties {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 60px;
-        margin-bottom: 24px;
-      }
-      .invoice-parties .party-name {
-        font-size: 14px;
-        font-weight: 700;
-        color: var(--ink);
-        margin-bottom: 4px;
-      }
-      .invoice-parties .party-line {
-        font-size: 11px;
-        color: var(--muted);
-        line-height: 1.6;
-        white-space: pre-line;
-      }
+      .inv-meta { display: grid; background: #fafafa; border-top: 1px solid #e6e6e6; border-bottom: 1px solid #e6e6e6; margin-top: 23.8px; }
+      .inv-metacell { padding: 9.5px 12.7px 10.3px; border-right: 1px solid #e6e6e6; }
+      .inv-metacell:last-child { border-right: none; }
+      .inv-metalabel { font-size: 6.4px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .inv-metaval { font-size: 9.1px; font-weight: 600; color: #171717; line-height: 1; margin-top: 5.6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-      /* Job strip */
-      .invoice-job-strip {
-        background: var(--soft);
-        border-left: 3px solid var(--accent);
-        padding: 10px 16px;
-        margin-bottom: 20px;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 4px 28px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .invoice-job-strip .job-row { display: flex; gap: 4px; align-items: baseline; line-height: 1.5; }
-      .invoice-job-strip .job-key {
-        font-size: 9px;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        font-weight: 700;
-        color: var(--hint);
-        white-space: nowrap;
-        flex-shrink: 0;
-      }
-      .invoice-job-strip .job-val { color: var(--ink); font-weight: 500; }
+      .inv-sect { display: flex; align-items: center; gap: 9.5px; margin: 25.4px 0 9.5px; }
+      .inv-sectlabel { font-size: 7.1px; font-weight: 700; letter-spacing: .2em; color: #0284c7; line-height: 1; text-transform: uppercase; }
+      .inv-sectrule { flex: 1; height: 1px; background: #e6e6e6; }
 
-      /* Lines */
-      .invoice-lines-wrap { margin-bottom: 18px; }
-      .invoice-lines {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 11px;
-      }
-      .invoice-lines thead th {
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        color: var(--hint);
-        font-weight: 700;
-        padding: 8px 8px 10px;
-        text-align: right;
-        border-bottom: 1.5px solid var(--rule);
-      }
-      .invoice-lines thead th:first-child { text-align: left; }
-      .invoice-lines tbody tr { page-break-inside: avoid; }
-      .invoice-lines tbody td {
-        padding: 10px 8px;
-        vertical-align: top;
-        border-bottom: 1px solid #f5f5f5;
-        font-size: 11px;
-        color: var(--ink);
-      }
-      .invoice-lines tbody td.num {
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-        white-space: nowrap;
-      }
-      .invoice-lines tbody td .line-detail {
-        font-size: 10px;
-        color: var(--hint);
-        margin-top: 2px;
-      }
-      .invoice-lines tbody tr.waived td {
-        text-decoration: line-through;
-        color: #a3a3a3;
-      }
-      .invoice-lines tbody tr.waived td .waived-badge {
-        text-decoration: none;
-      }
-      .waived-badge {
-        display: inline-block;
-        background: #fef3c7;
-        color: #92400e;
-        font-size: 9px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        padding: 2px 6px;
-        margin-left: 8px;
-        border-radius: 2px;
-        text-decoration: none;
-      }
+      .inv-tbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      .inv-th { border-bottom: 1px solid #262626; padding: 0 6.4px 7.1px; text-align: right; font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .inv-th.desc { text-align: left; padding-left: 1.6px; }
+      .inv-th.last { padding-right: 1.6px; }
+      .inv-td { border-bottom: 1px solid #f2f2f2; padding: 11.1px 6.4px 11.9px; text-align: right; vertical-align: top; font-size: 9.1px; color: #404040; }
+      .inv-td.desc { text-align: left; padding-left: 1.6px; }
+      .inv-td.last { padding-right: 1.6px; font-size: 9.5px; font-weight: 700; color: #0a0a0a; }
+      .inv-linelabel { font-size: 9.5px; font-weight: 700; color: #171717; line-height: 1; }
+      .inv-linedetail { font-size: 7.5px; color: #a3a3a3; line-height: 1.35; margin-top: 4.8px; }
+      /* Waive treatment carried over from the previous invoice: struck-through
+         grey row, badge kept upright. */
+      tr.inv-waived .inv-td { text-decoration: line-through; color: #a3a3a3; }
+      tr.inv-waived .inv-td.last { color: #a3a3a3; font-weight: 600; }
+      tr.inv-waived .inv-td .inv-badge { text-decoration: none; }
+      .inv-badge { display: inline-block; background: #fff1f3; border: 1px solid #e11d48; color: #be123c; font-size: 6.4px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; padding: 1.6px 4.8px 2.4px; border-radius: 6.4px; margin-left: 5.6px; vertical-align: middle; line-height: 1; }
 
-      /* Totals */
-      .invoice-totals {
-        display: flex;
-        justify-content: flex-end;
-        margin-bottom: 20px;
-      }
-      .invoice-totals .totals-stack { min-width: 280px; }
-      .invoice-totals .row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 6px 8px;
-        font-size: 11px;
-      }
-      .invoice-totals .row .label { color: var(--muted); }
-      .invoice-totals .row .value {
-        font-variant-numeric: tabular-nums;
-        color: var(--ink);
-        font-weight: 600;
-      }
-      .invoice-totals .row.grand {
-        background: var(--tint);
-        border-top: 2px solid var(--accent);
-        padding: 12px 8px;
-        margin-top: 4px;
-      }
-      .invoice-totals .row.grand .label,
-      .invoice-totals .row.grand .value {
-        color: #0c4a6e;
-        font-weight: 700;
-      }
-      .invoice-totals .row.grand .value { font-size: 18px; }
+      .inv-totals-wrap { display: flex; justify-content: flex-end; margin-top: 14.3px; }
+      .inv-totals { width: 317.6px; }
+      .inv-trow { display: flex; justify-content: space-between; align-items: center; height: 23.8px; border-bottom: 1px solid #f2f2f2; }
+      .inv-tlabel { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #737373; line-height: 1; text-transform: uppercase; }
+      .inv-tval { font-size: 9.5px; font-weight: 600; color: #171717; line-height: 1; }
+      .inv-grand { height: 66.7px; background: #171717; border-radius: 4.8px; padding: 13.5px 15.9px; margin-top: 9.5px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 0 0 0.6px #171717; }
+      .inv-grandlabel { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .inv-grandsub { font-size: 7.1px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1; margin-top: 7.1px; text-transform: uppercase; }
+      .inv-grandval { font-size: 22.2px; font-weight: 800; letter-spacing: -.03em; color: #ffffff; line-height: 1; }
 
-      /* Late payment charges — one document: original lines above, the
-         statutory working here, updated Total due in the totals stack. */
-      .invoice-charges { margin-bottom: 18px; page-break-inside: avoid; break-inside: avoid; }
-      .invoice-charges .charge-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        gap: 16px;
-        padding: 5px 0;
-        border-bottom: 1px solid #f5f5f5;
-        font-size: 11px;
-      }
-      .invoice-charges .charge-row .desc { color: #404040; line-height: 1.45; }
-      .invoice-charges .charge-row .amt {
-        font-variant-numeric: tabular-nums;
-        color: var(--ink);
-        font-weight: 600;
-        white-space: nowrap;
-      }
+      .inv-bank { background: #fafafa; border: 1px solid #e6e6e6; border-radius: 4.8px; padding: 14.3px 17.5px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14.3px 19.1px; }
+      .inv-bankkey { font-size: 6.4px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .inv-bankval { font-size: 9.1px; font-weight: 600; color: #171717; line-height: 1; margin-top: 5.6px; word-break: break-word; }
+      .inv-bankfield.wide { grid-column: 1 / -1; border-top: 1px solid #e6e6e6; padding-top: 11.9px; }
+      .inv-note { margin-top: 12.7px; font-size: 7.5px; color: #a3a3a3; line-height: 1.5; }
 
-      /* Notes */
-      .invoice-notes { margin-bottom: 18px; page-break-inside: avoid; break-inside: avoid; }
-      .invoice-notes-body { font-size: 11px; line-height: 1.5; color: #404040; }
-      .notes-day {
-        white-space: pre-line;
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-      .notes-day + .notes-day { margin-top: 8px; }
+      .inv-foot { position: absolute; left: 11.8mm; right: 11.8mm; bottom: 7.6mm; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e6e6e6; padding-top: 8.7px; }
+      .inv-foot-gen { font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .inv-foot-brand { display: flex; align-items: center; gap: 5.5px; }
+      .inv-foot-name { font-size: 7.1px; font-weight: 800; letter-spacing: .1em; color: #0284c7; line-height: 1; }
+      .inv-foot-url { font-size: 6.7px; color: #c4c4c4; line-height: 1; }
+      .inv-foot-div { width: 1px; height: 7.9px; background: #e6e6e6; margin: 0 2.4px; }
+      .inv-foot-page { font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1; }
 
-      /* Bank */
-      .invoice-bank {
-        background: var(--soft);
-        padding: 14px 18px;
-        margin-bottom: 18px;
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-      .invoice-bank-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px 24px;
-      }
-      .invoice-bank-field {
-        font-size: 11px;
-        line-height: 1.5;
-      }
-      .invoice-bank-field .key {
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: var(--hint);
-        font-weight: 600;
-        margin-bottom: 1px;
-      }
-      .invoice-bank-field .val {
-        color: var(--ink);
-        font-variant-numeric: tabular-nums;
-      }
-
-      /* Footer */
-      .invoice-footer {
-        border-top: 1px solid #f5f5f5;
-        padding-top: 20px;
-        margin-top: auto;
-        text-align: center;
-        font-size: 10px;
-        color: var(--hint);
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-      }
-      .invoice-footer strong { color: var(--ink); font-weight: 700; }
+      .inv-repeat { font-size: 7.9px; color: #737373; line-height: 1; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #e6e6e6; padding-bottom: 7.9px; }
+      .inv-repeat strong { font-weight: 700; color: #404040; }
+      .inv-bdhead { display: flex; align-items: center; gap: 11.1px; margin: 20.6px 0 3.2px; padding-bottom: 7.1px; border-bottom: 1.5px solid #171717; }
+      .inv-bdnote { font-size: 7.5px; color: #a3a3a3; line-height: 1; }
+      .inv-bdcrew { margin-top: 19.1px; }
+      .inv-bdcrew-hdr { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6.4px; border-bottom: 1px solid #262626; }
+      .inv-bdcrew-left { display: flex; align-items: baseline; gap: 8.7px; }
+      .inv-bdcrew-name { font-size: 11.1px; font-weight: 800; letter-spacing: -.015em; color: #0a0a0a; line-height: 1; }
+      .inv-bdcrew-role { font-size: 6.7px; font-weight: 700; letter-spacing: .14em; color: #737373; line-height: 1; text-transform: uppercase; }
+      .inv-bdcrew-right { display: flex; align-items: baseline; gap: 10.3px; }
+      .inv-bdcrew-hrs { font-size: 7.9px; color: #a3a3a3; line-height: 1; }
+      .inv-bdcrew-amt { font-size: 11.9px; font-weight: 800; letter-spacing: -.02em; color: #0a0a0a; line-height: 1; }
+      .inv-bdday { margin-top: 11.1px; page-break-inside: avoid; break-inside: avoid; }
+      .inv-bdday-hdr { display: flex; align-items: baseline; gap: 7.1px; margin-bottom: 4.8px; }
+      .inv-bdday-name { font-size: 8.7px; font-weight: 700; color: #171717; line-height: 1; }
+      .inv-bdday-type { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #737373; line-height: 1; text-transform: uppercase; }
+      .inv-bdday-times { font-size: 7.5px; color: #a3a3a3; line-height: 1; }
+      .inv-bdlines { display: grid; grid-template-columns: 1fr 139.7px 76.2px; }
+      .inv-bl-label { padding: 2.4px 0 2.4px 12.7px; font-size: 8.3px; color: #333333; line-height: 1.5; }
+      .inv-bl-basis { padding: 2.4px 0; text-align: right; font-size: 7.5px; color: #a3a3a3; line-height: 1.66; }
+      .inv-bl-amt { padding: 2.4px 0; text-align: right; font-size: 8.3px; font-weight: 600; color: #171717; line-height: 1.5; }
+      .inv-bdsub { display: grid; grid-template-columns: 1fr 139.7px 76.2px; border-top: 1px dotted #d4d4d4; margin-top: 4px; padding-top: 4px; }
+      .inv-bdsub-label { text-align: right; font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1.5; text-transform: uppercase; }
+      .inv-bdsub-amt { text-align: right; font-size: 8.3px; font-weight: 700; color: #171717; line-height: 1.3; }
+      .inv-legacy { font-size: 8.3px; color: #404040; line-height: 1.5; white-space: pre-wrap; }
+      .inv-legacy-block { page-break-inside: avoid; break-inside: avoid; }
+      .inv-legacy-block + .inv-legacy-block { margin-top: 8px; }
+      .inv-notes { margin-top: 22.2px; page-break-inside: avoid; break-inside: avoid; }
+      .inv-notes-body { font-size: 8.7px; color: #404040; line-height: 1.55; white-space: pre-wrap; margin-top: 9.5px; }
+      .inv-charges { margin-top: 14.3px; }
+      .inv-charge-row { display: flex; justify-content: space-between; gap: 12.7px; font-size: 8.3px; color: #404040; line-height: 1.5; padding: 2.4px 0; }
+      .inv-charge-row .amt { font-weight: 600; color: #171717; }
 
       @media print {
-        body > *:not(#invoice-print-view) { display: none !important; }
+        #root { display: none !important; }
         #invoice-print-view { display: block !important; }
-        html, body { background: white !important; margin: 0; }
-        .invoice-page {
-          page-break-after: always;
-          break-after: page;
-        }
-        .invoice-page:last-child {
-          page-break-after: auto;
-          break-after: auto;
-        }
-        @page { size: A4 portrait; margin: 10mm 15mm; }
+        body { background: white; padding: 0; margin: 0; }
+        @page { size: A4 portrait; margin: 0; }
       }
     `;
 
@@ -6894,16 +6702,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (fav) {
           // Clean 2-column row: Description + the billed amount only (no Qty/Rate).
           return [
-            <tr key={`${item.id}-${fullyWaived ? 'w' : 'k'}`} className={fullyWaived ? 'waived' : undefined}>
-              <td>
-                <div>
+            <tr key={`${item.id}-${fullyWaived ? 'w' : 'k'}`} className={fullyWaived ? 'inv-waived' : undefined}>
+              <td className="inv-td desc">
+                <div className="inv-linelabel">
                   {label}
-                  {fullyWaived && <span className="waived-badge">Waived</span>}
-                  {partiallyWaived && <span className="waived-badge">Reduced</span>}
+                  {fullyWaived && <span className="inv-badge">Waived</span>}
+                  {partiallyWaived && <span className="inv-badge">Reduced</span>}
                 </div>
-                {item.detail && <div className="line-detail">{item.detail}</div>}
+                {item.detail && <div className="inv-linedetail">{item.detail}</div>}
               </td>
-              <td className="num">{fmtGBP(fullyWaived ? item.amount : getLineTotal(item))}</td>
+              <td className="inv-td last inv-mono">{fmtGBP(fullyWaived ? item.amount : getLineTotal(item))}</td>
             </tr>
           ];
         }
@@ -6911,30 +6719,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (fullyWaived) {
           // Single strikethrough row — no kept portion
           rows.push(
-            <tr key={`${item.id}-w`} className="waived">
-              <td>
-                <div>
+            <tr key={`${item.id}-w`} className="inv-waived">
+              <td className="inv-td desc">
+                <div className="inv-linelabel">
                   {label}
-                  <span className="waived-badge">Waived</span>
+                  <span className="inv-badge">Waived</span>
                 </div>
-                {item.detail && <div className="line-detail">{item.detail}</div>}
+                {item.detail && <div className="inv-linedetail">{item.detail}</div>}
               </td>
-              <td className="num">{isFixed ? "" : item.qty}</td>
-              <td className="num">{isFixed ? "" : fmtGBP(item.rate)}</td>
-              <td className="num">{fmtGBP(item.amount)}</td>
+              <td className="inv-td inv-mono">{isFixed ? "" : item.qty}</td>
+              <td className="inv-td inv-mono">{isFixed ? "" : fmtGBP(item.rate)}</td>
+              <td className="inv-td last inv-mono">{fmtGBP(item.amount)}</td>
             </tr>
           );
         } else {
           // Kept portion row (always rendered)
           rows.push(
             <tr key={`${item.id}-k`}>
-              <td>
-                <div>{label}</div>
-                {item.detail && <div className="line-detail">{item.detail}</div>}
+              <td className="inv-td desc">
+                <div className="inv-linelabel">{label}</div>
+                {item.detail && <div className="inv-linedetail">{item.detail}</div>}
               </td>
-              <td className="num">{isFixed ? "" : (partiallyWaived ? billedQty : item.qty)}</td>
-              <td className="num">{isFixed ? "" : fmtGBP(item.rate)}</td>
-              <td className="num">
+              <td className="inv-td inv-mono">{isFixed ? "" : (partiallyWaived ? billedQty : item.qty)}</td>
+              <td className="inv-td inv-mono">{isFixed ? "" : fmtGBP(item.rate)}</td>
+              <td className="inv-td last inv-mono">
                 {fmtGBP(getLineTotal(item))}
               </td>
             </tr>
@@ -6942,16 +6750,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           // Waived portion row (only if partial)
           if (partiallyWaived) {
             rows.push(
-              <tr key={`${item.id}-w`} className="waived">
-                <td>
-                  <div>
+              <tr key={`${item.id}-w`} className="inv-waived">
+                <td className="inv-td desc">
+                  <div className="inv-linelabel">
                     {label}
-                    <span className="waived-badge">Waived</span>
+                    <span className="inv-badge">Waived</span>
                   </div>
                 </td>
-                <td className="num">{waivedQty}</td>
-                <td className="num">{fmtGBP(item.rate)}</td>
-                <td className="num">{fmtGBP(waivedQty * item.rate)}</td>
+                <td className="inv-td inv-mono">{waivedQty}</td>
+                <td className="inv-td inv-mono">{fmtGBP(item.rate)}</td>
+                <td className="inv-td last inv-mono">{fmtGBP(waivedQty * item.rate)}</td>
               </tr>
             );
           }
@@ -6968,242 +6776,220 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         { key: "SWIFT/BIC",    val: invoice.bankSWIFT },
       ].filter(f => f.val && String(f.val).trim());
 
+      const genStamp = (() => { const n = new Date(); return `${n.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})} · ${n.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; })();
+      const InvLogo = () => (
+        <svg viewBox="-1 -1 16 14" style={{ display: 'block', flex: 'none', width: '12.7px', height: '11.1px' }}>
+          <rect x="0" y="0" width="14" height="3" rx="1.5" fill="#0ea5e9" />
+          <rect x="0" y="4.5" width="9" height="3" rx="1.5" fill="#ff8a3d" />
+          <rect x="0" y="9" width="4.5" height="3" rx="1.5" fill="#f43f5e" />
+        </svg>
+      );
+      const metaCells = [
+        { label: 'Job', value: invoice.jobTitle },
+        { label: 'Job ref', value: invoice.jobReference, mono: true },
+        { label: 'Role', value: invoice.jobRole },
+        { label: 'Dates', value: invoice.shootDateStart ? `${fmtInvDate(invoice.shootDateStart)}${invoice.shootDateEnd && invoice.shootDateEnd !== invoice.shootDateStart ? ` – ${fmtInvDate(invoice.shootDateEnd)}` : ''}` : '', mono: true },
+      ].filter(c => c.value && String(c.value).trim());
+      const chargeTotal = charges ? (Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0) : 0;
+      const dueAmount = total + chargeTotal;
+      const PageFoot = ({ n, of }) => (
+        <div className="inv-foot">
+          <div className="inv-foot-gen inv-mono">Generated {genStamp}</div>
+          <div className="inv-foot-brand">
+            <InvLogo />
+            <div className="inv-foot-name">TIMEMACHINE</div>
+            <div className="inv-foot-url">timemachineapp.co.uk</div>
+            <div className="inv-foot-div" />
+            <div className="inv-foot-page inv-mono">Page {n} of {of}</div>
+          </div>
+        </div>
+      );
+      // Back page. Commit 1 keeps the EXISTING behaviour: the invoice's frozen
+      // notes text (the auto-generated day-by-day) rendered in the breakdown
+      // slot, split per day so a block never straddles a page.
+      const renderBackPage = () => {
+        const cleanNotes = (invoice.notes || '').replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '').trim();
+        if (!cleanNotes) return null;
+        return (
+          <div className="inv-page" key="inv-back">
+            <div className="inv-repeat">
+              <span><strong>{invoice.invoiceNumber}</strong>{invoice.fromName ? ` · ${invoice.fromName}` : ''}{invoice.jobTitle ? ` · ${invoice.jobTitle}` : ''}{invoice.toName ? ` · ${invoice.toName}` : ''}</span>
+              <span className="inv-mono" style={{ fontWeight: 700, color: '#404040' }}>{fmtGBP(dueAmount)}</span>
+            </div>
+            <div className="inv-bdhead">
+              <div className="inv-sectlabel">Detailed breakdown</div>
+              <div style={{ flex: 1 }} />
+              <div className="inv-bdnote">Every figure reconciles to the line items on page 1</div>
+            </div>
+            <div className="inv-legacy" style={{ marginTop: '19.1px' }}>
+              {cleanNotes.split(/\n\n+/).map((block, i) => <div key={i} className="inv-legacy-block">{block}</div>)}
+            </div>
+            <div className="inv-grand" style={{ marginTop: '23.8px', height: '60.3px' }}>
+              <div><div className="inv-grandlabel">Invoiced total</div></div>
+              <div className="inv-grandval inv-mono">{fmtGBP(dueAmount)}</div>
+            </div>
+            <PageFoot n={2} of={2} />
+          </div>
+        );
+      };
+      const backPage = renderBackPage ? renderBackPage() : null;
+      const totalPages = backPage ? 2 : 1;
+
       return (
-        <div id="invoice-print-view" className="invoice-print-root" style={IS_NATIVE ? { position: 'fixed', left: '-10000px', top: 0, zIndex: -1 } : undefined}>
+        <div id="invoice-print-view" style={IS_NATIVE ? { position: 'fixed', left: '-10000px', top: 0, zIndex: -1 } : undefined}>
           <style dangerouslySetInnerHTML={{ __html: INVOICE_PRINT_STYLES }} />
-          <div className="invoice-page">
-            <div className="invoice-content">
 
-            {/* Header */}
-            <div className="invoice-header">
-              <div className="brand-block">
-                {userPrefs.logoBase64 ? (
-                  <img src={userPrefs.logoBase64} alt="" className="brand-logo"/>
-                ) : (
-                  <>
-                    <div className="brand-name">{invoice.fromName || ""}</div>
-                    {invoice.fromCompanyName && <div className="brand-meta">{invoice.fromCompanyName}</div>}
-                  </>
-                )}
-              </div>
-              <div className="right">
-                <div className="invoice-label">Invoice</div>
-                <div className="invoice-number">{invoice.invoiceNumber}</div>
-                <div className="dates">
-                  <div>Issued <strong>{fmtInvDate(invoice.invoiceDate)}</strong></div>
-                  <div>Due <strong>{fmtInvDate(invoice.dueDate)}</strong></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Parties */}
-            <div className="invoice-parties">
+          <div className="inv-page">
+            <div className="inv-hdr">
               <div>
-                <div className="invoice-section-label">From</div>
-                <div className="party-name">{invoice.fromName || ""}</div>
-                {invoice.fromCompanyName && <div className="party-line">{invoice.fromCompanyName}</div>}
-                {invoice.fromAddress && <div className="party-line">{invoice.fromAddress}</div>}
-                {invoice.fromEmail && <div className="party-line">{invoice.fromEmail}</div>}
-                {invoice.vatRegistered && invoice.vatNumber && (
-                  <div className="party-line">VAT: {invoice.vatNumber}</div>
-                )}
+                {userPrefs?.logoBase64
+                  ? <img className="inv-logo" src={userPrefs.logoBase64} alt="" />
+                  : (<><div className="inv-brandname">{invoice.fromName || invoice.fromCompanyName || ''}</div>
+                      {invoice.fromName && invoice.fromCompanyName && <div className="inv-brandsub">{invoice.fromCompanyName}</div>}</>)}
               </div>
-              {(invoice.toName || invoice.toAddress || invoice.toEmail) && (
-                <div>
-                  <div className="invoice-section-label">Bill To</div>
-                  {invoice.toName && <div className="party-name">{invoice.toName}</div>}
-                  {invoice.toAddress && <div className="party-line">{invoice.toAddress}</div>}
-                  {invoice.toEmail && <div className="party-line">{invoice.toEmail}</div>}
-                </div>
-              )}
-            </div>
-
-            {/* Job strip — 2×2 grid: Job | Ref / Role | Shoot dates */}
-            {(invoice.jobTitle || invoice.jobRole || invoice.jobReference || invoice.shootDateStart) && (
-              <div className="invoice-job-strip">
-                <div className="job-row">
-                  {invoice.jobTitle
-                    ? <><span className="job-key">Job</span><span className="job-val">{invoice.jobTitle}</span></>
-                    : null}
-                </div>
-                <div className="job-row">
-                  {invoice.jobReference
-                    ? <><span className="job-key">Ref</span><span className="job-val">{invoice.jobReference}</span></>
-                    : null}
-                </div>
-                <div className="job-row">
-                  {invoice.jobRole
-                    ? <><span className="job-key">Role</span><span className="job-val">{invoice.jobRole}</span></>
-                    : null}
-                </div>
-                <div className="job-row">
-                  {invoice.shootDateStart
-                    ? <><span className="job-key">Dates</span><span className="job-val">
-                        {invoice.shootDateStart === invoice.shootDateEnd || !invoice.shootDateEnd
-                          ? fmtInvDate(invoice.shootDateStart)
-                          : `${fmtInvDate(invoice.shootDateStart)} – ${fmtInvDate(invoice.shootDateEnd)}`}
-                      </span></>
-                    : null}
-                </div>
-              </div>
-            )}
-
-            {/* Lines */}
-            <div className="invoice-lines-wrap">
-              <div className="invoice-section-label">Line Items</div>
-              <table className="invoice-lines">
-                <thead>
-                  {fav ? (
-                    <tr>
-                      <th style={{ width: '78%' }}>Description</th>
-                      <th style={{ width: '22%' }}>Amount</th>
-                    </tr>
-                  ) : (
-                    <tr>
-                      <th style={{ width: '52%' }}>Description</th>
-                      <th style={{ width: '10%' }}>Qty</th>
-                      <th style={{ width: '18%' }}>Rate</th>
-                      <th style={{ width: '20%' }}>Amount</th>
-                    </tr>
+              <div style={{ textAlign: 'right' }}>
+                <div className="inv-kicker">Invoice</div>
+                <div className="inv-number inv-mono">{invoice.invoiceNumber}</div>
+                <div className="inv-datestrip">
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="inv-datelabel">Issued</div>
+                    <div className="inv-dateval inv-mono">{fmtInvDate(invoice.issueDate)}</div>
+                  </div>
+                  {invoice.dueDate && <div className="inv-datediv" />}
+                  {invoice.dueDate && (
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="inv-datelabel">Due</div>
+                      <div className="inv-dateval due inv-mono">{fmtInvDate(invoice.dueDate)}</div>
+                    </div>
                   )}
-                </thead>
-                <tbody>
-                  {normalLines.map(item => renderLineRows(item))}
-                  {!showInd && expenseLines.length > 0 && (() => {
-                    const sum = expenseLines.reduce((s, l) => s + getLineTotal(l), 0);
-                    return (
-                      <tr key="expenses-rollup">
-                        <td>
-                          <div>Expenses</div>
-                          <div className="line-detail">{expenseLines.length} item{expenseLines.length !== 1 ? "s" : ""}</div>
-                        </td>
-                        {!fav && <td className="num"></td>}
-                        {!fav && <td className="num"></td>}
-                        <td className="num">{fmtGBP(sum)}</td>
-                      </tr>
-                    );
-                  })()}
-                  {showInd && expenseLines.map(item => renderLineRows(item, cleanExpenseLabel(item)))}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
 
-            {/* Late payment charges (R3) — the attached record, rendered as
-                part of the SAME document: original lines above are untouched;
-                the working sits here and the totals stack below carries the
-                updated Total due. Absent record → byte-identical document. */}
+            <div className="inv-parties">
+              <div>
+                <div className="inv-partylabel">From</div>
+                <div className="inv-partyname">{invoice.fromName || ''}</div>
+                {invoice.fromCompanyName && <div className="inv-partyline">{invoice.fromCompanyName}</div>}
+                {invoice.fromAddress && <div className="inv-partyline">{invoice.fromAddress}</div>}
+                {invoice.fromEmail && <div className="inv-partymeta inv-mono">{invoice.fromEmail}</div>}
+                {invoice.vatRegistered && invoice.vatNumber && <div className="inv-partymeta inv-mono">VAT no. {invoice.vatNumber}</div>}
+              </div>
+              <div>
+                <div className="inv-partylabel">Bill to</div>
+                <div className="inv-partyname">{invoice.toName || ''}</div>
+                {invoice.toAddress && <div className="inv-partyline">{invoice.toAddress}</div>}
+                {invoice.toEmail && <div className="inv-partymeta inv-mono">{invoice.toEmail}</div>}
+              </div>
+            </div>
+
+            {metaCells.length > 0 && (
+              <div className="inv-meta" style={{ gridTemplateColumns: `repeat(${metaCells.length}, 1fr)` }}>
+                {metaCells.map((c, i) => (
+                  <div key={i} className="inv-metacell">
+                    <div className="inv-metalabel">{c.label}</div>
+                    <div className={`inv-metaval${c.mono ? ' inv-mono' : ''}`}>{c.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="inv-sect"><div className="inv-sectlabel">Line items</div><div className="inv-sectrule" /></div>
+
+            <table className="inv-tbl">
+              <colgroup>
+                {fav ? <><col style={{ width: '73%' }} /><col style={{ width: '27%' }} /></>
+                     : <><col style={{ width: '52%' }} /><col style={{ width: '11%' }} /><col style={{ width: '16%' }} /><col style={{ width: '21%' }} /></>}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="inv-th desc">Description</th>
+                  {!fav && <th className="inv-th">Qty</th>}
+                  {!fav && <th className="inv-th">Rate</th>}
+                  <th className="inv-th last">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {normalLines.map(item => renderLineRows(item))}
+                {!showInd && expenseLines.length > 0 && (() => {
+                  const sum = expenseLines.reduce((s, l) => s + getLineTotal(l), 0);
+                  return (
+                    <tr key="expenses-rollup">
+                      <td className="inv-td desc">
+                        <div className="inv-linelabel">Expenses</div>
+                        <div className="inv-linedetail">{expenseLines.length} item{expenseLines.length !== 1 ? "s" : ""}</div>
+                      </td>
+                      {!fav && <td className="inv-td inv-mono" />}
+                      {!fav && <td className="inv-td inv-mono" />}
+                      <td className="inv-td last inv-mono">{fmtGBP(sum)}</td>
+                    </tr>
+                  );
+                })()}
+                {showInd && expenseLines.map(item => renderLineRows(item, cleanExpenseLabel(item)))}
+              </tbody>
+            </table>
+
             {charges && (
-              <div className="invoice-charges">
-                <div className="invoice-section-label">Late payment charges (added {fmtInvDate(charges.generatedAt)})</div>
-                <div className="charge-row">
-                  <span className="desc">
-                    Statutory interest - {charges.daysOverdue} day{charges.daysOverdue === 1 ? '' : 's'} at {charges.annualRate}% a year
-                    ({charges.baseRate}% base rate plus 8%, Late Payment of Commercial Debts (Interest) Act 1998)
-                  </span>
-                  <span className="amt">{fmtGBP(charges.interest)}</span>
+              <div className="inv-charges">
+                <div className="inv-sect" style={{ margin: '19.1px 0 7.9px' }}><div className="inv-sectlabel">Late payment charges (added {fmtInvDate(charges.generatedAt)})</div><div className="inv-sectrule" /></div>
+                <div className="inv-charge-row">
+                  <span>Statutory interest - {charges.daysOverdue} day{charges.daysOverdue === 1 ? '' : 's'} at {charges.annualRate}% a year ({charges.baseRate}% base rate plus 8%, Late Payment of Commercial Debts (Interest) Act 1998)</span>
+                  <span className="amt inv-mono">{fmtGBP(charges.interest)}</span>
                 </div>
-                <div className="charge-row">
-                  <span className="desc">Fixed recovery fee (invoice of {fmtGBP(charges.principal)})</span>
-                  <span className="amt">{fmtGBP(charges.fixedFee)}</span>
+                <div className="inv-charge-row">
+                  <span>Fixed recovery fee (invoice of {fmtGBP(charges.principal)})</span>
+                  <span className="amt inv-mono">{fmtGBP(charges.fixedFee)}</span>
                 </div>
               </div>
             )}
 
-            {/* Totals */}
-            <div className="invoice-totals">
-              <div className="totals-stack">
-                {invoice.vatRegistered ? (
+            <div className="inv-totals-wrap">
+              <div className="inv-totals">
+                {invoice.vatRegistered && (
                   <>
-                    <div className="row">
-                      <span className="label">Subtotal</span>
-                      <span className="value">{fmtGBP(subtotal)}</span>
-                    </div>
-                    <div className="row">
-                      <span className="label">VAT ({invoice.vatRate || 20}%)</span>
-                      <span className="value">{fmtGBP(vatAmount)}</span>
-                    </div>
-                    {charges ? (
-                      <div className="row">
-                        <span className="label">Invoice total</span>
-                        <span className="value">{fmtGBP(total)}</span>
-                      </div>
-                    ) : (
-                      <div className="row grand">
-                        <span className="label">Total due</span>
-                        <span className="value">{fmtGBP(total)}</span>
-                      </div>
-                    )}
+                    <div className="inv-trow"><span className="inv-tlabel">Subtotal</span><span className="inv-tval inv-mono">{fmtGBP(subtotal)}</span></div>
+                    <div className="inv-trow"><span className="inv-tlabel">VAT at {invoice.vatRate || 20}%</span><span className="inv-tval inv-mono">{fmtGBP(vatAmount)}</span></div>
                   </>
-                ) : (
-                  charges ? (
-                    <div className="row">
-                      <span className="label">Invoice total</span>
-                      <span className="value">{fmtGBP(total)}</span>
-                    </div>
-                  ) : (
-                    <div className="row grand">
-                      <span className="label">Total due</span>
-                      <span className="value">{fmtGBP(total)}</span>
-                    </div>
-                  )
                 )}
                 {charges && (
                   <>
-                    <div className="row">
-                      <span className="label">Late payment charges</span>
-                      <span className="value">{fmtGBP((Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0))}</span>
-                    </div>
-                    <div className="row grand">
-                      <span className="label">Total due</span>
-                      <span className="value">{fmtGBP(total + (Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0))}</span>
-                    </div>
+                    <div className="inv-trow"><span className="inv-tlabel">Invoice total</span><span className="inv-tval inv-mono">{fmtGBP(total)}</span></div>
+                    <div className="inv-trow"><span className="inv-tlabel">Late payment charges</span><span className="inv-tval inv-mono">{fmtGBP(chargeTotal)}</span></div>
                   </>
                 )}
+                <div className="inv-grand">
+                  <div>
+                    <div className="inv-grandlabel">Total due</div>
+                    {invoice.dueDate && <div className="inv-grandsub">By {fmtInvDate(invoice.dueDate)}</div>}
+                  </div>
+                  <div className="inv-grandval inv-mono">{fmtGBP(dueAmount)}</div>
+                </div>
               </div>
             </div>
 
-            {/* Bank — page-break-inside: avoid keeps it whole; sits before notes so it lands on page 1 */}
             {bankFields.length > 0 && (
-              <div className="invoice-bank">
-                <div className="invoice-section-label">Payment Details</div>
-                <div className="invoice-bank-grid">
+              <>
+                <div className="inv-sect"><div className="inv-sectlabel">Payment details</div><div className="inv-sectrule" /></div>
+                <div className="inv-bank">
                   {bankFields.map(f => (
-                    <div key={f.key} className="invoice-bank-field">
-                      <div className="key">{f.key}</div>
-                      <div className="val">{f.val}</div>
+                    <div key={f.key} className={`inv-bankfield${f.key === 'IBAN' ? ' wide' : ''}`}>
+                      <div className="inv-bankkey">{f.key}</div>
+                      <div className={`inv-bankval${f.key === 'Bank' || f.key === 'Account name' ? '' : ' inv-mono'}`}>{f.val}</div>
                     </div>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {/* Notes — strip the trailing "—\nGenerated with TimeMachine" tagline that generateDayText
-                appends; the invoice-footer below already carries that branding. Split into per-day
-                blocks so page-break-inside: avoid on .notes-day keeps each day's lines together. */}
-            {(() => {
-              const cleanNotes = (invoice.notes || '')
-                .replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '')
-                .trim();
-              if (!cleanNotes) return null;
-              return (
-                <div className="invoice-notes">
-                  <div className="invoice-section-label">Notes</div>
-                  <div className="invoice-notes-body">
-                    {cleanNotes.split(/\n\n+/).map((block, i) => (
-                      <div key={i} className="notes-day">{block}</div>
-                    ))}
+                  <div className="inv-bankfield">
+                    <div className="inv-bankkey">Reference</div>
+                    <div className="inv-bankval inv-mono">{invoice.invoiceNumber}</div>
                   </div>
                 </div>
-              );
-            })()}
+              </>
+            )}
 
-            </div>{/* /invoice-content */}
-
-            {/* Footer */}
-            <div className="invoice-footer">
-              Generated with <strong>TIMEMACHINE</strong> · timemachineapp.co.uk
-            </div>
+            <div className="inv-note">Please quote the invoice reference with payment.{backPage ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
+            <PageFoot n={1} of={totalPages} />
           </div>
+
+          {backPage}
         </div>
       );
     }
@@ -23454,7 +23240,7 @@ const setDays = (updater) =>
                 : buildInvoiceEmailContent(inv);
               const method = emailMethodRef.current;
               const wasDraft = !isChase && inv.status === 'draft';
-              nativeRenderPrintViewPdfBase64Vector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 })
+              nativeRenderPrintViewPdfBase64Vector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 0, right: 0, bottom: 0, left: 0 })
                 .then((base64) => nativeSendInvoiceEmail({
                   to: inv.toEmail || '', cc: isChase ? '' : (emailCcRef.current || ''),
                   subject, body, base64, filename, method,
@@ -23500,7 +23286,7 @@ const setDays = (updater) =>
                 })
                 .finally(() => { printIntentRef.current = 'share'; emailCcRef.current = ''; emailMethodRef.current = 'appleMail'; cleanup(); });
             } else {
-              nativeExportPrintViewPdfVector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 10, right: 15, bottom: 10, left: 15 }, filename)
+              nativeExportPrintViewPdfVector('invoice-print-view', INVOICE_PRINT_STYLES, { top: 0, right: 0, bottom: 0, left: 0 }, filename)
                 .catch((e) => {
                   try { console.error('PDF export failed', e); } catch (_) {}
                   showToast("Couldn't make the PDF - try again.");
