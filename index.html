@@ -467,6 +467,62 @@
     }
     .tm-card-in { animation: tm-card-in 150ms ease-out; }
     @media (prefers-reduced-motion: reduce) { .tm-card-in { animation: none; } }
+
+    /* ── Tutorial card animations (cards 4 and 6 only) ─────────────────────
+       Pure CSS over themed tokens, no assets and no dependency on real UI
+       markup — they illustrate a gesture, so they cannot rot when a screen
+       is redesigned. Both loop indefinitely and both stop dead under
+       prefers-reduced-motion, leaving the composed still frame. */
+
+    /* Card 4 — Quick set: one time lands on three crew rows in turn, then the
+       whole set settles together. */
+    @keyframes tm-tut-qs-fill {
+      0%, 12%   { background: rgb(var(--tm-neutral-800)); color: rgb(var(--tm-neutral-500)); }
+      28%, 88%  { background: rgb(var(--tm-sky-500) / 0.18); color: rgb(var(--tm-sky-400)); }
+      100%      { background: rgb(var(--tm-neutral-800)); color: rgb(var(--tm-neutral-500)); }
+    }
+    @keyframes tm-tut-qs-cursor {
+      0%       { transform: translateY(0);     opacity: 0; }
+      8%       { transform: translateY(0);     opacity: 1; }
+      36%      { transform: translateY(26px);  opacity: 1; }
+      64%      { transform: translateY(52px);  opacity: 1; }
+      78%      { transform: translateY(52px);  opacity: 0; }
+      100%     { transform: translateY(0);     opacity: 0; }
+    }
+    .tm-tut-qs-row { animation: tm-tut-qs-fill 3.2s ease-in-out infinite; }
+    .tm-tut-qs-row:nth-child(2) { animation-delay: 0.28s; }
+    .tm-tut-qs-row:nth-child(3) { animation-delay: 0.56s; }
+    .tm-tut-qs-cursor { animation: tm-tut-qs-cursor 3.2s ease-in-out infinite; }
+
+    /* Card 6 — call sheet reader: a page slides in from the left, is scanned
+       by a sweeping sky line, and three time fields fill on the right. */
+    /* Tuned so ANY frame reads: the page is the subject and never fades out,
+       and the fields rest legibly rather than sitting near-invisible for most
+       of the cycle — a still grab of the loop should still make sense. */
+    @keyframes tm-tut-cs-page {
+      0%        { transform: translateX(-14px) rotate(-4deg); opacity: 0; }
+      12%, 100% { transform: translateX(0) rotate(-2deg);     opacity: 1; }
+    }
+    @keyframes tm-tut-cs-scan {
+      0%, 16%  { transform: translateY(0);    opacity: 0; }
+      24%      { transform: translateY(0);    opacity: 1; }
+      52%      { transform: translateY(42px); opacity: 1; }
+      60%,100% { transform: translateY(42px); opacity: 0; }
+    }
+    @keyframes tm-tut-cs-field {
+      0%, 46%   { opacity: 0.4; width: 26%; }
+      64%, 94%  { opacity: 1;   width: 100%; }
+      100%      { opacity: 0.4; width: 26%; }
+    }
+    .tm-tut-cs-page   { animation: tm-tut-cs-page 3.6s ease-in-out infinite; }
+    .tm-tut-cs-scan   { animation: tm-tut-cs-scan 3.6s ease-in-out infinite; }
+    .tm-tut-cs-field  { animation: tm-tut-cs-field 3.6s ease-in-out infinite; }
+    .tm-tut-cs-field:nth-child(2) { animation-delay: 0.14s; }
+    .tm-tut-cs-field:nth-child(3) { animation-delay: 0.28s; }
+    @media (prefers-reduced-motion: reduce) {
+      .tm-tut-qs-row, .tm-tut-qs-cursor,
+      .tm-tut-cs-page, .tm-tut-cs-scan, .tm-tut-cs-field { animation: none; }
+    }
     /* Hero card — soft sky glow top-right + 1px sky hairline along the top edge */
     .tm-hero-card {
       background:
@@ -19486,6 +19542,195 @@ const setDays = (updater) =>
     // code. Built on Sheet: scrim, swipe/back dismissal and the native
     // back-level all come for free — every exit path lands in onClose, so
     // the seen-flag stamp can never be bypassed.
+    /* ══════════════════════ TUTORIAL CAROUSEL ══════════════════════ */
+    // The non-obvious features as a swipeable deck, replacing the text-only
+    // intro popup. HELP_CONTENT stays as the deeper written reference in
+    // Settings — this is the tour, that is the manual.
+    //
+    // Every colour here is a THEMED token (sky / neutral), never a raw hex,
+    // so the whole deck re-colours in poppy with no per-surface work. The two
+    // animated cards illustrate a GESTURE rather than mirroring real markup,
+    // so a later redesign of Quick set or the call-sheet reader cannot make
+    // them wrong.
+    const TUTORIAL_CARDS = [
+      {
+        key: 'times', icon: 'clock',
+        title: "It's mostly just your times",
+        body: "Enter your call, lunch and wrap, and the day works itself out. Pre-call, expenses, travel and stepping up are there for the days that need them.",
+      },
+      {
+        key: 'apa', icon: 'rules',
+        title: 'Every APA rule, handled',
+        body: "Overtime, penalties, night shoots, turnaround, continuous days and the day types are all built in. It knows the terms so you don't have to.",
+      },
+      {
+        key: 'crew', icon: 'crew',
+        title: 'Solo or a whole crew',
+        body: 'Track your own days, or run a crew in Best Boy mode. Tick who is on each day, and share a shoot straight to a mate.',
+      },
+      {
+        key: 'quickset', anim: 'quickset',
+        title: 'Set many at once',
+        body: 'Quick set writes one time across everyone you pick. Two sparks went to lunch early, tap tap, done.',
+      },
+      {
+        key: 'live', icon: 'lock',
+        title: 'Your day on the lock screen',
+        body: 'A Live Activity keeps your running total on the lock screen. Tap it to wrap, or say "hey Siri, wrap now".',
+      },
+      {
+        key: 'callsheet', anim: 'callsheet',
+        title: 'Point it at a call sheet',
+        body: 'Share a call sheet PDF straight from your email and it fills in the times. iPhone 15 Pro and above.',
+      },
+      {
+        key: 'invoice', icon: 'invoice',
+        title: 'Invoices that get you paid',
+        body: 'Professional invoices in a few taps, with late-payment charges when they run over, fees you can waive, and an export your accountant will accept.',
+      },
+    ];
+
+    // Static icon tiles. Plain strokes on a sky-tinted tile — the same visual
+    // weight as the app's own icon chrome.
+    function TutorialIcon({ kind }) {
+      const s = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
+      const art = {
+        clock:   <><circle cx="12" cy="12" r="8.5" {...s}/><path d="M12 7.5V12l3 1.8" {...s}/></>,
+        rules:   <><path d="M5 4.5h14v15H5z" {...s}/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4" {...s}/></>,
+        crew:    <><circle cx="9" cy="9.5" r="3" {...s}/><circle cx="16.5" cy="10.5" r="2.2" {...s}/><path d="M3.5 18c.6-2.8 2.8-4.2 5.5-4.2s4.9 1.4 5.5 4.2" {...s}/><path d="M15.5 14c2.2.1 3.8 1.4 4.3 3.4" {...s}/></>,
+        lock:    <><rect x="5.5" y="3.5" width="13" height="17" rx="2.5" {...s}/><path d="M9 8.5h6M9 12h6M9 15.5h3.5" {...s}/></>,
+        invoice: <><path d="M6 3.5h9l3.5 3.5v13H6z" {...s}/><path d="M14.5 3.5V7.5H18.5" {...s}/><path d="M9 12h6M9 15.5h4" {...s}/></>,
+      }[kind];
+      return (
+        <div className="w-16 h-16 rounded-2xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-center text-sky-400">
+          <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">{art}</svg>
+        </div>
+      );
+    }
+
+    // Card 4 — three crew rows taking one time in turn, with a cursor
+    // travelling down them.
+    function TutorialAnimQuickSet() {
+      return (
+        <div className="w-full max-w-[210px] relative" aria-hidden="true">
+          <div className="text-[9px] uppercase tracking-[0.16em] text-sky-500 font-bold mb-2">Quick set · 07:30</div>
+          <div className="flex flex-col gap-1.5">
+            {['Declan', 'Al', 'Lu'].map((n) => (
+              <div key={n} className="tm-tut-qs-row flex items-center justify-between rounded-lg px-2.5 py-1.5 text-[11px] font-mono">
+                <span className="text-neutral-300 font-sans">{n}</span>
+                <span>07:30</span>
+              </div>
+            ))}
+          </div>
+          <div className="tm-tut-qs-cursor absolute right-1 top-[26px] w-2.5 h-2.5 rounded-full bg-sky-400" />
+        </div>
+      );
+    }
+
+    // Card 6 — a page slides in, a scan line sweeps it, three fields fill.
+    function TutorialAnimCallSheet() {
+      return (
+        <div className="w-full max-w-[210px] flex items-center gap-3" aria-hidden="true">
+          <div className="tm-tut-cs-page relative w-[64px] h-[80px] rounded-md bg-neutral-800 border border-neutral-700 overflow-hidden flex-none">
+            <div className="px-1.5 pt-2 flex flex-col gap-[3px]">
+              {[70, 90, 55, 80, 45].map((w, i) => (
+                <div key={i} className="h-[3px] rounded-full bg-neutral-600" style={{ width: `${w}%` }} />
+              ))}
+            </div>
+            <div className="tm-tut-cs-scan absolute left-0 right-0 top-2 h-[2px] bg-sky-400" style={{ boxShadow: '0 0 8px rgb(var(--tm-sky-400) / 0.8)' }} />
+          </div>
+          <div className="text-sky-500 text-[15px] flex-none">→</div>
+          <div className="flex-1 flex flex-col gap-2">
+            {['Call', 'Lunch', 'Wrap'].map((l) => (
+              <div key={l} className="flex items-center gap-2">
+                <span className="text-[9px] uppercase tracking-wider text-neutral-500 w-9 flex-none">{l}</span>
+                <div className="tm-tut-cs-field h-[7px] rounded-full bg-sky-500/70" />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function TutorialCarousel({ onClose }) {
+      const [i, setI] = useState(0);
+      const last = i === TUTORIAL_CARDS.length - 1;
+      const card = TUTORIAL_CARDS[i];
+      const touch = useRef({ x: 0, active: false });
+
+      const go = (n) => setI(Math.max(0, Math.min(TUTORIAL_CARDS.length - 1, n)));
+      const next = () => { if (last) onClose(); else go(i + 1); };
+
+      // Horizontal swipe. The Sheet primitive owns VERTICAL drag-to-dismiss,
+      // so only an x-dominant gesture is claimed here and the two never fight.
+      const onTouchStart = (e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY, active: true }; };
+      const onTouchEnd = (e) => {
+        if (!touch.current.active) return;
+        touch.current.active = false;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - touch.current.x, dy = t.clientY - touch.current.y;
+        if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) go(i + (dx < 0 ? 1 : -1));
+      };
+
+      return (
+        <Sheet open onClose={onClose} maxWidth={440}>
+          <div
+            className="px-5 pb-5 flex flex-col"
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+            style={{ touchAction: 'pan-y' }}
+          >
+            {/* Stage — fixed height so the deck never jumps between cards */}
+            <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: 168 }}>
+              {card.anim === 'quickset' ? <TutorialAnimQuickSet />
+                : card.anim === 'callsheet' ? <TutorialAnimCallSheet />
+                : <TutorialIcon kind={card.icon} />}
+            </div>
+
+            <div className="text-center mt-4" style={{ minHeight: 104 }}>
+              <div className="text-[17px] font-bold text-neutral-100 tracking-tight">{card.title}</div>
+              <p className="text-[12.5px] text-neutral-400 leading-relaxed mt-2 max-w-[300px] mx-auto">{card.body}</p>
+            </div>
+
+            {/* Progress dots — also tappable, so the deck can be browsed */}
+            <div className="flex items-center justify-center gap-1.5 mt-5">
+              {TUTORIAL_CARDS.map((c, n) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => go(n)}
+                  aria-label={`Card ${n + 1} of ${TUTORIAL_CARDS.length}`}
+                  aria-current={n === i}
+                  className={`rounded-full transition-all ${n === i ? 'w-5 h-1.5 bg-sky-500' : 'w-1.5 h-1.5 bg-neutral-700 hover:bg-neutral-600'}`}
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                />
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={next}
+              className="w-full mt-5 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-[13px] font-bold uppercase tracking-wider transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              {last ? 'Start using TimeMachine' : 'Next'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full mt-2 py-2 text-[12px] font-semibold text-neutral-500 hover:text-neutral-300 transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              {last ? 'Close' : 'Skip'}
+            </button>
+            <p className="text-[10.5px] text-neutral-600 text-center mt-3 leading-relaxed">
+              You can see this again any time in Settings, under How to use TimeMachine.
+            </p>
+          </div>
+        </Sheet>
+      );
+    }
+
     function InfoModal({ title, framing, items, footer, closeLabel = 'Got it', onClose }) {
       return (
         <Sheet open onClose={onClose} title={title}>
@@ -21752,6 +21997,15 @@ const setDays = (updater) =>
                     <div className="text-[12px] text-neutral-400 leading-relaxed mt-0.5">{it.blurb}</div>
                   </div>
                 ))}
+              </div>
+              {/* Replay: clearing seenIntro is all it takes — introDue is
+                  live-derived from prefs, so closing Settings drops straight
+                  back to the deck. No second flag, no duplicated trigger. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800/60">
+                <Btn variant="subtle" onClick={() => { set({ seenIntro: false }); onClose(); }}>
+                  <IInfo/>Show tutorial again
+                </Btn>
+                <p className="text-[10px] text-neutral-500 mt-1">The swipeable tour of the things that aren't obvious.</p>
               </div>
             </Disclosure>
 
@@ -28323,14 +28577,13 @@ const confirmDelete = (p) => setConfirmOpts({
               Updated to TimeMachine v{APP_VERSION} ✓
             </div>
           )}
+          {/* The intro is now the tutorial deck rather than a text popup. It
+              rides the SAME seenIntro flag and the same dismissal, so first-
+              launch behaviour, the what's-new hand-off and the share-link
+              yield all keep working untouched — and "Show tutorial again" in
+              Settings just clears the flag. */}
           {introDue && !shareLinkImport && !openImportFile && (
-            <InfoModal
-              title="Worth knowing"
-              framing="Most of TimeMachine is self-explanatory. A few things aren't obvious:"
-              items={HELP_CONTENT.entries.filter(e => e.teaser)}
-              footer="The full list is in Settings, under How to use TimeMachine."
-              onClose={dismissIntro}
-            />
+            <TutorialCarousel onClose={dismissIntro} />
           )}
           {whatsNewDue && !shareLinkImport && !openImportFile && (
             <InfoModal
