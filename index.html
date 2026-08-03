@@ -8709,20 +8709,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         setDragY(0);
       };
 
-      if (!mounted) return null;
-
-      // Compose the card transform: at-rest visible = translateY(dragY),
-      // closed = translateY(100%). dragY adds on top during a pull.
-      const cardTransform = visible
-        ? `translate3d(0, ${dragY}px, 0)`
-        : 'translate3d(0, 100%, 0)';
-      const cardTransition = dragRef.current.active
-        ? 'none'
-        : (reduceMotion ? 'none' : SHEET_OPEN_TRANSITION);
-      const backdropOpacity = visible ? 0.55 : 0;
-      const backdropTransition = reduceMotion ? 'none' : SHEET_BACKDROP_TRANSITION;
-      const z = SHEET_BASE_Z + zSlot * 10;
-
       // Keyboard avoidance (OPT-IN via keyboardAvoid), take two — the first
       // attempt lifted the card by the keyboard overlap and FAILED on device:
       // the card has no height cap and no internal scroll region (children
@@ -8752,6 +8738,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         vv.addEventListener('scroll', update);
         return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); setKb({ lift: 0, avail: 0 }); };
       }, [keyboardAvoid, mounted]);
+
+      if (!mounted) return null;
+
+      // Compose the card transform: at-rest visible = translateY(dragY),
+      // closed = translateY(100%). dragY adds on top during a pull.
+      const cardTransform = visible
+        ? `translate3d(0, ${dragY}px, 0)`
+        : 'translate3d(0, 100%, 0)';
+      const cardTransition = dragRef.current.active
+        ? 'none'
+        : (reduceMotion ? 'none' : SHEET_OPEN_TRANSITION);
+      const backdropOpacity = visible ? 0.55 : 0;
+      const backdropTransition = reduceMotion ? 'none' : SHEET_BACKDROP_TRANSITION;
+      const z = SHEET_BASE_Z + zSlot * 10;
+
 
       return (
         <div
@@ -28095,8 +28096,53 @@ const confirmDelete = (p) => setConfirmOpts({
     let migrationResult = { ran: false };
 
     function startRender() {
+      // Declared INSIDE startRender: the build-audit sandbox evaluates this
+      // script without a React global, and a top-level `class ... extends
+      // React.Component` is evaluated eagerly (unlike a function declaration),
+      // which would throw at load. Nesting it keeps the audit able to load the
+      // engines while the runtime behaviour is identical.
+      // Root error boundary. Without one, React 18 unmounts the WHOLE tree on an
+      // uncaught render error: the screen goes blank AND any body-scroll lock a
+      // half-mounted Sheet had taken is never released (its cleanup never runs),
+      // so the page is inert — which is exactly how the Sheet #310 crash
+      // presented, as a frozen app rather than an error. This catches the throw,
+      // force-releases the lock, and offers a way back.
+      class RootErrorBoundary extends React.Component {
+        constructor(props) { super(props); this.state = { error: null }; }
+        static getDerivedStateFromError(error) { return { error }; }
+        componentDidCatch(error, info) {
+          // Release the scroll lock unconditionally — the counter is meaningless
+          // once the tree that owned it is gone.
+          try {
+            _modalCount = 0;
+            document.body.style.overflow = '';
+          } catch (_) {}
+          try { console.error('Render error caught by RootErrorBoundary', error, info); } catch (_) {}
+        }
+        render() {
+          if (!this.state.error) return this.props.children;
+          const msg = String((this.state.error && this.state.error.message) || this.state.error || 'Unknown error');
+          return (
+            <div style={{ position: 'fixed', inset: 0, background: '#0a0a0a', color: '#f5f5f5', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontFamily: 'ui-sans-serif, system-ui, -apple-system', overflow: 'auto' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Something went wrong on this screen</div>
+              <div style={{ fontSize: 13, color: '#a3a3a3', lineHeight: 1.6, maxWidth: 420 }}>
+                Your shoots and invoices are saved - nothing has been lost. Go back and try again.
+              </div>
+              <button
+                type="button"
+                onClick={() => this.setState({ error: null })}
+                style={{ marginTop: 20, padding: '11px 22px', borderRadius: 12, background: '#0ea5e9', color: '#000', fontSize: 13, fontWeight: 700, border: 'none' }}
+              >
+                Go back
+              </button>
+              <div style={{ marginTop: 18, fontSize: 10, color: '#525252', fontFamily: 'ui-monospace, monospace', maxWidth: 420, wordBreak: 'break-word' }}>{msg}</div>
+            </div>
+          );
+        }
+      }
+
       const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(<Root />);
+      root.render(<RootErrorBoundary><Root /></RootErrorBoundary>);
     }
 
     // Boot — same async shape for both backends so the IndexedDB upgrade
