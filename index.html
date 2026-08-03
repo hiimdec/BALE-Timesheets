@@ -5542,9 +5542,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         width: 210mm; height: 297mm;
         background: white; overflow: hidden;
         display: flex; flex-direction: column;
+        position: relative;
+        /* Break rules UNCONDITIONAL (not @media print): the NativePdf
+           plugin's WKWebView is the invoice-proven consumer of plain
+           page-break rules; web print honours them identically. */
+        page-break-after: always; break-after: page;
       }
+      .page:last-child { page-break-after: auto; break-after: auto; }
       .page.ts-page   { padding: 14mm; }
-      .page.grid-page { padding: 12mm; }
 
       /* ── Shared header ── */
       .doc-header {
@@ -5603,7 +5608,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         line-height: 1; white-space: nowrap; flex-shrink: 0;
       }
       .ts-page   .chip-day { font-size: 9px;  padding: 2px 8px; }
-      .grid-page .chip-day { font-size: 8px; }
       .chip-day.shoot    { background: #082f49; color: white; }
       .chip-day.prelight { background: #075985; color: white; }
       .chip-day.recce    { background: #0284c7; color: white; }
@@ -5731,111 +5735,124 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .day.rest.sun { background: #fef2f2; border-color: #fca5a5; }
       .day.rest.sun .body .label { color: rgba(185,28,28,0.6); }
 
-      /* ══════════ GRID LAYOUT ══════════ */
+      /* ══════════ TSD — redesigned timesheet document (vector path) ══════════
+         Faithful translation of the approved artefact: layout frame in mm
+         (210×297 A4, 11.3/11.8mm padding = the design's 54/56px at 0.21mm
+         per design px), type + fine spacing in px at 0.794× the design's
+         values (1000px design width → 794px = 210mm at CSS 96dpi). Raw hex
+         only — print documents never resolve theme vars. */
 
-      .grid-wrap {
-        flex: 1; margin-top: 10px;
-        overflow: hidden; min-height: 0;
-      }
-      .grid-table {
-        display: flex; flex-direction: column; width: 100%;
-        border: 1px solid #d4d4d4; border-radius: 10px;
-        overflow: hidden;
-      }
-      .grid-row {
-        display: grid;
-        /* Total col 18mm→22mm: a right-aligned £X,XXX.00 (bold tabular)
-           overflowed 18mm and the cell's overflow:hidden clipped the £ and
-           the grey fill on the LEFT. RESHAPED after the legend regression
-           report: the SEVEN DAY COLUMNS are back at their original 19mm and
-           the row-total paddings at their original 8px — only the CREW
-           column donates (26→22mm), keeping the sum at 177mm, and the foot
-           week-total drops 14→12px (matching the body rows) so it fits the
-           original padding. Nothing outside the crew/total columns differs
-           from the pre-8b7511b table. Fits all four-figure totals
-           (tabular-nums = deterministic width); a FIVE-figure week total
-           (£10,000+) remains the documented ceiling. */
-        grid-template-columns: 22mm repeat(7, 19mm) 22mm;
-        border-bottom: 1px solid #e5e5e5;
-      }
-      .grid-row:last-child { border-bottom: none; }
-      .grid-cell {
-        padding: 4px; border-right: 1px solid #e5e5e5;
-        display: flex; align-items: center; justify-content: center;
-        min-width: 0; overflow: hidden;
-      }
-      .grid-cell:last-child { border-right: none; }
+      .page.tsd-page { display: block; padding: 11.3mm 11.8mm 0; font-size: 8.7px; color: #171717; }
+      .tsd-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
 
-      /* Head row */
-      .grid-head .grid-cell {
-        background: #f5f5f5; padding: 6px 4px;
-        flex-direction: column; text-align: center;
-      }
-      .grid-head .grid-cell.crew-col { justify-content: flex-start; align-items: flex-start; padding-left: 8px; }
-      .grid-head .grid-cell.total-col { justify-content: center; align-items: center; padding-right: 8px; background: #fafafa; }
-      .grid-head .dow { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #737373; font-weight: 700; line-height: 1; }
-      .grid-head .num { font-size: 12px; font-weight: 800; margin-top: 2px; line-height: 1; }
-      .grid-head .mo  { font-size: 7px; color: #737373; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1; }
-      .grid-head .grid-cell.sat { background: #fffbeb; }
-      .grid-head .grid-cell.sat .dow { color: #b45309; }
-      .grid-head .grid-cell.sat .num { color: #78350f; }
-      .grid-head .grid-cell.sat .mo  { color: rgba(180,83,9,0.7); }
-      .grid-head .grid-cell.sun { background: #fef2f2; }
-      .grid-head .grid-cell.sun .dow { color: #b91c1c; }
-      .grid-head .grid-cell.sun .num { color: #7f1d1d; }
-      .grid-head .grid-cell.sun .mo  { color: rgba(185,28,28,0.7); }
+      /* header */
+      .tsd-hdr { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 14.3px; border-bottom: 1.5px solid #171717; }
+      .tsd-kicker { font-size: 7.1px; font-weight: 700; letter-spacing: .2em; color: #737373; line-height: 1; text-transform: uppercase; }
+      .tsd-title { font-size: 23px; font-weight: 800; letter-spacing: -.025em; color: #0a0a0a; line-height: 1.05; margin-top: 7.1px; }
+      .tsd-sub { font-size: 9.1px; color: #525252; line-height: 1; margin-top: 7.1px; }
+      .tsd-hdr-right { text-align: right; flex-shrink: 0; }
+      .tsd-wtval { font-size: 27px; font-weight: 800; letter-spacing: -.03em; color: #0a0a0a; line-height: 1; margin-top: 6.4px; }
+      .tsd-wtsub { font-size: 8.7px; color: #737373; line-height: 1; margin-top: 7.1px; }
 
-      /* Body rows */
-      .grid-body .grid-cell.crew {
-        background: #fafafa; flex-direction: column;
-        justify-content: center; align-items: flex-start; padding: 6px 8px;
-      }
-      .grid-body .grid-cell.row-total {
-        background: #fafafa; flex-direction: column;
-        justify-content: center; align-items: flex-end; padding: 6px 8px;
-      }
-      .grid-body .name { font-size: 10px; font-weight: 700; color: #171717; line-height: 1.2; }
-      .grid-body .role { font-size: 8px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; font-weight: 600; }
-      .grid-body .grid-cell.sat { background: #fffbeb; }
-      .grid-body .grid-cell.sun { background: #fef2f2; }
-      .grid-body .grid-cell.sat .total-val { color: #78350f; }
-      .grid-body .grid-cell.sun .total-val { color: #7f1d1d; }
+      /* metadata strip */
+      .tsd-meta { display: grid; grid-template-columns: repeat(4, 1fr); background: #fafafa; border-bottom: 1px solid #e6e6e6; }
+      .tsd-metacell { padding: 9.5px 12.7px 10.3px; border-right: 1px solid #e6e6e6; }
+      .tsd-metacell:last-child { border-right: none; }
+      .tsd-metalabel { font-size: 6.4px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .tsd-metaval { font-size: 9.1px; font-weight: 600; color: #171717; line-height: 1; margin-top: 5.6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-      .cell-stack {
-        display: flex; flex-direction: column; align-items: center;
-        gap: 3px; padding: 2px 1px; min-height: 56px; justify-content: space-between;
-      }
-      .cell-stack .top { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
-      .cell-stack .hrs-line { font-size: 9.5px; color: #171717; font-weight: 600; line-height: 1; }
-      .cell-stack .pens { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 3px; line-height: 1; }
-      .cell-stack .pens:empty { display: none; }
-      .cell-stack .total-val { font-size: 10px; font-weight: 700; color: #171717; line-height: 1; }
+      /* section heads */
+      .tsd-sect { display: flex; align-items: center; gap: 9.5px; }
+      .tsd-sectlabel { font-size: 7.1px; font-weight: 700; letter-spacing: .2em; color: #0284c7; line-height: 1; text-transform: uppercase; }
+      .tsd-sectsub { font-size: 7.5px; font-weight: 700; letter-spacing: .06em; color: #a3a3a3; line-height: 1; }
+      .tsd-sectrule { flex: 1; height: 1px; background: #e6e6e6; }
 
-      .rest-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: rgba(185,28,28,0.5); font-weight: 700; }
-      .dayoff-label { font-size: 11px; color: #d4d4d4; font-weight: 700; }
+      /* summary cards */
+      .tsd-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7.9px; }
+      .tsd-card { height: 63.5px; border: 1px solid #e6e6e6; border-radius: 4.8px; padding: 10.3px 11.9px; }
+      .tsd-card-head { display: flex; align-items: center; gap: 5.6px; height: 7.1px; }
+      .tsd-cardlabel { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #525252; line-height: 1; text-transform: uppercase; }
+      .tsd-cardval { font-size: 15.9px; font-weight: 800; letter-spacing: -.025em; color: #0a0a0a; line-height: 1; margin-top: 11.1px; }
+      .tsd-cardsub { font-size: 7.1px; color: #a3a3a3; line-height: 1; margin-top: 7.1px; }
+      .tsd-card.inv { background: #171717; border-color: #171717; }
+      .tsd-card.inv .tsd-cardlabel { color: #a3a3a3; }
+      .tsd-card.inv .tsd-cardval { color: #ffffff; }
+      .tsd-card.inv .tsd-cardsub { color: #737373; }
 
-      .row-total .total-val { font-size: 12px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
-      .row-total .total-hrs { font-size: 8px; color: #737373; margin-top: 2px; }
+      /* key */
+      .tsd-key { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8.7px 12.7px; }
+      .tsd-keyitem { display: flex; align-items: center; gap: 7.1px; height: 13.5px; }
+      .tsd-keylabel { font-size: 8.3px; color: #404040; line-height: 1; }
 
-      /* Foot row */
-      .grid-foot { border-top: 2px solid #d4d4d4; }
-      .grid-foot .grid-cell { background: #f5f5f5; padding: 6px 4px; flex-direction: column; }
-      .grid-foot .grid-cell.crew {
-        justify-content: flex-start; padding-left: 8px;
-        text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; color: #525252; font-weight: 700;
-      }
-      .grid-foot .grid-cell.row-total {
-        flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 8px;
-      }
-      .grid-foot .day-total-val { font-size: 11px; font-weight: 800; color: #171717; }
-      .grid-foot .day-total-hrs { font-size: 8px; color: #737373; margin-top: 1px; }
-      .grid-foot .grid-cell.sat { background: #fef3c7; }
-      .grid-foot .grid-cell.sun { background: #fee2e2; }
-      /* 14→12px (matches the body-row totals): at 14px a four-figure
-         week total needs ~24mm; at 12px it fits the 22mm column with the
-         ORIGINAL 8px padding — the piece that lets the paddings and day
-         columns stay at their pre-8b7511b values. */
-      .grid-foot .grid-cell.row-total .week-total { font-size: 12px; font-weight: 800; color: #171717; letter-spacing: -0.01em; }
+      /* week grid table */
+      .tsd-tbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      .tsd-tbl th, .tsd-tbl td { overflow: hidden; }
+      .tsd-th { background: #fafafa; border-top: 1px solid #e6e6e6; border-bottom: 1px solid #262626; padding: 7.9px 4px 8.7px; text-align: center; vertical-align: bottom; }
+      .tsd-th.crew { text-align: left; padding-left: 1.6px; }
+      .tsd-th-dow { font-size: 6.4px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1; text-transform: uppercase; }
+      .tsd-th-num { font-size: 11.9px; font-weight: 700; color: #171717; line-height: 1; margin-top: 4px; }
+      .tsd-th-mo { font-size: 5.6px; font-weight: 700; letter-spacing: .14em; color: #c4c4c4; line-height: 1; margin-top: 3.2px; text-transform: uppercase; }
+      .tsd-colhead { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #525252; line-height: 1; text-transform: uppercase; }
+      .tsd-td { border-bottom: 1px solid #efefef; text-align: center; vertical-align: middle; }
+      .tsd-td.crew { padding: 9.5px 7.9px 10.3px 1.6px; vertical-align: top; text-align: left; }
+      .tsd-td.daycell { padding: 9.5px 4px 10.3px; vertical-align: top; }
+      .tsd-td.rowtotal { padding: 9.5px 3.2px 10.3px; vertical-align: top; }
+      .tsd-crew-name { font-size: 9.5px; font-weight: 700; color: #171717; line-height: 1.1; }
+      .tsd-crew-role { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #737373; line-height: 1; margin-top: 4px; text-transform: uppercase; }
+      .tsd-crew-bdr { font-size: 7.5px; color: #a3a3a3; line-height: 1; margin-top: 4px; }
+      .tsd-dash { font-size: 9.5px; color: #d9d9d9; line-height: 1; }
+      .tsd-celltype { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #525252; line-height: 1; text-transform: uppercase; }
+      .tsd-cellhrs { font-size: 9.5px; font-weight: 600; color: #171717; line-height: 1; margin-top: 4.8px; }
+      .tsd-cellchips { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 2.4px; height: 24.6px; margin-top: 5.6px; }
+      .tsd-cellamt { font-size: 8.7px; font-weight: 700; color: #171717; line-height: 1; margin-top: 3.2px; }
+      .tsd-rest-label { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #b45309; line-height: 1; text-transform: uppercase; }
+      .tsd-rowtotal-amt { font-size: 9.9px; font-weight: 800; letter-spacing: -.01em; color: #0a0a0a; line-height: 1; }
+      .tsd-rowtotal-hrs { font-size: 7.5px; color: #a3a3a3; line-height: 1; margin-top: 4.8px; }
+      .tsd-tfoot-td { background: #fafafa; border-top: 1.5px solid #171717; vertical-align: middle; padding: 9.5px 4px 10.3px; text-align: center; }
+      .tsd-foot-label { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #171717; line-height: 1; text-align: left; padding-left: 1.6px; text-transform: uppercase; }
+      .tsd-foot-amt { font-size: 9.1px; font-weight: 700; color: #171717; line-height: 1; }
+      .tsd-foot-hrs { font-size: 7.5px; color: #a3a3a3; line-height: 1; margin-top: 4.8px; }
+      .tsd-foot-grand { font-size: 10.3px; font-weight: 800; letter-spacing: -.01em; color: #0a0a0a; line-height: 1; }
+      .tsd-apanote { margin-top: 11.1px; font-size: 7.5px; color: #a3a3a3; line-height: 1.5; }
+
+      /* page footer */
+      .tsd-pagefoot { position: absolute; left: 11.8mm; right: 11.8mm; bottom: 7.6mm; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e6e6e6; padding-top: 8.7px; }
+      .tsd-pf-gen { font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
+      .tsd-pf-brand { display: flex; align-items: center; gap: 7.1px; }
+      .tsd-pf-name { font-size: 7.1px; font-weight: 800; letter-spacing: .1em; color: #0284c7; line-height: 1; }
+      .tsd-pf-url { font-size: 6.7px; color: #c4c4c4; line-height: 1; }
+      .tsd-pf-div { width: 1px; height: 7.9px; background: #e6e6e6; margin: 0 2.4px; }
+      .tsd-pf-page { font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1; }
+
+      /* detailed breakdown */
+      .tsd-bdhead { display: flex; align-items: center; gap: 11.1px; padding-bottom: 7.1px; border-bottom: 1.5px solid #171717; }
+      .tsd-bdnote { font-size: 7.5px; color: #a3a3a3; line-height: 1; display: flex; align-items: center; gap: 4.8px; }
+      .tsd-repeat { font-size: 7.9px; color: #737373; line-height: 1; }
+      .tsd-repeat strong { font-weight: 700; color: #404040; }
+      .tsd-bdcrew { margin-top: 17.5px; }
+      .tsd-bdcrew-hdr { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6.4px; border-bottom: 1px solid #262626; }
+      .tsd-bdcrew-left { display: flex; align-items: baseline; gap: 8.7px; }
+      .tsd-bdcrew-name { font-size: 11.1px; font-weight: 800; letter-spacing: -.015em; color: #0a0a0a; line-height: 1; }
+      .tsd-bdcrew-role { font-size: 6.7px; font-weight: 700; letter-spacing: .14em; color: #737373; line-height: 1; text-transform: uppercase; }
+      .tsd-bdcrew-right { display: flex; align-items: baseline; gap: 10.3px; }
+      .tsd-bdcrew-hrs { font-size: 7.9px; color: #a3a3a3; line-height: 1; }
+      .tsd-bdcrew-amt { font-size: 11.9px; font-weight: 800; letter-spacing: -.02em; color: #0a0a0a; line-height: 1; }
+      .tsd-bdday { margin-top: 9.5px; }
+      .tsd-bdday-hdr { display: flex; align-items: baseline; gap: 7.1px; margin-bottom: 4.8px; }
+      .tsd-bdday-name { font-size: 8.3px; font-weight: 700; color: #171717; line-height: 1; }
+      .tsd-bdday-type { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #737373; line-height: 1; text-transform: uppercase; }
+      .tsd-bdday-times { font-size: 7.5px; color: #a3a3a3; line-height: 1; }
+      .tsd-bdlines { display: grid; grid-template-columns: 1fr 139.7px 76.2px; }
+      .tsd-bl-label { padding: 2.4px 0 2.4px 12.7px; font-size: 8.3px; color: #333333; line-height: 1.5; }
+      .tsd-bl-label.withchip { display: flex; align-items: center; gap: 6.4px; }
+      .tsd-bl-label.pen { color: #be123c; }
+      .tsd-bl-basis { padding: 2.4px 0; text-align: right; font-size: 7.5px; color: #a3a3a3; line-height: 1.66; }
+      .tsd-bl-amt { padding: 2.4px 0; text-align: right; font-size: 8.3px; font-weight: 600; color: #171717; line-height: 1.5; }
+      .tsd-bl-amt.pen { color: #be123c; }
+      .tsd-bdsub { display: grid; grid-template-columns: 1fr 139.7px 76.2px; border-top: 1px dotted #d4d4d4; margin-top: 4px; padding-top: 4px; }
+      .tsd-bdsub-label { text-align: right; font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1.5; text-transform: uppercase; }
+      .tsd-bdsub-amt { text-align: right; font-size: 8.3px; font-weight: 700; color: #171717; line-height: 1.3; }
+      .tsd-cont { font-size: 7.1px; color: #a3a3a3; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 
       @media print {
         #root { display: none !important; }
@@ -5846,8 +5863,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           color-adjust: exact !important;
         }
         body { background: white; padding: 0; margin: 0; }
-        .page { box-shadow: none; margin: 0; page-break-after: always; break-after: page; }
-        .page:last-child { page-break-after: auto; break-after: auto; }
+        /* .page break rules live unconditionally on .page above — the
+           NativePdf WebView consumes them outside print media too. */
         @page { size: A4 portrait; margin: 0; }
       }
     `;
@@ -6429,7 +6446,594 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     /* ── Grid page ── */
-    function GridPage({ crew, weekDates, allDays, production, weekIndex, totalWeeks, pageNum, totalPages, isFirstPage, userPrefs }) {
+    /* ══════════ TSD — the redesigned timesheet document ══════════
+       Vector-path print components (NativePdf WKWebView on device, plain
+       window.print() on web — same engine class). Data comes ONLY from
+       calcForDisplay / bucketCalcTotals / penaltyFlags — the exact outputs
+       the on-screen breakdown renders; this layer arranges, never computes.
+       SVG chips keep the approved design's geometry in viewBox units and
+       are sized in CSS px at 0.794× (1000px design width → 794px = 210mm);
+       through the vector renderer they print as true vector — no
+       rasterisation anywhere. Raw hex only (print never themes). */
+
+    const TSD_CHIP = {
+      OT:  { w: 26, lgW: 30, label: 'OT',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
+      L1:  { w: 26, lgW: 30, label: 'L1',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      L2:  { w: 26, lgW: 30, label: 'L2',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      MSB: { w: 34, lgW: 38, label: 'MSB', fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      CWD: { w: 34, lgW: 38, label: 'CWD', fill: '#f5f5f5', stroke: '#8f8f8f', ink: '#404040' },
+      TOC: { w: 34, lgW: 38, label: 'TOC', fill: '#e11d48', stroke: null,      ink: '#ffffff' },
+      NS:  { w: 26, lgW: 30, label: 'NS',  fill: '#eef0f5', stroke: '#1e2a44', ink: '#1e2a44' },
+    };
+
+    function TsdChip({ kind, lg }) {
+      const g = TSD_CHIP[kind];
+      if (!g) return null;
+      const w = lg ? g.lgW : g.w;
+      const h = lg ? 17 : 14;
+      const px = (v) => (v * 0.794).toFixed(1) + 'px';
+      return (
+        <svg viewBox={`0 0 ${w} ${h}`} style={{ display: 'block', flex: 'none', width: px(w), height: px(h) }}>
+          {g.stroke
+            ? <rect x="0.5" y="0.5" width={w - 1} height={h - 1} rx={(h - 1) / 2} fill={g.fill} stroke={g.stroke} strokeWidth="1" />
+            : <rect width={w} height={h} rx={h / 2} fill={g.fill} />}
+          <text x={w / 2} y={lg ? 12 : 9.9} textAnchor="middle" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize={lg ? 9.5 : 8.5} fontWeight="700" letterSpacing={lg ? 0.7 : 0.5} fill={g.ink}>{g.label}</text>
+        </svg>
+      );
+    }
+
+    function TsdSwatch({ color }) {
+      return (
+        <svg viewBox="0 0 9 9" style={{ display: 'block', flex: 'none', width: '7.1px', height: '7.1px' }}>
+          <rect width="9" height="9" rx="2.5" fill={color} />
+        </svg>
+      );
+    }
+
+    function TsdMiniLogo() {
+      return (
+        <svg viewBox="0 0 14 12" style={{ display: 'block', flex: 'none', width: '11.1px', height: '9.5px' }}>
+          <rect x="0" y="0" width="14" height="3" rx="1.5" fill="#0ea5e9" />
+          <rect x="0" y="4.5" width="9" height="3" rx="1.5" fill="#ff8a3d" />
+          <rect x="0" y="9" width="4.5" height="3" rx="1.5" fill="#f43f5e" />
+        </svg>
+      );
+    }
+
+    function TsdTick() {
+      return (
+        <svg viewBox="0 0 13 10" style={{ display: 'block', flex: 'none', width: '10.3px', height: '7.9px' }}>
+          <path d="M1 5.2 L4.6 8.8 L12 1.4" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    // Reconciliation bar: the three bucket values proportioned across the
+    // design's 888-unit width, 2-unit gaps between non-zero segments only.
+    function TsdBar({ buckets, idSuffix }) {
+      const segs = [
+        { v: Math.max(0, buckets.basic), fill: '#0ea5e9' },
+        { v: Math.max(0, buckets.ot), fill: '#ff8a3d' },
+        { v: Math.max(0, buckets.pen), fill: '#e11d48' },
+      ].filter(s => s.v > 0);
+      const sum = segs.reduce((s, x) => s + x.v, 0);
+      if (!sum) return null;
+      const GAP = 2, W = 888, usable = W - GAP * (segs.length - 1);
+      const clipId = `tsdbar-${idSuffix || 'x'}`;
+      let x = 0;
+      const rects = segs.map((s, i) => {
+        const w = (i === segs.length - 1) ? Math.max(4, W - x) : Math.max(4, Math.round((s.v / sum) * usable));
+        const r = <rect key={i} x={x} y="0" width={w} height="8" fill={s.fill} />;
+        x += w + GAP;
+        return r;
+      });
+      return (
+        <div style={{ marginTop: '9.5px' }}>
+          <svg viewBox="0 0 888 8" style={{ display: 'block', width: '100%', height: '6.4px' }}>
+            <defs><clipPath id={clipId}><rect width="888" height="8" rx="4" /></clipPath></defs>
+            <g clipPath={`url(#${clipId})`}>{rects}</g>
+          </svg>
+        </div>
+      );
+    }
+
+    // Per-line chip pick for the breakdown — STRICT parity with the label
+    // tests penaltyFlags uses for the grid cells; lines that don't map
+    // (curtailed breaks, generic penalties) get the pen colour, no chip.
+    function tsdLineChipKind(line) {
+      if (line.isTOC === true) return 'TOC';
+      const l = (line.label || '').toLowerCase();
+      if (l === 'late 1st break') return 'L1';
+      if (l.startsWith('late 2nd break')) return 'L2';
+      if (l === 'missed 2nd break') return 'MSB';
+      return null;
+    }
+
+    // "27 Jul – 2 Aug 2026" (year on the right; start month/year only when
+    // they differ from the end's).
+    function tsdFmtRange(startISO, endISO) {
+      const s = new Date(startISO + 'T12:00:00'), e = new Date(endISO + 'T12:00:00');
+      const sm = s.toLocaleDateString('en-GB', { month: 'short' }), em = e.toLocaleDateString('en-GB', { month: 'short' });
+      const sameMonth = sm === em && s.getFullYear() === e.getFullYear();
+      const sPart = sameMonth ? String(s.getDate())
+        : `${s.getDate()} ${sm}${s.getFullYear() !== e.getFullYear() ? ' ' + s.getFullYear() : ''}`;
+      return `${sPart} – ${e.getDate()} ${em} ${e.getFullYear()}`;
+    }
+
+    function TsdPageFoot({ genStamp, pageNum, totalPages }) {
+      return (
+        <div className="tsd-pagefoot">
+          <div className="tsd-pf-gen tsd-mono">Generated {genStamp}</div>
+          <div className="tsd-pf-brand">
+            <TsdMiniLogo />
+            <div className="tsd-pf-name">TIMEMACHINE</div>
+            <div className="tsd-pf-url">timemachineapp.co.uk</div>
+            <div className="tsd-pf-div" />
+            <div className="tsd-pf-page tsd-mono">Page {pageNum} of {totalPages}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function TsdDocHeader({ kicker, title, sub, totalLabel, totalValue, totalSub }) {
+      return (
+        <div className="tsd-hdr">
+          <div>
+            <div className="tsd-kicker">{kicker}</div>
+            <div className="tsd-title">{title}</div>
+            <div className="tsd-sub">{sub}</div>
+          </div>
+          <div className="tsd-hdr-right">
+            <div className="tsd-kicker">{totalLabel}</div>
+            <div className="tsd-wtval tsd-mono">{totalValue}</div>
+            <div className="tsd-wtsub tsd-mono">{totalSub}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function TsdMetaStrip({ production, preparedBy, genDate }) {
+      return (
+        <div className="tsd-meta">
+          <div className="tsd-metacell">
+            <div className="tsd-metalabel">Production company</div>
+            <div className="tsd-metaval">{production.prodCo || '—'}</div>
+          </div>
+          <div className="tsd-metacell">
+            <div className="tsd-metalabel">Job ref</div>
+            <div className="tsd-metaval tsd-mono">{production.jobReference || '—'}</div>
+          </div>
+          <div className="tsd-metacell">
+            <div className="tsd-metalabel">Prepared by</div>
+            <div className="tsd-metaval">{preparedBy || '—'}</div>
+          </div>
+          <div className="tsd-metacell">
+            <div className="tsd-metalabel">Generated</div>
+            <div className="tsd-metaval tsd-mono">{genDate}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function TsdSummary({ model, barId }) {
+      const { buckets } = model;
+      return (
+        <>
+          <div className="tsd-sect" style={{ margin: '23.8px 0 9.5px' }}>
+            <div className="tsd-sectlabel">Summary</div>
+            <div className="tsd-sectrule" />
+          </div>
+          <div className="tsd-cards">
+            <div className="tsd-card">
+              <div className="tsd-card-head"><TsdSwatch color="#0ea5e9" /><div className="tsd-cardlabel">Basic</div></div>
+              <div className="tsd-cardval tsd-mono">{fmtGBP(buckets.basic)}</div>
+              <div className="tsd-cardsub">Day rates and conditions</div>
+            </div>
+            <div className="tsd-card">
+              <div className="tsd-card-head"><TsdSwatch color="#ff8a3d" /><div className="tsd-cardlabel">Overtime</div></div>
+              <div className="tsd-cardval tsd-mono">{fmtGBP(buckets.ot)}</div>
+              <div className="tsd-cardsub">{model.otCaption}</div>
+            </div>
+            <div className="tsd-card">
+              <div className="tsd-card-head"><TsdSwatch color="#e11d48" /><div className="tsd-cardlabel">Penalties</div></div>
+              <div className="tsd-cardval tsd-mono">{fmtGBP(buckets.pen)}</div>
+              <div className="tsd-cardsub">{model.penCaption}</div>
+            </div>
+            <div className="tsd-card inv">
+              <div className="tsd-card-head"><div className="tsd-cardlabel">{model.totalLabel}</div></div>
+              <div className="tsd-cardval tsd-mono">{fmtGBP(model.total)}</div>
+              <div className="tsd-cardsub">Excluding VAT</div>
+            </div>
+          </div>
+          <TsdBar buckets={buckets} idSuffix={barId} />
+        </>
+      );
+    }
+
+    function TsdKeySection() {
+      const items = [
+        ['OT', 'Overtime'], ['L1', 'Late 1st break'], ['L2', 'Late 2nd break'],
+        ['MSB', 'Missed 2nd break'], ['CWD', 'Continuous working day'],
+        ['TOC', 'Turnaround contravention'], ['NS', 'Night shoot'],
+      ];
+      return (
+        <>
+          <div className="tsd-sect" style={{ margin: '23.8px 0 11.1px' }}>
+            <div className="tsd-sectlabel">Key</div>
+            <div className="tsd-sectrule" />
+          </div>
+          <div className="tsd-key">
+            {items.map(([k, label]) => (
+              <div key={k} className="tsd-keyitem">
+                <TsdChip kind={k} lg />
+                <div className="tsd-keylabel">{label}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      );
+    }
+
+    // One week's grid table. crewFrom/crewTo slice rows when a single grid
+    // outgrows a page (thead repeats, DAY TOTALS foot rides the last chunk —
+    // its column totals always span ALL crew, matching the on-screen grid).
+    function TsdWeekGrid({ model, week, weekNo, crewFrom = 0, crewTo = null, continued = false, showFoot = true }) {
+      const { perCrew } = model;
+      const dates = week.dates;
+      const slice = perCrew.slice(crewFrom, crewTo == null ? perCrew.length : crewTo);
+      const rowTotals = slice.map(({ byDate }) => {
+        let t = 0, h = 0;
+        dates.forEach(d => { const e = byDate[d]; if (e) { t += e.calc.total; h += e.calc.meta?.workedHrs || 0; } });
+        return { t, h };
+      });
+      const colTotals = dates.map(d => {
+        let t = 0, h = 0;
+        perCrew.forEach(({ byDate }) => {
+          const e = byDate[d];
+          if (e && e.resolved.dayType !== 'Day off') { t += e.calc.total; h += e.calc.meta?.workedHrs || 0; }
+        });
+        return { t, h };
+      });
+      const weekTotal = colTotals.reduce((s, c) => s + c.t, 0);
+      const weekHrs = colTotals.reduce((s, c) => s + c.h, 0);
+      return (
+        <div>
+          <div className="tsd-sect" style={{ margin: '25.4px 0 9.5px' }}>
+            <div className="tsd-sectlabel">Week {weekNo}{continued ? ' · continued' : ''}</div>
+            <div className="tsd-sectsub tsd-mono">{tsdFmtRange(dates[0], dates[6]).toUpperCase()}</div>
+            <div className="tsd-sectrule" />
+          </div>
+          <table className="tsd-tbl">
+            <colgroup>
+              <col style={{ width: '36mm' }} />
+              {dates.map(d => <col key={d} style={{ width: '17.2mm' }} />)}
+              <col style={{ width: '30mm' }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className="tsd-th crew"><div className="tsd-colhead">Crew</div></th>
+                {dates.map(dateISO => {
+                  const d = new Date(dateISO + 'T12:00:00');
+                  return (
+                    <th key={dateISO} className="tsd-th">
+                      <div className="tsd-th-dow">{d.toLocaleDateString('en-GB', { weekday: 'short' })}</div>
+                      <div className="tsd-th-num tsd-mono">{d.getDate()}</div>
+                      <div className="tsd-th-mo">{d.toLocaleDateString('en-GB', { month: 'short' })}</div>
+                    </th>
+                  );
+                })}
+                <th className="tsd-th"><div className="tsd-colhead">Total</div></th>
+              </tr>
+            </thead>
+            <tbody>
+              {slice.map(({ crew, byDate }, ri) => (
+                <tr key={crew.id}>
+                  <td className="tsd-td crew">
+                    <div className="tsd-crew-name">{crew.name}</div>
+                    <div className="tsd-crew-role">{crew.role || ''}</div>
+                    <div className="tsd-crew-bdr tsd-mono">BDR {fmtGBP(crew.bdr)}</div>
+                  </td>
+                  {dates.map(dateISO => {
+                    const e = byDate[dateISO];
+                    if (!e || e.resolved.dayType === 'Day off') {
+                      return <td key={dateISO} className="tsd-td"><div className="tsd-dash">–</div></td>;
+                    }
+                    if (e.resolved.dayType === 'Rest Day') {
+                      return (
+                        <td key={dateISO} className="tsd-td daycell">
+                          <div className="tsd-celltype">Rest day</div>
+                          <div className="tsd-cellamt tsd-mono" style={{ marginTop: '8px' }}>{fmtGBP(e.calc.total)}</div>
+                        </td>
+                      );
+                    }
+                    const chips = ['hasOT', 'hasL1', 'hasL2', 'hasMSB', 'hasCWD', 'hasTOC'].filter(f => e.flags[f])
+                      .map(f => ({ hasOT: 'OT', hasL1: 'L1', hasL2: 'L2', hasMSB: 'MSB', hasCWD: 'CWD', hasTOC: 'TOC' })[f]);
+                    if (e.flags.isNightShoot) chips.push('NS');
+                    return (
+                      <td key={dateISO} className="tsd-td daycell">
+                        <div className="tsd-celltype">{e.resolved.dayType}</div>
+                        <div className="tsd-cellhrs tsd-mono">{(e.calc.meta?.workedHrs || 0).toFixed(1)}h</div>
+                        <div className="tsd-cellchips">{chips.map(k => <TsdChip key={k} kind={k} />)}</div>
+                        <div className="tsd-cellamt tsd-mono">{fmtGBP(e.calc.total)}</div>
+                      </td>
+                    );
+                  })}
+                  <td className="tsd-td rowtotal">
+                    <div className="tsd-rowtotal-amt tsd-mono">{fmtGBP(rowTotals[ri].t)}</div>
+                    <div className="tsd-rowtotal-hrs tsd-mono">{rowTotals[ri].h.toFixed(1)}h</div>
+                  </td>
+                </tr>
+              ))}
+              {showFoot ? (
+                <tr>
+                  <td className="tsd-tfoot-td"><div className="tsd-foot-label">Day totals</div></td>
+                  {dates.map((dateISO, i) => (
+                    <td key={dateISO} className="tsd-tfoot-td">
+                      {colTotals[i].t > 0 ? (
+                        <>
+                          <div className="tsd-foot-amt tsd-mono">{fmtGBP(colTotals[i].t)}</div>
+                          <div className="tsd-foot-hrs tsd-mono">{colTotals[i].h.toFixed(1)}h</div>
+                        </>
+                      ) : <div className="tsd-dash">–</div>}
+                    </td>
+                  ))}
+                  <td className="tsd-tfoot-td">
+                    <div className="tsd-foot-grand tsd-mono">{fmtGBP(weekTotal)}</div>
+                    <div className="tsd-foot-hrs tsd-mono">{weekHrs.toFixed(1)}h</div>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+          {showFoot ? <div className="tsd-apanote">Rates and penalties calculated to the APA/Pact commercials agreement. Continuous working day and break contraventions are applied per crew member, per day.</div> : null}
+        </div>
+      );
+    }
+
+    function TsdBdCrewHdr({ block, contd }) {
+      const { crew, tot, hrs } = block;
+      return (
+        <div className="tsd-bdcrew">
+          <div className="tsd-bdcrew-hdr">
+            <div className="tsd-bdcrew-left">
+              <div className="tsd-bdcrew-name">{crew.name}{contd ? <span className="tsd-cont"> (continued)</span> : null}</div>
+              <div className="tsd-bdcrew-role">{crew.role || ''}{crew.bdr != null ? <span className="tsd-mono"> · BDR {fmtGBP(crew.bdr)}</span> : null}</div>
+            </div>
+            <div className="tsd-bdcrew-right">
+              <div className="tsd-bdcrew-hrs tsd-mono">{hrs.toFixed(1)}h</div>
+              <div className="tsd-bdcrew-amt tsd-mono">{fmtGBP(tot)}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function TsdBreakdownDay({ entry }) {
+      const { day, resolved, calc } = entry;
+      const d = new Date(day.date + 'T12:00:00');
+      const dayName = `${d.toLocaleDateString('en-GB', { weekday: 'long' })} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'long' })}`;
+      const wh = calc.meta?.workedHrs || 0;
+      const times = (resolved.callTime && resolved.wrapTime)
+        ? `${resolved.callTime} – ${resolved.wrapTime} · ${wh.toFixed(1)}h`
+        : (wh > 0 ? `${wh.toFixed(1)}h` : '');
+      return (
+        <div className="tsd-bdday">
+          <div className="tsd-bdday-hdr">
+            <div className="tsd-bdday-name">{dayName}</div>
+            <div className="tsd-bdday-type">{resolved.dayType}</div>
+            {times ? <div className="tsd-bdday-times tsd-mono">{times}</div> : null}
+          </div>
+          <div className="tsd-bdlines">
+            {(calc.lines || []).map((l, i) => {
+              const isPen = categorizeBreakdownLine(l) === 'pen';
+              const chip = tsdLineChipKind(l);
+              const basisBits = [];
+              if (l.detail) basisBits.push(l.detail);
+              if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) basisBits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
+              return (
+                <React.Fragment key={i}>
+                  <div className={`tsd-bl-label${chip ? ' withchip' : ''}${isPen ? ' pen' : ''}`}>
+                    {chip ? <TsdChip kind={chip} /> : null}
+                    <span>{l.label}</span>
+                  </div>
+                  <div className="tsd-bl-basis tsd-mono">{basisBits.join(' · ')}</div>
+                  <div className={`tsd-bl-amt tsd-mono${isPen ? ' pen' : ''}`}>{fmtGBP(l.amount)}</div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+          <div className="tsd-bdsub">
+            <div />
+            <div className="tsd-bdsub-label">Day subtotal</div>
+            <div className="tsd-bdsub-amt tsd-mono">{fmtGBP(calc.total)}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // Single calc pass over the export scope — grids, summary, and breakdown
+    // all read from this one cache, so they reconcile by construction.
+    function buildTsdGridModel(production, crewList, days, weeksToRender, totalWeeksAll, userPrefs) {
+      const weeksDates = weeksToRender.map(wk => ({ index: wk.index, dates: weekDateRange(wk.start) }));
+      const scopeDates = new Set();
+      weeksDates.forEach(w => w.dates.forEach(d => scopeDates.add(d)));
+      const perCrew = (crewList || []).map(c => {
+        const sorted = (days || []).filter(d => d.crewId === c.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        const byDate = {};
+        sorted.forEach(day => {
+          if (!scopeDates.has(day.date)) return;
+          const prev = sorted.filter(x => x.date < day.date).pop() || null;
+          const resolved = resolveDay(production, day, c);
+          const calc = calcForDisplay(production, day, c, prev);
+          byDate[day.date] = { day, resolved, calc, flags: penaltyFlags(calc) };
+        });
+        return { crew: c, byDate };
+      });
+      const buckets = { basic: 0, ot: 0, pen: 0 };
+      let total = 0, hrs = 0, otHrs = 0, penCount = 0;
+      const penCrew = new Set(), otCoefs = new Set(), otCrew = new Set();
+      perCrew.forEach(({ crew, byDate }) => {
+        Object.values(byDate).forEach(({ calc }) => {
+          const b = bucketCalcTotals(calc);
+          buckets.basic += b.basic; buckets.ot += b.ot; buckets.pen += b.pen;
+          total += calc.total;
+          hrs += calc.meta?.workedHrs || 0;
+          otHrs += calc.meta?.otHrs || 0;
+          if ((calc.meta?.otHrs || 0) > 0) { otCrew.add(crew.id); otCoefs.add(String(Number(crew.otCoef) || 1)); }
+          (calc.lines || []).forEach(l => {
+            if (categorizeBreakdownLine(l) === 'pen') { penCount++; penCrew.add(crew.id); }
+          });
+        });
+      });
+      const single = weeksDates.length === 1;
+      const firstNo = weeksDates.length ? weeksDates[0].index + 1 : 1;
+      const lastNo = weeksDates.length ? weeksDates[weeksDates.length - 1].index + 1 : 1;
+      const weeksLabel = single ? `Week ${firstNo} of ${totalWeeksAll}` : `Weeks ${firstNo}–${lastNo} of ${totalWeeksAll}`;
+      const allDates = [...scopeDates].sort();
+      const rangeLabel = allDates.length ? tsdFmtRange(allDates[0], allDates[allDates.length - 1]) : '';
+      const meId = resolveUserCrewId(production, userPrefs);
+      const me = (production.crew || []).find(c => c.id === meId);
+      const now = new Date();
+      const genDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const genStamp = `${genDate} · ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+      return {
+        production, perCrew, weeksDates, buckets, total, hrs, otHrs,
+        totalLabel: single ? 'Week total' : 'Period total',
+        otCaption: otHrs > 0
+          ? (otCoefs.size === 1 ? `${otHrs.toFixed(1)}h at ${[...otCoefs][0]}× basic hourly` : `${otHrs.toFixed(1)}h across ${otCrew.size} crew`)
+          : 'None this period',
+        penCaption: penCount > 0 ? `${penCount} item${penCount === 1 ? '' : 's'} across ${penCrew.size} crew` : 'None this period',
+        weeksLabel, rangeLabel, preparedBy: (me && me.name) || '', genDate, genStamp,
+      };
+    }
+
+    // Deterministic page packing (px at the 0.794 design scale; the .page
+    // divs are fixed 210×297mm with overflow hidden, so the estimates run
+    // 5% generous — a bust clips rather than reflows, and never happens
+    // inside the constants' slack).
+    function assembleTsdGridPages(model) {
+      const PAGE_BUDGET = 1024, HDR_META = 103, SUMMARY = 120, KEY = 78, SLIM = 30;
+      const GRID_FIXED = 168, GRID_ROW = 82.6, SAFETY = 1.05;
+      const BD_HEAD = 40, BD_CREW_HDR = 39, BD_DAY_FIXED = 44, BD_LINE = 18.2;
+      const nCrew = model.perCrew.length;
+      const title = model.production.title || 'Untitled Production';
+      const repeatStrip = (suffix) => (
+        <div className="tsd-repeat" style={{ paddingBottom: '7.1px', borderBottom: '1px solid #e6e6e6' }}>
+          <strong>{title}</strong> · Production grid · {model.weeksLabel} · {model.rangeLabel}{suffix ? ` ${suffix}` : ''}
+        </div>
+      );
+
+      // ── Week grids ──
+      const MAX_ROWS = Math.max(2, Math.floor((PAGE_BUDGET - SLIM - GRID_FIXED * SAFETY) / (GRID_ROW * SAFETY)));
+      const gridEls = [];
+      model.weeksDates.forEach((week, i) => {
+        if (nCrew <= MAX_ROWS) {
+          gridEls.push({ h: (GRID_FIXED + GRID_ROW * nCrew) * SAFETY, el: <TsdWeekGrid key={week.dates[0]} model={model} week={week} weekNo={i + 1} /> });
+        } else {
+          for (let from = 0; from < nCrew; from += MAX_ROWS) {
+            const to = Math.min(nCrew, from + MAX_ROWS);
+            gridEls.push({
+              h: (GRID_FIXED + GRID_ROW * (to - from)) * SAFETY,
+              el: <TsdWeekGrid key={`${week.dates[0]}-${from}`} model={model} week={week} weekNo={i + 1}
+                    crewFrom={from} crewTo={to} continued={from > 0} showFoot={to === nCrew} />,
+            });
+          }
+        }
+      });
+      const gridPages = [];
+      let cur = null, rem = 0;
+      gridEls.forEach(({ h, el }) => {
+        if (!cur || rem < h) {
+          cur = [];
+          gridPages.push(cur);
+          rem = PAGE_BUDGET - (gridPages.length === 1 ? (HDR_META + SUMMARY + KEY) : SLIM);
+        }
+        cur.push(el);
+        rem -= h;
+      });
+      if (!gridPages.length) gridPages.push([]);
+
+      // ── Breakdown ──
+      const bdBlocks = model.perCrew.map(({ crew, byDate }) => {
+        const entries = Object.values(byDate)
+          .filter(e => (e.calc.lines || []).length > 0)
+          .sort((a, b) => a.day.date.localeCompare(b.day.date));
+        return {
+          crew, entries,
+          tot: entries.reduce((s, e) => s + e.calc.total, 0),
+          hrs: entries.reduce((s, e) => s + (e.calc.meta?.workedHrs || 0), 0),
+        };
+      }).filter(b => b.entries.length > 0);
+      const bdPages = [];
+      let bpage = null, brem = 0;
+      const newBdPage = () => { bpage = []; bdPages.push(bpage); brem = PAGE_BUDGET - SLIM - BD_HEAD; };
+      if (bdBlocks.length) newBdPage();
+      bdBlocks.forEach(block => {
+        let started = false;   // any day of this crew placed yet (drives "(continued)")
+        let hdrOnPage = false; // this crew's header present on the CURRENT page
+        let hdrKey = 0;
+        block.entries.forEach(entry => {
+          const dh = (BD_DAY_FIXED + BD_LINE * (entry.calc.lines || []).length) * SAFETY;
+          const need = dh + (hdrOnPage ? 0 : BD_CREW_HDR);
+          if (brem < need) { newBdPage(); hdrOnPage = false; }
+          if (!hdrOnPage) {
+            bpage.push(<TsdBdCrewHdr key={`${block.crew.id}-h${hdrKey++}`} block={block} contd={started} />);
+            brem -= BD_CREW_HDR;
+            hdrOnPage = true;
+          }
+          bpage.push(<TsdBreakdownDay key={`${block.crew.id}-${entry.day.date}`} entry={entry} />);
+          brem -= dh;
+          started = true;
+        });
+      });
+
+      // ── Assemble ──
+      const totalPages = gridPages.length + bdPages.length;
+      const out = [];
+      gridPages.forEach((children, i) => {
+        out.push(
+          <div key={`tsd-g${i}`} className="page tsd-page">
+            {i === 0 ? (
+              <>
+                <TsdDocHeader
+                  kicker="Production grid · Timesheet"
+                  title={title}
+                  sub={<>{model.weeksLabel} · {nCrew} crew · <span className="tsd-mono">{model.rangeLabel}</span></>}
+                  totalLabel={model.totalLabel}
+                  totalValue={fmtGBP(model.total)}
+                  totalSub={`${model.hrs.toFixed(1)}h${model.otHrs > 0 ? ` · ${model.otHrs.toFixed(1)}h OT` : ''}`}
+                />
+                <TsdMetaStrip production={model.production} preparedBy={model.preparedBy} genDate={model.genDate} />
+                <TsdSummary model={model} barId="grid" />
+                <TsdKeySection />
+              </>
+            ) : repeatStrip('(continued)')}
+            {children}
+            <TsdPageFoot genStamp={model.genStamp} pageNum={i + 1} totalPages={totalPages} />
+          </div>
+        );
+      });
+      bdPages.forEach((children, i) => {
+        out.push(
+          <div key={`tsd-b${i}`} className="page tsd-page">
+            {repeatStrip('')}
+            <div className="tsd-bdhead" style={{ marginTop: '20.6px' }}>
+              <div className="tsd-sectlabel">Detailed breakdown{i > 0 ? ' · continued' : ''}</div>
+              <div style={{ flex: 1 }} />
+              <div className="tsd-bdnote"><TsdTick />Every figure reconciles to the week grid</div>
+            </div>
+            {children}
+            <TsdPageFoot genStamp={model.genStamp} pageNum={gridPages.length + i + 1} totalPages={totalPages} />
+          </div>
+        );
+      });
+      return out;
+    }
+
+    /* Legacy raster-era GridPage — DEAD as of the vector cutover (no
+       callers; PrintView's grid branch builds TSD pages above). Removed
+       wholesale in the solo-redesign commit alongside the old TimesheetPage. */
+    function _legacyGridPageDead({ crew, weekDates, allDays, production, weekIndex, totalWeeks, pageNum, totalPages, isFirstPage, userPrefs }) {
       const week = { start: weekDates[0], end: weekDates[6] };
       const rangeStart = new Date(weekDates[0] + "T12:00:00");
       const rangeEnd   = new Date(weekDates[6] + "T12:00:00");
@@ -6692,26 +7296,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           ? [weeks[exportWeekIndex]].filter(Boolean)
           : weeks;
 
-        const totalPages = weeksToRender.length;
-
-        weeksToRender.forEach((wk, pi) => {
-          const weekDates = weekDateRange(wk.start);
-          pages.push(
-            <GridPage
-              key={wk.start}
-              crew={crewList}
-              weekDates={weekDates}
-              allDays={days}
-              production={production}
-              weekIndex={wk.index}
-              totalWeeks={weeks.length}
-              pageNum={pi + 1}
-              totalPages={totalPages}
-              isFirstPage={pi === 0}
-              userPrefs={userPrefs}
-            />
-          );
-        });
+        // TSD redesign: one calc pass feeds summary, grids, and breakdown
+        // (they reconcile by construction), then deterministic packing
+        // assembles fixed 210×297mm pages — grids stacked "Week N", the
+        // detailed breakdown always opening on its own page.
+        const model = buildTsdGridModel(production, crewList, days, weeksToRender, weeks.length, userPrefs);
+        pages.push(...assembleTsdGridPages(model));
       }
 
       return ReactDOM.createPortal(
@@ -14686,7 +15276,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const timer = setTimeout(() => {
           const cleanup = () => setExportState(null);
           if (IS_NATIVE) {
-            nativeExportPrintViewPdf('print-view', '.page', 'TimeMachine timesheet.pdf')
+            nativeExportPrintViewPdfVector('print-view', PRINT_STYLES, { top: 0, right: 0, bottom: 0, left: 0 }, 'TimeMachine timesheet.pdf')
               .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
               .finally(cleanup);
           } else {
@@ -17727,7 +18317,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const timer = setTimeout(() => {
           const cleanup = () => setSoloExportState(null);
           if (IS_NATIVE) {
-            nativeExportPrintViewPdf('print-view', '.page', `${(soloCrew && soloCrew.name) || 'Crew'} timesheet.pdf`)
+            nativeExportPrintViewPdfVector('print-view', PRINT_STYLES, { top: 0, right: 0, bottom: 0, left: 0 }, `${(soloCrew && soloCrew.name) || 'Crew'} timesheet.pdf`)
               .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
               .finally(cleanup);
           } else {
@@ -18335,7 +18925,7 @@ const setDays = (updater) =>
         const timer = setTimeout(() => {
           const cleanup = () => setSavePrintState(null);
           if (IS_NATIVE) {
-            nativeExportPrintViewPdf('print-view', '.page', 'TimeMachine timesheets.pdf')
+            nativeExportPrintViewPdfVector('print-view', PRINT_STYLES, { top: 0, right: 0, bottom: 0, left: 0 }, 'TimeMachine timesheets.pdf')
               .catch((e) => { try { console.error('PDF export failed', e); } catch (_) {} })
               .finally(cleanup);
           } else {
