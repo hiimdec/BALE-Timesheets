@@ -1040,25 +1040,6 @@
       }, [ctx, active, id, title]);
     }
 
-    // Lazy-load a vendored script exactly once. Used for the PDF libraries on native.
-    const _scriptPromises = {};
-    function loadVendorScript(src) {
-      if (_scriptPromises[src]) return _scriptPromises[src];
-      _scriptPromises[src] = new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src; s.async = true;
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error('Failed to load ' + src));
-        document.head.appendChild(s);
-      });
-      return _scriptPromises[src];
-    }
-    async function ensurePdfLibs() {
-      if (!window.html2canvas) await loadVendorScript('./vendor/html2canvas.min.js');
-      if (!(window.jspdf && window.jspdf.jsPDF)) await loadVendorScript('./vendor/jspdf.umd.min.js');
-      return { html2canvas: window.html2canvas, jsPDF: window.jspdf.jsPDF };
-    }
-
     // Write a file to the app's Cache dir and open the iOS share sheet.
     //   data: base64 string for binary (PDF), or utf8 text when opts.encoding === 'utf8'.
     async function nativeSaveAndShare(filename, data, opts = {}) {
@@ -1785,47 +1766,6 @@
     // vertically each time so each sheet shows the right slice. Timesheet/grid
     // screens whose .page divs are fixed 210×297 mm degenerate to one PDF page
     // per DOM page exactly as before. PNG for crisp text.
-    async function nativeRenderPrintViewPdfBase64(containerId, pageSelector) {
-      const { html2canvas, jsPDF } = await ensurePdfLibs();
-      const container = document.getElementById(containerId);
-      if (!container) throw new Error('Print container not found: ' + containerId);
-      const found = container.querySelectorAll(pageSelector);
-      const pages = found.length ? Array.from(found) : [container];
-      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-      const A4W = 210, A4H = 297;
-      let firstPdfPage = true;
-      for (let i = 0; i < pages.length; i++) {
-        const canvas = await html2canvas(pages[i], {
-          scale: 3, backgroundColor: '#ffffff', useCORS: true, logging: false,
-        });
-        const img = canvas.toDataURL('image/png');
-        const imgH = canvas.height * A4W / canvas.width;  // mm, aspect preserved
-        if (imgH <= A4H + 0.5) {
-          if (!firstPdfPage) pdf.addPage();
-          pdf.addImage(img, 'PNG', 0, 0, A4W, imgH);
-          firstPdfPage = false;
-        } else {
-          // Slice this tall canvas across multiple A4 sheets. jsPDF clips the
-          // image at the page edge; negative y shifts which slice is visible.
-          let yOffset = 0;
-          while (yOffset < imgH - 0.5) {
-            if (!firstPdfPage) pdf.addPage();
-            pdf.addImage(img, 'PNG', 0, -yOffset, A4W, imgH);
-            firstPdfPage = false;
-            yOffset += A4H;
-          }
-        }
-      }
-      return pdf.output('datauristring').split(',')[1];
-    }
-
-    // Render the print container to PDF and hand it to the iOS share sheet.
-    async function nativeExportPrintViewPdf(containerId, pageSelector, filename) {
-      const base64 = await nativeRenderPrintViewPdfBase64(containerId, pageSelector);
-      await nativeSaveAndShare(filename, base64, { title: filename });
-      return 'shared';
-    }
-
     // Vector PDF path. Sends a self-contained HTML document (the print view's
     // outerHTML + the print stylesheet + Tailwind utility CSS) to the bespoke
     // NativePdf plugin, which renders it through iOS's WebKit print pipeline.
@@ -1874,7 +1814,7 @@
       return base64;
     }
 
-    // Vector equivalent of nativeExportPrintViewPdf — renders + share sheet.
+    // Renders the print container to a vector PDF and hands it to the iOS share sheet.
     async function nativeExportPrintViewPdfVector(containerId, printStyles, margins, filename) {
       const base64 = await nativeRenderPrintViewPdfBase64Vector(containerId, printStyles, margins);
       await nativeSaveAndShare(filename, base64, { title: filename });

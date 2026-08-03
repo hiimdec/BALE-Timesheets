@@ -6,14 +6,14 @@ This is the source of truth: the actual repo code (the local working copy, kept 
 ## Build topology
 The self-contained root `index.html` (React 18 + Tailwind + in-browser Babel via CDN) is the file the web app is built from. We edit it in the LOCAL working copy. It does not go live until it's committed and pushed to `main` on GitHub, which Netlify then auto-deploys to timemachineapp.co.uk.`/dist` is esbuild output for the Capacitor iOS wrap, gitignored. Not served to web.
 Data: localStorage on web, @capacitor/preferences on native.
-PDF: web = html2canvas + jsPDF; iOS = native Swift plugin (NativePdfPlugin.swift).
+PDF: web = window.print(); iOS = native Swift plugin (NativePdfPlugin.swift), which renders the print DOM through WebKit's print pipeline to a vector A4 PDF. Timesheets and invoices both take this path; html2canvas/jsPDF are gone.
 Invoices have two render paths: the on-screen editor view and the print/PDF view (#invoice-print-view). They are different DOM — changes to one do not imply the other.
 Authoritative pay rules: APA_RULES.md.
 
 ## Non-negotiable rules
 Propose-first on anything that touches the pay/calc engine, stored-data shape, a data migration, or money displayed on a breakdown/invoice. Investigate, show me the current logic, propose the change, and wait for sign-off. No silent edits to the pay engine.
 Three-audit gate after every change: audit:build (byte-parity / no logic drift), audit:storage (migration + round-trip), audit:web (no native/PDF libs leaking into the web build). All green before a task is "done"; do not commit until green.
-Verify through the real pipeline, not a proxy. On web that means the actual #invoice-print-view DOM that html2canvas/print capture — not a static react-dom render. On native, the actual on-device export.
+Verify through the real pipeline, not a proxy. On web that means the actual #invoice-print-view / #print-view DOM that print capture — not a static react-dom render. On native, the actual on-device export.
 Invoices are frozen records: snapshot at send; never mutate a sent invoice, even if the underlying production changes.
 Bug-fixes may repair data already saved. Preference changes are defaults for NEW shoots only — never retroactively rewrite a shoot the user already created.
 

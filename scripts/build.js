@@ -107,11 +107,6 @@ function copyVendor() {
   const files = [
     ['react', 'umd/react.production.min.js'],
     ['react-dom', 'umd/react-dom.production.min.js'],
-    // PDF libraries — vendored for offline use. Injected at runtime ONLY on
-    // native iOS (see ensurePdfLibs in index.html), so the web build, although
-    // it ships these files, never loads or executes them.
-    ['html2canvas', 'dist/html2canvas.min.js'],
-    ['jspdf', 'dist/jspdf.umd.min.js'],
   ];
   for (const [pkg, rel] of files) {
     const from = path.join(ROOT, 'node_modules', pkg, rel);
