@@ -6824,6 +6824,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         { label: 'Role', value: invoice.jobRole },
         { label: 'Dates', value: invoice.shootDateStart ? `${fmtInvDate(invoice.shootDateStart)}${invoice.shootDateEnd && invoice.shootDateEnd !== invoice.shootDateStart ? ` – ${fmtInvDate(invoice.shootDateEnd)}` : ''}` : '', mono: true },
       ].filter(c => c.value && String(c.value).trim());
+      const issuedDate = invoice.invoiceDate || String(invoice.createdAt || '').slice(0, 10);
       const chargeTotal = charges ? (Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0) : 0;
       const dueAmount = total + chargeTotal;
       const PageFoot = ({ n, of }) => (
@@ -6966,11 +6967,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="inv-kicker">Invoice</div>
                 <div className="inv-number inv-mono">{invoice.invoiceNumber}</div>
                 <div className="inv-datestrip">
-                  <div style={{ textAlign: 'right' }}>
-                    <div className="inv-datelabel">Issued</div>
-                    <div className="inv-dateval inv-mono">{fmtInvDate(invoice.issueDate)}</div>
-                  </div>
-                  {invoice.dueDate && <div className="inv-datediv" />}
+                  {/* The record's issue date is invoiceDate (issueDate never
+                      existed — binding it rendered the label with an empty
+                      slot). Same field the editor and the ledger read, with
+                      the ledger's createdAt fallback for very old records;
+                      the slot renders only when there IS a date, so an
+                      orphan label can't come back. */}
+                  {issuedDate && (
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="inv-datelabel">Issued</div>
+                      <div className="inv-dateval inv-mono">{fmtInvDate(issuedDate)}</div>
+                    </div>
+                  )}
+                  {issuedDate && invoice.dueDate && <div className="inv-datediv" />}
                   {invoice.dueDate && (
                     <div style={{ textAlign: 'right' }}>
                       <div className="inv-datelabel">Due</div>
