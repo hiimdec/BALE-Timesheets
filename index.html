@@ -5759,7 +5759,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .inv-td { border-bottom: 1px solid #f2f2f2; padding: 11.1px 6.4px 11.9px; text-align: right; vertical-align: top; font-size: 9.1px; color: #404040; }
       .inv-td.desc { text-align: left; padding-left: 1.6px; }
       .inv-td.last { padding-right: 1.6px; font-size: 9.5px; font-weight: 700; color: #0a0a0a; }
-      .inv-linelabel { font-size: 9.5px; font-weight: 700; color: #171717; line-height: 1; }
+      .inv-linelabel { font-size: 9.5px; font-weight: 700; color: #171717; line-height: 1; display: flex; align-items: center; gap: 4.8px; }
+      .inv-grouphead { padding: 8.7px 1.6px 6.4px; vertical-align: bottom; }
+      .inv-grouphead-row { display: flex; justify-content: space-between; align-items: baseline; }
+      .inv-grouplabel { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #0284c7; line-height: 1; text-transform: uppercase; }
+      .inv-grouptotal { font-size: 7.9px; font-weight: 700; color: #737373; line-height: 1; }
       .inv-linedetail { font-size: 7.5px; color: #a3a3a3; line-height: 1.35; margin-top: 4.8px; }
       /* Waive treatment carried over from the previous invoice: struck-through
          grey row, badge kept upright. */
@@ -5811,6 +5815,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .inv-bdday-times { font-size: 7.5px; color: #a3a3a3; line-height: 1; }
       .inv-bdlines { display: grid; grid-template-columns: 1fr 139.7px 76.2px; }
       .inv-bl-label { padding: 2.4px 0 2.4px 12.7px; font-size: 8.3px; color: #333333; line-height: 1.5; }
+      .inv-bl-label.withchip { display: flex; align-items: center; gap: 4.8px; }
       .inv-bl-basis { padding: 2.4px 0; text-align: right; font-size: 7.5px; color: #a3a3a3; line-height: 1.66; }
       .inv-bl-amt { padding: 2.4px 0; text-align: right; font-size: 8.3px; font-weight: 600; color: #171717; line-height: 1.5; }
       .inv-bdsub { display: grid; grid-template-columns: 1fr 139.7px 76.2px; border-top: 1px dotted #d4d4d4; margin-top: 4px; padding-top: 4px; }
@@ -6699,6 +6704,94 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     /* ── Invoice PDF document (shared by print + email blob paths) ── */
+    // ── Invoice presentation helpers ────────────────────────────────────
+    // Grouping and the segment bar are PRESENTATION over the invoice's own
+    // numbers: every line is placed by the EXISTING categorizeBreakdownLine
+    // (the same categoriser the on-screen buckets use) and every figure is
+    // getLineTotal — the same function invoiceSubtotal sums. So group totals
+    // and bar segments add up to the subtotal by construction; no amount,
+    // subtotal, VAT or total can move.
+    const INV_GROUPS = [
+      { key: 'day',    label: 'Day rates',  fill: '#0ea5e9' },
+      { key: 'ot',     label: 'Overtime',   fill: '#ff8a3d' },
+      { key: 'extras', label: 'Extras',     fill: '#a78bfa' },
+      { key: 'pen',    label: 'Penalties',  fill: '#e11d48' },
+    ];
+    function invLineGroup(item) {
+      const cat = categorizeBreakdownLine(item);
+      if (cat === 'ot') return 'ot';
+      if (cat === 'pen') return 'pen';
+      if (cat === 'kit' || cat === 'extras') return 'extras';
+      return 'day';
+    }
+
+    // The chip vocabulary the design prints against contravention/OT lines.
+    const INV_CHIP = {
+      OT:  { w: 28, label: 'OT',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
+      EC:  { w: 28, label: 'EC',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
+      L1:  { w: 28, label: 'L1',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      L2:  { w: 28, label: 'L2',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      MSB: { w: 36, label: 'MSB', fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      CWD: { w: 36, label: 'CWD', fill: '#f5f5f5', stroke: '#8f8f8f', ink: '#404040' },
+      TOC: { w: 36, label: 'TOC', fill: '#e11d48', stroke: null,      ink: '#ffffff' },
+      NS:  { w: 28, label: 'NS',  fill: '#eef0f5', stroke: '#1e2a44', ink: '#1e2a44' },
+    };
+    function invChipKind(label) {
+      const l = String(label || '').toLowerCase();
+      if (l === 'late 1st break') return 'L1';
+      if (l.startsWith('late 2nd break')) return 'L2';
+      if (l === 'missed 2nd break') return 'MSB';
+      if (l.startsWith('early call')) return 'EC';
+      if (l.includes('turnaround')) return 'TOC';
+      if (l.includes('continuous working day')) return 'CWD';
+      if (l.includes('night shoot')) return 'NS';
+      if (/^ot\b|overtime/.test(l)) return 'OT';
+      return null;
+    }
+    // Slack rule (the same one that cured the timesheet's shaved edges): one
+    // empty unit inside the viewBox so a fractional device edge never eats
+    // the artwork. Drawn shape unchanged; the CSS box grows with it.
+    function InvChip({ kind }) {
+      const g = INV_CHIP[kind];
+      if (!g) return null;
+      const w = g.w, h = 16, U = 0.794;
+      return (
+        <svg viewBox={`-1 -1 ${w + 2} ${h + 2}`} style={{ display: 'block', flex: 'none', width: ((w + 2) * U).toFixed(1) + 'px', height: ((h + 2) * U).toFixed(1) + 'px' }}>
+          {g.stroke
+            ? <rect x="0.5" y="0.5" width={w - 1} height={h - 1} rx={(h - 1) / 2} fill={g.fill} stroke={g.stroke} strokeWidth="1" />
+            : <rect width={w} height={h} rx={h / 2} fill={g.fill} />}
+          <text x={w / 2} y="11" textAnchor="middle" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize="8.5" fontWeight="700" letterSpacing="0.5" fill={g.ink}>{g.label}</text>
+        </svg>
+      );
+    }
+
+    // Segment bar: proportional shares of the SAME group totals, rounded ends
+    // drawn as explicit arcs (no clipPath to resolve or shave) inside a
+    // slack viewBox.
+    function InvSegmentBar({ segments }) {
+      const segs = (segments || []).filter(s => s.v > 0.005);
+      const sum = segs.reduce((s, x) => s + x.v, 0);
+      if (!sum || segs.length === 0) return null;
+      const GAP = 2, W = 888, H = 8, R = 4, MIN = R * 2, U = 0.794;
+      const usable = W - GAP * (segs.length - 1);
+      let x = 0;
+      const shapes = segs.map((s, i) => {
+        const last = i === segs.length - 1;
+        const w = last ? Math.max(MIN, W - x) : Math.max(MIN, Math.round((s.v / sum) * usable));
+        const x0 = x, x1 = x + w;
+        x = x1 + GAP;
+        if (i === 0 && last) return <rect key={i} x={x0} y="0" width={w} height={H} rx={R} fill={s.fill} />;
+        if (i === 0)         return <path key={i} d={`M${x0 + R},0 H${x1} V${H} H${x0 + R} A${R},${R} 0 0,1 ${x0 + R},0 Z`} fill={s.fill} />;
+        if (last)            return <path key={i} d={`M${x0},0 H${x1 - R} A${R},${R} 0 0,1 ${x1 - R},${H} H${x0} Z`} fill={s.fill} />;
+        return <rect key={i} x={x0} y="0" width={w} height={H} fill={s.fill} />;
+      });
+      return (
+        <div style={{ marginTop: '12.7px' }}>
+          <svg viewBox={`-1 -1 ${W + 2} ${H + 2}`} style={{ display: 'block', width: '100%', height: ((H + 2) * U).toFixed(1) + 'px' }}>{shapes}</svg>
+        </div>
+      );
+    }
+
     function InvoiceDocument({ invoice, userPrefs, charges = null }) {
       const fmtInvDate = (iso) => {
         if (!iso) return "";
@@ -6739,7 +6832,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <tr key={`${item.id}-${fullyWaived ? 'w' : 'k'}`} className={fullyWaived ? 'inv-waived' : undefined}>
               <td className="inv-td desc">
                 <div className="inv-linelabel">
-                  {label}
+                  {invChipKind(label) && <InvChip kind={invChipKind(label)} />}{label}
                   {fullyWaived && <span className="inv-badge">Waived</span>}
                   {partiallyWaived && <span className="inv-badge">Reduced</span>}
                 </div>
@@ -6756,7 +6849,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <tr key={`${item.id}-w`} className="inv-waived">
               <td className="inv-td desc">
                 <div className="inv-linelabel">
-                  {label}
+                  {invChipKind(label) && <InvChip kind={invChipKind(label)} />}{label}
                   <span className="inv-badge">Waived</span>
                 </div>
                 {item.detail && <div className="inv-linedetail">{item.detail}</div>}
@@ -6771,7 +6864,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           rows.push(
             <tr key={`${item.id}-k`}>
               <td className="inv-td desc">
-                <div className="inv-linelabel">{label}</div>
+                <div className="inv-linelabel">{invChipKind(label) && <InvChip kind={invChipKind(label)} />}{label}</div>
                 {item.detail && <div className="inv-linedetail">{item.detail}</div>}
               </td>
               <td className="inv-td inv-mono">{isFixed ? "" : (partiallyWaived ? billedQty : item.qty)}</td>
@@ -6787,7 +6880,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <tr key={`${item.id}-w`} className="inv-waived">
                 <td className="inv-td desc">
                   <div className="inv-linelabel">
-                    {label}
+                    {invChipKind(label) && <InvChip kind={invChipKind(label)} />}{label}
                     <span className="inv-badge">Waived</span>
                   </div>
                 </td>
@@ -6824,6 +6917,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         { label: 'Role', value: invoice.jobRole },
         { label: 'Dates', value: invoice.shootDateStart ? `${fmtInvDate(invoice.shootDateStart)}${invoice.shootDateEnd && invoice.shootDateEnd !== invoice.shootDateStart ? ` – ${fmtInvDate(invoice.shootDateEnd)}` : ''}` : '', mono: true },
       ].filter(c => c.value && String(c.value).trim());
+      // Group totals use the SAME getLineTotal invoiceSubtotal sums, so the
+      // groups and the bar segments add to the subtotal exactly.
+      const groupTotals = { day: 0, ot: 0, extras: 0, pen: 0 };
+      allLines.forEach(l => { groupTotals[invLineGroup(l)] += getLineTotal(l); });
       const issuedDate = invoice.invoiceDate || String(invoice.createdAt || '').slice(0, 10);
       const chargeTotal = charges ? (Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0) : 0;
       const dueAmount = total + chargeTotal;
@@ -6906,7 +7003,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) bits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
                             return (
                               <React.Fragment key={li}>
-                                <div className="inv-bl-label">{l.label}</div>
+                                <div className={`inv-bl-label${invChipKind(l.label) ? ' withchip' : ''}`}>
+                                  {invChipKind(l.label) && <InvChip kind={invChipKind(l.label)} />}
+                                  <span>{l.label}</span>
+                                </div>
                                 <div className="inv-bl-basis inv-mono">{bits.join(' · ')}</div>
                                 <div className="inv-bl-amt inv-mono">{fmtGBP(l.amount)}</div>
                               </React.Fragment>
@@ -7034,24 +7134,46 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </tr>
               </thead>
               <tbody>
-                {normalLines.map(item => renderLineRows(item))}
-                {!showInd && expenseLines.length > 0 && (() => {
-                  const sum = expenseLines.reduce((s, l) => s + getLineTotal(l), 0);
+                {INV_GROUPS.map(g => {
+                  const rows = [];
+                  normalLines.filter(l => invLineGroup(l) === g.key).forEach(item => rows.push(...renderLineRows(item)));
+                  if (g.key === 'extras' && expenseLines.length > 0) {
+                    if (showInd) {
+                      expenseLines.forEach(item => rows.push(...renderLineRows(item, cleanExpenseLabel(item))));
+                    } else {
+                      const sum = expenseLines.reduce((s, l) => s + getLineTotal(l), 0);
+                      rows.push(
+                        <tr key="expenses-rollup">
+                          <td className="inv-td desc">
+                            <div className="inv-linelabel">Expenses</div>
+                            <div className="inv-linedetail">{expenseLines.length} item{expenseLines.length !== 1 ? 's' : ''}</div>
+                          </td>
+                          {!fav && <td className="inv-td inv-mono" />}
+                          {!fav && <td className="inv-td inv-mono" />}
+                          <td className="inv-td last inv-mono">{fmtGBP(sum)}</td>
+                        </tr>
+                      );
+                    }
+                  }
+                  if (rows.length === 0) return null;
                   return (
-                    <tr key="expenses-rollup">
-                      <td className="inv-td desc">
-                        <div className="inv-linelabel">Expenses</div>
-                        <div className="inv-linedetail">{expenseLines.length} item{expenseLines.length !== 1 ? "s" : ""}</div>
-                      </td>
-                      {!fav && <td className="inv-td inv-mono" />}
-                      {!fav && <td className="inv-td inv-mono" />}
-                      <td className="inv-td last inv-mono">{fmtGBP(sum)}</td>
-                    </tr>
+                    <React.Fragment key={g.key}>
+                      <tr>
+                        <td className="inv-grouphead" colSpan={fav ? 2 : 4}>
+                          <div className="inv-grouphead-row">
+                            <div className="inv-grouplabel">{g.label}</div>
+                            <div className="inv-grouptotal inv-mono">{fmtGBP(groupTotals[g.key])}</div>
+                          </div>
+                        </td>
+                      </tr>
+                      {rows}
+                    </React.Fragment>
                   );
-                })()}
-                {showInd && expenseLines.map(item => renderLineRows(item, cleanExpenseLabel(item)))}
+                })}
               </tbody>
             </table>
+
+            <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />
 
             {charges && (
               <div className="inv-charges">
