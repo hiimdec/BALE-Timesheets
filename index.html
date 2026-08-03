@@ -5758,15 +5758,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .inv-th { border-bottom: 1px solid #262626; padding: 0 6.4px 7.1px; text-align: right; font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
       .inv-th.desc { text-align: left; padding-left: 1.6px; }
       .inv-th.last { padding-right: 1.6px; }
-      .inv-td { border-bottom: 1px solid #f2f2f2; padding: 11.1px 6.4px 11.9px; text-align: right; vertical-align: top; font-size: 9.1px; color: #404040; }
+      /* 9px/10px in the design's own 1000px space -> 7.1/7.9 real. The
+         earlier 11.1/11.9 came from the simpler INVOICE example and was the
+         bulk of the density gap. */
+      .inv-td { border-bottom: 1px solid #f2f2f2; padding: 7.1px 6.4px 7.9px; text-align: right; vertical-align: top; font-size: 9.1px; color: #404040; }
       .inv-td.desc { text-align: left; padding-left: 1.6px; }
       .inv-td.last { padding-right: 1.6px; font-size: 9.5px; font-weight: 700; color: #0a0a0a; }
-      .inv-linelabel { font-size: 9.5px; font-weight: 700; color: #171717; line-height: 1; display: flex; align-items: center; gap: 4.8px; }
+      .inv-linelabel { font-size: 9.1px; font-weight: 700; color: #171717; line-height: 1; display: flex; align-items: center; gap: 4.8px; }
       .inv-grouphead { padding: 8.7px 1.6px 6.4px; vertical-align: bottom; }
       .inv-grouphead-row { display: flex; justify-content: space-between; align-items: baseline; }
       .inv-grouplabel { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #0284c7; line-height: 1; text-transform: uppercase; }
       .inv-grouptotal { font-size: 7.9px; font-weight: 700; color: #737373; line-height: 1; }
-      .inv-linedetail { font-size: 7.5px; color: #a3a3a3; line-height: 1.35; margin-top: 4.8px; }
+      .inv-linedetail { font-size: 7.5px; color: #a3a3a3; line-height: 1; margin-top: 4.0px; }
       /* Waive treatment carried over from the previous invoice: struck-through
          grey row, badge kept upright. */
       tr.inv-waived .inv-td { text-decoration: line-through; color: #a3a3a3; }
@@ -7120,8 +7123,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="inv-sect"><div className="inv-sectlabel">Line items</div><div className="inv-sectrule" /></div>
         </>
       );
-      const TAIL_MATTER = (
+      const TOTALS_BLOCK = (
         <>
+
                   {charges && (
                 <div className="inv-charges">
                   <div className="inv-sect" style={{ margin: '19.1px 0 7.9px' }}><div className="inv-sectlabel">Late payment charges (added {fmtInvDate(charges.generatedAt)})</div><div className="inv-sectrule" /></div>
@@ -7158,8 +7162,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                 </div>
               </div>
-
-              {bankFields.length > 0 && (
+        </>
+      );
+      const BANK_BLOCK = (
+        <>
+{bankFields.length > 0 && (
                 <>
                   <div className="inv-sect"><div className="inv-sectlabel">Payment details</div><div className="inv-sectrule" /></div>
                   <div className="inv-bank">
@@ -7176,8 +7183,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                 </>
               )}
-
-              <div className="inv-note">Please quote the invoice reference with payment.{backPage ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
+        </>
+      );
+      const NOTE_BLOCK = (
+        <>
+<div className="inv-note">Please quote the invoice reference with payment.{backPage ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
         </>
       );
       const totalPages = backPage ? 2 : 1;
@@ -7195,10 +7205,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               // note) moves WHOLE to the next page when it will not fit —
               // so banking details can never be clipped or printed under the
               // footer, at any invoice size.
-              const BUDGET = 1019, SLIM = 42, THEAD = 18, GH = 22, ROW = 52, BARH = 20, HEADH = 372;
+              // Estimates calibrated against MEASURED render heights (see the
+              // commit note), each carrying ~6% headroom rather than the earlier
+              // guesswork — over-reserving was pushing blocks to the next page
+              // that genuinely fitted.
+              const BUDGET = 1000, SLIM = 42, THEAD = 16, GH = 24, ROW = 39, BARH = 21, HEADH = 340;
               const bankRows = Math.ceil((bankFields.length + 1) / 3);
-              const tailH = (invoice.vatRegistered ? 48 : 0) + (charges ? 118 : 0) + 88
-                          + (bankFields.length ? 29 + bankRows * 33 + 40 : 0) + 26;
+              const totalsH = (invoice.vatRegistered ? 48 : 0) + (charges ? 118 : 0) + 92;
+              const bankH = bankFields.length ? 42 + 29 + bankRows * 33 + 40 : 0;
+              const noteH = 26;
 
               const sections = INV_GROUPS.map(g => {
                 const rows = [];
@@ -7247,10 +7262,28 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 cur.push(it.el); rem -= it.h;
               });
               chunks.push(cur);
-              const tailOwnPage = rem < tailH;
-              const bodyPages = chunks.length + (tailOwnPage ? 1 : 0);
-              const total = bodyPages + (backPage ? 1 : 0);
-              window.__invTotalPages = total;
+
+              // The tail is no longer one lump: TOTALS, PAYMENT DETAILS and the
+              // note are packed as SEPARATE blocks, so the total stays with the
+              // line items whenever it fits and only what genuinely doesn't fit
+              // moves on. PAYMENT DETAILS remains ATOMIC — it is one block that
+              // moves whole; it is never split, so the banking guarantee holds.
+              const tailBlocks = [
+                { h: totalsH, el: TOTALS_BLOCK },
+                ...(bankFields.length ? [{ h: bankH, el: BANK_BLOCK }] : []),
+                { h: noteH, el: NOTE_BLOCK },
+              ];
+              const onLastChunk = [], extraPages = [];
+              let tailRem = rem;
+              let spill = null;
+              tailBlocks.forEach(b => {
+                if (spill === null && tailRem >= b.h) { onLastChunk.push(b.el); tailRem -= b.h; return; }
+                if (spill === null) { spill = [b.el]; tailRem = BUDGET - SLIM - b.h; return; }
+                if (tailRem >= b.h) { spill.push(b.el); tailRem -= b.h; }
+                else { extraPages.push(spill); spill = [b.el]; tailRem = BUDGET - SLIM - b.h; }
+              });
+              if (spill) extraPages.push(spill);
+              const total = chunks.length + extraPages.length + (backPage ? 1 : 0);
 
               const repeat = (
                 <div className="inv-repeat">
@@ -7284,17 +7317,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     {ci > 0 && <div className="inv-sect"><div className="inv-sectlabel">Line items (continued)</div><div className="inv-sectrule" /></div>}
                     {tableFor(rows)}
                     {isLast && <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />}
-                    {isLast && !tailOwnPage && TAIL_MATTER}
+                    {isLast && onLastChunk}
                     <PageFoot n={ci + 1} of={total} />
                   </div>
                 );
-              }).concat(tailOwnPage ? [(
-                <div className="inv-page" key="inv-tail">
+              }).concat(extraPages.map((blocks, xi) => (
+                <div className="inv-page" key={`inv-tail-${xi}`}>
                   {repeat}
-                  {TAIL_MATTER}
-                  <PageFoot n={chunks.length + 1} of={total} />
+                  {blocks}
+                  <PageFoot n={chunks.length + xi + 1} of={total} />
                 </div>
-              )] : []);
+              )));
           })()}
 
           {backPage}
