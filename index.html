@@ -5539,7 +5539,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       .tnum { font-variant-numeric: tabular-nums; }
       .page {
-        width: 210mm; height: 297mm;
+        /* Height 1mm UNDER the sheet. At a flush 297mm the page had
+           0.004px of headroom, so rasteriser rounding spilled a sliver
+           onto a second sheet and break-after then pushed the next page
+           on again — a blank sheet after EVERY page. Width stays flush at
+           210mm: the grid colgroup sums to exactly the content width, and
+           horizontal overflow does not paginate. */
+        width: 210mm; height: 296mm;
         background: white; overflow: hidden;
         display: flex; flex-direction: column;
         position: relative;
@@ -5585,18 +5591,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       /* summary cards */
       .tsd-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7.9px; }
       .tsd-card { height: 63.5px; border: 1px solid #e6e6e6; border-radius: 4.8px; padding: 10.3px 11.9px; }
-      .tsd-card-head { display: flex; align-items: center; gap: 5.6px; height: 7.1px; }
+      .tsd-card-head { display: flex; align-items: center; gap: 4.0px; height: 8.7px; }
       .tsd-cardlabel { font-size: 6.7px; font-weight: 700; letter-spacing: .18em; color: #525252; line-height: 1; text-transform: uppercase; }
       .tsd-cardval { font-size: 15.9px; font-weight: 800; letter-spacing: -.025em; color: #0a0a0a; line-height: 1; margin-top: 11.1px; }
       .tsd-cardsub { font-size: 7.1px; color: #a3a3a3; line-height: 1; margin-top: 7.1px; }
-      .tsd-card.inv { background: #171717; border-color: #171717; }
+      /* The fill is painted by the BACKGROUND alone (transparent border, so
+         background-clip: border-box paints the whole rounded box as ONE arc
+         instead of a background arc with a sub-pixel border arc on top), and
+         the box-shadow re-paints the same rounded rect 0.6px larger — the
+         outward slack that guarantees the corner is covered even if the
+         outer arc under-fills at device scale. Metrics unchanged. */
+      .tsd-card.inv { background: #171717; border-color: transparent; box-shadow: 0 0 0 0.6px #171717; }
       .tsd-card.inv .tsd-cardlabel { color: #a3a3a3; }
       .tsd-card.inv .tsd-cardval { color: #ffffff; }
       .tsd-card.inv .tsd-cardsub { color: #737373; }
 
       /* key */
       .tsd-key { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8.7px 12.7px; }
-      .tsd-keyitem { display: flex; align-items: center; gap: 7.1px; height: 15.1px; }
+      .tsd-keyitem { display: flex; align-items: center; gap: 5.5px; height: 16.7px; }
       .tsd-keylabel { font-size: 8.3px; color: #404040; line-height: 1; }
 
       /* week grid table */
@@ -5620,7 +5632,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .tsd-cellhrs { font-size: 9.5px; font-weight: 600; color: #171717; line-height: 1; margin-top: 4.8px; }
       /* two rows of the padded chips (12.7px) + the 2.4px gap — sized off
          TsdChip's height; the two move together. */
-      .tsd-cellchips { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 2.4px; height: 27.8px; margin-top: 5.6px; }
+      .tsd-cellchips { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 0.8px; height: 29.4px; margin-top: 5.6px; }
       .tsd-cellamt { font-size: 8.7px; font-weight: 700; color: #171717; line-height: 1; margin-top: 3.2px; }
       .tsd-rest-label { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #b45309; line-height: 1; text-transform: uppercase; }
       .tsd-rowtotal-amt { font-size: 9.9px; font-weight: 800; letter-spacing: -.01em; color: #0a0a0a; line-height: 1; }
@@ -5635,7 +5647,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       /* page footer */
       .tsd-pagefoot { position: absolute; left: 11.8mm; right: 11.8mm; bottom: 7.6mm; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e6e6e6; padding-top: 8.7px; }
       .tsd-pf-gen { font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
-      .tsd-pf-brand { display: flex; align-items: center; gap: 7.1px; }
+      .tsd-pf-brand { display: flex; align-items: center; gap: 5.5px; }
       .tsd-pf-name { font-size: 7.1px; font-weight: 800; letter-spacing: .1em; color: #0284c7; line-height: 1; }
       .tsd-pf-url { font-size: 6.7px; color: #c4c4c4; line-height: 1; }
       .tsd-pf-div { width: 1px; height: 7.9px; background: #e6e6e6; margin: 0 2.4px; }
@@ -5643,7 +5655,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       /* detailed breakdown */
       .tsd-bdhead { display: flex; align-items: center; gap: 11.1px; padding-bottom: 7.1px; border-bottom: 1.5px solid #171717; }
-      .tsd-bdnote { font-size: 7.5px; color: #a3a3a3; line-height: 1; display: flex; align-items: center; gap: 4.8px; }
+      .tsd-bdnote { font-size: 7.5px; color: #a3a3a3; line-height: 1; display: flex; align-items: center; gap: 3.2px; }
       .tsd-repeat { font-size: 7.9px; color: #737373; line-height: 1; }
       .tsd-repeat strong { font-weight: 700; color: #404040; }
       .tsd-bdcrew { margin-top: 17.5px; }
@@ -5661,7 +5673,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .tsd-bdday-times { font-size: 7.5px; color: #a3a3a3; line-height: 1; }
       .tsd-bdlines { display: grid; grid-template-columns: 1fr 139.7px 76.2px; }
       .tsd-bl-label { padding: 2.4px 0 2.4px 12.7px; font-size: 8.3px; color: #333333; line-height: 1.5; }
-      .tsd-bl-label.withchip { display: flex; align-items: center; gap: 6.4px; }
+      .tsd-bl-label.withchip { display: flex; align-items: center; gap: 4.8px; }
       .tsd-bl-label.pen { color: #be123c; }
       .tsd-bl-basis { padding: 2.4px 0; text-align: right; font-size: 7.5px; color: #a3a3a3; line-height: 1.66; }
       .tsd-bl-amt { padding: 2.4px 0; text-align: right; font-size: 8.3px; font-weight: 600; color: #171717; line-height: 1.5; }
@@ -5689,7 +5701,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .tsd-sd-type { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #525252; text-transform: uppercase; }
       .tsd-sd-type.off { color: #a3a3a3; }
       .tsd-sd-hrs { font-size: 9.1px; font-weight: 600; color: #171717; }
-      .tsd-sd-chips { display: flex; gap: 3.2px; }
+      .tsd-sd-chips { display: flex; gap: 1.6px; }
       .tsd-sd-amt { font-size: 8.7px; color: #171717; }
       .tsd-sd-amt.pen { color: #be123c; }
       .tsd-sd-total { font-size: 9.5px; font-weight: 700; color: #0a0a0a; }
@@ -6067,20 +6079,42 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       NS:  { w: 28, lgW: 32, label: 'NS',  fill: '#eef0f5', stroke: '#1e2a44', ink: '#1e2a44' },
     };
 
+    // ── The slack rule (device-diagnosed) ──────────────────────────────
+    // Every TSD shape used to be drawn FLUSH to its viewBox edge, and the
+    // page was flush to the sheet. Measured: the chip's stroke spans
+    // exactly 0→w, the bar's cap and clip end exactly at 888, the page had
+    // 0.004px of headroom. A left/top edge sits at an exact 0 and survives
+    // rasterisation; a right/bottom edge lands mid-pixel and loses its
+    // outermost fraction — which is precisely what the device PDFs showed
+    // (chips tight on the right, the bar's right cap cut flat, the black
+    // card's corner arc under-filled, and a blank sheet after every page).
+    // So every shape now carries ONE unit of EMPTY margin inside its
+    // viewBox: the rasteriser can shave that instead of the artwork. The
+    // drawn shapes are byte-identical in user units — only the viewport
+    // around them grew, and the CSS size grows with it so the painted
+    // result is the same physical size as the approved chips.
+    const TSD_SLACK = 1;
+    const TSD_UNIT = 0.794;
+    const tsdBox = (w, h) => ({
+      viewBox: `${-TSD_SLACK} ${-TSD_SLACK} ${w + TSD_SLACK * 2} ${h + TSD_SLACK * 2}`,
+      style: {
+        display: 'block', flex: 'none',
+        width: ((w + TSD_SLACK * 2) * TSD_UNIT).toFixed(1) + 'px',
+        height: ((h + TSD_SLACK * 2) * TSD_UNIT).toFixed(1) + 'px',
+      },
+    });
+
     function TsdChip({ kind, lg }) {
       const g = TSD_CHIP[kind];
       if (!g) return null;
-      // +1 unit of box on the RIGHT only (device-calibrated): with the ink
-      // anchored at the ORIGINAL centre, WebKit's rendering of the tracked
-      // caps read marginally tighter on the right pill edge than the left.
-      // The extra unit equalises the optical margins; vertical geometry is
-      // untouched (the 5784e1f padding is correct).
+      // Box unchanged from the approved padding (5784e1f) plus ec81f9e's
+      // right unit; the asymmetry those chased was the shaved right edge,
+      // now cured by the slack rule above rather than by more padding.
       const baseW = lg ? g.lgW : g.w;
       const w = baseW + 1;
       const h = lg ? 19 : 16;
-      const px = (v) => (v * 0.794).toFixed(1) + 'px';
       return (
-        <svg viewBox={`0 0 ${w} ${h}`} style={{ display: 'block', flex: 'none', width: px(w), height: px(h) }}>
+        <svg {...tsdBox(w, h)}>
           {g.stroke
             ? <rect x="0.5" y="0.5" width={w - 1} height={h - 1} rx={(h - 1) / 2} fill={g.fill} stroke={g.stroke} strokeWidth="1" />
             : <rect width={w} height={h} rx={h / 2} fill={g.fill} />}
@@ -6091,7 +6125,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function TsdSwatch({ color }) {
       return (
-        <svg viewBox="0 0 9 9" style={{ display: 'block', flex: 'none', width: '7.1px', height: '7.1px' }}>
+        <svg {...tsdBox(9, 9)}>
           <rect width="9" height="9" rx="2.5" fill={color} />
         </svg>
       );
@@ -6099,7 +6133,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function TsdMiniLogo() {
       return (
-        <svg viewBox="0 0 14 12" style={{ display: 'block', flex: 'none', width: '11.1px', height: '9.5px' }}>
+        <svg {...tsdBox(14, 12)}>
           <rect x="0" y="0" width="14" height="3" rx="1.5" fill="#0ea5e9" />
           <rect x="0" y="4.5" width="9" height="3" rx="1.5" fill="#ff8a3d" />
           <rect x="0" y="9" width="4.5" height="3" rx="1.5" fill="#f43f5e" />
@@ -6109,7 +6143,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function TsdTick() {
       return (
-        <svg viewBox="0 0 13 10" style={{ display: 'block', flex: 'none', width: '10.3px', height: '7.9px' }}>
+        <svg {...tsdBox(13, 10)}>
           <path d="M1 5.2 L4.6 8.8 L12 1.4" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
@@ -6117,7 +6151,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     // Reconciliation bar: the three bucket values proportioned across the
     // design's 888-unit width, 2-unit gaps between non-zero segments only.
-    function TsdBar({ buckets, idSuffix }) {
+    // The rounded ends are now drawn as EXPLICIT ARCS on the end segments
+    // instead of squaring every segment and rounding the lot with a
+    // clipPath. Two wins: the painted cap is the artwork itself (a clip
+    // boundary sitting on the viewport edge was what got shaved), and
+    // nothing depends on a url(#id) reference resolving inside the
+    // plugin's document.
+    function TsdBar({ buckets }) {
       const segs = [
         { v: Math.max(0, buckets.basic), fill: '#0ea5e9' },
         { v: Math.max(0, buckets.ot), fill: '#ff8a3d' },
@@ -6125,20 +6165,24 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       ].filter(s => s.v > 0);
       const sum = segs.reduce((s, x) => s + x.v, 0);
       if (!sum) return null;
-      const GAP = 2, W = 888, usable = W - GAP * (segs.length - 1);
-      const clipId = `tsdbar-${idSuffix || 'x'}`;
+      const GAP = 2, W = 888, H = 8, R = 4, MIN = R * 2;
+      const usable = W - GAP * (segs.length - 1);
       let x = 0;
-      const rects = segs.map((s, i) => {
-        const w = (i === segs.length - 1) ? Math.max(4, W - x) : Math.max(4, Math.round((s.v / sum) * usable));
-        const r = <rect key={i} x={x} y="0" width={w} height="8" fill={s.fill} />;
-        x += w + GAP;
-        return r;
+      const shapes = segs.map((s, i) => {
+        const last = i === segs.length - 1;
+        const w = last ? Math.max(MIN, W - x) : Math.max(MIN, Math.round((s.v / sum) * usable));
+        const x0 = x, x1 = x + w;
+        x = x1 + GAP;
+        if (i === 0 && last) return <rect key={i} x={x0} y="0" width={w} height={H} rx={R} fill={s.fill} />;
+        if (i === 0)         return <path key={i} d={`M${x0 + R},0 H${x1} V${H} H${x0 + R} A${R},${R} 0 0,1 ${x0 + R},0 Z`} fill={s.fill} />;
+        if (last)            return <path key={i} d={`M${x0},0 H${x1 - R} A${R},${R} 0 0,1 ${x1 - R},${H} H${x0} Z`} fill={s.fill} />;
+        return <rect key={i} x={x0} y="0" width={w} height={H} fill={s.fill} />;
       });
       return (
         <div style={{ marginTop: '9.5px' }}>
-          <svg viewBox="0 0 888 8" style={{ display: 'block', width: '100%', height: '6.4px' }}>
-            <defs><clipPath id={clipId}><rect width="888" height="8" rx="4" /></clipPath></defs>
-            <g clipPath={`url(#${clipId})`}>{rects}</g>
+          <svg viewBox={`${-TSD_SLACK} ${-TSD_SLACK} ${W + TSD_SLACK * 2} ${H + TSD_SLACK * 2}`}
+               style={{ display: 'block', width: '100%', height: ((H + TSD_SLACK * 2) * TSD_UNIT).toFixed(1) + 'px' }}>
+            {shapes}
           </svg>
         </div>
       );
@@ -6214,7 +6258,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function TsdSummary({ model, barId }) {
+    function TsdSummary({ model }) {
       const { buckets } = model;
       return (
         <>
@@ -6244,7 +6288,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="tsd-cardsub">Excluding VAT</div>
             </div>
           </div>
-          <TsdBar buckets={buckets} idSuffix={barId} />
+          <TsdBar buckets={buckets} />
         </>
       );
     }
@@ -6511,8 +6555,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // 5% generous — a bust clips rather than reflows, and never happens
     // inside the constants' slack).
     function assembleTsdGridPages(model) {
-      const PAGE_BUDGET = 1024, HDR_META = 103, SUMMARY = 120, KEY = 81, SLIM = 30;
-      const GRID_FIXED = 168, GRID_ROW = 85.8, SAFETY = 1.05;
+      const PAGE_BUDGET = 1020, HDR_META = 103, SUMMARY = 122, KEY = 84, SLIM = 30;
+      const GRID_FIXED = 168, GRID_ROW = 87.4, SAFETY = 1.05;
       const BD_HEAD = 40, BD_CREW_HDR = 39, BD_DAY_FIXED = 44, BD_LINE = 18.2;
       const nCrew = model.perCrew.length;
       const title = model.production.title || 'Untitled Production';
@@ -6608,7 +6652,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   { label: 'Prepared by', value: model.preparedBy },
                   { label: 'Generated', value: model.genDate, mono: true },
                 ]} />
-                <TsdSummary model={model} barId="grid" />
+                <TsdSummary model={model} />
                 <TsdKeySection />
               </>
             ) : repeatStrip('(continued)')}
@@ -6736,8 +6780,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function assembleTsdSoloPages(model) {
-      const PAGE_BUDGET = 1024, HDR_META = 103, SUMMARY = 120, KEY = 81, SLIM = 30;
-      const SOLO_FIXED = 100, SOLO_ROW = 26, SOLO_WORKED_ROW = 34, NOTE = 33;
+      const PAGE_BUDGET = 1020, HDR_META = 103, SUMMARY = 122, KEY = 84, SLIM = 30;
+      const SOLO_FIXED = 100, SOLO_ROW = 26, SOLO_WORKED_ROW = 36, NOTE = 33;
       const BD_HEAD = 40, BD_DAY_FIXED = 44, BD_LINE = 18.2, SAFETY = 1.05;
       const { crew, byDate } = model.perCrew[0];
       const title = crew.name || 'Crew';
@@ -6802,7 +6846,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   { label: 'Prepared by', value: model.preparedBy },
                   { label: 'Generated', value: model.genDate, mono: true },
                 ]} />
-                <TsdSummary model={model} barId="solo" />
+                <TsdSummary model={model} />
                 <TsdKeySection />
               </>
             ) : repeatStrip}
