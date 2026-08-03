@@ -5717,8 +5717,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
          design's own padding, 1mm under the sheet (the slack rule), and the
          break rules unconditional so the plugin's WebView honours them. */
       .inv-page {
+        /* padding-bottom RESERVES the absolute footer's strip so normal flow
+           stops above it instead of printing underneath it. */
         width: 210mm; height: 296mm; background: white; overflow: hidden;
-        position: relative; padding: 11.3mm 11.8mm 0; font-size: 8.7px;
+        position: relative; padding: 11.3mm 11.8mm 15mm; font-size: 8.7px;
         page-break-after: always; break-after: page;
       }
       .inv-page:last-child { page-break-after: auto; break-after: auto; }
@@ -5782,7 +5784,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .inv-grandsub { font-size: 7.1px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1; margin-top: 7.1px; text-transform: uppercase; }
       .inv-grandval { font-size: 22.2px; font-weight: 800; letter-spacing: -.03em; color: #ffffff; line-height: 1; }
 
-      .inv-bank { background: #fafafa; border: 1px solid #e6e6e6; border-radius: 4.8px; padding: 14.3px 17.5px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14.3px 19.1px; }
+      .inv-bank { page-break-inside: avoid; break-inside: avoid; background: #fafafa; border: 1px solid #e6e6e6; border-radius: 4.8px; padding: 14.3px 17.5px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14.3px 19.1px; }
       .inv-bankkey { font-size: 6.4px; font-weight: 700; letter-spacing: .18em; color: #a3a3a3; line-height: 1; text-transform: uppercase; }
       .inv-bankval { font-size: 9.1px; font-weight: 600; color: #171717; line-height: 1; margin-top: 5.6px; word-break: break-word; }
       .inv-bankfield.wide { grid-column: 1 / -1; border-top: 1px solid #e6e6e6; padding-top: 11.9px; }
@@ -6727,14 +6729,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     // The chip vocabulary the design prints against contravention/OT lines.
     const INV_CHIP = {
-      OT:  { w: 28, label: 'OT',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
-      EC:  { w: 28, label: 'EC',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
-      L1:  { w: 28, label: 'L1',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
-      L2:  { w: 28, label: 'L2',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
-      MSB: { w: 36, label: 'MSB', fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
-      CWD: { w: 36, label: 'CWD', fill: '#f5f5f5', stroke: '#8f8f8f', ink: '#404040' },
-      TOC: { w: 36, label: 'TOC', fill: '#e11d48', stroke: null,      ink: '#ffffff' },
-      NS:  { w: 28, label: 'NS',  fill: '#eef0f5', stroke: '#1e2a44', ink: '#1e2a44' },
+      OT:  { w: 26, label: 'OT',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
+      EC:  { w: 26, label: 'EC',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
+      L1:  { w: 26, label: 'L1',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      L2:  { w: 26, label: 'L2',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      MSB: { w: 34, label: 'MSB', fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      CWD: { w: 34, label: 'CWD', fill: '#f5f5f5', stroke: '#8f8f8f', ink: '#404040' },
+      TOC: { w: 34, label: 'TOC', fill: '#e11d48', stroke: null,      ink: '#ffffff' },
+      NS:  { w: 26, label: 'NS',  fill: '#eef0f5', stroke: '#1e2a44', ink: '#1e2a44' },
     };
     function invChipKind(label) {
       const l = String(label || '').toLowerCase();
@@ -6754,13 +6756,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function InvChip({ kind }) {
       const g = INV_CHIP[kind];
       if (!g) return null;
-      const w = g.w, h = 16, U = 0.794;
+      // h=14 is the INVOICE design's chip height. Using the timesheet's padded
+      // 16 inflated every chipped row and fed the page-1 overflow.
+      const w = g.w, h = 14, U = 0.794;
       return (
         <svg viewBox={`-1 -1 ${w + 2} ${h + 2}`} style={{ display: 'block', flex: 'none', width: ((w + 2) * U).toFixed(1) + 'px', height: ((h + 2) * U).toFixed(1) + 'px' }}>
           {g.stroke
             ? <rect x="0.5" y="0.5" width={w - 1} height={h - 1} rx={(h - 1) / 2} fill={g.fill} stroke={g.stroke} strokeWidth="1" />
             : <rect width={w} height={h} rx={h / 2} fill={g.fill} />}
-          <text x={w / 2} y="11" textAnchor="middle" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize="8.5" fontWeight="700" letterSpacing="0.5" fill={g.ink}>{g.label}</text>
+          <text x={w / 2} y="9.9" textAnchor="middle" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize="8.5" fontWeight="700" letterSpacing="0.5" fill={g.ink}>{g.label}</text>
         </svg>
       );
     }
@@ -7049,191 +7053,249 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         );
       };
       const backPage = renderBackPage ? renderBackPage() : null;
+      const HEAD_MATTER = (
+        <>
+              <div className="inv-hdr">
+                <div>
+                  {userPrefs?.logoBase64
+                    ? <img className="inv-logo" src={userPrefs.logoBase64} alt="" />
+                    : (<><div className="inv-brandname">{invoice.fromName || invoice.fromCompanyName || ''}</div>
+                        {invoice.fromName && invoice.fromCompanyName && <div className="inv-brandsub">{invoice.fromCompanyName}</div>}</>)}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="inv-kicker">Invoice</div>
+                  <div className="inv-number inv-mono">{invoice.invoiceNumber}</div>
+                  <div className="inv-datestrip">
+                    {/* The record's issue date is invoiceDate (issueDate never
+                        existed — binding it rendered the label with an empty
+                        slot). Same field the editor and the ledger read, with
+                        the ledger's createdAt fallback for very old records;
+                        the slot renders only when there IS a date, so an
+                        orphan label can't come back. */}
+                    {issuedDate && (
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="inv-datelabel">Issued</div>
+                        <div className="inv-dateval inv-mono">{fmtInvDate(issuedDate)}</div>
+                      </div>
+                    )}
+                    {issuedDate && invoice.dueDate && <div className="inv-datediv" />}
+                    {invoice.dueDate && (
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="inv-datelabel">Due</div>
+                        <div className="inv-dateval due inv-mono">{fmtInvDate(invoice.dueDate)}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="inv-parties">
+                <div>
+                  <div className="inv-partylabel">From</div>
+                  <div className="inv-partyname">{invoice.fromName || ''}</div>
+                  {invoice.fromCompanyName && <div className="inv-partyline">{invoice.fromCompanyName}</div>}
+                  {invoice.fromAddress && <div className="inv-partyline">{invoice.fromAddress}</div>}
+                  {invoice.fromEmail && <div className="inv-partymeta inv-mono">{invoice.fromEmail}</div>}
+                  {invoice.vatRegistered && invoice.vatNumber && <div className="inv-partymeta inv-mono">VAT no. {invoice.vatNumber}</div>}
+                </div>
+                <div>
+                  <div className="inv-partylabel">Bill to</div>
+                  <div className="inv-partyname">{invoice.toName || ''}</div>
+                  {invoice.toAddress && <div className="inv-partyline">{invoice.toAddress}</div>}
+                  {invoice.toEmail && <div className="inv-partymeta inv-mono">{invoice.toEmail}</div>}
+                </div>
+              </div>
+
+              {metaCells.length > 0 && (
+                <div className="inv-meta" style={{ gridTemplateColumns: `repeat(${metaCells.length}, 1fr)` }}>
+                  {metaCells.map((c, i) => (
+                    <div key={i} className="inv-metacell">
+                      <div className="inv-metalabel">{c.label}</div>
+                      <div className={`inv-metaval${c.mono ? ' inv-mono' : ''}`}>{c.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="inv-sect"><div className="inv-sectlabel">Line items</div><div className="inv-sectrule" /></div>
+        </>
+      );
+      const TAIL_MATTER = (
+        <>
+                  {charges && (
+                <div className="inv-charges">
+                  <div className="inv-sect" style={{ margin: '19.1px 0 7.9px' }}><div className="inv-sectlabel">Late payment charges (added {fmtInvDate(charges.generatedAt)})</div><div className="inv-sectrule" /></div>
+                  <div className="inv-charge-row">
+                    <span>Statutory interest - {charges.daysOverdue} day{charges.daysOverdue === 1 ? '' : 's'} at {charges.annualRate}% a year ({charges.baseRate}% base rate plus 8%, Late Payment of Commercial Debts (Interest) Act 1998)</span>
+                    <span className="amt inv-mono">{fmtGBP(charges.interest)}</span>
+                  </div>
+                  <div className="inv-charge-row">
+                    <span>Fixed recovery fee (invoice of {fmtGBP(charges.principal)})</span>
+                    <span className="amt inv-mono">{fmtGBP(charges.fixedFee)}</span>
+                  </div>
+                </div>
+              )}
+          <div className="inv-totals-wrap">
+                <div className="inv-totals">
+                  {invoice.vatRegistered && (
+                    <>
+                      <div className="inv-trow"><span className="inv-tlabel">Subtotal</span><span className="inv-tval inv-mono">{fmtGBP(subtotal)}</span></div>
+                      <div className="inv-trow"><span className="inv-tlabel">VAT at {invoice.vatRate || 20}%</span><span className="inv-tval inv-mono">{fmtGBP(vatAmount)}</span></div>
+                    </>
+                  )}
+                  {charges && (
+                    <>
+                      <div className="inv-trow"><span className="inv-tlabel">Invoice total</span><span className="inv-tval inv-mono">{fmtGBP(total)}</span></div>
+                      <div className="inv-trow"><span className="inv-tlabel">Late payment charges</span><span className="inv-tval inv-mono">{fmtGBP(chargeTotal)}</span></div>
+                    </>
+                  )}
+                  <div className="inv-grand">
+                    <div>
+                      <div className="inv-grandlabel">Total due</div>
+                      {invoice.dueDate && <div className="inv-grandsub">By {fmtInvDate(invoice.dueDate)}</div>}
+                    </div>
+                    <div className="inv-grandval inv-mono">{fmtGBP(dueAmount)}</div>
+                  </div>
+                </div>
+              </div>
+
+              {bankFields.length > 0 && (
+                <>
+                  <div className="inv-sect"><div className="inv-sectlabel">Payment details</div><div className="inv-sectrule" /></div>
+                  <div className="inv-bank">
+                    {bankFields.map(f => (
+                      <div key={f.key} className={`inv-bankfield${f.key === 'IBAN' ? ' wide' : ''}`}>
+                        <div className="inv-bankkey">{f.key}</div>
+                        <div className={`inv-bankval${f.key === 'Bank' || f.key === 'Account name' ? '' : ' inv-mono'}`}>{f.val}</div>
+                      </div>
+                    ))}
+                    <div className="inv-bankfield">
+                      <div className="inv-bankkey">Reference</div>
+                      <div className="inv-bankval inv-mono">{invoice.invoiceNumber}</div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="inv-note">Please quote the invoice reference with payment.{backPage ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
+        </>
+      );
       const totalPages = backPage ? 2 : 1;
 
       return (
         <div id="invoice-print-view" style={IS_NATIVE ? { position: 'fixed', left: '-10000px', top: 0, zIndex: -1 } : undefined}>
           <style dangerouslySetInnerHTML={{ __html: INVOICE_PRINT_STYLES }} />
 
-          <div className="inv-page">
-            <div className="inv-hdr">
-              <div>
-                {userPrefs?.logoBase64
-                  ? <img className="inv-logo" src={userPrefs.logoBase64} alt="" />
-                  : (<><div className="inv-brandname">{invoice.fromName || invoice.fromCompanyName || ''}</div>
-                      {invoice.fromName && invoice.fromCompanyName && <div className="inv-brandsub">{invoice.fromCompanyName}</div>}</>)}
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div className="inv-kicker">Invoice</div>
-                <div className="inv-number inv-mono">{invoice.invoiceNumber}</div>
-                <div className="inv-datestrip">
-                  {/* The record's issue date is invoiceDate (issueDate never
-                      existed — binding it rendered the label with an empty
-                      slot). Same field the editor and the ledger read, with
-                      the ledger's createdAt fallback for very old records;
-                      the slot renders only when there IS a date, so an
-                      orphan label can't come back. */}
-                  {issuedDate && (
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="inv-datelabel">Issued</div>
-                      <div className="inv-dateval inv-mono">{fmtInvDate(issuedDate)}</div>
-                    </div>
-                  )}
-                  {issuedDate && invoice.dueDate && <div className="inv-datediv" />}
-                  {invoice.dueDate && (
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="inv-datelabel">Due</div>
-                      <div className="inv-dateval due inv-mono">{fmtInvDate(invoice.dueDate)}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+          {(() => {
+              // ── Page packing (the fit fix) ──────────────────────────────
+              // Front matter, table rows and the tail blocks are packed onto
+              // fixed A4 pages instead of being poured into one. A long
+              // line-item table now splits across pages with its head
+              // repeated, and the tail (totals, charges, PAYMENT DETAILS,
+              // note) moves WHOLE to the next page when it will not fit —
+              // so banking details can never be clipped or printed under the
+              // footer, at any invoice size.
+              const BUDGET = 1019, SLIM = 42, THEAD = 18, GH = 22, ROW = 52, BARH = 20, HEADH = 372;
+              const bankRows = Math.ceil((bankFields.length + 1) / 3);
+              const tailH = (invoice.vatRegistered ? 48 : 0) + (charges ? 118 : 0) + 88
+                          + (bankFields.length ? 29 + bankRows * 33 + 40 : 0) + 26;
 
-            <div className="inv-parties">
-              <div>
-                <div className="inv-partylabel">From</div>
-                <div className="inv-partyname">{invoice.fromName || ''}</div>
-                {invoice.fromCompanyName && <div className="inv-partyline">{invoice.fromCompanyName}</div>}
-                {invoice.fromAddress && <div className="inv-partyline">{invoice.fromAddress}</div>}
-                {invoice.fromEmail && <div className="inv-partymeta inv-mono">{invoice.fromEmail}</div>}
-                {invoice.vatRegistered && invoice.vatNumber && <div className="inv-partymeta inv-mono">VAT no. {invoice.vatNumber}</div>}
-              </div>
-              <div>
-                <div className="inv-partylabel">Bill to</div>
-                <div className="inv-partyname">{invoice.toName || ''}</div>
-                {invoice.toAddress && <div className="inv-partyline">{invoice.toAddress}</div>}
-                {invoice.toEmail && <div className="inv-partymeta inv-mono">{invoice.toEmail}</div>}
-              </div>
-            </div>
-
-            {metaCells.length > 0 && (
-              <div className="inv-meta" style={{ gridTemplateColumns: `repeat(${metaCells.length}, 1fr)` }}>
-                {metaCells.map((c, i) => (
-                  <div key={i} className="inv-metacell">
-                    <div className="inv-metalabel">{c.label}</div>
-                    <div className={`inv-metaval${c.mono ? ' inv-mono' : ''}`}>{c.value}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="inv-sect"><div className="inv-sectlabel">Line items</div><div className="inv-sectrule" /></div>
-
-            <table className="inv-tbl">
-              <colgroup>
-                {fav ? <><col style={{ width: '73%' }} /><col style={{ width: '27%' }} /></>
-                     : <><col style={{ width: '52%' }} /><col style={{ width: '11%' }} /><col style={{ width: '16%' }} /><col style={{ width: '21%' }} /></>}
-              </colgroup>
-              <thead>
-                <tr>
-                  <th className="inv-th desc">Description</th>
-                  {!fav && <th className="inv-th">Qty</th>}
-                  {!fav && <th className="inv-th">Rate</th>}
-                  <th className="inv-th last">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {INV_GROUPS.map(g => {
-                  const rows = [];
-                  normalLines.filter(l => invLineGroup(l) === g.key).forEach(item => rows.push(...renderLineRows(item)));
-                  if (g.key === 'extras' && expenseLines.length > 0) {
-                    if (showInd) {
-                      expenseLines.forEach(item => rows.push(...renderLineRows(item, cleanExpenseLabel(item))));
-                    } else {
-                      const sum = expenseLines.reduce((s, l) => s + getLineTotal(l), 0);
-                      rows.push(
-                        <tr key="expenses-rollup">
-                          <td className="inv-td desc">
-                            <div className="inv-linelabel">Expenses</div>
-                            <div className="inv-linedetail">{expenseLines.length} item{expenseLines.length !== 1 ? 's' : ''}</div>
-                          </td>
-                          {!fav && <td className="inv-td inv-mono" />}
-                          {!fav && <td className="inv-td inv-mono" />}
-                          <td className="inv-td last inv-mono">{fmtGBP(sum)}</td>
-                        </tr>
-                      );
-                    }
-                  }
-                  if (rows.length === 0) return null;
-                  return (
-                    <React.Fragment key={g.key}>
-                      <tr>
-                        <td className="inv-grouphead" colSpan={fav ? 2 : 4}>
-                          <div className="inv-grouphead-row">
-                            <div className="inv-grouplabel">{g.label}</div>
-                            <div className="inv-grouptotal inv-mono">{fmtGBP(groupTotals[g.key])}</div>
-                          </div>
+              const sections = INV_GROUPS.map(g => {
+                const rows = [];
+                normalLines.filter(l => invLineGroup(l) === g.key).forEach(item => rows.push(...renderLineRows(item)));
+                if (g.key === 'extras' && expenseLines.length > 0) {
+                  if (showInd) {
+                    expenseLines.forEach(item => rows.push(...renderLineRows(item, cleanExpenseLabel(item))));
+                  } else {
+                    const sum = expenseLines.reduce((s, l) => s + getLineTotal(l), 0);
+                    rows.push(
+                      <tr key="expenses-rollup">
+                        <td className="inv-td desc">
+                          <div className="inv-linelabel">Expenses</div>
+                          <div className="inv-linedetail">{expenseLines.length} item{expenseLines.length !== 1 ? 's' : ''}</div>
                         </td>
+                        {!fav && <td className="inv-td inv-mono" />}
+                        {!fav && <td className="inv-td inv-mono" />}
+                        <td className="inv-td last inv-mono">{fmtGBP(sum)}</td>
                       </tr>
-                      {rows}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                    );
+                  }
+                }
+                if (rows.length === 0) return null;
+                return { key: g.key, label: g.label, rows };
+              }).filter(Boolean);
 
-            <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />
+              const items = [];
+              sections.forEach(s => {
+                items.push({ h: GH, el: (
+                  <tr key={`gh-${s.key}`}>
+                    <td className="inv-grouphead" colSpan={fav ? 2 : 4}>
+                      <div className="inv-grouphead-row">
+                        <div className="inv-grouplabel">{s.label}</div>
+                        <div className="inv-grouptotal inv-mono">{fmtGBP(groupTotals[s.key])}</div>
+                      </div>
+                    </td>
+                  </tr>
+                ) });
+                s.rows.forEach((r, ri) => items.push({ h: ROW, el: <React.Fragment key={`${s.key}-${ri}`}>{r}</React.Fragment> }));
+              });
 
-            {charges && (
-              <div className="inv-charges">
-                <div className="inv-sect" style={{ margin: '19.1px 0 7.9px' }}><div className="inv-sectlabel">Late payment charges (added {fmtInvDate(charges.generatedAt)})</div><div className="inv-sectrule" /></div>
-                <div className="inv-charge-row">
-                  <span>Statutory interest - {charges.daysOverdue} day{charges.daysOverdue === 1 ? '' : 's'} at {charges.annualRate}% a year ({charges.baseRate}% base rate plus 8%, Late Payment of Commercial Debts (Interest) Act 1998)</span>
-                  <span className="amt inv-mono">{fmtGBP(charges.interest)}</span>
+              const chunks = [];
+              let cur = [], rem = BUDGET - HEADH - THEAD - BARH;
+              items.forEach(it => {
+                if (rem < it.h && cur.length) { chunks.push(cur); cur = []; rem = BUDGET - SLIM - THEAD; }
+                cur.push(it.el); rem -= it.h;
+              });
+              chunks.push(cur);
+              const tailOwnPage = rem < tailH;
+              const bodyPages = chunks.length + (tailOwnPage ? 1 : 0);
+              const total = bodyPages + (backPage ? 1 : 0);
+              window.__invTotalPages = total;
+
+              const repeat = (
+                <div className="inv-repeat">
+                  <span><strong>{invoice.invoiceNumber}</strong>{invoice.fromName ? ` · ${invoice.fromName}` : ''}{invoice.jobTitle ? ` · ${invoice.jobTitle}` : ''}</span>
+                  <span className="inv-mono" style={{ fontWeight: 700, color: '#404040' }}>{fmtGBP(dueAmount)}</span>
                 </div>
-                <div className="inv-charge-row">
-                  <span>Fixed recovery fee (invoice of {fmtGBP(charges.principal)})</span>
-                  <span className="amt inv-mono">{fmtGBP(charges.fixedFee)}</span>
-                </div>
-              </div>
-            )}
+              );
+              const tableFor = (rows) => (
+                <table className="inv-tbl">
+                  <colgroup>
+                    {fav ? <><col style={{ width: '73%' }} /><col style={{ width: '27%' }} /></>
+                         : <><col style={{ width: '52%' }} /><col style={{ width: '11%' }} /><col style={{ width: '16%' }} /><col style={{ width: '21%' }} /></>}
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th className="inv-th desc">Description</th>
+                      {!fav && <th className="inv-th">Qty</th>}
+                      {!fav && <th className="inv-th">Rate</th>}
+                      <th className="inv-th last">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>{rows}</tbody>
+                </table>
+              );
 
-            <div className="inv-totals-wrap">
-              <div className="inv-totals">
-                {invoice.vatRegistered && (
-                  <>
-                    <div className="inv-trow"><span className="inv-tlabel">Subtotal</span><span className="inv-tval inv-mono">{fmtGBP(subtotal)}</span></div>
-                    <div className="inv-trow"><span className="inv-tlabel">VAT at {invoice.vatRate || 20}%</span><span className="inv-tval inv-mono">{fmtGBP(vatAmount)}</span></div>
-                  </>
-                )}
-                {charges && (
-                  <>
-                    <div className="inv-trow"><span className="inv-tlabel">Invoice total</span><span className="inv-tval inv-mono">{fmtGBP(total)}</span></div>
-                    <div className="inv-trow"><span className="inv-tlabel">Late payment charges</span><span className="inv-tval inv-mono">{fmtGBP(chargeTotal)}</span></div>
-                  </>
-                )}
-                <div className="inv-grand">
-                  <div>
-                    <div className="inv-grandlabel">Total due</div>
-                    {invoice.dueDate && <div className="inv-grandsub">By {fmtInvDate(invoice.dueDate)}</div>}
+              return chunks.map((rows, ci) => {
+                const isLast = ci === chunks.length - 1;
+                return (
+                  <div className="inv-page" key={`inv-front-${ci}`}>
+                    {ci === 0 ? HEAD_MATTER : repeat}
+                    {ci > 0 && <div className="inv-sect"><div className="inv-sectlabel">Line items (continued)</div><div className="inv-sectrule" /></div>}
+                    {tableFor(rows)}
+                    {isLast && <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />}
+                    {isLast && !tailOwnPage && TAIL_MATTER}
+                    <PageFoot n={ci + 1} of={total} />
                   </div>
-                  <div className="inv-grandval inv-mono">{fmtGBP(dueAmount)}</div>
+                );
+              }).concat(tailOwnPage ? [(
+                <div className="inv-page" key="inv-tail">
+                  {repeat}
+                  {TAIL_MATTER}
+                  <PageFoot n={chunks.length + 1} of={total} />
                 </div>
-              </div>
-            </div>
-
-            {bankFields.length > 0 && (
-              <>
-                <div className="inv-sect"><div className="inv-sectlabel">Payment details</div><div className="inv-sectrule" /></div>
-                <div className="inv-bank">
-                  {bankFields.map(f => (
-                    <div key={f.key} className={`inv-bankfield${f.key === 'IBAN' ? ' wide' : ''}`}>
-                      <div className="inv-bankkey">{f.key}</div>
-                      <div className={`inv-bankval${f.key === 'Bank' || f.key === 'Account name' ? '' : ' inv-mono'}`}>{f.val}</div>
-                    </div>
-                  ))}
-                  <div className="inv-bankfield">
-                    <div className="inv-bankkey">Reference</div>
-                    <div className="inv-bankval inv-mono">{invoice.invoiceNumber}</div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className="inv-note">Please quote the invoice reference with payment.{backPage ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
-            <PageFoot n={1} of={totalPages} />
-          </div>
+              )] : []);
+          })()}
 
           {backPage}
         </div>
