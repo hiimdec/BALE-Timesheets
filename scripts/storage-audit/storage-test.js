@@ -7136,6 +7136,34 @@ async function main() {
       /className="inv-charges"/.test(html) &&
       /<span className="inv-tlabel">Invoice total<\/span>/.test(html) &&
       /<span className="inv-tlabel">Late payment charges<\/span>/.test(html));
+    // -- DB: the invoice's frozen day-by-day snapshot (stored-data shape) --
+    // The breakdown used to live as prose inside `notes`. It is now a
+    // structured field on the invoice record, so it carries the same kind of
+    // pin the other persisted invoice shapes do: built from the SAME calc
+    // chain, written where the prose was written, frozen by the draft gate,
+    // and rendered with a legacy fallback so no existing record is mutated.
+    check('DB1 buildDayBreakdown derives from the SAME calc chain (calcForDisplay + prev-day thread), worked days only',
+      /function buildDayBreakdown\(production, userPrefs, userCrewId\)/.test(html) &&
+      /resolveEffectiveDayType\(production, d\.date, d\) !== 'Day off'/.test(html) &&
+      /calcForDisplay\(production, d, crewMember, prevEntry\)/.test(html) &&
+      /prevEntry = d;/.test(html));
+    check('DB2 the snapshot shape is {date, dayType, lines[], total} with per-line label/rate/qty/amount',
+      /date: d\.date,/.test(html) &&
+      /dayType: resolved\.dayType \|\| '',/.test(html) &&
+      /lines: \(calc\.lines \|\| \[\]\)\.map\(l => \(\{/.test(html) &&
+      /total: Number\(calc\.total\) \|\| 0,/.test(html));
+    check('DB3 a new invoice stores the snapshot and starts with EMPTY notes (notes is manual-only now)',
+      /const dayBreakdown = buildDayBreakdown\(production, userPrefs, userCrewId\);/.test(html) &&
+      /\n        dayBreakdown,\n/.test(html) &&
+      !/buildDefaultNotes/.test(html));
+    check('DB4 FROZEN: the snapshot is re-derived only inside the draft-gated re-sync, never for sent/paid',
+      /if \(!inv \|\| inv\.status !== "draft"\) return;/.test(html) &&
+      /if \(userCrewId\) updates\.dayBreakdown = buildDayBreakdown\(production, userPrefs, userCrewId\);/.test(html));
+    check('DB5 the document prefers its OWN snapshot, falls back to legacy notes prose, and never duplicates it',
+      /const snapshot = Array\.isArray\(invoice\.dayBreakdown\) \? invoice\.dayBreakdown : null;/.test(html) &&
+      /const manualNotes = invoice\.notesEdited === true \? legacyNotes : '';/.test(html) &&
+      /const showLegacyBreakdown = \(!snapshot \|\| snapshot\.length === 0\) && invoice\.notesEdited !== true && !!legacyNotes;/.test(html));
+
     check('LP8b the editor print path passes the invoice\'s charges record into the print view',
       /<InvoicePrintView invoice=\{printTarget\} userPrefs=\{userPrefs\} charges=\{allInvoiceCharges\[printTarget\.id\] \|\| null\} \/>/.test(html));
     check('LP9 the accruing figure is computed on render, muted tm-pen, ONLY in the overdue detail — never stored',

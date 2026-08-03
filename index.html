@@ -4655,16 +4655,46 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       });
     }
 
-    function buildDefaultNotes(production, userPrefs, userCrewId) {
+    // The invoice's frozen day-by-day snapshot. Same source chain the notes
+    // text used to be built from — generateCrewText's day walk — so the
+    // figures are the SAME calcForDisplay outputs, only kept as structured
+    // data instead of pasted prose. Worked days only (a Day off is not
+    // engaged, exactly as the text did) and the prev-day chain is threaded
+    // so turnaround still resolves. Written wherever the notes snapshot used
+    // to be written, and frozen by the same rule: the re-sync early-returns
+    // for any invoice that isn't a draft, so a sent record's breakdown never
+    // moves again.
+    function buildDayBreakdown(production, userPrefs, userCrewId) {
       const crewMember = (production.crew || []).find(c => c.id === userCrewId);
-      if (!crewMember) return "";
-      const myDays = (production.days || []).filter(d => d.crewId === userCrewId);
-      // Strip the generateCrewText trailing "—\nGenerated with TimeMachine ..." tagline:
-      // the invoice editor shows the notes verbatim, and the print/PDF view carries the
-      // brand in its own footer — share-text callers of generateCrewText still keep theirs.
-      return generateCrewText(crewMember, myDays, production)
-        .replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '')
-        .trimEnd();
+      if (!crewMember) return [];
+      const sorted = (production.days || [])
+        .filter(d => d.crewId === userCrewId)
+        .filter(d => resolveEffectiveDayType(production, d.date, d) !== 'Day off')
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const out = [];
+      let prevEntry = null;
+      for (const d of sorted) {
+        const calc = calcForDisplay(production, d, crewMember, prevEntry);
+        const resolved = resolveDay(production, d, crewMember);
+        out.push({
+          date: d.date,
+          dayType: resolved.dayType || '',
+          callTime: resolved.callTime || '',
+          wrapTime: resolved.wrapTime || '',
+          hours: Number(calc.meta?.workedHrs) || 0,
+          stepUpRole: d.stepUpRole || '',
+          lines: (calc.lines || []).map(l => ({
+            label: l.label || '',
+            detail: l.detail || '',
+            rate: l.rate ?? null,
+            qty: Number(l.qty) || 0,
+            amount: Number(l.amount) || 0,
+          })),
+          total: Number(calc.total) || 0,
+        });
+        prevEntry = d;
+      }
+      return out;
     }
 
     // The client/job fields shared between a production (single source) and its
@@ -4892,7 +4922,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const today = todayISO();
       const dueDate = addDays(today, Number(userPrefs.paymentTermsDays) || 30);
       const lineItems = buildInvoiceLineItems(production, userPrefs, userCrewId);
-      const notes = buildDefaultNotes(production, userPrefs, userCrewId);
+      // Notes are manual-only now: the day-by-day lives in its own frozen
+      // snapshot and renders as a styled section, so notes starts EMPTY.
+      const notes = "";
+      const dayBreakdown = buildDayBreakdown(production, userPrefs, userCrewId);
       const newId = uid();
       const invoice = {
         id: newId,
@@ -4928,6 +4961,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // duplicating ~500KB of base64 data into every invoice (iOS Safari 5MB localStorage cap).
         lineItems,
         notes,
+        dayBreakdown,
         showIndividualExpenses: false,
         linesEdited: false,
         status: "draft",
@@ -6804,30 +6838,111 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           </div>
         </div>
       );
-      // Back page. Commit 1 keeps the EXISTING behaviour: the invoice's frozen
-      // notes text (the auto-generated day-by-day) rendered in the breakdown
-      // slot, split per day so a block never straddles a page.
+      // Back page. Preference order, no data mutation either way:
+      //   1. the invoice's OWN frozen dayBreakdown snapshot, rendered styled;
+      //   2. legacy fallback — an older invoice has no snapshot, so its
+      //      existing notes prose renders in the breakdown slot exactly as it
+      //      always did.
+      // The manual NOTES area sits below the breakdown and is fed only by
+      // genuine user content: notesEdited !== true means the notes field is
+      // (or was) the auto-generated breakdown, which the styled section now
+      // replaces — so it is suppressed rather than duplicated.
+      const snapshot = Array.isArray(invoice.dayBreakdown) ? invoice.dayBreakdown : null;
+      const legacyNotes = (invoice.notes || '').replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '').trim();
+      const manualNotes = invoice.notesEdited === true ? legacyNotes : '';
+      const showLegacyBreakdown = (!snapshot || snapshot.length === 0) && invoice.notesEdited !== true && !!legacyNotes;
+      const hasBreakdown = (snapshot && snapshot.length > 0) || showLegacyBreakdown;
+
+      const fmtDayHeading = (iso) => {
+        const d = new Date(iso + 'T12:00:00');
+        return `${d.toLocaleDateString('en-GB', { weekday: 'long' })} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'long' })}`;
+      };
+      const snapHours = snapshot ? snapshot.reduce((s, d) => s + (Number(d.hours) || 0), 0) : 0;
+      const snapTotal = snapshot ? snapshot.reduce((s, d) => s + (Number(d.total) || 0), 0) : 0;
+
       const renderBackPage = () => {
-        const cleanNotes = (invoice.notes || '').replace(/\n+-\nGenerated with TimeMachine[^\n]*/g, '').trim();
-        if (!cleanNotes) return null;
+        if (!hasBreakdown && !manualNotes) return null;
         return (
           <div className="inv-page" key="inv-back">
             <div className="inv-repeat">
               <span><strong>{invoice.invoiceNumber}</strong>{invoice.fromName ? ` · ${invoice.fromName}` : ''}{invoice.jobTitle ? ` · ${invoice.jobTitle}` : ''}{invoice.toName ? ` · ${invoice.toName}` : ''}</span>
               <span className="inv-mono" style={{ fontWeight: 700, color: '#404040' }}>{fmtGBP(dueAmount)}</span>
             </div>
-            <div className="inv-bdhead">
-              <div className="inv-sectlabel">Detailed breakdown</div>
-              <div style={{ flex: 1 }} />
-              <div className="inv-bdnote">Every figure reconciles to the line items on page 1</div>
-            </div>
-            <div className="inv-legacy" style={{ marginTop: '19.1px' }}>
-              {cleanNotes.split(/\n\n+/).map((block, i) => <div key={i} className="inv-legacy-block">{block}</div>)}
-            </div>
-            <div className="inv-grand" style={{ marginTop: '23.8px', height: '60.3px' }}>
-              <div><div className="inv-grandlabel">Invoiced total</div></div>
-              <div className="inv-grandval inv-mono">{fmtGBP(dueAmount)}</div>
-            </div>
+
+            {hasBreakdown && (
+              <>
+                <div className="inv-bdhead">
+                  <div className="inv-sectlabel">Detailed breakdown</div>
+                  <div style={{ flex: 1 }} />
+                  <div className="inv-bdnote">Every figure reconciles to the line items on page 1</div>
+                </div>
+
+                {snapshot && snapshot.length > 0 ? (
+                  <div className="inv-bdcrew">
+                    <div className="inv-bdcrew-hdr">
+                      <div className="inv-bdcrew-left">
+                        <div className="inv-bdcrew-name">{invoice.fromName || ''}</div>
+                        <div className="inv-bdcrew-role">{invoice.jobRole || ''}</div>
+                      </div>
+                      <div className="inv-bdcrew-right">
+                        <div className="inv-bdcrew-hrs inv-mono">{snapHours.toFixed(1)}h</div>
+                        <div className="inv-bdcrew-amt inv-mono">{fmtGBP(snapTotal)}</div>
+                      </div>
+                    </div>
+                    {snapshot.map((day, di) => (
+                      <div key={day.date || di} className="inv-bdday">
+                        <div className="inv-bdday-hdr">
+                          <div className="inv-bdday-name">{fmtDayHeading(day.date)}</div>
+                          <div className="inv-bdday-type">{day.dayType}{day.stepUpRole ? ` · stepped up: ${day.stepUpRole}` : ''}</div>
+                          {(day.callTime && day.wrapTime)
+                            ? <div className="inv-bdday-times inv-mono">{day.callTime} – {day.wrapTime} · {(Number(day.hours) || 0).toFixed(1)}h</div>
+                            : ((Number(day.hours) || 0) > 0 ? <div className="inv-bdday-times inv-mono">{(Number(day.hours) || 0).toFixed(1)}h</div> : null)}
+                        </div>
+                        <div className="inv-bdlines">
+                          {(day.lines || []).map((l, li) => {
+                            const bits = [];
+                            if (l.detail) bits.push(l.detail);
+                            if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) bits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
+                            return (
+                              <React.Fragment key={li}>
+                                <div className="inv-bl-label">{l.label}</div>
+                                <div className="inv-bl-basis inv-mono">{bits.join(' · ')}</div>
+                                <div className="inv-bl-amt inv-mono">{fmtGBP(l.amount)}</div>
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                        <div className="inv-bdsub">
+                          <div />
+                          <div className="inv-bdsub-label">Day subtotal</div>
+                          <div className="inv-bdsub-amt inv-mono">{fmtGBP(day.total)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="inv-legacy" style={{ marginTop: '19.1px' }}>
+                    {legacyNotes.split(/\n\n+/).map((block, i) => <div key={i} className="inv-legacy-block">{block}</div>)}
+                  </div>
+                )}
+
+                <div className="inv-grand" style={{ marginTop: '23.8px', height: '60.3px' }}>
+                  <div><div className="inv-grandlabel">Invoiced total</div></div>
+                  <div className="inv-grandval inv-mono">{fmtGBP(dueAmount)}</div>
+                </div>
+              </>
+            )}
+
+            {manualNotes && (
+              <div className="inv-notes">
+                <div className="inv-sect" style={{ margin: hasBreakdown ? '22.2px 0 0' : '0 0 0' }}>
+                  <div className="inv-sectlabel">Notes</div>
+                  <div className="inv-sectrule" />
+                </div>
+                <div className="inv-notes-body">{manualNotes}</div>
+              </div>
+            )}
+
             <PageFoot n={2} of={2} />
           </div>
         );
@@ -23331,7 +23446,10 @@ const setDays = (updater) =>
         // Regenerate the notes snapshot so it tracks current figures and this
         // shoot's rounding mode — but only if the user hasn't hand-edited them
         // (notesEdited guards manual edits from being clobbered).
-        if (userCrewId && !inv.notesEdited) updates.notes = buildDefaultNotes(production, userPrefs, userCrewId);
+        // The day-by-day snapshot tracks current figures while the invoice is
+        // a DRAFT (this whole effect early-returns for sent/paid), exactly as
+        // the notes prose used to. Notes itself is no longer auto-written.
+        if (userCrewId) updates.dayBreakdown = buildDayBreakdown(production, userPrefs, userCrewId);
         setProduction(p => ({
           ...p,
           invoices: (p.invoices || []).map(i => i.id === invoiceId ? { ...i, ...updates } : i),
