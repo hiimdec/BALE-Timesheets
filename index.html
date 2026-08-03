@@ -5596,7 +5596,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       /* key */
       .tsd-key { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8.7px 12.7px; }
-      .tsd-keyitem { display: flex; align-items: center; gap: 7.1px; height: 13.5px; }
+      .tsd-keyitem { display: flex; align-items: center; gap: 7.1px; height: 15.1px; }
       .tsd-keylabel { font-size: 8.3px; color: #404040; line-height: 1; }
 
       /* week grid table */
@@ -5618,7 +5618,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .tsd-dash { font-size: 9.5px; color: #d9d9d9; line-height: 1; }
       .tsd-celltype { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #525252; line-height: 1; text-transform: uppercase; }
       .tsd-cellhrs { font-size: 9.5px; font-weight: 600; color: #171717; line-height: 1; margin-top: 4.8px; }
-      .tsd-cellchips { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 2.4px; height: 24.6px; margin-top: 5.6px; }
+      /* two rows of the padded chips (12.7px) + the 2.4px gap — sized off
+         TsdChip's height; the two move together. */
+      .tsd-cellchips { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 2.4px; height: 27.8px; margin-top: 5.6px; }
       .tsd-cellamt { font-size: 8.7px; font-weight: 700; color: #171717; line-height: 1; margin-top: 3.2px; }
       .tsd-rest-label { font-size: 6.4px; font-weight: 700; letter-spacing: .14em; color: #b45309; line-height: 1; text-transform: uppercase; }
       .tsd-rowtotal-amt { font-size: 9.9px; font-weight: 800; letter-spacing: -.01em; color: #0a0a0a; line-height: 1; }
@@ -6048,28 +6050,35 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
        through the vector renderer they print as true vector — no
        rasterisation anywhere. Raw hex only (print never themes). */
 
+    // Chip geometry nudged +2 units per dimension after the first device
+    // PDF: the letters sat tight against the pill (not the old raster
+    // squash — the box rendered, just cramped). Font size, letter-spacing
+    // and the 0.794 px-per-unit scale are UNCHANGED, so the glyphs render
+    // at the exact design size and the growth is pure internal padding
+    // (~0.8px more air per side at print size). Baselines re-centred for
+    // the taller boxes (h/2 + ~0.36×font).
     const TSD_CHIP = {
-      OT:  { w: 26, lgW: 30, label: 'OT',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
-      L1:  { w: 26, lgW: 30, label: 'L1',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
-      L2:  { w: 26, lgW: 30, label: 'L2',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
-      MSB: { w: 34, lgW: 38, label: 'MSB', fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
-      CWD: { w: 34, lgW: 38, label: 'CWD', fill: '#f5f5f5', stroke: '#8f8f8f', ink: '#404040' },
-      TOC: { w: 34, lgW: 38, label: 'TOC', fill: '#e11d48', stroke: null,      ink: '#ffffff' },
-      NS:  { w: 26, lgW: 30, label: 'NS',  fill: '#eef0f5', stroke: '#1e2a44', ink: '#1e2a44' },
+      OT:  { w: 28, lgW: 32, label: 'OT',  fill: '#fff4ec', stroke: '#ff8a3d', ink: '#b4500c' },
+      L1:  { w: 28, lgW: 32, label: 'L1',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      L2:  { w: 28, lgW: 32, label: 'L2',  fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      MSB: { w: 36, lgW: 40, label: 'MSB', fill: '#fff1f3', stroke: '#e11d48', ink: '#be123c' },
+      CWD: { w: 36, lgW: 40, label: 'CWD', fill: '#f5f5f5', stroke: '#8f8f8f', ink: '#404040' },
+      TOC: { w: 36, lgW: 40, label: 'TOC', fill: '#e11d48', stroke: null,      ink: '#ffffff' },
+      NS:  { w: 28, lgW: 32, label: 'NS',  fill: '#eef0f5', stroke: '#1e2a44', ink: '#1e2a44' },
     };
 
     function TsdChip({ kind, lg }) {
       const g = TSD_CHIP[kind];
       if (!g) return null;
       const w = lg ? g.lgW : g.w;
-      const h = lg ? 17 : 14;
+      const h = lg ? 19 : 16;
       const px = (v) => (v * 0.794).toFixed(1) + 'px';
       return (
         <svg viewBox={`0 0 ${w} ${h}`} style={{ display: 'block', flex: 'none', width: px(w), height: px(h) }}>
           {g.stroke
             ? <rect x="0.5" y="0.5" width={w - 1} height={h - 1} rx={(h - 1) / 2} fill={g.fill} stroke={g.stroke} strokeWidth="1" />
             : <rect width={w} height={h} rx={h / 2} fill={g.fill} />}
-          <text x={w / 2} y={lg ? 12 : 9.9} textAnchor="middle" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize={lg ? 9.5 : 8.5} fontWeight="700" letterSpacing={lg ? 0.7 : 0.5} fill={g.ink}>{g.label}</text>
+          <text x={w / 2} y={lg ? 12.9 : 11} textAnchor="middle" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize={lg ? 9.5 : 8.5} fontWeight="700" letterSpacing={lg ? 0.7 : 0.5} fill={g.ink}>{g.label}</text>
         </svg>
       );
     }
@@ -6496,8 +6505,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // 5% generous — a bust clips rather than reflows, and never happens
     // inside the constants' slack).
     function assembleTsdGridPages(model) {
-      const PAGE_BUDGET = 1024, HDR_META = 103, SUMMARY = 120, KEY = 78, SLIM = 30;
-      const GRID_FIXED = 168, GRID_ROW = 82.6, SAFETY = 1.05;
+      const PAGE_BUDGET = 1024, HDR_META = 103, SUMMARY = 120, KEY = 81, SLIM = 30;
+      const GRID_FIXED = 168, GRID_ROW = 85.8, SAFETY = 1.05;
       const BD_HEAD = 40, BD_CREW_HDR = 39, BD_DAY_FIXED = 44, BD_LINE = 18.2;
       const nCrew = model.perCrew.length;
       const title = model.production.title || 'Untitled Production';
@@ -6721,8 +6730,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function assembleTsdSoloPages(model) {
-      const PAGE_BUDGET = 1024, HDR_META = 103, SUMMARY = 120, KEY = 78, SLIM = 30;
-      const SOLO_FIXED = 100, SOLO_ROW = 26, SOLO_WORKED_ROW = 33, NOTE = 33;
+      const PAGE_BUDGET = 1024, HDR_META = 103, SUMMARY = 120, KEY = 81, SLIM = 30;
+      const SOLO_FIXED = 100, SOLO_ROW = 26, SOLO_WORKED_ROW = 34, NOTE = 33;
       const BD_HEAD = 40, BD_DAY_FIXED = 44, BD_LINE = 18.2, SAFETY = 1.05;
       const { crew, byDate } = model.perCrew[0];
       const title = crew.name || 'Crew';
