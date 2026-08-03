@@ -2680,7 +2680,10 @@
       { v: 15, label: "15 mins" },
       { v: 10, label: "10 mins" },
       { v: 5,  label: "5 mins" },
-      { v: 0,  label: "Missed" },
+      // Label only: a zero-length lunch IS the continuous working day, and a
+      // CWD is often planned rather than an accident, so "Missed" alone reads
+      // wrong. The value (0) and every downstream rule are unchanged.
+      { v: 0,  label: "Missed / CWD" },
     ];
     const SECOND_BREAK_DURATIONS = [
       { v: 30, label: "30 mins" },
