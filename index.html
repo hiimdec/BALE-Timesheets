@@ -468,60 +468,132 @@
     .tm-card-in { animation: tm-card-in 150ms ease-out; }
     @media (prefers-reduced-motion: reduce) { .tm-card-in { animation: none; } }
 
-    /* ── Tutorial card animations (cards 4 and 6 only) ─────────────────────
+    /* ── Tutorial card animations (all six cards) ──────────────────────────
        Pure CSS over themed tokens, no assets and no dependency on real UI
        markup — they illustrate a gesture, so they cannot rot when a screen
-       is redesigned. Both loop indefinitely and both stop dead under
-       prefers-reduced-motion, leaving the composed still frame. */
+       is redesigned. All loop indefinitely and all stop dead under
+       prefers-reduced-motion: the static styles ARE the composed finished
+       frame, and the keyframes only drive toward it. */
 
-    /* Card 4 — Quick set: one time lands on three crew rows in turn, then the
-       whole set settles together. */
-    @keyframes tm-tut-qs-fill {
-      0%, 12%   { background: rgb(var(--tm-neutral-800)); color: rgb(var(--tm-neutral-500)); }
-      28%, 88%  { background: rgb(var(--tm-sky-500) / 0.18); color: rgb(var(--tm-sky-400)); }
-      100%      { background: rgb(var(--tm-neutral-800)); color: rgb(var(--tm-neutral-500)); }
+    /* Card 1 — times: call, lunch and wrap land in turn, then a total bar
+       draws in underneath — the day working itself out. */
+    @keyframes tm-tut-t-val {
+      0%, 6%    { opacity: 0.12; }
+      16%, 90%  { opacity: 1; }
+      100%      { opacity: 0.12; }
     }
-    @keyframes tm-tut-qs-cursor {
-      0%       { transform: translateY(0);     opacity: 0; }
-      8%       { transform: translateY(0);     opacity: 1; }
-      36%      { transform: translateY(26px);  opacity: 1; }
-      64%      { transform: translateY(52px);  opacity: 1; }
-      78%      { transform: translateY(52px);  opacity: 0; }
-      100%     { transform: translateY(0);     opacity: 0; }
+    @keyframes tm-tut-t-total {
+      0%, 40%   { transform: scaleX(0); }
+      54%, 90%  { transform: scaleX(1); }
+      100%      { transform: scaleX(0); }
     }
-    .tm-tut-qs-row { animation: tm-tut-qs-fill 3.2s ease-in-out infinite; }
-    .tm-tut-qs-row:nth-child(2) { animation-delay: 0.28s; }
-    .tm-tut-qs-row:nth-child(3) { animation-delay: 0.56s; }
-    .tm-tut-qs-cursor { animation: tm-tut-qs-cursor 3.2s ease-in-out infinite; }
+    .tm-tut-t-val { animation: tm-tut-t-val 4.2s ease-in-out infinite; }
+    .tm-tut-t-row:nth-child(2) .tm-tut-t-val { animation-delay: 0.5s; }
+    .tm-tut-t-row:nth-child(3) .tm-tut-t-val { animation-delay: 1s; }
+    .tm-tut-t-total { transform-origin: left; animation: tm-tut-t-total 4.2s ease-in-out infinite; }
 
-    /* Card 6 — call sheet reader: a page slides in from the left, is scanned
-       by a sweeping sky line, and three time fields fill on the right. */
-    /* Tuned so ANY frame reads: the page is the subject and never fades out,
-       and the fields rest legibly rather than sitting near-invisible for most
-       of the cycle — a still grab of the loop should still make sense. */
-    @keyframes tm-tut-cs-page {
-      0%        { transform: translateX(-14px) rotate(-4deg); opacity: 0; }
-      12%, 100% { transform: translateX(0) rotate(-2deg);     opacity: 1; }
+    /* Card 2 — crew: just you, then the rest of the team pops in around you
+       and the caption swaps over. */
+    @keyframes tm-tut-cr-mate {
+      0%, 22%   { transform: scale(0.3); opacity: 0; }
+      34%, 90%  { transform: scale(1); opacity: 1; }
+      100%      { transform: scale(0.3); opacity: 0; }
     }
-    @keyframes tm-tut-cs-scan {
-      0%, 16%  { transform: translateY(0);    opacity: 0; }
-      24%      { transform: translateY(0);    opacity: 1; }
-      52%      { transform: translateY(42px); opacity: 1; }
-      60%,100% { transform: translateY(42px); opacity: 0; }
+    @keyframes tm-tut-cr-cap1 {
+      0%, 20%   { opacity: 1; }
+      32%, 100% { opacity: 0; }
     }
-    @keyframes tm-tut-cs-field {
-      0%, 46%   { opacity: 0.4; width: 26%; }
-      64%, 94%  { opacity: 1;   width: 100%; }
-      100%      { opacity: 0.4; width: 26%; }
+    @keyframes tm-tut-cr-cap2 {
+      0%, 26%   { opacity: 0; }
+      38%, 90%  { opacity: 1; }
+      100%      { opacity: 0; }
     }
-    .tm-tut-cs-page   { animation: tm-tut-cs-page 3.6s ease-in-out infinite; }
-    .tm-tut-cs-scan   { animation: tm-tut-cs-scan 3.6s ease-in-out infinite; }
-    .tm-tut-cs-field  { animation: tm-tut-cs-field 3.6s ease-in-out infinite; }
-    .tm-tut-cs-field:nth-child(2) { animation-delay: 0.14s; }
-    .tm-tut-cs-field:nth-child(3) { animation-delay: 0.28s; }
+    .tm-tut-cr-mate { animation: tm-tut-cr-mate 4.2s ease-in-out infinite; }
+    .tm-tut-cr-cap1 { opacity: 0; animation: tm-tut-cr-cap1 4.2s ease-in-out infinite; }
+    .tm-tut-cr-cap2 { animation: tm-tut-cr-cap2 4.2s ease-in-out infinite; }
+
+    /* Card 3 — Live Activity: the lock-screen total ticks up twice, then the
+       wrap chip fills and the day is done without opening the app. */
+    @keyframes tm-tut-la-n1 { 0%, 26% { opacity: 1; } 33%, 100% { opacity: 0; } }
+    @keyframes tm-tut-la-n2 { 0%, 26% { opacity: 0; } 33%, 56% { opacity: 1; } 63%, 100% { opacity: 0; } }
+    @keyframes tm-tut-la-n3 { 0%, 56% { opacity: 0; } 63%, 100% { opacity: 1; } }
+    @keyframes tm-tut-la-chip {
+      0%, 66%   { background: rgb(var(--tm-sky-500) / 0); border-color: rgb(var(--tm-neutral-600)); color: rgb(var(--tm-neutral-500)); }
+      76%, 100% { background: rgb(var(--tm-sky-500)); border-color: rgb(var(--tm-sky-500)); color: #000; }
+    }
+    .tm-tut-la-n1 { opacity: 0; animation: tm-tut-la-n1 4.2s ease-in-out infinite; }
+    .tm-tut-la-n2 { opacity: 0; animation: tm-tut-la-n2 4.2s ease-in-out infinite; }
+    .tm-tut-la-n3 { animation: tm-tut-la-n3 4.2s ease-in-out infinite; }
+    .tm-tut-la-chip { animation: tm-tut-la-chip 4.2s ease-in-out infinite; }
+
+    /* Card 4 — share: the link bubble sets off towards the phone, the phone
+       blinks on arrival, and the shoot's days fill in. */
+    @keyframes tm-tut-sh-bubble {
+      0%        { transform: translateX(-10px) scale(0.7); opacity: 0; }
+      10%, 30%  { transform: none; opacity: 1; }
+      46%, 100% { transform: translateX(26px) scale(0.85); opacity: 0; }
+    }
+    @keyframes tm-tut-sh-phone {
+      0%, 40%   { border-color: rgb(var(--tm-neutral-700)); }
+      48%, 54%  { border-color: rgb(var(--tm-sky-500)); }
+      62%, 100% { border-color: rgb(var(--tm-neutral-700)); }
+    }
+    @keyframes tm-tut-sh-row {
+      0%, 48%   { transform: translateY(4px); opacity: 0; }
+      58%, 90%  { transform: none; opacity: 1; }
+      100%      { transform: translateY(4px); opacity: 0; }
+    }
+    .tm-tut-sh-bubble { animation: tm-tut-sh-bubble 4.2s ease-in-out infinite; }
+    .tm-tut-sh-phone  { animation: tm-tut-sh-phone 4.2s ease-in-out infinite; }
+    .tm-tut-sh-row    { animation: tm-tut-sh-row 4.2s ease-in-out infinite; }
+
+    /* Card 5 — call sheet reader: the time labels give way to invoicing
+       fields and the bars re-fill sky — details and emails, never times. */
+    @keyframes tm-tut-cs-la { 0%, 34% { opacity: 1; } 44%, 100% { opacity: 0; } }
+    @keyframes tm-tut-cs-lb { 0%, 40% { opacity: 0; } 50%, 100% { opacity: 1; } }
+    @keyframes tm-tut-cs-bar {
+      0%, 36%   { transform: scaleX(1); background: rgb(var(--tm-neutral-600)); }
+      46%       { transform: scaleX(0.25); background: rgb(var(--tm-neutral-600)); }
+      60%, 100% { transform: scaleX(1); background: rgb(var(--tm-sky-500) / 0.7); }
+    }
+    .tm-tut-cs-la  { opacity: 0; animation: tm-tut-cs-la 4.2s ease-in-out infinite; }
+    .tm-tut-cs-lb  { animation: tm-tut-cs-lb 4.2s ease-in-out infinite; }
+    .tm-tut-cs-bar { transform-origin: left; animation: tm-tut-cs-bar 4.2s ease-in-out infinite; }
+    .tm-tut-cs-row:nth-child(2) .tm-tut-cs-la, .tm-tut-cs-row:nth-child(2) .tm-tut-cs-lb, .tm-tut-cs-row:nth-child(2) .tm-tut-cs-bar { animation-delay: 0.14s; }
+    .tm-tut-cs-row:nth-child(3) .tm-tut-cs-la, .tm-tut-cs-row:nth-child(3) .tm-tut-cs-lb, .tm-tut-cs-row:nth-child(3) .tm-tut-cs-bar { animation-delay: 0.28s; }
+
+    /* Card 6 — invoice tracking: draft, sent and paid light up in turn along
+       the line, paid landing solid. Unlit node backs are opaque so the line
+       never shows through a circle. */
+    @keyframes tm-tut-inv-line {
+      0%, 10%   { transform: scaleX(0); }
+      30%, 36%  { transform: scaleX(0.5); }
+      56%, 100% { transform: scaleX(1); }
+    }
+    @keyframes tm-tut-inv-n1 {
+      0%, 6%    { border-color: rgb(var(--tm-neutral-600)); background: rgb(var(--tm-neutral-800)); color: transparent; }
+      14%, 100% { border-color: rgb(var(--tm-sky-500) / 0.6); background: rgb(var(--tm-sky-900)); color: rgb(var(--tm-sky-400)); }
+    }
+    @keyframes tm-tut-inv-n2 {
+      0%, 30%   { border-color: rgb(var(--tm-neutral-600)); background: rgb(var(--tm-neutral-800)); color: transparent; }
+      38%, 100% { border-color: rgb(var(--tm-sky-500) / 0.6); background: rgb(var(--tm-sky-900)); color: rgb(var(--tm-sky-400)); }
+    }
+    @keyframes tm-tut-inv-n3 {
+      0%, 58%   { border-color: rgb(var(--tm-neutral-600)); background: rgb(var(--tm-neutral-800)); color: transparent; }
+      66%, 100% { border-color: rgb(var(--tm-sky-500)); background: rgb(var(--tm-sky-500)); color: #000; }
+    }
+    .tm-tut-inv-line { transform-origin: left; animation: tm-tut-inv-line 4.2s ease-in-out infinite; }
+    .tm-tut-inv-n1 { animation: tm-tut-inv-n1 4.2s ease-in-out infinite; }
+    .tm-tut-inv-n2 { animation: tm-tut-inv-n2 4.2s ease-in-out infinite; }
+    .tm-tut-inv-n3 { animation: tm-tut-inv-n3 4.2s ease-in-out infinite; }
+
     @media (prefers-reduced-motion: reduce) {
-      .tm-tut-qs-row, .tm-tut-qs-cursor,
-      .tm-tut-cs-page, .tm-tut-cs-scan, .tm-tut-cs-field { animation: none; }
+      .tm-tut-t-val, .tm-tut-t-total,
+      .tm-tut-cr-mate, .tm-tut-cr-cap1, .tm-tut-cr-cap2,
+      .tm-tut-la-n1, .tm-tut-la-n2, .tm-tut-la-n3, .tm-tut-la-chip,
+      .tm-tut-sh-bubble, .tm-tut-sh-phone, .tm-tut-sh-row,
+      .tm-tut-cs-la, .tm-tut-cs-lb, .tm-tut-cs-bar,
+      .tm-tut-inv-line, .tm-tut-inv-n1, .tm-tut-inv-n2, .tm-tut-inv-n3 { animation: none; }
     }
     /* Hero card — soft sky glow top-right + 1px sky hairline along the top edge */
     .tm-hero-card {
@@ -2162,7 +2234,7 @@
         { key: 'bestboy',  teaser: true,  title: "Solo or Best Boy",
           blurb: "Run just yourself, or switch a production to Best Boy mode and run the whole crew in parallel. Everyone's times, everyone's money, one screen." },
         { key: 'callsheet', teaser: true, title: "Call sheet reader",
-          blurb: "Share a call sheet PDF straight from your email and it fills in the times. iPhone 15 Pro and above." },
+          blurb: "Share a call sheet PDF straight from your email and it fills in your invoicing details and emails. iPhone 15 Pro and above." },
         { key: 'la',       teaser: false, title: "Live Activity",
           blurb: "Your day total on the lock screen, ticking as you work. Lunch and wrap from there too, no need to open the app. Starts when you set a call time for today." },
         { key: 'siri',     teaser: false, title: "Siri",
@@ -19547,115 +19619,178 @@ const setDays = (updater) =>
     // intro popup. HELP_CONTENT stays as the deeper written reference in
     // Settings — this is the tour, that is the manual.
     //
-    // Every colour here is a THEMED token (sky / neutral), never a raw hex,
-    // so the whole deck re-colours in poppy with no per-surface work. The two
-    // animated cards illustrate a GESTURE rather than mirroring real markup,
-    // so a later redesign of Quick set or the call-sheet reader cannot make
-    // them wrong.
+    // Every colour here is a THEMED token (sky / neutral; black-on-sky ink is
+    // the app's own button convention), so the whole deck re-colours in poppy
+    // with no per-surface work. All six cards are animated; each illustrates
+    // a GESTURE rather than mirroring real markup, so a later redesign of a
+    // screen cannot make them wrong.
     const TUTORIAL_CARDS = [
       {
-        key: 'times', icon: 'clock',
+        key: 'times',
         title: "It's mostly just your times",
-        body: "Enter your call, lunch and wrap, and the day works itself out. Pre-call, expenses, travel and stepping up are there for the days that need them.",
+        body: "Enter your call, lunch and wrap, and the day works itself out. Overtime, penalties, night shoots, turnaround, continuous days and the day types are all handled.",
       },
       {
-        key: 'apa', icon: 'rules',
-        title: 'Every APA rule, handled',
-        body: "Overtime, penalties, night shoots, turnaround, continuous days and the day types are all built in. It knows the terms so you don't have to.",
-      },
-      {
-        key: 'crew', icon: 'crew',
+        key: 'crew',
         title: 'Solo or a whole crew',
-        body: 'Track your own days, or run a crew in Best Boy mode. Tick who is on each day, and share a shoot straight to a mate.',
+        body: 'Track your own days, or run a whole team in Best Boy mode.',
       },
       {
-        key: 'quickset', anim: 'quickset',
-        title: 'Set many at once',
-        body: 'Quick set writes one time across everyone you pick. Two sparks went to lunch early, tap tap, done.',
+        key: 'live',
+        title: 'Set it and forget it',
+        body: 'Lunch and wrap take seconds to set, and a Live Activity keeps your running total on the lock screen. Wrap from there, or just say "Hey Siri, wrap now in TimeMachine".',
       },
       {
-        key: 'live', icon: 'lock',
-        title: 'Your day on the lock screen',
-        body: 'A Live Activity keeps your running total on the lock screen. Tap it to wrap, or say "hey Siri, wrap now".',
+        key: 'share',
+        title: 'Share a shoot with a mate',
+        body: 'Turn a shoot into a link. Your mate taps it and it opens in their TimeMachine, ready to go.',
       },
       {
-        key: 'callsheet', anim: 'callsheet',
-        title: 'Point it at a call sheet',
-        body: 'Share a call sheet PDF straight from your email and it fills in the times. iPhone 15 Pro and above.',
+        key: 'callsheet',
+        title: 'Invoicing made easy',
+        body: 'Share a call sheet PDF to TimeMachine and it fills in your invoicing details and emails, ready for the invoice. iPhone 15 Pro and above.',
       },
       {
-        key: 'invoice', icon: 'invoice',
-        title: 'Invoices that get you paid',
-        body: 'Professional invoices in a few taps, with late-payment charges when they run over, fees you can waive, and an export your accountant will accept.',
+        key: 'invoices',
+        title: 'Invoice tracking',
+        body: "Track each invoice from draft to sent to paid, so you always know what you're owed.",
       },
     ];
 
-    // Static icon tiles. Plain strokes on a sky-tinted tile — the same visual
-    // weight as the app's own icon chrome.
-    function TutorialIcon({ kind }) {
-      const s = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
-      const art = {
-        clock:   <><circle cx="12" cy="12" r="8.5" {...s}/><path d="M12 7.5V12l3 1.8" {...s}/></>,
-        rules:   <><path d="M5 4.5h14v15H5z" {...s}/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4" {...s}/></>,
-        crew:    <><circle cx="9" cy="9.5" r="3" {...s}/><circle cx="16.5" cy="10.5" r="2.2" {...s}/><path d="M3.5 18c.6-2.8 2.8-4.2 5.5-4.2s4.9 1.4 5.5 4.2" {...s}/><path d="M15.5 14c2.2.1 3.8 1.4 4.3 3.4" {...s}/></>,
-        lock:    <><rect x="5.5" y="3.5" width="13" height="17" rx="2.5" {...s}/><path d="M9 8.5h6M9 12h6M9 15.5h3.5" {...s}/></>,
-        invoice: <><path d="M6 3.5h9l3.5 3.5v13H6z" {...s}/><path d="M14.5 3.5V7.5H18.5" {...s}/><path d="M9 12h6M9 15.5h4" {...s}/></>,
-      }[kind];
-      return (
-        <div className="w-16 h-16 rounded-2xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-center text-sky-400">
-          <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">{art}</svg>
-        </div>
-      );
-    }
+    // Each component's static markup is the FINISHED frame of its loop —
+    // prefers-reduced-motion just stops the keyframes and leaves it composed.
 
-    // Card 4 — three crew rows taking one time in turn, with a cursor
-    // travelling down them.
-    function TutorialAnimQuickSet() {
+    // Card 1 — call, lunch and wrap land in turn; a total bar draws in under.
+    function TutorialAnimTimes() {
       return (
-        <div className="w-full max-w-[210px] relative" aria-hidden="true">
-          <div className="text-[9px] uppercase tracking-[0.16em] text-sky-500 font-bold mb-2">Quick set · 07:30</div>
+        <div className="w-full max-w-[210px]" aria-hidden="true">
+          <div className="text-[9px] uppercase tracking-[0.16em] text-sky-500 font-bold mb-2">Today</div>
           <div className="flex flex-col gap-1.5">
-            {['Declan', 'Al', 'Lu'].map((n) => (
-              <div key={n} className="tm-tut-qs-row flex items-center justify-between rounded-lg px-2.5 py-1.5 text-[11px] font-mono">
-                <span className="text-neutral-300 font-sans">{n}</span>
-                <span>07:30</span>
+            {[['Call', '07:00'], ['Lunch', '13:00'], ['Wrap', '19:30']].map(([l, t]) => (
+              <div key={l} className="tm-tut-t-row flex items-center justify-between rounded-lg px-2.5 py-1.5 bg-neutral-800 border border-neutral-700/60 text-[11px]">
+                <span className="text-neutral-400">{l}</span>
+                <span className="tm-tut-t-val font-mono text-sky-400">{t}</span>
               </div>
             ))}
           </div>
-          <div className="tm-tut-qs-cursor absolute right-1 top-[26px] w-2.5 h-2.5 rounded-full bg-sky-400" />
+          <div className="tm-tut-t-total mt-2.5 h-[3px] rounded-full bg-sky-500/70" />
         </div>
       );
     }
 
-    // Card 6 — a page slides in, a scan line sweeps it, three fields fill.
-    function TutorialAnimCallSheet() {
+    // Card 2 — just you, then the team pops in around you.
+    function TutorialAnimCrew() {
       return (
-        <div className="w-full max-w-[210px] flex items-center gap-3" aria-hidden="true">
-          <div className="tm-tut-cs-page relative w-[64px] h-[80px] rounded-md bg-neutral-800 border border-neutral-700 overflow-hidden flex-none">
-            <div className="px-1.5 pt-2 flex flex-col gap-[3px]">
-              {[70, 90, 55, 80, 45].map((w, i) => (
-                <div key={i} className="h-[3px] rounded-full bg-neutral-600" style={{ width: `${w}%` }} />
+        <div className="w-full max-w-[210px] flex flex-col items-center gap-3" aria-hidden="true">
+          <div className="flex items-center justify-center gap-2">
+            {[0.42, 0.18, null, 0.18, 0.42].map((d, n) =>
+              d === null ? (
+                <div key={n} className="w-9 h-9 rounded-full bg-sky-500 flex-none" />
+              ) : (
+                <div key={n} className="tm-tut-cr-mate w-7 h-7 rounded-full bg-neutral-800 border border-neutral-600 flex-none" style={{ animationDelay: `${d}s` }} />
+              )
+            )}
+          </div>
+          <div className="relative h-4 w-full text-[10px] text-neutral-400 font-semibold">
+            <span className="tm-tut-cr-cap1 absolute inset-x-0 text-center">Just you</span>
+            <span className="tm-tut-cr-cap2 absolute inset-x-0 text-center">Or the whole crew</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Card 3 — the lock-screen total ticks up, then the wrap chip fills.
+    function TutorialAnimLive() {
+      return (
+        <div className="w-full max-w-[230px]" aria-hidden="true">
+          <div className="rounded-2xl bg-neutral-800 border border-neutral-700 px-3.5 py-3 flex items-center justify-between">
+            <div>
+              <div className="text-[8px] uppercase tracking-[0.14em] text-neutral-500 font-bold mb-0.5">TimeMachine</div>
+              <div className="relative h-[22px] w-[84px] font-mono text-[16px] text-neutral-100">
+                <span className="tm-tut-la-n1 absolute left-0 top-0">£412</span>
+                <span className="tm-tut-la-n2 absolute left-0 top-0">£436</span>
+                <span className="tm-tut-la-n3 absolute left-0 top-0">£461</span>
+              </div>
+            </div>
+            <div className="tm-tut-la-chip w-9 h-9 rounded-full border border-sky-500 bg-sky-500 text-black flex items-center justify-center flex-none">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 8" /></svg>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Card 4 — the link bubble goes out; the phone blinks and the shoot fills.
+    function TutorialAnimShare() {
+      return (
+        <div className="w-full max-w-[230px] flex items-center gap-3" aria-hidden="true">
+          <div className="flex-1 flex justify-start">
+            <div className="tm-tut-sh-bubble rounded-2xl rounded-br-md bg-sky-500/15 border border-sky-500/30 px-2.5 py-1.5 text-[10px] font-semibold text-sky-400 whitespace-nowrap">Shoot link</div>
+          </div>
+          <div className="tm-tut-sh-phone w-[64px] rounded-lg bg-neutral-800 border border-neutral-700 p-1.5 flex-none">
+            <div className="text-[7px] uppercase tracking-wider text-neutral-500 font-bold mb-1">Shoot</div>
+            <div className="flex flex-col gap-[3px]">
+              {[0, 0.14, 0.28].map((d, n) => (
+                <div key={n} className="tm-tut-sh-row h-[7px] rounded-sm bg-sky-500/40" style={{ animationDelay: `${d}s` }} />
               ))}
             </div>
-            <div className="tm-tut-cs-scan absolute left-0 right-0 top-2 h-[2px] bg-sky-400" style={{ boxShadow: '0 0 8px rgb(var(--tm-sky-400) / 0.8)' }} />
-          </div>
-          <div className="text-sky-500 text-[15px] flex-none">→</div>
-          <div className="flex-1 flex flex-col gap-2">
-            {['Call', 'Lunch', 'Wrap'].map((l) => (
-              <div key={l} className="flex items-center gap-2">
-                <span className="text-[9px] uppercase tracking-wider text-neutral-500 w-9 flex-none">{l}</span>
-                <div className="tm-tut-cs-field h-[7px] rounded-full bg-sky-500/70" />
-              </div>
-            ))}
           </div>
         </div>
       );
     }
+
+    // Card 5 — time labels give way to invoicing fields; bars re-fill sky.
+    function TutorialAnimCallSheet() {
+      return (
+        <div className="w-full max-w-[210px] flex flex-col gap-2.5" aria-hidden="true">
+          {[['Call', 'Invoice to'], ['Lunch', 'Email'], ['Wrap', 'Job ref']].map(([a, b]) => (
+            <div key={a} className="tm-tut-cs-row flex items-center gap-2">
+              <span className="relative w-16 flex-none h-[12px] text-[9px] uppercase tracking-wider leading-[12px]">
+                <span className="tm-tut-cs-la absolute left-0 top-0 text-neutral-500">{a}</span>
+                <span className="tm-tut-cs-lb absolute left-0 top-0 text-sky-500 font-bold">{b}</span>
+              </span>
+              <div className="tm-tut-cs-bar flex-1 h-[7px] rounded-full bg-sky-500/70" />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Card 6 — draft, sent and paid light along the line; paid lands solid.
+    function TutorialAnimInvoices() {
+      const tick = <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 8" /></svg>;
+      return (
+        <div className="w-full max-w-[230px]" aria-hidden="true">
+          <div className="relative">
+            <div className="absolute left-3.5 right-3.5 top-[13px] h-[2px] bg-neutral-800" />
+            <div className="tm-tut-inv-line absolute left-3.5 right-3.5 top-[13px] h-[2px] bg-sky-500/60" />
+            <div className="relative flex items-start justify-between">
+              {[['Draft', 'tm-tut-inv-n1 border-sky-500/60 bg-sky-900 text-sky-400'],
+                ['Sent', 'tm-tut-inv-n2 border-sky-500/60 bg-sky-900 text-sky-400'],
+                ['Paid', 'tm-tut-inv-n3 border-sky-500 bg-sky-500 text-black']].map(([l, cls]) => (
+                <div key={l} className="flex flex-col items-center gap-1.5">
+                  <div className={`${cls} w-7 h-7 rounded-full border flex items-center justify-center`}>{tick}</div>
+                  <span className="text-[8.5px] uppercase tracking-wider text-neutral-400 font-semibold">{l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const TUTORIAL_ANIMS = {
+      times: TutorialAnimTimes,
+      crew: TutorialAnimCrew,
+      live: TutorialAnimLive,
+      share: TutorialAnimShare,
+      callsheet: TutorialAnimCallSheet,
+      invoices: TutorialAnimInvoices,
+    };
 
     function TutorialCarousel({ onClose }) {
       const [i, setI] = useState(0);
       const last = i === TUTORIAL_CARDS.length - 1;
-      const card = TUTORIAL_CARDS[i];
       const touch = useRef({ x: 0, active: false });
 
       const go = (n) => setI(Math.max(0, Math.min(TUTORIAL_CARDS.length - 1, n)));
@@ -19675,21 +19810,72 @@ const setDays = (updater) =>
       return (
         <Sheet open onClose={onClose} maxWidth={440}>
           <div
-            className="px-5 pb-5 flex flex-col"
+            className="px-4 pb-5 flex flex-col"
             onTouchStart={onTouchStart}
             onTouchEnd={onTouchEnd}
             style={{ touchAction: 'pan-y' }}
           >
-            {/* Stage — fixed height so the deck never jumps between cards */}
-            <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: 168 }}>
-              {card.anim === 'quickset' ? <TutorialAnimQuickSet />
-                : card.anim === 'callsheet' ? <TutorialAnimCallSheet />
-                : <TutorialIcon kind={card.icon} />}
+            {/* Skip — top corner, clear of the sheet's grab handle */}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-2 py-1 -mr-1 text-[12px] font-semibold text-neutral-500 hover:text-neutral-300 transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                {last ? 'Close' : 'Skip'}
+              </button>
             </div>
 
-            <div className="text-center mt-4" style={{ minHeight: 104 }}>
-              <div className="text-[17px] font-bold text-neutral-100 tracking-tight">{card.title}</div>
-              <p className="text-[12.5px] text-neutral-400 leading-relaxed mt-2 max-w-[300px] mx-auto">{card.body}</p>
+            {/* Arrows flank the sliding track. The left arrow keeps its slot on
+                card 1 (invisible, not removed) so the stage never shifts. */}
+            <div className="flex items-center gap-1 mt-1">
+              <button
+                type="button"
+                onClick={() => go(i - 1)}
+                aria-label="Back"
+                tabIndex={i === 0 ? -1 : 0}
+                className={`flex-none w-10 h-10 rounded-full border border-neutral-700 text-neutral-300 flex items-center justify-center transition-opacity hover:border-neutral-500 hover:text-neutral-100 ${i === 0 ? 'opacity-0 pointer-events-none' : ''}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 6L8.5 12l6 6" /></svg>
+              </button>
+
+              {/* The track is viewport-wide; slides overflow it, so -100% per
+                  card is one viewport. Fixed minHeights stop the sheet jumping. */}
+              <div className="flex-1 overflow-hidden">
+                <div
+                  className="flex transition-transform duration-300 ease-out motion-reduce:transition-none"
+                  style={{ transform: `translateX(-${i * 100}%)` }}
+                >
+                  {TUTORIAL_CARDS.map((c) => {
+                    const Anim = TUTORIAL_ANIMS[c.key];
+                    return (
+                      <div key={c.key} className="w-full flex-none px-1">
+                        <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: 168 }}>
+                          <Anim />
+                        </div>
+                        <div className="text-center mt-4" style={{ minHeight: 104 }}>
+                          <div className="text-[17px] font-bold text-neutral-100 tracking-tight">{c.title}</div>
+                          <p className="text-[12.5px] text-neutral-400 leading-relaxed mt-2 max-w-[300px] mx-auto">{c.body}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={next}
+                aria-label={last ? 'Done' : 'Next'}
+                className={`flex-none w-10 h-10 rounded-full flex items-center justify-center transition-colors ${last ? 'bg-sky-500 hover:bg-sky-400 text-black' : 'border border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:text-neutral-100'}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                {last
+                  ? <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 8" /></svg>
+                  : <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 6l6 6-6 6" /></svg>}
+              </button>
             </div>
 
             {/* Progress dots — also tappable, so the deck can be browsed */}
@@ -19707,23 +19893,7 @@ const setDays = (updater) =>
               ))}
             </div>
 
-            <button
-              type="button"
-              onClick={next}
-              className="w-full mt-5 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-[13px] font-bold uppercase tracking-wider transition-colors"
-              style={{ WebkitTapHighlightColor: 'transparent' }}
-            >
-              {last ? 'Start using TimeMachine' : 'Next'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full mt-2 py-2 text-[12px] font-semibold text-neutral-500 hover:text-neutral-300 transition-colors"
-              style={{ WebkitTapHighlightColor: 'transparent' }}
-            >
-              {last ? 'Close' : 'Skip'}
-            </button>
-            <p className="text-[10.5px] text-neutral-600 text-center mt-3 leading-relaxed">
+            <p className="text-[10.5px] text-neutral-600 text-center mt-4 leading-relaxed">
               You can see this again any time in Settings, under How to use TimeMachine.
             </p>
           </div>
