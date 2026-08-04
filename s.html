@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Universal-link fallback for shoot-share links (https://timemachineapp.co.uk/s#...).
+       Shown only when the app is NOT installed (or the user opened the link in
+       Safari deliberately). The shared shoot rides in the URL fragment - it never
+       reaches this server and this page never reads it; install the app and open
+       the link again to import. Deliberately tiny and static: no scripts, no
+       decoder, no dependencies. The apple-itunes-app meta shows Safari's native
+       smart banner, which reads OPEN when the app is already installed. -->
+  <title>Open in TimeMachine</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-itunes-app" content="app-id=6775970098">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <style>
+    html, body {
+      margin: 0; min-height: 100%;
+      background: #0a0a0a; color: #a3a3a3;
+      font-family: -apple-system, BlinkMacSystemFont, ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center;
+    }
+    main { padding: 48px 24px; }
+    .wordmark {
+      color: #0ea5e9; font-weight: 900; font-size: 28px;
+      letter-spacing: -0.02em; margin-bottom: 16px;
+    }
+    p { font-size: 15px; line-height: 1.6; margin: 0 0 28px; }
+    .store {
+      display: inline-block; background: #0ea5e9; color: #000;
+      font-weight: 700; font-size: 14px; text-decoration: none;
+      padding: 12px 22px; border-radius: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="wordmark">TIMEMACHINE</div>
+    <p>Someone shared a shoot with you.<br>This link opens in the TimeMachine app.</p>
+    <a class="store" href="https://apps.apple.com/app/id6775970098">Get it on the App Store</a>
+  </main>
+</body>
+</html>
