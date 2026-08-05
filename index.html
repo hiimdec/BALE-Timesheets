@@ -2260,38 +2260,12 @@
       notes: "Pay accuracy improvements across the trickier day types, a full-screen saved clients manager, and a small visual polish. See CHANGELOG.md for full notes.",
     };
 
-    // ── Help & announcements ──────────────────────────────────────────────
-    // ONE content source for three surfaces: the Settings manual ("How to
-    // use TimeMachine", all entries), the one-time intro popup (teaser:true
-    // entries only), and the per-release what's-new popup (WHATS_NEW below).
-    // The manual covers NON-OBVIOUS features only — the test is "would
-    // someone miss or misunderstand this if we didn't say it". Poppy stays
-    // out on purpose (it's an easter egg, and announced once in a what's-new
-    // edition instead).
-    const HELP_CONTENT = {
-      framing: "Most of TimeMachine is self-explanatory. These are the bits worth knowing about.",
-      entries: [
-        { key: 'depth',    teaser: true,  title: "More than call to wrap",
-          blurb: "Call, lunch and wrap cover a basic day. Pre-call, expenses, travel time and stepping up are there for the days that need them. The rest is worked out for you." },
-        { key: 'bestboy',  teaser: true,  title: "Solo or Best Boy",
-          blurb: "Run just yourself, or switch a production to Best Boy mode and run the whole crew in parallel. Everyone's times, everyone's money, one screen." },
-        { key: 'callsheet', teaser: true, title: "Call sheet reader",
-          blurb: "Share a call sheet PDF straight from your email and it fills in your invoicing details and emails. iPhone 15 Pro and above." },
-        { key: 'la',       teaser: false, title: "Live Activity",
-          blurb: "Your day total on the lock screen, ticking as you work. Lunch and wrap from there too, no need to open the app. Starts when you set a call time for today." },
-        { key: 'siri',     teaser: false, title: "Siri",
-          blurb: "\"Hey Siri, wrap now in TimeMachine.\" Lunch works too." },
-        { key: 'cancel',   teaser: false, title: "Cancellation calculator",
-          blurb: "Works out what you're owed when a job's pulled." },
-        { key: 'invoice',  teaser: false, title: "Invoicing",
-          blurb: "Send an invoice in a few taps. Late payment interest is a couple more. Export for your accountant, or straight to QuickBooks." },
-        { key: 'share',    teaser: false, title: "Share a shoot",
-          blurb: "Send a shoot to a mate on the app. Dates, times and production details open straight in theirs. Rates stay yours." },
-        { key: 'money',    teaser: false, title: "In real money",
-          blurb: "Your day total in units that matter. Sausage rolls, pints, tanks of petrol. Settings, Appearance, Pill comparison." },
-      ],
-    };
-
+    // ── Announcements ─────────────────────────────────────────────────────
+    // The written manual (HELP_CONTENT) is GONE: the swipeable tutorial deck
+    // replaced it, and a second, longer telling of the same features in
+    // Settings was the thing nobody read. Settings now carries the REPLAY of
+    // that deck plus the release notes, under "Tutorial & what's new".
+    //
     // The what's-new edition. WHATS_NEW_VERSION is a LITERAL, bumped by hand
     // only when a release deserves a popup — it must EQUAL APP_VERSION to
     // fire, so a patch that bumps APP_VERSION alone silently retires the old
@@ -2319,7 +2293,7 @@
         { title: "Poppy mode",
           blurb: "Pink. Named after a trainee. Settings, Appearance." },
       ],
-      footer: "New in Settings: How to use TimeMachine - the features you might not have found.",
+      footer: "You can replay the tutorial any time in Settings, under Tutorial & what's new.",
     };
 
     /* ─── Schema version & storage-safety helpers ─── */
@@ -19716,8 +19690,9 @@ const setDays = (updater) =>
     // the seen-flag stamp can never be bypassed.
     /* ══════════════════════ TUTORIAL CAROUSEL ══════════════════════ */
     // The non-obvious features as a swipeable deck, replacing the text-only
-    // intro popup. HELP_CONTENT stays as the deeper written reference in
-    // Settings — this is the tour, that is the manual.
+    // intro popup. It is now the ONLY telling of these features: the written
+    // manual that used to sit in Settings is gone, and Settings keeps just the
+    // replay of this deck (under "Tutorial & what's new").
     //
     // Every colour here is a THEMED token (sky / neutral; black-on-sky ink is
     // the app's own button convention), so the whole deck re-colours in poppy
@@ -20039,7 +20014,7 @@ const setDays = (updater) =>
             </div>
 
             <p className="text-[10.5px] text-neutral-600 text-center mt-4 leading-relaxed">
-              You can see this again any time in Settings, under How to use TimeMachine.
+              You can see this again any time in Settings, under Tutorial & what's new.
             </p>
           </div>
         </Sheet>
@@ -21895,27 +21870,13 @@ const setDays = (updater) =>
               />
             </Disclosure>
 
-            {/* §5 — Expense presets: reusable expense templates offered by the
-                per-day Included/Available picker. Built-in names locked; amounts
-                editable. onChange writes the expensePresets array through the same
-                set() helper as every other userPrefs field. */}
-            <Disclosure
-              label="Expense presets"
-              summary={(() => {
-                const n = (userPrefs.expensePresets || []).length;
-                return n ? `${n} preset${n === 1 ? '' : 's'}` : '-';
-              })()}
-            >
-              <ExpensePresetsEditor
-                items={userPrefs.expensePresets || []}
-                onChange={(newItems) => set({ expensePresets: newItems })}
-              />
-            </Disclosure>
-
-            {/* §6 — New-production defaults: applied to NEW shoots only;
+            {/* §5 — New-production defaults: applied to NEW shoots only;
                 changing these does not retroactively rewrite anything. (Rounding
                 lives in Invoicing → Format & export — the single rounding setting
-                driving the calc breakdown, the PDF, and the CSV export.) */}
+                driving the calc breakdown, the PDF, and the CSV export.)
+                Expense presets moved IN here as a sub-section — with its own
+                copy, because presets are the one thing in this group that is
+                NOT "new shoots only". */}
             <Disclosure
               label="New-production defaults"
               summary={(() => {
@@ -21963,6 +21924,24 @@ const setDays = (updater) =>
                   />
                 </Field>
               )}
+              {/* Expense presets — moved in from its own top-level group.
+                  Bindings verbatim: reads and writes userPrefs.expensePresets
+                  through the same set() helper, so every consumer (the per-day
+                  picker, and the defaultOn auto-apply) is untouched.
+                  The copy earns its place: everything else in this group is
+                  "new shoots only", and presets are NOT — the per-day picker
+                  reads this list live, so an edit here reaches shoots that
+                  already exist. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-1">Expense presets</div>
+                <p className="text-[11px] text-neutral-500 mb-2.5 leading-tight">
+                  Unlike the rest of this section, these aren't limited to new shoots. The expenses picker reads this list live, so editing a preset changes what you're offered on shoots you've already started. It doesn't touch expenses you've already added to a day.
+                </p>
+                <ExpensePresetsEditor
+                  items={userPrefs.expensePresets || []}
+                  onChange={(newItems) => set({ expensePresets: newItems })}
+                />
+              </div>
             </Disclosure>
 
             {/* §7 — Appearance: the VISUAL controls cluster first (app icon, pill
@@ -22207,10 +22186,56 @@ const setDays = (updater) =>
               )}
             </Disclosure>
 
-            {/* §8 — Data & backup: storage status + the one-off actions
+            {/* §8 — Tutorial & what's new: the deck replay plus the release
+                notes. The written manual that used to sit here is gone (the
+                deck says the same things better), and What's new MOVED here
+                from About & help — it renders in ONE place, not both. */}
+            <Disclosure label="Tutorial & what's new">
+              {/* Replay: clearing the seen EDITION is all it takes — introDue
+                  is live-derived from prefs, so closing Settings drops
+                  straight back to the deck, which re-stamps the current
+                  edition on dismissal. No second flag, no duplicated
+                  trigger. (Must clear seenTutorialVersion, not seenIntro:
+                  the version is what gates the deck now.) */}
+              <div>
+                <Btn variant="subtle" onClick={() => { set({ seenTutorialVersion: '' }); onClose(); }}>
+                  <IInfo/>Show tutorial again
+                </Btn>
+                <p className="text-[10px] text-neutral-500 mt-1">The swipeable tour of the things that aren't obvious.</p>
+              </div>
+
+              {/* What's new — moved from About & help. Same RELEASE_NOTES
+                  source, same markup; only its home changed. */}
+              <div className="mt-5 pt-4 border-t border-neutral-800">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">What's new - v{RELEASE_NOTES.version}</div>
+                <div className="font-semibold text-sm text-neutral-200 mb-0.5">Version {RELEASE_NOTES.version}</div>
+                <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
+                <ul className="space-y-1.5 mb-3">
+                  {RELEASE_NOTES.added.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
+                      <span className="text-sky-500 flex-shrink-0 leading-snug">·</span>
+                      <span className="leading-snug">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[11px] text-neutral-400 italic">{RELEASE_NOTES.notes}</div>
+              </div>
+            </Disclosure>
+
+            {/* §9 — Help & data: the informational surfaces (re-run setup, APA
+                reference, About, Privacy) PLUS Data & backup, nested as its own
+                collapsible so a 6-control section doesn't bury the rest. The
+                label leads with the words someone hunting for export or reset
+                actually scans for; the v-summary still signals About. */}
+            <Disclosure label="Help & data" summary={`v${APP_VERSION}`}>
+
+            {/* Data & backup: storage status + the one-off actions
                 (export, accountant export, restore, reset). Reset and restore
                 still go through ConfirmDialog; flows unchanged. The accountant
-                block only appears once an issued invoice exists somewhere. */}
+                block only appears once an issued invoice exists somewhere.
+                Nested here, but every handler and piece of state it uses is
+                declared in SettingsScreen, so nothing about the move rewires
+                it. */}
             <Disclosure label="Data & backup">
               <div className="flex flex-col gap-3">
                 {(() => {
@@ -22328,37 +22353,6 @@ const setDays = (updater) =>
               </div>
             </Disclosure>
 
-            {/* §8b — How to use TimeMachine: the permanent manual. Renders
-                the SAME HELP_CONTENT the intro popup teases — one source,
-                no duplicated blurbs. Non-obvious features only. */}
-            <Disclosure label="How to use TimeMachine">
-              <p className="text-[12px] text-neutral-400 leading-relaxed mb-4">{HELP_CONTENT.framing}</p>
-              <div className="flex flex-col gap-3.5">
-                {HELP_CONTENT.entries.map((it) => (
-                  <div key={it.key}>
-                    <div className="text-[13px] font-semibold text-neutral-100">{it.title}</div>
-                    <div className="text-[12px] text-neutral-400 leading-relaxed mt-0.5">{it.blurb}</div>
-                  </div>
-                ))}
-              </div>
-              {/* Replay: clearing the seen EDITION is all it takes — introDue
-                  is live-derived from prefs, so closing Settings drops
-                  straight back to the deck, which re-stamps the current
-                  edition on dismissal. No second flag, no duplicated
-                  trigger. (Must clear seenTutorialVersion, not seenIntro:
-                  the version is what gates the deck now.) */}
-              <div className="mt-5 pt-4 border-t border-neutral-800/60">
-                <Btn variant="subtle" onClick={() => { set({ seenTutorialVersion: '' }); onClose(); }}>
-                  <IInfo/>Show tutorial again
-                </Btn>
-                <p className="text-[10px] text-neutral-500 mt-1">The swipeable tour of the things that aren't obvious.</p>
-              </div>
-            </Disclosure>
-
-            {/* §9 — About & help: re-run setup, APA terms link, What's new,
-                About metadata, Privacy text. Stacked as sub-sections inside
-                a single Disclosure to cut top-level clutter. */}
-            <Disclosure label="About & help" summary={`v${APP_VERSION}`}>
               {/* Sub: Re-run setup wizard */}
               <div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Re-run setup wizard</div>
@@ -22390,21 +22384,8 @@ const setDays = (updater) =>
                 </a>
               </div>
 
-              {/* Sub: What's new */}
-              <div className="mt-5 pt-4 border-t border-neutral-800">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">What's new - v{RELEASE_NOTES.version}</div>
-                <div className="font-semibold text-sm text-neutral-200 mb-0.5">Version {RELEASE_NOTES.version}</div>
-                <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
-                <ul className="space-y-1.5 mb-3">
-                  {RELEASE_NOTES.added.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
-                      <span className="text-sky-500 flex-shrink-0 leading-snug">·</span>
-                      <span className="leading-snug">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="text-[11px] text-neutral-400 italic">{RELEASE_NOTES.notes}</div>
-              </div>
+              {/* What's new used to sit here; it moved to Tutorial & what's
+                  new, where the release notes sit beside the deck replay. */}
 
               {/* Sub: About */}
               <div className="mt-5 pt-4 border-t border-neutral-800">

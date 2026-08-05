@@ -3656,22 +3656,44 @@ async function main() {
 
     // ─ Z2: every new top-level group label must appear as a SectionCard
     //   or Disclosure label exactly where the regroup placed it. ─
+    // APPROVED ASSERTION CHANGE (settings reorganise) — not an anchor
+    // widening: three of these groups genuinely stopped being top-level.
+    //   Expense presets  → now a sub-section INSIDE New-production defaults
+    //   Data & backup    → now a nested Disclosure INSIDE Help & data
+    //   About & help     → renamed "Help & data" (leads with the words a user
+    //                      hunting for export/reset actually scans for)
+    // Expense presets and Data & backup keep their labels, so both are still
+    // asserted below — just no longer as top-level groups. The two that must
+    // NOT come back are asserted by Z2b.
     const GROUPS = [
       { label: 'You',                     form: 'SectionCard title="You"' },
       { label: 'Tools',                   form: 'SectionCard title="Tools"' },
       { label: 'Invoicing',               form: 'Disclosure label="Invoicing"' },
       { label: 'Kit room',                form: 'label="Kit room"' },
-      { label: 'Expense presets',         form: 'label="Expense presets"' },
       { label: 'New-production defaults', form: 'label="New-production defaults"' },
       { label: 'Appearance',              form: 'Disclosure label="Appearance"' },
-      { label: 'Data & backup',           form: 'Disclosure label="Data & backup"' },
-      { label: 'About & help',            form: 'Disclosure label="About & help"' },
+      { label: 'Tutorial & what\'s new',  form: 'Disclosure label="Tutorial & what\'s new"' },
+      { label: 'Help & data',             form: 'Disclosure label="Help & data"' },
     ];
     for (const g of GROUPS) {
       check(`Z2 top-level group "${g.label}" present`,
         body.includes(g.form),
         `expected substring: ${g.form}`);
     }
+    // Z2b — the relocated sections must still RENDER (they moved, they did not
+    // get dropped), the renamed one must be gone under its old name, and the
+    // deleted manual must not creep back.
+    check('Z2b Expense presets still rendered (moved into New-production defaults, not dropped)',
+      body.includes('label="Expense presets"') === false &&
+      body.includes('>Expense presets<') &&
+      body.includes('<ExpensePresetsEditor'));
+    check('Z2c Data & backup still rendered, nested inside Help & data',
+      body.includes('Disclosure label="Data & backup"') &&
+      body.indexOf('Disclosure label="Help & data"') < body.indexOf('Disclosure label="Data & backup"'));
+    check('Z2d old "About & help" label gone (renamed Help & data)',
+      !body.includes('Disclosure label="About & help"'));
+    check('Z2e the written manual is gone — HELP_CONTENT no longer rendered anywhere',
+      !html.includes('HELP_CONTENT.entries') && !html.includes('HELP_CONTENT.framing'));
 
     // ─ Z3: the in-page sub-areas of the Invoicing group are rendered
     //   as sky-uppercase sub-headers (text-sky-500 font-bold mb-2.5). Match
@@ -3791,8 +3813,12 @@ async function main() {
       body.includes('Object.keys(DEPARTMENTS)'));
     check('Z9d makeDeptRoleHandlers wires dept/role/BDR cascades',
       body.includes('makeDeptRoleHandlers(set, userPrefs)'));
-    check('Z9e RELEASE_NOTES still rendered under About & help / What\'s new',
-      body.includes('RELEASE_NOTES.added.map') && body.includes('RELEASE_NOTES.version'));
+    // Wording fix only — the assertion is unchanged. RELEASE_NOTES moved from
+    // About & help to Tutorial & what's new, and must render in exactly ONE
+    // place (the move was explicitly not a duplication).
+    check('Z9e RELEASE_NOTES still rendered, now under Tutorial & what\'s new — and exactly once',
+      body.includes('RELEASE_NOTES.added.map') && body.includes('RELEASE_NOTES.version') &&
+      (body.match(/RELEASE_NOTES\.added\.map/g) || []).length === 1);
 
     // ─ Z10: Kit Room Stage 2 row rework — each item is a padded card with
     //   full-width name on line 1, then labelled "Default on new shoots"
