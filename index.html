@@ -2974,6 +2974,13 @@
       seenIntro: false,
       seenTutorialVersion: "",
       seenWhatsNewVersion: "",
+      // seenPoppyIconHint: the one-time "there's a matching icon" note shown
+      // when poppy is switched ON. The poppy app icon is deliberately MANUAL
+      // (iOS fires a system confirmation alert on every icon change, so
+      // auto-switching with the theme would spam alerts) — this note closes
+      // the discoverability gap that creates, without the alerts. Stamped on
+      // dismissal; additive over merge-over-defaults like every other flag.
+      seenPoppyIconHint: false,
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off'
       // to hide the compare line entirely. Default is 'off' so new users
       // land on a clean pill (£ amount only) and pick a comparison
@@ -21467,6 +21474,11 @@ const setDays = (updater) =>
       // 'Scribble'); no stored pref (iOS persists the choice). Read on mount.
       const [iconName, setIconName] = useState('default');
       useEffect(() => { if (IS_NATIVE) AppIcon.get().then(setIconName); }, []);
+      // One-time "there's a matching icon" note, raised by the theme picker
+      // below when poppy is switched ON. Local state, not derived from
+      // userPrefs.theme, so it fires on the TRANSITION only — merely opening
+      // Settings while already in poppy must not raise it.
+      const [poppyIconHint, setPoppyIconHint] = useState(false);
 
       const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -21977,10 +21989,33 @@ const setDays = (updater) =>
                       label={opt.label}
                       desc={opt.desc}
                       active={(userPrefs.theme ?? 'default') === opt.key}
-                      onClick={() => set({ theme: opt.key })}
+                      onClick={() => {
+                        // Raise the icon note only on the OFF→ON transition,
+                        // only on native (the icon picker is UIKit-only), only
+                        // if they haven't already got the Poppy icon, and only
+                        // if they haven't dismissed the note before.
+                        const switchingOn = opt.key === 'poppy' && (userPrefs.theme ?? 'default') !== 'poppy';
+                        if (switchingOn && IS_NATIVE && iconName !== 'Poppy' && !userPrefs.seenPoppyIconHint) setPoppyIconHint(true);
+                        set({ theme: opt.key });
+                      }}
                     />
                   ))}
                 </div>
+                {/* Sits between the two pickers deliberately: the App icon
+                    section is directly below, so this points DOWN rather than
+                    giving directions to where the reader already is. Also
+                    self-clears the moment the Poppy icon is actually set. */}
+                {poppyIconHint && IS_NATIVE && iconName !== 'Poppy' && (
+                  <StatusMsg kind="info">
+                    Want the matching icon? It's just below, under App icon.{' '}
+                    <button
+                      type="button"
+                      onClick={() => { setPoppyIconHint(false); set({ seenPoppyIconHint: true }); }}
+                      className="underline text-neutral-300 hover:text-neutral-100 transition-colors"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >Dismiss</button>
+                  </StatusMsg>
+                )}
               </div>
               {/* App icon — alternate "Scribble" icon picker. iOS-only (alternate
                   app icons are a UIKit feature); hidden on web. Mirrors the LIVE
