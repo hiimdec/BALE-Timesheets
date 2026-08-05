@@ -1,5 +1,65 @@
 # Changelog
 
+## 5.4.0
+
+### Redesigned invoices and timesheets
+Both documents were rebuilt against the approved design and now render as true vector through the native print pipeline, with no rasterisation anywhere - text stays sharp at any zoom and the files are smaller. Timesheets (the Best Boy grid and the solo sheet alike) gain SVG chips, summary cards, a reconciliation bar, a key and week grids. Invoices gain a segment bar, grouped line items and breakdown chips.
+
+The day-by-day breakdown is now a structured, frozen field on the invoice record rather than prose pasted into the notes box. It is built from the same figures and the same previous-day chain as the text export, so the numbers agree by construction, and notes go back to being manual-only. Invoices you have already sent are untouched and keep the document they were sent with.
+- The dormant html2canvas raster exporter has been deleted now the vector path is device-confirmed, taking 551 KB out of the bundle.
+- Pagination reworked: the breakdown starts on page 2, overspill is shared between pages, and payment details never split across a break.
+- Fixed the issued date never rendering on an invoice - it was bound to a field that did not exist.
+
+### Share a shoot with a mate (new)
+Turn a shoot into a link. Your mate taps it and it opens in their TimeMachine with the shoot pre-loaded, ready to confirm before anything is saved. There is no backend: the whole shoot rides inside the link itself, so nothing is stored on a server and the payload never reaches ours.
+
+The wire format is frozen at v1 with a permanent pin suite, and the encoder is an allowlist - it names the shared fields explicitly and never spreads a record, so kit, expenses, notes, state flags and anything about the sender's identity or rates cannot cross by construction. The receiver's own rates apply. Links carry up to fourteen days, and worked days only: rest days and un-ticked days drop out. Best Boy shoots can share one crew member's days on their own.
+
+### Poppy mode (new)
+A second colour theme, pink, requested by and named after our trainee. Settings, Appearance. The whole app re-colours, including the native bars on iOS. Invoices and exported documents are deliberately unaffected and stay in the standard palette.
+
+Getting there meant resolving the entire palette through CSS variables first, so the theme is one set of token values rather than a per-surface repaint, with a parity audit that fails the build if a raw colour escapes the token system.
+
+There is a matching Poppy app icon under Settings, Appearance, App icon. Icon choice stays manual and deliberately does not follow the theme: iOS shows a system confirmation alert on every icon change, so switching automatically would fire an alert each time you changed theme. Turning Poppy on now shows a one-time note pointing at the icon, dismissible and shown once.
+
+### A swipe-through tutorial (new)
+Six animated cards covering the things people were missing: what gets worked out from your times, solo versus Best Boy, the Live Activity, share links, the call sheet reader and invoice tracking. Side arrows, horizontal swipe, tappable dots, and skip from any card.
+
+It replaces the written manual that used to sit in Settings - the same content told better, and the manual was the part nobody read. The deck is version-gated on its own content edition, so new users see it on first launch and existing users see it once after the cards change, then not again until they change.
+
+Every animation is CSS over the theme tokens, with no assets and no dependency on real screen markup, so a later redesign cannot make them wrong. All six stop under prefers-reduced-motion, leaving a composed still frame.
+
+### Per-shoot Live Activity (new)
+Some days you know will be short and simple, and a running total on the lock screen is just noise. Each shoot now has its own Live Activity toggle in the shoot's Mode settings, sitting under the global master switch in Settings.
+
+The two are ANDed: the master switch still turns the feature off everywhere, and the per-shoot flag can only ever subtract from it, never force a card on. Shoots created before this release are unaffected - an absent flag reads as on, so nothing changes for them. Turning it off mid-day ends a running card on the next sweep, about a second later. The row is hidden on Best Boy shoots, where the card does not run at all, and greys out with an explanation when the master switch is off.
+
+### Quick set (new)
+Set one time across several crew at once, from an inline panel above the crew list with the time pre-filled. Two sparks went to lunch early - tick them, set it, done.
+
+### Pay accuracy
+Two over-billing corrections, both forward-only: nothing already stored is rewritten.
+- **Day off is now a distinct day type.** Un-ticking a crew member from a day used to write a paid APA Rest Day at flat BDR, which was billed on timesheets, text exports and invoices while the day view showed £0. Day off joins the day types as a true £0 not-engaged state that produces no lines for any surface to sum, and resolves no times, so a phantom call and wrap can no longer leak into the following day's turnaround maths. Rest Day survives as a deliberate paid assignment and is now shown honestly as a paid day everywhere, rather than being an amount you could not see.
+- **Roles on Best Boy crew are picked, not typed.** The free-text role box is now a picker with departments as headings and the rate card as the only rate source. Picking a role fills the base day rate and derives the overtime profile from it, which ends the phantom overtime that was being billed for Directors and Producers - roles that do not take overtime. A stored role that is not a canonical name is shown as custom and repaired when re-picked; an untouched record is left byte-for-byte alone.
+
+Display corrections in the same area, none of which change a figure:
+- A plain night now reads the way a day shoot does: a flat ten-hour minimum fee line plus a separate Night OT line for the paid hours beyond the floor, with the workings underneath. The engine is untouched and the two lines re-sum to the same total.
+- The department defaults lunch header stopped wearing one crew member's late lunch as if the default lunch itself were late.
+- The Best Boy crew list now resolves the full defaults cascade, so the variance highlight and its accordion appear on days created by next-day or bulk add.
+
+### Call sheet reader
+The reader itself is unchanged, but the app was describing it wrongly. It reads invoicing details from a shared call sheet - production company, job reference, invoicing email and CC, invoicing address, and the production title - and has never read call, lunch or wrap times. Both places that claimed otherwise now say what it actually does, and say how to start it: open a call sheet PDF, tap share, and pick TimeMachine from the iOS share sheet. iPhone 15 Pro and above, as before.
+
+### Settings
+Nine top-level groups become eight. The written manual is gone, with the tutorial replacing it, and What's new moved in beside the tutorial replay so the release notes live in one place rather than two. Expense presets fold into New-production defaults, with a line making clear they are the exception in that group: the expenses picker reads the preset list live, so editing a preset reaches shoots you have already started. Data and backup moves inside About and help, which is renamed Help and data so that export and reset are findable by the words people actually scan for; it stays collapsible rather than being flattened.
+
+### Other fixes
+- The Best Boy add-crew editor became a full page, with keyboard avoidance that lifts and shrinks the sheet rather than covering the fields.
+- Live Activity card events are now drained before the reconcile sweep on launch and foreground, so a wrap tapped on the card is not undone by the sweep that follows.
+- Opening a Best Boy shoot always lands on the day page; Setup no longer opens itself.
+- The zero-length lunch option reads "Missed / CWD", and production form placeholders are hints rather than fake example values.
+- A root error boundary, plus a sheet crash fixed by hoisting the keyboard hooks above an early return.
+
 ## 5.3.0
 
 ### Pay accuracy review
