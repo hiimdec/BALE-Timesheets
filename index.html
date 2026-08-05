@@ -2247,17 +2247,22 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "5.3.0";
+    const APP_VERSION = "5.4.0";
 
     const RELEASE_NOTES = {
       version: APP_VERSION,
-      date: "2026-07-13",
+      date: "2026-08-05",
       added: [
-        "Pay calculations reviewed end to end against the APA terms, with a number of edge cases corrected - overtime on long continuous nights and on Sunday and bank holiday continuous days, night shoot break charges, Saturday early calls, travel time on every day type, and some rounding at exact times. Day-to-day calculations are unchanged; the trickier days now come out exactly right.",
-        "Saved clients get a proper home - a full-screen manager with search, your most recent clients first, tap to edit, swipe to delete. Deleting a saved client never touches an invoice you've already created.",
-        "A small visual refresh to how expandable sections open.",
+        "Redesigned invoices and timesheets - cleaner, sharper, with a detailed day-by-day breakdown",
+        "Poppy mode - a new colour theme, with a matching app icon",
+        "A swipe-through tutorial covering the features you might not have found",
+        "Per-shoot Live Activity - turn the lock-screen card off for a specific shoot when you don't need it",
+        "The call sheet reader now fills your invoicing details straight from a shared PDF",
       ],
-      notes: "Pay accuracy improvements across the trickier day types, a full-screen saved clients manager, and a small visual polish. See CHANGELOG.md for full notes.",
+      // The shape carries ONE list plus a summary line, so the "Improved"
+      // group rides in `notes` — the added items stay bullets, the
+      // improvements read as the closing line. No new field invented.
+      notes: "Also improved: a tidier settings screen, various pay-calculation and display improvements, and faster, crisper PDF exports.",
     };
 
     // ── Announcements ─────────────────────────────────────────────────────
@@ -2274,7 +2279,7 @@
     // stamped when the INTRO fires (the intro covers everything, so its
     // edition never shows to that user; what's-new starts mattering at the
     // NEXT edition).
-    const WHATS_NEW_VERSION = "5.3.0";
+    const WHATS_NEW_VERSION = "5.4.0";
     // The tutorial deck's CONTENT edition — deliberately NOT the app version.
     // The deck is re-shown when its cards change, which is not every release,
     // so tying it to APP_VERSION would either re-show it for unrelated
@@ -2283,16 +2288,14 @@
     //   "" (absent) → never seen any deck: new users, and everyone who only
     //   saw the pre-versioning intro. Both are due, which is the intent.
     const TUTORIAL_VERSION = "2";
+    // This edition is a single paragraph rather than a titled list, so it uses
+    // InfoModal's `framing` prop (already supported, previously unused here)
+    // and leaves `items` empty — the copy is prose by design, and splitting it
+    // into title/blurb pairs would have meant rewriting it.
     const WHATS_NEW = {
-      title: "What's new",
-      items: [
-        { title: "Quick set",
-          blurb: "Set one time across several crew at once. Two sparks go to lunch early, tap tap, done." },
-        { title: "Share links",
-          blurb: "Send a shoot, or one crew member's days, to anyone on the app." },
-        { title: "Poppy mode",
-          blurb: "Pink. Named after a trainee. Settings, Appearance." },
-      ],
+      title: "New in 5.4.0",
+      framing: "Redesigned invoices and timesheets, a new Poppy theme, and a quick tutorial to show you around. Plus a few improvements under the hood.",
+      items: [],
       footer: "You can replay the tutorial any time in Settings, under Tutorial & what's new.",
     };
 
@@ -28929,6 +28932,7 @@ const confirmDelete = (p) => setConfirmOpts({
           {whatsNewDue && !shareLinkImport && !openImportFile && (
             <InfoModal
               title={WHATS_NEW.title}
+              framing={WHATS_NEW.framing}
               items={WHATS_NEW.items}
               footer={WHATS_NEW.footer}
               onClose={dismissWhatsNew}
