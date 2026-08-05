@@ -4469,6 +4469,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         iAmCrewId: p.iAmCrewId ?? null,
         dayDefaults: backfilledDefaults,
         isElevenHourDay: p.isElevenHourDay ?? false,
+        // Per-shoot Live Activity opt-out. Normalisation only: every read site
+        // tests `!== false`, so an ABSENT field already means on — an existing
+        // shoot's behaviour cannot change whether or not this line ever runs.
+        // It sits UNDER the global master switch (userPrefs.liveActivityEnabled)
+        // and can only ever subtract, never force a card on.
+        liveActivityEnabled: p.liveActivityEnabled ?? true,
         prodCo: _client.prodCo,
         jobReference: _client.jobReference,
         invoicingEmail: _client.invoicingEmail,
@@ -15717,6 +15723,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 <p className="text-[11px] text-neutral-500 mt-1">1h of overtime included in the day rate. OT applies after 11h worked instead of 10h.</p>
               </div>
+              {/* Per-shoot Live Activity opt-out. Hidden entirely in Best Boy
+                  mode: the card is solo-only (the sweep and the controller both
+                  resolve soloCrew as null when bestBoyMode is on), so the row
+                  would be a control that provably does nothing. When the global
+                  master switch is off the row STAYS but greys out — hiding it
+                  would make the hierarchy invisible and leave people hunting
+                  for why no shoot shows a card. */}
+              {!production.bestBoyMode && (() => {
+                const masterOn = !userPrefs || userPrefs.liveActivityEnabled !== false;
+                const shootOn = production.liveActivityEnabled !== false;
+                return (
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Live Activity</span>
+                      <Toggle value={masterOn && shootOn} disabled={!masterOn} onChange={(v) => setProduction(p => ({ ...p, liveActivityEnabled: v }))} ariaLabel="Live Activity for this shoot" />
+                    </div>
+                    <p className="text-[11px] text-neutral-500 mt-1">The lock-screen card for this shoot: live total, timer, and Lunch/Wrap buttons. iOS only.</p>
+                    {!masterOn && (
+                      <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">Live Activity is off in Settings, so no shoot shows the card.</p>
+                    )}
+                    {masterOn && !shootOn && (
+                      <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">Off for this shoot. Your other shoots still follow your Settings default.</p>
+                    )}
+                  </div>
+                );
+              })()}
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-2">Rounding</div>
                 <RoundingModeSelect value={roundingModeOf(production)} onChange={(m) => setProduction(p => ({ ...p, roundingMode: m }))} disableFavourable={invoicingEnabled(userPrefs) && INVOICE_EXPORT_CSV_FORMATS.includes(userPrefs.invoiceExportFormat)} />
@@ -18713,7 +18745,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             }}
           />
 
-          <SoloLiveActivity production={production} soloCrew={soloCrew} days={days} enabled={!userPrefs || userPrefs.liveActivityEnabled !== false} />
+          {/* Two flags, ANDed: the global master switch gates everything, and
+              the per-shoot flag can only subtract from it. There is no
+              expression here that lets a shoot force a card on against the
+              master — that is structural, not a convention. */}
+          <SoloLiveActivity production={production} soloCrew={soloCrew} days={days} enabled={(!userPrefs || userPrefs.liveActivityEnabled !== false) && production.liveActivityEnabled !== false} />
 
           <SoloDayPill
             total={totalShoot}
@@ -27328,7 +27364,7 @@ const confirmDelete = (p) => setConfirmOpts({
           const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
           // A wrapped day (explicit user flag — card wrap, WrapNow, or a solo
           // wrap-time edit that already passed) can never keep or restart a card.
-          const qualifies = enabled && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime));
+          const qualifies = enabled && !!pr && pr.liveActivityEnabled !== false && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime));
           if (!qualifies) {
             // A day disqualified BY THE WRAP FLAG ends WITH the linger — that
             // window is the wrapped send-off (freshly corrected by the wrap
@@ -27386,6 +27422,9 @@ const confirmDelete = (p) => setConfirmOpts({
         if (!enabled) return;
         for (const pr of (prods || [])) {
           if (!pr || byPid.has(pr.id)) continue;
+          // Per-shoot opt-out: without this the sweep would re-mint the very
+          // card the end branch above just killed, one second later, forever.
+          if (pr.liveActivityEnabled === false) continue;
           const soloCrew = !pr.bestBoyMode ? (pr.crew || [])[0] : null;
           if (!soloCrew) continue;
           let desc = null;
@@ -27890,6 +27929,10 @@ const confirmDelete = (p) => setConfirmOpts({
           iAmCrewId: null,
           dayDefaults: {},
           isElevenHourDay: false,
+          // The sender's per-shoot opt-out does NOT cross the wire (the codec is
+          // a 19-field allowlist), so an imported shoot follows the RECEIVER's
+          // own default, like every other personal setting.
+          liveActivityEnabled: true,
           roundingMode: roundingModeOf(userPrefs),
           startDate: (shoot.days[0] && shoot.days[0].date) || todayISO(),
           isNew: true,
@@ -28180,6 +28223,7 @@ const confirmDelete = (p) => setConfirmOpts({
           iAmCrewId: null,
           dayDefaults: {},
           isElevenHourDay: false,
+          liveActivityEnabled: true,
           roundingMode: roundingModeOf(userPrefs),
           startDate: todayISO(),
           isNew: true,

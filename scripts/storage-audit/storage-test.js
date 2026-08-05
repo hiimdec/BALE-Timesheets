@@ -5732,8 +5732,8 @@ async function main() {
       // the console.log and the end() call — the assertion (disqualified day →
       // immediate end) is unchanged.
       /if \(!desc\) \{[\s\S]{0,360}LiveActivity\.end\(\{ immediate: true \}\);/.test(html));
-    check('TT2c controller mounted in SoloDayPage with production/soloCrew/days + the round-3 enabled pref',
-      /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
+    check('TT2c controller mounted in SoloDayPage with production/soloCrew/days + the enabled gate (anchor widened for the per-shoot flag: the master pref ANDed with production.liveActivityEnabled !== false)',
+      /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{\(!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\) && production\.liveActivityEnabled !== false\} \/>/.test(html));
 
     // ─ TT3: start / update / end wired at the right transitions (debounced) ─
     check('TT3a start on (production,today) key change; update on signature change; end on wrap; 600ms debounce',
@@ -5858,10 +5858,10 @@ async function main() {
     check('TT9a unmount-persists vs disqualification — the effect cleanup ONLY clears the debounce timer (never ends), so navigating away keeps the card; ends happen solely inside the effect body (disqualify/wrap) or via the sweep',
       /return \(\) => clearTimeout\(timer\);/.test(html) &&
       !/return \(\) => \{[^}]{0,160}LiveActivity\.end/.test(html));
-    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, pref enabled), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
+    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, master pref enabled, per-shoot flag not false), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
-      /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
+      /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
       // windows widened 700→900 / 160→340 for the fix/la-diagnostics debugLog
       // lines beside the sweep's console.logs — the assertions (end
       // non-qualifying via endForProduction, converge duplicates by id) are
@@ -5877,7 +5877,36 @@ async function main() {
     check('TT9d Live Activity master switch — fresh pref default ON in DEFAULT_USER_PREFS; Appearance toggle row (rendered on web with a native-only note, matching Haptics); mount site passes enabled; controller short-circuits when disabled',
       /liveActivityEnabled: true,/.test(html) &&
       /<Toggle value=\{userPrefs\.liveActivityEnabled !== false\} onChange=\{\(v\) => set\(\{ liveActivityEnabled: v \}\)\} ariaLabel="Live Activity" \/>/.test(html) &&
-      /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\} \/>/.test(html));
+      /<SoloLiveActivity production=\{production\} soloCrew=\{soloCrew\} days=\{days\} enabled=\{\(!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\) && production\.liveActivityEnabled !== false\} \/>/.test(html));
+    // TT9f — the PER-SHOOT opt-out (production.liveActivityEnabled), added under
+    // the master switch. Three properties are pinned because each one is a way
+    // the feature could silently rot:
+    //   AND semantics — the per-shoot flag can only ever SUBTRACT from the
+    //     master; no read site may let a shoot force a card on. Both gates
+    //     (mount + sweep qualify) must carry the master term as well.
+    //   ABSENT MEANS ON — every read tests `!== false`, so a shoot stored
+    //     before this feature (no field) behaves exactly as it did. The
+    //     migrateProduction default is `?? true` NORMALISATION only; if that
+    //     line were ever dropped, absent must still read as on.
+    //   SWEEP SKIP — the start branch must skip an opted-out shoot, or the
+    //     sweep re-mints the card its own end branch just killed, every second.
+    check('TT9f per-shoot Live Activity opt-out — production.liveActivityEnabled ANDed under the master at BOTH gates (mount + sweep qualify), absent reads as ON at every site (migrate normalises ?? true), the sweep start branch skips an opted-out shoot, and the shoot-settings row writes via setProduction (hidden in Best Boy, disabled when the master is off)',
+      // absent-means-on: normalisation in migrateProduction, never a rewrite
+      /liveActivityEnabled: p\.liveActivityEnabled \?\? true,/.test(html) &&
+      // AND semantics at the mount gate (master term present, per-shoot subtracts)
+      /enabled=\{\(!userPrefs \|\| userPrefs\.liveActivityEnabled !== false\) && production\.liveActivityEnabled !== false\}/.test(html) &&
+      // AND semantics at the sweep gate
+      /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false &&/.test(html) &&
+      // sweep start branch skips an opted-out shoot (no re-mint loop)
+      /if \(pr\.liveActivityEnabled === false\) continue;/.test(html) &&
+      // the shoot-settings row: per-shoot write mechanism + both guards
+      /<Toggle value=\{masterOn && shootOn\} disabled=\{!masterOn\} onChange=\{\(v\) => setProduction\(p => \(\{ \.\.\.p, liveActivityEnabled: v \}\)\)\} ariaLabel="Live Activity for this shoot" \/>/.test(html) &&
+      /\{!production\.bestBoyMode && \(\(\) => \{/.test(html) &&
+      /const masterOn = !userPrefs \|\| userPrefs\.liveActivityEnabled !== false;/.test(html) &&
+      /const shootOn = production\.liveActivityEnabled !== false;/.test(html) &&
+      // new shoots (both creation sites) default to following the master
+      /liveActivityEnabled: true,\s*roundingMode: roundingModeOf\(userPrefs\),\s*startDate: todayISO\(\),/.test(html) &&
+      /liveActivityEnabled: true,\s*roundingMode: roundingModeOf\(userPrefs\),\s*startDate: \(shoot\.days\[0\] && shoot\.days\[0\]\.date\) \|\| todayISO\(\),/.test(html));
 
     // ─ TT10: Group A / A.5 — lunch countdown + OT-from + card layout (display-only) ─
     check('TT10a descriptor lunchEndEpoch — statutory hour-end (= loggedStart + 3600) set in the lunchLogged branch (single assignment, today-anchored like hhmmToEpochToday + 3600); 0 elsewhere; flows into the return for the native countdown',
@@ -6552,7 +6581,7 @@ async function main() {
           /if \(!passed && nextDay\.wrapped === true\) return \{ \.\.\.nextDay, wrapped: false \};/.test(fn);
         const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html) &&
           /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html);
-        const sweepOk = /const qualifies = enabled && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html);
+        const sweepOk = /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html);
         return fnOk && wiredOk && sweepOk;
       })());
 
