@@ -13,11 +13,19 @@ records a founder ruling, the ruling stands until the founder reverses it here.
 | `pact-bectu-scripted-tv-agreement-2023.pdf` | The signed Scripted TV Agreement, effective 1 January 2023 (28pp, image scan) |
 | `pact-bectu-mmp-agreement-as-amended-5-april-2021.pdf` | The MMP Agreement as amended 5 April 2021 (doc ref 11186226-5) |
 | `pact-bectu-joint-guidance-8-december-2023.pdf` | The Joint Pact/Bectu Guidance, issued 8 December 2023 |
+| `pact-bectu-scripted-tv-agreement-2023.ocr.txt` | OCR sidecar of the TV agreement scan (Vision, accurate mode, all 28 pages) |
 
 Filename note: the guidance PDF circulated misnamed as
 `Pact-Bectu-Scripted-TV-Agreement-12-December-2022.pdf`. Each file above was
 identified by CONTENT (page-1 render / text extraction), not by its filename,
 and named for what it actually contains. Do the same for any future document.
+
+OCR note: the TV agreement PDF is an image-only scan with no text layer, so
+the `.ocr.txt` sidecar carries its machine-readable text (Apple Vision,
+accurate mode, page markers preserved). `PACT_BECTU_TV_RULES.md` is therefore
+now VERIFIABLE against the source rather than authoritative on its own; where
+the rebuild and the sidecar disagree, check the scan itself — OCR can misread,
+but it cannot invent a clause.
 
 ## Architecture rulings
 
