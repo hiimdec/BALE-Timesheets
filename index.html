@@ -20304,9 +20304,17 @@ const setDays = (updater) =>
     // form record (the SoloDayPage solo mount would auto-create an APA day
     // on it). Slice 1 shows the stamped facts and an honest empty state:
     // no weeks, no days, no calculator yet.
-    function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete }) {
+    function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete, nativeActionsRef }) {
       useBackLevel(true, () => { onBack(); return true; }, 'longform-area');
       const [showSettings, setShowSettings] = useState(false);
+      // Native chrome: the bar's prodSettings routes here while the area is
+      // mounted (the web header with its gear is suppressed under native
+      // chrome, so without this the sheet is unreachable on device).
+      useEffect(() => {
+        if (!nativeActionsRef) return;
+        nativeActionsRef.current = { prodSettings: () => setShowSettings(true) };
+        return () => { nativeActionsRef.current = null; };
+      }, [nativeActionsRef]);
       const [confirmWrap, setConfirmWrap] = useState(false);
       const [confirmDeleteJob, setConfirmDeleteJob] = useState(false);
       // On-demand reopen for the beta explainer (ruled): the one-time stamp
@@ -29668,6 +29676,8 @@ const confirmDelete = (p) => setConfirmOpts({
       // + the mobile "more" kebab). Solo + BB are mutually exclusive, so only one of the
       // two refs is set at a time.
       const bbActionsRef = React.useRef(null);
+      // Long form area's native-bar actions (Job settings only — no share).
+      const lfActionsRef = React.useRef(null);
       // Native chrome owns the layout insets via CSS vars (see :root + the body.tm-native
       // rules + MainViewController). Toggle the class so those rules apply only on the
       // native shell (web build is untouched).
@@ -29706,7 +29716,7 @@ const confirmDelete = (p) => setConfirmOpts({
           }
           if (d.action === 'settings') { setShowStats(false); setShowSettings(true); return; }
           if (d.action === 'share') { if (soloActionsRef.current) soloActionsRef.current.share(); return; }
-          if (d.action === 'prodSettings') { const a = soloActionsRef.current || bbActionsRef.current; if (a && a.prodSettings) a.prodSettings(); return; }
+          if (d.action === 'prodSettings') { const a = soloActionsRef.current || bbActionsRef.current || lfActionsRef.current; if (a && a.prodSettings) a.prodSettings(); return; }
           if (d.action === 'more') { if (bbActionsRef.current) bbActionsRef.current.more(); return; }
           if (d.action === 'search') {
             setShowSettings(false); setShowStats(false); setOpenId(null);
@@ -29751,7 +29761,11 @@ const confirmDelete = (p) => setConfirmOpts({
       useEffect(() => {
         if (!NATIVE_CHROME_ACTIVE) return;
         const inShoot = !!(openId && currentProduction);
-        const inSoloShoot = inShoot && !currentProduction.bestBoyMode;
+        // Long form wins first: its native bar is Job settings only. The APA
+        // share action is dead weight there (the solo export sheet isn't
+        // mounted), and a button that can only no-op must not render.
+        const inLfShoot = inShoot && agreementOf(currentProduction) !== 'apa';
+        const inSoloShoot = inShoot && !inLfShoot && !currentProduction.bestBoyMode;
         const activeTab = showStats ? 'stats' : (homeTab === 'invoices' ? 'invoices' : 'shoots');
         // Stage 3a: the three tab roots show the wordmark (the literal tab-name title
         // was redundant with the tab labels); a shoot shows its production name; the
@@ -29782,7 +29796,8 @@ const confirmDelete = (p) => setConfirmOpts({
         // trailing; New Production / Settings get none. (The old centre-vs-left beta A/B was
         // removed in Z3 - left is now the permanent layout; isLeft stays as a readable anchor.)
         const isLeft = true;
-        const trailing = inSoloShoot ? ['prodSettings', 'share']
+        const trailing = inLfShoot ? ['prodSettings']
+          : inSoloShoot ? ['prodSettings', 'share']
           : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])
           : isTabRoot ? (isLeft ? ['search', 'settings'] : ['settings'])
           : activeSubScreen ? ['settings']
@@ -29919,7 +29934,7 @@ const confirmDelete = (p) => setConfirmOpts({
         // THE long form dispatch point (PACT_BECTU_PLAN.md): a long form
         // production opens here and nowhere else. The APA branches below
         // never receive one, so no APA surface needs an agreement check.
-        screen = <LongFormArea production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} onDelete={() => deleteProduction(currentProduction.id)} />;
+        screen = <LongFormArea production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} onDelete={() => deleteProduction(currentProduction.id)} nativeActionsRef={lfActionsRef} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
           production={currentProduction}
