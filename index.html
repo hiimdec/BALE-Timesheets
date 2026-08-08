@@ -2714,10 +2714,10 @@
     // constants off these ids is a later slice.
     const AGREEMENT_VERSIONS = {
       'pact-tv': [
-        { effectiveFrom: '2023-01-01', id: 'pact-tv@2023-01-01', label: 'Scripted TV 2023' },
+        { effectiveFrom: '2023-01-01', id: 'pact-tv@2023-01-01', label: 'Scripted TV 2023', plain: '2023 agreement' },
       ],
       'pact-film': [
-        { effectiveFrom: '2021-04-05', id: 'pact-film@2021-04-05', label: 'MMP Apr 2021' },
+        { effectiveFrom: '2021-04-05', id: 'pact-film@2021-04-05', label: 'MMP Apr 2021', plain: 'April 2021 agreement' },
       ],
     };
     function resolveAgreementVersion(agreement, ppStartDate) {
@@ -20167,6 +20167,9 @@ const setDays = (updater) =>
       const [showSettings, setShowSettings] = useState(false);
       const [confirmWrap, setConfirmWrap] = useState(false);
       const [confirmDeleteJob, setConfirmDeleteJob] = useState(false);
+      // On-demand reopen for the beta explainer (ruled): the one-time stamp
+      // stays, Job settings gets a way back in.
+      const [showBetaInfo, setShowBetaInfo] = useState(false);
       // One-time beta explainer on first entry to the area. The seen flag is
       // an ADDITIVE userPrefs write — deliberately NOT added to
       // DEFAULT_USER_PREFS (which stays byte-untouched); merge-over-defaults
@@ -20237,23 +20240,26 @@ const setDays = (updater) =>
             </div>
           </div>
 
-          {showBetaExplainer && (
+          {(showBetaExplainer || showBetaInfo) && (
             <InfoModal
               title="Long form is in beta"
               framing="This is built from the Pact/Bectu agreements. A few readings of the agreements are unconfirmed, and they're flagged wherever they affect your money. Check your figures against your payslip, and send anything that looks wrong to feedback@timemachineapp.co.uk."
               items={[]}
-              footer="This note won't show again. Nothing about the beta appears on invoices, timesheets or anything you send out."
-              onClose={() => setUserPrefs && setUserPrefs(prev => ({ ...prev, seenLongFormBeta: true }))}
+              footer="Reopen this note any time from Job settings. Nothing about the beta appears on invoices, timesheets or anything you send out."
+              onClose={() => { setShowBetaInfo(false); setUserPrefs && setUserPrefs(prev => ({ ...prev, seenLongFormBeta: true })); }}
             />
           )}
 
           {showSettings && (
             <Sheet open onClose={() => setShowSettings(false)} title="Job settings">
               <div className="px-5 pb-5 flex flex-col gap-5">
-                {/* The agreement is immutable — shown, never editable. */}
+                {/* The agreement is immutable — shown, never editable, and in
+                    plain English rather than a raw version stamp (ruled). */}
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Agreement</div>
-                  <div className="text-[13px] text-neutral-300 mt-1">{agreementLabel}{version ? ` · ${version.label}` : ''}</div>
+                  <div className="text-[13px] text-neutral-300 mt-1">
+                    {agreementLabel}{version && version.plain ? `, ${version.plain}` : ''}{production.agreement === 'pact-tv' && production.band ? `, Band ${production.band}` : ''}
+                  </div>
                   <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">Set at creation and fixed for the job.</p>
                 </div>
                 {production.agreement === 'pact-tv' && (
@@ -20313,6 +20319,12 @@ const setDays = (updater) =>
                     </>
                   )}
                 </div>
+                <button type="button"
+                  onClick={() => { setShowBetaInfo(true); }}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  <IInfo size={15}/>About the beta
+                </button>
                 {/* The list kebab reaches delete for every production; from
                     INSIDE the job this is the only way out. Someone who
                     walked the wizard to try the feature must be able to
