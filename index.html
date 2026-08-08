@@ -27378,7 +27378,10 @@ const confirmDelete = (p) => setConfirmOpts({
                   {invChip}
                 </div>
               )}
-              {productionIsUpcoming[p.id] ? (
+              {/* Long form cards show NO monetary figure: the APA-summed
+                  total is meaningless for them, and a £0.00 reads as broken.
+                  Their money arrives with the week layer. */}
+              {isInProgressProduction(p) ? null : productionIsUpcoming[p.id] ? (
                 <span className="text-[15px] font-mono font-bold text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
                 <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
@@ -27411,7 +27414,8 @@ const confirmDelete = (p) => setConfirmOpts({
               <h3 className="flex-1 min-w-0 truncate text-[13px] text-neutral-400">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
               {bestBoyBadge}
               {invChip}
-              {productionIsUpcoming[p.id] ? (
+              {/* Same rule as the full card: no APA £ on a long form row. */}
+              {isInProgressProduction(p) ? null : productionIsUpcoming[p.id] ? (
                 <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
                 <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
