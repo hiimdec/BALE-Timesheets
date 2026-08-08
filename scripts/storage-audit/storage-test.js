@@ -5292,8 +5292,12 @@ async function main() {
       const s = html.indexOf('function shootsNearDate');
       const e = html.indexOf('function Root() {');
       const src = (s > 0 && e > s) ? html.slice(s, e) : '';
+      // shootsNearDate now reads agreementOf (the long form exclusion) —
+      // feed the standalone eval the REAL helper sliced from the source,
+      // not a duplicate that could drift from the pinned form.
+      const agreementOfSrc = (html.match(/const agreementOf = \(p\) => p\?\.agreement \?\? 'apa';/) || [''])[0];
       let fn = null;
-      try { fn = new Function(`${src}; return shootsNearDate;`)(); } catch (_) {}
+      try { fn = new Function(`${agreementOfSrc}; ${src}; return shootsNearDate;`)(); } catch (_) {}
       const prod = (id, dates, startDate) => ({ id, title: id, startDate, days: dates.map((d, i) => ({ id: id + i, date: d })) });
       let ok = false;
       if (fn) {
@@ -5306,13 +5310,14 @@ async function main() {
           prod('startdate-only', [], '2026-07-05'),               // startDate fallback, dist 1
           prod('today', ['2026-07-06'], '2026-07-06'),            // dist 0
           prod('far-day-near-day', ['2026-09-01', '2026-07-08'], '2026-09-01'), // nearest day wins, dist 2
+          { ...prod('longform-today', ['2026-07-06'], '2026-07-06'), agreement: 'pact-tv' }, // dist 0 but long form — OUT
         ];
         const got = fn(ps, anchor).map(p => p.id);
         ok = JSON.stringify(got) === JSON.stringify([
           'today', 'nearest', 'startdate-only', 'far-day-near-day', 'exact-7-after', 'exact-7-before',
         ]) && fn([], anchor).length === 0 && fn(ps, 'not-a-date').length === 0;
       }
-      check('LL1e shootsNearDate EXECUTED: ±7 inclusive, 8 days out, nearest-first (day dates beat startDate), startDate fallback, bad anchor safe',
+      check('LL1e shootsNearDate EXECUTED: ±7 inclusive, 8 days out, nearest-first (day dates beat startDate), startDate fallback, bad anchor safe, long form excluded even at dist 0',
         ok);
     })();
 
