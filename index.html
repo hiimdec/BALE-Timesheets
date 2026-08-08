@@ -19836,11 +19836,14 @@ const setDays = (updater) =>
       });
       const set = (patch) => setW(prev => ({ ...prev, ...patch }));
 
-      // Screen list per the plan: band only exists for TV.
+      // Screen list. PP start date comes BEFORE band deliberately: the band
+      // STRUCTURE switched on 1 January 2024 (§3.1 vs §3.2), so the
+      // thresholds shown must resolve from the production's PP start date,
+      // not from today. Band only exists for TV.
       const steps = [
-        'agreement',
+        'agreement', 'ppStartDate',
         ...(w.agreement === 'pact-tv' ? ['band'] : []),
-        'ppStartDate', 'baseNation', 'weekStartDay', 'crew',
+        'baseNation', 'weekStartDay', 'crew',
         'scheduledFilmingDays', 'invoicing', 'summary',
       ];
       const screen = steps[Math.min(step, steps.length - 1)];
@@ -19949,7 +19952,7 @@ const setDays = (updater) =>
             {screen === 'baseNation' && (
               <div>
                 <h1 className="text-2xl font-bold tracking-tight mb-2">Where's the production based?</h1>
-                <p className="text-[12px] text-neutral-500 mb-8">The UK production base decides which bank holidays apply, wherever you're actually filming.</p>
+                <p className="text-[12px] text-neutral-500 mb-8">This is the UK production base, usually the production office, not the location. It decides which bank holidays apply regardless of where filming happens (Guidance §11.4).</p>
                 <div className="flex flex-col gap-2">
                   {nations.map(n => (
                     <RoundingOptionCard key={n.key} label={n.label} desc={n.detail} active={w.baseNation === n.key} onClick={() => set({ baseNation: n.key })} />
