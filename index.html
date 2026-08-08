@@ -20160,10 +20160,11 @@ const setDays = (updater) =>
     // form record (the SoloDayPage solo mount would auto-create an APA day
     // on it). Slice 1 shows the stamped facts and an honest empty state:
     // no weeks, no days, no calculator yet.
-    function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack }) {
+    function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete }) {
       useBackLevel(true, () => { onBack(); return true; }, 'longform-area');
       const [showSettings, setShowSettings] = useState(false);
       const [confirmWrap, setConfirmWrap] = useState(false);
+      const [confirmDeleteJob, setConfirmDeleteJob] = useState(false);
       // One-time beta explainer on first entry to the area. The seen flag is
       // an ADDITIVE userPrefs write — deliberately NOT added to
       // DEFAULT_USER_PREFS (which stays byte-untouched); merge-over-defaults
@@ -20308,9 +20309,31 @@ const setDays = (updater) =>
                     </>
                   )}
                 </div>
+                {/* The list kebab reaches delete for every production; from
+                    INSIDE the job this is the only way out. Someone who
+                    walked the wizard to try the feature must be able to
+                    remove the job without hunting the list row. Same confirm
+                    copy as the list's. */}
+                <div className="pt-4 border-t border-neutral-800">
+                  <button type="button"
+                    onClick={() => setConfirmDeleteJob(true)}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <ITrash size={15}/>Delete job
+                  </button>
+                </div>
               </div>
             </Sheet>
           )}
+
+          <ConfirmDialog
+            open={confirmDeleteJob}
+            title="Delete production?"
+            message={`Delete "${production.title || 'Untitled'}" and everything in it? There's no getting it back.`}
+            confirmLabel="Delete" confirmTone="danger" cancelLabel="Cancel"
+            onConfirm={() => { setConfirmDeleteJob(false); setShowSettings(false); onDelete && onDelete(); }}
+            onCancel={() => setConfirmDeleteJob(false)}
+          />
 
           <ConfirmDialog
             open={confirmWrap}
@@ -29420,7 +29443,7 @@ const confirmDelete = (p) => setConfirmOpts({
         // THE long form dispatch point (PACT_BECTU_PLAN.md): a long form
         // production opens here and nowhere else. The APA branches below
         // never receive one, so no APA surface needs an agreement check.
-        screen = <LongFormArea production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} />;
+        screen = <LongFormArea production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} onDelete={() => deleteProduction(currentProduction.id)} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
           production={currentProduction}
