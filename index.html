@@ -19710,7 +19710,7 @@ const setDays = (updater) =>
 
     /* ═══════════════════════════ NEW PRODUCTION SCREEN ═══════════════════════════ */
 
-    function NewProductionScreen({ userPrefs, onCreate, onCancel, initialTitle }) {
+    function NewProductionScreen({ userPrefs, onCreate, onCancel, onLongForm, initialTitle }) {
       const [title, setTitle] = useState(initialTitle || "");
       const [bestBoyMode, setBestBoyMode] = useState(false);
       const inputRef = useRef(null);
@@ -19780,6 +19780,23 @@ const setDays = (updater) =>
             >
               Create
             </Btn>
+
+            {/* Long form entry — the ONLY route into the Pact/Bectu wizard,
+                per the dispatch-at-entry-point ruling (PACT_BECTU_PLAN.md).
+                Commercials keep the quick flow above, untouched. */}
+            {onLongForm && (
+              <div className="mt-6 pt-5 border-t border-neutral-800/60">
+                <button
+                  type="button"
+                  onClick={onLongForm}
+                  className="w-full text-left bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl px-4 py-3.5 transition-colors"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Long form (Pact/Bectu)</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Scripted TV or a feature. Weeks, the works. Sets up through a short wizard.</div>
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <ConfirmDialog
@@ -19787,6 +19804,289 @@ const setDays = (updater) =>
           title="Discard new production?"
           message="The production you started won't be created."
           confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep editing"
+          onConfirm={() => { setShowDiscard(false); onCancel(); }}
+          onCancel={() => setShowDiscard(false)}
+        />
+        </>
+      );
+    }
+
+    /* ═══════════════ LONG FORM SETUP WIZARD (slice 1) ═══════════════ */
+    // One decision per screen, ending in a summary the user confirms. The
+    // wizard is the SINGLE place an `agreement` key is ever written — the
+    // dispatch point ruling in PACT_BECTU_PLAN.md. No £ arithmetic here:
+    // the record it creates has no days, no weeks content, no calculator.
+    function LongFormSetupWizard({ userPrefs, onCreate, onCancel }) {
+      const [step, setStep] = useState(0);
+      const [w, setW] = useState({
+        agreement: null, band: null, ppStartDate: todayISO(),
+        baseNation: 'england-wales', weekStartDay: 'monday',
+        title: '', role: '', agreementClass: 'standard', contractDailyRate: '',
+        weeklyEntry: false, weeklyRate: '',
+        scheduledFilmingDays: '', prodCo: '', jobReference: '',
+        invoicingEmail: '', toAddress: '',
+      });
+      const set = (patch) => setW(prev => ({ ...prev, ...patch }));
+
+      // Screen list per the plan: band only exists for TV.
+      const steps = [
+        'agreement',
+        ...(w.agreement === 'pact-tv' ? ['band'] : []),
+        'ppStartDate', 'baseNation', 'weekStartDay', 'crew',
+        'scheduledFilmingDays', 'invoicing', 'summary',
+      ];
+      const screen = steps[Math.min(step, steps.length - 1)];
+      const last = screen === 'summary';
+
+      // "My deal is weekly": ÷5 to the daily figure — the daily rate is the
+      // ONLY thing stored (PACT_BECTU_PLAN.md; the 55/45 divisors stay in
+      // the table as data). Shown live so the user sees the conversion.
+      const derivedDaily = w.weeklyEntry
+        ? (Number(w.weeklyRate) > 0 ? Number(w.weeklyRate) / 5 : 0)
+        : (Number(w.contractDailyRate) || 0);
+
+      const canContinue = (() => {
+        switch (screen) {
+          case 'agreement': return !!w.agreement;
+          case 'band': return !!w.band;
+          case 'ppStartDate': return /^\d{4}-\d{2}-\d{2}$/.test(w.ppStartDate || '');
+          case 'crew': return (w.title || '').trim().length > 0 && !!w.role && derivedDaily > 0;
+          default: return true;
+        }
+      })();
+
+      const goNext = () => {
+        if (last) {
+          onCreate({ ...w, contractDailyRate: derivedDaily });
+          return;
+        }
+        setStep(s => s + 1);
+      };
+      const goBack = () => setStep(s => Math.max(0, s - 1));
+
+      const dirty = !!w.agreement || (w.title || '').trim().length > 0;
+      const [showDiscard, setShowDiscard] = useState(false);
+      useBackLevel(true, () => {
+        if (step > 0) { goBack(); return false; }
+        if (dirty) { setShowDiscard(true); return false; }
+        onCancel(); return true;
+      }, 'longform-wizard');
+
+      const bandStructure = resolveTvBandStructure(w.ppStartDate);
+      const nations = [
+        { key: 'england-wales', label: 'England & Wales', detail: 'The standard set of bank holidays.' },
+        { key: 'scotland', label: 'Scotland', detail: "2 January and St Andrew's Day; no Easter Monday." },
+        { key: 'northern-ireland', label: 'Northern Ireland', detail: "St Patrick's Day and the Twelfth." },
+      ];
+      const weekDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+      const agreementLabel = w.agreement === 'pact-tv' ? 'Scripted TV' : w.agreement === 'pact-film' ? 'Film (MMP)' : '';
+
+      // Role → seeded class, user-confirmable (a deal fact, not a job title).
+      const onRolePick = (role) => {
+        const dept = Object.keys(DEPARTMENTS).find(d => DEPARTMENTS[d][role]) || '';
+        set({ role, agreementClass: seedAgreementClass(w.agreement, dept, role) });
+      };
+
+      const stepIndex = steps.indexOf(screen) + 1;
+
+      return (
+        <>
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          {!NATIVE_CHROME_ACTIVE && (
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+              <button onClick={() => { if (step > 0) goBack(); else if (dirty) setShowDiscard(true); else onCancel(); }} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title={step > 0 ? 'Back' : 'Cancel'} aria-label={step > 0 ? 'Back' : 'Cancel'}>
+                {step > 0 ? <IArrowLeft size={18}/> : <IX size={18}/>}
+              </button>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500 font-bold">Step {stepIndex} of {steps.length}</div>
+            </div>
+          </div>
+          )}
+
+          <div className="max-w-2xl mx-auto px-4 py-10 pb-32">
+            {screen === 'agreement' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">Which agreement?</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">Set once for the job. Commercials stay on the normal new production flow.</p>
+                <div className="flex flex-col gap-2">
+                  <RoundingOptionCard label="Scripted TV" desc="The Pact/Bectu scripted TV agreement, effective 2023. Ten-hour day, budget bands." active={w.agreement === 'pact-tv'} onClick={() => set({ agreement: 'pact-tv', band: null, agreementClass: 'standard' })} />
+                  <RoundingOptionCard label="Film (MMP)" desc="The Pact/Bectu Major Motion Pictures agreement, 2021. Budget £30m or more, 55-hour week." active={w.agreement === 'pact-film'} onClick={() => set({ agreement: 'pact-film', band: null, agreementClass: 'standard' })} />
+                </div>
+              </div>
+            )}
+
+            {screen === 'band' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">Budget band</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">The producer has to state the band in your deal memo - that's where to look. It sets Band 4's bank holiday rights.</p>
+                <div className="flex flex-col gap-2">
+                  {bandStructure.bands.map(b => (
+                    <RoundingOptionCard key={b.band} label={b.label} desc={b.detail} active={w.band === b.band} onClick={() => set({ band: b.band })} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {screen === 'ppStartDate' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">When does principal photography start?</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">This fixes which edition of the agreement applies for the whole job.</p>
+                <Field label="Principal photography start">
+                  <Input type="date" value={w.ppStartDate} onChange={(e) => set({ ppStartDate: e.target.value })} />
+                </Field>
+              </div>
+            )}
+
+            {screen === 'baseNation' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">Where's the production based?</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">The UK production base decides which bank holidays apply, wherever you're actually filming.</p>
+                <div className="flex flex-col gap-2">
+                  {nations.map(n => (
+                    <RoundingOptionCard key={n.key} label={n.label} desc={n.detail} active={w.baseNation === n.key} onClick={() => set({ baseNation: n.key })} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {screen === 'weekStartDay' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">When does your week start?</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">Weeks run for tracking and invoicing. Monday to Sunday unless your job runs differently. This locks once a week has been invoiced.</p>
+                <Field label="Week starts on">
+                  <Select value={w.weekStartDay} onChange={(e) => set({ weekStartDay: e.target.value })}>
+                    {weekDays.map(d => <option key={d} value={d}>{cap(d)}</option>)}
+                  </Select>
+                </Field>
+              </div>
+            )}
+
+            {screen === 'crew' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">You on this job</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">Your role, your terms, your daily rate.</p>
+                <div className="flex flex-col gap-5">
+                  <Field label="Production name">
+                    <Input type="text" placeholder="Production name" value={w.title} onChange={(e) => set({ title: e.target.value })} />
+                  </Field>
+                  <Field label="Role">
+                    <Select value={w.role} onChange={(e) => onRolePick(e.target.value)}>
+                      <option value="">- pick a role -</option>
+                      {Object.keys(DEPARTMENTS).map(dept => (
+                        <optgroup key={dept} label={dept}>
+                          {Object.keys(DEPARTMENTS[dept]).map(r => <option key={r} value={r}>{r}</option>)}
+                        </optgroup>
+                      ))}
+                    </Select>
+                  </Field>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1">Your terms</div>
+                    <p className="text-[11px] text-neutral-500 mb-2.5 leading-tight">A deal fact, not a job title - a gaffer can be on the rigging crew. Check your deal memo.</p>
+                    <div className="flex flex-col gap-2">
+                      {(AGREEMENT_CLASSES[w.agreement] || ['standard']).map(cls => (
+                        <RoundingOptionCard key={cls} label={AGREEMENT_CLASS_META[cls].label} desc={AGREEMENT_CLASS_META[cls].detail} active={w.agreementClass === cls} onClick={() => set({ agreementClass: cls })} />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <span className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">My deal is weekly</span>
+                      <Toggle value={w.weeklyEntry} onChange={(v) => set({ weeklyEntry: v })} ariaLabel="My deal is weekly" />
+                    </div>
+                    {w.weeklyEntry ? (
+                      <Field label="Weekly rate (£)">
+                        <Input type="number" min="0" step="1" placeholder="0" value={w.weeklyRate} onChange={(e) => set({ weeklyRate: e.target.value })} />
+                      </Field>
+                    ) : (
+                      <Field label="Daily rate (£)">
+                        <Input type="number" min="0" step="1" placeholder="0" value={w.contractDailyRate} onChange={(e) => set({ contractDailyRate: e.target.value })} />
+                      </Field>
+                    )}
+                    {w.weeklyEntry && Number(w.weeklyRate) > 0 && (
+                      <p className="text-[11px] text-neutral-500 mt-1.5">Stored as a daily rate: {fmtGBP(derivedDaily)} (weekly ÷ 5).</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {screen === 'scheduledFilmingDays' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">Total scheduled filming days</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">Optional. It's on the shooting schedule if you have it - it makes the split day reconciliation exact instead of provisional. Skip if you don't know.</p>
+                <Field label="Scheduled filming days (optional)">
+                  <Input type="number" min="0" step="1" placeholder="-" value={w.scheduledFilmingDays} onChange={(e) => set({ scheduledFilmingDays: e.target.value })} />
+                </Field>
+              </div>
+            )}
+
+            {screen === 'invoicing' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">Invoicing details</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">All optional, all editable later.</p>
+                <div className="flex flex-col gap-5">
+                  <Field label="Production company">
+                    <Input type="text" placeholder="Production company" value={w.prodCo} onChange={(e) => set({ prodCo: e.target.value })} />
+                  </Field>
+                  <Field label="Job reference">
+                    <Input type="text" placeholder="Job reference" value={w.jobReference} onChange={(e) => set({ jobReference: e.target.value })} />
+                  </Field>
+                  <Field label="Invoicing email">
+                    <Input type="text" placeholder="accounts@" value={w.invoicingEmail} onChange={(e) => set({ invoicingEmail: e.target.value })} />
+                  </Field>
+                  <Field label="Invoice address">
+                    <textarea value={w.toAddress} onChange={(e) => set({ toAddress: e.target.value })} rows={3} placeholder="Address invoices go to" className="w-full bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-3 py-2.5 text-sm outline-none rounded-lg resize-none" />
+                  </Field>
+                </div>
+              </div>
+            )}
+
+            {screen === 'summary' && (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight mb-2">{(w.title || '').trim() || 'Untitled'}</h1>
+                <p className="text-[12px] text-neutral-500 mb-8">Check it over. The agreement can't change after this.</p>
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl divide-y divide-neutral-800">
+                  {[
+                    ['Agreement', `${agreementLabel} · ${resolveAgreementVersion(w.agreement, w.ppStartDate)?.label || ''}`],
+                    ...(w.agreement === 'pact-tv' ? [['Budget band', `Band ${w.band}`]] : []),
+                    ['Principal photography', fmtDateShort(w.ppStartDate)],
+                    ['Production base', nations.find(n => n.key === w.baseNation)?.label || ''],
+                    ['Week starts', cap(w.weekStartDay)],
+                    ['Role', `${w.role} · ${AGREEMENT_CLASS_META[w.agreementClass].label}`],
+                    ['Daily rate', fmtGBP(derivedDaily)],
+                    ...(Number(w.scheduledFilmingDays) > 0 ? [['Scheduled filming days', String(Number(w.scheduledFilmingDays))]] : []),
+                    ...((w.prodCo || '').trim() ? [['Production company', w.prodCo.trim()]] : []),
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex items-baseline justify-between gap-4 px-4 py-2.5">
+                      <span className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold flex-none">{k}</span>
+                      <span className="text-[13px] text-neutral-100 text-right">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="fixed bottom-0 left-0 right-0 bg-neutral-950/95 border-t border-neutral-800" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+            <div className="max-w-2xl mx-auto px-4 pt-3">
+              <Btn
+                variant="primary"
+                onClick={goNext}
+                disabled={!canContinue}
+                className="w-full justify-center py-3 text-sm"
+                style={canContinue ? { boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' } : undefined}
+              >
+                {last ? 'Create production' : 'Continue'}
+              </Btn>
+            </div>
+          </div>
+        </div>
+        <ConfirmDialog
+          open={showDiscard}
+          title="Discard this production?"
+          message="Nothing has been created yet."
+          confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep going"
           onConfirm={() => { setShowDiscard(false); onCancel(); }}
           onCancel={() => setShowDiscard(false)}
         />
@@ -28132,6 +28432,20 @@ const confirmDelete = (p) => setConfirmOpts({
       const [showClients, setShowClients] = useState(false);   // pushed from Settings (Manage clients)
       const [showStats, setShowStats] = useState(false);
       const [showNewProduction, setShowNewProduction] = useState(false);
+      // Long form wizard — reached only through the New Production screen's
+      // long form entry. Creating routes straight into the long form area.
+      const [showLongFormWizard, setShowLongFormWizard] = useState(false);
+      const handleCreateLongForm = (wizardState) => {
+        const p = makeLongFormProduction(wizardState, userPrefs);
+        setProductions(prev => [...prev, p]);
+        setShowLongFormWizard(false);
+        setShowNewProduction(false);
+        // Deliberately NOT setOpenId(p.id) yet: the long form route is the
+        // next commit, and without it the open would land in SoloDayPage,
+        // whose solo mount auto-creates an APA day record — an APA surface
+        // writing onto a long form production. Back to the list until the
+        // dispatch exists.
+      };
       const [showMigrationBanner, setShowMigrationBanner] = useState(migrationResult.ran === true);
       const [versionToast, setVersionToast] = useState(false);
 
@@ -28689,6 +29003,7 @@ const confirmDelete = (p) => setConfirmOpts({
         const title = inShoot ? (currentProduction.title || 'Untitled production')
           : showClients ? 'Clients'                // pushed over Settings — checked first
           : showSettings ? 'Settings'
+          : showLongFormWizard ? 'Long form setup'   // wizard owns the screen while open
           : showNewProduction ? 'New production'   // pushed screen — plain title, no wordmark
           : activeSubScreen ? activeSubScreen.title   // tab-root sub-screen (e.g. "Earnings")
           : isTabRoot ? wordmark
@@ -28744,7 +29059,7 @@ const confirmDelete = (p) => setConfirmOpts({
           // set, the implicit systemBlue stays bit-identical to today).
           theme: userPrefs.theme === 'poppy' ? 'poppy' : 'default',
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showClients, showNewProduction, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, userPrefs && userPrefs.theme, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showClients, showNewProduction, showLongFormWizard, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, userPrefs && userPrefs.theme, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
 
       let screen;
       if (!userPrefs.onboardingComplete && icloudRestore === 'checking') {
@@ -28816,12 +29131,21 @@ const confirmDelete = (p) => setConfirmOpts({
         );
       } else if (showStats) {
         screen = <StatsScreen productions={productions} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onClose={() => setShowStats(false)} onOpenSettings={() => { setShowStats(false); setShowSettings(true); }} />;
+      } else if (showLongFormWizard) {
+        screen = (
+          <LongFormSetupWizard
+            userPrefs={userPrefs}
+            onCreate={handleCreateLongForm}
+            onCancel={() => setShowLongFormWizard(false)}
+          />
+        );
       } else if (showNewProduction) {
         screen = (
           <NewProductionScreen
             userPrefs={userPrefs}
             onCreate={handleNewProduction}
             onCancel={() => { setOpenImportFile(null); setShowNewProduction(false); }}
+            onLongForm={() => setShowLongFormWizard(true)}
             initialTitle={(openImportFile && openImportFile.result && openImportFile.result.fields && openImportFile.result.fields.title) || ''}
           />
         );
