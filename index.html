@@ -2691,6 +2691,14 @@
     // evaluated at read time and persisted never.
     const agreementOf = (p) => p?.agreement ?? 'apa';
 
+    // "In progress" — the GENERAL pinned-group concept for the Productions
+    // list. Only long form productions enter it this slice: they run for
+    // weeks or months, so month grouping (keyed off shoot dates) reads wrong
+    // while they're live. They fall into normal month grouping when marked
+    // wrapped — the wrapped concept lands with the week layer; until then
+    // every long form job is in progress.
+    const isInProgressProduction = (p) => agreementOf(p) !== 'apa';
+
     // One version stamp, on the production, resolved from the principal
     // photography start date at creation. A deal memo fixes the terms for the
     // life of the job — a mid-shoot amendment becomes a NEW entry here that
@@ -20094,6 +20102,68 @@ const setDays = (updater) =>
       );
     }
 
+    /* ═══════════════ LONG FORM AREA (slice 1: empty state) ═══════════════ */
+    // The SINGLE dispatch target for long form productions — opening one
+    // routes here and nowhere else, so no APA surface ever receives a long
+    // form record (the SoloDayPage solo mount would auto-create an APA day
+    // on it). Slice 1 shows the stamped facts and an honest empty state:
+    // no weeks, no days, no calculator yet.
+    function LongFormArea({ production, onBack }) {
+      useBackLevel(true, () => { onBack(); return true; }, 'longform-area');
+      const versions = AGREEMENT_VERSIONS[production.agreement] || [];
+      const version = versions.find(v => v.id === production.agreementVersion) || null;
+      const agreementLabel = production.agreement === 'pact-tv' ? 'Scripted TV' : 'Film (MMP)';
+      const nationLabel = { 'england-wales': 'England & Wales', 'scotland': 'Scotland', 'northern-ireland': 'Northern Ireland' }[production.baseNation] || production.baseNation || '';
+      const me = (production.crew || [])[0] || {};
+      const cap = (s) => (s || '').charAt(0).toUpperCase() + (s || '').slice(1);
+      const meta = [
+        version ? version.label : agreementLabel,
+        ...(production.agreement === 'pact-tv' && production.band ? [`Band ${production.band}`] : []),
+        nationLabel,
+        `Weeks from ${cap(production.weekStartDay || 'monday')}`,
+      ].filter(Boolean);
+      return (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          {!NATIVE_CHROME_ACTIVE && (
+          <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
+            <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={onBack} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Back" aria-label="Back">
+                <IArrowLeft size={18}/>
+              </button>
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Shoots</div>
+                <div className="text-sm font-bold tracking-tight truncate">{production.title || 'Untitled'}</div>
+              </div>
+            </div>
+          </div>
+          )}
+
+          <div className="max-w-2xl mx-auto px-4 py-6">
+            {/* The stamped facts — proof the record took, and the reference
+                point for everything the later slices compute. */}
+            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+              {meta.map(m => (
+                <span key={m} className="text-[10px] uppercase tracking-wide font-bold text-sky-500 bg-sky-500/10 border border-sky-500/25 rounded-md px-1.5 py-[3px]">{m}</span>
+              ))}
+            </div>
+            <div className="text-[11px] text-neutral-500 mb-8">
+              {me.role || 'Crew'}{me.agreementClass && me.agreementClass !== 'standard' ? ` · ${(AGREEMENT_CLASS_META[me.agreementClass] || {}).label || me.agreementClass}` : ''} · PP from {fmtDateShort(production.ppStartDate)}
+            </div>
+
+            <div className="flex flex-col items-center justify-center text-center py-16">
+              <div className="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-center text-sky-400 mb-4">
+                <ICal size={26}/>
+              </div>
+              <div className="text-[15px] font-bold text-neutral-100">No weeks yet</div>
+              <p className="text-[12px] text-neutral-500 leading-relaxed mt-1.5 max-w-[280px]">
+                Your setup is saved. Week tracking and the day editor land in the next update.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     /* ═══════════════════════════ SETTINGS SCREEN ═══════════════════════════ */
 
     function makeDeptRoleHandlers(set, userPrefs) {
@@ -27039,8 +27109,14 @@ const confirmDelete = (p) => setConfirmOpts({
 
       const currentShoot = sorted.find(p => (p.days ?? []).some(d => d.date === todayStr)) || null;
 
+      // In-progress productions pin above the month groups and stay out of
+      // them (and out of month totals — they've earned APA-summable money
+      // never; their own money model arrives with the week layer).
+      const inProgress = sorted.filter(isInProgressProduction);
+
       const groups = [];
       for (const p of sorted) {
+        if (isInProgressProduction(p)) continue;
         const label = monthLabel(sortKey(p));
         const last = groups[groups.length - 1];
         if (last && last.label === label) last.items.push(p);
@@ -27462,6 +27538,19 @@ const confirmDelete = (p) => setConfirmOpts({
                     <p className="text-sm text-neutral-400 mb-6">Add your first shoot - we'll sweat the rates so you don't.</p>
                     {/* Suppressed under native chrome — the native floating + button creates. */}
                     {!NATIVE_CHROME_ACTIVE && <Btn variant="primary" onClick={onNewProduction}><IPlus/>New production</Btn>}
+                  </div>
+                )}
+
+                {/* In progress — pinned at the very top, above the months.
+                    Long form jobs only this slice (isInProgressProduction). */}
+                {inProgress.length > 0 && (
+                  <div>
+                    <div className="flex items-baseline justify-between border-b border-dashed border-neutral-800 mb-2.5" style={{ padding: '0 2px 10px' }}>
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">In progress</div>
+                    </div>
+                    <div className="space-y-2">
+                      {inProgress.map(p => renderCard(p, { compact: true }))}
+                    </div>
                   </div>
                 )}
 
@@ -28440,11 +28529,8 @@ const confirmDelete = (p) => setConfirmOpts({
         setProductions(prev => [...prev, p]);
         setShowLongFormWizard(false);
         setShowNewProduction(false);
-        // Deliberately NOT setOpenId(p.id) yet: the long form route is the
-        // next commit, and without it the open would land in SoloDayPage,
-        // whose solo mount auto-creates an APA day record — an APA surface
-        // writing onto a long form production. Back to the list until the
-        // dispatch exists.
+        // Opens into LongFormArea via the dispatch — never SoloDayPage.
+        setOpenId(p.id);
       };
       const [showMigrationBanner, setShowMigrationBanner] = useState(migrationResult.ran === true);
       const [versionToast, setVersionToast] = useState(false);
@@ -29151,6 +29237,11 @@ const confirmDelete = (p) => setConfirmOpts({
         );
       } else if (!openId || !currentProduction) {
         screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} searchSignal={searchSignal} searchConsumedRef={searchConsumedRef} onSearchActiveChange={setSearchActive} searchActionsRef={searchActionsRef} newInvoiceActionRef={newInvoiceActionRef} />;
+      } else if (agreementOf(currentProduction) !== 'apa') {
+        // THE long form dispatch point (PACT_BECTU_PLAN.md): a long form
+        // production opens here and nowhere else. The APA branches below
+        // never receive one, so no APA surface needs an agreement check.
+        screen = <LongFormArea production={currentProduction} onBack={closeProduction} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
           production={currentProduction}
