@@ -27880,6 +27880,12 @@ const confirmDelete = (p) => setConfirmOpts({
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <ICopy size={15}/>Duplicate
                   </button>
+                  {/* Long form rows hide this too (ruled): generateCrewText
+                      runs the APA calc, so today it makes a "TOTAL: £0.00"
+                      text and with long form days it would put a silently
+                      wrong total in front of a producer - the worst class of
+                      leak. Same agreementOf list gate as the other three. */}
+                  {agreementOf(actionSheet) === 'apa' && (
                   <button type="button"
                     onClick={async () => {
                       const p = actionSheet;
@@ -27902,6 +27908,7 @@ const confirmDelete = (p) => setConfirmOpts({
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IShare size={15}/>Share times
                   </button>
+                  )}
                   {/* Shoot-share link — ADDITIONAL entry point (the solo export
                       sheet keeps its own). Same shipped encoder, same
                       @capacitor/share hand-off, same refusal toasts. SAME GATE
