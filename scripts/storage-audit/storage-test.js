@@ -246,6 +246,11 @@ async function transformedAppCode() {
     'try { globalThis.__indicesToHHMM     = indicesToHHMM;     } catch (_) {}\n' +
     'try { globalThis.__TIME_WHEEL_HOURS   = TIME_WHEEL_HOURS;   } catch (_) {}\n' +
     'try { globalThis.__TIME_WHEEL_MINUTES = TIME_WHEEL_MINUTES; } catch (_) {}\n' +
+    // Long form isolation (LF-suite): expose migrateProduction + agreementOf
+    // so LF1b can prove an APA production round-tripped through migrate and
+    // serialisation never gains an `agreement` key.
+    'try { globalThis.__migrateProduction = migrateProduction; } catch (_) {}\n' +
+    'try { globalThis.__agreementOf = agreementOf; } catch (_) {}\n' +
     // Custom comparison item (U-suite): expose the validator + the
     // effective getters so the suite can verify the gate (empty/zero
     // hidden, valid included), plus the base constants for surface
@@ -2239,6 +2244,48 @@ async function main() {
       check('U9 SCHEMA_VERSION is current after import (v4 — day-model migration)',
         storedVer === '4' || storedVer === 4,
         `stored=${storedVer}`);
+    }
+  }
+
+  // ===== LF. LONG FORM ISOLATION — absent means APA, forever =====
+  // The Pact/Bectu `agreement` key is chosen once at creation and only ever
+  // exists on long form productions. These pins make the invariant permanent:
+  // an APA production must never gain the key, not through migration, not
+  // through serialisation. (PACT_BECTU_PLAN.md — architecture rulings.)
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    // LF1a — SOURCE: migrateProduction contains no `agreement` assignment.
+    // agreementOf is a read-time helper; normalisation must never persist.
+    const migFn = (html.match(/const migrateProduction = \(p\) => \{[\s\S]*?\n    \};/) || [''])[0];
+    check('LF1a migrateProduction found and contains NO agreement/agreementVersion/weeks/baseNation assignment',
+      migFn.length > 800 &&
+      !/\bagreement\s*:/.test(migFn) &&
+      !/\bagreementVersion\s*:/.test(migFn) &&
+      !/\bweeks\s*:/.test(migFn) &&
+      !/\bbaseNation\s*:/.test(migFn),
+      `migFn length=${migFn.length}`);
+    // LF1c — the read helper exists in the pinned read-time form.
+    check('LF1c agreementOf is the read-time helper (p?.agreement ?? \'apa\'), persisted never',
+      /const agreementOf = \(p\) => p\?\.agreement \?\? 'apa';/.test(html));
+
+    // LF1b — BEHAVIOURAL: an APA production round-tripped through
+    // migrateProduction and JSON serialisation still has no agreement key
+    // (and none of the long form siblings).
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const mig = sb.__migrateProduction;
+    check('LF0 migrateProduction + agreementOf exposed in sandbox',
+      typeof mig === 'function' && typeof sb.__agreementOf === 'function');
+    if (typeof mig === 'function') {
+      const apa = mig({ id: 'p1', title: 'APA job', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', bdr: 568 }], days: [] });
+      const roundTripped = JSON.parse(JSON.stringify(apa));
+      const gained = ['agreement', 'agreementVersion', 'weeks', 'baseNation', 'ppStartDate', 'weekStartDay', 'scheduledFilmingDays', 'band']
+        .filter(k => k in roundTripped);
+      check('LF1b APA production through migrate + serialise gains NO long form key',
+        gained.length === 0, `gained: ${gained.join(',') || 'none'}`);
+      check('LF1d agreementOf reads the round-tripped APA production as \'apa\'',
+        sb.__agreementOf(roundTripped) === 'apa');
     }
   }
 

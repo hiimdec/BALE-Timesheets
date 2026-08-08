@@ -2679,6 +2679,134 @@
       };
     }
 
+    /* ═══════════ LONG FORM (Pact/Bectu) — agreement metadata ═══════════ */
+    // Slice 1: the SHAPE of a long form job only. No calculator, no ruleset
+    // table and no £ arithmetic lives here yet — those land behind the audit
+    // gate in later slices. PACT_BECTU_PLAN.md holds the rulings; the two
+    // PACT_BECTU_*_RULES.md rebuilds hold the rules.
+    //
+    // `agreement` is chosen once at creation and is immutable. ABSENT MEANS
+    // APA: the key never exists on an APA production, migrateProduction never
+    // writes it (pinned — LF1a/LF1b), and every read goes through agreementOf,
+    // evaluated at read time and persisted never.
+    const agreementOf = (p) => p?.agreement ?? 'apa';
+
+    // One version stamp, on the production, resolved from the principal
+    // photography start date at creation. A deal memo fixes the terms for the
+    // life of the job — a mid-shoot amendment becomes a NEW entry here that
+    // existing productions never see, because they resolve by their stamp,
+    // not by "latest". Metadata only: the ruleset table that hangs the £
+    // constants off these ids is a later slice.
+    const AGREEMENT_VERSIONS = {
+      'pact-tv': [
+        { effectiveFrom: '2023-01-01', id: 'pact-tv@2023-01-01', label: 'Scripted TV 2023' },
+      ],
+      'pact-film': [
+        { effectiveFrom: '2021-04-05', id: 'pact-film@2021-04-05', label: 'MMP Apr 2021' },
+      ],
+    };
+    function resolveAgreementVersion(agreement, ppStartDate) {
+      const versions = AGREEMENT_VERSIONS[agreement] || [];
+      if (!versions.length) return null;
+      const key = (typeof ppStartDate === 'string' && ppStartDate) ? ppStartDate : todayISO();
+      let chosen = versions[0];
+      for (const v of versions) { if (v.effectiveFrom <= key) chosen = v; }
+      return chosen;
+    }
+
+    // TV budget bands. The band STRUCTURE switches on the PP start date
+    // (Guidance on §3.1/§3.2: productions that commenced principal
+    // photography before January 2024 stay on the 2023 structure). Wizard
+    // labels only — the band's calc role (Band 4 bank-holiday rights, TV
+    // §11.3/§11.4) is a later slice. The producer must state the band in the
+    // Deal Memo (§3.3), which is where the user finds it.
+    const TV_BAND_STRUCTURES = [
+      { effectiveFrom: '2024-01-01', ref: 'PACT_BECTU_TV §3.2', bands: [
+        { band: 1, label: 'Band 1', detail: 'Up to £1.25m per broadcast hour' },
+        { band: 2, label: 'Band 2', detail: '£1.25m to £3m per broadcast hour' },
+        { band: 3, label: 'Band 3', detail: '£3m to £8m per broadcast hour' },
+        { band: 4, label: 'Band 4', detail: 'Above £8m per broadcast hour' },
+      ]},
+      { effectiveFrom: '2023-01-01', ref: 'PACT_BECTU_TV §3.1', bands: [
+        { band: 1, label: 'Band 1', detail: 'Up to £850k per broadcast hour' },
+        { band: 2, label: 'Band 2', detail: '£850k to £3m per broadcast hour' },
+        { band: 3, label: 'Band 3', detail: '£3m to £7m per broadcast hour' },
+        { band: 4, label: 'Band 4', detail: 'Above £7m per broadcast hour' },
+      ]},
+    ];
+    function resolveTvBandStructure(ppStartDate) {
+      const key = (typeof ppStartDate === 'string' && ppStartDate) ? ppStartDate : todayISO();
+      let chosen = TV_BAND_STRUCTURES[TV_BAND_STRUCTURES.length - 1];
+      for (const s of TV_BAND_STRUCTURES) { if (s.effectiveFrom <= key) { chosen = s; break; } }
+      return chosen;
+    }
+
+    // Agreement classes — deal facts, not job titles (PACT_BECTU_PLAN.md: a
+    // gaffer can be on the rigging crew). Seeded from the role, confirmed by
+    // the user in the wizard. Stored on the long form crew record only.
+    //   ach — TV §1.3's 10+1+1 departments (the Additional Contracted Hour)
+    //   riggingElectrician — Film §2.2(a): 9+1 day, weekly ÷45 / daily ÷9
+    //   postProduction — TV §—/Film §2.2(b): non-camera OT only, no lunch penalties
+    const AGREEMENT_CLASSES = {
+      'pact-tv':   ['standard', 'ach', 'postProduction'],
+      'pact-film': ['standard', 'riggingElectrician', 'postProduction'],
+    };
+    const AGREEMENT_CLASS_META = {
+      standard:           { label: 'Standard',            detail: 'The default terms for your agreement.' },
+      ach:                { label: 'Additional hour',     detail: 'The 10+1+1 departments - ADs, costume, hair and make-up, locations, production, script supervisors.' },
+      riggingElectrician: { label: 'Rigging electrician', detail: 'The 9+1 rigging day. Your hourly rate divides by 9, not 11.' },
+      postProduction:     { label: 'Post production',     detail: 'Post crew terms.' },
+    };
+    // TV §1.3's departments, mapped onto this app's department names.
+    const TV_ACH_DEPARTMENTS = ['Assistant Directors', 'Costume', 'Hair & Makeup', 'Locations', 'Direction & Production', 'Script Supervisor'];
+    function seedAgreementClass(agreement, department, role) {
+      const dept = department || '';
+      const r = (role || '').toLowerCase();
+      if (agreement === 'pact-film' && (dept === 'Rigging' || r.includes('rigg'))) return 'riggingElectrician';
+      if (agreement === 'pact-tv' && TV_ACH_DEPARTMENTS.includes(dept)) return 'ach';
+      return 'standard';
+    }
+
+    // The long form production record. Additive keys on TOP of the standard
+    // shape — an APA production never gains any of these, and the APA
+    // creation sites are untouched. migrateProduction's usual materialisation
+    // (roundingMode etc.) applies harmlessly on load; its G3 startDate snap
+    // is a no-op here because days is empty, so ppStartDate holds.
+    function makeLongFormProduction(w, userPrefs) {
+      const crewId = uid();
+      return {
+        id: uid(),
+        title: (w.title || '').trim() || 'Untitled',
+        agreement: w.agreement,                          // immutable from here
+        agreementVersion: resolveAgreementVersion(w.agreement, w.ppStartDate)?.id || '',
+        ...(w.agreement === 'pact-tv' ? { band: Number(w.band) || 4 } : {}),
+        baseNation: w.baseNation || 'england-wales',     // Guidance §11.4 reference point
+        ppStartDate: w.ppStartDate || todayISO(),
+        weekStartDay: w.weekStartDay || 'monday',
+        ...(Number(w.scheduledFilmingDays) > 0 ? { scheduledFilmingDays: Number(w.scheduledFilmingDays) } : {}),
+        weeks: [],                                       // the week layer is the next slice
+        prodCo: (w.prodCo || '').trim(),
+        jobReference: (w.jobReference || '').trim(),
+        invoicingEmail: (w.invoicingEmail || '').trim(),
+        ccEmail: '',
+        toAddress: (w.toAddress || '').trim(),
+        crew: [{
+          id: crewId,
+          name: (userPrefs && userPrefs.displayName) || 'You',
+          role: w.role || '',
+          agreementClass: w.agreementClass || 'standard',
+          contractDailyRate: Number(w.contractDailyRate) || 0,
+        }],
+        days: [],
+        iAmCrewId: crewId,
+        bestBoyMode: false,
+        viewMode: 'mobile',
+        dayDefaults: {},
+        startDate: w.ppStartDate || todayISO(),
+        isNew: true,
+      };
+    }
+
     // Rules-side structure (role names / departments / display order) —
     // card-invariant, bound once to the base card.
     const DEPARTMENTS = RATE_CARDS[0].departments;
