@@ -368,14 +368,17 @@ function main() {
   //               theme-invariant: on-accent ink, scrims, dividers);
   //   ALLOWLIST — semantic stock colours that MUST NOT follow the brand hue,
   //               because their meaning is the colour: destructive red, warning
-  //               amber, and the named orange button variant. A pink "delete"
-  //               would be actively harmful, so these are pinned, not themed.
+  //               amber, the named orange button variant, and the long form
+  //               beta's highlighter yellow (ruled Phase 2d: the one bright
+  //               hue the system doesn't already use — visible without
+  //               reading as OT orange). A pink "delete" would be actively
+  //               harmful, so these are pinned, not themed.
   // A new family outside all three fails here rather than shipping unnoticed.
   console.log('6. Class-family guard (no colour utility outside remapped / achromatic / allowlist)');
   {
     const REMAPPED   = new Set(['neutral', 'sky', 'fuchsia']);
     const ACHROMATIC = new Set(['white', 'black', 'transparent', 'current', 'inherit']);
-    const ALLOWLIST  = new Set(['red', 'amber', 'orange']);
+    const ALLOWLIST  = new Set(['red', 'amber', 'orange', 'yellow']);
     const PROPS = 'bg|text|border|ring|divide|from|to|via|placeholder|caret|accent|decoration|outline|shadow|fill|stroke';
     const FAMILIES = 'slate|gray|zinc|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|blue|indigo|violet|purple|pink|rose|neutral|sky|fuchsia|white|black|transparent|current|inherit';
     const re = new RegExp(`\\b(?:${PROPS})-(${FAMILIES})(?:-\\d{2,3})?(?:\\/\\d{1,3})?\\b`, 'g');
