@@ -2694,10 +2694,11 @@
     // "In progress" — the GENERAL pinned-group concept for the Productions
     // list. Only long form productions enter it this slice: they run for
     // weeks or months, so month grouping (keyed off shoot dates) reads wrong
-    // while they're live. They fall into normal month grouping when marked
-    // wrapped — the wrapped concept lands with the week layer; until then
-    // every long form job is in progress.
-    const isInProgressProduction = (p) => agreementOf(p) !== 'apa';
+    // while they're live. Marking the job wrapped (Job settings, reversible)
+    // drops it into normal month grouping. jobWrapped is an additive key on
+    // long form productions only — an APA production never gains it (pinned
+    // LF1a/LF1b), and `!== true` reads its absence as still in progress.
+    const isInProgressProduction = (p) => agreementOf(p) !== 'apa' && p.jobWrapped !== true;
 
     // Week-start lock — DERIVED live from week status, never a stored flag
     // (a stored flag could desync from the weeks that justify it). The week
@@ -20162,6 +20163,7 @@ const setDays = (updater) =>
     function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack }) {
       useBackLevel(true, () => { onBack(); return true; }, 'longform-area');
       const [showSettings, setShowSettings] = useState(false);
+      const [confirmWrap, setConfirmWrap] = useState(false);
       // One-time beta explainer on first entry to the area. The seen flag is
       // an ADDITIVE userPrefs write — deliberately NOT added to
       // DEFAULT_USER_PREFS (which stays byte-untouched); merge-over-defaults
@@ -20279,9 +20281,45 @@ const setDays = (updater) =>
                     setProduction(p => { const n = { ...p }; if (v > 0) n.scheduledFilmingDays = v; else delete n.scheduledFilmingDays; return n; });
                   }} />
                 </Field>
+                {/* Wrapped is reversible and confirmed one way only: wrapping
+                    moves the job out of the pinned group, un-wrapping just
+                    puts it back. The key is deleted on un-wrap so the record
+                    stays minimal. */}
+                <div className="pt-4 border-t border-neutral-800">
+                  {production.jobWrapped === true ? (
+                    <>
+                      <button type="button"
+                        onClick={() => setProduction(p => { const n = { ...p }; delete n.jobWrapped; return n; })}
+                        className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        <IReset size={15}/>Mark as in progress
+                      </button>
+                      <p className="text-[10px] text-neutral-600 mt-1.5 leading-tight">Wrapped - filed under its month on the shoots list.</p>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button"
+                        onClick={() => setConfirmWrap(true)}
+                        className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        <ICheck size={15}/>Mark job wrapped
+                      </button>
+                      <p className="text-[10px] text-neutral-600 mt-1.5 leading-tight">Moves the job out of In progress and files it under its month.</p>
+                    </>
+                  )}
+                </div>
               </div>
             </Sheet>
           )}
+
+          <ConfirmDialog
+            open={confirmWrap}
+            title="Mark job wrapped?"
+            message="The job leaves In progress and files under its month on the shoots list. You can mark it in progress again any time."
+            confirmLabel="Mark wrapped" confirmTone="primary" cancelLabel="Cancel"
+            onConfirm={() => { setConfirmWrap(false); setProduction(p => ({ ...p, jobWrapped: true })); }}
+            onCancel={() => setConfirmWrap(false)}
+          />
         </div>
       );
     }
@@ -27503,8 +27541,10 @@ const confirmDelete = (p) => setConfirmOpts({
               )}
               {/* Long form cards show NO monetary figure: the APA-summed
                   total is meaningless for them, and a £0.00 reads as broken.
-                  Their money arrives with the week layer. */}
-              {isInProgressProduction(p) ? null : productionIsUpcoming[p.id] ? (
+                  Gated on the AGREEMENT, not on in-progress — a wrapped long
+                  form job files under its month but must not regain the
+                  £0.00. Their money arrives with the week layer. */}
+              {agreementOf(p) !== 'apa' ? null : productionIsUpcoming[p.id] ? (
                 <span className="text-[15px] font-mono font-bold text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
                 <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
@@ -27537,8 +27577,9 @@ const confirmDelete = (p) => setConfirmOpts({
               <h3 className="flex-1 min-w-0 truncate text-[13px] text-neutral-400">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
               {bestBoyBadge}
               {invChip}
-              {/* Same rule as the full card: no APA £ on a long form row. */}
-              {isInProgressProduction(p) ? null : productionIsUpcoming[p.id] ? (
+              {/* Same rule as the full card: no APA £ on a long form row,
+                  wrapped or not — gate on the agreement. */}
+              {agreementOf(p) !== 'apa' ? null : productionIsUpcoming[p.id] ? (
                 <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
                 <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>

@@ -2257,12 +2257,13 @@ async function main() {
     // LF1a — SOURCE: migrateProduction contains no `agreement` assignment.
     // agreementOf is a read-time helper; normalisation must never persist.
     const migFn = (html.match(/const migrateProduction = \(p\) => \{[\s\S]*?\n    \};/) || [''])[0];
-    check('LF1a migrateProduction found and contains NO agreement/agreementVersion/weeks/baseNation assignment',
+    check('LF1a migrateProduction found and contains NO agreement/agreementVersion/weeks/baseNation/jobWrapped assignment',
       migFn.length > 800 &&
       !/\bagreement\s*:/.test(migFn) &&
       !/\bagreementVersion\s*:/.test(migFn) &&
       !/\bweeks\s*:/.test(migFn) &&
-      !/\bbaseNation\s*:/.test(migFn),
+      !/\bbaseNation\s*:/.test(migFn) &&
+      !/\bjobWrapped\s*:/.test(migFn),
       `migFn length=${migFn.length}`);
     // LF1c — the read helper exists in the pinned read-time form.
     check('LF1c agreementOf is the read-time helper (p?.agreement ?? \'apa\'), persisted never',
@@ -2320,7 +2321,7 @@ async function main() {
     if (typeof mig === 'function') {
       const apa = mig({ id: 'p1', title: 'APA job', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', bdr: 568 }], days: [] });
       const roundTripped = JSON.parse(JSON.stringify(apa));
-      const gained = ['agreement', 'agreementVersion', 'weeks', 'baseNation', 'ppStartDate', 'weekStartDay', 'scheduledFilmingDays', 'band']
+      const gained = ['agreement', 'agreementVersion', 'weeks', 'baseNation', 'ppStartDate', 'weekStartDay', 'scheduledFilmingDays', 'band', 'jobWrapped']
         .filter(k => k in roundTripped);
       check('LF1b APA production through migrate + serialise gains NO long form key',
         gained.length === 0, `gained: ${gained.join(',') || 'none'}`);
