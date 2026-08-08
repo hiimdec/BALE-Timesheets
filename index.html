@@ -27982,8 +27982,16 @@ const confirmDelete = (p) => setConfirmOpts({
           const otHrs = Math.round(productionOTHours[p.id] || 0);
           const segments = [];
           if (p.prodCo) segments.push(<span key="co">{p.prodCo}</span>);
+          if (agreementOf(p) !== 'apa') {
+            // Long form meta is weeks + days, still no money (ruled). The
+            // APA day count reads wrong for a job tracked by the week.
+            const wkCount = (p.weeks || []).length;
+            segments.push(<span key="weeks">{wkCount} {wkCount === 1 ? 'week' : 'weeks'}</span>);
+            segments.push(<span key="days">{dayCount} {dayCount === 1 ? 'day' : 'days'}</span>);
+          } else {
           segments.push(<span key="days">{dayCount} {dayCount === 1 ? 'day' : 'days'}</span>);
           if (otHrs > 0) segments.push(<span key="ot" className="text-neutral-600">{otHrs}h OT</span>);
+          }
           const metaContent = segments.reduce((acc, seg, i) => {
             if (i > 0) acc.push(<span key={`sep-${i}`} className="text-neutral-700"> · </span>);
             acc.push(seg);
@@ -28051,8 +28059,11 @@ const confirmDelete = (p) => setConfirmOpts({
               {bestBoyBadge}
               {invChip}
               {/* Same rule as the full card: no APA £ on a long form row,
-                  wrapped or not — gate on the agreement. */}
-              {agreementOf(p) !== 'apa' ? null : productionIsUpcoming[p.id] ? (
+                  wrapped or not — gate on the agreement. Real meta fills
+                  the slot instead: weeks + days, no money (ruled). */}
+              {agreementOf(p) !== 'apa' ? (
+                <span className="text-[11px] font-mono text-neutral-500 flex-shrink-0">{(p.weeks || []).length} wk · {Array.from(new Set((p.days ?? []).map(d => d.date).filter(Boolean))).length} d</span>
+              ) : productionIsUpcoming[p.id] ? (
                 <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
                 <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
