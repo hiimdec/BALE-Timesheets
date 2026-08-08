@@ -2699,6 +2699,12 @@
     // every long form job is in progress.
     const isInProgressProduction = (p) => agreementOf(p) !== 'apa';
 
+    // Week-start lock — DERIVED live from week status, never a stored flag
+    // (a stored flag could desync from the weeks that justify it). The week
+    // boundary is editable until any week in the job has been invoiced
+    // (PACT_BECTU_PLAN.md); with no weeks yet this always evaluates unlocked.
+    const weekStartDayLocked = (p) => ((p && p.weeks) || []).some(w => w && (w.status === 'invoiced' || w.status === 'paid'));
+
     // One version stamp, on the production, resolved from the principal
     // photography start date at creation. A deal memo fixes the terms for the
     // life of the job — a mid-shoot amendment becomes a NEW entry here that
@@ -20111,14 +20117,22 @@ const setDays = (updater) =>
     // form record (the SoloDayPage solo mount would auto-create an APA day
     // on it). Slice 1 shows the stamped facts and an honest empty state:
     // no weeks, no days, no calculator yet.
-    function LongFormArea({ production, onBack }) {
+    function LongFormArea({ production, setProduction, onBack }) {
       useBackLevel(true, () => { onBack(); return true; }, 'longform-area');
+      const [showSettings, setShowSettings] = useState(false);
       const versions = AGREEMENT_VERSIONS[production.agreement] || [];
       const version = versions.find(v => v.id === production.agreementVersion) || null;
       const agreementLabel = production.agreement === 'pact-tv' ? 'Scripted TV' : 'Film (MMP)';
       const nationLabel = { 'england-wales': 'England & Wales', 'scotland': 'Scotland', 'northern-ireland': 'Northern Ireland' }[production.baseNation] || production.baseNation || '';
       const me = (production.crew || [])[0] || {};
       const cap = (s) => (s || '').charAt(0).toUpperCase() + (s || '').slice(1);
+      // Post-creation editing (PACT_BECTU_PLAN.md): band, baseNation,
+      // weekStartDay and scheduledFilmingDays are deal facts people learn
+      // late — all editable here. `agreement` and its version stamp are
+      // immutable and render read-only. The week-start lock derives live.
+      const wsLocked = weekStartDayLocked(production);
+      const bandStructure = resolveTvBandStructure(production.ppStartDate);
+      const weekDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
       const meta = [
         version ? version.label : agreementLabel,
         ...(production.agreement === 'pact-tv' && production.band ? [`Band ${production.band}`] : []),
@@ -20133,10 +20147,13 @@ const setDays = (updater) =>
               <button onClick={onBack} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Back" aria-label="Back">
                 <IArrowLeft size={18}/>
               </button>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Shoots</div>
                 <div className="text-sm font-bold tracking-tight truncate">{production.title || 'Untitled'}</div>
               </div>
+              <button onClick={() => setShowSettings(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1" title="Job settings" aria-label="Job settings">
+                <IGear size={17}/>
+              </button>
             </div>
           </div>
           )}
@@ -20163,6 +20180,49 @@ const setDays = (updater) =>
               </p>
             </div>
           </div>
+
+          {showSettings && (
+            <Sheet open onClose={() => setShowSettings(false)} title="Job settings">
+              <div className="px-5 pb-5 flex flex-col gap-5">
+                {/* The agreement is immutable — shown, never editable. */}
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Agreement</div>
+                  <div className="text-[13px] text-neutral-300 mt-1">{agreementLabel}{version ? ` · ${version.label}` : ''}</div>
+                  <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">Set at creation and fixed for the job.</p>
+                </div>
+                {production.agreement === 'pact-tv' && (
+                  <Field label="Budget band">
+                    <Select value={String(production.band || 4)} onChange={(e) => setProduction(p => ({ ...p, band: Number(e.target.value) }))}>
+                      {bandStructure.bands.map(b => <option key={b.band} value={String(b.band)}>{b.label} - {b.detail}</option>)}
+                    </Select>
+                  </Field>
+                )}
+                <Field label="Production base nation">
+                  <Select value={production.baseNation || 'england-wales'} onChange={(e) => setProduction(p => ({ ...p, baseNation: e.target.value }))}>
+                    <option value="england-wales">England &amp; Wales</option>
+                    <option value="scotland">Scotland</option>
+                    <option value="northern-ireland">Northern Ireland</option>
+                  </Select>
+                </Field>
+                <div>
+                  <Field label="Week starts on">
+                    <Select value={production.weekStartDay || 'monday'} disabled={wsLocked} onChange={(e) => setProduction(p => ({ ...p, weekStartDay: e.target.value }))}>
+                      {weekDays.map(d => <option key={d} value={d}>{cap(d)}</option>)}
+                    </Select>
+                  </Field>
+                  {wsLocked && (
+                    <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Locked - a week on this job has been invoiced.</p>
+                  )}
+                </div>
+                <Field label="Scheduled filming days (optional)">
+                  <Input type="number" min="0" step="1" placeholder="-" value={production.scheduledFilmingDays || ''} onChange={(e) => {
+                    const v = Number(e.target.value) || 0;
+                    setProduction(p => { const n = { ...p }; if (v > 0) n.scheduledFilmingDays = v; else delete n.scheduledFilmingDays; return n; });
+                  }} />
+                </Field>
+              </div>
+            </Sheet>
+          )}
         </div>
       );
     }
@@ -29248,7 +29308,7 @@ const confirmDelete = (p) => setConfirmOpts({
         // THE long form dispatch point (PACT_BECTU_PLAN.md): a long form
         // production opens here and nowhere else. The APA branches below
         // never receive one, so no APA surface needs an agreement check.
-        screen = <LongFormArea production={currentProduction} onBack={closeProduction} />;
+        screen = <LongFormArea production={currentProduction} setProduction={setProduction} onBack={closeProduction} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
           production={currentProduction}
