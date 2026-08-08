@@ -2268,6 +2268,40 @@ async function main() {
     check('LF1c agreementOf is the read-time helper (p?.agreement ?? \'apa\'), persisted never',
       /const agreementOf = \(p\) => p\?\.agreement \?\? 'apa';/.test(html));
 
+    // LF2 — PRINT ISOLATION: the beta labelling is IN-APP ONLY. Nothing a
+    // production office or client could receive may carry it — the same
+    // principle as the theme audit's print isolation for Poppy. Slice both
+    // print components (PrintView owns #print-view, the timesheet;
+    // InvoiceDocument owns #invoice-print-view) and both print stylesheets,
+    // and assert the word never appears in any of them.
+    {
+      const sliceComponent = (name) => {
+        const start = html.indexOf(`    function ${name}(`);
+        if (start === -1) return '';
+        const tail = html.slice(start + 14 + name.length);
+        const next = tail.search(/\n    function [A-Z]/);
+        return html.slice(start, start + 14 + name.length + (next === -1 ? tail.length : next));
+      };
+      const sliceTemplate = (constName) => {
+        const i = html.indexOf(`const ${constName}`);
+        if (i === -1) return '';
+        const a = html.indexOf('`', i);
+        const b = html.indexOf('`', a + 1);
+        return (a === -1 || b === -1) ? '' : html.slice(a + 1, b);
+      };
+      const printView = sliceComponent('PrintView');
+      const invoiceDoc = sliceComponent('InvoiceDocument');
+      const printStyles = sliceTemplate('PRINT_STYLES');
+      const invoicePrintStyles = sliceTemplate('INVOICE_PRINT_STYLES');
+      check('LF2a print components found for the beta-isolation sweep (PrintView + InvoiceDocument, both non-trivial)',
+        printView.length > 2000 && invoiceDoc.length > 2000 &&
+        printView.includes('id="print-view"') && invoiceDoc.includes('id="invoice-print-view"'),
+        `printView=${printView.length} invoiceDoc=${invoiceDoc.length}`);
+      check('LF2b the word "beta" appears NOWHERE in either print component or either print stylesheet',
+        !/\bbeta\b/i.test(printView) && !/\bbeta\b/i.test(invoiceDoc) &&
+        !/\bbeta\b/i.test(printStyles) && !/\bbeta\b/i.test(invoicePrintStyles));
+    }
+
     // LF1b — BEHAVIOURAL: an APA production round-tripped through
     // migrateProduction and JSON serialisation still has no agreement key
     // (and none of the long form siblings).
