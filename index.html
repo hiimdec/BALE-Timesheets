@@ -19845,6 +19845,28 @@ const setDays = (updater) =>
       });
       const set = (patch) => setW(prev => ({ ...prev, ...patch }));
 
+      // Draft persistence (PACT_BECTU_PLAN.md ruling): the wizard survives
+      // process death via a PLAIN localStorage key — the tm_theme pattern,
+      // deliberately outside bigals_* so it joins no KEYS warm list, no
+      // migration and no backup envelope. Written per change while dirty,
+      // cleared on create or discard, and expired after 3 days: resuming a
+      // stale draft into an old PP start date is worse than starting again.
+      // All best-effort — localStorage can throw (private mode) and the
+      // wizard must not care.
+      const DRAFT_KEY = 'tm_longform_wizard_draft';
+      const DRAFT_MAX_AGE_MS = 3 * 86400000;
+      const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} };
+      const [resumeDraft, setResumeDraft] = useState(() => {
+        try {
+          const raw = localStorage.getItem(DRAFT_KEY);
+          if (!raw) return null;
+          const d = JSON.parse(raw);
+          if (!d || d.v !== 1 || !d.w || typeof d.savedAt !== 'number') { localStorage.removeItem(DRAFT_KEY); return null; }
+          if (Date.now() - d.savedAt > DRAFT_MAX_AGE_MS) { localStorage.removeItem(DRAFT_KEY); return null; }
+          return d;
+        } catch (_) { return null; }
+      });
+
       // Screen list. PP start date comes BEFORE band deliberately: the band
       // STRUCTURE switched on 1 January 2024 (§3.1 vs §3.2), so the
       // thresholds shown must resolve from the production's PP start date,
@@ -19877,6 +19899,7 @@ const setDays = (updater) =>
 
       const goNext = () => {
         if (last) {
+          clearDraft();
           onCreate({ ...w, contractDailyRate: derivedDaily });
           return;
         }
@@ -19885,6 +19908,14 @@ const setDays = (updater) =>
       const goBack = () => setStep(s => Math.max(0, s - 1));
 
       const dirty = !!w.agreement || (w.title || '').trim().length > 0;
+      // Mirror the draft on every change while dirty. While the resume offer
+      // is pending, hold off — writing the fresh empty state would clobber
+      // the very draft being offered. Backing out to clean clears it.
+      useEffect(() => {
+        if (resumeDraft) return;
+        if (!dirty) { clearDraft(); return; }
+        try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, savedAt: Date.now(), step, w })); } catch (_) {}
+      }, [w, step, dirty, resumeDraft]);
       const [showDiscard, setShowDiscard] = useState(false);
       useBackLevel(true, () => {
         if (step > 0) { goBack(); return false; }
@@ -20107,8 +20138,16 @@ const setDays = (updater) =>
           title="Discard this production?"
           message="Nothing has been created yet."
           confirmLabel="Discard" confirmTone="danger" cancelLabel="Keep going"
-          onConfirm={() => { setShowDiscard(false); onCancel(); }}
+          onConfirm={() => { setShowDiscard(false); clearDraft(); onCancel(); }}
           onCancel={() => setShowDiscard(false)}
+        />
+        <ConfirmDialog
+          open={!!resumeDraft}
+          title="Pick up where you left off?"
+          message={`You'd started setting up ${(resumeDraft?.w?.title || '').trim() ? `"${resumeDraft.w.title.trim()}"` : 'a long form job'}. Carry on, or start fresh?`}
+          confirmLabel="Carry on" confirmTone="primary" cancelLabel="Start fresh"
+          onConfirm={() => { const d = resumeDraft; setResumeDraft(null); setW(prev => ({ ...prev, ...d.w })); setStep(Math.max(0, Number(d.step) || 0)); }}
+          onCancel={() => { clearDraft(); setResumeDraft(null); }}
         />
         </>
       );

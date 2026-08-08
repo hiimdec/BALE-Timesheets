@@ -2267,6 +2267,12 @@ async function main() {
     // LF1c — the read helper exists in the pinned read-time form.
     check('LF1c agreementOf is the read-time helper (p?.agreement ?? \'apa\'), persisted never',
       /const agreementOf = \(p\) => p\?\.agreement \?\? 'apa';/.test(html));
+    // LF3 — the wizard draft mirror is a PLAIN localStorage key on the
+    // tm_theme pattern (ruled): outside bigals_*, so it joins no KEYS warm
+    // list, no migration and no backup envelope. If it ever becomes a
+    // bigals_ key it needs all three — this pin forces that conversation.
+    check('LF3 wizard draft key is tm_-prefixed plain localStorage, and no bigals_longform key exists anywhere',
+      /const DRAFT_KEY = 'tm_longform_wizard_draft';/.test(html) && !/bigals_longform/.test(html));
 
     // LF2 — PRINT ISOLATION: the beta labelling is IN-APP ONLY. Nothing a
     // production office or client could receive may carry it — the same
