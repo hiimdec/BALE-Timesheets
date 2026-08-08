@@ -56,7 +56,12 @@ but it cannot invent a clause.
   below.
 - **Consecutive day counting:** a worked day advances the count, a travel day
   neither advances nor breaks it (TV §8.10; Film §4.4), a day off breaks it and
-  resets to zero.
+  resets to zero. **Turnaround days hold the run like travel** (ruled Phase 2d):
+  a turnaround day is paid at the daily rate as compensation for a night block,
+  so it is a paid engaged day, not a day off — the same distinction the APA
+  side draws between a Rest Day and a Day off. An absent calendar day (no
+  record at all) breaks the run. Computed by `consecutiveRunFor`, a pure
+  read-time selector — never stored, because the run crosses week boundaries.
 - **Where a rule is unresolved, the app CLAIMS the money and FLAGS the
   assumption.** It never silently under-claims. Applies to every open inference.
 - **Sixth and seventh days are flagged and overridable** down to a normal day
@@ -103,7 +108,9 @@ anything is gated.
 
 The live inference list is in the Phase 1b proposal record; headline items the
 engine must flag when they bite: TV travel day skip-vs-reset on the consecutive
-run (§8.10 states only "do not count"); film prep/wrap 30+30 vs the OT clock
-(§3.2(a)); film camera OT 4th hour+ non-pro-rating (§3.3(a)(i)); the §7.11
-beyond-cap CWD camera OT rate ("agreed locally" — flag, never price); the
-called-camera-OT window banding across 23:00 (§7.6 × §7.10(a)).
+run (§8.10 states only "do not count"); **turnaround days holding (not
+breaking) the run** — an inference from their paid-engaged character, ruled
+Phase 2d, neither agreement states it for the count; film prep/wrap 30+30 vs
+the OT clock (§3.2(a)); film camera OT 4th hour+ non-pro-rating (§3.3(a)(i));
+the §7.11 beyond-cap CWD camera OT rate ("agreed locally" — flag, never
+price); the called-camera-OT window banding across 23:00 (§7.6 × §7.10(a)).

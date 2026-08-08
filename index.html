@@ -2708,6 +2708,131 @@
     // when the start day changes; anything submitted or beyond locks it.
     const weekStartDayLocked = (p) => ((p && p.weeks) || []).some(w => w && (w.status === 'submitted' || w.status === 'invoiced' || w.status === 'paid'));
 
+    // ── The week and day records (Phase 2d, schemas ruled in 2.1) ──
+    // Long form day types. The day type IS the lunch (SWD an hour, SCWD
+    // thirty minutes, CWD no formal break plus the twenty-minute rest), so
+    // the selector replaces the APA lunch-duration control. `run` drives
+    // consecutiveRunFor: worked types advance, travel and turnaround days
+    // hold (a turnaround day is a paid engaged day, not a day off — ruled,
+    // flagged as an inference in PACT_BECTU_PLAN.md), rest days and unworked
+    // bank holidays break the run, and an absent calendar day breaks it too.
+    const LF_DAY_TYPE_META = {
+      swd:                  { label: 'SWD',  long: 'Standard working day',    detail: 'One hour lunch.',                              run: 'advance', worked: true },
+      scwd:                 { label: 'SCWD', long: 'Semi-continuous day',     detail: 'Thirty minute lunch.',                         run: 'advance', worked: true },
+      cwd:                  { label: 'CWD',  long: 'Continuous working day',  detail: 'No formal break - a twenty minute rest.',      run: 'advance', worked: true },
+      travel:               { label: 'Travel', long: 'Travel day',            detail: 'Neither advances nor breaks the run.',         run: 'hold',    worked: false },
+      turnaroundDay:        { label: 'Turnaround', long: 'Turnaround day',    detail: 'Paid engaged day after nights - holds the run.', run: 'hold',  worked: false },
+      restDay:              { label: 'Rest', long: 'Rest day',                detail: 'Day off - resets the run.',                    run: 'break',   worked: false },
+      bankHolidayNotWorked: { label: 'BH off', long: 'Bank holiday (not worked)', detail: 'Day off - resets the run.',                run: 'break',   worked: false },
+    };
+    const LF_DAY_TYPE_ORDER = ['swd', 'scwd', 'cwd', 'travel', 'turnaroundDay', 'restDay', 'bankHolidayNotWorked'];
+
+    // The long form day record. NO callTime, NO preCallTime — pinned LF4;
+    // the engine slice adds the loud failure. cameraOtCalledMins,
+    // dayAgreementClass, dayContractDailyRate and sixthSeventhOverride are
+    // written only when used (absent by default, the scheduledFilmingDays
+    // pattern).
+    function makeLongFormDay(crewId, date, dayType = 'swd') {
+      return {
+        id: uid(), crewId, date, dayType,
+        unitCallTime: '08:00',
+        individualCallTime: null,     // null = the unit call applies to you
+        lunchTime: '13:00',           // when lunch was CALLED — duration is the day type
+        cameraWrapTime: null,         // film: a real rate boundary
+        wrapTime: '19:00',
+        wrapped: date < todayISO(),
+      };
+    }
+
+    // Week identity is derived from weekStartDay; membership is BY DATE
+    // RANGE AND crewId — no day-id list to desync (pinned LF6).
+    const LF_WEEKDAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    function lfWeekBounds(weekStartDay, dateISO) {
+      const startIdx = LF_WEEKDAY_INDEX[weekStartDay] ?? 1;
+      const d = new Date(dateISO + 'T12:00:00');
+      d.setDate(d.getDate() - ((d.getDay() - startIdx + 7) % 7));
+      const startDate = d.toISOString().slice(0, 10);
+      d.setDate(d.getDate() + 6);
+      return { startDate, endDate: d.toISOString().slice(0, 10) };
+    }
+    function makeLongFormWeek(crewId, weekStartDay, dateISO) {
+      const b = lfWeekBounds(weekStartDay, dateISO);
+      return {
+        id: uid(), crewId,
+        startDate: b.startDate, endDate: b.endDate,
+        status: 'draft',                       // draft | submitted | invoiced | paid
+        invoiceId: null,                       // null until claimed
+        nightWork: { settlement: null },       // TV §5.3 weekly election: null | 'rest' | 'paid'
+      };
+    }
+    const lfWeekOf = (p, crewId, dateISO) =>
+      ((p && p.weeks) || []).find(w => w && w.crewId === crewId && w.startDate <= dateISO && dateISO <= w.endDate);
+    // Lazy mint: creating a day whose date falls in no existing week for
+    // that crew mints the containing week as a pristine draft.
+    function ensureLfWeek(p, crewId, dateISO) {
+      if (lfWeekOf(p, crewId, dateISO)) return p;
+      return { ...p, weeks: [...(p.weeks || []), makeLongFormWeek(crewId, p.weekStartDay || 'monday', dateISO)] };
+    }
+    // A week with real state never auto-deletes; pristine empty drafts may
+    // be pruned (ruled). Called after day removal.
+    const lfWeekIsPristine = (w) => w && w.status === 'draft' && !w.invoiceId && !(w.nightWork && w.nightWork.settlement);
+    function pruneLfWeeks(p) {
+      const days = p.days || [];
+      const kept = (p.weeks || []).filter(w =>
+        !lfWeekIsPristine(w) || days.some(d => d.crewId === w.crewId && w.startDate <= d.date && d.date <= w.endDate));
+      return kept.length === (p.weeks || []).length ? p : { ...p, weeks: kept };
+    }
+    // Week-start change re-derives DRAFT week boundaries only (ruled open
+    // choice A): submitted and beyond lock the setting, so only drafts can
+    // exist mis-bounded. Elections carry across by overlap — a draft week
+    // whose old range overlaps the new one hands its non-null night work
+    // settlement to the new week.
+    function rederiveLfDraftWeeks(p, newWeekStartDay) {
+      const weeks = p.weeks || [];
+      const drafts = weeks.filter(w => w && w.status === 'draft');
+      const kept = weeks.filter(w => w && w.status !== 'draft');
+      const next = [...kept];
+      for (const d of (p.days || [])) {
+        if (!d || !d.date || !d.crewId) continue;
+        const b = lfWeekBounds(newWeekStartDay, d.date);
+        if (next.some(w => w.crewId === d.crewId && w.startDate === b.startDate)) continue;
+        if (kept.some(w => w.crewId === d.crewId && w.startDate <= d.date && d.date <= w.endDate)) continue;
+        const overlapping = drafts.find(w => w.crewId === d.crewId && w.startDate <= b.endDate && b.startDate <= w.endDate && w.nightWork && w.nightWork.settlement);
+        next.push({
+          ...makeLongFormWeek(d.crewId, newWeekStartDay, d.date),
+          ...(overlapping ? { nightWork: { settlement: overlapping.nightWork.settlement } } : {}),
+        });
+      }
+      return { ...p, weekStartDay: newWeekStartDay, weeks: next };
+    }
+
+    // Consecutive day counting — a PURE read-time selector, never stored
+    // (it crosses week boundaries, so it cannot live in a week). Walks the
+    // calendar backward from dateISO: advance days count, hold days pass
+    // through, break days and ABSENT days stop the walk. Returns the run
+    // count INCLUDING dateISO when it advances, and the run's first
+    // advancing date for the "day 6 of a run from Wed 12th" explainer.
+    function consecutiveRunFor(production, crewId, dateISO) {
+      const byDate = new Map();
+      for (const d of ((production && production.days) || [])) {
+        if (!d || d.crewId !== crewId || !d.date) continue;
+        byDate.set(d.date, (LF_DAY_TYPE_META[d.dayType] || {}).run || 'advance');
+      }
+      const step = (iso, n) => { const t = new Date(iso + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+      const own = byDate.get(dateISO);
+      const advances = own === 'advance';
+      let count = advances ? 1 : 0;
+      let runStart = advances ? dateISO : null;
+      let cursor = step(dateISO, -1);
+      while (true) {
+        const r = byDate.get(cursor);
+        if (r === undefined || r === 'break') break;
+        if (r === 'advance') { count += 1; runStart = cursor; }
+        cursor = step(cursor, -1);
+      }
+      return { count, runStart, advances };
+    }
+
     // One version stamp, on the production, resolved from the principal
     // photography start date at creation. A deal memo fixes the terms for the
     // life of the job — a mid-shoot amendment becomes a NEW entry here that
@@ -28968,9 +29093,17 @@ const confirmDelete = (p) => setConfirmOpts({
           gridDates: [],
           invoices: [],      // invoices belong to the source shoot, not the copy
           dayDefaults: {},   // no days yet -> no date-keyed defaults to carry
+          // Long form (pinned LF5): a copy must not inherit week records —
+          // days are reset, so week statuses/invoice links would be orphans.
+          // CONDITIONAL: only a production that already has the key gets the
+          // reset — an APA copy must not gain `weeks` (LF1b's invariant).
+          ...(('weeks' in p) ? { weeks: [] } : {}),
           crew: newCrew,
           iAmCrewId: (p.iAmCrewId && crewIdMap[p.iAmCrewId]) || null,
         };
+        // A duplicate of a wrapped long form job is a fresh job (ruled).
+        // Deleting an absent key is a no-op, so this never adds anything.
+        delete copy.jobWrapped;
         setProductions(prev => [...prev, copy]);
         setOpenId(newId);
       };

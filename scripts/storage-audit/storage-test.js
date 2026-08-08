@@ -251,6 +251,14 @@ async function transformedAppCode() {
     // serialisation never gains an `agreement` key.
     'try { globalThis.__migrateProduction = migrateProduction; } catch (_) {}\n' +
     'try { globalThis.__agreementOf = agreementOf; } catch (_) {}\n' +
+    // Week/day layer (LF4-LF8): the factories and the pure selectors.
+    'try { globalThis.__makeLongFormDay  = makeLongFormDay;  } catch (_) {}\n' +
+    'try { globalThis.__makeLongFormWeek = makeLongFormWeek; } catch (_) {}\n' +
+    'try { globalThis.__lfWeekBounds     = lfWeekBounds;     } catch (_) {}\n' +
+    'try { globalThis.__ensureLfWeek     = ensureLfWeek;     } catch (_) {}\n' +
+    'try { globalThis.__pruneLfWeeks     = pruneLfWeeks;     } catch (_) {}\n' +
+    'try { globalThis.__rederiveLfDraftWeeks = rederiveLfDraftWeeks; } catch (_) {}\n' +
+    'try { globalThis.__consecutiveRunFor = consecutiveRunFor; } catch (_) {}\n' +
     // Custom comparison item (U-suite): expose the validator + the
     // effective getters so the suite can verify the gate (empty/zero
     // hidden, valid included), plus the base constants for surface
@@ -2358,6 +2366,119 @@ async function main() {
         `dayDefaults keys: ${Object.keys(lfOut.dayDefaults || {}).join(',') || 'none'}`);
       check('LF7d migrate leaves long form startDate at ppStartDate (no G3 snap from day dates)',
         lfOut.startDate === '2026-08-03');
+    }
+
+    // ── LF4-LF8: the week/day layer (Phase 2d) ──
+    // LF4 — the long form day record has NO callTime and NO preCallTime,
+    // by source and by behaviour. The loud engine failure lands with the
+    // engine slice; until then this pin is the guard.
+    const dayFactorySrc = (html.match(/function makeLongFormDay\(crewId, date, dayType = 'swd'\) \{[\s\S]*?\n    \}/) || [''])[0];
+    check('LF4a makeLongFormDay source found and contains NO callTime/preCallTime assignment',
+      dayFactorySrc.length > 100 &&
+      !/\bcallTime\s*:/.test(dayFactorySrc) &&
+      !/\bpreCallTime\s*:/.test(dayFactorySrc),
+      `slice length=${dayFactorySrc.length}`);
+    const mkDay = sb.__makeLongFormDay;
+    if (typeof mkDay === 'function') {
+      const d = mkDay('c1', '2026-08-05');
+      check('LF4b factory day has unitCallTime + individualCallTime + dayType, and NO callTime/preCallTime',
+        d.unitCallTime === '08:00' && d.individualCallTime === null && d.dayType === 'swd' &&
+        !('callTime' in d) && !('preCallTime' in d),
+        JSON.stringify(Object.keys(d)));
+    } else check('LF4b factory day has unitCallTime + individualCallTime + dayType, and NO callTime/preCallTime', false, 'factory not exposed');
+
+    // LF5 — duplicate resets `weeks` CONDITIONALLY (an APA copy must not
+    // gain the key) and drops jobWrapped.
+    const dupSrc = (html.match(/const duplicateProduction = \(p\) => \{[\s\S]*?\n      \};/) || [''])[0];
+    check('LF5 duplicate resets weeks only when the key exists, and drops jobWrapped',
+      /\.\.\.\(\('weeks' in p\) \? \{ weeks: \[\] \} : \{\}\),/.test(dupSrc) &&
+      /delete copy\.jobWrapped;/.test(dupSrc),
+      `slice length=${dupSrc.length}`);
+
+    // LF6 — week membership is BY DATE RANGE AND crewId: the week factory
+    // carries no day-id list, by source and by behaviour.
+    const weekFactorySrc = (html.match(/function makeLongFormWeek\(crewId, weekStartDay, dateISO\) \{[\s\S]*?\n    \}/) || [''])[0];
+    check('LF6a makeLongFormWeek source found and contains NO dayIds',
+      weekFactorySrc.length > 100 && !/dayIds/.test(weekFactorySrc),
+      `slice length=${weekFactorySrc.length}`);
+    const mkWeek = sb.__makeLongFormWeek;
+    if (typeof mkWeek === 'function') {
+      const w = mkWeek('c1', 'monday', '2026-08-05');   // a Wednesday
+      check('LF6b factory week: Mon-Sun bounds around a Wednesday, draft, null invoiceId, null night work election, NO dayIds',
+        w.startDate === '2026-08-03' && w.endDate === '2026-08-09' &&
+        w.status === 'draft' && w.invoiceId === null &&
+        w.nightWork && w.nightWork.settlement === null && !('dayIds' in w),
+        JSON.stringify(w));
+      const wSun = mkWeek('c1', 'sunday', '2026-08-05');
+      check('LF6c week bounds respect a non-Monday start (Sunday week containing Wed 5 Aug runs 2-8 Aug)',
+        wSun.startDate === '2026-08-02' && wSun.endDate === '2026-08-08');
+    } else {
+      check('LF6b factory week: Mon-Sun bounds around a Wednesday, draft, null invoiceId, null night work election, NO dayIds', false, 'factory not exposed');
+      check('LF6c week bounds respect a non-Monday start (Sunday week containing Wed 5 Aug runs 2-8 Aug)', false, 'factory not exposed');
+    }
+
+    // LF8 — consecutiveRunFor EXECUTED: worked advances, travel and
+    // turnaround HOLD (ruled: paid engaged days, not days off), rest days
+    // and absent calendar days BREAK. runStart feeds the "day 6 of a run
+    // from ..." explainer, so it must be right across week boundaries.
+    const runFor = sb.__consecutiveRunFor;
+    if (typeof runFor === 'function') {
+      const P = (types) => ({
+        days: Object.entries(types).map(([date, dayType], i) => ({ id: 'd' + i, crewId: 'c1', date, dayType })),
+      });
+      const six = P({ '2026-08-03': 'swd', '2026-08-04': 'swd', '2026-08-05': 'scwd', '2026-08-06': 'cwd', '2026-08-07': 'swd', '2026-08-08': 'swd' });
+      const r6 = runFor(six, 'c1', '2026-08-08');
+      check('LF8a six consecutive worked days count 6, runStart at the first (crossing a week boundary is irrelevant to the walk)',
+        r6.count === 6 && r6.advances === true && r6.runStart === '2026-08-03', JSON.stringify(r6));
+      const withTravel = P({ '2026-08-03': 'swd', '2026-08-04': 'travel', '2026-08-05': 'swd' });
+      const rT = runFor(withTravel, 'c1', '2026-08-05');
+      check('LF8b a travel day HOLDS: worked-travel-worked counts 2, run started before the travel day',
+        rT.count === 2 && rT.runStart === '2026-08-03', JSON.stringify(rT));
+      const withTurn = P({ '2026-08-03': 'swd', '2026-08-04': 'turnaroundDay', '2026-08-05': 'swd' });
+      const rTu = runFor(withTurn, 'c1', '2026-08-05');
+      check('LF8c a turnaround day HOLDS like travel (ruled: paid engaged day, not a day off)',
+        rTu.count === 2 && rTu.runStart === '2026-08-03', JSON.stringify(rTu));
+      const withRest = P({ '2026-08-03': 'swd', '2026-08-04': 'restDay', '2026-08-05': 'swd' });
+      const rR = runFor(withRest, 'c1', '2026-08-05');
+      check('LF8d a rest day BREAKS: the run restarts after it',
+        rR.count === 1 && rR.runStart === '2026-08-05', JSON.stringify(rR));
+      const withGap = P({ '2026-08-03': 'swd', '2026-08-05': 'swd' });
+      const rG = runFor(withGap, 'c1', '2026-08-05');
+      check('LF8e an ABSENT calendar day breaks the run (no record = day off)',
+        rG.count === 1 && rG.runStart === '2026-08-05', JSON.stringify(rG));
+      const rHold = runFor(withTravel, 'c1', '2026-08-04');
+      check('LF8f queried ON a travel day: advances=false, count is the run behind it',
+        rHold.advances === false && rHold.count === 1, JSON.stringify(rHold));
+    } else {
+      for (const l of ['LF8a', 'LF8b', 'LF8c', 'LF8d', 'LF8e', 'LF8f']) check(l + ' consecutiveRunFor exposed', false, 'selector not exposed');
+    }
+
+    // Week minting behaviour: idempotent mint, pristine-only pruning,
+    // draft-only re-derivation carrying the election by overlap.
+    const ensure = sb.__ensureLfWeek, prune = sb.__pruneLfWeeks, rederive = sb.__rederiveLfDraftWeeks;
+    if (typeof ensure === 'function' && typeof prune === 'function' && typeof rederive === 'function') {
+      const base = { weekStartDay: 'monday', weeks: [], days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'swd' }] };
+      const minted = ensure(base, 'c1', '2026-08-05');
+      const twice = ensure(minted, 'c1', '2026-08-07');
+      check('LF9a lazy mint: one week for the containing range, idempotent for a second date in the same range',
+        minted.weeks.length === 1 && twice === minted, `weeks=${minted.weeks.length}`);
+      const withElection = { ...minted, weeks: minted.weeks.map(w => ({ ...w, nightWork: { settlement: 'rest' } })), days: [] };
+      const emptyPristine = { ...minted, days: [] };
+      check('LF9b prune drops a pristine empty draft but KEEPS an empty week holding an election',
+        prune(emptyPristine).weeks.length === 0 && prune(withElection).weeks.length === 1);
+      const submitted = { ...minted, weeks: minted.weeks.map(w => ({ ...w, status: 'submitted' })) };
+      const re = rederive({ ...submitted }, 'sunday');
+      check('LF9c re-derive leaves submitted weeks untouched (they lock the setting; only drafts re-bound)',
+        re.weeks.length === 1 && re.weeks[0].startDate === minted.weeks[0].startDate && re.weeks[0].status === 'submitted');
+      const draftElected = { weekStartDay: 'monday', days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'swd' }], weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'draft', invoiceId: null, nightWork: { settlement: 'paid' } }] };
+      const re2 = rederive(draftElected, 'sunday');
+      check('LF9d re-derive re-bounds a draft week to the new start day and carries the night work election by overlap',
+        re2.weekStartDay === 'sunday' && re2.weeks.length === 1 &&
+        re2.weeks[0].startDate === '2026-08-02' && re2.weeks[0].endDate === '2026-08-08' &&
+        re2.weeks[0].nightWork.settlement === 'paid',
+        JSON.stringify(re2.weeks));
+    } else {
+      for (const l of ['LF9a', 'LF9b', 'LF9c', 'LF9d']) check(l + ' week helpers exposed', false, 'helpers not exposed');
     }
   }
 
