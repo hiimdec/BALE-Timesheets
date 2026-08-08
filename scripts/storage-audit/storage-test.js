@@ -2327,6 +2327,37 @@ async function main() {
         gained.length === 0, `gained: ${gained.join(',') || 'none'}`);
       check('LF1d agreementOf reads the round-tripped APA production as \'apa\'',
         sb.__agreementOf(roundTripped) === 'apa');
+
+      // LF7 — BEHAVIOURAL: migrate is gated off the APA day machinery for
+      // long form records. Ungated, the dayDefaults backfill mints APA
+      // entries (DEFAULT_PRODUCTION_DAY.callTime), the time-field collapse
+      // DELETES wrapTime/dayType off long form days (they equal their own
+      // mostCommon by construction), and the G3 snap overwrites startDate
+      // (= ppStartDate) with the earliest day date. All three proven absent.
+      const lfIn = {
+        id: 'lf1', title: 'LF job', agreement: 'pact-tv',
+        agreementVersion: 'pact-tv@2023-01-01', band: 2,
+        baseNation: 'england-wales', ppStartDate: '2026-08-03',
+        weekStartDay: 'monday', weeks: [], bestBoyMode: false, viewMode: 'mobile',
+        dayDefaults: {}, startDate: '2026-08-03', iAmCrewId: 'c1',
+        crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 420 }],
+        days: [
+          { id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
+          { id: 'd2', crewId: 'c1', date: '2026-08-06', dayType: 'swd', unitCallTime: '08:00', individualCallTime: '07:30', lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
+        ],
+      };
+      const lfOut = JSON.parse(JSON.stringify(mig(lfIn)));
+      const lfDays = lfOut.days || [];
+      check('LF7a long form production through migrate gains NO callTime/preCallTime on any day',
+        lfDays.length === 2 && lfDays.every(d => !('callTime' in d) && !('preCallTime' in d)),
+        JSON.stringify(lfDays.map(d => Object.keys(d))));
+      check('LF7b long form days KEEP wrapTime and dayType through migrate (the collapse must not strip them)',
+        lfDays.every(d => d.wrapTime === '19:00' && d.dayType === 'swd'));
+      check('LF7c migrate mints NO dayDefaults entries on a long form production',
+        Object.keys(lfOut.dayDefaults || {}).length === 0,
+        `dayDefaults keys: ${Object.keys(lfOut.dayDefaults || {}).join(',') || 'none'}`);
+      check('LF7d migrate leaves long form startDate at ppStartDate (no G3 snap from day dates)',
+        lfOut.startDate === '2026-08-03');
     }
   }
 
@@ -6479,7 +6510,9 @@ async function main() {
       (() => {
         const deriveOk = /function deriveStartDate\(production\) \{/.test(html) &&
           /return dates\.length \? dates\[0\] : \(\(production && production\.startDate\) \|\| null\);/.test(html) &&
-          /startDate: deriveStartDate\(\{ \.\.\.p, days \}\) \?\? \(p\.startDate \?\? todayISO\(\)\),/.test(html);
+          // Phase 2d: the snap is gated OFF long form records (LF7d) — for
+          // APA (isLongFormRecord false) the derive branch is unchanged.
+          /startDate: isLongFormRecord \? \(p\.startDate \?\? todayISO\(\)\) : \(deriveStartDate\(\{ \.\.\.p, days \}\) \?\? \(p\.startDate \?\? todayISO\(\)\)\),/.test(html);
         const autoOk = /const applyRateCardToCrew = \(production, fromCard, toCard\) => \{/.test(html) &&
           /if \(!oldD \|\| !newD\) return c;/.test(html) &&
           /const matchesOldCard = Number\(c\.bdr\) === Number\(oldD\.bdr\)\s*&& Number\(c\.otCoef\) === Number\(oldD\.otCoef\)\s*&& \(\(c\.otRate \?\? null\) === \(oldD\.otRate \?\? null\)\);/.test(html) &&

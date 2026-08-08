@@ -4503,6 +4503,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // (when crew.kitMoneyEnabled with crew.kitMoneyAmount > 0). No backfill needed.
       const days = p.days || [];
 
+      // Long form records skip the APA day machinery below (read-time gate,
+      // nothing written — LF1a stays true). Ungated, three things break the
+      // moment long form days exist: the backfill mints APA-shaped
+      // dayDefaults entries (DEFAULT_PRODUCTION_DAY.callTime and friends)
+      // keyed by long form dates; the time-field collapse then DELETES
+      // wrapTime and dayType off long form day records, because they equal
+      // their own mostCommon-derived defaults by construction, moving them
+      // into a cascade the long form area never reads; and the G3 snap
+      // overwrites startDate (= ppStartDate) with the earliest day date.
+      // Behavioural pin LF7 proves all three stay unharmed.
+      const isLongFormRecord = agreementOf(p) !== 'apa';
+
       // dayDefaults backfill: derive from existing crew records per date. Idempotent.
       // ORDER MATTERS (O5): backfill runs BEFORE the time-field collapse below so
       // both converge in a SINGLE load pass. Previously the collapse ran first
@@ -4514,7 +4526,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // anything is deleted — so one pass now produces byte-identically what
       // two passes used to.
       const backfilledDefaults = { ...(p.dayDefaults || {}) };
-      const uniqueDates = [...new Set(days.map(d => d.date))];
+      const uniqueDates = isLongFormRecord ? [] : [...new Set(days.map(d => d.date))];
       for (const date of uniqueDates) {
         if (backfilledDefaults[date]) continue;
         const recordsForDate = days.filter(d => d.date === date);
@@ -4544,7 +4556,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // BACKFILLED defaults (not just p.dayDefaults) so freshly-backfilled dates
       // collapse in the same pass.
       const TIME_CASCADE_FIELDS = ['callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins', 'dayType'];
-      for (const day of days) {
+      for (const day of (isLongFormRecord ? [] : days)) {
         const dd = backfilledDefaults[day.date];
         if (!dd) continue;
         for (const field of TIME_CASCADE_FIELDS) {
@@ -4557,7 +4569,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // gets the 5 mobile-mode extras fields (defaulted to off/empty).
       // V4-5h-10: *Enabled flags dropped; value presence drives activation. Existing
       // entries with stale flag fields get them deleted here (idempotent).
-      for (const dateKey of Object.keys(backfilledDefaults)) {
+      for (const dateKey of (isLongFormRecord ? [] : Object.keys(backfilledDefaults))) {
         const d = backfilledDefaults[dateKey];
         delete d.preCallEnabled;
         delete d.travelTimeEnabled;
@@ -4617,7 +4629,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // stored value (idempotent, re-asserted every load). Never prompts,
         // never touches crew rate snapshots — those move only through the
         // user-facing boundary prompt.
-        startDate: deriveStartDate({ ...p, days }) ?? (p.startDate ?? todayISO()),
+        startDate: isLongFormRecord ? (p.startDate ?? todayISO()) : (deriveStartDate({ ...p, days }) ?? (p.startDate ?? todayISO())),
         weekStarts: p.weekStarts ?? [],
         gridDates: p.gridDates ?? [],
         cancellationData: p.cancellationData ?? null,
