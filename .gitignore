@@ -15,6 +15,10 @@ Thumbs.db
 # Test / dev outputs
 *.pdf
 !APA RULES.pdf
+# The Pact/Bectu source agreements are authoritative references, like APA RULES.pdf
+!pact-bectu-scripted-tv-agreement-2023.pdf
+!pact-bectu-joint-guidance-8-december-2023.pdf
+!pact-bectu-mmp-agreement-as-amended-5-april-2021.pdf
 Screenshot_*.png
 Screenshot_*.jpeg
 test-*.html
