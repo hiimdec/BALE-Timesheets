@@ -2701,10 +2701,12 @@
     const isInProgressProduction = (p) => agreementOf(p) !== 'apa' && p.jobWrapped !== true;
 
     // Week-start lock — DERIVED live from week status, never a stored flag
-    // (a stored flag could desync from the weeks that justify it). The week
-    // boundary is editable until any week in the job has been invoiced
-    // (PACT_BECTU_PLAN.md); with no weeks yet this always evaluates unlocked.
-    const weekStartDayLocked = (p) => ((p && p.weeks) || []).some(w => w && (w.status === 'invoiced' || w.status === 'paid'));
+    // (a stored flag could desync from the weeks that justify it). Ruled
+    // Phase 2d: `submitted` joins the lock — a submitted week's dates
+    // shifting under a timesheet the production office already holds is
+    // worse than the inconvenience. Draft weeks re-derive their boundaries
+    // when the start day changes; anything submitted or beyond locks it.
+    const weekStartDayLocked = (p) => ((p && p.weeks) || []).some(w => w && (w.status === 'submitted' || w.status === 'invoiced' || w.status === 'paid'));
 
     // One version stamp, on the production, resolved from the principal
     // photography start date at creation. A deal memo fixes the terms for the
@@ -20287,7 +20289,7 @@ const setDays = (updater) =>
                     </Select>
                   </Field>
                   {wsLocked && (
-                    <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Locked - a week on this job has been invoiced.</p>
+                    <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Locked - a week on this job has been submitted or invoiced.</p>
                   )}
                 </div>
                 <Field label="Scheduled filming days (optional)">
