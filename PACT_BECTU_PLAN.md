@@ -82,6 +82,23 @@ but it cannot invent a clause.
 - **The 30 mile time / 25 mile cost asymmetry in TV §8.3(a) is correct as
   printed** and must not be "fixed".
 
+## The leak sweep — a REPEATING step, not a one-off
+
+Phase 2b's sweep enumerated every surface that assumes "every production is
+APA" (invoice creation, share links, the call sheet chooser, the hero card's
+lunch/wrap writes, Siri/Live Activity ingest, widgets, duplicate, backup
+restore, day-defaults cascade) and classified each: unreachable, dispatches
+correctly, refuses loudly, or silently writes/drops. The ruled fixes are
+list-presentation gates through `agreementOf`, not scattered surface checks.
+
+The sweep must RE-RUN after every slice that adds a long form data type.
+Items found latent (the hero card's `currentShoot` write path and the
+`setActiveShoot` → Siri "log my times" ingest) are latent only because long
+form day records do not exist yet — each new data type (days, weeks, week
+invoices) arms a fresh set of APA surfaces against that same assumption.
+Sweep output is a report with proposed fixes; the founder rules before
+anything is gated.
+
 ## Still open (claim-and-flag applies)
 
 The live inference list is in the Phase 1b proposal record; headline items the
