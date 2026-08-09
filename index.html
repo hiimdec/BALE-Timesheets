@@ -21482,7 +21482,7 @@ const setDays = (updater) =>
                           {camOn && (
                             <div className="mt-2"><TimeInput value={editDay.cameraWrapTime || ''} onChange={(e) => updateDay({ cameraWrapTime: e.target.value })} /></div>
                           )}
-                          <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Camera wrap is a real rate boundary on film. The engine reads it in the next update.</p>
+                          <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Camera wrap is a real rate boundary on film - overtime splits camera and non-camera at it.</p>
                         </div>
                       )}
                       {isTV && (
@@ -21519,7 +21519,7 @@ const setDays = (updater) =>
                                 </Field>
                               </div>
                             )}
-                            <p className="text-[10px] text-neutral-600 mt-1 leading-tight">The full break is {fullMins} minutes on this shape. The penalty for the cut lands with the engine.</p>
+                            <p className="text-[10px] text-neutral-600 mt-1 leading-tight">The full break is {fullMins} minutes on this shape. The penalty for the cut is in the day's money below.</p>
                           </div>
                         );
                       })()}
@@ -21547,7 +21547,7 @@ const setDays = (updater) =>
                       {flag && (
                         <div className="rounded-xl border border-tm-warn/30 bg-tm-warn/5 px-4 py-3">
                           <span className="text-[10px] uppercase tracking-wide font-bold text-tm-warn bg-tm-warn/10 border border-tm-warn/30 rounded-md px-1.5 py-[3px]">{flag.label}</span>
-                          <p className="text-[10px] text-neutral-500 mt-2 leading-tight">Day {flag.run.count} of a consecutive run from {fmtLfDay(flag.run.runStart)}. Sixth and seventh days carry premium rates - the engine prices them in the next update.</p>
+                          <p className="text-[10px] text-neutral-500 mt-2 leading-tight">Day {flag.run.count} of a consecutive run from {fmtLfDay(flag.run.runStart)}. Sixth and seventh days carry premium rates - priced in the day's money below.</p>
                           <div className="flex items-center justify-between gap-3 mt-2.5">
                             <span className="text-[12px] font-semibold text-neutral-300">Pay as a normal day</span>
                             <Toggle value={editDay.sixthSeventhOverride === true} onChange={(v) => updateDay({ sixthSeventhOverride: v ? true : undefined })} ariaLabel="Pay as a normal day" />
