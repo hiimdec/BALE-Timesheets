@@ -19,6 +19,7 @@
     "audit:theme": "node scripts/build-vs-source-audit/theme-parity.js",
     "audit:storage": "node scripts/storage-audit/storage-test.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
+    "gate": "bash scripts/gate.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
