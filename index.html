@@ -2888,9 +2888,12 @@
     // the user in the wizard. Stored on the long form crew record only.
     //   ach — TV §1.3's 10+1+1 departments (the Additional Contracted Hour)
     //   riggingElectrician — Film §2.2(a): 9+1 day, weekly ÷45 / daily ÷9
-    //   postProduction — TV §—/Film §2.2(b): non-camera OT only, no lunch penalties
+    //   postProduction — Film §2.2(b) ONLY: non-camera OT, no lunch penalties.
+    //   The TV agreement never names post production — TV post crew are
+    //   ordinary non-shooting crew under §1.5, so TV carries no such class
+    //   (ruled Phase 3b: fewer fictional entities).
     const AGREEMENT_CLASSES = {
-      'pact-tv':   ['standard', 'ach', 'postProduction'],
+      'pact-tv':   ['standard', 'ach'],
       'pact-film': ['standard', 'riggingElectrician', 'postProduction'],
     };
     const AGREEMENT_CLASS_META = {
@@ -2908,6 +2911,248 @@
       if (agreement === 'pact-tv' && TV_ACH_DEPARTMENTS.includes(dept)) return 'ach';
       return 'standard';
     }
+
+    // ═══════════════ THE LONG FORM RULESET TABLE (Phase 3b) ═══════════════
+    // DATA, not code. Versioned entries resolved by the production's
+    // agreementVersion stamp; two rows; a third agreement is a NEW ROW and
+    // never a new branch (pinned LF10 now, LF11 with the engine). Every
+    // non-null leaf carries a `ref` verified against the SOURCE documents
+    // (the TV OCR sidecar + the film PDF's text layer), not the rebuilds.
+    // `inference:` marks every reading the source does not state — grep
+    // "inference:" enumerates the complete open list (pinned LF10c);
+    // `dataAssumption:` marks assumptions about the USER'S DATA (not the
+    // agreement), which get surfaced in the UI rather than flagged as
+    // agreement inferences. Where a rule is unresolved the app claims the
+    // money and flags the assumption; it never silently under-claims.
+    //
+    // Day-shape fields (ruled Phase 3b — three numbers, not one):
+    //   contractedHours       — the PAID quantity. TV §1.2: the shooting day
+    //                           is "paid as 10 Contracted Hours" for ALL
+    //                           THREE shapes (11 with the ACH). Film §2.3:
+    //                           all three variations "shall be paid as 11
+    //                           worked hours".
+    //   shootingHours         — the scheduled shooting time per shape
+    //                           (TV §1.2: 10 / 9.5 / 9; Film §2.3: 11 / 10 / 10).
+    //   otTriggerElapsedHours — when Overtime begins, as elapsed time from
+    //                           Individual Call (TV §7.1); founder-confirmed.
+    //                           This is shootingHours + the formal break —
+    //                           NOT contractedHours + break: on a SCWD the
+    //                           Worker is PAID 10 hours but shoots 9.5, so
+    //                           the day ends (and Overtime starts) half an
+    //                           hour before contracted-plus-break would
+    //                           suggest; on a CWD there is no formal break
+    //                           at all and the day ends after 9 elapsed.
+    const LONGFORM_AGREEMENTS = {
+      'pact-tv@2023-01-01': {
+        label: 'Scripted TV 2023',
+        hourlyRate: { dailyDivisor: 10, weeklyDivisor: null, ref: 'TV §1.4(a) (BDR ÷ 10; TV deals are daily-rate)' },
+        dayShapes: {
+          swd:  { contractedHours: 10, shootingHours: 10,  lunchMins: 60, restMins: 0,  otTriggerElapsedHours: 11, ref: 'TV §1.2' },
+          scwd: { contractedHours: 10, shootingHours: 9.5, lunchMins: 30, restMins: 0,  otTriggerElapsedHours: 10, ref: 'TV §1.2' },
+          cwd:  { contractedHours: 10, shootingHours: 9,   lunchMins: 0,  restMins: 20, otTriggerElapsedHours: 9,  ref: 'TV §1.2',
+                  inference: 'elapsed-from-individual-call trigger, founder-confirmed against practice. No example in the agreement can distinguish this reading: every Section D example is an SWD, where the candidate readings coincide.' },
+        },
+        classes: {
+          ach: { extraContractedHours: 1, paidAt: 'hourlyRate', addsToOtTrigger: 1,
+                 guaranteed: true, aggregable: false, isOvertime: false,
+                 departments: ['Assistant Directors', 'Costume', 'Hair and Make-up (and Prosthetics)', 'Locations', 'Production', 'Script Supervisors'],
+                 ref: 'TV §1.3, §1.4(b)-(g)' },
+        },
+        prepWrap: { basis: 'customary to department, ready at Individual Call', ref: 'TV §1.6' },
+        overtime: {
+          rate: 1.5, incrementMins: 15, ref: 'TV §7.2, §7.5',
+          minPerHour: 35, minRef: 'TV §7.3',
+          maxPerHour: 70, maxOrHourlyAt1T: true, maxRef: 'TV §7.4',
+          capAppliesTo: ['overtime', 'otRatePenalties'], capScopeRef: 'TV §7.13 (Overtime incl Enhanced, plus penalties paid at the Overtime Rate — nothing else)',
+          enhanced2T: { after: '23:00', ukBankHoliday: true, seventhDay: true, ref: 'TV §7.10' },
+          sixthDayOtAtBaseRate: { ref: 'TV §7.12' },
+          accrualSeparatePerSituation: { ref: 'TV §7.9' },
+          noneWhenUnderContractedHours: { ref: 'TV §7.14' },
+          preApprovalRequired: { ref: 'TV §7.15' },
+        },
+        calledCameraOt: { calledOnce: true, specifiedIn15MinIncrements: true, noGrace: true, ref: 'TV §7.6' },
+        cwdCameraOt: { shouldNotBeScheduled: true, unscheduledCapMinsPerWeek: 120,
+                       beyondCap: 'agreed-locally — FLAG, never price', ref: 'TV §7.11' },
+        nonShootingCwd: { overtime: 'none — calculate, mark unclaimable under §1.5(f), cite §1.5(c) so the user knows the day type itself was the wrong call',
+                          ref: 'TV §1.5(f) verbatim: "Non-shooting CWDs do not incur Overtime."' },
+        sixthSeventh: {
+          sixthShooting: { multiplier: 1.5, of: 'dailyRate', ref: 'TV §2.3(a)',
+                           inference: 'the multiplier base is the ACH-inclusive Daily Rate where contracted (§1.4(a) defines "Daily Rate" as the 10+1 or 10+1+1 rate)' },
+          sixthNonShooting: { upTo6hWorked: { multiplier: 1, of: 'basicDailyRate' },
+                              over6hWorked: { multiplier: 1.5, of: 'basicDailyRate' },
+                              approvalRequired: true, unapproved: 'no payment', ref: 'TV §2.3(b), Section D Examples 6-7' },
+          sixthOnBankHoliday: { multiplier: 2, inLieu: true, ref: 'TV §2.3(c)' },
+          seventh: { multiplier: 2, approvalRequired: true, ref: 'TV §2.4(a)' },
+          eighthProhibited: { ref: 'TV §2.5' },
+          minimumGuaranteeHours: null,
+          run: { ref: 'TV §2.3-2.5 (consecutive days)',
+                 workedAdvances: true,
+                 travelHolds: { ref: 'TV §8.10',
+                                inference: 'RULED: §8.10 states only "do not count"; the hold-not-reset reading borrows Film §4.4\'s explicit three-limb structure' },
+                 turnaroundHolds: { inference: 'RULED: a turnaround day is a paid engaged day, not a day off — neither agreement states it for the count' },
+                 absentBreaks: { dataAssumption: 'a calendar day with NO record breaks the run — an assumption about data entry, not the agreement. Runs broken only by a gap (never by an explicit rest day / day off / unworked bank holiday) are surfaced to the user rather than silently resetting - proposal pending ruling.' },
+                 restAndUnworkedBankHolidayBreak: true },
+        },
+        elevenDayFortnight: { sixthDayCapsByShootWeeks: [[8, 4], [12, 5], [16, 6], [20, 7], [24, 8]],
+                              capExtension: '+1 per 4 weeks',
+                              premiumBeyondCap: 100, premiumAdditive: true, ref: 'TV §3.1-3.3',
+                              inference: '"And so on" read as +1 per 4-week band' },
+        splitDays: { window: ['21:00', '23:00'], capUnder7Weeks: null, capOver7Weeks: '40% of filming days',
+                     premiumBeyond: 30, reconciledAtContractEnd: true, ref: 'TV §1.8' },
+        earlyCall: { threshold: '06:00', treatment: 'enhance +0.5T (total 1.5T)', roundUpMins: 15,
+                     isNightWork: false, cappedByMaxOt: false, ref: 'TV §1.9(a)-(c)' },
+        nightWork: {
+          definition: 'scheduled shooting hours past 23:00', ref: 'TV §5.1',
+          otAfter23IsOvertimeNotNight: { ref: 'TV §5.1, Section D Example 3' },
+          roundUpMins: 15, roundRef: 'TV §5.2',
+          weekly: { aggregate: true, capHours: 10,
+                    capRef: 'TV §5.3 "capped at one working day"',
+                    inference: '"one working day" = 10 hours, from Section D Example 1 (15h, 12h and 10h weeks all settle as one day)',
+                    settlement: ['rest', 'paid +1T (total 2T)'], settlementRef: 'TV §5.3(a)-(b)' },
+          fourConsecutiveWeeksRestRule: { ref: 'TV §5.4' },
+          contractEndsOnNights: { autoPaidRestDay: true, maxOnePerWeek: true, ref: 'TV §5.5' },
+          compRestDayIsNotWorkingDay: { ref: 'TV §5.6' },
+          compRestOnWorkingDayOnly: { ref: 'TV §5.7' },
+          premiumPerNight: null, turnaroundDayPay: null,
+        },
+        brokenTurnaround: { periodHours: 11, ref: 'TV §6.1',
+                            enhance: '+0.5T (total 1.5T)', roundUpMins: 15, incrementMins: null, enhanceRef: 'TV §6.2(b)',
+                            compRestAlternative: { ref: 'TV §6.2(a), §6.3' },
+                            capPerHour: null,
+                            inference: 'uncapped by the £70 ceiling — §7.13 reaches Overtime and OT-rate penalties; the Broken Turnaround enhancement is neither (Early Call §1.9(c) states its exemption explicitly, Broken Turnaround does not)' },
+        lunch: {
+          latestAfterUnitCallHours: 6, ref: 'TV §10.2',
+          delayPenalty: { at: 'overtimeRate', incrementMins: 15, ref: 'TV §10.2(a)' },
+          curtailPenalty: { at: 'overtimeRate', incrementMins: 15, capMins: { swd: 60, scwd: 30 }, ref: 'TV §10.2(b)' },
+          subsequentMeal: { withinHoursOfPrevious: 6, breakMins: 30, ref: 'TV §10.4' },
+          cwdMeal: { hotMeal: true, eatMins: 20, ref: 'TV §10.5' },
+        },
+        bankHolidays: { workedMultiplier: 2, ref: 'TV §11.2',
+                        notWorkedPaid: { who: 'Band 4 productions only', at: 'basicDailyRate', ref: 'TV §11.3' },
+                        nationBasis: 'production base decides which UK holidays apply', basisRef: 'Guidance §11.4' },
+        travel: {
+          options: {
+            thirtyMileRadius: { freeRoadMiles: 30, timeBeyondAt: 'overtimeRate', incrementMins: 15,
+                                costBeyondRoadMiles: 25, ref: 'TV §8.3(a) (RULED: the 30-mile time / 25-mile cost asymmetry is correct as printed)' },
+            withinM25: { ref: 'TV §8.3(b)' },
+          },
+          unitBaseFreeMinsEachWay: 15, unitBaseRef: 'TV §8.4',
+          residentLocation: { freeRoadMiles: 20, freeMins: 30, ref: 'TV §8.5' },
+          mileage: 'HMRC', mileageRef: 'TV §8.7',
+          overseas: '30-mile option deemed from the overseas base', overseasRef: 'TV §8.8',
+          perDiems: 'agreed, in the Deal Memo', perDiemRef: 'TV §8.11',
+          flatNoUplifts: null, travelDayOutsideWeek: null, recognisedStudios: null,
+        },
+        weekendNotice: { minWeeks: 2, ref: 'TV §2.2' },
+        dailies: { cancellationDeadline: 'days: 13:00 the preceding working day', boxRentalProRata: null, ref: 'TV General §1.5' },
+      },
+
+      'pact-film@2021-04-05': {
+        label: 'MMP Apr 2021',
+        hourlyRate: { dailyDivisor: 11, weeklyDivisor: 55, ref: 'Film §3.3(a)' },
+        dayShapes: {
+          swd:  { contractedHours: 11, shootingHours: 11, lunchMins: 60, restMins: 0,  otTriggerElapsedHours: 12,   ref: 'Film §2.3(a) ("paid as 11 worked hours": §2.3 chapeau)' },
+          scwd: { contractedHours: 11, shootingHours: 10, lunchMins: 30, restMins: 0,  otTriggerElapsedHours: 10.5, ref: 'Film §2.3(c)' },
+          cwd:  { contractedHours: 11, shootingHours: 10, lunchMins: 0,  restMins: 20, otTriggerElapsedHours: 10,   ref: 'Film §2.3(b)',
+                  inference: 'elapsed trigger founder-confirmed; §2.3(b) "10 working hours without a formal break" makes elapsed equal shooting hours' },
+        },
+        classes: {
+          riggingElectrician: { dayShape: { contractedHours: 9, shootingHours: 9, lunchMins: 60, restMins: 0, otTriggerElapsedHours: 10 },
+                                hourlyRate: { dailyDivisor: 9, weeklyDivisor: 45 },
+                                ref: 'Film §2.2(a), §3.3(a)' },
+          postProduction: { cameraOt: false, lunchPenalties: false, staggeredBreaks: true,
+                            startTimesOwn: true, ref: 'Film §2.2(b)' },
+        },
+        prepWrap: { specificDepartments: { freeMinsEachEnd: 30, notAggregated: true,
+                      departments: ['ADs', 'Costume', 'Hair and Make-up', 'Locations', 'Script Supervisor', 'VFX'],
+                      exception: 'workshop crew rendering services in a workshop', ref: 'Film §3.2(a)' },
+                    allOthers: 'customary to department, ready at unit call', ref: 'Film §3.2(b)' },
+        overtime: {
+          camera: { rate: 2, first2hIncrementMins: 15, from3rdHour: 'whole hours, not pro-rated',
+                    ref: 'Film §3.3(a)(i)',
+                    inference: 'from the 3rd hour, billed by rounding UP to the full hour (claim-and-flag; the clause states only "not pro-rated")' },
+          nonCamera: { rate: 1.5, incrementMins: 30, includesPreCallsAndDeRigs: true, ref: 'Film §3.3(a)(ii)' },
+          minCameraPerHour: 25, minRef: 'Film §3.3(b) (shooting crew)',
+          maxPerHour: 81.82, maxOrHourlyAt1T: false, maxRef: 'Film §3.3(c)',
+          capAppliesTo: ['overtime', 'sixthSeventh', 'bankHoliday', 'preDawn'], capScopeRef: 'Film §3.3(c) ("all hourly rates uplifted hereunder including... 6th and 7th days, Bank Holidays and Pre-Dawn Calls")',
+          negotiatedGradesOver3000: ['1st AD', 'Action Vehicle Co-Ordinator', 'Assistant SFX Supervisor', 'Costume Designer', 'DOP', 'Editor', 'Financial Controller/Accountant', 'Chief of Department for Make-Up and Hair Design', 'Producer', 'Production Designer', 'Production Manager/UPM', 'Production Supervisor', 'Set Decorator', 'SFX Supervisor', 'Supervising Art Director', 'VFX Supervisor', 'VFX Producer', 'Specialist Workshop Supervisor'],
+          negotiatedRef: 'Film §3.3(d)',
+          preApprovalRequired: { by: 'HOD + line producer/UPM', ref: 'Film §3.3(e)' },
+        },
+        calledCameraOt: { calledOnce: false, specifiedIn15MinIncrements: false, noGrace: true, ref: 'Film §3.3(a)(i) ("No Grace Period is applicable")' },
+        cwdCameraOt: { shouldNotBeScheduled: false, unscheduledCapMinsPerWeek: null, beyondCap: null, ref: 'Film §3.3(a)(i) (no CWD-specific cap exists)' },
+        nonShootingCwd: { overtime: 'n/a — no such rule in the MMP agreement', ref: 'Film §2.2-2.3' },
+        sixthSeventh: {
+          sixthShooting: { multiplier: 1.5, of: 'actualHoursWorked',
+                           minimumGuaranteeHours: { nonShooting: 6, shooting: 8 }, ref: 'Film §4.1(a)' },
+          sixthNonShooting: null,
+          sixthOnBankHoliday: null,
+          seventh: { multiplier: 2, of: 'actualHoursWorked',
+                     minimumGuaranteeHours: { nonShooting: 6, shooting: 8 }, seventhDayOtAt2T: true, ref: 'Film §4.2' },
+          eighthProhibited: null,
+          minimumGuaranteeHours: { nonShooting: 6, shooting: 8, ref: 'Film §4.1(a), §4.2(a)' },
+          weekendNotPremiumUnless6th7th: { ref: 'Film §4.3(a)' },
+          hourlySubjectToMinCameraAndMax: { ref: 'Film §4.3(b)' },
+          run: { ref: 'Film §4.1-4.4 (consecutive days)',
+                 workedAdvances: true,
+                 travelHolds: { ref: 'Film §4.4 (explicit: a travel day under a movement order shall not re-set, nor count, nor be paid as a 6th/7th)' },
+                 turnaroundHolds: { inference: 'RULED: as TV — a paid engaged day, not a day off; the agreement does not state it for the count' },
+                 absentBreaks: { dataAssumption: 'as TV — a data-entry assumption, surfaced not silent; proposal pending ruling' },
+                 restAndUnworkedBankHolidayBreak: true },
+        },
+        elevenDayFortnight: null,
+        splitDays: null,
+        earlyCall: { threshold: '05:00', treatment: '2T until 05:00, then a normal working day', roundUpMins: null,
+                     isNightWork: false, cappedByMaxOt: true, ref: 'Film §5.1, §3.3(c)' },
+        nightWork: {
+          definition: 'shooting hours continuing after midnight, or any unit call between 00:00 and 03:00', ref: 'Film §5.2(a)',
+          wrapAfterMidnightNotNight: { ifCameraWrappedByMidnight: true, ref: 'Film §5.2(a)(i)' },
+          nonShootingOvernightGetsPremium: { ref: 'Film §5.2(a)(ii)' },
+          premiumPerNight: 20, premiumRef: 'Film §5.2(b)',
+          turnaroundDayPay: { at: 'standard contractual daily rate',
+                              when: 'end of a scheduled night block (dailies: per block or per stand-alone night); also when a week begins with nights and ends on days or split days',
+                              ref: 'Film §5.2(c)' },
+          blockScheduling: { ref: 'Film §5.2(d)' },
+          weekly: null, fourConsecutiveWeeksRestRule: null, contractEndsOnNights: null,
+          compRestDayIsNotWorkingDay: null, compRestOnWorkingDayOnly: null,
+          otAfter23IsOvertimeNotNight: null, roundUpMins: null, roundRef: null,
+        },
+        brokenTurnaround: { periodHours: 11, ref: 'Film §5.3',
+                            enhance: '1.5T for time worked inside the period', roundUpMins: null, incrementMins: 30, enhanceRef: 'Film §5.3(b)',
+                            compRestAlternative: { ref: 'Film §5.3(a)' },
+                            capPerHour: 45, capRef: 'Film §5.3(b) (£22.50 per 30-minute increment)' },
+        lunch: {
+          latestAfterUnitCallHours: 6, ref: 'Film §5.4(a)',
+          delayPenalty: { at: 'standardHourlyRate', incrementMins: 15, ref: 'Film §5.4(b)(i)' },
+          curtailPenalty: { at: 'cameraOvertimeRate', incrementMins: 15, capMins: { swd: 60, scwd: 30 }, ref: 'Film §5.4(b)(ii)' },
+          nonShootingCurtail: { rate: 1.5, incrementMins: 30, ref: 'Film §5.4(b)' },
+          cwdFood: { fromHoursAfterUnitCall: 4.5, runsHours: 2, ref: 'Film §5.4(c)' },
+          scwdFood: { fromHoursAfterUnitCall: 4.5, runsHours: 2, breakMins: 30, ref: 'Film §5.4(d)' },
+          cameraOt3rdHourFood: { ref: 'Film §5.4(e)' },
+          rest20MinsOver12h: { onCwdScwd: true, ref: 'Film §5.5' },
+          subsequentMeal: null, cwdMeal: null,
+        },
+        bankHolidays: { workedMultiplier: 2, ref: 'Film §5.6(b)',
+                        notWorkedPaid: { who: 'all crew contracted over the holiday', at: 'dailyFee', ref: 'Film §5.6(a)' },
+                        nationBasis: 'UK official public holiday, or foreign official holiday where working abroad', basisRef: 'Film §5.6(a)' },
+        travel: {
+          options: null,
+          included30RoadMilesEachWay: { ref: 'Film §6.2(c), (e)' },
+          beyondPaid: { at: 'agreed rate', incrementMins: 30, capPerHour: 45, ref: 'Film §6.2(d), (f)' },
+          prepCrewsTravelInDay: { ref: 'Film §6.2(g)' },
+          flatNoUplifts: { evenOn6th7thBH: true, ref: 'Film §6.2(h)' },
+          travelDayOutsideWeek: { at: 'flat daily rate', ref: 'Film §6.2(i)' },
+          mileage: 'HMRC', mileageRef: 'Film §6.2(b)',
+          recognisedStudios: ['West London', 'Shepperton', 'Pinewood', 'Leavesden', 'Elstree', 'Ealing', 'Twickenham', 'Gillette', 'Longcross', '3 Mills'],
+          studiosRef: 'Film §6.1(d)',
+          unitBaseFreeMinsEachWay: null, unitBaseRef: null, residentLocation: null,
+          overseas: null, overseasRef: null, perDiems: null, perDiemRef: null,
+        },
+        weekendNotice: null,
+        dailies: { cancellationDeadline: 'days: 15:00 the preceding working day; nights: 03:00 the preceding working night',
+                   boxRentalProRata: true, ref: 'Film §5.7-5.9' },
+      },
+    };
 
     // The long form production record. Additive keys on TOP of the standard
     // shape — an APA production never gains any of these, and the APA

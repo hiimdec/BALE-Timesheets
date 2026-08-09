@@ -259,6 +259,9 @@ async function transformedAppCode() {
     'try { globalThis.__pruneLfWeeks     = pruneLfWeeks;     } catch (_) {}\n' +
     'try { globalThis.__rederiveLfDraftWeeks = rederiveLfDraftWeeks; } catch (_) {}\n' +
     'try { globalThis.__consecutiveRunFor = consecutiveRunFor; } catch (_) {}\n' +
+    // The ruleset table (LF10): the table and the class registry it must agree with.
+    'try { globalThis.__LONGFORM_AGREEMENTS = LONGFORM_AGREEMENTS; } catch (_) {}\n' +
+    'try { globalThis.__AGREEMENT_CLASSES = AGREEMENT_CLASSES; } catch (_) {}\n' +
     // Custom comparison item (U-suite): expose the validator + the
     // effective getters so the suite can verify the gate (empty/zero
     // hidden, valid included), plus the base constants for surface
@@ -2479,6 +2482,67 @@ async function main() {
         JSON.stringify(re2.weeks));
     } else {
       for (const l of ['LF9a', 'LF9b', 'LF9c', 'LF9d']) check(l + ' week helpers exposed', false, 'helpers not exposed');
+    }
+
+    // ── LF10: the ruleset table (Phase 3b). The table is DATA the engine
+    //    reads; a third agreement must be a new row and never a new branch.
+    //    LF11 (engine-source literal grep + synthetic-third-row behavioural
+    //    proof) lands with the engine. ──
+    const TABLE = sb.__LONGFORM_AGREEMENTS;
+    const CLASSES = sb.__AGREEMENT_CLASSES;
+    if (TABLE && CLASSES) {
+      const rows = Object.keys(TABLE);
+      const tvRow = TABLE['pact-tv@2023-01-01'];
+      const filmRow = TABLE['pact-film@2021-04-05'];
+      // LF10a — STRUCTURAL PARITY: both rows expose the identical top-level
+      // key skeleton (null where a concept doesn't exist), and each row's
+      // classes are keyed exactly by AGREEMENT_CLASSES minus 'standard'
+      // (standard IS the row). The engine therefore never needs an
+      // agreement-id branch to handle shape asymmetry.
+      const keysOf = (o) => Object.keys(o || {}).sort().join(',');
+      const classKeysFor = (agreement) => (CLASSES[agreement] || []).filter(c => c !== 'standard').sort().join(',');
+      check('LF10a table rows are structurally parallel: identical top-level key sets, classes keyed by AGREEMENT_CLASSES minus standard',
+        rows.length === 2 && !!tvRow && !!filmRow &&
+        keysOf(tvRow) === keysOf(filmRow) &&
+        keysOf(tvRow.dayShapes) === keysOf(filmRow.dayShapes) &&
+        Object.keys(tvRow.classes).sort().join(',') === classKeysFor('pact-tv') &&
+        Object.keys(filmRow.classes).sort().join(',') === classKeysFor('pact-film'),
+        `tv=[${keysOf(tvRow)}] film=[${keysOf(filmRow)}]`);
+      // LF10b — PROVENANCE: every node carrying a primitive value sits under
+      // a ref (own key matching /ref$/i) or an inference/dataAssumption
+      // marker, inherited down the tree. 'label' is display metadata, exempt.
+      const EXEMPT = new Set(['label']);
+      const hasProvenance = (o) => Object.keys(o).some(k => /ref$/i.test(k) || k === 'inference' || k === 'dataAssumption');
+      const violations = [];
+      const walk = (node, covered, path) => {
+        if (node === null || typeof node !== 'object' || Array.isArray(node)) return;
+        const coveredHere = covered || hasProvenance(node);
+        const primitives = Object.entries(node).filter(([k, v]) => !EXEMPT.has(k) && v !== null && typeof v !== 'object');
+        if (!coveredHere && primitives.length > 0) violations.push(path);
+        for (const [k, v] of Object.entries(node)) walk(v, coveredHere, `${path}.${k}`);
+      };
+      for (const [id, row] of Object.entries(TABLE)) walk(row, false, id);
+      check('LF10b every value-bearing node in the table is covered by a ref / inference / dataAssumption marker',
+        violations.length === 0, violations.slice(0, 5).join(' | '));
+      // LF10c — the open-inference register is mechanical: markers exist
+      // ONLY as `inference:` keys, and the count is pinned so a new
+      // inference (or a resolved one) is a CONSCIOUS edit here too.
+      const inferences = [];
+      const collect = (node, path) => {
+        if (node === null || typeof node !== 'object' || Array.isArray(node)) return;
+        if (typeof node.inference === 'string') inferences.push(path);
+        for (const [k, v] of Object.entries(node)) collect(v, `${path}.${k}`);
+      };
+      for (const [id, row] of Object.entries(TABLE)) collect(row, id);
+      check('LF10c the table carries exactly the 10 open inferences of the Phase 3a register (grep "inference:" finds them all)',
+        inferences.length === 10, `found ${inferences.length}: ${inferences.join(' | ')}`);
+      const tableSrc = (html.match(/const LONGFORM_AGREEMENTS = \{[\s\S]*?\n    \};/) || [''])[0];
+      check('LF10d table source found and the word "inference" appears in it only as the marker key form',
+        tableSrc.length > 4000 &&
+        (tableSrc.match(/inference/g) || []).length === (tableSrc.match(/inference:/g) || []).length,
+        `slice length=${tableSrc.length}`);
+    } else {
+      for (const l of ['LF10a', 'LF10b', 'LF10c', 'LF10d']) check(l + ' ruleset table exposed', false, 'table not exposed');
     }
   }
 
