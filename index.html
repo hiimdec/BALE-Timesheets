@@ -21331,6 +21331,27 @@ const setDays = (updater) =>
       let calcFlags = [];
       try { calcFlags = (longFormCalcForDay(production, d).flags || []); } catch (_) { calcFlags = []; }
 
+      // Notes (Phase 4b 0.2) — the APA day's notes chip, inherited: chip
+      // tint derives from text presence, the panel is pure expansion, and
+      // on a five month job a note earns its place on every day type.
+      const noteHasText = !!(d.note && d.note.trim());
+      const notesChipAndPanel = (
+        <>
+          {renderChip('notes', 'Notes', noteHasText, noteHasText ? '✓' : null)}
+        </>
+      );
+      const notesPanel = expandedChips.has('notes') ? (
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3">
+          <textarea
+            value={d.note || ''}
+            onChange={(e) => set({ note: e.target.value })}
+            rows={3}
+            placeholder="Notes for this day"
+            className="w-full bg-transparent border-0 text-[13px] text-neutral-200 placeholder:text-neutral-600 outline-none resize-none"
+          />
+        </div>
+      ) : null;
+
       return (
         <div className="space-y-4">
           {typeMeta.worked && (
@@ -21479,7 +21500,13 @@ const setDays = (updater) =>
             </SectionCard>
           )}
           {!typeMeta.worked && (
-            <StatusMsg kind="info">{typeMeta.long} - {typeMeta.detail}</StatusMsg>
+            <>
+              <StatusMsg kind="info">{typeMeta.long} - {typeMeta.detail}</StatusMsg>
+              <div className="space-y-2 mb-4">
+                <div className="flex flex-wrap gap-2">{notesChipAndPanel}</div>
+                {notesPanel}
+              </div>
+            </>
           )}
 
           {runFlagged && !d.sixthSeventhOverride && (
@@ -21498,7 +21525,9 @@ const setDays = (updater) =>
                 {isTV && typeMeta.shooting && renderChip('camOt', 'Camera OT called', camOtOn, camOtOn ? `${d.cameraOtCalledMins}m` : null)}
                 {renderChip('stepUp', 'Class / rate', stepUpOn, stepUpOn ? ((AGREEMENT_CLASS_META[d.dayAgreementClass] || {}).label || (d.dayContractDailyRate !== undefined ? fmtGBP(d.dayContractDailyRate) : null)) : null)}
                 {runFlagged && renderChip('sixSeven', runLabel, d.sixthSeventhOverride === true, d.sixthSeventhOverride ? 'waived' : null)}
+                {notesChipAndPanel}
               </div>
+              {notesPanel}
               {expandedChips.has('curtail') && (
                 <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
                   <div className="flex items-center justify-between gap-3">
