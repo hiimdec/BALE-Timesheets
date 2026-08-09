@@ -3154,6 +3154,96 @@
       },
     };
 
+    // ── Long form bank holidays by NATION (Phase 3c) ──
+    // Guidance §11.4: the UK PRODUCTION BASE decides which set applies,
+    // regardless of where filming happens — a Glasgow-based job shooting in
+    // Cornwall observes Scottish holidays. NEW and ADDITIVE: UK_BANK_HOLIDAYS
+    // and isBankHoliday are the APA engine's and stay byte-untouched.
+    //
+    // COMPOSED, never England-plus-extras: Scotland has NO Easter Monday,
+    // its summer holiday is the FIRST Monday in August not the last, and it
+    // adds 2 January and St Andrew's Day — so Easter Monday and the August
+    // date belong to NATIONS, not to the core. If Scotland ever becomes
+    // expressible as a superset of England & Wales, the composition is wrong
+    // (pinned LF12, asserted in both directions).
+    //
+    // Dates VERIFIED, not computed: 2025-2027 against gov.uk/bank-holidays
+    // (which is how Scotland's one-off World Cup holiday on 15 June 2026 got
+    // in — no rule produces that). gov.uk publishes no further; 2028-2035
+    // follow the statutory substitution rules with every weekday checked,
+    // the same standing as the far years of the audited APA table, whose
+    // England & Wales entries these reproduce exactly (pinned LF12e,
+    // key-identical across the full 2025-2035 range).
+    const LF_BH_CORE = {
+      // Shared by all three nations, identical dates (substitutes included).
+      "2025-01-01": "New Year's Day", "2025-04-18": "Good Friday", "2025-05-05": "Early May bank holiday", "2025-05-26": "Spring bank holiday", "2025-12-25": "Christmas Day", "2025-12-26": "Boxing Day",
+      "2026-01-01": "New Year's Day", "2026-04-03": "Good Friday", "2026-05-04": "Early May bank holiday", "2026-05-25": "Spring bank holiday", "2026-12-25": "Christmas Day", "2026-12-28": "Boxing Day (substitute)",
+      "2027-01-01": "New Year's Day", "2027-03-26": "Good Friday", "2027-05-03": "Early May bank holiday", "2027-05-31": "Spring bank holiday", "2027-12-27": "Christmas Day (substitute)", "2027-12-28": "Boxing Day (substitute)",
+      "2028-01-03": "New Year's Day (substitute)", "2028-04-14": "Good Friday", "2028-05-01": "Early May bank holiday", "2028-05-29": "Spring bank holiday", "2028-12-25": "Christmas Day", "2028-12-26": "Boxing Day",
+      "2029-01-01": "New Year's Day", "2029-03-30": "Good Friday", "2029-05-07": "Early May bank holiday", "2029-05-28": "Spring bank holiday", "2029-12-25": "Christmas Day", "2029-12-26": "Boxing Day",
+      "2030-01-01": "New Year's Day", "2030-04-19": "Good Friday", "2030-05-06": "Early May bank holiday", "2030-05-27": "Spring bank holiday", "2030-12-25": "Christmas Day", "2030-12-26": "Boxing Day",
+      "2031-01-01": "New Year's Day", "2031-04-11": "Good Friday", "2031-05-05": "Early May bank holiday", "2031-05-26": "Spring bank holiday", "2031-12-25": "Christmas Day", "2031-12-26": "Boxing Day",
+      "2032-01-01": "New Year's Day", "2032-03-26": "Good Friday", "2032-05-03": "Early May bank holiday", "2032-05-31": "Spring bank holiday", "2032-12-25": "Christmas Day", "2032-12-26": "Boxing Day",
+      "2033-01-03": "New Year's Day (substitute)", "2033-04-15": "Good Friday", "2033-05-02": "Early May bank holiday", "2033-05-30": "Spring bank holiday", "2033-12-26": "Boxing Day", "2033-12-27": "Christmas Day (substitute)",
+      "2034-01-02": "New Year's Day (substitute)", "2034-04-07": "Good Friday", "2034-05-01": "Early May bank holiday", "2034-05-29": "Spring bank holiday", "2034-12-25": "Christmas Day", "2034-12-26": "Boxing Day",
+      "2035-01-01": "New Year's Day", "2035-03-23": "Good Friday", "2035-05-07": "Early May bank holiday", "2035-05-28": "Spring bank holiday", "2035-12-25": "Christmas Day", "2035-12-26": "Boxing Day",
+    };
+    const LF_BH_ENGLAND_WALES_EXTRAS = {
+      // Easter Monday and the LAST-Monday-in-August summer holiday.
+      "2025-04-21": "Easter Monday", "2025-08-25": "Summer bank holiday",
+      "2026-04-06": "Easter Monday", "2026-08-31": "Summer bank holiday",
+      "2027-03-29": "Easter Monday", "2027-08-30": "Summer bank holiday",
+      "2028-04-17": "Easter Monday", "2028-08-28": "Summer bank holiday",
+      "2029-04-02": "Easter Monday", "2029-08-27": "Summer bank holiday",
+      "2030-04-22": "Easter Monday", "2030-08-26": "Summer bank holiday",
+      "2031-04-14": "Easter Monday", "2031-08-25": "Summer bank holiday",
+      "2032-03-29": "Easter Monday", "2032-08-30": "Summer bank holiday",
+      "2033-04-18": "Easter Monday", "2033-08-29": "Summer bank holiday",
+      "2034-04-10": "Easter Monday", "2034-08-28": "Summer bank holiday",
+      "2035-03-26": "Easter Monday", "2035-08-27": "Summer bank holiday",
+    };
+    const LF_BH_SCOTLAND_EXTRAS = {
+      // 2 January, the FIRST-Monday-in-August summer holiday, St Andrew's
+      // Day — and the one-off 2026 World Cup holiday gov.uk lists.
+      "2025-01-02": "2nd January", "2025-08-04": "Summer bank holiday", "2025-12-01": "St Andrew's Day (substitute)",
+      "2026-01-02": "2nd January", "2026-06-15": "World Cup bank holiday", "2026-08-03": "Summer bank holiday", "2026-11-30": "St Andrew's Day",
+      "2027-01-04": "2nd January (substitute)", "2027-08-02": "Summer bank holiday", "2027-11-30": "St Andrew's Day",
+      "2028-01-04": "2nd January (substitute)", "2028-08-07": "Summer bank holiday", "2028-11-30": "St Andrew's Day",
+      "2029-01-02": "2nd January", "2029-08-06": "Summer bank holiday", "2029-11-30": "St Andrew's Day",
+      "2030-01-02": "2nd January", "2030-08-05": "Summer bank holiday", "2030-12-02": "St Andrew's Day (substitute)",
+      "2031-01-02": "2nd January", "2031-08-04": "Summer bank holiday", "2031-12-01": "St Andrew's Day (substitute)",
+      "2032-01-02": "2nd January", "2032-08-02": "Summer bank holiday", "2032-11-30": "St Andrew's Day",
+      "2033-01-04": "2nd January (substitute)", "2033-08-01": "Summer bank holiday", "2033-11-30": "St Andrew's Day",
+      "2034-01-03": "2nd January (substitute)", "2034-08-07": "Summer bank holiday", "2034-11-30": "St Andrew's Day",
+      "2035-01-02": "2nd January", "2035-08-06": "Summer bank holiday", "2035-11-30": "St Andrew's Day",
+    };
+    const LF_BH_NORTHERN_IRELAND_EXTRAS = {
+      // On top of the England & Wales set: St Patrick's Day and the Battle
+      // of the Boyne.
+      "2025-03-17": "St Patrick's Day", "2025-07-14": "Battle of the Boyne (substitute)",
+      "2026-03-17": "St Patrick's Day", "2026-07-13": "Battle of the Boyne (substitute)",
+      "2027-03-17": "St Patrick's Day", "2027-07-12": "Battle of the Boyne",
+      "2028-03-17": "St Patrick's Day", "2028-07-12": "Battle of the Boyne",
+      "2029-03-19": "St Patrick's Day (substitute)", "2029-07-12": "Battle of the Boyne",
+      "2030-03-18": "St Patrick's Day (substitute)", "2030-07-12": "Battle of the Boyne",
+      "2031-03-17": "St Patrick's Day", "2031-07-14": "Battle of the Boyne (substitute)",
+      "2032-03-17": "St Patrick's Day", "2032-07-12": "Battle of the Boyne",
+      "2033-03-17": "St Patrick's Day", "2033-07-12": "Battle of the Boyne",
+      "2034-03-17": "St Patrick's Day", "2034-07-12": "Battle of the Boyne",
+      "2035-03-19": "St Patrick's Day (substitute)", "2035-07-12": "Battle of the Boyne",
+    };
+    const LF_NATION_BANK_HOLIDAYS = {
+      'england-wales':    { ...LF_BH_CORE, ...LF_BH_ENGLAND_WALES_EXTRAS },
+      'scotland':         { ...LF_BH_CORE, ...LF_BH_SCOTLAND_EXTRAS },
+      'northern-ireland': { ...LF_BH_CORE, ...LF_BH_ENGLAND_WALES_EXTRAS, ...LF_BH_NORTHERN_IRELAND_EXTRAS },
+    };
+    // Read through the production's baseNation; unknown nations fall back to
+    // England & Wales (the record can only hold the three keys, but a read
+    // must never crash on a malformed one).
+    const lfBankHolidayName = (dateISO, baseNation) =>
+      (LF_NATION_BANK_HOLIDAYS[baseNation] || LF_NATION_BANK_HOLIDAYS['england-wales'])[dateISO] || null;
+    const lfIsBankHoliday = (dateISO, baseNation) => !!lfBankHolidayName(dateISO, baseNation);
+
     // The long form production record. Additive keys on TOP of the standard
     // shape — an APA production never gains any of these, and the APA
     // creation sites are untouched. migrateProduction's usual materialisation

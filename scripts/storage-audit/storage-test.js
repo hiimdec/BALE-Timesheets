@@ -262,6 +262,11 @@ async function transformedAppCode() {
     // The ruleset table (LF10): the table and the class registry it must agree with.
     'try { globalThis.__LONGFORM_AGREEMENTS = LONGFORM_AGREEMENTS; } catch (_) {}\n' +
     'try { globalThis.__AGREEMENT_CLASSES = AGREEMENT_CLASSES; } catch (_) {}\n' +
+    // Nation bank holidays (LF12): the composed sets, the reader, and the
+    // APA table (read-only reference for the no-drift cross-check).
+    'try { globalThis.__LF_NATION_BANK_HOLIDAYS = LF_NATION_BANK_HOLIDAYS; } catch (_) {}\n' +
+    'try { globalThis.__lfIsBankHoliday = lfIsBankHoliday; } catch (_) {}\n' +
+    'try { globalThis.__UK_BANK_HOLIDAYS = UK_BANK_HOLIDAYS; } catch (_) {}\n' +
     // Custom comparison item (U-suite): expose the validator + the
     // effective getters so the suite can verify the gate (empty/zero
     // hidden, valid included), plus the base constants for surface
@@ -2543,6 +2548,37 @@ async function main() {
         `slice length=${tableSrc.length}`);
     } else {
       for (const l of ['LF10a', 'LF10b', 'LF10c', 'LF10d']) check(l + ' ruleset table exposed', false, 'table not exposed');
+    }
+
+    // ── LF12: nation bank holiday sets (Phase 3c). COMPOSED, not additive —
+    //    asserted in BOTH directions so the composition cannot regress into
+    //    England-plus-extras. Dates verified against gov.uk (2025-2027) and
+    //    weekday-checked substitutions beyond. ──
+    const BH = sb.__lfIsBankHoliday, NATIONS = sb.__LF_NATION_BANK_HOLIDAYS, APA_BH = sb.__UK_BANK_HOLIDAYS;
+    if (typeof BH === 'function' && NATIONS && APA_BH) {
+      check('LF12a Scotland vs England & Wales, both directions: 2 Jan and first-Mon-Aug are Scottish only; Easter Monday and last-Mon-Aug are E&W only',
+        BH('2026-01-02', 'scotland') === true  && BH('2026-01-02', 'england-wales') === false &&
+        BH('2026-08-03', 'scotland') === true  && BH('2026-08-03', 'england-wales') === false &&
+        BH('2026-04-06', 'england-wales') === true && BH('2026-04-06', 'scotland') === false &&
+        BH('2026-08-31', 'england-wales') === true && BH('2026-08-31', 'scotland') === false);
+      check('LF12b Northern Ireland: St Patrick\'s and the Boyne are NI only, and NI carries E&W\'s Easter Monday',
+        BH('2026-03-17', 'northern-ireland') === true && BH('2026-03-17', 'england-wales') === false && BH('2026-03-17', 'scotland') === false &&
+        BH('2026-07-13', 'northern-ireland') === true && BH('2026-07-13', 'england-wales') === false &&
+        BH('2026-04-06', 'northern-ireland') === true);
+      check('LF12c the core is shared (Boxing Day substitute 2026 in all three) and one-offs stay national (Scotland\'s 2026 World Cup holiday)',
+        BH('2026-12-28', 'england-wales') === true && BH('2026-12-28', 'scotland') === true && BH('2026-12-28', 'northern-ireland') === true &&
+        BH('2026-06-15', 'scotland') === true && BH('2026-06-15', 'england-wales') === false && BH('2026-06-15', 'northern-ireland') === false);
+      check('LF12d substitute days land on the substitute, not the nominal date (Scot 2nd Jan 2027, NI St Patrick\'s 2029, Scot St Andrew\'s 2025)',
+        BH('2027-01-04', 'scotland') === true && BH('2027-01-02', 'scotland') === false &&
+        BH('2029-03-19', 'northern-ireland') === true && BH('2029-03-17', 'northern-ireland') === false &&
+        BH('2025-12-01', 'scotland') === true && BH('2025-11-30', 'scotland') === false);
+      const composedEW = Object.keys(NATIONS['england-wales']).sort().join(',');
+      const apaKeys = Object.keys(APA_BH).sort().join(',');
+      check('LF12e the composed England & Wales set is key-identical to the audited APA UK_BANK_HOLIDAYS table (no drift between the two)',
+        composedEW === apaKeys,
+        composedEW === apaKeys ? '' : 'first difference: ' + (Object.keys(NATIONS['england-wales']).sort().find((k, i) => k !== Object.keys(APA_BH).sort()[i]) || 'length mismatch'));
+    } else {
+      for (const l of ['LF12a', 'LF12b', 'LF12c', 'LF12d', 'LF12e']) check(l + ' nation sets exposed', false, 'not exposed');
     }
   }
 
