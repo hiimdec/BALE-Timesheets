@@ -21556,6 +21556,63 @@ const setDays = (updater) =>
                       )}
                     </>
                   )}
+                  {(() => {
+                    // ── The day's money (Phase 3d). Claim-and-flag made
+                    //    visible: three tiers. Info notes are quiet neutral;
+                    //    assumption/approval flags are amber ON their line;
+                    //    unclaimable lines render with a struck amount and
+                    //    their citation, excluded from the total; unpriced
+                    //    lines carry "agreed locally" where the amount would
+                    //    sit and never invent a figure. ──
+                    let calc = null, calcError = null;
+                    try { calc = longFormCalcForDay(production, editDay); } catch (e) { calcError = (e && e.message) || 'The engine refused this day.'; }
+                    if (calcError) return (
+                      <div className="pt-4 border-t border-neutral-800">
+                        <p className="text-[11px] text-tm-pen leading-tight">{calcError}</p>
+                      </div>
+                    );
+                    if (!calc || (calc.lines.length === 0 && calc.flags.length === 0)) return null;
+                    const FlagNote = ({ f }) => (
+                      <p className={`text-[10px] leading-tight mt-0.5 ${f.tone === 'assumption' ? 'text-tm-warn' : f.tone === 'unclaimable' || f.tone === 'unpriced' ? 'text-neutral-400' : 'text-neutral-500'}`}>
+                        {f.message}
+                      </p>
+                    );
+                    return (
+                      <div className="pt-4 border-t border-neutral-800">
+                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-2">The day's money</div>
+                        <div className="flex flex-col gap-2.5">
+                          {calc.lines.map((l, i) => (
+                            <div key={i}>
+                              <div className="flex items-baseline justify-between gap-3">
+                                <span className={`text-[12px] ${l.unclaimable ? 'text-neutral-500' : 'text-neutral-200'}`}>
+                                  {l.label}
+                                  {l.ref && <span className="text-neutral-600 text-[10px]"> · {l.ref.replace(/ \(.*\)$/, '')}</span>}
+                                </span>
+                                {l.unpriced ? (
+                                  <span className="text-[12px] italic text-tm-warn flex-shrink-0">agreed locally</span>
+                                ) : (
+                                  <span className={`text-[13px] font-mono flex-shrink-0 ${l.unclaimable ? 'text-neutral-500 line-through' : 'text-neutral-100'}`}>{fmtGBP(l.amount || 0)}</span>
+                                )}
+                              </div>
+                              {l.rateDesc && !l.unpriced && (
+                                <p className="text-[10px] text-neutral-600 leading-tight">{l.rateDesc}{l.unclaimable ? ' - not claimable' : ''}</p>
+                              )}
+                              {(l.flags || []).map((f, j) => <FlagNote key={j} f={f} />)}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-baseline justify-between gap-3 mt-3 pt-2.5 border-t border-neutral-800">
+                          <span className="text-[12px] font-bold text-neutral-100">Day total</span>
+                          <span className="text-[15px] font-mono font-bold text-neutral-100">{fmtGBP(calc.total)}</span>
+                        </div>
+                        {calc.flags.length > 0 && (
+                          <div className="mt-2 flex flex-col gap-1">
+                            {calc.flags.map((f, i) => <FlagNote key={i} f={f} />)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="pt-4 border-t border-neutral-800">
                     <button type="button"
                       onClick={() => setConfirmDeleteDayId(editDay.id)}
