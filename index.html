@@ -20380,11 +20380,15 @@ const setDays = (updater) =>
         const r = runFor(d);
         return r.count >= 6 ? { label: r.count === 6 ? '6th day' : `${r.count}th day`, run: r } : null;
       };
+      // Status is a money progression, so invoiced and paid share ONE hue at
+      // two weights (ruled Phase 3a: fuchsia sat too close to the penalty
+      // pink): invoiced = outlined green, the claim is out; paid = solid
+      // green, the money landed. Draft stays neutral, submitted sky.
       const WEEK_STATUS_CHIP = {
         draft:     'text-neutral-400 bg-neutral-500/10 border-neutral-500/30',
         submitted: 'text-sky-500 bg-sky-500/10 border-sky-500/25',
-        invoiced:  'text-fuchsia-400 bg-fuchsia-500/10 border-fuchsia-500/30',
-        paid:      'text-tm-good bg-tm-good/10 border-tm-good/30',
+        invoiced:  'text-tm-good bg-tm-good/10 border-tm-good/30',
+        paid:      'text-neutral-950 bg-tm-good border-tm-good',
       };
 
       const addDay = (afterISO) => {
