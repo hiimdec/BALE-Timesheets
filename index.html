@@ -21619,11 +21619,47 @@ const setDays = (updater) =>
         .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       const [openWeekId, setOpenWeekId] = useState(null);
       const openWeek = myWeeks.find(w => w.id === openWeekId) || null;
-      const [editDayId, setEditDayId] = useState(null);
-      const editDay = myDays.find(d => d.id === editDayId) || null;
       const [confirmDeleteDayId, setConfirmDeleteDayId] = useState(null);
-      // Hardware/gesture back walks the stack: day editor → week → area.
-      useBackLevel(!!openWeek, () => { setOpenWeekId(null); return false; }, 'longform-week');
+
+      // ── Phase 4a: the DAY is the way in; weeks are the review and
+      //    billing layer. Opening rule (3.1): a day dated today → straight
+      //    into the day editor on that day; otherwise the week view — the
+      //    APA anchor principle with weeks as the fallback, never a
+      //    silently minted day. ──
+      const sortedDays = useMemo(() => [...myDays].sort((a, b) => {
+        const da = a.date || '', db = b.date || '';
+        return da !== db ? da.localeCompare(db) : (a.id || '').localeCompare(b.id || '');
+      }), [myDays]);
+      const todayDay = sortedDays.find(d => d.date === todayISO()) || null;
+      const [view, setView] = useState(() => (todayDay ? 'day' : 'weeks'));
+      const [currentDayId, setCurrentDayId] = useState(() => (todayDay ? todayDay.id : null));
+      useEffect(() => {
+        if (view !== 'day' || sortedDays.length === 0) return;
+        const stillValid = currentDayId && sortedDays.some(d => d.id === currentDayId);
+        if (stillValid) return;
+        const anchorDate = closestDateToToday(sortedDays.map(d => d.date));
+        const anchorDay = (anchorDate && sortedDays.find(d => d.date === anchorDate)) || sortedDays[sortedDays.length - 1];
+        setCurrentDayId(anchorDay.id);
+      }, [view, sortedDays, currentDayId]);
+      const currentDay = sortedDays.find(d => d.id === currentDayId) || sortedDays[0] || null;
+      const currentIdx = currentDay ? sortedDays.findIndex(d => d.id === currentDay.id) : -1;
+      const carouselRef = useRef(null);
+      const [showJumpSheet, setShowJumpSheet] = useState(false);
+      const [showDayActions, setShowDayActions] = useState(false);
+      const [showMoney, setShowMoney] = useState(false);
+      const [dayToast, setDayToast] = useState(null);
+      const showDayToast = (msg) => { setDayToast(msg); setTimeout(() => setDayToast(null), 2000); };
+      const enterDay = (dayId) => { setCurrentDayId(dayId); setOpenWeekId(null); setView('day'); };
+      // The pill's running total — the sum of every day's engine total,
+      // rolling as the wrap lands (same meaning as APA's totalShoot).
+      const totalJob = useMemo(() => sortedDays.reduce((s, d) => {
+        try { return s + longFormCalcForDay(production, d).total; } catch (_) { return s; }
+      }, 0), [sortedDays, production]);
+      // Back stack: the DAY view is the job's root (back → productions);
+      // weeks with days behind it pops to the day; the week detail pops to
+      // the week list first.
+      useBackLevel(view === 'weeks' && !!openWeek, () => { setOpenWeekId(null); return false; }, 'longform-week');
+      useBackLevel(view === 'weeks' && !openWeek && sortedDays.length > 0, () => { setView('day'); return false; }, 'longform-weeks');
 
       const stepISO = (iso, n) => { const t = new Date(iso + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
       const fmtRangeDay = (iso, withMonth) => {
@@ -21657,18 +21693,35 @@ const setDays = (updater) =>
         const date = afterISO || (lastDate ? stepISO(lastDate, 1) : todayISO());
         const day = makeLongFormDay(myCrewId, date);
         setProduction(p => ensureLfWeek({ ...p, days: [...(p.days || []), day] }, myCrewId, date));
-        setEditDayId(day.id);
+        enterDay(day.id);
+      };
+      // ADD WEEK (3.5): mints the week AND its days — the five working days
+      // from the week start, as shoot/SWD records the user then adjusts.
+      const addWeek = () => {
+        const lastWeek = myWeeks[0] || null;   // myWeeks sorts newest first
+        const anchor = lastWeek ? stepISO(lastWeek.endDate, 1) : todayISO();
+        const bounds = lfWeekBounds(production.weekStartDay || 'monday', anchor);
+        setProduction(p => {
+          let next = ensureLfWeek(p, myCrewId, bounds.startDate);
+          const existingDates = new Set((next.days || []).filter(d => d.crewId === myCrewId).map(d => d.date));
+          const newDays = [];
+          for (let i = 0; i < 5; i++) {
+            const iso = stepISO(bounds.startDate, i);
+            if (!existingDates.has(iso)) newDays.push(makeLongFormDay(myCrewId, iso));
+          }
+          return { ...next, days: [...(next.days || []), ...newDays] };
+        });
       };
       // Patch convention: value `undefined` deletes the key — the optional
       // fields (cameraOtCalledMins, dayAgreementClass, dayContractDailyRate,
       // sixthSeventhOverride) are absent when unused, never stored as noise.
-      const updateDay = (patch) => {
-        if (!editDay) return;
+      const updateDayById = (dayId, patch) => {
+        const before = myDays.find(d => d.id === dayId) || null;
         setProduction(p => {
           let next = {
             ...p,
             days: (p.days || []).map(d => {
-              if (d.id !== editDay.id) return d;
+              if (d.id !== dayId) return d;
               const n = { ...d };
               for (const [k, v] of Object.entries(patch)) { if (v === undefined) delete n[k]; else n[k] = v; }
               return n;
@@ -21676,13 +21729,12 @@ const setDays = (updater) =>
           };
           // A date edit can move the day to a different week: mint the new
           // home, then prune any pristine empty draft left behind.
-          if (patch.date && patch.date !== editDay.date) next = pruneLfWeeks(ensureLfWeek(next, myCrewId, patch.date));
+          if (patch.date && before && patch.date !== before.date) next = pruneLfWeeks(ensureLfWeek(next, myCrewId, patch.date));
           return next;
         });
       };
       const deleteDay = (dayId) => {
         setProduction(p => pruneLfWeeks({ ...p, days: (p.days || []).filter(d => d.id !== dayId) }));
-        setEditDayId(null);
       };
       // "Add day" inside a week fills the first free date in its range;
       // hidden when the week is full.
@@ -21710,6 +21762,154 @@ const setDays = (updater) =>
           </div>
           )}
 
+          {/* ── Phase 4a: the DAY is the way in. A day dated today opens the
+              day editor directly (3.1); weeks are the review and billing
+              layer behind the kebab. The day view is the APA day screen —
+              carousel, form-top, tiles, pill — with the long form form. ── */}
+          {view === 'day' && currentDay ? (
+            <div style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)' }}>
+              <Toast show={!!dayToast}>{dayToast}</Toast>
+              <DayCarousel
+                ref={carouselRef}
+                days={sortedDays}
+                currentDayId={currentDayId}
+                setCurrentDayId={setCurrentDayId}
+                onAddDay={addDay}
+                renderDay={(day, dayIdxInList) => {
+                  const m = LF_DAY_TYPE_META[day?.dayType] || LF_DAY_TYPE_META.shoot;
+                  return (
+                    <>
+                      <DayFormTop
+                        dayIndex={dayIdxInList}
+                        dayCount={sortedDays.length}
+                        onJump={() => setShowJumpSheet(true)}
+                        date={day?.date}
+                        onDateChange={(v2) => { if (/^\d{4}-\d{2}-\d{2}$/.test(v2)) updateDayById(day.id, { date: v2, wrapped: v2 < todayISO() }); }}
+                        onKebab={() => setShowDayActions(true)}
+                        chipSlot={(
+                          <>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <select
+                                value={day?.dayType || 'shoot'}
+                                onChange={(e) => updateDayById(day.id, { dayType: e.target.value })}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                aria-label="Day type"
+                                style={{ WebkitTapHighlightColor: 'transparent' }}
+                              >
+                                {LF_DAY_TYPE_ORDER.map(t => <option key={t} value={t}>{LF_DAY_TYPE_META[t].long}</option>)}
+                              </select>
+                              <span className={`text-[10px] uppercase tracking-[0.14em] font-bold px-2 py-[3px] rounded inline-flex items-center gap-1 transition-colors ${
+                                (day?.dayType || 'shoot') === 'shoot'
+                                  ? 'bg-neutral-800 border border-neutral-700 text-neutral-300'
+                                  : 'bg-tm-warn/10 border border-tm-warn/25 text-tm-warn'
+                              }`}>
+                                {m.label}
+                                <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
+                              </span>
+                            </label>
+                            {m.shaped && (
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <select
+                                  value={day?.dayShape || 'swd'}
+                                  onChange={(e) => updateDayById(day.id, { dayShape: e.target.value })}
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                  aria-label="Day shape"
+                                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                                >
+                                  {LF_DAY_SHAPE_ORDER.map(k => <option key={k} value={k}>{LF_DAY_SHAPE_META[k].long}</option>)}
+                                </select>
+                                <span className="text-[10px] uppercase tracking-[0.14em] font-bold px-2 py-[3px] rounded inline-flex items-center gap-1 transition-colors bg-neutral-800 border border-neutral-700 text-neutral-300">
+                                  {(LF_DAY_SHAPE_META[day?.dayShape] || LF_DAY_SHAPE_META.swd).label}
+                                  <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
+                                </span>
+                              </label>
+                            )}
+                          </>
+                        )}
+                      />
+                      <div className="max-w-3xl mx-auto px-4 pb-6">
+                        <LongFormDayEntryForm
+                          production={production}
+                          day={day}
+                          onChange={(patch) => updateDayById(day.id, patch)}
+                          isToday={day?.date === todayISO()}
+                          showToast={showDayToast}
+                        />
+                      </div>
+                    </>
+                  );
+                }}
+              />
+              <SoloDayPill
+                total={totalJob}
+                dayIndex={currentIdx}
+                dayCount={sortedDays.length}
+                hasPrev={currentIdx > 0}
+                hasNext={currentIdx < sortedDays.length - 1}
+                onPrev={() => carouselRef.current && carouselRef.current.snapPrev()}
+                onNext={() => carouselRef.current && carouselRef.current.snapNext()}
+                onAdd={() => { if (carouselRef.current && carouselRef.current.animateAddDay) carouselRef.current.animateAddDay(); else addDay(); }}
+                onViewCalc={() => setShowMoney(true)}
+                isToday={currentDay?.date === todayISO()}
+                comparisonUnit={userPrefs?.comparisonUnit}
+                customComparisonItem={validCustomComparison(userPrefs)}
+              />
+              <DayJumpSheet
+                open={showJumpSheet}
+                days={myDays}
+                currentDayId={currentDayId}
+                production={production}
+                crew={production.crew || []}
+                onPick={(newDayId) => {
+                  const newIdx = sortedDays.findIndex(d => d.id === newDayId);
+                  if (newIdx === -1 || newIdx === currentIdx) return;
+                  if (newIdx === currentIdx + 1) carouselRef.current && carouselRef.current.snapNext();
+                  else if (newIdx === currentIdx - 1) carouselRef.current && carouselRef.current.snapPrev();
+                  else carouselRef.current && carouselRef.current.jumpTo(newDayId);
+                }}
+                onClose={() => setShowJumpSheet(false)}
+                rowMeta={(day) => {
+                  const tm = LF_DAY_TYPE_META[day.dayType] || {};
+                  let amount = null;
+                  try { amount = longFormCalcForDay(production, day).total; } catch (_) { amount = null; }
+                  return {
+                    times: tm.worked ? `${day.individualCallTime || day.unitCallTime || ''} – ${day.wrapTime || ''}` : '',
+                    typeLabel: tm.shaped ? `${tm.label} · ${(LF_DAY_SHAPE_META[day.dayShape] || LF_DAY_SHAPE_META.swd).label}` : (tm.long || day.dayType),
+                    amount,
+                  };
+                }}
+              />
+              {/* Day kebab — the route to weeks (3.3) plus delete. */}
+              <Sheet open={showDayActions} onClose={() => setShowDayActions(false)} title="Day actions">
+                <div className="px-4 pb-4 flex flex-col gap-2">
+                  <button type="button"
+                    onClick={() => { setShowDayActions(false); setView('weeks'); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <ICal size={15}/>Weeks
+                  </button>
+                  <button type="button"
+                    onClick={() => { setShowDayActions(false); setConfirmDeleteDayId(currentDay.id); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <ITrash size={15}/>Delete day
+                  </button>
+                </div>
+                <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
+                  <button type="button" onClick={() => setShowDayActions(false)}
+                    className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+                </div>
+              </Sheet>
+              {/* The pill's centre tap — the day's money, as APA's opens its
+                  breakdown (3.4). Same block as the form bottom. */}
+              <Sheet open={showMoney} onClose={() => setShowMoney(false)} title={currentDay ? fmtLfDay(currentDay.date) : ''}>
+                <div data-sheet-scroll className="px-5 pb-5 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+                  <LongFormDayMoney production={production} day={currentDay} />
+                </div>
+              </Sheet>
+            </div>
+          ) : (
           <div className="max-w-2xl mx-auto px-4 py-6">
             {/* The stamped facts — proof the record took, and the reference
                 point for everything the later slices compute. */}
@@ -21760,7 +21960,7 @@ const setDays = (updater) =>
                     // sixth day says why, or it reads as an unexplained flag.
                     const causeOutside = flag && flag.run.runStart && flag.run.runStart < openWeek.startDate;
                     return (
-                      <button key={d.id} type="button" onClick={() => setEditDayId(d.id)}
+                      <button key={d.id} type="button" onClick={() => enterDay(d.id)}
                         className="w-full text-left px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors"
                         style={{ WebkitTapHighlightColor: 'transparent' }}>
                         <div className="flex items-center justify-between gap-2">
@@ -21794,7 +21994,9 @@ const setDays = (updater) =>
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Weeks</div>
-                  <Btn variant="subtle" onClick={() => addDay()}><IPlus size={13}/>Add day</Btn>
+                  {/* 3.5: weeks are the review layer — the button mints a
+                      WEEK (and its five working days), not a day. */}
+                  <Btn variant="subtle" onClick={addWeek}><IPlus size={13}/>Add week</Btn>
                 </div>
                 <div className="flex flex-col gap-2">
                   {myWeeks.map(w => {
@@ -21824,173 +22026,7 @@ const setDays = (updater) =>
             )}
           </div>
 
-          {editDay && (() => {
-            const m = LF_DAY_TYPE_META[editDay.dayType] || {};
-            const flag = dayFlag(editDay);
-            const isTV = production.agreement === 'pact-tv';
-            const classes = AGREEMENT_CLASSES[production.agreement] || ['standard'];
-            const stepUpOn = editDay.dayAgreementClass !== undefined || editDay.dayContractDailyRate !== undefined;
-            const camOn = editDay.cameraWrapTime != null;
-            const indivOn = editDay.individualCallTime != null;
-            const camOtOn = editDay.cameraOtCalledMins !== undefined;
-            return (
-              <Sheet open onClose={() => setEditDayId(null)} title={fmtLfDay(editDay.date)}>
-                <div data-sheet-scroll className="px-5 pb-5 flex flex-col gap-5 overflow-y-auto" style={{ maxHeight: '72vh' }}>
-                  <Field label="Date">
-                    <Input type="date" value={editDay.date} onChange={(e) => { const v = e.target.value; if (/^\d{4}-\d{2}-\d{2}$/.test(v)) updateDay({ date: v, wrapped: v < todayISO() }); }} />
-                  </Field>
-                  <div>
-                    <Field label="Day type">
-                      <Select value={editDay.dayType} onChange={(e) => updateDay({ dayType: e.target.value })}>
-                        {LF_DAY_TYPE_ORDER.map(k => <option key={k} value={k}>{LF_DAY_TYPE_META[k].long}</option>)}
-                      </Select>
-                    </Field>
-                    <p className="text-[10px] text-neutral-600 mt-1 leading-tight">{m.detail}</p>
-                  </div>
-                  {m.shaped && (() => {
-                    // Type says what kind of work; SHAPE says how the day is
-                    // broken, and the shape IS the lunch. On non-shooting
-                    // types (prep, pre-light) SWD is the standard (TV
-                    // §1.5(b)) and the other two read as the exception they
-                    // are (§1.5(c)) — marked in the option and a hint line,
-                    // never a nag.
-                    const nonShooting = !m.shooting;
-                    const shape = editDay.dayShape || 'swd';
-                    const sm = LF_DAY_SHAPE_META[shape] || {};
-                    return (
-                      <div>
-                        <Field label="Day shape">
-                          <Select value={shape} onChange={(e) => updateDay({ dayShape: e.target.value })}>
-                            {LF_DAY_SHAPE_ORDER.map(k => (
-                              <option key={k} value={k}>{LF_DAY_SHAPE_META[k].long}{nonShooting && k !== 'swd' ? ' - exceptional' : ''}</option>
-                            ))}
-                          </Select>
-                        </Field>
-                        <p className="text-[10px] text-neutral-600 mt-1 leading-tight">
-                          {sm.detail} The shape is the lunch - there's no separate duration to set.
-                          {nonShooting && shape !== 'swd' && production.agreement === 'pact-tv' ? ' Non-shooting SCWD and CWD are the exception and need prior written approval (TV §1.5(c)-(d)).' : ''}
-                        </p>
-                      </div>
-                    );
-                  })()}
-                  {m.worked && (
-                    <>
-                      <Field label="Unit call">
-                        <TimeInput value={editDay.unitCallTime || ''} onChange={(e) => updateDay({ unitCallTime: e.target.value })} />
-                      </Field>
-                      <div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[12px] font-semibold text-neutral-300">My call differs from the unit call</span>
-                          <Toggle value={indivOn} onChange={(v) => updateDay({ individualCallTime: v ? (editDay.unitCallTime || '08:00') : null })} ariaLabel="Individual call differs" />
-                        </div>
-                        {indivOn && (
-                          <div className="mt-2"><TimeInput value={editDay.individualCallTime || ''} onChange={(e) => updateDay({ individualCallTime: e.target.value })} /></div>
-                        )}
-                      </div>
-                      <Field label="Lunch called">
-                        <TimeInput value={editDay.lunchTime || ''} onChange={(e) => updateDay({ lunchTime: e.target.value })} />
-                      </Field>
-                      <Field label="Wrap">
-                        <TimeInput value={editDay.wrapTime || ''} onChange={(e) => updateDay({ wrapTime: e.target.value })} />
-                      </Field>
-                      {!isTV && (
-                        <div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-[12px] font-semibold text-neutral-300">Camera wrap differs</span>
-                            <Toggle value={camOn} onChange={(v) => updateDay({ cameraWrapTime: v ? (editDay.wrapTime || '19:00') : null })} ariaLabel="Camera wrap differs" />
-                          </div>
-                          {camOn && (
-                            <div className="mt-2"><TimeInput value={editDay.cameraWrapTime || ''} onChange={(e) => updateDay({ cameraWrapTime: e.target.value })} /></div>
-                          )}
-                          <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Camera wrap is a real rate boundary on film - overtime splits camera and non-camera at it.</p>
-                        </div>
-                      )}
-                      {isTV && (
-                        <div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-[12px] font-semibold text-neutral-300">Camera OT was called</span>
-                            <Toggle value={camOtOn} onChange={(v) => updateDay({ cameraOtCalledMins: v ? 30 : undefined })} ariaLabel="Camera OT was called" />
-                          </div>
-                          {camOtOn && (
-                            <div className="mt-2"><Input type="number" min="0" step="15" value={editDay.cameraOtCalledMins} onChange={(e) => updateDay({ cameraOtCalledMins: Math.max(0, Number(e.target.value) || 0) })} /></div>
-                          )}
-                          <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Minutes of called camera overtime (§7.6) - only when it was actually called, off the main flow.</p>
-                        </div>
-                      )}
-                      {(editDay.dayShape || 'swd') !== 'cwd' && (() => {
-                        // Curtailed lunch as a CHIP (ruled): nobody types in
-                        // that they got forty minutes. One tap, THEN it asks
-                        // how long you actually got. Off the main flow, with
-                        // the other exception toggles. A CWD has no formal
-                        // lunch to cut. lunchMinsTaken feeds TV §10.2(b) /
-                        // film §5.4(b)(ii) in the engine slice.
-                        const curtailOn = editDay.lunchMinsTaken !== undefined;
-                        const fullMins = (editDay.dayShape || 'swd') === 'scwd' ? 30 : 60;
-                        return (
-                          <div>
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-[12px] font-semibold text-neutral-300">Lunch cut short</span>
-                              <Toggle value={curtailOn} onChange={(v) => updateDay({ lunchMinsTaken: v ? Math.round(fullMins / 2) : undefined })} ariaLabel="Lunch cut short" />
-                            </div>
-                            {curtailOn && (
-                              <div className="mt-2">
-                                <Field label="Minutes you actually got">
-                                  <Input type="number" min="0" step="5" value={editDay.lunchMinsTaken} onChange={(e) => updateDay({ lunchMinsTaken: Math.max(0, Number(e.target.value) || 0) })} />
-                                </Field>
-                              </div>
-                            )}
-                            <p className="text-[10px] text-neutral-600 mt-1 leading-tight">The full break is {fullMins} minutes on this shape. The penalty for the cut is in the day's money below.</p>
-                          </div>
-                        );
-                      })()}
-                      <div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[12px] font-semibold text-neutral-300">Different class or rate today</span>
-                          <Toggle value={stepUpOn} onChange={(v) => v
-                            ? updateDay({ dayAgreementClass: me.agreementClass || 'standard', dayContractDailyRate: Number(me.contractDailyRate) || 0 })
-                            : updateDay({ dayAgreementClass: undefined, dayContractDailyRate: undefined })} ariaLabel="Different class or rate today" />
-                        </div>
-                        {stepUpOn && (
-                          <div className="mt-2 flex flex-col gap-3">
-                            <Field label="Class for the day">
-                              <Select value={editDay.dayAgreementClass || 'standard'} onChange={(e) => updateDay({ dayAgreementClass: e.target.value })}>
-                                {classes.map(k => <option key={k} value={k}>{(AGREEMENT_CLASS_META[k] || {}).label || k}</option>)}
-                              </Select>
-                            </Field>
-                            <Field label="Daily rate for the day">
-                              <Input type="number" min="0" placeholder={String(me.contractDailyRate || '')} value={editDay.dayContractDailyRate ?? ''} onChange={(e) => updateDay({ dayContractDailyRate: Number(e.target.value) || 0 })} />
-                            </Field>
-                          </div>
-                        )}
-                        <p className="text-[10px] text-neutral-600 mt-1 leading-tight">The step-up pattern - a rigging day carries a rigging rate, and the divisor follows the rate.</p>
-                      </div>
-                      {flag && (
-                        <div className="rounded-xl border border-tm-warn/30 bg-tm-warn/5 px-4 py-3">
-                          <span className="text-[10px] uppercase tracking-wide font-bold text-tm-warn bg-tm-warn/10 border border-tm-warn/30 rounded-md px-1.5 py-[3px]">{flag.label}</span>
-                          <p className="text-[10px] text-neutral-500 mt-2 leading-tight">Day {flag.run.count} of a consecutive run from {fmtLfDay(flag.run.runStart)}. Sixth and seventh days carry premium rates - priced in the day's money below.</p>
-                          <div className="flex items-center justify-between gap-3 mt-2.5">
-                            <span className="text-[12px] font-semibold text-neutral-300">Pay as a normal day</span>
-                            <Toggle value={editDay.sixthSeventhOverride === true} onChange={(v) => updateDay({ sixthSeventhOverride: v ? true : undefined })} ariaLabel="Pay as a normal day" />
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {/* Phase 4a: single-sourced — the block lives in
-                      LongFormDayMoney, shared with the inherited day form. */}
-                  <LongFormDayMoney production={production} day={editDay} />
-                  <div className="pt-4 border-t border-neutral-800">
-                    <button type="button"
-                      onClick={() => setConfirmDeleteDayId(editDay.id)}
-                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <ITrash size={15}/>Delete day
-                    </button>
-                  </div>
-                </div>
-              </Sheet>
-            );
-          })()}
+          )}
 
           <ConfirmDialog
             open={!!confirmDeleteDayId}
