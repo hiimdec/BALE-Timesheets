@@ -24122,6 +24122,11 @@ const setDays = (updater) =>
         let excluded = 0;
         let notYetCounted = 0;
         for (const p of productions) {
+          // Sweep gate S4 (ruled): stats are built on APA concepts —
+          // resolveDay + calcForDisplay must not absorb long form days.
+          // SILENT skip, no "not yet counted" hint: a hint would raise a
+          // question the stats can't answer yet.
+          if (agreementOf(p) !== 'apa') continue;
           const userCrewIds = userCrewIdsInProduction(p, userPrefs);
           if (userCrewIds.length === 0) {
             if ((p.days || []).some(inWindow)) excluded++;
@@ -27631,6 +27636,10 @@ const confirmDelete = (p) => setConfirmOpts({
         const today = todayISO();
         const totals = {};
         for (const p of productions) {
+          // Sweep gate S3 (ruled): the APA engine must not run over long
+          // form days — a wrapped long form job would feed the month header
+          // £ and hours with garbage. Zero entry, skip.
+          if (agreementOf(p) !== 'apa') { totals[p.id] = 0; continue; }
           const crew = p.crew ?? [];
           const days = p.days ?? [];
           const raw = days.reduce((sum, d) => {
@@ -27659,6 +27668,8 @@ const confirmDelete = (p) => setConfirmOpts({
       const productionTotalsFull = useMemo(() => {
         const totals = {};
         for (const p of productions) {
+          // Sweep gate S3 (ruled) — same rule as productionTotals.
+          if (agreementOf(p) !== 'apa') { totals[p.id] = 0; continue; }
           const crew = p.crew ?? [];
           const days = p.days ?? [];
           const raw = days.reduce((sum, d) => {
@@ -27692,6 +27703,8 @@ const confirmDelete = (p) => setConfirmOpts({
         const today = todayISO();
         const hrs = {};
         for (const p of productions) {
+          // Sweep gate S3 (ruled) — same rule as productionTotals.
+          if (agreementOf(p) !== 'apa') { hrs[p.id] = 0; continue; }
           const crew = p.crew ?? [];
           const days = p.days ?? [];
           hrs[p.id] = days.reduce((sum, d) => {
@@ -27709,6 +27722,8 @@ const confirmDelete = (p) => setConfirmOpts({
         const today = todayISO();
         const hrs = {};
         for (const p of productions) {
+          // Sweep gate S3 (ruled) — same rule as productionTotals.
+          if (agreementOf(p) !== 'apa') { hrs[p.id] = 0; continue; }
           const crew = p.crew ?? [];
           const days = p.days ?? [];
           hrs[p.id] = days.reduce((sum, d) => {
@@ -27752,7 +27767,10 @@ const confirmDelete = (p) => setConfirmOpts({
         return ka < kb ? 1 : -1;
       });
 
-      const currentShoot = sorted.find(p => (p.days ?? []).some(d => d.date === todayStr)) || null;
+      // Sweep gate S1 (ruled): only an APA production can be the hero — the
+      // hero renders APA money and its Lunch Now / Wrap Now write APA fields
+      // onto day records. A long form day dated today must not be picked.
+      const currentShoot = sorted.find(p => agreementOf(p) === 'apa' && (p.days ?? []).some(d => d.date === todayStr)) || null;
 
       // In-progress productions pin above the month groups and stay out of
       // them (and out of month totals — they've earned APA-summable money
@@ -28297,6 +28315,9 @@ const confirmDelete = (p) => setConfirmOpts({
               <>
                 <div className="px-4 pb-4 flex flex-col gap-2">
                   {(() => {
+                    // Sweep gate S1 (ruled): un-wrap is APA live-state
+                    // machinery — it must not write onto long form days.
+                    if (agreementOf(actionSheet) !== 'apa') return null;
                     const t = todayISO();
                     const todayRecords = (actionSheet.days || []).filter(d => d.date === t);
                     const hasWrappedToday = todayRecords.length > 0 && todayRecords.every(d => d.wrapped === true);
@@ -28992,7 +29013,10 @@ const confirmDelete = (p) => setConfirmOpts({
         if (!IS_NATIVE) return;
         const today = todayISO();
         const prod = productions.find(p => p.id === openId);
-        if (openId && prod && (prod.days || []).some(d => d.date === today)) {
+        // Sweep gate S2 (ruled): a long form job must never become the
+        // voice-intent target — "log my times" writes APA time fields
+        // through ingest. Non-APA falls to the clear branch.
+        if (openId && prod && agreementOf(prod) === 'apa' && (prod.days || []).some(d => d.date === today)) {
           LiveActivity.setActiveShoot(openId, today);
         } else {
           LiveActivity.clearActiveShoot();

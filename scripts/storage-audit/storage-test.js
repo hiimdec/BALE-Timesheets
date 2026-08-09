@@ -6407,11 +6407,11 @@ async function main() {
       })());
 
     // ─ TT13: Siri Stage B — activeShoot snapshot + "log my times" ingestion (JS) ─
-    check('TT13a activeShoot snapshot — LiveActivity.setActiveShoot/clearActiveShoot are IS_NATIVE-gated bridges; the App effect writes {productionId,date:today} when the open shoot has a today day and clears otherwise (openId disambiguates multi-shoot-today)',
+    check('TT13a activeShoot snapshot — LiveActivity.setActiveShoot/clearActiveShoot are IS_NATIVE-gated bridges; the App effect writes {productionId,date:today} when the open APA shoot has a today day and clears otherwise (openId disambiguates multi-shoot-today; sweep gate S2: a long form job falls to the clear branch)',
       /async setActiveShoot\(productionId, date\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async clearActiveShoot\(\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /const prod = productions\.find\(p => p\.id === openId\);/.test(html) &&
-      /if \(openId && prod && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{\s*LiveActivity\.setActiveShoot\(openId, today\);\s*\} else \{\s*LiveActivity\.clearActiveShoot\(\);/.test(html));
+      /if \(openId && prod && agreementOf\(prod\) === 'apa' && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{\s*LiveActivity\.setActiveShoot\(openId, today\);\s*\} else \{\s*LiveActivity\.clearActiveShoot\(\);/.test(html));
     check('TT13b applySetTimes — Siri "log my times" rides the SHARED mapDayNow write (resolveDay→calc apply), targets the user crew (getEffectiveUserCrewId), writes TIME fields ONLY (never wrapped/lunchLogged), call-only mirrors onCallChange derivations (lunch=call+5h, 2nd break=call+11h, wrapAuto); ingest filter + dispatch include setTimes',
       (() => {
         const fn = (html.match(/function applySetTimes\(production, date, ev, userPrefs\)[\s\S]*?\n    \}/) || [''])[0];

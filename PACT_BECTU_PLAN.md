@@ -104,6 +104,23 @@ invoices) arms a fresh set of APA surfaces against that same assumption.
 Sweep output is a report with proposed fixes; the founder rules before
 anything is gated.
 
+The sweep has TWO DISTINCT CLASSES, and they need different hunting:
+
+- **Entry points** — a long form record reaches an APA screen (the invoice
+  picker, the call sheet chooser, share senders, the hero card, the Siri
+  snapshot). Found by walking navigation and event routes; fixed with
+  `agreementOf` list gates at the point of presentation or selection.
+- **Aggregates** — APA code iterates EVERY production and silently absorbs
+  long form data (productionTotals/TotalsFull/Hours/OTHours, the StatsScreen
+  enrichment loop). These route nowhere visible when they arm, so they only
+  surface by grepping the `calcForDisplay` / `resolveDay` call sites and
+  checking each iterating caller for an agreement gate.
+
+Both classes RE-ARM when the engine lands and long form days start carrying
+money: entry points because long form £ becomes meaningful to show and must
+come from the right engine, aggregates because a long form total silently
+joining an APA rollup stops being £0 noise and becomes a wrong number.
+
 ## Still open (claim-and-flag applies)
 
 The live inference list is in the Phase 1b proposal record; headline items the
