@@ -2708,40 +2708,66 @@
     // when the start day changes; anything submitted or beyond locks it.
     const weekStartDayLocked = (p) => ((p && p.weeks) || []).some(w => w && (w.status === 'submitted' || w.status === 'invoiced' || w.status === 'paid'));
 
-    // ── The week and day records (Phase 2d, schemas ruled in 2.1) ──
-    // Long form day types. The day type IS the lunch (SWD an hour, SCWD
-    // thirty minutes, CWD no formal break plus the twenty-minute rest), so
-    // the selector replaces the APA lunch-duration control. `run` drives
-    // consecutiveRunFor: worked types advance, travel and turnaround days
-    // hold (a turnaround day is a paid engaged day, not a day off — ruled,
-    // flagged as an inference in PACT_BECTU_PLAN.md), rest days and unworked
-    // bank holidays break the run, and an absent calendar day breaks it too.
+    // ── The week and day records (Phase 2d; type/shape split ruled 3c) ──
+    // Day TYPE and day SHAPE are two fields, not one: SWD/SCWD/CWD describe
+    // how the day is BROKEN, shoot/prep/pre-light describe what kind of WORK
+    // it is — a pre-light can run as a CWD. The shape shows only on shoot,
+    // prep and pre-light, and the shape IS the lunch (no duration control).
+    // The engine derives §1.5 / §2.3(b) from the type: shoot is shooting-crew
+    // work; prep and preLight are non-shooting days; travel, rest and dayOff
+    // are neither. `run` drives consecutiveRunFor: working types advance
+    // (prep days count toward §2.5's consecutive-day rule too), travel holds
+    // (ruled), rest and day off break, and an absent calendar day breaks.
+    // Turnaround days are no longer a day type: ruled Phase 3c, the app may
+    // SUGGEST one when a night run ends, never insert one.
     const LF_DAY_TYPE_META = {
-      swd:                  { label: 'SWD',  long: 'Standard working day',    detail: 'One hour lunch.',                              run: 'advance', worked: true },
-      scwd:                 { label: 'SCWD', long: 'Semi-continuous day',     detail: 'Thirty minute lunch.',                         run: 'advance', worked: true },
-      cwd:                  { label: 'CWD',  long: 'Continuous working day',  detail: 'No formal break - a twenty minute rest.',      run: 'advance', worked: true },
-      travel:               { label: 'Travel', long: 'Travel day',            detail: 'Neither advances nor breaks the run.',         run: 'hold',    worked: false },
-      turnaroundDay:        { label: 'Turnaround', long: 'Turnaround day',    detail: 'Paid engaged day after nights - holds the run.', run: 'hold',  worked: false },
-      restDay:              { label: 'Rest', long: 'Rest day',                detail: 'Day off - resets the run.',                    run: 'break',   worked: false },
-      bankHolidayNotWorked: { label: 'BH off', long: 'Bank holiday (not worked)', detail: 'Day off - resets the run.',                run: 'break',   worked: false },
+      shoot:    { label: 'Shoot',     long: 'Shoot day',     detail: 'A shooting-crew working day.',            run: 'advance', worked: true,  shaped: true,  shooting: true },
+      prep:     { label: 'Prep',      long: 'Prep day',      detail: 'A non-shooting working day.',             run: 'advance', worked: true,  shaped: true,  shooting: false },
+      preLight: { label: 'Pre-light', long: 'Pre-light day', detail: 'A non-shooting working day.',             run: 'advance', worked: true,  shaped: true,  shooting: false },
+      travel:   { label: 'Travel',    long: 'Travel day',    detail: 'Neither advances nor breaks the run.',    run: 'hold',    worked: false, shaped: false, shooting: false },
+      rest:     { label: 'Rest',      long: 'Rest day',      detail: 'Scheduled day off - resets the run.',     run: 'break',   worked: false, shaped: false, shooting: false },
+      dayOff:   { label: 'Day off',   long: 'Day off',       detail: 'Not engaged - resets the run.',           run: 'break',   worked: false, shaped: false, shooting: false },
     };
-    const LF_DAY_TYPE_ORDER = ['swd', 'scwd', 'cwd', 'travel', 'turnaroundDay', 'restDay', 'bankHolidayNotWorked'];
+    const LF_DAY_TYPE_ORDER = ['shoot', 'prep', 'preLight', 'travel', 'rest', 'dayOff'];
+    const LF_DAY_SHAPE_META = {
+      swd:  { label: 'SWD',  long: 'Standard working day',   detail: 'One hour lunch.' },
+      scwd: { label: 'SCWD', long: 'Semi-continuous day',    detail: 'Thirty minute lunch.' },
+      cwd:  { label: 'CWD',  long: 'Continuous working day', detail: 'No formal break - a twenty minute rest.' },
+    };
+    const LF_DAY_SHAPE_ORDER = ['swd', 'scwd', 'cwd'];
 
     // The long form day record. NO callTime, NO preCallTime — pinned LF4;
     // the engine slice adds the loud failure. cameraOtCalledMins,
-    // dayAgreementClass, dayContractDailyRate and sixthSeventhOverride are
-    // written only when used (absent by default, the scheduledFilmingDays
-    // pattern).
-    function makeLongFormDay(crewId, date, dayType = 'swd') {
+    // dayAgreementClass, dayContractDailyRate, sixthSeventhOverride and
+    // lunchMinsTaken are written only when used (absent by default, the
+    // scheduledFilmingDays pattern).
+    function makeLongFormDay(crewId, date, dayType = 'shoot', dayShape = 'swd') {
       return {
-        id: uid(), crewId, date, dayType,
+        id: uid(), crewId, date, dayType, dayShape,
         unitCallTime: '08:00',
         individualCallTime: null,     // null = the unit call applies to you
-        lunchTime: '13:00',           // when lunch was CALLED — duration is the day type
+        lunchTime: '13:00',           // when lunch was CALLED — duration is the shape
         cameraWrapTime: null,         // film: a real rate boundary
         wrapTime: '19:00',
         wrapped: date < todayISO(),
       };
+    }
+    // Phase 3c migration: the original day records carried ONE field where
+    // there are two. Explicit mapping, applied idempotently in migrate's
+    // long form branch (nothing shipped; local test records exist). The
+    // retired turnaroundDay type maps to `rest` — the concept returns as a
+    // SUGGESTION, never a record type, and a stored one was test data.
+    const LF_DAY_TYPE_MIGRATION = {
+      swd: ['shoot', 'swd'], scwd: ['shoot', 'scwd'], cwd: ['shoot', 'cwd'],
+      travel: ['travel', null], turnaroundDay: ['rest', null],
+      restDay: ['rest', null], bankHolidayNotWorked: ['rest', null],
+    };
+    function migrateLongFormDay(d) {
+      const m = LF_DAY_TYPE_MIGRATION[d.dayType];
+      if (!m) return d;                       // already the new shape
+      const n = { ...d, dayType: m[0] };
+      if (m[1]) n.dayShape = m[1]; else delete n.dayShape;
+      return n;
     }
 
     // Week identity is derived from weekStartDay; membership is BY DATE
@@ -4974,6 +5000,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // overwrites startDate (= ppStartDate) with the earliest day date.
       // Behavioural pin LF7 proves all three stay unharmed.
       const isLongFormRecord = agreementOf(p) !== 'apa';
+      // Phase 3c: long form days migrate the single dayType field to the
+      // type/shape pair — explicit and idempotent (LF_DAY_TYPE_MIGRATION),
+      // the one transformation the long form branch performs. APA days
+      // never enter this map.
+      const lfDays = isLongFormRecord ? days.map(migrateLongFormDay) : days;
 
       // dayDefaults backfill: derive from existing crew records per date. Idempotent.
       // ORDER MATTERS (O5): backfill runs BEFORE the time-field collapse below so
@@ -5095,7 +5126,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         cancellationData: p.cancellationData ?? null,
         toAddress: _client.toAddress,
         invoices: (p.invoices || []).map(inv => migrateInvoice(inv, p)),
-        days,
+        days: lfDays,
       };
     };
 
@@ -20851,7 +20882,9 @@ const setDays = (updater) =>
                             {flag && (
                               <span className="text-[10px] uppercase tracking-wide font-bold text-tm-warn bg-tm-warn/10 border border-tm-warn/30 rounded-md px-1.5 py-[3px]">{flag.label}</span>
                             )}
-                            <span className="text-[10px] uppercase tracking-wide font-bold text-neutral-400 bg-neutral-500/10 border border-neutral-500/30 rounded-md px-1.5 py-[3px]">{m.label || d.dayType}</span>
+                            {/* Shaped days chip their SHAPE (the pay-relevant
+                                fact); the rest chip their type. */}
+                            <span className="text-[10px] uppercase tracking-wide font-bold text-neutral-400 bg-neutral-500/10 border border-neutral-500/30 rounded-md px-1.5 py-[3px]">{m.shaped ? ((LF_DAY_SHAPE_META[d.dayShape] || {}).label || 'SWD') : (m.label || d.dayType)}</span>
                           </div>
                         </div>
                       </button>
@@ -20917,8 +20950,34 @@ const setDays = (updater) =>
                         {LF_DAY_TYPE_ORDER.map(k => <option key={k} value={k}>{LF_DAY_TYPE_META[k].long}</option>)}
                       </Select>
                     </Field>
-                    <p className="text-[10px] text-neutral-600 mt-1 leading-tight">{m.detail} The day type is the lunch - there's no separate duration to set.</p>
+                    <p className="text-[10px] text-neutral-600 mt-1 leading-tight">{m.detail}</p>
                   </div>
+                  {m.shaped && (() => {
+                    // Type says what kind of work; SHAPE says how the day is
+                    // broken, and the shape IS the lunch. On non-shooting
+                    // types (prep, pre-light) SWD is the standard (TV
+                    // §1.5(b)) and the other two read as the exception they
+                    // are (§1.5(c)) — marked in the option and a hint line,
+                    // never a nag.
+                    const nonShooting = !m.shooting;
+                    const shape = editDay.dayShape || 'swd';
+                    const sm = LF_DAY_SHAPE_META[shape] || {};
+                    return (
+                      <div>
+                        <Field label="Day shape">
+                          <Select value={shape} onChange={(e) => updateDay({ dayShape: e.target.value })}>
+                            {LF_DAY_SHAPE_ORDER.map(k => (
+                              <option key={k} value={k}>{LF_DAY_SHAPE_META[k].long}{nonShooting && k !== 'swd' ? ' - exceptional' : ''}</option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <p className="text-[10px] text-neutral-600 mt-1 leading-tight">
+                          {sm.detail} The shape is the lunch - there's no separate duration to set.
+                          {nonShooting && shape !== 'swd' && production.agreement === 'pact-tv' ? ' Non-shooting SCWD and CWD are the exception and need prior written approval (TV §1.5(c)-(d)).' : ''}
+                        </p>
+                      </div>
+                    );
+                  })()}
                   {m.worked && (
                     <>
                       <Field label="Unit call">

@@ -2360,15 +2360,22 @@ async function main() {
         days: [
           { id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
           { id: 'd2', crewId: 'c1', date: '2026-08-06', dayType: 'swd', unitCallTime: '08:00', individualCallTime: '07:30', lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
+          { id: 'd3', crewId: 'c1', date: '2026-08-07', dayType: 'turnaroundDay', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
+          { id: 'd4', crewId: 'c1', date: '2026-08-08', dayType: 'prep', dayShape: 'cwd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
         ],
       };
       const lfOut = JSON.parse(JSON.stringify(mig(lfIn)));
       const lfDays = lfOut.days || [];
       check('LF7a long form production through migrate gains NO callTime/preCallTime on any day',
-        lfDays.length === 2 && lfDays.every(d => !('callTime' in d) && !('preCallTime' in d)),
+        lfDays.length === 4 && lfDays.every(d => !('callTime' in d) && !('preCallTime' in d)),
         JSON.stringify(lfDays.map(d => Object.keys(d))));
-      check('LF7b long form days KEEP wrapTime and dayType through migrate (the collapse must not strip them)',
-        lfDays.every(d => d.wrapTime === '19:00' && d.dayType === 'swd'));
+      check('LF7b migrate performs the EXPLICIT type/shape migration and nothing else: swd becomes shoot/swd, turnaroundDay becomes rest (shape-free), a new-shape day passes through untouched, wrapTime survives',
+        lfDays.every(d => d.wrapTime === '19:00') &&
+        lfDays[0].dayType === 'shoot' && lfDays[0].dayShape === 'swd' &&
+        lfDays[1].dayType === 'shoot' && lfDays[1].dayShape === 'swd' &&
+        lfDays[2].dayType === 'rest' && !('dayShape' in lfDays[2]) &&
+        lfDays[3].dayType === 'prep' && lfDays[3].dayShape === 'cwd',
+        JSON.stringify(lfDays.map(d => [d.dayType, d.dayShape])));
       check('LF7c migrate mints NO dayDefaults entries on a long form production',
         Object.keys(lfOut.dayDefaults || {}).length === 0,
         `dayDefaults keys: ${Object.keys(lfOut.dayDefaults || {}).join(',') || 'none'}`);
@@ -2380,8 +2387,8 @@ async function main() {
     // LF4 — the long form day record has NO callTime and NO preCallTime,
     // by source and by behaviour. The loud engine failure lands with the
     // engine slice; until then this pin is the guard.
-    const dayFactorySrc = (html.match(/function makeLongFormDay\(crewId, date, dayType = 'swd'\) \{[\s\S]*?\n    \}/) || [''])[0];
-    check('LF4a makeLongFormDay source found and contains NO callTime/preCallTime assignment',
+    const dayFactorySrc = (html.match(/function makeLongFormDay\(crewId, date, dayType = 'shoot', dayShape = 'swd'\) \{[\s\S]*?\n    \}/) || [''])[0];
+    check('LF4a makeLongFormDay source found (type/shape signature) and contains NO callTime/preCallTime assignment',
       dayFactorySrc.length > 100 &&
       !/\bcallTime\s*:/.test(dayFactorySrc) &&
       !/\bpreCallTime\s*:/.test(dayFactorySrc),
@@ -2389,11 +2396,11 @@ async function main() {
     const mkDay = sb.__makeLongFormDay;
     if (typeof mkDay === 'function') {
       const d = mkDay('c1', '2026-08-05');
-      check('LF4b factory day has unitCallTime + individualCallTime + dayType, and NO callTime/preCallTime',
-        d.unitCallTime === '08:00' && d.individualCallTime === null && d.dayType === 'swd' &&
+      check('LF4b factory day defaults dayType shoot + dayShape swd, has unitCallTime + individualCallTime, and NO callTime/preCallTime',
+        d.unitCallTime === '08:00' && d.individualCallTime === null && d.dayType === 'shoot' && d.dayShape === 'swd' &&
         !('callTime' in d) && !('preCallTime' in d),
         JSON.stringify(Object.keys(d)));
-    } else check('LF4b factory day has unitCallTime + individualCallTime + dayType, and NO callTime/preCallTime', false, 'factory not exposed');
+    } else check('LF4b factory day defaults dayType shoot + dayShape swd, has unitCallTime + individualCallTime, and NO callTime/preCallTime', false, 'factory not exposed');
 
     // LF5 — duplicate resets `weeks` CONDITIONALLY (an APA copy must not
     // gain the key) and drops jobWrapped.
@@ -2434,29 +2441,33 @@ async function main() {
       const P = (types) => ({
         days: Object.entries(types).map(([date, dayType], i) => ({ id: 'd' + i, crewId: 'c1', date, dayType })),
       });
-      const six = P({ '2026-08-03': 'swd', '2026-08-04': 'swd', '2026-08-05': 'scwd', '2026-08-06': 'cwd', '2026-08-07': 'swd', '2026-08-08': 'swd' });
+      const six = P({ '2026-08-03': 'shoot', '2026-08-04': 'shoot', '2026-08-05': 'shoot', '2026-08-06': 'shoot', '2026-08-07': 'shoot', '2026-08-08': 'shoot' });
       const r6 = runFor(six, 'c1', '2026-08-08');
       check('LF8a six consecutive worked days count 6, runStart at the first (crossing a week boundary is irrelevant to the walk)',
         r6.count === 6 && r6.advances === true && r6.runStart === '2026-08-03', JSON.stringify(r6));
-      const withTravel = P({ '2026-08-03': 'swd', '2026-08-04': 'travel', '2026-08-05': 'swd' });
+      const withTravel = P({ '2026-08-03': 'shoot', '2026-08-04': 'travel', '2026-08-05': 'shoot' });
       const rT = runFor(withTravel, 'c1', '2026-08-05');
       check('LF8b a travel day HOLDS: worked-travel-worked counts 2, run started before the travel day',
         rT.count === 2 && rT.runStart === '2026-08-03', JSON.stringify(rT));
-      const withTurn = P({ '2026-08-03': 'swd', '2026-08-04': 'turnaroundDay', '2026-08-05': 'swd' });
-      const rTu = runFor(withTurn, 'c1', '2026-08-05');
-      check('LF8c a turnaround day HOLDS like travel (ruled: paid engaged day, not a day off)',
-        rTu.count === 2 && rTu.runStart === '2026-08-03', JSON.stringify(rTu));
-      const withRest = P({ '2026-08-03': 'swd', '2026-08-04': 'restDay', '2026-08-05': 'swd' });
+      const withPrep = P({ '2026-08-03': 'prep', '2026-08-04': 'preLight', '2026-08-05': 'shoot' });
+      const rP = runFor(withPrep, 'c1', '2026-08-05');
+      check('LF8c prep and pre-light ADVANCE the run like shoot days (TV §2.5 reaches non-shooting days)',
+        rP.count === 3 && rP.runStart === '2026-08-03', JSON.stringify(rP));
+      const withRest = P({ '2026-08-03': 'shoot', '2026-08-04': 'rest', '2026-08-05': 'shoot' });
       const rR = runFor(withRest, 'c1', '2026-08-05');
       check('LF8d a rest day BREAKS: the run restarts after it',
         rR.count === 1 && rR.runStart === '2026-08-05', JSON.stringify(rR));
-      const withGap = P({ '2026-08-03': 'swd', '2026-08-05': 'swd' });
+      const withGap = P({ '2026-08-03': 'shoot', '2026-08-05': 'shoot' });
       const rG = runFor(withGap, 'c1', '2026-08-05');
-      check('LF8e an ABSENT calendar day breaks the run (no record = day off)',
+      check('LF8e an ABSENT calendar day breaks the run (no record = day off; gap-surfacing proposal DROPPED, ruled Phase 3c)',
         rG.count === 1 && rG.runStart === '2026-08-05', JSON.stringify(rG));
       const rHold = runFor(withTravel, 'c1', '2026-08-04');
       check('LF8f queried ON a travel day: advances=false, count is the run behind it',
         rHold.advances === false && rHold.count === 1, JSON.stringify(rHold));
+      const withDayOff = P({ '2026-08-03': 'shoot', '2026-08-04': 'dayOff', '2026-08-05': 'shoot' });
+      const rD = runFor(withDayOff, 'c1', '2026-08-05');
+      check('LF8g a day off BREAKS like a rest day',
+        rD.count === 1 && rD.runStart === '2026-08-05', JSON.stringify(rD));
     } else {
       for (const l of ['LF8a', 'LF8b', 'LF8c', 'LF8d', 'LF8e', 'LF8f']) check(l + ' consecutiveRunFor exposed', false, 'selector not exposed');
     }
@@ -2465,7 +2476,7 @@ async function main() {
     // draft-only re-derivation carrying the election by overlap.
     const ensure = sb.__ensureLfWeek, prune = sb.__pruneLfWeeks, rederive = sb.__rederiveLfDraftWeeks;
     if (typeof ensure === 'function' && typeof prune === 'function' && typeof rederive === 'function') {
-      const base = { weekStartDay: 'monday', weeks: [], days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'swd' }] };
+      const base = { weekStartDay: 'monday', weeks: [], days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'shoot' }] };
       const minted = ensure(base, 'c1', '2026-08-05');
       const twice = ensure(minted, 'c1', '2026-08-07');
       check('LF9a lazy mint: one week for the containing range, idempotent for a second date in the same range',
@@ -2478,7 +2489,7 @@ async function main() {
       const re = rederive({ ...submitted }, 'sunday');
       check('LF9c re-derive leaves submitted weeks untouched (they lock the setting; only drafts re-bound)',
         re.weeks.length === 1 && re.weeks[0].startDate === minted.weeks[0].startDate && re.weeks[0].status === 'submitted');
-      const draftElected = { weekStartDay: 'monday', days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'swd' }], weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'draft', invoiceId: null, nightWork: { settlement: 'paid' } }] };
+      const draftElected = { weekStartDay: 'monday', days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'shoot' }], weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'draft', invoiceId: null, nightWork: { settlement: 'paid' } }] };
       const re2 = rederive(draftElected, 'sunday');
       check('LF9d re-derive re-bounds a draft week to the new start day and carries the night work election by overlap',
         re2.weekStartDay === 'sunday' && re2.weeks.length === 1 &&
