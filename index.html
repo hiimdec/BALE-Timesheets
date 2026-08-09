@@ -21525,8 +21525,23 @@ const setDays = (updater) =>
                 {isTV && typeMeta.shooting && renderChip('camOt', 'Camera OT called', camOtOn, camOtOn ? `${d.cameraOtCalledMins}m` : null)}
                 {renderChip('stepUp', 'Class / rate', stepUpOn, stepUpOn ? ((AGREEMENT_CLASS_META[d.dayAgreementClass] || {}).label || (d.dayContractDailyRate !== undefined ? fmtGBP(d.dayContractDailyRate) : null)) : null)}
                 {runFlagged && renderChip('sixSeven', runLabel, d.sixthSeventhOverride === true, d.sixthSeventhOverride ? 'waived' : null)}
+                {renderChip('boxRental', 'Box rental', d.boxRentalDay !== undefined, d.boxRentalDay !== undefined ? fmtGBP(d.boxRentalDay) : null)}
                 {notesChipAndPanel}
               </div>
+              {expandedChips.has('boxRental') && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12px] font-semibold text-neutral-300">Different box rental today</span>
+                    <Toggle value={d.boxRentalDay !== undefined} onChange={(v) => set({ boxRentalDay: v ? 0 : undefined })} ariaLabel="Different box rental today" />
+                  </div>
+                  {d.boxRentalDay !== undefined && (
+                    <Field label="Box rental for the day (£)">
+                      <Input type="number" min="0" step="1" value={d.boxRentalDay} onChange={(e) => set({ boxRentalDay: Math.max(0, Number(e.target.value) || 0) })} />
+                    </Field>
+                  )}
+                  <p className="text-[10px] text-neutral-600 leading-tight">Kit is usually weekly - set that on the week. This overrides just this day (film §5.9 prices a daily's box pro-rata).</p>
+                </div>
+              )}
               {notesPanel}
               {expandedChips.has('curtail') && (
                 <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
@@ -21976,6 +21991,30 @@ const setDays = (updater) =>
                     <div className="text-[10px] text-neutral-500 mt-0.5">{daysInWeek(openWeek).length === 1 ? '1 day' : `${daysInWeek(openWeek).length} days`}</div>
                   </div>
                   <span className={`text-[10px] uppercase tracking-wide font-bold border rounded-md px-1.5 py-[3px] flex-shrink-0 ${WEEK_STATUS_CHIP[openWeek.status] || WEEK_STATUS_CHIP.draft}`}>{openWeek.status}</span>
+                </div>
+                {/* Box rental (Phase 4b 0.3, ruled): kit is usually WEEKLY
+                    with a daily option — the amount lives on the week
+                    (absent when unused), days can override in the day
+                    editor, and it reaches the invoice as its own group
+                    (film §5.9 prices a daily's box pro-rata to the week). */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 mb-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Box rental (weekly)</div>
+                      <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">Invoiced as its own group. A day can carry its own figure in the day editor.</p>
+                    </div>
+                    <div className="w-24 flex-shrink-0">
+                      <Input type="number" min="0" step="1" placeholder="-" value={openWeek.boxRentalWeekly ?? ''} onChange={(e) => {
+                        const v = Number(e.target.value) || 0;
+                        setProduction(p => ({ ...p, weeks: (p.weeks || []).map(w => {
+                          if (w.id !== openWeek.id) return w;
+                          const n = { ...w };
+                          if (v > 0) n.boxRentalWeekly = v; else delete n.boxRentalWeekly;
+                          return n;
+                        }) }));
+                      }} />
+                    </div>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   {daysInWeek(openWeek).map(d => {
