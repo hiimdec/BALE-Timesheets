@@ -21911,16 +21911,13 @@ const setDays = (updater) =>
             </div>
           ) : (
           <div className="max-w-2xl mx-auto px-4 py-6">
-            {/* The stamped facts — proof the record took, and the reference
-                point for everything the later slices compute. */}
-            <div className="flex flex-wrap items-center gap-1.5 mb-1">
-              {/* Highlighter yellow (ruled): visible without reading as the
-                  OT/warning orange - yellow-400 held apart from tm-warn in
-                  the side-by-side render; cooler/lighter variants rejected. */}
+            {/* Chrome Version B (ruled Phase 4a): the beta chip keeps chip
+                weight — it's the only element with a live job — and the four
+                set-once facts collapse to ONE quiet neutral line. The fuller
+                wording lives in Job settings, one tap away. */}
+            <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
               <span className="text-[10px] uppercase tracking-wide font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-md px-1.5 py-[3px]">Beta</span>
-              {meta.map(m => (
-                <span key={m} className="text-[10px] uppercase tracking-wide font-bold text-sky-500 bg-sky-500/10 border border-sky-500/25 rounded-md px-1.5 py-[3px]">{m}</span>
-              ))}
+              <span className="text-[11px] text-neutral-400">{meta.join(' · ')}</span>
             </div>
             <div className="text-[11px] text-neutral-500 mb-8">
               {me.role || 'Crew'}{me.agreementClass && me.agreementClass !== 'standard' ? ` · ${(AGREEMENT_CLASS_META[me.agreementClass] || {}).label || me.agreementClass}` : ''} · PP from {fmtDateShort(production.ppStartDate)}
