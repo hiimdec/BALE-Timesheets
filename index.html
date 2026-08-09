@@ -21172,6 +21172,399 @@ const setDays = (updater) =>
     // form record (the SoloDayPage solo mount would auto-create an APA day
     // on it). Slice 1 shows the stamped facts and an honest empty state:
     // no weeks, no days, no calculator yet.
+    // ── LongFormDayMoney (Phase 4a): the day's money block, extracted from
+    //    the Phase 3d editor sheet so the form bottom and the pill's centre
+    //    tap render the SAME surface. Treatment unchanged and device-
+    //    verified: three tiers, unclaimable struck and excluded with its
+    //    citation, §7.11 unpriced "agreed locally". ──
+    function LongFormDayMoney({ production, day }) {
+      let calc = null, calcError = null;
+      try { calc = longFormCalcForDay(production, day); } catch (e) { calcError = (e && e.message) || 'The engine refused this day.'; }
+      if (calcError) return (
+        <div className="pt-4 border-t border-neutral-800">
+          <p className="text-[11px] text-tm-pen leading-tight">{calcError}</p>
+        </div>
+      );
+      if (!calc || (calc.lines.length === 0 && calc.flags.length === 0)) return null;
+      const FlagNote = ({ f }) => (
+        <p className={`text-[10px] leading-tight mt-0.5 ${f.tone === 'assumption' ? 'text-tm-warn' : f.tone === 'unclaimable' || f.tone === 'unpriced' ? 'text-neutral-400' : 'text-neutral-500'}`}>
+          {f.message}
+        </p>
+      );
+      return (
+        <div className="pt-4 border-t border-neutral-800">
+          <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-2">The day's money</div>
+          <div className="flex flex-col gap-2.5">
+            {calc.lines.map((l, i) => (
+              <div key={i}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className={`text-[12px] ${l.unclaimable ? 'text-neutral-500' : 'text-neutral-200'}`}>
+                    {l.label}
+                    {l.ref && <span className="text-neutral-600 text-[10px]"> · {l.ref.replace(/ \(.*\)$/, '')}</span>}
+                  </span>
+                  {l.unpriced ? (
+                    <span className="text-[12px] italic text-tm-warn flex-shrink-0">agreed locally</span>
+                  ) : (
+                    <span className={`text-[13px] font-mono flex-shrink-0 ${l.unclaimable ? 'text-neutral-500 line-through' : 'text-neutral-100'}`}>{fmtGBP(l.amount || 0)}</span>
+                  )}
+                </div>
+                {l.rateDesc && !l.unpriced && (
+                  <p className="text-[10px] text-neutral-600 leading-tight">{l.rateDesc}{l.unclaimable ? ' - not claimable' : ''}</p>
+                )}
+                {(l.flags || []).map((f, j) => <FlagNote key={j} f={f} />)}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-baseline justify-between gap-3 mt-3 pt-2.5 border-t border-neutral-800">
+            <span className="text-[12px] font-bold text-neutral-100">Day total</span>
+            <span className="text-[15px] font-mono font-bold text-neutral-100">{fmtGBP(calc.total)}</span>
+          </div>
+          {calc.flags.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1">
+              {calc.flags.map((f, i) => <FlagNote key={i} f={f} />)}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── LongFormDayEntryForm (Phase 4a): the APA day form with only the
+    //    ruled adjustments. Composes the SAME extracted surfaces — TimeTile,
+    //    the shared wheel pattern, the LUNCH card layout, StatusMsg, the
+    //    value-tinted chip row — so the feel is inherited, not imitated.
+    //    Differences, and only these: the lunch footer select is the DAY
+    //    SHAPE (the shape IS the lunch); unit call in the main flow with
+    //    individual call behind the differs toggle (no preCallTime, ever);
+    //    film carries CAMERA WRAP then WRAP as two rate boundaries (TV keeps
+    //    one wrap — its split lives in the called-minutes chip); the chip
+    //    row is the long form set; the money block sits at the bottom. ──
+    function LongFormDayEntryForm({ production, day, onChange, isToday, showToast }) {
+      const d = day;
+      const set = (patch) => onChange(patch);
+      const isTV = !LONGFORM_AGREEMENTS[production.agreementVersion] ? false : !LONGFORM_AGREEMENTS[production.agreementVersion].overtime.camera;
+      const typeMeta = LF_DAY_TYPE_META[d.dayType] || LF_DAY_TYPE_META.shoot;
+      const shapeKey = d.dayShape || 'swd';
+      const shapeMeta = LF_DAY_SHAPE_META[shapeKey] || LF_DAY_SHAPE_META.swd;
+      const crew = (production.crew || []).find(c => c.id === d.crewId) || (production.crew || [])[0] || null;
+
+      // The engine's own context supplies the OT threshold for the WRAP · OT
+      // tint (2.6) — the long form threshold from the INDIVIDUAL call.
+      let ctx = null;
+      try { ctx = assembleLfDayContext(production, d, crew); } catch (_) { ctx = null; }
+      const otStartAbs = ctx ? (ctx.individualCall + (ctx.dayShape.otTriggerElapsedHours + ctx.achHours) * 60) : null;
+      const relTo = (hhmm) => (ctx && hhmm) ? lfRel(hhmm, ctx.dayStartMins) : null;
+      const wrapAbs = relTo(d.wrapTime);
+      const camWrapAbs = relTo(d.cameraWrapTime);
+      const wrapInOT = otStartAbs !== null && wrapAbs !== null && wrapAbs > (isTV ? otStartAbs : Math.max(otStartAbs, camWrapAbs ?? otStartAbs));
+      const camInOT = !isTV && otStartAbs !== null && camWrapAbs !== null && camWrapAbs > otStartAbs;
+
+      const computeNowHHMM = () => {
+        const now = new Date();
+        return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      };
+
+      // Shared wheel for the tile pair/trio (the APA callWrapOpen pattern).
+      const [openTile, setOpenTile] = useState(null);   // null | 'unit' | 'cameraWrap' | 'wrap'
+      const tilesRef = useRef(null);
+      useEffect(() => {
+        if (!openTile) return;
+        const onDoc = (e) => { if (tilesRef.current && !tilesRef.current.contains(e.target)) setOpenTile(null); };
+        document.addEventListener('pointerdown', onDoc, true);
+        return () => document.removeEventListener('pointerdown', onDoc, true);
+      }, [openTile]);
+      const [lunchOpen, setLunchOpen] = useState(false);
+      const lunchRef = useRef(null);
+      useEffect(() => {
+        if (!lunchOpen) return;
+        const onDoc = (e) => { if (lunchRef.current && !lunchRef.current.contains(e.target)) setLunchOpen(false); };
+        document.addEventListener('pointerdown', onDoc, true);
+        return () => document.removeEventListener('pointerdown', onDoc, true);
+      }, [lunchOpen]);
+      const [expandedChips, setExpandedChips] = useState(() => new Set());
+      useEffect(() => { setExpandedChips(new Set()); setOpenTile(null); setLunchOpen(false); }, [d.id]);
+      const toggleChip = (key) => setExpandedChips(prev => prev.has(key) ? new Set() : new Set([key]));
+      const renderChip = (key, label, isSet, summary) => (
+        <button
+          type="button"
+          onClick={() => { if (expandedChips.has(key) && isSet) haptic.light(); toggleChip(key); }}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+            isSet
+              ? 'bg-sky-500/[0.06] border-sky-500/30 text-sky-400 hover:bg-sky-500/[0.1]'
+              : 'bg-tm-card-2 border-neutral-800 text-neutral-500 hover:border-neutral-700 hover:text-neutral-400'
+          }`}
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+        >
+          <span className="uppercase tracking-wider">{label}</span>
+          {isSet && summary && <span className="font-mono text-[10px] text-neutral-300 tabular-nums">{summary}</span>}
+        </button>
+      );
+
+      const activeValue = openTile === 'unit' ? (d.unitCallTime ?? '')
+        : openTile === 'cameraWrap' ? (d.cameraWrapTime ?? '')
+        : openTile === 'wrap' ? (d.wrapTime ?? '')
+        : '';
+      const onActiveChange = (e) => {
+        if (openTile === 'unit') set({ unitCallTime: e.target.value });
+        else if (openTile === 'cameraWrap') set({ cameraWrapTime: e.target.value });
+        else if (openTile === 'wrap') set({ wrapTime: e.target.value });
+      };
+
+      const indivOn = d.individualCallTime != null;
+      const lunchEnd = (() => {
+        const t = lfMins(d.lunchTime);
+        return (t !== null && shapeMeta && shapeKey !== 'cwd') ? toHHMM((t + (shapeKey === 'scwd' ? 30 : 60)) / 60) : '-';
+      })();
+      const curtailOn = d.lunchMinsTaken !== undefined;
+      const fullLunchMins = shapeKey === 'scwd' ? 30 : 60;
+      const camOtOn = d.cameraOtCalledMins !== undefined;
+      const stepUpOn = d.dayAgreementClass !== undefined || d.dayContractDailyRate !== undefined;
+      const classes = AGREEMENT_CLASSES[production.agreement] || ['standard'];
+
+      // Run flags for the 6th/7th chip + notice (display only — the engine
+      // prices them in the money block).
+      const run = consecutiveRunFor(production, d.crewId, d.date);
+      const runFlagged = run.advances && run.count >= 6 && typeMeta.run === 'advance';
+      const runLabel = run.count === 6 ? '6th day' : `${run.count}th day`;
+
+      // Engine flags → StatusMsg lines (the APA pattern: consequences named
+      // where you type, clause references included).
+      let calcFlags = [];
+      try { calcFlags = (longFormCalcForDay(production, d).flags || []); } catch (_) { calcFlags = []; }
+
+      return (
+        <div className="space-y-4">
+          {typeMeta.worked && (
+            <SectionCard title="Times">
+              <div className="space-y-3">
+                <div ref={tilesRef} className="grid grid-cols-2 gap-3">
+                  <TimeTile
+                    label="UNIT CALL"
+                    value={d.unitCallTime ?? ''}
+                    onNow={isToday ? () => { haptic.heavy(); const t = computeNowHHMM(); set({ unitCallTime: t }); showToast?.(`Unit call ${t}`); } : null}
+                    onOpen={() => setOpenTile(s => s === 'unit' ? null : 'unit')}
+                    active={openTile === 'unit'}
+                    onChange={(e) => set({ unitCallTime: e.target.value })}
+                  />
+                  {!isTV ? (
+                    <TimeTile
+                      label={`CAMERA WRAP${camInOT ? ' · OT' : ''}`}
+                      value={d.cameraWrapTime ?? ''}
+                      tinted={camInOT}
+                      nowTone="warn"
+                      onNow={isToday ? () => { haptic.stamp(); const t = computeNowHHMM(); set({ cameraWrapTime: t }); showToast?.(`Camera wrap ${t}`); } : null}
+                      onOpen={() => setOpenTile(s => s === 'cameraWrap' ? null : 'cameraWrap')}
+                      active={openTile === 'cameraWrap'}
+                      onChange={(e) => set({ cameraWrapTime: e.target.value })}
+                      hint="Camera OT runs to here at 2T"
+                    />
+                  ) : (
+                    <TimeTile
+                      label={`WRAP${wrapInOT ? ' · OT' : ''}`}
+                      value={d.wrapTime ?? ''}
+                      tinted={wrapInOT}
+                      nowTone="warn"
+                      onNow={isToday ? () => { haptic.stamp(); const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); } : null}
+                      onOpen={() => setOpenTile(s => s === 'wrap' ? null : 'wrap')}
+                      active={openTile === 'wrap'}
+                      onChange={(e) => set({ wrapTime: e.target.value })}
+                    />
+                  )}
+                  {!isTV && (
+                    <div className="col-span-2">
+                      <TimeTile
+                        label={`WRAP${wrapInOT ? ' · OT' : ''}`}
+                        value={d.wrapTime ?? ''}
+                        tinted={wrapInOT}
+                        nowTone="warn"
+                        onNow={isToday ? () => { haptic.stamp(); const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); } : null}
+                        onOpen={() => setOpenTile(s => s === 'wrap' ? null : 'wrap')}
+                        active={openTile === 'wrap'}
+                        onChange={(e) => set({ wrapTime: e.target.value })}
+                        hint="Non-camera overtime runs on this tail at 1.5T"
+                      />
+                    </div>
+                  )}
+                  {HAS_COARSE_POINTER && (
+                    <WheelExpand open={!!openTile} className="col-span-2">
+                      <TimeWheelPanel value={activeValue} onChange={onActiveChange} onClose={() => setOpenTile(null)} />
+                    </WheelExpand>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <span className="text-[12px] font-semibold text-neutral-300">My call differs from the unit call</span>
+                  <Toggle value={indivOn} onChange={(v) => set({ individualCallTime: v ? (d.unitCallTime || '08:00') : null })} ariaLabel="Individual call differs" />
+                </div>
+                {indivOn && (
+                  <Field label="Individual call">
+                    <TimeInput value={d.individualCallTime || ''} onChange={(e) => set({ individualCallTime: e.target.value })} />
+                  </Field>
+                )}
+
+                {shapeKey !== 'cwd' ? (
+                  <div ref={lunchRef} className="border-t border-neutral-800 pt-3 mt-1">
+                    <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold">LUNCH</span>
+                        {(() => {
+                          const deadline = ctx ? ctx.unitCall + 360 : null;
+                          const called = ctx && d.lunchTime ? lfRel(d.lunchTime, ctx.dayStartMins) : null;
+                          const chip = curtailOn
+                            ? { label: 'CURTAILED', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/35' }
+                            : (deadline !== null && called !== null && called > deadline)
+                              ? { label: 'LATE', cls: 'bg-tm-warn/10 text-tm-warn border-tm-warn/35' }
+                            : (called !== null)
+                              ? { label: 'ON TIME', cls: 'bg-tm-good/10 text-tm-good border-tm-good/35' }
+                            : null;
+                          return chip ? <span className={`text-[9px] tracking-[0.12em] font-bold uppercase px-1.5 py-0.5 rounded border ${chip.cls}`}>{chip.label}</span> : null;
+                        })()}
+                      </div>
+                      <div className="flex items-center justify-center gap-3.5 pt-1 pb-3">
+                        {HAS_COARSE_POINTER ? (
+                          <TimeTrigger
+                            value={d.lunchTime ?? ''}
+                            onClick={() => setLunchOpen(o => !o)}
+                            active={lunchOpen}
+                            className="!text-[26px] !leading-none !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 font-mono font-bold text-center"
+                            style={{ width: '92px' }}
+                          />
+                        ) : (
+                          <TimeInput
+                            value={d.lunchTime ?? ''}
+                            onChange={(e) => set({ lunchTime: e.target.value })}
+                            className="!text-[26px] !leading-none !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 font-mono font-bold text-center"
+                            style={{ width: '92px' }}
+                          />
+                        )}
+                        <span className="text-neutral-500" style={{ fontSize: '18px', lineHeight: 1 }}>→</span>
+                        <span className="text-[26px] leading-none font-mono font-bold text-neutral-100" style={{ width: '92px', textAlign: 'center' }}>{lunchEnd}</span>
+                      </div>
+                      {HAS_COARSE_POINTER && (
+                        <WheelExpand open={lunchOpen}>
+                          <TimeWheelPanel value={d.lunchTime ?? ''} onChange={(e) => set({ lunchTime: e.target.value })} onClose={() => setLunchOpen(false)} />
+                        </WheelExpand>
+                      )}
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-900">
+                        {isToday ? (
+                          <button
+                            type="button"
+                            onClick={() => { haptic.heavy(); const t = computeNowHHMM(); set({ lunchTime: t }); showToast?.(`Lunch ${t}`); }}
+                            className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded"
+                          >NOW</button>
+                        ) : <span />}
+                        {/* 2.1: the shape IS the lunch — the selector sits
+                            where the APA duration select sits. */}
+                        <select
+                          value={shapeKey}
+                          onChange={(e) => set({ dayShape: e.target.value })}
+                          className="bg-transparent border-0 text-[13px] font-mono text-neutral-300 outline-none p-0 pr-7 text-right"
+                        >
+                          {LF_DAY_SHAPE_ORDER.map(k => <option key={k} value={k} className="bg-neutral-900">{LF_DAY_SHAPE_META[k].label} · {LF_DAY_SHAPE_META[k].detail.replace(/\.$/, '')}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border-t border-neutral-800 pt-3 mt-1 flex items-center justify-between gap-3">
+                    <StatusMsg kind="info">CWD - no formal break; a twenty minute rest inside the day (the shape is the lunch).</StatusMsg>
+                    <select
+                      value={shapeKey}
+                      onChange={(e) => set({ dayShape: e.target.value })}
+                      className="bg-transparent border-0 text-[13px] font-mono text-neutral-300 outline-none p-0 pr-7 text-right flex-shrink-0"
+                    >
+                      {LF_DAY_SHAPE_ORDER.map(k => <option key={k} value={k} className="bg-neutral-900">{LF_DAY_SHAPE_META[k].label}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+          )}
+          {!typeMeta.worked && (
+            <StatusMsg kind="info">{typeMeta.long} - {typeMeta.detail}</StatusMsg>
+          )}
+
+          {runFlagged && !d.sixthSeventhOverride && (
+            <StatusMsg kind="warn">{runLabel === '6th day' ? 'Sixth' : 'Seventh'} consecutive day - day {run.count} of a run from {(() => { const t = new Date(run.runStart + 'T12:00:00'); return t.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); })()}. The premium is priced in the day's money.</StatusMsg>
+          )}
+          {calcFlags.map((f, i) => (
+            <StatusMsg key={i} kind={f.tone === 'assumption' ? 'warn' : 'info'}>{f.message}</StatusMsg>
+          ))}
+
+          {/* ── Conditions — the long form set (2.5) ── */}
+          {typeMeta.worked && (
+            <div className="space-y-2 mb-4">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold px-1">Conditions</div>
+              <div className="flex flex-wrap gap-2">
+                {shapeKey !== 'cwd' && renderChip('curtail', 'Lunch cut short', curtailOn, curtailOn ? `${d.lunchMinsTaken}m` : null)}
+                {isTV && typeMeta.shooting && renderChip('camOt', 'Camera OT called', camOtOn, camOtOn ? `${d.cameraOtCalledMins}m` : null)}
+                {renderChip('stepUp', 'Class / rate', stepUpOn, stepUpOn ? ((AGREEMENT_CLASS_META[d.dayAgreementClass] || {}).label || (d.dayContractDailyRate !== undefined ? fmtGBP(d.dayContractDailyRate) : null)) : null)}
+                {runFlagged && renderChip('sixSeven', runLabel, d.sixthSeventhOverride === true, d.sixthSeventhOverride ? 'waived' : null)}
+              </div>
+              {expandedChips.has('curtail') && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12px] font-semibold text-neutral-300">Lunch cut short</span>
+                    <Toggle value={curtailOn} onChange={(v) => set({ lunchMinsTaken: v ? Math.round(fullLunchMins / 2) : undefined })} ariaLabel="Lunch cut short" />
+                  </div>
+                  {curtailOn && (
+                    <Field label="Minutes you actually got">
+                      <Input type="number" min="0" step="5" value={d.lunchMinsTaken} onChange={(e) => set({ lunchMinsTaken: Math.max(0, Number(e.target.value) || 0) })} />
+                    </Field>
+                  )}
+                  <p className="text-[10px] text-neutral-600 leading-tight">The full break is {fullLunchMins} minutes on this shape. The penalty is in the day's money.</p>
+                </div>
+              )}
+              {expandedChips.has('camOt') && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12px] font-semibold text-neutral-300">Camera OT was called</span>
+                    <Toggle value={camOtOn} onChange={(v) => set({ cameraOtCalledMins: v ? 30 : undefined })} ariaLabel="Camera OT was called" />
+                  </div>
+                  {camOtOn && (
+                    <Input type="number" min="0" step="15" value={d.cameraOtCalledMins} onChange={(e) => set({ cameraOtCalledMins: Math.max(0, Number(e.target.value) || 0) })} />
+                  )}
+                  <p className="text-[10px] text-neutral-600 leading-tight">Minutes of called camera overtime (§7.6) - only when it was actually called.</p>
+                </div>
+              )}
+              {expandedChips.has('stepUp') && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12px] font-semibold text-neutral-300">Different class or rate today</span>
+                    <Toggle value={stepUpOn} onChange={(v) => v
+                      ? set({ dayAgreementClass: (crew && crew.agreementClass) || 'standard', dayContractDailyRate: Number(crew && crew.contractDailyRate) || 0 })
+                      : set({ dayAgreementClass: undefined, dayContractDailyRate: undefined })} ariaLabel="Different class or rate today" />
+                  </div>
+                  {stepUpOn && (
+                    <div className="space-y-2">
+                      <Field label="Class for the day">
+                        <Select value={d.dayAgreementClass || 'standard'} onChange={(e) => set({ dayAgreementClass: e.target.value })}>
+                          {classes.map(k => <option key={k} value={k}>{(AGREEMENT_CLASS_META[k] || {}).label || k}</option>)}
+                        </Select>
+                      </Field>
+                      <Field label="Daily rate for the day">
+                        <Input type="number" min="0" placeholder={String((crew && crew.contractDailyRate) || '')} value={d.dayContractDailyRate ?? ''} onChange={(e) => set({ dayContractDailyRate: Number(e.target.value) || 0 })} />
+                      </Field>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-neutral-600 leading-tight">The step-up pattern - a rigging day carries a rigging rate, and the divisor follows the rate.</p>
+                </div>
+              )}
+              {expandedChips.has('sixSeven') && (
+                <div className="bg-neutral-950 border border-tm-warn/30 rounded-xl px-3 py-3 space-y-2">
+                  <p className="text-[10px] text-neutral-500 leading-tight">Day {run.count} of a consecutive run. Sixth and seventh days carry premium rates - priced in the day's money.</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12px] font-semibold text-neutral-300">Pay as a normal day</span>
+                    <Toggle value={d.sixthSeventhOverride === true} onChange={(v) => set({ sixthSeventhOverride: v ? true : undefined })} ariaLabel="Pay as a normal day" />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <LongFormDayMoney production={production} day={d} />
+        </div>
+      );
+    }
+
     function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete, nativeActionsRef }) {
       useBackLevel(true, () => { onBack(); return true; }, 'longform-area');
       const [showSettings, setShowSettings] = useState(false);
@@ -21583,63 +21976,9 @@ const setDays = (updater) =>
                       )}
                     </>
                   )}
-                  {(() => {
-                    // ── The day's money (Phase 3d). Claim-and-flag made
-                    //    visible: three tiers. Info notes are quiet neutral;
-                    //    assumption/approval flags are amber ON their line;
-                    //    unclaimable lines render with a struck amount and
-                    //    their citation, excluded from the total; unpriced
-                    //    lines carry "agreed locally" where the amount would
-                    //    sit and never invent a figure. ──
-                    let calc = null, calcError = null;
-                    try { calc = longFormCalcForDay(production, editDay); } catch (e) { calcError = (e && e.message) || 'The engine refused this day.'; }
-                    if (calcError) return (
-                      <div className="pt-4 border-t border-neutral-800">
-                        <p className="text-[11px] text-tm-pen leading-tight">{calcError}</p>
-                      </div>
-                    );
-                    if (!calc || (calc.lines.length === 0 && calc.flags.length === 0)) return null;
-                    const FlagNote = ({ f }) => (
-                      <p className={`text-[10px] leading-tight mt-0.5 ${f.tone === 'assumption' ? 'text-tm-warn' : f.tone === 'unclaimable' || f.tone === 'unpriced' ? 'text-neutral-400' : 'text-neutral-500'}`}>
-                        {f.message}
-                      </p>
-                    );
-                    return (
-                      <div className="pt-4 border-t border-neutral-800">
-                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-2">The day's money</div>
-                        <div className="flex flex-col gap-2.5">
-                          {calc.lines.map((l, i) => (
-                            <div key={i}>
-                              <div className="flex items-baseline justify-between gap-3">
-                                <span className={`text-[12px] ${l.unclaimable ? 'text-neutral-500' : 'text-neutral-200'}`}>
-                                  {l.label}
-                                  {l.ref && <span className="text-neutral-600 text-[10px]"> · {l.ref.replace(/ \(.*\)$/, '')}</span>}
-                                </span>
-                                {l.unpriced ? (
-                                  <span className="text-[12px] italic text-tm-warn flex-shrink-0">agreed locally</span>
-                                ) : (
-                                  <span className={`text-[13px] font-mono flex-shrink-0 ${l.unclaimable ? 'text-neutral-500 line-through' : 'text-neutral-100'}`}>{fmtGBP(l.amount || 0)}</span>
-                                )}
-                              </div>
-                              {l.rateDesc && !l.unpriced && (
-                                <p className="text-[10px] text-neutral-600 leading-tight">{l.rateDesc}{l.unclaimable ? ' - not claimable' : ''}</p>
-                              )}
-                              {(l.flags || []).map((f, j) => <FlagNote key={j} f={f} />)}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex items-baseline justify-between gap-3 mt-3 pt-2.5 border-t border-neutral-800">
-                          <span className="text-[12px] font-bold text-neutral-100">Day total</span>
-                          <span className="text-[15px] font-mono font-bold text-neutral-100">{fmtGBP(calc.total)}</span>
-                        </div>
-                        {calc.flags.length > 0 && (
-                          <div className="mt-2 flex flex-col gap-1">
-                            {calc.flags.map((f, i) => <FlagNote key={i} f={f} />)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  {/* Phase 4a: single-sourced — the block lives in
+                      LongFormDayMoney, shared with the inherited day form. */}
+                  <LongFormDayMoney production={production} day={editDay} />
                   <div className="pt-4 border-t border-neutral-800">
                     <button type="button"
                       onClick={() => setConfirmDeleteDayId(editDay.id)}
