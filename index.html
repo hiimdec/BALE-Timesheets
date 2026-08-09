@@ -20349,7 +20349,10 @@ const setDays = (updater) =>
       const [w, setW] = useState({
         agreement: null, band: null, ppStartDate: todayISO(),
         baseNation: 'england-wales', weekStartDay: 'monday',
-        title: '', role: '', agreementClass: 'standard', contractDailyRate: '',
+        // £250 default (ruled): no rate card for long form, deals are
+        // negotiated, and £250 is the agreement's own §1.4(c) example
+        // figure. A starting point, freely editable.
+        title: '', role: '', agreementClass: 'standard', contractDailyRate: '250',
         weeklyEntry: false, weeklyRate: '',
         scheduledFilmingDays: '', prodCo: '', jobReference: '',
         invoicingEmail: '', toAddress: '',
@@ -20444,10 +20447,22 @@ const setDays = (updater) =>
       const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
       const agreementLabel = w.agreement === 'pact-tv' ? 'Scripted TV' : w.agreement === 'pact-film' ? 'Film (MMP)' : '';
 
-      // Role → seeded class, user-confirmable (a deal fact, not a job title).
-      const onRolePick = (role) => {
-        const dept = Object.keys(DEPARTMENTS).find(d => DEPARTMENTS[d][role]) || '';
-        set({ role, agreementClass: seedAgreementClass(w.agreement, dept, role) });
+      // Role entry is FREEFORM on long form (ruled Phase 3c): the list is
+      // suggestions, typed text is fine, and every department gains a
+      // Trainee grade. A matched suggestion still seeds the class from its
+      // department; a typed role seeds 'standard' (film's rigging text-match
+      // still fires), and the class step below asks the real question.
+      const roleSuggestions = React.useMemo(() => {
+        const out = [];
+        for (const dept of Object.keys(DEPARTMENTS)) {
+          for (const r of Object.keys(DEPARTMENTS[dept])) out.push({ role: r, dept });
+          out.push({ role: `${dept} Trainee`, dept });
+        }
+        return out;
+      }, []);
+      const onRoleChange = (value) => {
+        const match = roleSuggestions.find(s => s.role === value);
+        set({ role: value, agreementClass: seedAgreementClass(w.agreement, match ? match.dept : '', value) });
       };
 
       const stepIndex = steps.indexOf(screen) + 1;
@@ -20533,18 +20548,14 @@ const setDays = (updater) =>
                     <Input type="text" placeholder="Production name" value={w.title} onChange={(e) => set({ title: e.target.value })} />
                   </Field>
                   <Field label="Role">
-                    <Select value={w.role} onChange={(e) => onRolePick(e.target.value)}>
-                      <option value="">- pick a role -</option>
-                      {Object.keys(DEPARTMENTS).map(dept => (
-                        <optgroup key={dept} label={dept}>
-                          {Object.keys(DEPARTMENTS[dept]).map(r => <option key={r} value={r}>{r}</option>)}
-                        </optgroup>
-                      ))}
-                    </Select>
+                    <Input type="text" list="lf-role-suggestions" placeholder="Type or pick a role" value={w.role} onChange={(e) => onRoleChange(e.target.value)} />
                   </Field>
+                  <datalist id="lf-role-suggestions">
+                    {roleSuggestions.map(s => <option key={s.role} value={s.role} />)}
+                  </datalist>
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1">Your terms</div>
-                    <p className="text-[11px] text-neutral-500 mb-2.5 leading-tight">A deal fact, not a job title - a gaffer can be on the rigging crew. Check your deal memo.</p>
+                    <p className="text-[11px] text-neutral-500 mb-2.5 leading-tight">Which terms your deal is on - it sets your hours and your divisor. A deal fact, not a job title; check your deal memo.</p>
                     <div className="flex flex-col gap-2">
                       {(AGREEMENT_CLASSES[w.agreement] || ['standard']).map(cls => (
                         <RoundingOptionCard key={cls} label={AGREEMENT_CLASS_META[cls].label} desc={AGREEMENT_CLASS_META[cls].detail} active={w.agreementClass === cls} onClick={() => set({ agreementClass: cls })} />
@@ -20561,12 +20572,18 @@ const setDays = (updater) =>
                         <Input type="number" min="0" step="1" placeholder="0" value={w.weeklyRate} onChange={(e) => set({ weeklyRate: e.target.value })} />
                       </Field>
                     ) : (
-                      <Field label="Daily rate (£)">
-                        <Input type="number" min="0" step="1" placeholder="0" value={w.contractDailyRate} onChange={(e) => set({ contractDailyRate: e.target.value })} />
+                      <Field label={w.agreement === 'pact-tv' ? 'Basic Daily Rate (£)' : 'Daily rate (£)'}>
+                        <Input type="number" min="0" step="1" placeholder="250" value={w.contractDailyRate} onChange={(e) => set({ contractDailyRate: e.target.value })} />
                       </Field>
                     )}
                     {w.weeklyEntry && Number(w.weeklyRate) > 0 && (
                       <p className="text-[11px] text-neutral-500 mt-1.5">Stored as a daily rate: {fmtGBP(derivedDaily)} (weekly ÷ 5).</p>
+                    )}
+                    {!w.weeklyEntry && w.contractDailyRate === '250' && (
+                      <p className="text-[11px] text-neutral-500 mt-1.5">£250 is the agreement's own example figure - change it to your deal.</p>
+                    )}
+                    {w.agreement === 'pact-tv' && w.agreementClass === 'ach' && derivedDaily > 0 && (
+                      <p className="text-[11px] text-neutral-500 mt-1.5">Total Daily Rate {fmtGBP(derivedDaily + derivedDaily / 10)} - your BDR plus the Additional Contracted Hour at {fmtGBP(derivedDaily / 10)}. Check it against the deal memo (§1.4(c)).</p>
                     )}
                   </div>
                 </div>
@@ -20616,7 +20633,8 @@ const setDays = (updater) =>
                     ['Production base', nations.find(n => n.key === w.baseNation)?.label || ''],
                     ['Week starts', cap(w.weekStartDay)],
                     ['Role', `${w.role} · ${AGREEMENT_CLASS_META[w.agreementClass].label}`],
-                    ['Daily rate', fmtGBP(derivedDaily)],
+                    [w.agreement === 'pact-tv' ? 'Basic Daily Rate' : 'Daily rate', fmtGBP(derivedDaily)],
+                    ...(w.agreement === 'pact-tv' && w.agreementClass === 'ach' ? [['Total Daily Rate (10+1+1)', fmtGBP(derivedDaily + derivedDaily / 10)]] : []),
                     ...(Number(w.scheduledFilmingDays) > 0 ? [['Scheduled filming days', String(Number(w.scheduledFilmingDays))]] : []),
                     ...((w.prodCo || '').trim() ? [['Production company', w.prodCo.trim()]] : []),
                   ].map(([k, v]) => (
