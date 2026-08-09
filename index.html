@@ -21040,6 +21040,32 @@ const setDays = (updater) =>
                           <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Minutes of called camera overtime (§7.6) - only when it was actually called, off the main flow.</p>
                         </div>
                       )}
+                      {(editDay.dayShape || 'swd') !== 'cwd' && (() => {
+                        // Curtailed lunch as a CHIP (ruled): nobody types in
+                        // that they got forty minutes. One tap, THEN it asks
+                        // how long you actually got. Off the main flow, with
+                        // the other exception toggles. A CWD has no formal
+                        // lunch to cut. lunchMinsTaken feeds TV §10.2(b) /
+                        // film §5.4(b)(ii) in the engine slice.
+                        const curtailOn = editDay.lunchMinsTaken !== undefined;
+                        const fullMins = (editDay.dayShape || 'swd') === 'scwd' ? 30 : 60;
+                        return (
+                          <div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-[12px] font-semibold text-neutral-300">Lunch cut short</span>
+                              <Toggle value={curtailOn} onChange={(v) => updateDay({ lunchMinsTaken: v ? Math.round(fullMins / 2) : undefined })} ariaLabel="Lunch cut short" />
+                            </div>
+                            {curtailOn && (
+                              <div className="mt-2">
+                                <Field label="Minutes you actually got">
+                                  <Input type="number" min="0" step="5" value={editDay.lunchMinsTaken} onChange={(e) => updateDay({ lunchMinsTaken: Math.max(0, Number(e.target.value) || 0) })} />
+                                </Field>
+                              </div>
+                            )}
+                            <p className="text-[10px] text-neutral-600 mt-1 leading-tight">The full break is {fullMins} minutes on this shape. The penalty for the cut lands with the engine.</p>
+                          </div>
+                        );
+                      })()}
                       <div>
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-[12px] font-semibold text-neutral-300">Different class or rate today</span>
