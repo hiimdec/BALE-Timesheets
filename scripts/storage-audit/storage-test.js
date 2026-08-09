@@ -2626,6 +2626,213 @@ async function main() {
         JSON.stringify(real) === JSON.stringify(synth) && real.total > 0,
         `real=${JSON.stringify(real && real.total)} synth=${JSON.stringify(synth && synth.total)}`);
     } else check('LF11b a synthetic third agreement row computes a day with NO code change, byte-identical output to the real row', false, 'engine not exposed');
+
+    // ── LF13: the worked examples as executed fixtures. These are the only
+    //    numbers in this project that came from Pact and Bectu rather than
+    //    from us — every expected value below is hand-derived from the
+    //    agreement's own Section D / Guidance / §4.4 examples. If one does
+    //    not reproduce, the ENGINE is wrong, not the fixture. ──
+    const SETTLE = sb.__settleLfWeekNightWork;
+    if (typeof CALC === 'function' && typeof SETTLE === 'function') {
+      const approx = (a, b) => Math.abs(a - b) < 0.005;
+      const lineOf = (r, kind) => r.lines.find(l => l.kind === kind) || null;
+      const mkTv = (days, opts) => ({
+        id: 'p-fix', agreement: 'x', agreementVersion: 'pact-tv@2023-01-01', band: (opts && opts.band) || 2,
+        baseNation: (opts && opts.baseNation) || 'england-wales', weekStartDay: 'monday',
+        crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: (opts && opts.cls) || 'standard', contractDailyRate: 250 }],
+        weeks: (opts && opts.weeks) || [], days,
+      });
+      const mkFilm = (days, opts) => ({
+        id: 'p-fix-f', agreement: 'x', agreementVersion: 'pact-film@2021-04-05',
+        baseNation: 'england-wales', weekStartDay: 'monday',
+        crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 275 }],
+        weeks: (opts && opts.weeks) || [], days,
+      });
+      const D = (date, over) => ({
+        id: 'd' + date, crewId: 'c1', date, dayType: 'shoot', dayShape: 'swd',
+        unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00',
+        cameraWrapTime: null, wrapTime: '19:00', wrapped: true, ...over,
+      });
+
+      // Section D Example 4 — SWD, ACH crew (Contracted Hours 11), BDR £250:
+      // Mon 7am-7pm nil; Tue 7am-8pm 1h; Weds SHORT day nil (§7.14 - nothing
+      // netted); Thu 7am-8.10pm -> 1h15m; Fri 9am-10.20pm -> 1h30m.
+      {
+        const days = [
+          D('2026-08-03', { unitCallTime: '07:00', wrapTime: '19:00' }),
+          D('2026-08-04', { unitCallTime: '07:00', wrapTime: '20:00' }),
+          D('2026-08-05', { unitCallTime: '07:00', wrapTime: '18:00' }),
+          D('2026-08-06', { unitCallTime: '07:00', wrapTime: '20:10' }),
+          D('2026-08-07', { unitCallTime: '09:00', wrapTime: '22:20' }),
+        ];
+        const p = mkTv(days, { cls: 'ach' });
+        const r = days.map(d => CALC(p, d));
+        const ot = r.map(x => lineOf(x, 'overtime'));
+        check('LF13a Example 4 (ACH crew): Mon nil, Tue 1h at 1.5T £37.50, Weds short day nets NOTHING (§7.14), Thu 75m £46.875, Fri 90m £56.25 - and every day carries base £250 + ACH £25',
+          ot[0] === null && ot[2] === null &&
+          approx(ot[1].amount, 37.50) && approx(ot[3].amount, 46.875) && approx(ot[4].amount, 56.25) &&
+          r.every(x => approx((lineOf(x, 'base') || {}).amount ?? -1, 250) && approx((lineOf(x, 'ach') || {}).amount ?? -1, 25)) &&
+          approx(r[0].total, 275) && approx(r[1].total, 312.50) && approx(r[3].total, 321.875) && approx(r[4].total, 331.25),
+          JSON.stringify(r.map(x => x.total)));
+      }
+      // Section D Example 5 — SWD, standard crew (Contracted Hours 10):
+      // Tue 7.15am-7pm -> 45m; Thu 6.40am-7pm -> 1h30m; Fri 8am-7.25pm -> 30m.
+      {
+        const days = [
+          D('2026-08-04', { unitCallTime: '07:15', wrapTime: '19:00' }),
+          D('2026-08-06', { unitCallTime: '06:40', wrapTime: '19:00' }),
+          D('2026-08-07', { unitCallTime: '08:00', wrapTime: '19:25' }),
+        ];
+        const p = mkTv(days);
+        const r = days.map(d => CALC(p, d));
+        check('LF13b Example 5 (standard crew): 45m £28.125, 90m £56.25, 25m rounds to 30m £18.75 - accrual in 15-minute steps',
+          approx(lineOf(r[0], 'overtime').amount, 28.125) &&
+          approx(lineOf(r[1], 'overtime').amount, 56.25) &&
+          approx(lineOf(r[2], 'overtime').amount, 18.75),
+          JSON.stringify(r.map(x => (lineOf(x, 'overtime') || {}).amount)));
+      }
+      // Section D Example 3 — five nights 3pm-2am (SWD): 3h night each;
+      // Wed/Thu de-rig to 3am is 1h OVERTIME at 2T past 11pm and does NOT
+      // join the night total. Week: 15h accrued -> capped at 10h.
+      {
+        const days = [
+          D('2026-08-03', { unitCallTime: '15:00', wrapTime: '02:00', lunchTime: '20:00' }),
+          D('2026-08-04', { unitCallTime: '15:00', wrapTime: '02:00', lunchTime: '20:00' }),
+          D('2026-08-05', { unitCallTime: '15:00', wrapTime: '03:00', lunchTime: '20:00' }),
+          D('2026-08-06', { unitCallTime: '15:00', wrapTime: '03:00', lunchTime: '20:00' }),
+          D('2026-08-07', { unitCallTime: '15:00', wrapTime: '02:00', lunchTime: '20:00' }),
+        ];
+        const p = mkTv(days);
+        const rMon = CALC(p, days[0]);
+        const rWed = CALC(p, days[2]);
+        const post = rWed.lines.find(l => l.kind === 'overtime' && /11pm/.test(l.label));
+        const weekNight = days.reduce((s, d) => s + CALC(p, d).meta.nightMins, 0);
+        const settle = SETTLE(weekNight, { election: 'rest', consecutiveNightWeeks: 1 });
+        check('LF13c Example 3: 3h night per night, de-rig hour is 2T Overtime (£50) EXCLUDED from night, week accrues 15h and caps at 10h owing a rest day',
+          rMon.meta.nightMins === 180 && lineOf(rMon, 'overtime') === null &&
+          rWed.meta.nightMins === 180 && post && approx(post.amount, 50) &&
+          weekNight === 900 && settle.cappedMins === 600 && settle.owedRestDay === true,
+          `night=${weekNight} settle=${JSON.stringify(settle)}`);
+      }
+      // Examples 1 and 2 — the settlement helper: Example 1's four
+      // consecutive night weeks put the rest day on the MONDAY of the
+      // following week; Example 2's single 5h week owes 5h back.
+      {
+        const s1 = SETTLE(900, { election: 'rest', consecutiveNightWeeks: 4 });
+        const s2 = SETTLE(300, { election: 'rest', consecutiveNightWeeks: 1 });
+        check('LF13d Examples 1-2: four consecutive night weeks force the rest day to the first day of the following week; a 5h week owes 5h, uncapped',
+          s1.cappedMins === 600 && s1.owedRestDay === true && s1.restDayMustBeFirstDayOfFollowingWeek === true &&
+          s2.cappedMins === 300 && s2.owedRestDay === true && s2.restDayMustBeFirstDayOfFollowingWeek === false);
+      }
+      // The paid election attributes +1T on the day, in date order under the cap.
+      {
+        const week = { id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'draft', invoiceId: null, nightWork: { settlement: 'paid' } };
+        const d = D('2026-08-03', { unitCallTime: '15:00', wrapTime: '02:00', lunchTime: '20:00' });
+        const p = mkTv([d], { weeks: [week] });
+        const r = CALC(p, d);
+        const paid = lineOf(r, 'nightWorkPaid');
+        check('LF13e the paid election: 3h night pays +1T (£75) on the day - 2T total for that time (§5.3(b))',
+          paid && approx(paid.amount, 75) && approx(r.total, 325),
+          JSON.stringify(r.lines.map(l => [l.kind, l.amount])));
+      }
+      // Section D Examples 6-7 — SIXTH consecutive day, non-shooting:
+      // 9am-2pm -> up to 6h worked -> Basic Daily Rate at 1T (£250);
+      // 9am-6pm -> over 6h -> 1.5T (£375).
+      {
+        const runDays = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07'].map(dt => D(dt));
+        const six = (wrap) => ({ ...D('2026-08-08', { dayType: 'prep', unitCallTime: '09:00', wrapTime: wrap, lunchTime: '13:00' }) });
+        const p6 = mkTv([...runDays, six('14:00')]);
+        const p7 = mkTv([...runDays, six('18:00')]);
+        const r6 = CALC(p6, p6.days[5]);
+        const r7 = CALC(p7, p7.days[5]);
+        check('LF13f Examples 6-7: non-shooting sixth day pays the 10-hour Basic Daily Rate - 1T (£250) up to 6 hours worked, 1.5T (£375) over',
+          approx((lineOf(r6, 'sixthSeventh') || {}).amount ?? -1, 250) &&
+          approx((lineOf(r7, 'sixthSeventh') || {}).amount ?? -1, 375),
+          `r6=${JSON.stringify(r6.lines.map(l => [l.kind, l.amount]))} r7=${JSON.stringify(r7.lines.map(l => [l.kind, l.amount]))}`);
+      }
+      // Joint Guidance Example 1 — the called-window anchor. Unit call
+      // 08:00 SWD, 30 minutes camera OT called at 19:00. A on 10+1+1 with an
+      // 07:30 individual call: the window sits INSIDE the twelfth contracted
+      // hour -> 1T, no OT line, total £275. B on 10+1 with an 08:00 call:
+      // trigger 19:00 -> 30m at 1.5T = £18.75, total £268.75.
+      {
+        const dA = D('2026-08-04', { individualCallTime: '07:30', wrapTime: '19:30', cameraOtCalledMins: 30 });
+        const dB = D('2026-08-04', { wrapTime: '19:30', cameraOtCalledMins: 30 });
+        const pA = mkTv([dA], { cls: 'ach' });
+        const pB = mkTv([dB]);
+        const rA = CALC(pA, dA);
+        const rB = CALC(pB, dB);
+        check('LF13g Guidance Example 1: the same half hour pays A (10+1+1, 07:30 call) at 1T inside contracted hours and B (10+1, 08:00 call) 30m at 1.5T - the anchor bills past each worker\'s OWN trigger',
+          lineOf(rA, 'overtime') === null && approx(rA.total, 275) &&
+          approx((lineOf(rB, 'overtime') || {}).amount ?? -1, 18.75) && approx(rB.total, 268.75),
+          `A=${JSON.stringify(rA.total)} B=${JSON.stringify(rB.total)}`);
+      }
+      // Film §4.4's worked example — Mon-Fri worked, Saturday travel,
+      // Sunday is the SIXTH consecutive day: Saturday pays 1T flat (£275),
+      // Sunday pays 1.5T x 11 worked hours = £412.50.
+      {
+        const days = [
+          ...['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07'].map(dt => D(dt, { wrapTime: '20:00' })),
+          D('2026-08-08', { dayType: 'travel' }),
+          D('2026-08-09', { wrapTime: '20:00' }),
+        ];
+        const p = mkFilm(days);
+        const rSat = CALC(p, days[5]);
+        const rSun = CALC(p, days[6]);
+        check('LF13h Film §4.4: Saturday travel pays 1T flat (£275, no uplift), Sunday is the sixth consecutive day at 1.5T x 11h (£412.50) - the travel day held the count without joining it',
+          approx((lineOf(rSat, 'travelDay') || {}).amount ?? -1, 275) &&
+          !(lineOf(rSat, 'travelDay') || { flags: [] }).flags.some(f => f.tone === 'assumption') &&
+          approx((lineOf(rSun, 'sixthSeventh') || {}).amount ?? -1, 412.50),
+          `sat=${JSON.stringify(rSat.lines)} sun=${JSON.stringify((lineOf(rSun, 'sixthSeventh') || {}).amount)}`);
+      }
+      // Scotland bank holiday, BOTH directions: a worked 2 January 2026 pays
+      // 2T (£500) on a Glasgow-based job and plain 1T (£250) on a London one.
+      {
+        const d = D('2026-01-02');
+        const glasgow = mkTv([d], { baseNation: 'scotland' });
+        const london = mkTv([d], { baseNation: 'england-wales' });
+        const rG = CALC(glasgow, d);
+        const rL = CALC(london, d);
+        check('LF13i Scotland bank holiday both directions: worked 2 Jan 2026 pays 2T £500 from a Glasgow base and 1T £250 from a London base (Guidance §11.4 - the base decides, not the location)',
+          approx((lineOf(rG, 'bankHoliday') || {}).amount ?? -1, 500) && approx(rG.total, 500) &&
+          lineOf(rL, 'bankHoliday') === null && approx(rL.total, 250),
+          `glasgow=${rG.total} london=${rL.total}`);
+      }
+      // Curtailed lunch — SWD, 30 of 60 minutes taken: TV pays 30m at the
+      // Overtime Rate (1.5T = £37.50/h -> £18.75); film pays 30m at the
+      // camera OT rate (2T = £50/h -> £25). Both capped at the shape's hour.
+      {
+        const dTv = D('2026-08-04', { lunchMinsTaken: 30 });
+        const dF = D('2026-08-04', { lunchMinsTaken: 30 });
+        const rTv = CALC(mkTv([dTv]), dTv);
+        const rF = CALC(mkFilm([dF]), dF);
+        check('LF13j curtailed lunch, 30 of 60 taken: TV 30m at the Overtime Rate £18.75 (§10.2(b)); film 30m at the camera OT rate £25.00 (§5.4(b)(ii))',
+          approx((lineOf(rTv, 'lunchCurtail') || {}).amount ?? -1, 18.75) &&
+          approx((lineOf(rF, 'lunchCurtail') || {}).amount ?? -1, 25.00),
+          `tv=${JSON.stringify((lineOf(rTv, 'lunchCurtail') || {}).amount)} film=${JSON.stringify((lineOf(rF, 'lunchCurtail') || {}).amount)}`);
+      }
+      // §7.11 and §1.5(f) — the two deliberate exceptions, asserted at the
+      // line level: beyond-cap CWD camera OT is UNPRICED and excluded;
+      // non-shooting CWD overtime is UNCLAIMABLE, cited, and excluded.
+      {
+        const cwdDay = D('2026-08-04', { dayShape: 'cwd', wrapTime: '17:00', cameraOtCalledMins: 180, lunchTime: '12:00' });
+        const p = mkTv([cwdDay]);
+        const r = CALC(p, cwdDay);
+        const priced = lineOf(r, 'overtime');
+        const unpriced = r.lines.find(l => l.unpriced);
+        const nsCwd = D('2026-08-05', { dayType: 'prep', dayShape: 'cwd', wrapTime: '18:30', lunchTime: '12:00' });
+        const p2 = mkTv([nsCwd]);
+        const r2 = CALC(p2, nsCwd);
+        const unclaimable = r2.lines.find(l => l.unclaimable);
+        check('LF13k the two exceptions: CWD camera OT prices 120m and flags 60m "agreed locally" with NO amount (§7.11); non-shooting CWD overtime is calculated, marked unclaimable citing §1.5(f)/§1.5(c), and excluded from the total',
+          priced && /120m/.test(priced.rateDesc || '') && unpriced && unpriced.amount === null && /agreed locally/.test(unpriced.rateDesc || '') &&
+          unclaimable && unclaimable.amount > 0 && /1.5\(f\)/.test((unclaimable.flags[0] || {}).message || '') &&
+          approx(r2.total, 250),
+          `priced=${JSON.stringify(priced)} unpriced=${JSON.stringify(unpriced)} r2total=${r2.total}`);
+      }
+    } else {
+      for (const l of ['LF13a', 'LF13b', 'LF13c', 'LF13d', 'LF13e', 'LF13f', 'LF13g', 'LF13h', 'LF13i', 'LF13j', 'LF13k']) check(l + ' fixtures runnable', false, 'engine/settle not exposed');
+    }
   }
 
   // ===== T. INLINE 5-MINUTE TIME WHEEL — touch-branch TimeInput =====
