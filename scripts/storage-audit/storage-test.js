@@ -4898,8 +4898,8 @@ async function main() {
     //   leaks back to plain heavy()). The 3 Wrap sites are the only
     //   stamp() call sites.
     const stampCallCount = (html.match(/haptic\.stamp\(\)/g) || []).length;
-    check('DD4r exactly 3 haptic.stamp() call sites (main doWrap + dept handleWrapNow + solo Wrap NOW)',
-      stampCallCount === 3,
+    check('DD4r exactly 6 haptic.stamp() call sites - the stamp is reserved for WRAP moments (main doWrap + dept handleWrapNow + solo Wrap NOW + long form TV wrap + long form camera wrap + long form film wrap, Phase 4a inherited rhythm)',
+      stampCallCount === 6,
       `haptic.stamp() call sites=${stampCallCount}`);
 
     // 4e — Solo editor chips (kit money / pre-call / mileage / travel
