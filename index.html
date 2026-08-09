@@ -11176,6 +11176,39 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // those are fresh closures per parent render but functionally
     // equivalent (each closes over the same day.id captured at the map
     // callback in SoloDayPage's DayCarousel).
+    // ── TimeTile (Phase 4a extraction) ──
+    // The CALL / WRAP tile, extracted verbatim from DayEntryForm's Times
+    // card so the long form day can reuse the exact tactile surface: 10px
+    // label, 24px mono value, NOW stamp when the day is today, touch trigger
+    // for a shared wheel below the grid. The wheel itself stays lifted in
+    // the CALLER (the pair/trio shares one WheelExpand). `tinted` is the
+    // WRAP · OT treatment; `nowTone` picks the stamp button family.
+    function TimeTile({ label, value, hint, tinted = false, nowTone = 'sky', onNow, onOpen, active = false, onChange, inputCls }) {
+      const tileInputCls = inputCls || "!text-2xl !bg-transparent !border-0 !p-0 !rounded-none !outline-none !ring-0 w-full";
+      return (
+        <div>
+          <div className={`border rounded-xl px-3 py-2.5 ${tinted ? 'bg-tm-warn/[0.08] border-tm-warn/45' : 'bg-neutral-950 border-neutral-800'}`}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className={`text-[10px] uppercase tracking-[0.16em] font-bold ${tinted ? 'text-tm-warn' : 'text-sky-500'}`}>{label}</span>
+              {onNow && (
+                <button
+                  type="button"
+                  onClick={onNow}
+                  className={`text-[9px] tracking-[0.1em] font-bold uppercase px-1.5 py-0.5 rounded ${nowTone === 'warn' ? 'bg-tm-warn/15 text-tm-warn' : 'bg-sky-500/15 text-sky-500'}`}
+                >NOW</button>
+              )}
+            </div>
+            {HAS_COARSE_POINTER ? (
+              <TimeTrigger value={value ?? ''} onClick={onOpen} active={active} className={tileInputCls} />
+            ) : (
+              <TimeInput value={value ?? ''} onChange={onChange} className={tileInputCls} />
+            )}
+          </div>
+          {hint && <div className="text-[10px] text-neutral-500 leading-tight mt-1 px-1">{hint}</div>}
+        </div>
+      );
+    }
+
     const DayEntryForm = React.memo(function DayEntryFormImpl({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null, userPrefs = null, setUserPrefs = null }) {
       const v = value;
       // DISPLAY-ONLY resolved view: call/wrap/lunch/dayType can cascade from
@@ -11470,66 +11503,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 };
                 return (
                   <div ref={callWrapRef} className="grid grid-cols-2 gap-3">
-                    {/* CALL tile */}
-                    <div>
-                      <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] uppercase tracking-[0.16em] text-sky-500 font-bold">CALL</span>
-                          {isToday && (
-                            <button
-                              type="button"
-                              onClick={() => { haptic.heavy(); const t = computeNowHHMM(); onCallChange(t); showToast?.(`Call ${t}`); }}
-                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-sky-500/15 text-sky-500 px-1.5 py-0.5 rounded"
-                            >NOW</button>
-                          )}
-                        </div>
-                        {HAS_COARSE_POINTER ? (
-                          <TimeTrigger
-                            value={vr.callTime ?? ''}
-                            onClick={() => setCallWrapOpen(s => s === 'call' ? null : 'call')}
-                            active={callWrapOpen === 'call'}
-                            className={tileInputCls}
-                          />
-                        ) : (
-                          <TimeInput
-                            value={vr.callTime ?? ''}
-                            onChange={(e) => onCallChange(e.target.value)}
-                            className={tileInputCls}
-                          />
-                        )}
-                      </div>
-                      {callHint && <div className="text-[10px] text-neutral-500 leading-tight mt-1 px-1">{callHint}</div>}
-                    </div>
-                    {/* WRAP tile */}
-                    <div>
-                      <div className={`border rounded-xl px-3 py-2.5 ${wrapInOT ? 'bg-tm-warn/[0.08] border-tm-warn/45' : 'bg-neutral-950 border-neutral-800'}`}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className={`text-[10px] uppercase tracking-[0.16em] font-bold ${wrapInOT ? 'text-tm-warn' : 'text-sky-500'}`}>WRAP{wrapInOT ? ' · OT' : ''}</span>
-                          {isToday && (
-                            <button
-                              type="button"
-                              onClick={() => { haptic.stamp(); const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); }}
-                              className="text-[9px] tracking-[0.1em] font-bold uppercase bg-tm-warn/15 text-tm-warn px-1.5 py-0.5 rounded"
-                            >NOW</button>
-                          )}
-                        </div>
-                        {HAS_COARSE_POINTER ? (
-                          <TimeTrigger
-                            value={vr.wrapTime ?? ''}
-                            onClick={() => setCallWrapOpen(s => s === 'wrap' ? null : 'wrap')}
-                            active={callWrapOpen === 'wrap'}
-                            className={tileInputCls}
-                          />
-                        ) : (
-                          <TimeInput
-                            value={vr.wrapTime ?? ''}
-                            onChange={(e) => set({ wrapTime: e.target.value })}
-                            className={tileInputCls}
-                          />
-                        )}
-                      </div>
-                      {wrapHint && <div className="text-[10px] text-neutral-500 leading-tight mt-1 px-1">{wrapHint}</div>}
-                    </div>
+                    {/* CALL / WRAP tiles — Phase 4a: the tile markup lives in
+                        TimeTile (shared with the long form day); handlers,
+                        haptics, toasts and the OT tint stay HERE, byte-equal
+                        in behaviour. The pair still shares one wheel below. */}
+                    <TimeTile
+                      label="CALL"
+                      value={vr.callTime ?? ''}
+                      hint={callHint}
+                      onNow={isToday ? () => { haptic.heavy(); const t = computeNowHHMM(); onCallChange(t); showToast?.(`Call ${t}`); } : null}
+                      onOpen={() => setCallWrapOpen(s => s === 'call' ? null : 'call')}
+                      active={callWrapOpen === 'call'}
+                      onChange={(e) => onCallChange(e.target.value)}
+                    />
+                    <TimeTile
+                      label={`WRAP${wrapInOT ? ' · OT' : ''}`}
+                      value={vr.wrapTime ?? ''}
+                      hint={wrapHint}
+                      tinted={wrapInOT}
+                      nowTone="warn"
+                      onNow={isToday ? () => { haptic.stamp(); const t = computeNowHHMM(); set({ wrapTime: t }); showToast?.(`Wrap ${t}`); } : null}
+                      onOpen={() => setCallWrapOpen(s => s === 'wrap' ? null : 'wrap')}
+                      active={callWrapOpen === 'wrap'}
+                      onChange={(e) => set({ wrapTime: e.target.value })}
+                    />
                     {/* Touch-only: full-width wheel below the pair.
                         col-span-2 makes it a grid row spanning both
                         columns; WheelExpand handles the open/close
@@ -18514,10 +18511,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function DayJumpSheet({ open, days, currentDayId, production, crew, onPick, onClose }) {
+    function DayJumpSheet({ open, days, currentDayId, production, crew, onPick, onClose, rowMeta = null }) {
       // Wave 1 (Phase D): routed through <Sheet>. Sheet handles lockBodyScroll
       // and Escape internally — we no longer need the local copies. The sorted
       // list and per-day rendering are unchanged.
+      // Phase 4a: `rowMeta(day)` injects the per-row meta ({ times, typeLabel,
+      // amount }) so the long form day can reuse the sheet without the APA
+      // calc running over its days; absent, the APA behaviour is unchanged.
       const sorted = React.useMemo(
         () => [...days].sort((a, b) => (a.date || "").localeCompare(b.date || "")),
         [days]
@@ -18531,12 +18531,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           </div>
           <div className="flex-1 overflow-y-auto min-h-0" style={{ maxHeight: "calc(80dvh - 160px)" }}>
             {sorted.map((day, idx) => {
-              const c = crew.find(cc => cc.id === day.crewId);
-              const calc = c ? calcForDisplay(production, day, c, findPrevDay(days, day)) : null;
-              const resolved = c ? resolveDay(production, day, c) : day;
+              const injected = rowMeta ? rowMeta(day) : null;
+              const c = injected ? null : crew.find(cc => cc.id === day.crewId);
+              const calc = injected ? null : (c ? calcForDisplay(production, day, c, findPrevDay(days, day)) : null);
+              const resolved = injected ? day : (c ? resolveDay(production, day, c) : day);
               const isCurrent = day.id === currentDayId;
               const dateStr = day.date ? new Date(day.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "-";
-              const times = (resolved.callTime && resolved.wrapTime) ? `${resolved.callTime} – ${resolved.wrapTime}` : "";
+              const times = injected ? (injected.times || "") : ((resolved.callTime && resolved.wrapTime) ? `${resolved.callTime} – ${resolved.wrapTime}` : "");
+              const typeLabel = injected ? (injected.typeLabel || "") : resolved.dayType;
+              const amount = injected ? injected.amount : (calc ? calc.total : null);
               return (
                 <button
                   key={day.id}
@@ -18548,10 +18551,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   <div className="text-xs font-bold text-neutral-400 w-8 flex-shrink-0">D{idx + 1}</div>
                   <div className="flex-1 min-w-0">
                     <div className={`text-sm font-semibold truncate ${isCurrent ? "text-sky-500" : "text-neutral-200"}`}>{dateStr}</div>
-                    {(times || resolved.dayType) && <div className="text-[11px] text-neutral-500">{[times, resolved.dayType].filter(Boolean).join(" · ")}</div>}
+                    {(times || typeLabel) && <div className="text-[11px] text-neutral-500">{[times, typeLabel].filter(Boolean).join(" · ")}</div>}
                   </div>
                   {day.note?.trim() && <INote size={13} className="text-neutral-600 flex-shrink-0"/>}
-                  {calc && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(calc.total)}</div>}
+                  {amount != null && <div className="text-sm font-mono font-bold text-neutral-300 flex-shrink-0">{fmtGBP(amount)}</div>}
                 </button>
               );
             })}
@@ -19322,6 +19325,57 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return null;
     }
 
+    // ── DayFormTop (Phase 4a extraction) ──
+    // The form-top strip, extracted verbatim from SoloDayPage's renderDay so
+    // the long form day carries the identical rhythm anchor: tappable
+    // DAY n / m, the day-type chip slot, the QUIET mono date top-right (an
+    // invisible native date input over ambient text — never a form field),
+    // and the kebab. `chipSlot` is the agreement's own chip content: APA
+    // passes its type chip-select, long form passes type + shape.
+    function DayFormTop({ dayIndex, dayCount, onJump, chipSlot, date, onDateChange, onKebab }) {
+      return (
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 px-4 py-3 border-b border-neutral-800 mb-3.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={onJump}
+              className="font-mono text-[12px] font-bold flex items-baseline gap-1 flex-shrink-0 hover:opacity-70 transition-opacity"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              <span className="text-neutral-400">DAY {dayIndex + 1}</span>
+              <span className="text-neutral-600">/ {dayCount}</span>
+            </button>
+            <span className="text-neutral-700 text-[10px]">·</span>
+            {chipSlot}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <label className="relative inline-flex cursor-pointer">
+              <input
+                type="date"
+                value={date || ""}
+                onChange={(e) => onDateChange(e.target.value)}
+                className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                aria-label="Day date"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              />
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
+                {formatDayHeaderDate(date)}
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={onKebab}
+              className="w-7 h-7 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40 transition-colors flex-shrink-0"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+              aria-label="Day actions"
+            >
+              <IDots size={14} />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     function SoloDayPage({ production, setProduction, onBack, onDeleteProduction, userPrefs, setUserPrefs, initialInvoiceId, initialImportFile, soloActionsRef }) {
       const crew = production.crew ?? [];
       const days = production.days ?? [];
@@ -19736,21 +19790,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               };
               return (
                 <>
-                  {/* Form-top — DAY counter + day-type chip on left, date + kebab on right.
-                      All bound to THIS slot's day (not currentDay), so during a swipe the
+                  {/* Form-top — extracted to DayFormTop (Phase 4a); the APA
+                      type chip-select rides in via chipSlot. All bound to
+                      THIS slot's day (not currentDay), so during a swipe the
                       adjacent day's metadata is what's seen sliding in. */}
-                  <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 px-4 py-3 border-b border-neutral-800 mb-3.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => setShowJumpSheet(true)}
-                        className="font-mono text-[12px] font-bold flex items-baseline gap-1 flex-shrink-0 hover:opacity-70 transition-opacity"
-                        style={{ WebkitTapHighlightColor: 'transparent' }}
-                      >
-                        <span className="text-neutral-400">DAY {dayIdxInList + 1}</span>
-                        <span className="text-neutral-600">/ {sortedDays.length}</span>
-                      </button>
-                      <span className="text-neutral-700 text-[10px]">·</span>
+                  <DayFormTop
+                    dayIndex={dayIdxInList}
+                    dayCount={sortedDays.length}
+                    onJump={() => setShowJumpSheet(true)}
+                    date={day?.date}
+                    onDateChange={(v2) => dayOnChange({ ...day, date: v2 })}
+                    onKebab={() => setShowDayActions(true)}
+                    chipSlot={(
                       <label className="relative inline-flex items-center cursor-pointer">
                         <select
                           value={day?.dayType || "Shoot"}
@@ -19776,32 +19827,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
                         </span>
                       </label>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <label className="relative inline-flex cursor-pointer">
-                        <input
-                          type="date"
-                          value={day?.date || ""}
-                          onChange={(e) => dayOnChange({ ...day, date: e.target.value })}
-                          className="tm-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          aria-label="Day date"
-                          style={{ WebkitTapHighlightColor: 'transparent' }}
-                        />
-                        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
-                          {formatDayHeaderDate(day?.date)}
-                        </span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowDayActions(true)}
-                        className="w-7 h-7 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40 transition-colors flex-shrink-0"
-                        style={{ WebkitTapHighlightColor: 'transparent' }}
-                        aria-label="Day actions"
-                      >
-                        <IDots size={14} />
-                      </button>
-                    </div>
-                  </div>
+                    )}
+                  />
 
                   {/* Day editor body — ALWAYS this slot's day, ALWAYS this slot's onChange. */}
                   <div className="max-w-3xl mx-auto px-4 pb-6">
