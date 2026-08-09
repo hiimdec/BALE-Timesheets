@@ -54,14 +54,36 @@ but it cannot invent a clause.
   toggles: comp rest vs payment on TV night work (§5.3), prior written approval
   on non-shooting sixth days (§2.3(b)), and the sixth/seventh day override
   below.
-- **Consecutive day counting:** a worked day advances the count, a travel day
-  neither advances nor breaks it (TV §8.10; Film §4.4), a day off breaks it and
-  resets to zero. **Turnaround days hold the run like travel** (ruled Phase 2d):
-  a turnaround day is paid at the daily rate as compensation for a night block,
-  so it is a paid engaged day, not a day off — the same distinction the APA
-  side draws between a Rest Day and a Day off. An absent calendar day (no
-  record at all) breaks the run. Computed by `consecutiveRunFor`, a pure
+- **Consecutive day counting:** a working day (shoot, prep or pre-light —
+  §2.5 reaches non-shooting days) advances the count, a travel day neither
+  advances nor breaks it (TV §8.10; Film §4.4), rest days and days off break
+  it and reset to zero. **Turnaround days hold the run like travel** (ruled
+  Phase 2d): a paid engaged day, not a day off. An absent calendar day (no
+  record at all) breaks the run — **ruled Phase 3c: the plain gap reset
+  stands**; the surfacing proposal ("no record for Thu 14 - if you worked it,
+  Sunday is a sixth day") was DROPPED, because nobody invoices a week they
+  haven't finished filling in. Computed by `consecutiveRunFor`, a pure
   read-time selector — never stored, because the run crosses week boundaries.
+- **Day type and day shape are two fields** (ruled Phase 3c): SWD/SCWD/CWD
+  describe how the day is broken; shoot/prep/pre-light describe the work.
+  The shape shows on working types only and IS the lunch. §1.5/§2.3(b)
+  derive from the type. Non-shooting SCWD/CWD read as the exception they are
+  (TV §1.5(c)), signalled inline, never nagged.
+- **Turnaround days are suggestion-only** (ruled Phase 3c): the app may
+  notice a night run has ended and OFFER a turnaround day; it must never
+  insert one. An accepted suggestion claims 1T and, on TV, flags that the
+  mechanism is film's (§5.3 settles TV nights weekly).
+- **The stored rate is the Basic Daily Rate** (ruled Phase 3c): §1.4(a) keys
+  everything off BDR ÷ 10, so BDR is the primitive and it is on the user's
+  paper (§1.4(c)). The §1.3 departments see the derived Total Daily Rate on
+  screen to check against the deal memo. £250 is the starting figure —
+  the agreement's own example — freely editable. Long form roles are
+  freeform with the list as suggestions plus per-department Trainee grades.
+- **Bank holidays resolve by NATION SET from the production base**
+  (Guidance §11.4, landed Phase 3c): composed core + nation entries, never
+  England-plus-extras, verified against gov.uk and pinned in both
+  directions (LF12). `UK_BANK_HOLIDAYS`/`isBankHoliday` stay the APA
+  engine's, byte-untouched.
 - **Where a rule is unresolved, the app CLAIMS the money and FLAGS the
   assumption.** It never silently under-claims. Applies to every open inference.
 - **Sixth and seventh days are flagged and overridable** down to a normal day

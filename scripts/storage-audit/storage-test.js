@@ -2550,8 +2550,8 @@ async function main() {
         for (const [k, v] of Object.entries(node)) collect(v, `${path}.${k}`);
       };
       for (const [id, row] of Object.entries(TABLE)) collect(row, id);
-      check('LF10c the table carries exactly the 10 open inferences of the Phase 3a register (grep "inference:" finds them all)',
-        inferences.length === 10, `found ${inferences.length}: ${inferences.join(' | ')}`);
+      check('LF10c the table carries exactly the 12 open inferences of the register (Phase 3a\'s 10 + the two ruled in 3c: TV travel-day pay, TV turnaround records)',
+        inferences.length === 12, `found ${inferences.length}: ${inferences.join(' | ')}`);
       const tableSrc = (html.match(/const LONGFORM_AGREEMENTS = \{[\s\S]*?\n    \};/) || [''])[0];
       check('LF10d table source found and the word "inference" appears in it only as the marker key form',
         tableSrc.length > 4000 &&
