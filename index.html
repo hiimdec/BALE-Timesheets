@@ -2757,6 +2757,10 @@
     // long form branch (nothing shipped; local test records exist). The
     // retired turnaroundDay type maps to `rest` — the concept returns as a
     // SUGGESTION, never a record type, and a stored one was test data.
+    // NOT LOSSLESS (ruled Phase 3d): a film turnaround day pays the standard
+    // contractual daily rate (§5.2(c)) and a rest day pays nothing unless it
+    // consumes a night settlement — this mapping is fit for seeded test data
+    // only; never reuse it believing it preserves money.
     const LF_DAY_TYPE_MIGRATION = {
       swd: ['shoot', 'swd'], scwd: ['shoot', 'scwd'], cwd: ['shoot', 'cwd'],
       travel: ['travel', null], turnaroundDay: ['rest', null],
@@ -3274,6 +3278,454 @@
     const lfBankHolidayName = (dateISO, baseNation) =>
       (LF_NATION_BANK_HOLIDAYS[baseNation] || LF_NATION_BANK_HOLIDAYS['england-wales'])[dateISO] || null;
     const lfIsBankHoliday = (dateISO, baseNation) => !!lfBankHolidayName(dateISO, baseNation);
+
+    // ═══════════════ THE LONG FORM ENGINE (Phase 3d) ═══════════════
+    // A SIBLING of the APA engine, reached only through longFormCalcForDay
+    // in the long form area's render path. calculateDay / resolveDay /
+    // calcForDisplay are not touched — not one byte. The engine reads the
+    // ruleset TABLE and never an agreement id: every behavioural difference
+    // is a table leaf or a table SHAPE (rules.overtime.camera present =
+    // split-overtime agreement), so a third agreement is a new row and
+    // never a new branch (pinned LF11a source-grep, LF11b behavioural).
+    // Where a rule is unresolved the engine CLAIMS the money and FLAGS the
+    // assumption — it never silently under-claims; the two deliberate
+    // exceptions are §7.11 beyond-cap CWD camera OT (flagged, never priced)
+    // and §1.5(f) non-shooting CWD overtime (calculated, marked
+    // unclaimable, cites §1.5(c)).
+
+    function resolveLongFormRules(production) {
+      const rules = LONGFORM_AGREEMENTS[production && production.agreementVersion];
+      if (!rules) throw new Error(`Long form engine: no ruleset for version "${production && production.agreementVersion}" — the stamp is the contract and it must resolve.`);
+      return rules;
+    }
+    // The LF4 net at runtime: an APA-shaped day must never reach the engine.
+    function lfAssertDayShapeSafe(day) {
+      if (!day) throw new Error('Long form engine: no day record.');
+      if (day.callTime !== undefined || day.preCallTime !== undefined)
+        throw new Error('Long form engine: day carries APA time fields (callTime/preCallTime) — refusing to compute.');
+    }
+    // Times as minutes from midnight of the day's own start; anything at or
+    // before the day's start time is read as next-day (night shoots wrap
+    // after midnight; a 15:00 call's 02:00 wrap is 26:00).
+    const lfMins = (hhmm) => {
+      if (typeof hhmm !== 'string' || !/^\d{1,2}:\d{2}$/.test(hhmm)) return null;
+      const [h, m] = hhmm.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const lfRel = (hhmm, dayStartMins) => {
+      const t = lfMins(hhmm);
+      if (t === null) return null;
+      return t < dayStartMins ? t + 1440 : t;
+    };
+    const lfRoundUp = (mins, step) => Math.ceil(Math.max(0, mins) / step) * step;
+    const lfOverlap = (aStart, aEnd, bStart, bEnd) => Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+
+    // Effective values only — no arithmetic that produces money.
+    function assembleLfDayContext(production, day, crew) {
+      lfAssertDayShapeSafe(day);
+      const rules = resolveLongFormRules(production);
+      const typeMeta = LF_DAY_TYPE_META[day.dayType] || LF_DAY_TYPE_META.shoot;
+      const cls = day.dayAgreementClass !== undefined ? day.dayAgreementClass : (crew && crew.agreementClass) || 'standard';
+      const clsRules = (rules.classes || {})[cls] || null;
+      const shapeKey = day.dayShape || 'swd';
+      const dayShape = (clsRules && clsRules.dayShape) || rules.dayShapes[shapeKey] || rules.dayShapes.swd;
+      const storedRate = Number(day.dayContractDailyRate !== undefined ? day.dayContractDailyRate : (crew && crew.contractDailyRate)) || 0;
+      const divisor = (clsRules && clsRules.hourlyRate && clsRules.hourlyRate.dailyDivisor) || rules.hourlyRate.dailyDivisor;
+      const unitCall = lfMins(day.unitCallTime) ?? 480;
+      const indivRaw = day.individualCallTime ? lfMins(day.individualCallTime) : null;
+      const individualCall = indivRaw ?? unitCall;
+      // Everything downstream is relative to the individual call (§7.1);
+      // the lunch deadline alone anchors to the UNIT call (§10.2/§5.4(a)).
+      const dayStart = Math.min(individualCall, unitCall);
+      return {
+        rules, day, crew, typeMeta, cls, clsRules, shapeKey, dayShape,
+        storedRate, divisor,
+        hourly: divisor ? storedRate / divisor : 0,
+        achHours: (clsRules && clsRules.extraContractedHours) || 0,
+        unitCall: lfRel(day.unitCallTime, dayStart) ?? dayStart,
+        individualCall: lfRel(day.individualCallTime || day.unitCallTime, dayStart) ?? dayStart,
+        lunchCalled: day.lunchTime ? lfRel(day.lunchTime, dayStart) : null,
+        wrap: day.wrapTime ? lfRel(day.wrapTime, dayStart) : null,
+        cameraWrap: day.cameraWrapTime ? lfRel(day.cameraWrapTime, dayStart) : null,
+        cameraOtCalledMins: day.cameraOtCalledMins,
+        lunchMinsTaken: day.lunchMinsTaken,
+        sixthSeventhOverride: day.sixthSeventhOverride === true,
+        isBankHoliday: lfIsBankHoliday(day.date, production.baseNation),
+        bankHolidayName: lfBankHolidayName(day.date, production.baseNation),
+        productionBand: Number(production.band) || null,
+        dayStartMins: dayStart,
+      };
+    }
+
+    // Per-day night-work minutes (TV §5.1): CONTRACTED time past 23:00 —
+    // time past 23:00 beyond the OT trigger is 2T Overtime, never night
+    // (Section D Example 3). Pure so the week assembler can reuse it.
+    function lfNightMinsFor(ctx) {
+      if (!ctx.rules.nightWork || !ctx.rules.nightWork.weekly) return 0;
+      if (!ctx.typeMeta.worked || ctx.wrap === null) return 0;
+      const trigger = ctx.dayShape.otTriggerElapsedHours + ctx.achHours;
+      const otStart = ctx.individualCall + trigger * 60;
+      // 23:00 on the calendar day the clock starts; times are normalised to
+      // [dayStart, dayStart+24h), so a post-midnight wrap sits above 1440
+      // and the overlap handles late starts naturally.
+      const eleven = 1380;
+      const mins = lfOverlap(ctx.dayStartMins, Math.min(otStart, ctx.wrap), eleven, Infinity);
+      return mins > 0 ? lfRoundUp(mins, ctx.rules.nightWork.roundUpMins || 15) : 0;
+    }
+
+    // Week context: the run, the previous wrap (broken turnaround crosses
+    // week boundaries), night minutes accrued EARLIER this week, CWD camera
+    // OT already used this week (§7.11's 2h), and the week record.
+    function assembleLfWeekContext(production, crewId, dateISO) {
+      const run = consecutiveRunFor(production, crewId, dateISO);
+      const week = lfWeekOf(production, crewId, dateISO) || null;
+      const crew = (production.crew || []).find(c => c.id === crewId) || null;
+      const myDays = (production.days || []).filter(d => d && d.crewId === crewId);
+      const step = (iso, n) => { const t = new Date(iso + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+      const prevDay = myDays.find(d => d.date === step(dateISO, -1)) || null;
+      let prevWrapGapMins = null;
+      const today = myDays.find(d => d.date === dateISO) || null;
+      if (prevDay && prevDay.wrapTime && today) {
+        const prevStart = lfMins(prevDay.individualCallTime || prevDay.unitCallTime) ?? 480;
+        const prevWrapAbs = (lfRel(prevDay.wrapTime, prevStart) ?? prevStart);
+        const todayStart = lfMins(today.individualCallTime || today.unitCallTime) ?? 480;
+        prevWrapGapMins = (1440 - prevWrapAbs) + todayStart;   // minutes from prev wrap to this call
+      }
+      let nightMinsBeforeToday = 0, cwdCameraOtMinsBeforeToday = 0;
+      if (week) {
+        for (const d of myDays) {
+          if (!(week.startDate <= d.date && d.date < dateISO)) continue;
+          try {
+            const c = assembleLfDayContext(production, d, crew);
+            nightMinsBeforeToday += lfNightMinsFor(c);
+            if (c.shapeKey === 'cwd' && c.typeMeta.shooting && typeof d.cameraOtCalledMins === 'number') cwdCameraOtMinsBeforeToday += d.cameraOtCalledMins;
+          } catch (_) { /* a malformed sibling day must not kill this day's calc */ }
+        }
+      }
+      // First rest day after night accrual consumes a 'rest' settlement.
+      let restSettlementDue = false;
+      if (week && week.nightWork && week.nightWork.settlement === 'rest' && today && today.dayType === 'rest') {
+        const nightDays = myDays.filter(d => week.startDate <= d.date && d.date < dateISO && (() => { try { return lfNightMinsFor(assembleLfDayContext(production, d, crew)) > 0; } catch (_) { return false; } })());
+        if (nightDays.length > 0) {
+          const earlierRest = myDays.some(d => d.dayType === 'rest' && d.date > nightDays[nightDays.length - 1].date && d.date < dateISO);
+          restSettlementDue = !earlierRest;
+        }
+      }
+      return {
+        run, week,
+        isSixth: run.advances && run.count === 6,
+        isSeventh: run.advances && run.count >= 7,
+        prevWrapGapMins,
+        nightMinsBeforeToday,
+        cwdCameraOtMinsBeforeToday,
+        restSettlementDue,
+      };
+    }
+
+    // Weekly night-work settlement maths (TV §5.3-§5.5): aggregate, cap at
+    // one working day (= 600 minutes — the pinned Example 1 inference),
+    // settle by the week's recorded election.
+    function settleLfWeekNightWork(totalNightMins, opts) {
+      const o = opts || {};
+      const capped = Math.min(Math.max(0, totalNightMins), 600);
+      return {
+        totalNightMins: Math.max(0, totalNightMins),
+        cappedMins: capped,
+        owedRestDay: capped > 0 && o.election === 'rest',
+        paidExtraMinsAt1T: o.election === 'paid' ? capped : 0,
+        restDayMustBeFirstDayOfFollowingWeek: (o.consecutiveNightWeeks || 0) >= 4,
+        refs: 'TV §5.3-§5.4',
+      };
+    }
+
+    // ── The engine. Table in, lines out. Every line: kind, label, ref,
+    //    amount, and per-line flags; unclaimable lines render but never
+    //    join the total. ──
+    function calculateLongFormDay(rules, dayCtx, weekCtx) {
+      const lines = [];
+      const flags = [];
+      const c = dayCtx;
+      const hourly = c.hourly;
+      const dailyRate = c.storedRate;
+      const dailyRateInclAch = dailyRate + c.achHours * hourly;
+      const splitOt = !!rules.overtime.camera;   // table SHAPE: film-style split overtime
+      const capScope = rules.overtime.capAppliesTo || [];
+      const kindClass = (kind) => (
+        kind === 'overtime' || kind === 'cameraOvertime' || kind === 'nonCameraOvertime' ? 'overtime'
+        : kind === 'lunchDelay' || kind === 'lunchCurtail' || kind === 'excessTravel' ? 'otRatePenalties'
+        : kind === 'sixthSeventh' ? 'sixthSeventh'
+        : kind === 'bankHoliday' ? 'bankHoliday'
+        : kind === 'preDawn' ? 'preDawn'
+        : 'none');
+      // Floor/ceiling per line, scope-fenced by the row's own list — the
+      // firewall that stops TV's £70 reaching film's uplifts and film's
+      // £81.82 reaching TV's day-rate multipliers.
+      const boundRate = (ratePerHour, kind, cameraFloor) => {
+        let r = ratePerHour, floored = false, capped = false;
+        const cls = kindClass(kind);
+        const inScope = capScope.includes(cls);
+        const min = splitOt ? (cameraFloor ? rules.overtime.minCameraPerHour : null) : rules.overtime.minPerHour;
+        const max = rules.overtime.maxPerHour;
+        if (inScope && min != null && r < min) { r = min; floored = true; }
+        if (inScope && max != null) {
+          const ceil = (!splitOt && rules.overtime.maxOrHourlyAt1T) ? Math.max(max, hourly) : max;
+          if (r > ceil) { r = ceil; capped = true; }
+        }
+        return { rate: r, floored, capped };
+      };
+      const push = (line) => { lines.push(line); return line; };
+      const flag = (tone, message, ref) => { flags.push({ tone, message, ref: ref || null }); };
+
+      const worked = c.typeMeta.worked && c.wrap !== null;
+      const trigger = c.dayShape.otTriggerElapsedHours + c.achHours;
+      const otStart = c.individualCall + trigger * 60;
+      const eleven = 1380;
+
+      // ── The base line, by day type ──
+      if (c.day.dayType === 'travel') {
+        const t = rules.travel.travelDayPay || {};
+        const l = push({ kind: 'travelDay', label: 'Travel day', ref: t.ref || null, amount: dailyRate, rateDesc: '1T flat', flags: [] });
+        if (t.inference) l.flags.push({ tone: 'assumption', message: 'Claimed at 1T on an assumption - the agreement prices excess travel time, not the day. Flagged, never silent.', ref: 'inference' });
+        if (rules.travel.flatNoUplifts) l.flags.push({ tone: 'info', message: 'Travel pays flat - no uplifts even on a 6th, 7th or bank holiday.', ref: rules.travel.flatNoUplifts.ref });
+      } else if (c.day.dayType === 'rest') {
+        if (weekCtx.restSettlementDue) {
+          push({ kind: 'restSettlement', label: 'Paid rest day (night settlement)', ref: (rules.nightWork.weekly && rules.nightWork.weekly.settlementRef) || null, amount: dailyRate, rateDesc: '1T', flags: [{ tone: 'info', message: 'This rest day consumes the week\'s night work as compensatory rest.', ref: 'TV §5.3(a), §5.6' }] });
+        } else if (c.isBankHoliday) {
+          const bh = rules.bankHolidays.notWorkedPaid || {};
+          const band4Only = /Band 4/i.test(bh.who || '');
+          const qualifies = band4Only ? c.productionBand === 4 : true;
+          if (qualifies) {
+            push({ kind: 'bankHoliday', label: `${c.bankHolidayName} (not worked)`, ref: bh.ref, amount: dailyRate, rateDesc: '1T', flags: band4Only ? [{ tone: 'info', message: 'Paid because this is a Band 4 production.', ref: bh.ref }] : [] });
+          } else {
+            push({ kind: 'bankHoliday', label: `${c.bankHolidayName} (not worked)`, ref: bh.ref, amount: 0, rateDesc: null, unclaimable: true, flags: [{ tone: 'unclaimable', message: `Unworked bank holidays are paid on Band 4 productions only (${bh.ref}).`, ref: bh.ref }] });
+          }
+        }
+        // otherwise: a plain rest day pays nothing and emits nothing.
+      } else if (c.day.dayType === 'dayOff') {
+        // Not engaged: no pay, and bank holiday pay cannot attach (record
+        // definition, PACT_BECTU_PLAN.md).
+      } else if (worked) {
+        const nonShooting = !c.typeMeta.shooting;
+        const workedMins = Math.max(0, (c.wrap - c.individualCall) - (c.dayShape.lunchMins || 0));
+        const sixthActive = weekCtx.isSixth && !c.sixthSeventhOverride;
+        const seventhActive = weekCtx.isSeventh && !c.sixthSeventhOverride;
+        if ((weekCtx.isSixth || weekCtx.isSeventh) && c.sixthSeventhOverride) {
+          flag('info', 'Sixth/seventh day premium waived by you - paying as a normal day.', null);
+        }
+        if (!splitOt) {
+          // Day-rate agreement (TV-style rows)
+          if (seventhActive) {
+            const l = push({ kind: 'sixthSeventh', label: 'Seventh consecutive day', ref: (rules.sixthSeventh.seventh || {}).ref, amount: dailyRateInclAch * 2, rateDesc: '2T of the Daily Rate', flags: [] });
+            l.flags.push({ tone: 'assumption', message: 'Needs the Producer\'s request or prior written approval.', ref: (rules.sixthSeventh.seventh || {}).ref });
+          } else if (sixthActive && nonShooting && rules.sixthSeventh.sixthNonShooting) {
+            const ns = rules.sixthSeventh.sixthNonShooting;
+            const over6 = workedMins > 360;
+            const mult = over6 ? ns.over6hWorked.multiplier : ns.upTo6hWorked.multiplier;
+            const l = push({ kind: 'sixthSeventh', label: `Sixth consecutive day (non-shooting, ${over6 ? 'over' : 'up to'} 6 hours worked)`, ref: ns.ref, amount: dailyRate * mult, rateDesc: `${mult}T of the Basic Daily Rate`, flags: [] });
+            l.flags.push({ tone: 'assumption', message: 'No payment is due without prior written approval - make sure you have it.', ref: ns.ref });
+          } else if (sixthActive && c.isBankHoliday && rules.sixthSeventh.sixthOnBankHoliday) {
+            push({ kind: 'sixthSeventh', label: 'Sixth consecutive day on a bank holiday', ref: rules.sixthSeventh.sixthOnBankHoliday.ref, amount: dailyRateInclAch * 2, rateDesc: '2T in lieu', flags: [] });
+          } else if (sixthActive) {
+            push({ kind: 'sixthSeventh', label: 'Sixth consecutive day', ref: (rules.sixthSeventh.sixthShooting || {}).ref, amount: dailyRateInclAch * 1.5, rateDesc: '1.5T of the Daily Rate', flags: (rules.sixthSeventh.sixthShooting || {}).inference ? [{ tone: 'assumption', message: 'The 1.5T base includes the Additional Contracted Hour where contracted - an inference from §1.4(a).', ref: 'inference' }] : [] });
+          } else if (c.isBankHoliday) {
+            push({ kind: 'bankHoliday', label: `${c.bankHolidayName} (worked)`, ref: rules.bankHolidays.ref, amount: dailyRateInclAch * 2, rateDesc: '2T', flags: [] });
+          } else {
+            push({ kind: 'base', label: 'Basic Daily Rate', ref: rules.dayShapes[c.shapeKey] ? rules.dayShapes[c.shapeKey].ref : null, amount: dailyRate, rateDesc: '1T', flags: [] });
+            if (c.achHours > 0) push({ kind: 'ach', label: 'Additional Contracted Hour', ref: (c.clsRules || {}).ref, amount: c.achHours * hourly, rateDesc: 'at the Hourly Rate', flags: [] });
+          }
+        } else {
+          // Hours-based sixth/seventh (film-style rows)
+          if (seventhActive || sixthActive) {
+            const s = seventhActive ? rules.sixthSeventh.seventh : rules.sixthSeventh.sixthShooting;
+            const guar = (s.minimumGuaranteeHours || {})[c.typeMeta.shooting ? 'shooting' : 'nonShooting'] || 0;
+            const hrs = Math.max(workedMins / 60, guar);
+            const bound = boundRate(hourly * s.multiplier, 'sixthSeventh', c.typeMeta.shooting);
+            const l = push({ kind: 'sixthSeventh', label: seventhActive ? 'Seventh consecutive day' : 'Sixth consecutive day', ref: s.ref, amount: bound.rate * hrs, rateDesc: `${s.multiplier}T × ${hrs}h${hrs * 60 > workedMins ? ' (minimum guarantee)' : ''}`, flags: [] });
+            if (bound.capped) l.flags.push({ tone: 'assumption', message: 'Capped at the Maximum Overtime Rate.', ref: rules.overtime.maxRef });
+          } else if (c.isBankHoliday) {
+            push({ kind: 'bankHoliday', label: `${c.bankHolidayName} (worked)`, ref: rules.bankHolidays.ref, amount: dailyRate * 2, rateDesc: '2T', flags: [] });
+          } else {
+            push({ kind: 'base', label: 'Daily rate', ref: rules.dayShapes[c.shapeKey] ? rules.dayShapes[c.shapeKey].ref : null, amount: dailyRate, rateDesc: '1T', flags: [] });
+          }
+        }
+
+        // ── Overtime ──
+        const baseWindowEnd = c.unitCall + (c.dayShape.otTriggerElapsedHours * 60);
+        const nonShootingCwd = nonShooting && c.shapeKey === 'cwd' && rules.nonShootingCwd && /§1.5\(f\)/.test(rules.nonShootingCwd.ref || '');
+        let effOtStart = otStart;
+        if (splitOt && rules.earlyCall && /2T until/.test(rules.earlyCall.treatment || '')) {
+          // Pre-dawn re-anchor: the normal day runs from the threshold.
+          const threshMins = lfMins(rules.earlyCall.threshold) || 300;
+          if (c.individualCall < threshMins) effOtStart = threshMins + trigger * 60;
+        }
+        const otActual = Math.max(0, c.wrap - effOtStart);
+        if (otActual > 0 || (typeof c.cameraOtCalledMins === 'number' && c.cameraOtCalledMins > 0)) {
+          if (nonShootingCwd) {
+            // §1.5(f): calculate what WOULD be owed, mark it unclaimable,
+            // cite §1.5(c) so the user knows the day type was the wrong call.
+            const wouldBe = lfRoundUp(otActual, rules.overtime.incrementMins || 15);
+            const bound = boundRate(hourly * rules.overtime.rate, 'overtime', false);
+            push({ kind: 'overtime', label: 'Overtime (non-shooting CWD)', ref: rules.nonShootingCwd.ref, amount: bound.rate * (wouldBe / 60), rateDesc: `${rules.overtime.rate}T × ${wouldBe}m`, unclaimable: true,
+              flags: [{ tone: 'unclaimable', message: 'Non-shooting CWDs do not incur Overtime (§1.5(f)). A non-shooting SCWD or CWD needs prior written approval to exist at all (§1.5(c)) - the day type itself may have been the wrong call.', ref: rules.nonShootingCwd.ref }] });
+          } else if (!splitOt) {
+            // Single-type overtime with the called-window anchor (§7.6,
+            // Guidance Example 1): bill the greater of actual OT and the
+            // called window's overlap PAST THIS WORKER'S OWN TRIGGER.
+            let billed = otActual > 0 ? lfRoundUp(otActual, rules.overtime.incrementMins || 15) : 0;
+            let calledOverlapMins = 0;
+            if (typeof c.cameraOtCalledMins === 'number' && c.cameraOtCalledMins > 0 && c.typeMeta.shooting) {
+              calledOverlapMins = lfOverlap(baseWindowEnd, baseWindowEnd + c.cameraOtCalledMins, otStart, Infinity);
+              billed = Math.max(billed, calledOverlapMins);
+            }
+            // §7.11: camera OT on a CWD caps at 2 unscheduled hours a week;
+            // beyond the cap it is agreed locally - flagged, never priced.
+            let unpricedMins = 0;
+            if (c.shapeKey === 'cwd' && c.typeMeta.shooting && rules.cwdCameraOt && rules.cwdCameraOt.unscheduledCapMinsPerWeek != null) {
+              const remaining = Math.max(0, rules.cwdCameraOt.unscheduledCapMinsPerWeek - (weekCtx.cwdCameraOtMinsBeforeToday || 0));
+              if (billed > remaining) { unpricedMins = billed - remaining; billed = remaining; }
+            }
+            if (billed > 0) {
+              const pre = Math.max(0, Math.min(billed, Math.max(0, eleven - effOtStart)));
+              const post = billed - pre;
+              const otIsEnhanced = (c.isBankHoliday && rules.overtime.enhanced2T && rules.overtime.enhanced2T.ukBankHoliday) || (weekCtx.isSeventh && rules.overtime.enhanced2T && rules.overtime.enhanced2T.seventhDay);
+              if (pre > 0) {
+                const mult = otIsEnhanced ? 2 : rules.overtime.rate;
+                const bound = boundRate(hourly * mult, 'overtime', false);
+                const l = push({ kind: 'overtime', label: otIsEnhanced ? 'Overtime (2T)' : 'Overtime', ref: rules.overtime.ref, amount: bound.rate * (pre / 60), rateDesc: `${mult}T × ${pre}m`, flags: [] });
+                if (bound.floored) l.flags.push({ tone: 'info', message: 'Raised to the Minimum Overtime Rate.', ref: rules.overtime.minRef });
+                if (bound.capped) l.flags.push({ tone: 'assumption', message: 'Capped at the Maximum Overtime Rate.', ref: rules.overtime.maxRef });
+                if (calledOverlapMins > 0 && calledOverlapMins >= lfRoundUp(otActual, 15)) l.flags.push({ tone: 'info', message: 'Billed to the called camera overtime window - called once, in the increments called (§7.6).', ref: rules.calledCameraOt.ref });
+              }
+              if (post > 0) {
+                const bound = boundRate(hourly * 2, 'overtime', false);
+                push({ kind: 'overtime', label: 'Overtime after 11pm (2T)', ref: (rules.overtime.enhanced2T || {}).ref, amount: bound.rate * (post / 60), rateDesc: `2T × ${post}m`, flags: [{ tone: 'info', message: 'Overtime past 11pm is 2T and does not join the night work total (Section D Example 3).', ref: 'TV §5.1' }] });
+              }
+            }
+            if (unpricedMins > 0) {
+              push({ kind: 'overtime', label: `Camera overtime beyond the weekly CWD cap (${unpricedMins}m)`, ref: rules.cwdCameraOt.ref, amount: null, rateDesc: 'agreed locally', unpriced: true,
+                flags: [{ tone: 'unpriced', message: 'Beyond the 2-hour weekly cap the rate is agreed locally (§7.11) - the app never invents a figure. Agree it and add it by hand.', ref: rules.cwdCameraOt.ref }] });
+            }
+          } else {
+            // Split overtime (film-style): camera to the camera wrap at 2T,
+            // non-camera beyond it at 1.5T. Post crew never earn camera OT.
+            const postProd = c.clsRules && c.clsRules.cameraOt === false;
+            const cameraEligible = c.typeMeta.shooting && !postProd;
+            const cameraEnd = cameraEligible ? (c.cameraWrap ?? c.wrap) : effOtStart;
+            const camActual = Math.max(0, Math.min(cameraEnd, c.wrap) - effOtStart);
+            const nonCamActual = cameraEligible ? Math.max(0, c.wrap - Math.max(cameraEnd, effOtStart)) : otActual;
+            if (camActual > 0) {
+              const cam = rules.overtime.camera;
+              const first = Math.min(camActual, 120);
+              const beyond = Math.max(0, camActual - 120);
+              const billedCam = lfRoundUp(first, cam.first2hIncrementMins || 15) + (beyond > 0 ? lfRoundUp(beyond, 60) : 0);
+              const bound = boundRate(hourly * cam.rate, 'cameraOvertime', true);
+              const l = push({ kind: 'cameraOvertime', label: 'Camera overtime', ref: cam.ref, amount: bound.rate * (billedCam / 60), rateDesc: `${cam.rate}T × ${billedCam}m`, flags: [] });
+              if (bound.floored) l.flags.push({ tone: 'info', message: 'Raised to the Minimum Camera Overtime Rate.', ref: rules.overtime.minRef });
+              if (bound.capped) l.flags.push({ tone: 'assumption', message: 'Capped at the Maximum Overtime Rate.', ref: rules.overtime.maxRef });
+              if (beyond > 0) l.flags.push({ tone: 'assumption', message: 'From the third hour camera overtime is billed in whole hours, rounded up - an inference; the clause says only "not pro-rated".', ref: cam.ref });
+            }
+            if (nonCamActual > 0) {
+              const nc = rules.overtime.nonCamera;
+              const billedNc = lfRoundUp(nonCamActual, nc.incrementMins || 30);
+              const bound = boundRate(hourly * nc.rate, 'nonCameraOvertime', false);
+              push({ kind: 'nonCameraOvertime', label: 'Non-camera overtime', ref: nc.ref, amount: bound.rate * (billedNc / 60), rateDesc: `${nc.rate}T × ${billedNc}m`, flags: bound.capped ? [{ tone: 'assumption', message: 'Capped at the Maximum Overtime Rate.', ref: rules.overtime.maxRef }] : [] });
+            }
+          }
+          if (nonShooting && !nonShootingCwd && otActual > 0 && !splitOt) {
+            flag('assumption', 'Overtime on a non-shooting day is exceptional and needs prior written approval (§1.5(d)) - claimed, but make sure you have it.', 'TV §1.5(d)');
+          }
+        }
+
+        // ── Early call / pre-dawn ──
+        if (rules.earlyCall) {
+          const threshMins = lfMins(rules.earlyCall.threshold) || 360;
+          if (c.individualCall < threshMins) {
+            const span = threshMins - c.individualCall;
+            if (/2T until/.test(rules.earlyCall.treatment || '')) {
+              const bound = boundRate(hourly * 2, 'preDawn', false);
+              push({ kind: 'preDawn', label: 'Pre-dawn call (before 05:00)', ref: rules.earlyCall.ref, amount: bound.rate * (span / 60), rateDesc: `2T × ${span}m`, flags: bound.capped ? [{ tone: 'assumption', message: 'Capped at the Maximum Overtime Rate.', ref: rules.overtime.maxRef }] : [] });
+            } else {
+              const billed = lfRoundUp(span, rules.earlyCall.roundUpMins || 15);
+              push({ kind: 'earlyCall', label: 'Early call enhancement (before 06:00)', ref: rules.earlyCall.ref, amount: (hourly * 0.5) * (billed / 60), rateDesc: `+0.5T × ${billed}m`, flags: [{ tone: 'info', message: 'The enhancement is not Overtime and is not capped (§1.9(c)).', ref: rules.earlyCall.ref }] });
+            }
+          }
+        }
+
+        // ── Broken turnaround ──
+        if (weekCtx.prevWrapGapMins !== null && rules.brokenTurnaround && weekCtx.prevWrapGapMins < (rules.brokenTurnaround.periodHours || 11) * 60) {
+          const infringed = Math.min((rules.brokenTurnaround.periodHours * 60) - weekCtx.prevWrapGapMins, Math.max(0, c.wrap - c.individualCall));
+          if (infringed > 0) {
+            if (rules.brokenTurnaround.capPerHour != null) {
+              const billed = lfRoundUp(infringed, rules.brokenTurnaround.incrementMins || 30);
+              const upliftPerHour = Math.max(0, Math.min(1.5 * hourly, rules.brokenTurnaround.capPerHour) - hourly);
+              const l = push({ kind: 'brokenTurnaround', label: 'Broken turnaround', ref: rules.brokenTurnaround.ref, amount: upliftPerHour * (billed / 60), rateDesc: `to 1.5T × ${billed}m, capped £${rules.brokenTurnaround.capPerHour}/h`, flags: [] });
+              if (1.5 * hourly > rules.brokenTurnaround.capPerHour) l.flags.push({ tone: 'assumption', message: 'The £45/h cap bites at your rate - the uplift is what remains above your 1T.', ref: rules.brokenTurnaround.capRef });
+              l.flags.push({ tone: 'info', message: 'Zeroed if you take equivalent compensatory rest instead.', ref: (rules.brokenTurnaround.compRestAlternative || {}).ref });
+            } else {
+              const billed = lfRoundUp(infringed, rules.brokenTurnaround.roundUpMins || 15);
+              push({ kind: 'brokenTurnaround', label: 'Broken turnaround', ref: rules.brokenTurnaround.ref, amount: (hourly * 0.5) * (billed / 60), rateDesc: `+0.5T × ${billed}m`, flags: [
+                { tone: 'assumption', message: 'Uncapped by the £70 ceiling - an inference from §7.13\'s reach; early call states its exemption, broken turnaround does not.', ref: 'inference' },
+                { tone: 'info', message: 'Zeroed if you take equivalent compensatory rest by the end of next week (§6.2(a), §6.3).', ref: (rules.brokenTurnaround.compRestAlternative || {}).ref },
+              ] });
+            }
+          }
+        }
+
+        // ── Lunch: delay from the UNIT call; curtailment from the chip ──
+        if (c.dayShape.lunchMins > 0 && rules.lunch) {
+          const deadline = c.unitCall + (rules.lunch.latestAfterUnitCallHours || 6) * 60;
+          if (c.lunchCalled !== null && c.lunchCalled > deadline) {
+            const delay = lfRoundUp(c.lunchCalled - deadline, (rules.lunch.delayPenalty || {}).incrementMins || 15);
+            const atOtRate = (rules.lunch.delayPenalty || {}).at === 'overtimeRate';
+            const bound = atOtRate ? boundRate(hourly * rules.overtime.rate, 'lunchDelay', false) : { rate: hourly, floored: false, capped: false };
+            push({ kind: 'lunchDelay', label: 'Late lunch', ref: (rules.lunch.delayPenalty || {}).ref, amount: bound.rate * (delay / 60), rateDesc: `${atOtRate ? 'Overtime Rate' : 'Hourly Rate'} × ${delay}m`, flags: [] });
+          }
+          if (typeof c.lunchMinsTaken === 'number' && c.lunchMinsTaken < c.dayShape.lunchMins) {
+            const cp = rules.lunch.curtailPenalty || {};
+            const capMins = (cp.capMins || {})[c.shapeKey] ?? c.dayShape.lunchMins;
+            const cut = Math.min(c.dayShape.lunchMins - c.lunchMinsTaken, capMins);
+            const billed = lfRoundUp(cut, cp.incrementMins || 15);
+            const atCamera = cp.at === 'cameraOvertimeRate';
+            const mult = atCamera ? (rules.overtime.camera ? rules.overtime.camera.rate : 2) : rules.overtime.rate;
+            const bound = boundRate(hourly * mult, atCamera ? 'cameraOvertime' : 'lunchCurtail', atCamera && c.typeMeta.shooting);
+            push({ kind: 'lunchCurtail', label: 'Curtailed lunch', ref: cp.ref, amount: bound.rate * (billed / 60), rateDesc: `${mult}T × ${billed}m, capped at ${capMins}m`, flags: [] });
+          }
+        }
+
+        // ── Night work accrual (weekly-settlement agreements) ──
+        const nightMins = lfNightMinsFor(c);
+        if (nightMins > 0) {
+          const capLeft = Math.max(0, 600 - (weekCtx.nightMinsBeforeToday || 0));
+          const counted = Math.min(nightMins, capLeft);
+          if (weekCtx.week && weekCtx.week.nightWork && weekCtx.week.nightWork.settlement === 'paid' && counted > 0) {
+            push({ kind: 'nightWorkPaid', label: 'Night work (paid election)', ref: (rules.nightWork.weekly || {}).settlementRef, amount: hourly * (counted / 60), rateDesc: `+1T × ${counted}m (2T total for that time)`, flags: [] });
+          } else {
+            flag('info', `${nightMins} minutes of night work accrued${counted < nightMins ? ' (weekly cap reached - the cap is one working day, 10 hours)' : ''} - settles weekly as rest or pay (§5.3).`, 'TV §5.1-§5.3');
+          }
+        }
+        // Film-style per-night premium
+        if (rules.nightWork && rules.nightWork.premiumPerNight != null && c.wrap > 1440 && c.typeMeta.shooting) {
+          push({ kind: 'nightPremium', label: 'Night work premium', ref: rules.nightWork.premiumRef, amount: rules.nightWork.premiumPerNight, rateDesc: 'per night worked', flags: [] });
+        }
+
+        // ── Split day (informational) ──
+        if (rules.splitDays && c.typeMeta.shooting && c.wrap >= lfMins(rules.splitDays.window[0]) && c.wrap <= lfMins(rules.splitDays.window[1])) {
+          flag('info', 'Split day (camera finish between 9pm and 11pm) - counts toward your split day cap; £30 a day beyond it, reconciled at contract end (§1.8).', rules.splitDays.ref);
+        }
+      }
+
+      const total = lines.reduce((s, l) => s + ((l.unclaimable || l.unpriced || l.amount == null) ? 0 : l.amount), 0);
+      return { lines, flags, total, meta: { nightMins: worked ? lfNightMinsFor(c) : 0, hourly, dailyRateInclAch } };
+    }
+
+    // The dispatcher — the ONLY entry point, used by the long form area.
+    function longFormCalcForDay(production, day) {
+      const crew = (production.crew || []).find(cc => cc.id === day.crewId) || (production.crew || [])[0] || null;
+      const rules = resolveLongFormRules(production);
+      const dayCtx = assembleLfDayContext(production, day, crew);
+      const weekCtx = assembleLfWeekContext(production, day.crewId, day.date);
+      return calculateLongFormDay(rules, dayCtx, weekCtx);
+    }
 
     // The long form production record. Additive keys on TOP of the standard
     // shape — an APA production never gains any of these, and the APA

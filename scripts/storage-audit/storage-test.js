@@ -267,6 +267,11 @@ async function transformedAppCode() {
     'try { globalThis.__LF_NATION_BANK_HOLIDAYS = LF_NATION_BANK_HOLIDAYS; } catch (_) {}\n' +
     'try { globalThis.__lfIsBankHoliday = lfIsBankHoliday; } catch (_) {}\n' +
     'try { globalThis.__UK_BANK_HOLIDAYS = UK_BANK_HOLIDAYS; } catch (_) {}\n' +
+    // The engine (LF11/LF13): the dispatcher, the pure core and the
+    // settlement helper, for the worked-example fixtures.
+    'try { globalThis.__longFormCalcForDay = longFormCalcForDay; } catch (_) {}\n' +
+    'try { globalThis.__calculateLongFormDay = calculateLongFormDay; } catch (_) {}\n' +
+    'try { globalThis.__settleLfWeekNightWork = settleLfWeekNightWork; } catch (_) {}\n' +
     // Custom comparison item (U-suite): expose the validator + the
     // effective getters so the suite can verify the gate (empty/zero
     // hidden, valid included), plus the base constants for surface
@@ -2591,6 +2596,36 @@ async function main() {
     } else {
       for (const l of ['LF12a', 'LF12b', 'LF12c', 'LF12d', 'LF12e']) check(l + ' nation sets exposed', false, 'not exposed');
     }
+
+    // ── LF11: the engine reads the TABLE, never an agreement id ──
+    const engineSrc = (() => {
+      const s = html.indexOf('function resolveLongFormRules(');
+      const e = html.indexOf('// The long form production record.');
+      return (s > 0 && e > s) ? html.slice(s, e) : '';
+    })();
+    check('LF11a the engine source (resolveLongFormRules through longFormCalcForDay) contains NO agreement id literal',
+      engineSrc.length > 4000 && !/pact-tv|pact-film/.test(engineSrc),
+      `slice length=${engineSrc.length}`);
+    // LF11b — the proof a moved string can't defeat: register a RENAMED copy
+    // of the TV row and assert a day computes IDENTICALLY under it.
+    const CALC = sb.__longFormCalcForDay;
+    if (typeof CALC === 'function' && TABLE) {
+      TABLE['synthetic-third@2099-01-01'] = TABLE['pact-tv@2023-01-01'];
+      const prodFor = (version) => ({
+        id: 'p-lf11', agreement: 'x', agreementVersion: version, band: 2,
+        baseNation: 'england-wales', weekStartDay: 'monday',
+        crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }],
+        weeks: [], days: [
+          { id: 'd1', crewId: 'c1', date: '2026-08-04', dayType: 'shoot', dayShape: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '20:10', wrapped: true },
+        ],
+      });
+      const real = CALC(prodFor('pact-tv@2023-01-01'), prodFor('pact-tv@2023-01-01').days[0]);
+      const synth = CALC(prodFor('synthetic-third@2099-01-01'), prodFor('synthetic-third@2099-01-01').days[0]);
+      delete TABLE['synthetic-third@2099-01-01'];
+      check('LF11b a synthetic third agreement row computes a day with NO code change, byte-identical output to the real row',
+        JSON.stringify(real) === JSON.stringify(synth) && real.total > 0,
+        `real=${JSON.stringify(real && real.total)} synth=${JSON.stringify(synth && synth.total)}`);
+    } else check('LF11b a synthetic third agreement row computes a day with NO code change, byte-identical output to the real row', false, 'engine not exposed');
   }
 
   // ===== T. INLINE 5-MINUTE TIME WHEEL — touch-branch TimeInput =====

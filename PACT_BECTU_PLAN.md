@@ -69,6 +69,11 @@ but it cannot invent a clause.
   The shape shows on working types only and IS the lunch. §1.5/§2.3(b)
   derive from the type. Non-shooting SCWD/CWD read as the exception they are
   (TV §1.5(c)), signalled inline, never nagged.
+- **Record definition, not an agreement inference** (blessed Phase 3d):
+  `rest` means ENGAGED but not working, so bank holiday pay can attach
+  (TV §11.3 Band 4 / Film §5.6(a)); `dayOff` means NOT ENGAGED, so it
+  cannot. The same distinction the APA side draws between a Rest Day and a
+  Day off.
 - **Turnaround days are suggestion-only** (ruled Phase 3c): the app may
   notice a night run has ended and OFFER a turnaround day; it must never
   insert one. An accepted suggestion claims 1T and, on TV, flags that the
