@@ -3039,8 +3039,75 @@ async function main() {
         check('LF16g the structural not-worked-bank-holiday unclaimable line carries NO resolvable tag - the mechanism never offers to price a wrong-band right',
           !!bhLine && bhLine.unclaimable === true && bhLine.resolvable === undefined, JSON.stringify(bhLine));
       }
+
+      // ── LF18: mileage and travel (Phase 4f). The app bills exactly what's
+      //    entered - miles at the job's rate or a flat cash figure; travel
+      //    time at the day's basic hourly rate or flat cash. No thresholds, no
+      //    HMRC derivation, no mile-to-time. Travel NEVER takes a premium
+      //    multiplier: flat on a 6th day exactly as on a normal day. The
+      //    Travel invoice group is additive (APA byte-identity is the
+      //    123-scenario audit's job, not this suite's). ──
+      const mkRate = (rate, days) => ({ id: 'pm', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', ...(rate != null ? { mileageRatePerMile: rate } : {}), crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wm', '2026-08-03', '2026-08-09')], days });
+      {
+        const d = D('2026-08-04', { lfMileage: { mode: 'miles', miles: 30 } }); const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'mileage');
+        const inv = LINES(p, 'c1', ['wm']).find(l => l.group === 'travel' && /Mileage/.test(l.label));
+        check('LF18a mileage in miles mode bills miles at the job rate (default 50p): 30 mi = £15.00, kind mileage, and rides the invoice Travel group as miles at the rate',
+          !!line && line.kind === 'mileage' && approx(line.amount, 15) && !!inv && inv.group === 'travel' && approx(inv.rate, 0.5) && inv.qty === 30 && approx(inv.amount, 15),
+          JSON.stringify([line, inv]));
+      }
+      {
+        const d = D('2026-08-04', { lfMileage: { mode: 'miles', miles: 30 } }); const p = mkRate(0.45, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'mileage');
+        check('LF18b the per-job mileage rate overrides the default: at 45p, 30 mi = £13.50',
+          !!line && approx(line.amount, 13.5), JSON.stringify(line));
+      }
+      {
+        const d = D('2026-08-04', { lfMileage: { mode: 'cash', cash: 22 } }); const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'mileage');
+        check('LF18c cash mileage bills the flat figure (£22) with no rate arithmetic',
+          !!line && approx(line.amount, 22) && line.ratePerMile === undefined, JSON.stringify(line));
+      }
+      {
+        const d = D('2026-08-04', { lfTravel: { mode: 'minutes', minutes: 90 } }); const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'travelTime');
+        check('LF18d travel time in minutes bills at the day basic hourly rate (90m at £25/hr = £37.50), a flat reimbursement - no overtime multiplier',
+          !!line && line.kind === 'travelTime' && approx(line.amount, 37.5), JSON.stringify(line));
+      }
+      {
+        const d = D('2026-08-04', { lfTravel: { mode: 'cash', cash: 40 } }); const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'travelTime');
+        check('LF18e cash travel time bills the flat figure (£40)',
+          !!line && approx(line.amount, 40), JSON.stringify(line));
+      }
+      {
+        // The hard rule: on a 6th day (a premium base) travel and mileage are
+        // billed identically to a normal day - never uplifted.
+        const runDates = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07'];
+        const extra = { lfMileage: { mode: 'miles', miles: 30 }, lfTravel: { mode: 'minutes', minutes: 90 } };
+        const normalDay = D('2026-08-04', extra), sixthDay = D('2026-08-08', extra);
+        const pNormal = mkRate(null, [normalDay]);
+        const pSixth = mkRate(null, [...runDates.map(dt => D(dt)), sixthDay]);
+        const travelOf = (p, d) => JSON.stringify(CALC(p, d).lines.filter(l => l.kind === 'mileage' || l.kind === 'travelTime').map(l => [l.kind, l.amount]));
+        check('LF18f the hard rule - travel never takes a premium multiplier: mileage and travel bill IDENTICALLY on a 6th day and a normal day',
+          travelOf(pNormal, normalDay) === travelOf(pSixth, sixthDay),
+          `${travelOf(pNormal, normalDay)} vs ${travelOf(pSixth, sixthDay)}`);
+      }
+      {
+        const d = D('2026-08-04', { lfMileage: { mode: 'cash', cash: 20 }, lfTravel: { mode: 'cash', cash: 30 } }); const p = mkRate(null, [d]);
+        const base = CALC(mkRate(null, [D('2026-08-04')]), D('2026-08-04')).total;
+        check('LF18g mileage and travel join the day total (base + £20 + £30)',
+          approx(CALC(p, d).total, base + 50), JSON.stringify([CALC(p, d).total, base]));
+      }
+      {
+        const d = { id: 't', crewId: 'c1', date: '2026-08-04', dayType: 'travel', lfMileage: { mode: 'cash', cash: 18 } };
+        const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'mileage');
+        check('LF18h mileage is claimed on a travel day too - reimbursements are independent of the day type',
+          !!line && approx(line.amount, 18), JSON.stringify(CALC(p, d).lines.map(l => [l.kind, l.amount])));
+      }
     } else {
-      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h', 'LF16a', 'LF16b', 'LF16c', 'LF16d', 'LF16e', 'LF16f', 'LF16g']) check(l + ' invoice builders exposed', false, 'not exposed');
+      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h', 'LF16a', 'LF16b', 'LF16c', 'LF16d', 'LF16e', 'LF16f', 'LF16g', 'LF18a', 'LF18b', 'LF18c', 'LF18d', 'LF18e', 'LF18f', 'LF18g', 'LF18h']) check(l + ' invoice builders exposed', false, 'not exposed');
     }
   }
 

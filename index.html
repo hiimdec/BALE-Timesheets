@@ -3375,6 +3375,7 @@
         isBankHoliday: lfIsBankHoliday(day.date, production.baseNation),
         bankHolidayName: lfBankHolidayName(day.date, production.baseNation),
         productionBand: Number(production.band) || null,
+        mileageRate: Number(production.mileageRatePerMile) > 0 ? Number(production.mileageRatePerMile) : 0.5,
         dayStartMins: dayStart,
       };
     }
@@ -3779,6 +3780,33 @@
         // ── Split day (informational) ──
         if (rules.splitDays && c.typeMeta.shooting && c.wrap >= lfMins(rules.splitDays.window[0]) && c.wrap <= lfMins(rules.splitDays.window[1])) {
           flag('info', 'Split day (camera finish between 9pm and 11pm) - counts toward your split day cap; £30 a day beyond it, reconciled at contract end (§1.8).', rules.splitDays.ref);
+        }
+      }
+
+      // ── Mileage and travel (Phase 4f). The deal wins: the app applies NO
+      //    threshold arithmetic, no HMRC derivation, no mile-to-time. It bills
+      //    exactly what the user entered - miles at the job's rate or a flat
+      //    cash figure; travel time at the day's basic hourly rate (as APA
+      //    does) or flat cash. Emitted for EVERY day type (you can drive to a
+      //    travel or rest day). Travel NEVER takes a premium multiplier - flat,
+      //    always, by construction: no 6th/7th/bank-holiday uplift ever touches
+      //    these lines. Reimbursements, not agreement-priced work.
+      const mil = c.day.lfMileage;
+      if (mil) {
+        if (mil.mode === 'cash' && mil.cash != null) {
+          push({ kind: 'mileage', label: 'Mileage', ref: null, amount: Number(mil.cash) || 0, rateDesc: 'flat', flags: [] });
+        } else if (mil.mode === 'miles' && Number(mil.miles) > 0) {
+          const miles = Number(mil.miles), rate = c.mileageRate;
+          push({ kind: 'mileage', label: 'Mileage', ref: null, amount: miles * rate, rateDesc: `${miles} mi at £${rate.toFixed(2)}/mi`, qtyMiles: miles, ratePerMile: rate, flags: [] });
+        }
+      }
+      const trv = c.day.lfTravel;
+      if (trv) {
+        if (trv.mode === 'cash' && trv.cash != null) {
+          push({ kind: 'travelTime', label: 'Travel time', ref: null, amount: Number(trv.cash) || 0, rateDesc: 'flat', flags: [] });
+        } else if (trv.mode === 'minutes' && Number(trv.minutes) > 0) {
+          const mins = Number(trv.minutes);
+          push({ kind: 'travelTime', label: 'Travel time', ref: null, amount: hourly * (mins / 60), rateDesc: `${mins}m at the hourly rate (flat)`, flags: [] });
         }
       }
 
@@ -6283,6 +6311,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       ach: 'premium', nightWorkPaid: 'premium', nightPremium: 'premium',
       overtime: 'ot', cameraOvertime: 'ot', nonCameraOvertime: 'ot',
       lunchDelay: 'pen', lunchCurtail: 'pen', brokenTurnaround: 'pen', earlyCall: 'pen', preDawn: 'pen',
+      mileage: 'travel', travelTime: 'travel',
     };
     function lfLineGroupFor(line) {
       // Worked bank holidays are a whole day (DAY RATES); the not-worked
@@ -6330,7 +6359,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             if (line.unclaimable || line.unpriced || line.amount == null) continue;  // page 2 only
             const group = lfLineGroupFor(line);
             const label = (line.label || '').split(' (')[0].trim();
-            if (group === 'day') {
+            if (line.kind === 'mileage' && line.ratePerMile != null && Number(line.qtyMiles) > 0) {
+              // Mileage in miles mode reads as miles at the job's rate (APA's
+              // mileage line shape): qty is MILES, rate is £/mi. Cash mileage
+              // and travel time fall through to the generic non-day path.
+              bump(`travel|Mileage|${line.ratePerMile.toFixed(2)}`, { group: 'travel', label: 'Mileage', rate: line.ratePerMile, isMileage: true }, d.date, { qty: Number(line.qtyMiles), amount: Number(line.amount) || 0 });
+            } else if (group === 'day') {
               const amt = Number(line.amount) || 0;
               bump(`day|${label}|${amt.toFixed(2)}`, { group, label, rate: amt }, d.date, { qty: 1, amount: amt });
             } else {
@@ -6353,7 +6387,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       return [...map.values()].map(e => {
         const n = e.dates.length;
-        const detail = e.group === 'kit' && e.label === 'Box rental (weekly)'
+        const detail = e.isMileage
+          ? `${e.qty} mi${n > 1 ? ` across ${n} days` : ''}`
+          : e.group === 'kit' && e.label === 'Box rental (weekly)'
           ? `${e.qty} week${e.qty === 1 ? '' : 's'}`
           : n === 0 ? ''
           : n === 1 ? fmtDateShort(e.dates[0])
@@ -8462,6 +8498,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       { key: 'extras',  label: 'Extras',    fill: '#a78bfa' },
       { key: 'pen',     label: 'Penalties', fill: '#e11d48' },
       { key: 'kit',     label: 'Kit',       fill: '#16a34a' },
+      { key: 'travel',  label: 'Travel',    fill: '#14b8a6' },
     ];
     function invLineGroup(item) {
       // Long form line items carry an explicit `group` (never a label regex —
@@ -8671,7 +8708,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       ].filter(c => c.value && String(c.value).trim());
       // Group totals use the SAME getLineTotal invoiceSubtotal sums, so the
       // groups and the bar segments add to the subtotal exactly.
-      const groupTotals = { day: 0, ot: 0, premium: 0, extras: 0, pen: 0, kit: 0 };
+      const groupTotals = { day: 0, ot: 0, premium: 0, extras: 0, pen: 0, kit: 0, travel: 0 };
       allLines.forEach(l => { groupTotals[invLineGroup(l)] += getLineTotal(l); });
       const issuedDate = invoice.invoiceDate || String(invoice.createdAt || '').slice(0, 10);
       const chargeTotal = charges ? (Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0) : 0;
