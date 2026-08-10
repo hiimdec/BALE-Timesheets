@@ -2936,19 +2936,25 @@
     // gaffer can be on the rigging crew). Seeded from the role, confirmed by
     // the user in the wizard. Stored on the long form crew record only.
     //   ach — TV §1.3's 10+1+1 departments (the Additional Contracted Hour)
-    //   riggingElectrician — Film §2.2(a): 9+1 day, weekly ÷45 / daily ÷9
+    //   riggingElectrician — Film §2.2(a): 9+1 day, weekly ÷45 / daily ÷9. Now
+    //     ALSO on TV (Phase 5b): the TV agreement is silent on rigging, so the
+    //     same 9+1 shape / ÷9 divisor is taken by analogy from Film §2.2(a) and
+    //     the MMP card, founder-confirmed. Per-agreement params live in the
+    //     ruleset row; this key is shared, the shape is not (TV daily-rate, no
+    //     weekly divisor). Separate from the dropped Electrical Rigging DEPT
+    //     (a hiring label) - the class is a per-day mode; they stay unwired.
     //   postProduction — Film §2.2(b) ONLY: non-camera OT, no lunch penalties.
     //   The TV agreement never names post production — TV post crew are
     //   ordinary non-shooting crew under §1.5, so TV carries no such class
     //   (ruled Phase 3b: fewer fictional entities).
     const AGREEMENT_CLASSES = {
-      'pact-tv':   ['standard', 'ach'],
+      'pact-tv':   ['standard', 'ach', 'riggingElectrician'],
       'pact-film': ['standard', 'riggingElectrician', 'postProduction'],
     };
     const AGREEMENT_CLASS_META = {
       standard:           { label: 'Standard',            detail: 'The default terms for your agreement.' },
       ach:                { label: 'Additional hour',     detail: 'The 10+1+1 departments - ADs, costume, hair and make-up, locations, production, script supervisors.' },
-      riggingElectrician: { label: 'Rigging electrician', detail: 'The 9+1 rigging day. Your hourly rate divides by 9, not 11.' },
+      riggingElectrician: { label: 'Rigging electrician', detail: 'The 9+1 rigging day. Your hourly rate divides by 9, not the shooting-day divisor.' },
       postProduction:     { label: 'Post production',     detail: 'Post crew terms.' },
     };
     // TV §1.3's ACH departments, mapped onto this app's department names.
@@ -3096,6 +3102,10 @@
                  guaranteed: true, aggregable: false, isOvertime: false,
                  departments: ['Assistant Directors', 'Costume', 'Hair and Make-up (and Prosthetics)', 'Locations', 'Production', 'Script Supervisors'],
                  ref: 'TV §1.3, §1.4(b)-(g)' },
+          riggingElectrician: { dayShape: { contractedHours: 9, shootingHours: 9, lunchMins: 60, restMins: 0, otTriggerElapsedHours: 10 },
+                                hourlyRate: { dailyDivisor: 9, weeklyDivisor: null },
+                                inference: 'the Scripted TV agreement is silent on rigging entirely; the 9 worked + 1 unpaid lunch shape, overtime after 10 elapsed hours, and the ÷9 daily divisor are taken by analogy from Film §2.2(a) and the MMP card ("9hr + 1hr lunch"), founder-confirmed from practice - he moves between shooting and rigging crew on the same job. TV is daily-rate, so no weekly divisor',
+                                ref: 'TV: none; by analogy Film §2.2(a), §3.3(a) and the MMP card' },
         },
         prepWrap: { basis: 'customary to department, ready at Individual Call', ref: 'TV §1.6' },
         overtime: {
@@ -21977,12 +21987,20 @@ const setDays = (updater) =>
       };
 
       const indivOn = d.individualCallTime != null;
+      // A rig day (Phase 5b): the effective class carries its own dayShape, so
+      // the engine prices the 9+1 rigging day and ignores the selected
+      // SWD/SCWD/CWD. The lunch UI follows the class shape (a formal lunch, never
+      // the CWD no-break branch) and the shape selector locks to say so.
+      const isRigDay = !!(ctx && ctx.clsRules && ctx.clsRules.dayShape);
+      const rigShape = isRigDay ? ctx.clsRules.dayShape : null;
+      const effIsCwd = isRigDay ? ((rigShape.lunchMins || 0) === 0) : (shapeKey === 'cwd');
+      const effLunchMins = isRigDay ? (rigShape.lunchMins || 0) : (shapeKey === 'scwd' ? 30 : 60);
       const lunchEnd = (() => {
         const t = lfMins(d.lunchTime);
-        return (t !== null && shapeMeta && shapeKey !== 'cwd') ? toHHMM((t + (shapeKey === 'scwd' ? 30 : 60)) / 60) : '-';
+        return (t !== null && !effIsCwd) ? toHHMM((t + effLunchMins) / 60) : '-';
       })();
       const curtailOn = d.lunchMinsTaken !== undefined;
-      const fullLunchMins = shapeKey === 'scwd' ? 30 : 60;
+      const fullLunchMins = effLunchMins;
       const camOtOn = d.cameraOtCalledMins !== undefined;
       const stepUpOn = d.dayAgreementClass !== undefined || d.dayContractDailyRate !== undefined;
       const classes = AGREEMENT_CLASSES[production.agreement] || ['standard'];
@@ -22094,7 +22112,7 @@ const setDays = (updater) =>
                   </Field>
                 )}
 
-                {shapeKey !== 'cwd' ? (
+                {!effIsCwd ? (
                   <div ref={lunchRef} className="border-t border-neutral-800 pt-3 mt-1">
                     <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5">
                       <div className="flex items-center justify-between mb-1.5">
@@ -22146,7 +22164,11 @@ const setDays = (updater) =>
                           >NOW</button>
                         ) : <span />}
                         {/* 2.1: the shape IS the lunch — the selector sits
-                            where the APA duration select sits. */}
+                            where the APA duration select sits. On a rig day the
+                            class fixes the 9+1 shape, so the selector locks. */}
+                        {isRigDay ? (
+                          <span className="text-[13px] font-mono text-neutral-400" title="The rigging class fixes the 9+1 shape">Rigging day (9+1)</span>
+                        ) : (
                         <select
                           value={shapeKey}
                           onChange={(e) => set({ dayShape: e.target.value })}
@@ -22154,6 +22176,7 @@ const setDays = (updater) =>
                         >
                           {LF_DAY_SHAPE_ORDER.map(k => <option key={k} value={k} className="bg-neutral-900">{LF_DAY_SHAPE_META[k].label} · {LF_DAY_SHAPE_META[k].detail.replace(/\.$/, '')}</option>)}
                         </select>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -22194,7 +22217,7 @@ const setDays = (updater) =>
             <div className="space-y-2 mb-4">
               <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-bold px-1">Conditions</div>
               <div className="flex flex-wrap gap-2">
-                {shapeKey !== 'cwd' && renderChip('curtail', 'Lunch cut short', curtailOn, curtailOn ? `${d.lunchMinsTaken}m` : null)}
+                {!effIsCwd && renderChip('curtail', 'Lunch cut short', curtailOn, curtailOn ? `${d.lunchMinsTaken}m` : null)}
                 {isTV && typeMeta.shooting && renderChip('camOt', 'Camera OT called', camOtOn, camOtOn ? `${d.cameraOtCalledMins}m` : null)}
                 {renderChip('stepUp', 'Class / rate', stepUpOn, stepUpOn ? ((AGREEMENT_CLASS_META[d.dayAgreementClass] || {}).label || (d.dayContractDailyRate !== undefined ? fmtGBP(d.dayContractDailyRate) : null)) : null)}
                 {runFlagged && renderChip('sixSeven', runLabel, d.sixthSeventhOverride === true, d.sixthSeventhOverride ? 'waived' : null)}

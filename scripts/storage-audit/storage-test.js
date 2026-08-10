@@ -2636,8 +2636,8 @@ async function main() {
         for (const [k, v] of Object.entries(node)) collect(v, `${path}.${k}`);
       };
       for (const [id, row] of Object.entries(TABLE)) collect(row, id);
-      check('LF10c the table carries exactly the 12 open inferences of the register (Phase 3a\'s 10 + the two ruled in 3c: TV travel-day pay, TV turnaround records)',
-        inferences.length === 12, `found ${inferences.length}: ${inferences.join(' | ')}`);
+      check('LF10c the table carries exactly the 13 open inferences of the register (Phase 3a\'s 10 + the two ruled in 3c + the TV rigging class shape ruled in 5b)',
+        inferences.length === 13, `found ${inferences.length}: ${inferences.join(' | ')}`);
       const tableSrc = (html.match(/const LONGFORM_AGREEMENTS = \{[\s\S]*?\n    \};/) || [''])[0];
       check('LF10d table source found and the word "inference" appears in it only as the marker key form',
         tableSrc.length > 4000 &&
@@ -2923,8 +2923,46 @@ async function main() {
           approx(r2.total, 250),
           `priced=${JSON.stringify(priced)} unpriced=${JSON.stringify(unpriced)} r2total=${r2.total}`);
       }
+
+      // ── LF23: the TV rigging class (Phase 5b). The Scripted TV agreement is
+      //    silent on rigging; the 9+1 shape, the 10-hour elapsed trigger and the
+      //    ÷9 divisor are taken by analogy from Film §2.2(a) and the MMP card,
+      //    founder-confirmed. Per-day (the step-up chip) or per-crew, and MANUAL
+      //    on TV - seedAgreementClass never reaches for it, keeping it separate
+      //    from the dropped Electrical Rigging department. ──
+      {
+        const CLS = sb.__AGREEMENT_CLASSES, SEED = sb.__seedAgreementClass;
+        const tvRig = TABLE['pact-tv@2023-01-01'].classes.riggingElectrician;
+        check('LF23a the TV row carries riggingElectrician: 9 worked + 1 lunch, OT after 10 elapsed hours, ÷9 daily divisor, TV daily-rate (no weekly divisor), listed in AGREEMENT_CLASSES, and marked as an inference',
+          !!tvRig && tvRig.dayShape.shootingHours === 9 && tvRig.dayShape.lunchMins === 60 && tvRig.dayShape.otTriggerElapsedHours === 10 &&
+          tvRig.hourlyRate.dailyDivisor === 9 && tvRig.hourlyRate.weeklyDivisor === null && typeof tvRig.inference === 'string' &&
+          (CLS['pact-tv'] || []).includes('riggingElectrician'),
+          JSON.stringify(tvRig));
+        check('LF23b the class stays MANUAL on TV: seedAgreementClass never returns riggingElectrician for a TV role (unwired from the dropped Electrical Rigging dept), while film still seeds it',
+          SEED('pact-tv', 'Lighting', 'Rigging Supervisor') === 'standard' && SEED('pact-tv', 'Grip', 'Rigging Grip') === 'standard' &&
+          SEED('pact-film', 'Rigging', 'Rigger') === 'riggingElectrician',
+          JSON.stringify([SEED('pact-tv', 'Lighting', 'Rigging Supervisor'), SEED('pact-film', 'Rigging', 'Rigger')]));
+        // A per-day rig day (the step-up chip): 08:00-19:00 = 11h elapsed. The rig
+        // 10h trigger fires 1h of OT where a standard SWD (11h trigger) has none,
+        // and the ÷9 divisor prices it: £270/9 × 1.5 = £45 (÷10 would give £40.50).
+        const rigDay = D('2026-08-10', { dayAgreementClass: 'riggingElectrician', dayContractDailyRate: 270, wrapTime: '19:00' });
+        const stdDay = D('2026-08-10', { wrapTime: '19:00' });
+        const rr = CALC(mkTv([rigDay]), rigDay);
+        const sr = CALC(mkTv([stdDay]), stdDay);
+        const rigOt = lineOf(rr, 'overtime'), rigBase = lineOf(rr, 'base');
+        check('LF23c a per-day rig day prices the 9+1 day: base £270, 1h OT at ÷9 (£45, total £315), where the same times as a standard SWD carry no overtime (10h vs 11h trigger)',
+          !!rigBase && approx(rigBase.amount, 270) && !!rigOt && approx(rigOt.amount, 45) && approx(rr.total, 315) && lineOf(sr, 'overtime') === null,
+          JSON.stringify([rigBase && rigBase.amount, rigOt && rigOt.amount, rr.total, lineOf(sr, 'overtime')]));
+        // Per-crew too (the whole job is rigging): the class rides the crew record.
+        const crewRigDay = D('2026-08-11', { wrapTime: '19:00' });
+        const cr = CALC(mkTv([crewRigDay], { cls: 'riggingElectrician' }), crewRigDay);
+        const crOt = lineOf(cr, 'overtime');
+        check('LF23d a per-crew rigging electrician (class on the crew record) prices every day as a 9+1 rig day: base £250, 1h OT at ÷9 (£250/9 × 1.5)',
+          approx((lineOf(cr, 'base') || {}).amount ?? -1, 250) && !!crOt && approx(crOt.amount, 250 / 9 * 1.5),
+          JSON.stringify([(lineOf(cr, 'base') || {}).amount, crOt && crOt.amount]));
+      }
     } else {
-      for (const l of ['LF13a', 'LF13b', 'LF13c', 'LF13d', 'LF13e', 'LF13f', 'LF13g', 'LF13h', 'LF13i', 'LF13j', 'LF13k']) check(l + ' fixtures runnable', false, 'engine/settle not exposed');
+      for (const l of ['LF13a', 'LF13b', 'LF13c', 'LF13d', 'LF13e', 'LF13f', 'LF13g', 'LF13h', 'LF13i', 'LF13j', 'LF13k', 'LF23a', 'LF23b', 'LF23c', 'LF23d']) check(l + ' fixtures runnable', false, 'engine/settle not exposed');
     }
 
     // ── LF14: the invoice builders. Page 1 groups by kind, whole days at
