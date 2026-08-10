@@ -21742,6 +21742,12 @@ const setDays = (updater) =>
       const camOtOn = d.cameraOtCalledMins !== undefined;
       const stepUpOn = d.dayAgreementClass !== undefined || d.dayContractDailyRate !== undefined;
       const classes = AGREEMENT_CLASSES[production.agreement] || ['standard'];
+      // Mileage + travel (Phase 4f): a claim the user enters, never derived.
+      const mileageOn = d.lfMileage !== undefined;
+      const travelOn = d.lfTravel !== undefined;
+      const jobMileageRate = Number(production.mileageRatePerMile) > 0 ? Number(production.mileageRatePerMile) : 0.5;
+      const mileageSummary = mileageOn ? (d.lfMileage.mode === 'cash' ? fmtGBP(d.lfMileage.cash || 0) : `${Number(d.lfMileage.miles) || 0} mi`) : null;
+      const travelSummary = travelOn ? (d.lfTravel.mode === 'cash' ? fmtGBP(d.lfTravel.cash || 0) : `${Number(d.lfTravel.minutes) || 0}m`) : null;
 
       // Run flags for the 6th/7th chip + notice (display only — the engine
       // prices them in the money block).
@@ -21949,6 +21955,8 @@ const setDays = (updater) =>
                 {renderChip('stepUp', 'Class / rate', stepUpOn, stepUpOn ? ((AGREEMENT_CLASS_META[d.dayAgreementClass] || {}).label || (d.dayContractDailyRate !== undefined ? fmtGBP(d.dayContractDailyRate) : null)) : null)}
                 {runFlagged && renderChip('sixSeven', runLabel, d.sixthSeventhOverride === true, d.sixthSeventhOverride ? 'waived' : null)}
                 {renderChip('boxRental', 'Box rental', d.boxRentalDay !== undefined, d.boxRentalDay !== undefined ? fmtGBP(d.boxRentalDay) : null)}
+                {renderChip('mileage', 'Mileage', mileageOn, mileageSummary)}
+                {renderChip('travel', 'Travel time', travelOn, travelSummary)}
                 {notesChipAndPanel}
               </div>
               {expandedChips.has('boxRental') && (
@@ -21963,6 +21971,68 @@ const setDays = (updater) =>
                     </Field>
                   )}
                   <p className="text-[10px] text-neutral-600 leading-tight">Kit is usually weekly - set that on the week. This overrides just this day (film §5.9 prices a daily's box pro-rata).</p>
+                </div>
+              )}
+              {expandedChips.has('mileage') && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12px] font-semibold text-neutral-300">Claim mileage</span>
+                    <Toggle value={mileageOn} onChange={(v) => set({ lfMileage: v ? { mode: 'miles', miles: 0 } : undefined })} ariaLabel="Claim mileage" />
+                  </div>
+                  {mileageOn && (
+                    <div className="space-y-2">
+                      <div className="flex gap-1.5">
+                        <button type="button" onClick={() => set({ lfMileage: { mode: 'miles', miles: Number(d.lfMileage.miles) || 0 } })}
+                          className={`flex-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${d.lfMileage.mode !== 'cash' ? 'bg-tm-sky-500/15 border-tm-sky-500/40 text-tm-sky-400' : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'}`}
+                          style={{ WebkitTapHighlightColor: 'transparent' }}>Miles</button>
+                        <button type="button" onClick={() => set({ lfMileage: { mode: 'cash', cash: Number(d.lfMileage.cash) || 0 } })}
+                          className={`flex-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${d.lfMileage.mode === 'cash' ? 'bg-tm-sky-500/15 border-tm-sky-500/40 text-tm-sky-400' : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'}`}
+                          style={{ WebkitTapHighlightColor: 'transparent' }}>Cash</button>
+                      </div>
+                      {d.lfMileage.mode === 'cash' ? (
+                        <Field label="Amount for the day (£)">
+                          <Input type="number" min="0" step="1" value={d.lfMileage.cash ?? ''} onChange={(e) => set({ lfMileage: { mode: 'cash', cash: Math.max(0, Number(e.target.value) || 0) } })} />
+                        </Field>
+                      ) : (
+                        <Field label={`Miles (at £${jobMileageRate.toFixed(2)}/mi, set in Job settings)`}>
+                          <Input type="number" min="0" step="1" value={d.lfMileage.miles ?? ''} onChange={(e) => set({ lfMileage: { mode: 'miles', miles: Math.max(0, Number(e.target.value) || 0) } })} />
+                        </Field>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-neutral-600 leading-tight">{isTV
+                    ? "Enter the miles you're charging for. Cost beyond 25 road miles is the producer's (§8.3(a)), so enter the miles past that - the app does not subtract it."
+                    : "Enter the miles you're charging for. 30 road miles at each end are included (§6.2(c)), so enter the miles past that - the app does not subtract it."}</p>
+                </div>
+              )}
+              {expandedChips.has('travel') && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12px] font-semibold text-neutral-300">Claim travel time</span>
+                    <Toggle value={travelOn} onChange={(v) => set({ lfTravel: v ? { mode: 'minutes', minutes: 0 } : undefined })} ariaLabel="Claim travel time" />
+                  </div>
+                  {travelOn && (
+                    <div className="space-y-2">
+                      <div className="flex gap-1.5">
+                        <button type="button" onClick={() => set({ lfTravel: { mode: 'minutes', minutes: Number(d.lfTravel.minutes) || 0 } })}
+                          className={`flex-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${d.lfTravel.mode !== 'cash' ? 'bg-tm-sky-500/15 border-tm-sky-500/40 text-tm-sky-400' : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'}`}
+                          style={{ WebkitTapHighlightColor: 'transparent' }}>Minutes</button>
+                        <button type="button" onClick={() => set({ lfTravel: { mode: 'cash', cash: Number(d.lfTravel.cash) || 0 } })}
+                          className={`flex-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${d.lfTravel.mode === 'cash' ? 'bg-tm-sky-500/15 border-tm-sky-500/40 text-tm-sky-400' : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'}`}
+                          style={{ WebkitTapHighlightColor: 'transparent' }}>Cash</button>
+                      </div>
+                      {d.lfTravel.mode === 'cash' ? (
+                        <Field label="Amount for the day (£)">
+                          <Input type="number" min="0" step="1" value={d.lfTravel.cash ?? ''} onChange={(e) => set({ lfTravel: { mode: 'cash', cash: Math.max(0, Number(e.target.value) || 0) } })} />
+                        </Field>
+                      ) : (
+                        <Field label="Minutes (flat, at your hourly rate)">
+                          <Input type="number" min="0" step="5" value={d.lfTravel.minutes ?? ''} onChange={(e) => set({ lfTravel: { mode: 'minutes', minutes: Math.max(0, Number(e.target.value) || 0) } })} />
+                        </Field>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-neutral-600 leading-tight">Travel time is normally absorbed into the working day. Enter it only where it's being paid separately. Minutes bill flat at your hourly rate; use cash for an agreed figure.</p>
                 </div>
               )}
               {notesPanel}
@@ -22755,6 +22825,12 @@ const setDays = (updater) =>
                   <Input type="number" min="0" step="1" placeholder="-" value={production.scheduledFilmingDays || ''} onChange={(e) => {
                     const v = Number(e.target.value) || 0;
                     setProduction(p => { const n = { ...p }; if (v > 0) n.scheduledFilmingDays = v; else delete n.scheduledFilmingDays; return n; });
+                  }} />
+                </Field>
+                <Field label="Mileage rate (£ per mile)" hint="Used when you enter mileage as miles on a day. Default 50p.">
+                  <Input type="number" min="0" step="0.01" placeholder="0.50" value={production.mileageRatePerMile ?? ''} onChange={(e) => {
+                    const v = Number(e.target.value) || 0;
+                    setProduction(p => { const n = { ...p }; if (v > 0) n.mileageRatePerMile = v; else delete n.mileageRatePerMile; return n; });
                   }} />
                 </Field>
                 {/* Invoicing details (Phase 4b Part 1, ruled): entered once
