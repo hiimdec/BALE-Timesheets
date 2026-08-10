@@ -21487,12 +21487,75 @@ const setDays = (updater) =>
     // form record (the SoloDayPage solo mount would auto-create an APA day
     // on it). Slice 1 shows the stamped facts and an honest empty state:
     // no weeks, no days, no calculator yet.
+    // ── Resolution control (Phase 4e). A resolvable line (§7.11, §1.5(f))
+    //    carries its resolution control here, where the flag is. The deal
+    //    wins over the document: §7.11 gives no rate so the user picks the
+    //    usual rate, a custom figure, or unclaimed; §1.5(f) says nothing is
+    //    owed, so unclaimed by default or an agreed figure, its framing
+    //    carrying §1.5(c). Writes day.lfResolve; absent = still needs
+    //    agreeing (the week indicator and send-time check read that). ──
+    const LF_RESOLVE_MODES = {
+      cwdCameraOtBeyondCap: {
+        hint: 'Beyond the two-hour weekly cap the rate is agreed locally (§7.11). Bill the usual camera overtime rate, a figure you agreed, or leave it unclaimed.',
+        options: [
+          { mode: 'usual', label: 'Usual rate' },
+          { mode: 'custom', label: 'Custom', needsAmount: true },
+          { mode: 'unclaimed', label: 'Unclaimed' },
+        ],
+      },
+      nonShootingCwdOt: {
+        hint: 'A non-shooting CWD does not incur overtime (§1.5(f)), and it may only be scheduled where overtime is not expected (§1.5(c)) - so this is a conversation with the line producer. If a payment was agreed, enter it.',
+        options: [
+          { mode: 'unclaimed', label: 'Leave unclaimed' },
+          { mode: 'agreed', label: 'Agreed amount', needsAmount: true },
+        ],
+      },
+    };
+    function LfResolveControl({ clause, current, onResolve }) {
+      const cfg = LF_RESOLVE_MODES[clause];
+      const [amt, setAmt] = useState(current && current.amount != null ? String(current.amount) : '');
+      if (!cfg) return null;
+      const activeMode = current ? current.mode : null;
+      const activeNeedsAmount = !!cfg.options.find(o => o.mode === activeMode && o.needsAmount);
+      const pick = (opt) => {
+        if (opt.needsAmount) { const n = parseFloat(amt); onResolve(clause, { mode: opt.mode, amount: Number.isFinite(n) ? n : 0 }); }
+        else onResolve(clause, { mode: opt.mode });
+      };
+      return (
+        <div className="mt-1.5 bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5 space-y-2">
+          <p className="text-[10px] text-neutral-500 leading-tight">{cfg.hint}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {cfg.options.map((opt) => (
+              <button key={opt.mode} type="button" onClick={() => pick(opt)}
+                className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors ${activeMode === opt.mode ? 'bg-tm-sky-500/15 border-tm-sky-500/40 text-tm-sky-400' : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}>{opt.label}</button>
+            ))}
+            {current && (
+              <button type="button" onClick={() => onResolve(clause, undefined)}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Clear</button>
+            )}
+          </div>
+          {activeNeedsAmount && (
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-neutral-500 font-mono">£</span>
+              <input type="number" inputMode="decimal" value={amt}
+                onChange={(e) => setAmt(e.target.value)}
+                onBlur={() => { const n = parseFloat(amt); onResolve(clause, { mode: activeMode, amount: Number.isFinite(n) ? n : 0 }); }}
+                placeholder="0.00"
+                className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1 text-[13px] font-mono text-neutral-100 outline-none focus:border-tm-sky-500/50"
+                style={{ WebkitTapHighlightColor: 'transparent' }} />
+            </div>
+          )}
+        </div>
+      );
+    }
     // ── LongFormDayMoney (Phase 4a): the day's money block, extracted from
     //    the Phase 3d editor sheet so the form bottom and the pill's centre
-    //    tap render the SAME surface. Treatment unchanged and device-
-    //    verified: three tiers, unclaimable struck and excluded with its
-    //    citation, §7.11 unpriced "agreed locally". ──
-    function LongFormDayMoney({ production, day }) {
+    //    tap render the SAME surface. Phase 4e: a resolvable line carries its
+    //    resolution control; a resolved line reads as an ordinary line (or
+    //    "not claimed"). onResolve absent = read-only. ──
+    function LongFormDayMoney({ production, day, onResolve }) {
       let calc = null, calcError = null;
       try { calc = longFormCalcForDay(production, day); } catch (e) { calcError = (e && e.message) || 'The engine refused this day.'; }
       if (calcError) return (
@@ -21517,16 +21580,21 @@ const setDays = (updater) =>
                     {l.label}
                     {l.ref && <span className="text-neutral-600 text-[10px]"> · {l.ref.replace(/ \(.*\)$/, '')}</span>}
                   </span>
-                  {l.unpriced ? (
+                  {l.resolved === 'unclaimed' ? (
+                    <span className="text-[12px] text-neutral-500 flex-shrink-0">not claimed</span>
+                  ) : l.unpriced ? (
                     <span className="text-[12px] italic text-tm-warn flex-shrink-0">agreed locally</span>
                   ) : (
                     <span className={`text-[13px] font-mono flex-shrink-0 ${l.unclaimable ? 'text-neutral-500 line-through' : 'text-neutral-100'}`}>{fmtGBP(l.amount || 0)}</span>
                   )}
                 </div>
-                {l.rateDesc && !l.unpriced && (
+                {l.rateDesc && !l.unpriced && l.resolved !== 'unclaimed' && (
                   <p className="text-[10px] text-neutral-600 leading-tight">{l.rateDesc}{l.unclaimable ? ' - not claimable' : ''}</p>
                 )}
                 {(l.flags || []).map((f, j) => <FlagNote key={j} f={f} />)}
+                {l.resolvable && onResolve && (
+                  <LfResolveControl clause={l.resolvable} current={(day.lfResolve || {})[l.resolvable] || null} onResolve={onResolve} />
+                )}
               </div>
             ))}
           </div>
@@ -21919,7 +21987,11 @@ const setDays = (updater) =>
             </div>
           )}
 
-          <LongFormDayMoney production={production} day={d} />
+          <LongFormDayMoney production={production} day={d} onResolve={(clause, res) => {
+            const cur = { ...(d.lfResolve || {}) };
+            if (res === undefined) delete cur[clause]; else cur[clause] = res;
+            set({ lfResolve: Object.keys(cur).length ? cur : undefined });
+          }} />
         </div>
       );
     }
@@ -22080,6 +22152,13 @@ const setDays = (updater) =>
         if (!((LF_DAY_TYPE_META[d.dayType] || {}).run === 'advance')) return null;
         const r = runFor(d);
         return r.count >= 6 ? { label: r.count === 6 ? '6th day' : `${r.count}th day`, run: r } : null;
+      };
+      // Unresolved locally-agreed flag on a day (Phase 4e): its calc still
+      // carries a resolvable line with no resolution. Read-time, never stored;
+      // clears the moment the day is resolved. The week view surfaces the date.
+      const dayHasUnresolved = (d) => {
+        let calc; try { calc = longFormCalcForDay(production, d); } catch (_) { return false; }
+        return (calc.lines || []).some(l => l.resolvable && !l.resolved);
       };
       // Derived billing status (Phase 4c) — a money progression: unbilled
       // neutral, draft neutral-outline (built, not out), sent sky (the claim
@@ -22325,7 +22404,11 @@ const setDays = (updater) =>
                   breakdown (3.4). Same block as the form bottom. */}
               <Sheet open={showMoney} onClose={() => setShowMoney(false)} title={currentDay ? fmtLfDay(currentDay.date) : ''}>
                 <div data-sheet-scroll className="px-5 pb-5 overflow-y-auto" style={{ maxHeight: '70vh' }}>
-                  <LongFormDayMoney production={production} day={currentDay} />
+                  <LongFormDayMoney production={production} day={currentDay} onResolve={(clause, res) => {
+                    const cur = { ...(currentDay.lfResolve || {}) };
+                    if (res === undefined) delete cur[clause]; else cur[clause] = res;
+                    updateDayById(currentDay.id, { lfResolve: Object.keys(cur).length ? cur : undefined });
+                  }} />
                 </div>
               </Sheet>
             </div>
@@ -22475,6 +22558,7 @@ const setDays = (updater) =>
                   {myWeeks.map(w => {
                     const wd = daysInWeek(w);
                     const flags = wd.map(d => dayFlag(d)).filter(Boolean);
+                    const unresolvedDates = wd.filter(dayHasUnresolved).map(d => d.date);
                     const billing = weekBillingStatus(production, w);
                     const diverged = weekDivergence(billing.invoice);
                     const picked = selectedWeekIds.has(w.id);
@@ -22502,6 +22586,7 @@ const setDays = (updater) =>
                                 <div className="text-[10px] text-neutral-500 mt-0.5">
                                   {wd.length === 1 ? '1 day' : `${wd.length} days`}
                                   {diverged && <span className="text-tm-warn"> · differs from the sent invoice</span>}
+                                  {unresolvedDates.length > 0 && <span className="text-tm-warn"> · {unresolvedDates.length === 1 ? `${fmtRangeDay(unresolvedDates[0], true)} to agree` : `${unresolvedDates.length} days to agree`}</span>}
                                 </div>
                               </div>
                             </div>
@@ -27462,6 +27547,7 @@ const setDays = (updater) =>
       const [editingSentFields, setEditingSentFields] = React.useState(false);
       const [confirmEditSent, setConfirmEditSent] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
+      const [sendGuard, setSendGuard] = React.useState(null);   // Phase 4e: unresolved-flag dates blocking a clean send
       // Late-payment charges (R3): the ledger via context — the record for
       // THIS invoice drives the totals card, the document, and the sheet.
       const { charges: allInvoiceCharges, write: writeInvoiceCharge, remove: removeInvoiceCharge } = React.useContext(InvoiceChargesContext);
@@ -27731,6 +27817,31 @@ const setDays = (updater) =>
         onBack();
       };
 
+      // Send-time guard (Phase 4e): the last moment anyone can act on an
+      // unresolved locally-agreed flag. Walks the invoice's weeks for any day
+      // whose calc still carries `resolvable && !resolved`. The user may still
+      // send - they just shouldn't do it unknowingly.
+      const lfUnresolvedDatesForInvoice = () => {
+        if (agreementOf(production) === 'apa') return [];
+        const weekIds = Array.isArray(invoice.weekIds) ? invoice.weekIds : [];
+        if (!weekIds.length) return [];
+        const crewId = invoice.userCrewId || userCrewId;
+        const weeks = (production.weeks || []).filter(w => w && w.crewId === crewId && weekIds.includes(w.id));
+        const dates = new Set();
+        for (const w of weeks) {
+          for (const d of (production.days || [])) {
+            if (!d || d.crewId !== crewId || !(w.startDate <= d.date && d.date <= w.endDate)) continue;
+            let calc; try { calc = longFormCalcForDay(production, d); } catch (_) { continue; }
+            if ((calc.lines || []).some(l => l.resolvable && !l.resolved)) dates.add(d.date);
+          }
+        }
+        return [...dates].sort();
+      };
+      const attemptEmail = () => {
+        const dates = lfUnresolvedDatesForInvoice();
+        if (dates.length) { setSendGuard(dates); return; }
+        handleEmail();
+      };
       const handleEmail = () => {
         if (IS_NATIVE) {
           // Mount the hidden invoice print view; the post-mount effect reads
@@ -28412,7 +28523,7 @@ const setDays = (updater) =>
                   </Btn>
                   <Btn
                     variant="primary"
-                    onClick={handleEmail}
+                    onClick={attemptEmail}
                     className="flex-[1.4] justify-center"
                     style={{ boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}
                   >
@@ -28555,6 +28666,14 @@ const setDays = (updater) =>
             confirmLabel="Export anyway" confirmTone="primary" cancelLabel="Cancel"
             onConfirm={() => { setExportWarn(false); doExportFile(); }}
             onCancel={() => setExportWarn(false)}
+          />
+          <ConfirmDialog
+            open={!!sendGuard}
+            title={sendGuard && sendGuard.length === 1 ? 'One amount still to agree' : `${(sendGuard || []).length} amounts still to agree`}
+            message={sendGuard ? `${sendGuard.map(iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })).join(', ')} ${sendGuard.length === 1 ? 'carries a locally-agreed amount you have not resolved, so it will not appear on this invoice.' : 'carry locally-agreed amounts you have not resolved, so they will not appear on this invoice.'} Send anyway, or go back and resolve them on the day.` : ''}
+            confirmLabel="Send anyway" confirmTone="primary" cancelLabel="Go back"
+            onConfirm={() => { setSendGuard(null); handleEmail(); }}
+            onCancel={() => setSendGuard(null)}
           />
 
           {actionSheetItem && (
