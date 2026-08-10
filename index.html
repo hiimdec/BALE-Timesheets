@@ -21372,7 +21372,12 @@ const setDays = (updater) =>
       const roleSuggestions = React.useMemo(() => roleRegistryFor(w.agreement), [w.agreement]);
       const onRoleChange = (value) => {
         const match = roleSuggestions.find(s => s.role === value);
-        set({ role: value, agreementClass: seedAgreementClass(w.agreement, match ? match.dept : '', value) });
+        const patch = { role: value, agreementClass: seedAgreementClass(w.agreement, match ? match.dept : '', value) };
+        // A trainee grade carries a flat recommendation and autofills the daily
+        // rate - a flat figure has no ambiguity. Priced roles (Part 3) show the
+        // card rate as reference beside the field and leave it for the user.
+        if (match && match.trainee) { patch.weeklyEntry = false; patch.contractDailyRate = String(match.rate); }
+        set(patch);
       };
 
       const stepIndex = steps.indexOf(screen) + 1;
