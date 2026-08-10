@@ -22304,7 +22304,7 @@ const setDays = (updater) =>
                   {camOtOn && (
                     <Input type="number" min="0" step="15" value={d.cameraOtCalledMins} onChange={(e) => set({ cameraOtCalledMins: Math.max(0, Number(e.target.value) || 0) })} />
                   )}
-                  <p className="text-[10px] text-neutral-600 leading-tight">Minutes of called camera overtime (§7.6) - only when it was actually called.</p>
+                  <p className="text-[10px] text-neutral-600 leading-tight">The camera wrap tile already prices the camera overtime you worked. This is the §7.6 exception - use it only when MORE camera OT was called than you worked to camera wrap. It bills the called window, once, in the increments called.</p>
                 </div>
               )}
               {expandedChips.has('stepUp') && (
