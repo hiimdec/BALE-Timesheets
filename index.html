@@ -3009,6 +3009,24 @@
       return out;
     }
 
+    // The picker's "Recent" section (Phase 5a, Part 4): roles the user has
+    // actually used across their long form jobs, most-recently-touched first.
+    // Derived from existing crew - no new stored key (DEFAULT_USER_PREFS stays
+    // byte-frozen this slice), and it reflects real usage better than an MRU.
+    function lfRecentRoles(productions, limit = 4) {
+      const lf = (productions || []).filter(p => { const a = agreementOf(p); return a === 'pact-tv' || a === 'pact-film'; });
+      const dated = lf.map(p => ({ p, when: [...((p.days || []).map(d => d.date)), p.startDate].filter(Boolean).sort().slice(-1)[0] || '' }))
+                      .sort((a, b) => b.when.localeCompare(a.when));
+      const seen = new Set(), out = [];
+      for (const { p } of dated) {
+        for (const c of (p.crew || [])) {
+          const r = (c.role || '').trim();
+          if (r && !seen.has(r)) { seen.add(r); out.push(r); if (out.length >= limit) return out; }
+        }
+      }
+      return out;
+    }
+
     // The reference line beside the long form rate field (Phase 5a, Part 3): the
     // published card rate for the crew member's role at their band. SHOWN, never
     // autofilled - a priced role's rate is the user's deal, not the card's. It
@@ -21279,11 +21297,102 @@ const setDays = (updater) =>
     }
 
     /* ═══════════════ LONG FORM SETUP WIZARD (slice 1) ═══════════════ */
+    // The full-screen long form role picker (Phase 5a, Part 4). Search-first over
+    // the published registry for this agreement; a Recent section from the user's
+    // own jobs; department headers when browsing; a freeform last row so a role
+    // that isn't listed is one tap away (long form roles are freeform by ruling).
+    // It never shows a rate against a role - the reference £ lives on the rate
+    // field alone (Part 3) - and never locks a default.
+    function LongFormRolePicker({ agreement, value, recents, onPick, onClose }) {
+      useEscape(onClose);
+      const [query, setQuery] = React.useState('');
+      const all = React.useMemo(() => roleRegistryFor(agreement), [agreement]);
+      const q = query.trim().toLowerCase();
+      const words = q ? q.split(/\s+/) : [];
+      const filtered = React.useMemo(() => {
+        if (!q) return null;
+        return all.filter(e => { const hay = (e.role + ' ' + e.dept).toLowerCase(); return words.every(w => hay.includes(w)); });
+      }, [all, q]);
+      const grouped = React.useMemo(() => {
+        const g = [], by = {};
+        for (const e of all) { if (!by[e.dept]) { by[e.dept] = []; g.push([e.dept, by[e.dept]]); } by[e.dept].push(e); }
+        return g;
+      }, [all]);
+      const recentList = (recents || []).filter(Boolean);
+      const typed = query.trim();
+      const exact = !!typed && all.some(e => e.role.toLowerCase() === typed.toLowerCase());
+      const choose = (role) => { onPick(role); onClose(); };
+
+      // Plain render helpers (not nested components - avoids remount churn).
+      const row = (key, role, sub, active) => (
+        <button key={key} type="button" onClick={() => choose(role)}
+          className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between gap-3 transition-colors ${active ? 'bg-sky-500/15 border border-sky-500/40' : 'bg-neutral-900 hover:bg-neutral-800 border border-transparent'}`}
+          style={{ WebkitTapHighlightColor: 'transparent' }}>
+          <div className="min-w-0">
+            <div className="text-[14px] text-neutral-100 truncate">{role}</div>
+            {sub ? <div className="text-[11px] text-neutral-500 truncate mt-0.5">{sub}</div> : null}
+          </div>
+          {active ? <ICheck size={16} className="text-sky-400 flex-shrink-0" /> : null}
+        </button>
+      );
+      const header = (text) => (
+        <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 font-bold px-1 pt-3 pb-1.5">{text}</div>
+      );
+
+      return (
+        <div className="fixed inset-0 z-[80] bg-neutral-950 flex flex-col tm-native-overlay" style={{ paddingTop: 'var(--sat)' }}>
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-neutral-800">
+            <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 -ml-1" aria-label="Close role picker">
+              <IArrowLeft size={20} />
+            </button>
+            <div className="flex-1 flex items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-lg px-3">
+              <ISearch size={15} className="text-neutral-500 flex-shrink-0" />
+              <input autoFocus type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search roles" autoComplete="off" aria-label="Search roles"
+                className="flex-1 bg-transparent text-[14px] text-neutral-100 placeholder:text-neutral-500 py-2.5 outline-none" />
+              {query ? <button type="button" onClick={() => setQuery('')} className="text-neutral-500 hover:text-neutral-300 p-1" aria-label="Clear search"><IX size={14} /></button> : null}
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto px-3" style={{ paddingBottom: 'calc(6rem + var(--sab))' }}>
+            {q ? (
+              <div className="flex flex-col gap-1.5 pt-2">
+                {filtered.map(e => row(e.dept + '/' + e.role, e.role, e.dept, e.role === value))}
+                {typed && !exact ? (
+                  <button type="button" onClick={() => choose(typed)}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-dashed border-neutral-700 transition-colors mt-1"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <div className="text-[14px] text-neutral-200">Use "<span className="text-sky-400">{typed}</span>"</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5">Your own role, not on the card</div>
+                  </button>
+                ) : null}
+                {filtered.length === 0 && !typed ? <div className="text-center text-neutral-600 text-sm py-10">No matches</div> : null}
+              </div>
+            ) : (
+              <>
+                {recentList.length > 0 ? (
+                  <div>
+                    {header('Recent')}
+                    <div className="flex flex-col gap-1.5">{recentList.map(r => row('rec/' + r, r, null, r === value))}</div>
+                  </div>
+                ) : null}
+                {grouped.map(([dept, entries]) => (
+                  <div key={dept}>
+                    {header(dept)}
+                    <div className="flex flex-col gap-1.5">{entries.map(e => row(e.dept + '/' + e.role, e.role, null, e.role === value))}</div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     // One decision per screen, ending in a summary the user confirms. The
     // wizard is the SINGLE place an `agreement` key is ever written — the
     // dispatch point ruling in PACT_BECTU_PLAN.md. No £ arithmetic here:
     // the record it creates has no days, no weeks content, no calculator.
-    function LongFormSetupWizard({ userPrefs, onCreate, onCancel }) {
+    function LongFormSetupWizard({ userPrefs, productions, onCreate, onCancel }) {
       const [step, setStep] = useState(0);
       const [w, setW] = useState({
         agreement: null, band: null, ppStartDate: todayISO(),
@@ -21406,6 +21515,8 @@ const setDays = (updater) =>
       // The published card rate for this role at this band - shown as reference
       // beside the rate field, never poured into it (Part 3).
       const roleRefLine = lfRoleRefLine(w.role, w.agreement, w.band);
+      const [showRolePicker, setShowRolePicker] = React.useState(false);
+      const roleRecents = React.useMemo(() => lfRecentRoles(productions, 4), [productions]);
 
       const stepIndex = steps.indexOf(screen) + 1;
 
@@ -21490,11 +21601,13 @@ const setDays = (updater) =>
                     <Input type="text" placeholder="Production name" value={w.title} onChange={(e) => set({ title: e.target.value })} />
                   </Field>
                   <Field label="Role">
-                    <Input type="text" list="lf-role-suggestions" placeholder="Type or pick a role" value={w.role} onChange={(e) => onRoleChange(e.target.value)} />
+                    <button type="button" onClick={() => setShowRolePicker(true)}
+                      className="w-full text-left bg-neutral-950 border border-neutral-800 hover:border-neutral-700 rounded-lg px-3 py-2.5 text-sm outline-none flex items-center justify-between gap-2 transition-colors"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      <span className={w.role ? 'text-neutral-100' : 'text-neutral-500'}>{w.role || 'Choose or search a role'}</span>
+                      <IChevronRight size={16} className="text-neutral-500 flex-shrink-0" />
+                    </button>
                   </Field>
-                  <datalist id="lf-role-suggestions">
-                    {roleSuggestions.map(s => <option key={s.role} value={s.role} />)}
-                  </datalist>
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold mb-1">Your terms</div>
                     <p className="text-[11px] text-neutral-500 mb-2.5 leading-tight">Which terms your deal is on - it sets your hours and your divisor. A deal fact, not a job title; check your deal memo.</p>
@@ -21626,6 +21739,15 @@ const setDays = (updater) =>
           onConfirm={() => { const d = resumeDraft; setResumeDraft(null); setW(prev => ({ ...prev, ...d.w })); setStep(Math.max(0, Number(d.step) || 0)); }}
           onCancel={() => { clearDraft(); setResumeDraft(null); }}
         />
+        {showRolePicker && (
+          <LongFormRolePicker
+            agreement={w.agreement}
+            value={w.role}
+            recents={roleRecents}
+            onPick={(role) => onRoleChange(role)}
+            onClose={() => setShowRolePicker(false)}
+          />
+        )}
         </>
       );
     }
@@ -32238,6 +32360,7 @@ const confirmDelete = (p) => setConfirmOpts({
         screen = (
           <LongFormSetupWizard
             userPrefs={userPrefs}
+            productions={productions}
             onCreate={handleCreateLongForm}
             onCancel={() => setShowLongFormWizard(false)}
           />
