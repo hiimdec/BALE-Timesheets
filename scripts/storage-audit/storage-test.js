@@ -3106,8 +3106,62 @@ async function main() {
         check('LF18h mileage is claimed on a travel day too - reimbursements are independent of the day type',
           !!line && approx(line.amount, 18), JSON.stringify(CALC(p, d).lines.map(l => [l.kind, l.amount])));
       }
+
+      // ── LF20: camera wrap on TV (Phase 4g). The TV tile drives the SAME §7.6
+      //    called window and §7.11 CWD cap that a typed cameraOtCalledMins did,
+      //    and - the point - it SCOPES the cap to the camera portion: the
+      //    non-camera tail after the camera wrap is uncapped. Byte-identity for
+      //    records with NO camera wrap is the 123-scenario calc audit's job. ──
+      const tvDay = (over) => ({ id: 'd', crewId: 'c1', date: '2026-08-04', dayType: 'shoot', dayShape: 'cwd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '12:00', cameraWrapTime: null, wrapTime: '17:00', wrapped: true, ...over });
+      const tvP = (days) => ({ id: 'ptv', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wtv', '2026-08-03', '2026-08-09')], days });
+      {
+        // Camera wrap at 20:00 (trigger 17:00) = 180m camera OT on a CWD: §7.11
+        // prices 120m (£75 at 1.5T on £25/hr) and flags 60m - identical to
+        // entering 180 called minutes (LF13k), reached by the tile instead.
+        const d = tvDay({ wrapTime: '20:00', cameraWrapTime: '20:00' });
+        const r = CALC(tvP([d]), d);
+        const priced = r.lines.filter(l => l.kind === 'overtime' && !l.unpriced).reduce((s, l) => s + (l.amount || 0), 0);
+        const unpriced = r.lines.find(l => l.unpriced);
+        check('LF20a a TV camera wrap driving 180m camera OT on a CWD prices 120m (£75, §7.11 cap) and flags 60m agreed-locally - the tile matches the called-minutes entry',
+          approx(priced, 75) && !!unpriced && /60m/.test(unpriced.label || '') && unpriced.amount === null,
+          JSON.stringify([priced, unpriced && unpriced.label]));
+      }
+      {
+        // Camera wrap 18:00 (60m camera) inside a 20:00 wrap (180m total OT):
+        // §7.11 caps only the camera 60m (under the 120 cap) so ALL 180m prices
+        // and nothing is flagged. The SAME day with no camera wrap treats all
+        // 180m as camera OT and flags 60m - the tile SCOPES the cap.
+        const split = tvDay({ wrapTime: '20:00', cameraWrapTime: '18:00' });
+        const rs = CALC(tvP([split]), split);
+        const noWrap = tvDay({ wrapTime: '20:00' });
+        const rn = CALC(tvP([noWrap]), noWrap);
+        check('LF20b the camera wrap SCOPES §7.11 to the camera portion: camera wrap 18:00 inside a 20:00 wrap prices all 180m, where the same day with NO camera wrap flags 60m',
+          !rs.lines.some(l => l.unpriced) && rn.lines.some(l => l.unpriced),
+          JSON.stringify([rs.lines.filter(l => l.unpriced).length, rn.lines.filter(l => l.unpriced).length]));
+      }
+      {
+        // §7.5 round-up: a camera wrap at 18:03 (63m camera OT) bills as 18:15
+        // (75m) - the billed overtime is 75m, a 15-minute multiple.
+        const d = tvDay({ wrapTime: '18:03', cameraWrapTime: '18:03' });
+        const cam = CALC(tvP([d]), d);
+        const otMins = cam.lines.filter(l => l.kind === 'overtime').reduce((s, l) => { const m = (l.rateDesc || '').match(/(\d+)m/); return s + (m ? Number(m[1]) : 0); }, 0);
+        check('LF20c a 18:03 camera wrap rounds up to the 15-minute increment (§7.5): 63m bills as 75m',
+          otMins === 75, `otMins=${otMins}`);
+      }
+      {
+        // Weekly accumulation THROUGH the tile: two CWD days, each 90m camera OT
+        // set by camera wrap. Day 1 fills 90 of the 120 weekly cap; day 2's 90m
+        // has only 30 remaining, so it prices 30m and flags 60m.
+        const d1 = { id: 'a', crewId: 'c1', date: '2026-08-04', dayType: 'shoot', dayShape: 'cwd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '12:00', cameraWrapTime: '18:30', wrapTime: '18:30', wrapped: true };
+        const d2 = { ...d1, id: 'b', date: '2026-08-05' };
+        const r2 = CALC(tvP([d1, d2]), d2);
+        const unp = r2.lines.find(l => l.unpriced);
+        check('LF20d the tile feeds the §7.11 WEEKLY cap: a second CWD camera-wrap day sees the first day\'s 90m, so its 90m prices 30m and flags 60m',
+          !!unp && /60m/.test(unp.label || ''),
+          JSON.stringify(r2.lines.map(l => [l.kind, l.amount, l.unpriced, l.label])));
+      }
     } else {
-      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h', 'LF16a', 'LF16b', 'LF16c', 'LF16d', 'LF16e', 'LF16f', 'LF16g', 'LF18a', 'LF18b', 'LF18c', 'LF18d', 'LF18e', 'LF18f', 'LF18g', 'LF18h']) check(l + ' invoice builders exposed', false, 'not exposed');
+      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h', 'LF16a', 'LF16b', 'LF16c', 'LF16d', 'LF16e', 'LF16f', 'LF16g', 'LF18a', 'LF18b', 'LF18c', 'LF18d', 'LF18e', 'LF18f', 'LF18g', 'LF18h', 'LF20a', 'LF20b', 'LF20c', 'LF20d']) check(l + ' invoice builders exposed', false, 'not exposed');
     }
   }
 

@@ -3396,6 +3396,26 @@
       return mins > 0 ? lfRoundUp(mins, ctx.rules.nightWork.roundUpMins || 15) : 0;
     }
 
+    // Per-day CAMERA overtime minutes — the §7.11 unit (TV single-type rows).
+    // Worked past the worker's own trigger up to the camera wrap (the TV tile,
+    // Phase 4g), or - the exception, §7.6, when MORE was called than worked -
+    // the called minutes anchored to the UNIT-call trigger, whichever reaches
+    // further, rounded to the increment (§7.5). With no camera wrap set every
+    // worked overtime minute is camera overtime, exactly as before the tile
+    // existed - so existing records are byte-identical. Zero off a shooting
+    // day. Pure, so the day's §7.11 cap and the weekly accumulator agree.
+    function lfCameraOtMinsFor(ctx) {
+      if (!ctx.typeMeta.worked || !ctx.typeMeta.shooting || ctx.wrap === null) return 0;
+      const trigger = ctx.dayShape.otTriggerElapsedHours + ctx.achHours;
+      const otStart = ctx.individualCall + trigger * 60;                                 // the worker's own trigger (with ACH)
+      const baseWindowEnd = ctx.unitCall + (ctx.dayShape.otTriggerElapsedHours * 60);    // the §7.6 anchor (unit call, no ACH — matches the branch)
+      const cameraWrapAbs = ctx.cameraWrap != null ? ctx.cameraWrap : ctx.wrap;
+      const workedCameraMins = Math.max(0, Math.min(cameraWrapAbs, ctx.wrap) - otStart);
+      const calledCameraMins = lfOverlap(baseWindowEnd, baseWindowEnd + (Number(ctx.cameraOtCalledMins) || 0), otStart, Infinity);
+      const inc = (ctx.rules.overtime && ctx.rules.overtime.incrementMins) || 15;
+      return lfRoundUp(Math.max(workedCameraMins, calledCameraMins), inc);
+    }
+
     // Week context: the run, the previous wrap (broken turnaround crosses
     // week boundaries), night minutes accrued EARLIER this week, CWD camera
     // OT already used this week (§7.11's 2h), and the week record.
@@ -3421,7 +3441,7 @@
           try {
             const c = assembleLfDayContext(production, d, crew);
             nightMinsBeforeToday += lfNightMinsFor(c);
-            if (c.shapeKey === 'cwd' && c.typeMeta.shooting && typeof d.cameraOtCalledMins === 'number') cwdCameraOtMinsBeforeToday += d.cameraOtCalledMins;
+            if (c.shapeKey === 'cwd' && c.typeMeta.shooting) cwdCameraOtMinsBeforeToday += lfCameraOtMinsFor(c);
           } catch (_) { /* a malformed sibling day must not kill this day's calc */ }
         }
       }
@@ -3629,21 +3649,29 @@
               resolvedDesc: () => 'agreed locally',
             });
           } else if (!splitOt) {
-            // Single-type overtime with the called-window anchor (§7.6,
-            // Guidance Example 1): bill the greater of actual OT and the
-            // called window's overlap PAST THIS WORKER'S OWN TRIGGER.
-            let billed = otActual > 0 ? lfRoundUp(otActual, rules.overtime.incrementMins || 15) : 0;
-            let calledOverlapMins = 0;
-            if (typeof c.cameraOtCalledMins === 'number' && c.cameraOtCalledMins > 0 && c.typeMeta.shooting) {
-              calledOverlapMins = lfOverlap(baseWindowEnd, baseWindowEnd + c.cameraOtCalledMins, otStart, Infinity);
-              billed = Math.max(billed, calledOverlapMins);
-            }
-            // §7.11: camera OT on a CWD caps at 2 unscheduled hours a week;
-            // beyond the cap it is agreed locally - flagged, never priced.
+            // §7.2: TV overtime is all 1.5T (2T past 11pm). On a shooting day
+            // the CAMERA portion - worked to the camera wrap (the TV tile,
+            // Phase 4g), or the called window when MORE was called than worked
+            // (§7.6) - is what §7.11 caps on a CWD; the non-camera tail after
+            // the camera wrap is uncapped. Both bill at 1.5T, so they add to
+            // one Overtime quantity and the split only SCOPES the cap. With no
+            // camera wrap set, camera OT is all of the day's OT, exactly as
+            // before the tile - so existing records are byte-identical.
+            const inc = rules.overtime.incrementMins || 15;
+            const otWorked = otActual > 0 ? lfRoundUp(otActual, inc) : 0;
+            const cameraOtMins = lfCameraOtMinsFor(c);                        // camera overtime — the §7.11 unit
+            const calledCameraMins = c.typeMeta.shooting
+              ? lfRoundUp(lfOverlap(baseWindowEnd, baseWindowEnd + (Number(c.cameraOtCalledMins) || 0), otStart, Infinity), inc)
+              : 0;
+            const workedCameraMins = (c.typeMeta.shooting && c.cameraWrap != null)
+              ? lfRoundUp(Math.max(0, Math.min(c.cameraWrap, c.wrap) - effOtStart), inc)
+              : otWorked;
+            const nonCameraTail = Math.max(0, otWorked - workedCameraMins);   // worked tail after camera wrap, never capped
+            let billed = cameraOtMins + nonCameraTail;
             let unpricedMins = 0;
             if (c.shapeKey === 'cwd' && c.typeMeta.shooting && rules.cwdCameraOt && rules.cwdCameraOt.unscheduledCapMinsPerWeek != null) {
               const remaining = Math.max(0, rules.cwdCameraOt.unscheduledCapMinsPerWeek - (weekCtx.cwdCameraOtMinsBeforeToday || 0));
-              if (billed > remaining) { unpricedMins = billed - remaining; billed = remaining; }
+              if (cameraOtMins > remaining) { unpricedMins = cameraOtMins - remaining; billed -= unpricedMins; }
             }
             if (billed > 0) {
               const pre = Math.max(0, Math.min(billed, Math.max(0, eleven - effOtStart)));
@@ -3655,7 +3683,7 @@
                 const l = push({ kind: 'overtime', label: otIsEnhanced ? 'Overtime (2T)' : 'Overtime', ref: rules.overtime.ref, amount: bound.rate * (pre / 60), rateDesc: `${mult}T × ${pre}m`, flags: [] });
                 if (bound.floored) l.flags.push({ tone: 'info', message: 'Raised to the Minimum Overtime Rate.', ref: rules.overtime.minRef });
                 if (bound.capped) l.flags.push({ tone: 'assumption', message: 'Capped at the Maximum Overtime Rate.', ref: rules.overtime.maxRef });
-                if (calledOverlapMins > 0 && calledOverlapMins >= lfRoundUp(otActual, 15)) l.flags.push({ tone: 'info', message: 'Billed to the called camera overtime window - called once, in the increments called (§7.6).', ref: rules.calledCameraOt.ref });
+                if (calledCameraMins > 0 && calledCameraMins >= otWorked) l.flags.push({ tone: 'info', message: 'Billed to the called camera overtime window - called once, in the increments called (§7.6).', ref: rules.calledCameraOt.ref });
               }
               if (post > 0) {
                 const bound = boundRate(hourly * 2, 'overtime', false);
@@ -21679,7 +21707,11 @@ const setDays = (updater) =>
       const wrapAbs = relTo(d.wrapTime);
       const camWrapAbs = relTo(d.cameraWrapTime);
       const wrapInOT = otStartAbs !== null && wrapAbs !== null && wrapAbs > (isTV ? otStartAbs : Math.max(otStartAbs, camWrapAbs ?? otStartAbs));
-      const camInOT = !isTV && otStartAbs !== null && camWrapAbs !== null && camWrapAbs > otStartAbs;
+      const camInOT = otStartAbs !== null && camWrapAbs !== null && camWrapAbs > otStartAbs;
+      // Camera wrap on TV too (Phase 4g): film always carries it; TV carries it
+      // on shooting days, where it marks the called camera OT (§7.6) and the
+      // weekly CWD cap (§7.11) - not a rate boundary (§7.2 pays all OT at 1.5T).
+      const showCameraWrap = !isTV || typeMeta.shooting;
 
       const computeNowHHMM = () => {
         const now = new Date();
@@ -21795,7 +21827,7 @@ const setDays = (updater) =>
                     active={openTile === 'unit'}
                     onChange={(e) => set({ unitCallTime: e.target.value })}
                   />
-                  {!isTV ? (
+                  {showCameraWrap ? (
                     <TimeTile
                       label={`CAMERA WRAP${camInOT ? ' · OT' : ''}`}
                       value={d.cameraWrapTime ?? ''}
@@ -21805,7 +21837,7 @@ const setDays = (updater) =>
                       onOpen={() => setOpenTile(s => s === 'cameraWrap' ? null : 'cameraWrap')}
                       active={openTile === 'cameraWrap'}
                       onChange={(e) => set({ cameraWrapTime: e.target.value })}
-                      hint="Camera OT runs to here at 2T"
+                      hint={isTV ? "Tap NOW when camera wraps - it sets the called camera OT (§7.6) and the weekly CWD cap (§7.11)" : "Camera OT runs to here at 2T"}
                     />
                   ) : (
                     <TimeTile
@@ -21819,7 +21851,7 @@ const setDays = (updater) =>
                       onChange={(e) => set({ wrapTime: e.target.value })}
                     />
                   )}
-                  {!isTV && (
+                  {showCameraWrap && (
                     <div className="col-span-2">
                       <TimeTile
                         label={`WRAP${wrapInOT ? ' · OT' : ''}`}
@@ -21830,7 +21862,7 @@ const setDays = (updater) =>
                         onOpen={() => setOpenTile(s => s === 'wrap' ? null : 'wrap')}
                         active={openTile === 'wrap'}
                         onChange={(e) => set({ wrapTime: e.target.value })}
-                        hint="Non-camera overtime runs on this tail at 1.5T"
+                        hint={isTV ? "Overtime runs to here at 1.5T (§7.2)" : "Non-camera overtime runs on this tail at 1.5T"}
                       />
                     </div>
                   )}
