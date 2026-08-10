@@ -125,6 +125,24 @@ but it cannot invent a clause.
   because it is the same claim, corrected. The week view surfaces it only when
   the live figures diverge from the sent snapshot (computed lazily, never
   stored).
+- **The flagged amounts come off the document, and into the app (Phase 4d).**
+  A real PDF proved both treatments read badly on a page a production office
+  receives: the §1.5(f) line carried the whole clause verbatim, the §7.11 line
+  duplicated its label into the amount slot. Ruled: these are the user's to
+  resolve ON SET, not the office's to read on an invoice — by the time it
+  reaches the document it is too late to act on. `LF_INVOICE_SHOW_NOTICES` is
+  set false; the switch and both code paths stay (a ruling, not a deletion).
+  The resolution moves to where the flag already is. §7.11 gives no rate and
+  must be agreed locally, so it resolves to the usual camera OT rate, a custom
+  amount, or unclaimed. §1.5(f) says nothing is owed, so it resolves to
+  unclaimed by default or an agreed amount, its framing carrying §1.5(c) — the
+  day type was schedulable only where overtime was not expected, so being in
+  overtime means the day type was the wrong call and that is a conversation
+  with the line producer. An indicator sits against the affected date on the
+  week view and clears when resolved; the send action surfaces any unresolved
+  flag so it is never sent unknowingly. Once resolved the amount is an ordinary
+  line in its group — because it is, by then, an agreed sum. Storage shape is
+  additive optional keys on the day, proposed before building (Part 2).
 
 ## Resolved inferences — recorded so nobody reopens them
 

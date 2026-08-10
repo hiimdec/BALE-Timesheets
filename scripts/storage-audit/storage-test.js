@@ -2912,8 +2912,14 @@ async function main() {
       const xbreak = BREAK(px, 'c1', ['wx']);
       const hasUnclaimableLine = xlines.some(l => /Overtime \(non-shooting CWD\)/.test(l.label));
       const breakHasUnclaimable = xbreak.some(d => (d.lines || []).some(l => l.unclaimable));
-      check('LF14e §1.5(f) unclaimable overtime is EXCLUDED from page-1 line items but rides the day breakdown flagged unclaimable',
-        !hasUnclaimableLine && breakHasUnclaimable);
+      // Ruled Phase 4d: notices OFF the document. The unclaimable line is now
+      // excluded from BOTH the page-1 line items AND the page-2 breakdown; the
+      // ENGINE still emits it (the day-view flag and the Part 2 resolution
+      // mechanism key off it).
+      const engineStillFlags = (CALC(px, excl).lines || []).some(l => l.unclaimable);
+      check('LF14e §1.5(f) unclaimable overtime is excluded from BOTH page-1 line items and the page-2 day breakdown (notices ruled off the document, Phase 4d), while the engine still emits the flag',
+        !hasUnclaimableLine && !breakHasUnclaimable && engineStillFlags,
+        `hasLine=${hasUnclaimableLine} breakHas=${breakHasUnclaimable} engineFlags=${engineStillFlags}`);
       check('LF14f every day-breakdown day carries the additive `week` label (the renderer\'s week-header trigger)',
         xbreak.length > 0 && xbreak.every(d => d.week && typeof d.week.label === 'string' && d.week.id));
       // A multi-week invoice: days from two weeks, each labelled its own week.
@@ -2921,8 +2927,15 @@ async function main() {
       const mbreak = BREAK(multi, 'c1', ['w1', 'w2']);
       check('LF14g a multi-week invoice labels each day with its own week (two distinct week labels)',
         new Set(mbreak.map(d => d.week.id)).size === 2);
+      // The ruling itself (Phase 4d Part 1): the notices switch is OFF the
+      // document. The switch and both code paths survive — this pin only fixes
+      // the DEFAULT so a silent flip back to true is caught, not permitted.
+      const htmlNotices = fs.readFileSync(SRC_HTML, 'utf8');
+      check('LF14h LF_INVOICE_SHOW_NOTICES is ruled false (notices off the document, Phase 4d)',
+        /const LF_INVOICE_SHOW_NOTICES = false;/.test(htmlNotices),
+        'expected `const LF_INVOICE_SHOW_NOTICES = false;` in index.html');
     } else {
-      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g']) check(l + ' invoice builders exposed', false, 'not exposed');
+      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h']) check(l + ' invoice builders exposed', false, 'not exposed');
     }
   }
 

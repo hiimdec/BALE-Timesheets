@@ -6211,10 +6211,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     //
     // Unclaimable (§1.5(f)) and unpriced (§7.11) treatment lives in ONE place:
     // this flag. They never enter the page-1 line items (so the total is
-    // exact), always ride the page-2 day breakdown with their flag, and the
-    // page-1 advisory is derived from them at render time. Flip to false to
-    // make them fully absent without unpicking a builder.
-    const LF_INVOICE_SHOW_NOTICES = true;
+    // exact) regardless of this switch. With it TRUE they ride the page-2 day
+    // breakdown flagged and drive a derived page-1 advisory; with it FALSE they
+    // are fully absent from the document — no unpicking a builder.
+    //
+    // Ruled FALSE (Phase 4d): the founder generated a real PDF and both
+    // treatments read badly on a document a production office receives — the
+    // §1.5(f) line carried the whole clause verbatim, the §7.11 line duplicated
+    // its label into the amount slot. These are the user's to resolve ON SET,
+    // not the office's to read on an invoice: by the time it reaches the
+    // document it is too late to act. The switch and both code paths stay — the
+    // resolution mechanism (Phase 4d Part 2) puts the decision where it belongs.
+    const LF_INVOICE_SHOW_NOTICES = false;
 
     // Engine line kind → invoice group. Whole days sit in DAY RATES at their
     // day rate (ruled); premiums carry only non-day additions; overtime its
