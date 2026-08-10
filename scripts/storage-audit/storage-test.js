@@ -2632,8 +2632,20 @@ async function main() {
         tableSrc.length > 4000 &&
         (tableSrc.match(/inference/g) || []).length === (tableSrc.match(/inference:/g) || []).length,
         `slice length=${tableSrc.length}`);
+      // LF21 (Phase 4g) — the MMP rate card (1 April 2026) validates the film
+      // divisors from a document produced SEPARATELY from the agreement: a
+      // shooting technician's 11-hour day (£441.92) and a rigging technician's
+      // 9-hour day (£361.58) reach the SAME hourly rate through two different
+      // divisors. Confirms ruleset ÷11 (standard) and ÷9 (rigging).
+      const filmStdDiv = filmRow.hourlyRate.dailyDivisor;
+      const filmRigDiv = filmRow.classes.riggingElectrician.hourlyRate.dailyDivisor;
+      const hourlyShoot = 441.92 / filmStdDiv;
+      const hourlyRig = 361.58 / filmRigDiv;
+      check('LF21 the MMP rate card validates the film divisors: £441.92 ÷ 11 (shooting) and £361.58 ÷ 9 (rigging) reach the same hourly rate (~£40.17), independently confirming the ruleset divisors',
+        filmStdDiv === 11 && filmRigDiv === 9 && Math.abs(hourlyShoot - hourlyRig) < 0.02 && Math.abs(hourlyShoot - 40.17) < 0.02,
+        `shoot=${hourlyShoot.toFixed(4)} rig=${hourlyRig.toFixed(4)} divs=${filmStdDiv}/${filmRigDiv}`);
     } else {
-      for (const l of ['LF10a', 'LF10b', 'LF10c', 'LF10d']) check(l + ' ruleset table exposed', false, 'table not exposed');
+      for (const l of ['LF10a', 'LF10b', 'LF10c', 'LF10d', 'LF21']) check(l + ' ruleset table exposed', false, 'table not exposed');
     }
 
     // ── LF12: nation bank holiday sets (Phase 3c). COMPOSED, not additive —

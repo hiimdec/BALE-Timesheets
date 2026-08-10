@@ -113,6 +113,12 @@ but it cannot invent a clause.
   resends. The week view shows the divergence.
 - **PAYE users are supported for tracking gross only.** No deductions, no
   holiday pay, no pension. The app never models net pay.
+- **Scoping holiday pay out is safe because the rate already contains it
+  (Phase 4g).** The Pact/Bectu Lighting Technicians' rate card (20 December
+  2024) states its day rates are **inclusive of holiday pay**. So the daily
+  rate the user enters is already holiday-pay-inclusive, and the app correctly
+  never adds or models it. The same card confirms the TV shooting hours
+  ("10+1 SWD / 9 CWD / 9.5 SCWD"). Transcribed in PACT_BECTU_RATE_CARDS.md.
 - **Invoicing (Phase 4c).** Long form invoices look exactly like APA ones and
   reuse the vector renderer unchanged. They mint through the shared
   `mintInvoiceShell` and draw from the SAME sequential number run (one
