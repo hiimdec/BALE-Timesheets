@@ -6172,6 +6172,160 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return out;
     }
 
+    // ═══════════════ LONG FORM INVOICE BUILDERS (Phase 4c) ═══════════════
+    // The APA counterparts walk calcForDisplay; these walk longFormCalcForDay
+    // and produce the SAME shapes, so everything downstream — the shell, the
+    // renderer, the freeze, the numbering, the send flow — is reused
+    // unchanged. Page 1 groups by charge KIND; each engine line carries an
+    // explicit `group` (never a label regex — the shared categoriser stays
+    // APA's), so a third agreement never needs a new branch here either.
+    //
+    // Unclaimable (§1.5(f)) and unpriced (§7.11) treatment lives in ONE place:
+    // this flag. They never enter the page-1 line items (so the total is
+    // exact), always ride the page-2 day breakdown with their flag, and the
+    // page-1 advisory is derived from them at render time. Flip to false to
+    // make them fully absent without unpicking a builder.
+    const LF_INVOICE_SHOW_NOTICES = true;
+
+    // Engine line kind → invoice group. Whole days sit in DAY RATES at their
+    // day rate (ruled); premiums carry only non-day additions; overtime its
+    // own group (two lines on film); penalties the meal/turnaround/early
+    // enhancements. Box rental (KIT) is added separately from the week/day
+    // records — it is not an engine line.
+    const LF_LINE_GROUP = {
+      base: 'day', sixthSeventh: 'day', travelDay: 'day', restSettlement: 'day',
+      ach: 'premium', nightWorkPaid: 'premium', nightPremium: 'premium',
+      overtime: 'ot', cameraOvertime: 'ot', nonCameraOvertime: 'ot',
+      lunchDelay: 'pen', lunchCurtail: 'pen', brokenTurnaround: 'pen', earlyCall: 'pen', preDawn: 'pen',
+    };
+    function lfLineGroupFor(line) {
+      // Worked bank holidays are a whole day (DAY RATES); the not-worked
+      // bank-holiday payment is a premium (ruled) — the only kind that splits.
+      if (line.kind === 'bankHoliday') return /not worked/i.test(line.label || '') ? 'premium' : 'day';
+      return LF_LINE_GROUP[line.kind] || 'day';
+    }
+
+    // The days an invoice covers: every day of every week it claims, for the
+    // user crew, in date order. `weekIds` is the invoice's one link to the
+    // weeks; the day → week map is derived here, never stored on the day.
+    function lfInvoiceDays(production, crewId, weekIds) {
+      const weeks = (production.weeks || []).filter(w => w && w.crewId === crewId && (weekIds || []).includes(w.id));
+      const byWeek = [];
+      for (const w of weeks.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))) {
+        const days = (production.days || [])
+          .filter(d => d && d.crewId === crewId && w.startDate <= d.date && d.date <= w.endDate)
+          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        byWeek.push({ week: w, days });
+      }
+      return byWeek;
+    }
+    const lfWeekLabel = (w) => {
+      const f = (iso, m) => { const d = new Date(iso + 'T12:00:00'); return `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.getDate()}${m ? ' ' + d.toLocaleDateString('en-GB', { month: 'short' }) : ''}`; };
+      return `${f(w.startDate, w.startDate.slice(0, 7) !== w.endDate.slice(0, 7))} – ${f(w.endDate, true)}`;
+    };
+
+    // Page-1 line items: claimable engine lines aggregated by kind, plus box
+    // rental. Day-rate kinds aggregate by (label, exact amount) so five 1T
+    // days and one 1.5T day are separate lines with real qty × rate; variable
+    // kinds (overtime, penalties, premiums) aggregate by label with rate null
+    // and a "N days" basis — the per-day figures live on page 2.
+    function buildLongFormInvoiceLines(production, crewId, weekIds) {
+      const byWeek = lfInvoiceDays(production, crewId, weekIds);
+      // ordered map key → { group, label, dates[], qty, rate|null, amount }
+      const map = new Map();
+      const bump = (key, seed, day, add) => {
+        if (map.has(key)) { const e = map.get(key); e.qty += add.qty; e.amount += add.amount; if (day && !e.dates.includes(day)) e.dates.push(day); }
+        else map.set(key, { ...seed, dates: day ? [day] : [], qty: add.qty, amount: add.amount });
+      };
+      for (const { days } of byWeek) {
+        for (const d of days) {
+          let calc; try { calc = longFormCalcForDay(production, d); } catch (_) { continue; }
+          for (const line of calc.lines) {
+            if (line.unclaimable || line.unpriced || line.amount == null) continue;  // page 2 only
+            const group = lfLineGroupFor(line);
+            const label = (line.label || '').split(' (')[0].trim();
+            if (group === 'day') {
+              const amt = Number(line.amount) || 0;
+              bump(`day|${label}|${amt.toFixed(2)}`, { group, label, rate: amt }, d.date, { qty: 1, amount: amt });
+            } else {
+              bump(`${group}|${label}`, { group, label, rate: null }, d.date, { qty: 1, amount: Number(line.amount) || 0 });
+            }
+          }
+        }
+      }
+      // Box rental (KIT) — weekly boxes aggregated across the invoice's weeks,
+      // plus any per-day overrides. Independent of the engine.
+      for (const { week, days } of byWeek) {
+        const wk = Number(week.boxRentalWeekly) || 0;
+        if (wk > 0) bump(`kit|box|${wk.toFixed(2)}`, { group: 'kit', label: 'Box rental (weekly)', rate: wk }, null, { qty: 1, amount: wk });
+        for (const d of days) {
+          if (d.boxRentalDay !== undefined) {
+            const v = Number(d.boxRentalDay) || 0;
+            if (v > 0) bump(`kit|boxday|${d.date}`, { group: 'kit', label: 'Box rental (day)', rate: v }, d.date, { qty: 1, amount: v });
+          }
+        }
+      }
+      return [...map.values()].map(e => {
+        const n = e.dates.length;
+        const detail = e.group === 'kit' && e.label === 'Box rental (weekly)'
+          ? `${e.qty} week${e.qty === 1 ? '' : 's'}`
+          : n === 0 ? ''
+          : n === 1 ? fmtDateShort(e.dates[0])
+          : `${n} days`;
+        return { id: uid(), label: e.label, detail, qty: e.qty, rate: e.rate, amount: e.amount, discountedQty: null, isExpense: false, group: e.group };
+      });
+    }
+
+    // Page-2 day breakdown: same shape as buildDayBreakdown, plus the additive
+    // `week` label (triggers the renderer's week header + subtotal) and, on
+    // lines, the unclaimable/unpriced flags (excluded from day.total by the
+    // engine already, rendered struck / "agreed locally" overleaf).
+    function buildLongFormDayBreakdown(production, crewId, weekIds) {
+      const byWeek = lfInvoiceDays(production, crewId, weekIds);
+      const out = [];
+      for (const { week, days } of byWeek) {
+        for (const d of days) {
+          let calc; try { calc = longFormCalcForDay(production, d); } catch (_) { continue; }
+          const showLines = (calc.lines || []).filter(l => LF_INVOICE_SHOW_NOTICES || !(l.unclaimable || l.unpriced));
+          if (showLines.length === 0 && (Number(calc.total) || 0) === 0) continue;  // a bare rest/day off
+          const tm = LF_DAY_TYPE_META[d.dayType] || LF_DAY_TYPE_META.shoot;
+          const shape = tm.shaped ? (LF_DAY_SHAPE_META[d.dayShape] || LF_DAY_SHAPE_META.swd).label : '';
+          const call = tm.worked ? (d.individualCallTime || d.unitCallTime || '') : '';
+          const wrap = tm.worked ? (d.wrapTime || '') : '';
+          const hrs = (tm.worked && call && wrap) ? Math.max(0, (lfRel(wrap, lfMins(call)) - lfMins(call)) / 60) : 0;
+          out.push({
+            date: d.date,
+            week: { id: week.id, label: lfWeekLabel(week) },
+            dayType: tm.long + (shape ? ` · ${shape}` : ''),
+            callTime: call, wrapTime: wrap,
+            hours: hrs,
+            lines: showLines.map(l => ({
+              label: l.label || '', detail: l.rateDesc || '', rate: null, qty: 0,
+              amount: Number(l.amount) || 0,
+              ...(l.unclaimable ? { unclaimable: true } : {}),
+              ...(l.unpriced ? { unpriced: true } : {}),
+              ...(l.ref ? { ref: l.ref } : {}),
+            })),
+            total: Number(calc.total) || 0,
+          });
+        }
+      }
+      return out;
+    }
+
+    // The one-direction link + the crew and date span for the shell.
+    function createLongFormInvoice(production, setProduction, userPrefs, setUserPrefs, crewId, weekIds) {
+      const byWeek = lfInvoiceDays(production, crewId, weekIds);
+      const allDates = byWeek.flatMap(w => w.days.map(d => d.date)).filter(Boolean).sort();
+      return mintInvoiceShell(production, setProduction, userPrefs, setUserPrefs, crewId, {
+        lineItems: buildLongFormInvoiceLines(production, crewId, weekIds),
+        dayBreakdown: buildLongFormDayBreakdown(production, crewId, weekIds),
+        shootDateStart: allDates[0] || '',
+        shootDateEnd: allDates[allDates.length - 1] || '',
+        extra: { weekIds: [...(weekIds || [])] },
+      });
+    }
+
     // The client/job fields shared between a production (single source) and its
     // invoices. An invoice snapshots these — frozen on send, re-synced live for
     // drafts. Bill-To name comes from production.prodCo (production.toName is a
@@ -7314,6 +7468,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       .inv-bdsub { display: grid; grid-template-columns: 1fr 139.7px 76.2px; border-top: 1px dotted #d4d4d4; margin-top: 4px; padding-top: 4px; }
       .inv-bdsub-label { text-align: right; font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #737373; line-height: 1.5; text-transform: uppercase; }
       .inv-bdsub-amt { text-align: right; font-size: 8.3px; font-weight: 700; color: #171717; line-height: 1.3; }
+      .inv-bdweekhdr { margin-top: 15.9px; padding-bottom: 4px; font-size: 7.5px; font-weight: 800; letter-spacing: .12em; color: #0a0a0a; line-height: 1; text-transform: uppercase; border-bottom: 1px solid #262626; page-break-after: avoid; break-after: avoid; }
+      .inv-bdweeksub { display: flex; justify-content: flex-end; align-items: baseline; gap: 10.3px; margin-top: 6px; padding-top: 5px; border-top: 1.5px solid #171717; }
+      .inv-bdweeksub-label { text-align: right; font-size: 6.7px; font-weight: 700; letter-spacing: .16em; color: #404040; line-height: 1.3; text-transform: uppercase; }
+      .inv-bdweeksub-amt { text-align: right; font-size: 9.5px; font-weight: 800; color: #0a0a0a; line-height: 1.3; }
       .inv-legacy { font-size: 8.3px; color: #404040; line-height: 1.5; white-space: pre-wrap; }
       .inv-legacy-block { page-break-inside: avoid; break-inside: avoid; }
       .inv-legacy-block + .inv-legacy-block { margin-top: 8px; }
@@ -8204,13 +8362,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // getLineTotal — the same function invoiceSubtotal sums. So group totals
     // and bar segments add up to the subtotal by construction; no amount,
     // subtotal, VAT or total can move.
+    // Ordered so BOTH agreements read their groups off one list via
+    // empty-group dropout (a group with no rows renders nothing, a zero
+    // segment is filtered): APA lines only ever land in day/ot/extras/pen,
+    // so APA renders "Day rates, Overtime, Extras, Penalties" byte-identically
+    // as before; long form lines carry an explicit `group` of
+    // day/ot/premium/pen/kit, so it renders "Day rates, Overtime, Premiums,
+    // Penalties, Kit". premium + kit are additive (Phase 4c).
     const INV_GROUPS = [
-      { key: 'day',    label: 'Day rates',  fill: '#0ea5e9' },
-      { key: 'ot',     label: 'Overtime',   fill: '#ff8a3d' },
-      { key: 'extras', label: 'Extras',     fill: '#a78bfa' },
-      { key: 'pen',    label: 'Penalties',  fill: '#e11d48' },
+      { key: 'day',     label: 'Day rates', fill: '#0ea5e9' },
+      { key: 'ot',      label: 'Overtime',  fill: '#ff8a3d' },
+      { key: 'premium', label: 'Premiums',  fill: '#8b5cf6' },
+      { key: 'extras',  label: 'Extras',    fill: '#a78bfa' },
+      { key: 'pen',     label: 'Penalties', fill: '#e11d48' },
+      { key: 'kit',     label: 'Kit',       fill: '#16a34a' },
     ];
     function invLineGroup(item) {
+      // Long form line items carry an explicit `group` (never a label regex —
+      // the shared categoriser stays APA's). APA items have no `group`, so
+      // this short-circuit never fires for them: byte-identical.
+      if (item && typeof item.group === 'string' && item.group) return item.group;
       const cat = categorizeBreakdownLine(item);
       if (cat === 'ot') return 'ot';
       if (cat === 'pen') return 'pen';
@@ -8414,7 +8585,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       ].filter(c => c.value && String(c.value).trim());
       // Group totals use the SAME getLineTotal invoiceSubtotal sums, so the
       // groups and the bar segments add to the subtotal exactly.
-      const groupTotals = { day: 0, ot: 0, extras: 0, pen: 0 };
+      const groupTotals = { day: 0, ot: 0, premium: 0, extras: 0, pen: 0, kit: 0 };
       allLines.forEach(l => { groupTotals[invLineGroup(l)] += getLineTotal(l); });
       const issuedDate = invoice.invoiceDate || String(invoice.createdAt || '').slice(0, 10);
       const chargeTotal = charges ? (Number(charges.interest) || 0) + (Number(charges.fixedFee) || 0) : 0;
@@ -8452,6 +8623,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
       const snapHours = snapshot ? snapshot.reduce((s, d) => s + (Number(d.hours) || 0), 0) : 0;
       const snapTotal = snapshot ? snapshot.reduce((s, d) => s + (Number(d.total) || 0), 0) : 0;
+      // Page-1 advisory (Phase 4c) — DERIVED from the snapshot's flagged
+      // lines, never a stored field: the single additive key stays weekIds,
+      // and the note always reconciles with what page 2 shows struck. APA
+      // snapshots have no flagged lines, so this is null for them.
+      const lfHasUnclaimable = !!snapshot && snapshot.some(d => (d.lines || []).some(l => l.unclaimable));
+      const lfHasUnpriced = !!snapshot && snapshot.some(d => (d.lines || []).some(l => l.unpriced));
+      const lfNotice = (lfHasUnclaimable || lfHasUnpriced)
+        ? `Amounts shown overleaf but excluded from this total: ${[
+            lfHasUnclaimable ? 'overtime that is not claimable (§1.5(f))' : null,
+            lfHasUnpriced ? 'camera overtime beyond the weekly CWD cap, agreed locally (§7.11)' : null,
+          ].filter(Boolean).join('; ')}.`
+        : null;
 
       // ── The breakdown as PACKABLE BLOCKS ───────────────────────────────
       // Not a pre-built page: a list of {h, el} the packer can place. That is
@@ -8483,7 +8666,34 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             </div>
           ) });
+          // Phase 4c — the ONE sanctioned renderer change: days carrying an
+          // additive `week` label group under a week header with a week
+          // subtotal (a long form invoice may span weeks). APA snapshots have
+          // no `week` field, so `wk` stays null and not one of these blocks is
+          // emitted — byte-identical. Days are already atomic blocks, so a
+          // week subtotal always follows its last day.
+          let runWeekId = null, runWeekSub = 0;
+          const flushWeekSub = () => {
+            if (runWeekId === null) return;
+            const amt = runWeekSub;
+            breakdownBlocks.push({ h: 26, el: (
+              <div key={`wk-sub-${runWeekId}`} className="inv-bdweeksub">
+                <div className="inv-bdweeksub-label">Week subtotal</div>
+                <div className="inv-bdweeksub-amt inv-mono">{fmtGBP(amt)}</div>
+              </div>
+            ) });
+            runWeekId = null; runWeekSub = 0;
+          };
           snapshot.forEach((day, di) => {
+            const wk = day.week || null;
+            if (wk && wk.id !== runWeekId) {
+              flushWeekSub();
+              runWeekId = wk.id;
+              breakdownBlocks.push({ h: 30, el: (
+                <div key={`wk-hdr-${wk.id}`} className="inv-bdweekhdr">{wk.label}</div>
+              ) });
+            }
+            if (wk) runWeekSub += Number(day.total) || 0;
             const lineCount = (day.lines || []).length;
             breakdownBlocks.push({ h: BD_DAY_FIXED + BD_LINE * lineCount, el: (
               <div key={`bd-${day.date || di}`} className="inv-bdday">
@@ -8499,14 +8709,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     const bits = [];
                     if (l.detail) bits.push(l.detail);
                     if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) bits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
+                    // Additive (long form only): unclaimable renders struck +
+                    // cited, unpriced renders "agreed locally". APA lines carry
+                    // neither flag, so this never fires for them.
+                    if (l.unclaimable && l.ref) bits.push(l.ref);
+                    const amtEl = l.unpriced
+                      ? <div className="inv-bl-amt inv-mono" style={{ fontStyle: 'italic', color: '#a3a3a3' }}>agreed locally</div>
+                      : <div className="inv-bl-amt inv-mono" style={l.unclaimable ? { textDecoration: 'line-through', color: '#a3a3a3' } : undefined}>{fmtGBP(l.amount)}</div>;
                     return (
                       <React.Fragment key={li}>
-                        <div className={`inv-bl-label${invChipKind(l.label) ? ' withchip' : ''}`}>
+                        <div className={`inv-bl-label${invChipKind(l.label) ? ' withchip' : ''}`} style={(l.unclaimable || l.unpriced) ? { color: '#a3a3a3' } : undefined}>
                           {invChipKind(l.label) && <InvChip kind={invChipKind(l.label)} />}
-                          <span>{l.label}</span>
+                          <span>{l.label}{l.unclaimable ? ' — not claimable' : ''}</span>
                         </div>
                         <div className="inv-bl-basis inv-mono">{bits.join(' · ')}</div>
-                        <div className="inv-bl-amt inv-mono">{fmtGBP(l.amount)}</div>
+                        {amtEl}
                       </React.Fragment>
                     );
                   })}
@@ -8519,6 +8736,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </div>
             ) });
           });
+          flushWeekSub();
         } else {
           legacyNotes.split(/\n\n+/).forEach((block, i) => {
             breakdownBlocks.push({ h: BD_DAY_FIXED, el: (
@@ -8676,6 +8894,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const NOTE_BLOCK = (
         <>
 <div className="inv-note">Please quote the invoice reference with payment.{breakdownBlocks.length ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
+{lfNotice && <div className="inv-note" style={{ marginTop: '5px' }}>{lfNotice}</div>}
         </>
       );
 

@@ -272,6 +272,9 @@ async function transformedAppCode() {
     'try { globalThis.__longFormCalcForDay = longFormCalcForDay; } catch (_) {}\n' +
     'try { globalThis.__calculateLongFormDay = calculateLongFormDay; } catch (_) {}\n' +
     'try { globalThis.__settleLfWeekNightWork = settleLfWeekNightWork; } catch (_) {}\n' +
+    // Long form invoice builders (LF14).
+    'try { globalThis.__buildLongFormInvoiceLines = buildLongFormInvoiceLines; } catch (_) {}\n' +
+    'try { globalThis.__buildLongFormDayBreakdown = buildLongFormDayBreakdown; } catch (_) {}\n' +
     // Custom comparison item (U-suite): expose the validator + the
     // effective getters so the suite can verify the gate (empty/zero
     // hidden, valid included), plus the base constants for surface
@@ -2832,6 +2835,64 @@ async function main() {
       }
     } else {
       for (const l of ['LF13a', 'LF13b', 'LF13c', 'LF13d', 'LF13e', 'LF13f', 'LF13g', 'LF13h', 'LF13i', 'LF13j', 'LF13k']) check(l + ' fixtures runnable', false, 'engine/settle not exposed');
+    }
+
+    // ── LF14: the invoice builders. Page 1 groups by kind, whole days at
+    //    their rate; unclaimable/unpriced never enter the line items but ride
+    //    the day breakdown with the week label. ──
+    const LINES = sb.__buildLongFormInvoiceLines, BREAK = sb.__buildLongFormDayBreakdown;
+    if (typeof CALC === 'function' && typeof LINES === 'function' && typeof BREAK === 'function') {
+      const approx = (a, b) => Math.abs(a - b) < 0.005;
+      const D = (date, over) => ({ id: 'd' + date, crewId: 'c1', date, dayType: 'shoot', dayShape: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true, ...over });
+      const W = (id, s, e, over) => ({ id, crewId: 'c1', startDate: s, endDate: e, nightWork: { settlement: null }, ...over });
+      // A TV week: Mon-Fri 1T + a sixth day (the run reaches 6 on the Sat).
+      const runDates = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07'];
+      const days = [...runDates.map(dt => D(dt)), D('2026-08-08')];
+      const wk = W('w1', '2026-08-03', '2026-08-09', { boxRentalWeekly: 350 });
+      const p = { id: 'p', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [wk], days };
+      const lines = LINES(p, 'c1', ['w1']);
+      const byGroup = (g) => lines.filter(l => l.group === g);
+      const dayLines = byGroup('day');
+      const base = dayLines.find(l => l.label === 'Basic Daily Rate');
+      const sixth = dayLines.find(l => /Sixth/.test(l.label));
+      const kit = byGroup('kit').find(l => /Box rental \(weekly\)/.test(l.label));
+      check('LF14a page-1 DAY RATES: five 1T days aggregate to qty 5 @ £250 and the sixth day is its OWN line qty 1 @ £375 (whole days at their rate, ruled)',
+        base && base.qty === 5 && approx(base.rate, 250) && approx(base.amount, 1250) &&
+        sixth && sixth.qty === 1 && approx(sixth.rate, 375) && approx(sixth.amount, 375),
+        JSON.stringify(dayLines.map(l => [l.label, l.qty, l.rate, l.amount])));
+      check('LF14b box rental rides its own KIT group line (qty 1 week @ £350)',
+        kit && kit.group === 'kit' && kit.qty === 1 && approx(kit.rate, 350) && approx(kit.amount, 350));
+      // Sum of line items equals sum of engine day totals + box rental.
+      const engTotal = days.reduce((s, d) => s + CALC(p, d).total, 0) + 350;
+      const lineSum = lines.reduce((s, l) => s + l.amount, 0);
+      check('LF14c the page-1 line items sum to the engine day totals plus box rental (exact)',
+        approx(lineSum, engTotal), `lines=${lineSum} eng=${engTotal}`);
+      // Overtime as ONE group (two lines allowed) on film camera/non-camera.
+      const filmDay = { id: 'fd', crewId: 'c1', date: '2026-08-03', dayType: 'shoot', dayShape: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: '20:15', wrapTime: '21:00', wrapped: true };
+      const pf = { id: 'pf', agreement: 'pact-film', agreementVersion: 'pact-film@2021-04-05', baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 275 }], weeks: [W('wf', '2026-08-03', '2026-08-09')], days: [filmDay] };
+      const flines = LINES(pf, 'c1', ['wf']);
+      const fot = flines.filter(l => l.group === 'ot');
+      check('LF14d film overtime is TWO lines in ONE group: camera and non-camera both group:ot',
+        fot.length === 2 && fot.some(l => /Camera/.test(l.label)) && fot.some(l => /Non-camera/.test(l.label)),
+        JSON.stringify(fot.map(l => [l.label, l.group, l.amount])));
+      // The two exceptions: excluded from page-1 lines, present on page 2 flagged.
+      const excl = { id: 'x', crewId: 'c1', date: '2026-08-05', dayType: 'prep', dayShape: 'cwd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '12:00', cameraWrapTime: null, wrapTime: '18:30', wrapped: true };
+      const px = { id: 'px', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wx', '2026-08-03', '2026-08-09')], days: [excl] };
+      const xlines = LINES(px, 'c1', ['wx']);
+      const xbreak = BREAK(px, 'c1', ['wx']);
+      const hasUnclaimableLine = xlines.some(l => /Overtime \(non-shooting CWD\)/.test(l.label));
+      const breakHasUnclaimable = xbreak.some(d => (d.lines || []).some(l => l.unclaimable));
+      check('LF14e §1.5(f) unclaimable overtime is EXCLUDED from page-1 line items but rides the day breakdown flagged unclaimable',
+        !hasUnclaimableLine && breakHasUnclaimable);
+      check('LF14f every day-breakdown day carries the additive `week` label (the renderer\'s week-header trigger)',
+        xbreak.length > 0 && xbreak.every(d => d.week && typeof d.week.label === 'string' && d.week.id));
+      // A multi-week invoice: days from two weeks, each labelled its own week.
+      const multi = { ...p, weeks: [W('w1', '2026-08-03', '2026-08-09'), W('w2', '2026-08-10', '2026-08-16')], days: [D('2026-08-04'), D('2026-08-11')] };
+      const mbreak = BREAK(multi, 'c1', ['w1', 'w2']);
+      check('LF14g a multi-week invoice labels each day with its own week (two distinct week labels)',
+        new Set(mbreak.map(d => d.week.id)).size === 2);
+    } else {
+      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g']) check(l + ' invoice builders exposed', false, 'not exposed');
     }
   }
 
