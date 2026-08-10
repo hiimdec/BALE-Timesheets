@@ -258,6 +258,7 @@ async function transformedAppCode() {
     'try { globalThis.__ensureLfWeek     = ensureLfWeek;     } catch (_) {}\n' +
     'try { globalThis.__pruneLfWeeks     = pruneLfWeeks;     } catch (_) {}\n' +
     'try { globalThis.__rederiveLfDraftWeeks = rederiveLfDraftWeeks; } catch (_) {}\n' +
+    'try { globalThis.__weekBillingStatus = weekBillingStatus; } catch (_) {}\n' +
     'try { globalThis.__consecutiveRunFor = consecutiveRunFor; } catch (_) {}\n' +
     // The ruleset table (LF10): the table and the class registry it must agree with.
     'try { globalThis.__LONGFORM_AGREEMENTS = LONGFORM_AGREEMENTS; } catch (_) {}\n' +
@@ -2281,13 +2282,19 @@ async function main() {
     // LF1a — SOURCE: migrateProduction contains no `agreement` assignment.
     // agreementOf is a read-time helper; normalisation must never persist.
     const migFn = (html.match(/const migrateProduction = \(p\) => \{[\s\S]*?\n    \};/) || [''])[0];
-    check('LF1a migrateProduction found and contains NO agreement/agreementVersion/weeks/baseNation/jobWrapped assignment',
+    // The `weeks` write exists (Phase 4c strips retired week fields) but is
+    // GUARDED by isLongFormRecord — an APA production never reaches it. Every
+    // other long form key must be absent from migrate entirely. LF1b proves
+    // the APA-gains-nothing invariant behaviourally; this is the source proxy.
+    const migFnNoGuardedWeeks = migFn.replace(/\.\.\.\(isLongFormRecord \? \{ weeks: lfWeeks \} : \{\}\),/g, '');
+    check('LF1a migrateProduction found; only a isLongFormRecord-GUARDED weeks write, and NO agreement/agreementVersion/baseNation/jobWrapped assignment',
       migFn.length > 800 &&
-      !/\bagreement\s*:/.test(migFn) &&
-      !/\bagreementVersion\s*:/.test(migFn) &&
-      !/\bweeks\s*:/.test(migFn) &&
-      !/\bbaseNation\s*:/.test(migFn) &&
-      !/\bjobWrapped\s*:/.test(migFn),
+      /\.\.\.\(isLongFormRecord \? \{ weeks: lfWeeks \} : \{\}\),/.test(migFn) &&
+      !/\bagreement\s*:/.test(migFnNoGuardedWeeks) &&
+      !/\bagreementVersion\s*:/.test(migFnNoGuardedWeeks) &&
+      !/\bweeks\s*:/.test(migFnNoGuardedWeeks) &&
+      !/\bbaseNation\s*:/.test(migFnNoGuardedWeeks) &&
+      !/\bjobWrapped\s*:/.test(migFnNoGuardedWeeks),
       `migFn length=${migFn.length}`);
     // LF1c — the read helper exists in the pinned read-time form.
     check('LF1c agreementOf is the read-time helper (p?.agreement ?? \'apa\'), persisted never',
@@ -2427,16 +2434,18 @@ async function main() {
     const mkWeek = sb.__makeLongFormWeek;
     if (typeof mkWeek === 'function') {
       const w = mkWeek('c1', 'monday', '2026-08-05');   // a Wednesday
-      check('LF6b factory week: Mon-Sun bounds around a Wednesday, draft, null invoiceId, null night work election, NO dayIds',
+      // Phase 4c: status and invoiceId are RETIRED — billing derives from the
+      // invoice. The week owns only its bounds and the night-work election.
+      check('LF6b factory week: Mon-Sun bounds around a Wednesday, null night work election, and NO status / invoiceId / dayIds',
         w.startDate === '2026-08-03' && w.endDate === '2026-08-09' &&
-        w.status === 'draft' && w.invoiceId === null &&
+        !('status' in w) && !('invoiceId' in w) &&
         w.nightWork && w.nightWork.settlement === null && !('dayIds' in w),
         JSON.stringify(w));
       const wSun = mkWeek('c1', 'sunday', '2026-08-05');
       check('LF6c week bounds respect a non-Monday start (Sunday week containing Wed 5 Aug runs 2-8 Aug)',
         wSun.startDate === '2026-08-02' && wSun.endDate === '2026-08-08');
     } else {
-      check('LF6b factory week: Mon-Sun bounds around a Wednesday, draft, null invoiceId, null night work election, NO dayIds', false, 'factory not exposed');
+      check('LF6b factory week: Mon-Sun bounds around a Wednesday, null night work election, and NO status / invoiceId / dayIds', false, 'factory not exposed');
       check('LF6c week bounds respect a non-Monday start (Sunday week containing Wed 5 Aug runs 2-8 Aug)', false, 'factory not exposed');
     }
 
@@ -2493,17 +2502,38 @@ async function main() {
       const emptyPristine = { ...minted, days: [] };
       check('LF9b prune drops a pristine empty draft but KEEPS an empty week holding an election',
         prune(emptyPristine).weeks.length === 0 && prune(withElection).weeks.length === 1);
-      const submitted = { ...minted, weeks: minted.weeks.map(w => ({ ...w, status: 'submitted' })) };
-      const re = rederive({ ...submitted }, 'sunday');
-      check('LF9c re-derive leaves submitted weeks untouched (they lock the setting; only drafts re-bound)',
-        re.weeks.length === 1 && re.weeks[0].startDate === minted.weeks[0].startDate && re.weeks[0].status === 'submitted');
-      const draftElected = { weekStartDay: 'monday', days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'shoot' }], weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'draft', invoiceId: null, nightWork: { settlement: 'paid' } }] };
+      // Phase 4c: "billed" means an invoice claims the week (weekIds) — a
+      // DRAFT invoice locks it too. A billed week is left untouched by
+      // re-derivation; only UNBILLED weeks re-bound.
+      const billedWeekId = minted.weeks[0].id;
+      const billed = { ...minted, invoices: [{ id: 'inv1', status: 'draft', weekIds: [billedWeekId], createdAt: '2026-08-01' }] };
+      const re = rederive({ ...billed }, 'sunday');
+      check('LF9c re-derive leaves a BILLED week untouched (a draft invoice locks it; only unbilled weeks re-bound)',
+        re.weeks.length === 1 && re.weeks[0].startDate === minted.weeks[0].startDate && re.weeks[0].id === billedWeekId);
+      const draftElected = { weekStartDay: 'monday', invoices: [], days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'shoot' }], weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', nightWork: { settlement: 'paid' } }] };
       const re2 = rederive(draftElected, 'sunday');
-      check('LF9d re-derive re-bounds a draft week to the new start day and carries the night work election by overlap',
+      check('LF9d re-derive re-bounds an UNBILLED week to the new start day and carries the night work election by overlap',
         re2.weekStartDay === 'sunday' && re2.weeks.length === 1 &&
         re2.weeks[0].startDate === '2026-08-02' && re2.weeks[0].endDate === '2026-08-08' &&
         re2.weeks[0].nightWork.settlement === 'paid',
         JSON.stringify(re2.weeks));
+      // LF15 — weekBillingStatus derives from the invoice; the migration
+      // strips the retired fields.
+      const wbs = sb.__weekBillingStatus, mig2 = sb.__migrateProduction;
+      if (typeof wbs === 'function') {
+        const wk = { id: 'wk9', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', nightWork: { settlement: null } };
+        const unbilled = { weeks: [wk], invoices: [] };
+        const draftBill = { weeks: [wk], invoices: [{ id: 'i', status: 'draft', weekIds: ['wk9'], createdAt: '2026-08-01' }] };
+        const paidBill = { weeks: [wk], invoices: [{ id: 'i', status: 'paid', weekIds: ['wk9'], createdAt: '2026-08-01' }] };
+        check('LF15a weekBillingStatus derives unbilled / draft / paid from the claiming invoice',
+          wbs(unbilled, wk).status === 'unbilled' && wbs(draftBill, wk).status === 'draft' && wbs(paidBill, wk).status === 'paid');
+      } else check('LF15a weekBillingStatus derives unbilled / draft / paid from the claiming invoice', false, 'not exposed');
+      if (typeof mig2 === 'function') {
+        const legacy = mig2({ id: 'p', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', startDate: '2026-08-03', iAmCrewId: 'c1', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], days: [], weeks: [{ id: 'w', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'submitted', invoiceId: 'old', nightWork: { settlement: 'rest' } }] });
+        const mw = (legacy.weeks || [])[0] || {};
+        check('LF15b migrate strips status and invoiceId from a long form week, keeping bounds and the election',
+          !('status' in mw) && !('invoiceId' in mw) && mw.startDate === '2026-08-03' && mw.nightWork && mw.nightWork.settlement === 'rest');
+      } else check('LF15b migrate strips status and invoiceId from a long form week, keeping bounds and the election', false, 'not exposed');
     } else {
       for (const l of ['LF9a', 'LF9b', 'LF9c', 'LF9d']) check(l + ' week helpers exposed', false, 'helpers not exposed');
     }

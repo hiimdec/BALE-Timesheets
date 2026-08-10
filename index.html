@@ -2706,7 +2706,11 @@
     // shifting under a timesheet the production office already holds is
     // worse than the inconvenience. Draft weeks re-derive their boundaries
     // when the start day changes; anything submitted or beyond locks it.
-    const weekStartDayLocked = (p) => ((p && p.weeks) || []).some(w => w && (w.status === 'submitted' || w.status === 'invoiced' || w.status === 'paid'));
+    // Locked once ANY invoice claims ANY of the job's weeks — including a
+    // DRAFT invoice (ruled Phase 4c): a draft has built lines and they must
+    // not shift underneath it. Derived from the invoice link, never a stored
+    // week flag.
+    const weekStartDayLocked = (p) => ((p && p.invoices) || []).some(inv => inv && Array.isArray(inv.weekIds) && inv.weekIds.length > 0);
 
     // ── The week and day records (Phase 2d; type/shape split ruled 3c) ──
     // Day TYPE and day SHAPE are two fields, not one: SWD/SCWD/CWD describe
@@ -2785,49 +2789,64 @@
       d.setDate(d.getDate() + 6);
       return { startDate, endDate: d.toISOString().slice(0, 10) };
     }
+    // The week record carries NO status and NO invoiceId (ruled Phase 4c):
+    // two sources of truth for one fact drift. Billing status is DERIVED from
+    // the invoice that claims the week (weekBillingStatus below); `submitted`
+    // died with the field. A week is { id, crewId, startDate, endDate,
+    // nightWork } — the night work election is the only mutable state it owns.
     function makeLongFormWeek(crewId, weekStartDay, dateISO) {
       const b = lfWeekBounds(weekStartDay, dateISO);
       return {
         id: uid(), crewId,
         startDate: b.startDate, endDate: b.endDate,
-        status: 'draft',                       // draft | submitted | invoiced | paid
-        invoiceId: null,                       // null until claimed
         nightWork: { settlement: null },       // TV §5.3 weekly election: null | 'rest' | 'paid'
       };
     }
     const lfWeekOf = (p, crewId, dateISO) =>
       ((p && p.weeks) || []).find(w => w && w.crewId === crewId && w.startDate <= dateISO && dateISO <= w.endDate);
+    // The invoice that claims a week, and the derived billing status. The
+    // link lives on the invoice (weekIds), one direction; when several touch
+    // a week the latest by createdAt wins. No invoice → 'unbilled'.
+    function lfInvoiceForWeek(p, weekId) {
+      const claiming = (p.invoices || []).filter(inv => Array.isArray(inv.weekIds) && inv.weekIds.includes(weekId));
+      if (claiming.length === 0) return null;
+      return claiming.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))[claiming.length - 1];
+    }
+    function weekBillingStatus(p, week) {
+      const inv = lfInvoiceForWeek(p, week && week.id);
+      return { status: inv ? (inv.status || 'draft') : 'unbilled', invoice: inv };
+    }
     // Lazy mint: creating a day whose date falls in no existing week for
-    // that crew mints the containing week as a pristine draft.
+    // that crew mints the containing week.
     function ensureLfWeek(p, crewId, dateISO) {
       if (lfWeekOf(p, crewId, dateISO)) return p;
       return { ...p, weeks: [...(p.weeks || []), makeLongFormWeek(crewId, p.weekStartDay || 'monday', dateISO)] };
     }
-    // A week with real state never auto-deletes; pristine empty drafts may
-    // be pruned (ruled). Called after day removal.
-    const lfWeekIsPristine = (w) => w && w.status === 'draft' && !w.invoiceId && !(w.nightWork && w.nightWork.settlement);
+    // A week with real state never auto-deletes; pristine empty ones may be
+    // pruned (ruled). Pristine = unbilled AND no night-work election.
+    const lfWeekIsPristine = (p, w) => w && weekBillingStatus(p, w).status === 'unbilled' && !(w.nightWork && w.nightWork.settlement);
     function pruneLfWeeks(p) {
       const days = p.days || [];
       const kept = (p.weeks || []).filter(w =>
-        !lfWeekIsPristine(w) || days.some(d => d.crewId === w.crewId && w.startDate <= d.date && d.date <= w.endDate));
+        !lfWeekIsPristine(p, w) || days.some(d => d.crewId === w.crewId && w.startDate <= d.date && d.date <= w.endDate));
       return kept.length === (p.weeks || []).length ? p : { ...p, weeks: kept };
     }
-    // Week-start change re-derives DRAFT week boundaries only (ruled open
-    // choice A): submitted and beyond lock the setting, so only drafts can
-    // exist mis-bounded. Elections carry across by overlap — a draft week
-    // whose old range overlaps the new one hands its non-null night work
-    // settlement to the new week.
+    // Week-start change re-derives UNBILLED week boundaries only (ruled): a
+    // billed week — including a DRAFT invoice, which has built lines that must
+    // not shift underneath it — locks the boundary. Elections carry across by
+    // overlap: an unbilled week whose old range overlaps the new one hands its
+    // non-null night work settlement to the new week.
     function rederiveLfDraftWeeks(p, newWeekStartDay) {
       const weeks = p.weeks || [];
-      const drafts = weeks.filter(w => w && w.status === 'draft');
-      const kept = weeks.filter(w => w && w.status !== 'draft');
+      const unbilled = weeks.filter(w => w && weekBillingStatus(p, w).status === 'unbilled');
+      const kept = weeks.filter(w => w && weekBillingStatus(p, w).status !== 'unbilled');
       const next = [...kept];
       for (const d of (p.days || [])) {
         if (!d || !d.date || !d.crewId) continue;
         const b = lfWeekBounds(newWeekStartDay, d.date);
         if (next.some(w => w.crewId === d.crewId && w.startDate === b.startDate)) continue;
         if (kept.some(w => w.crewId === d.crewId && w.startDate <= d.date && d.date <= w.endDate)) continue;
-        const overlapping = drafts.find(w => w.crewId === d.crewId && w.startDate <= b.endDate && b.startDate <= w.endDate && w.nightWork && w.nightWork.settlement);
+        const overlapping = unbilled.find(w => w.crewId === d.crewId && w.startDate <= b.endDate && b.startDate <= w.endDate && w.nightWork && w.nightWork.settlement);
         next.push({
           ...makeLongFormWeek(d.crewId, newWeekStartDay, d.date),
           ...(overlapping ? { nightWork: { settlement: overlapping.nightWork.settlement } } : {}),
@@ -5462,6 +5481,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // the one transformation the long form branch performs. APA days
       // never enter this map.
       const lfDays = isLongFormRecord ? days.map(migrateLongFormDay) : days;
+      // Phase 4c: retire `status` and `invoiceId` from long form weeks —
+      // billing status now derives from the invoice's weekIds. Explicit and
+      // idempotent, exactly like the dayType migration (local test data only;
+      // long form invoices did not exist before this, so a stripped week has
+      // no invoice to derive from and reads 'unbilled'). APA weeks (there are
+      // none — APA has no `weeks`) never enter this map.
+      const lfWeeks = isLongFormRecord
+        ? ((p.weeks || []).map(w => { const { status, invoiceId, ...rest } = w; return rest; }))
+        : p.weeks;
 
       // dayDefaults backfill: derive from existing crew records per date. Idempotent.
       // ORDER MATTERS (O5): backfill runs BEFORE the time-field collapse below so
@@ -5584,6 +5612,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         toAddress: _client.toAddress,
         invoices: (p.invoices || []).map(inv => migrateInvoice(inv, p)),
         days: lfDays,
+        ...(isLongFormRecord ? { weeks: lfWeeks } : {}),
       };
     };
 
