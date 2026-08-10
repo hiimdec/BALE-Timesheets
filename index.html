@@ -3192,7 +3192,10 @@
           options: null,
           included30RoadMilesEachWay: { ref: 'Film §6.2(c), (e)' },
           beyondPaid: { at: 'agreed rate', incrementMins: 30, capPerHour: 45, ref: 'Film §6.2(d), (f)' },
-          prepCrewsTravelInDay: { ref: 'Film §6.2(g)' },
+          // §6.2(g)'s prep/rigging travel-in-day exemption is DELIBERATELY NOT
+          // applied (ruled Phase 4e): the app never zeroes entered travel - the
+          // deal wins over the document. Kept as provenance, never wired.
+          prepCrewsTravelInDay: { applied: false, ref: 'Film §6.2(g)' },
           flatNoUplifts: { evenOn6th7thBH: true, ref: 'Film §6.2(h)' },
           travelDayOutsideWeek: { at: 'flat daily rate', ref: 'Film §6.2(i)' },
           mileage: 'HMRC', mileageRef: 'Film §6.2(b)',

@@ -91,6 +91,21 @@ but it cannot invent a clause.
   engine's, byte-untouched.
 - **Where a rule is unresolved, the app CLAIMS the money and FLAGS the
   assumption.** It never silently under-claims. Applies to every open inference.
+- **The deal wins over the document (ruled Phase 4e).** Where the agreement's
+  answer and the user's actual deal disagree, the deal wins - the agreement is
+  the DEFAULT, not the ceiling. Producers agree things outside the document
+  constantly, and an app that enforced the document over the deal would
+  under-claim. So **the app never zeroes travel, or anything else, the user has
+  entered**: no clause-driven suppression, no §6.2(g) prep/rigging exemption,
+  nothing derived from `agreementClass`. Entered money that silently does not
+  reach the invoice is worse than no feature, because the user sends believing
+  it is on there. This is the same shape as §7.11 and §1.5(f): where the
+  agreement gives no answer or says no, the user supplies the figure and the app
+  bills it. The engine's job shrinks to the useful part - applying the
+  thresholds so the user does not have to work out which miles or hours are free
+  - never overriding what the user states. (The founder has been paid mileage
+  while electrically rigging outside 25 miles; whatever §6.2(g) reaches, it was
+  not him.)
 - **Sixth and seventh days are flagged and overridable** down to a normal day
   rate, one tap, control on the day and surfaced in the week view.
 - **Editing a day in an invoiced week is allowed.** The sent invoice stays
