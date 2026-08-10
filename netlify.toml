@@ -1,105 +1,78 @@
-# netlify.toml - TimeMachine edge hardening (web chunk 1.5)
+# netlify.toml - TimeMachine web build + edge hardening (web chunk 2)
 #
-# The Netlify publish directory is the repo root, so every tracked file is
-# otherwise served at its path. Verified live before this file existed: the
-# internal .md docs, package.json, capacitor.config.json, postcode-distances.json,
-# tailwind.config.js, /brand/make_social.py, /APA RULES.pdf, and the entire iOS
-# native project under /ios (Swift source, App.entitlements, Info.plist), plus
-# /scripts, /src and /docs, all returned HTTP 200.
+# PRIMARY control is now an ALLOW-LIST PUBLISH DIRECTORY. The build step
+# (scripts/build-web.js) copies ONLY explicitly-named web files into dist-web/,
+# and Netlify publishes that folder. Anything not on the allow-list - internal
+# docs, the native iOS project, build tooling, /src, and any newly added repo
+# file - is simply not present in the publish directory, so it 404s by default.
+# The deploy fails CLOSED: nothing is publishable unless it is explicitly named.
 #
-# This file 404s those at the edge while keeping the app, the marketing pages,
-# the articles, the icons and the PWA / deep-link machinery reachable. It does
-# NOT delete anything from the repo - blocking at the edge is the whole job for
-# now. The durable fix is a dedicated publish directory (see notes at the end).
+# The exact-path and directory 404 rules further down are kept as a SECOND LAYER
+# (defence in depth) so that, if the publish directory were ever reverted to the
+# repo root, the previously-leaking paths would still be blocked.
 #
-# HOW NETLIFY EVALUATES THIS:
-#   - [[redirects]] are processed top to bottom, FIRST MATCH WINS.
-#   - A real file at a path is served IN PREFERENCE to a redirect rule unless
-#     that rule sets force = true. Every block rule below therefore uses force,
-#     because a real file exists at each blocked path.
-#   - So the order is: allow-list the must-stay-reachable files FIRST (nothing
-#     after can shadow them), then force-404 everything sensitive.
-#   - [[headers]] are additive (there is no first-match for headers). They add
-#     the X-Robots-Tag second layer and are deliberately kept OFF /robots.txt,
-#     /manifest.json and /sitemap.xml so those are never tagged noindex.
+# Removed from chunk 1.5: the blanket *.ext redirect/header rules (Netlify does
+# not reliably match a splat placed before a suffix, so they did nothing useful
+# and implied a protection that was not there), and the allow-list 200 self-
+# redirects (their only purpose was shielding must-serve files from those blanket
+# rules; with an allow-list publish dir they are redundant).
 #
-# The existing _headers file (which sets the Content-Type for the AASA file) is
-# left untouched and still applies.
+# _headers is copied into dist-web/ and still sets the AASA content type there.
 
 
 # =====================================================================
-# 1. ALLOW-LIST - these MUST keep returning 200. First, so that no later
-#    blanket/extension rule can shadow them.
+# BUILD - assemble the web-only publish directory and serve it.
+# Both live here (not in the Netlify UI) so the config is reviewable.
 # =====================================================================
-[[redirects]]
-  from = "/robots.txt"
-  to = "/robots.txt"
-  status = 200
+[build]
+  command = "node scripts/build-web.js"
+  publish = "dist-web"
 
-[[redirects]]
-  from = "/sitemap.xml"
-  to = "/sitemap.xml"
-  status = 200
-
-[[redirects]]
-  from = "/manifest.json"
-  to = "/manifest.json"
-  status = 200
-
-[[redirects]]
-  from = "/.well-known/apple-app-site-association"
-  to = "/.well-known/apple-app-site-association"
-  status = 200
+[build.environment]
+  NODE_VERSION = "20"
+  # The web build uses no npm packages. Skip install lifecycle scripts so the
+  # native modules in package.json (canvas, sharp) cannot fail the deploy while
+  # building binaries the web publish step never uses.
+  NPM_FLAGS = "--ignore-scripts"
 
 
 # =====================================================================
-# 2. BLOCK non-web directories in full. None are referenced by any served
-#    page (the only runtime fetch is /assets/tailwind.css, which is NOT in
-#    this list). Trailing-splat matching is fully supported by Netlify.
-#      /ios     - native Xcode project: Swift source, entitlements, Info.plist
-#      /scripts - build + audit tooling
-#      /brand   - brand assets + the Instagram generator (make_social.py)
-#      /docs    - internal design mockups
-#      /src     - web-source stylesheet (compiled into the native bundle)
+# SECOND-LAYER 404s (defence in depth; the publish allow-list is primary).
+# force = true so the rule wins even if a real file exists at the path.
+# to = /404.html has no such file, so Netlify returns its default 404 page.
 # =====================================================================
+
+# --- Non-web directories ---
+#   /ios     - native Xcode project: Swift source, entitlements, Info.plist
+#   /scripts - build + audit tooling
+#   /brand   - brand assets + the Instagram generator (make_social.py)
+#   /docs    - internal design mockups
+#   /src     - web-source stylesheet (compiled into the native bundle)
 [[redirects]]
   from = "/ios/*"
   to = "/404.html"
   status = 404
   force = true
-
 [[redirects]]
   from = "/scripts/*"
   to = "/404.html"
   status = 404
   force = true
-
 [[redirects]]
   from = "/brand/*"
   to = "/404.html"
   status = 404
   force = true
-
 [[redirects]]
   from = "/docs/*"
   to = "/404.html"
   status = 404
   force = true
-
 [[redirects]]
   from = "/src/*"
   to = "/404.html"
   status = 404
   force = true
-
-
-# =====================================================================
-# 3. BLOCK sensitive root files by EXACT PATH. This is the guaranteed
-#    layer: exact-path + force is fully supported by Netlify, so it holds
-#    even if the blanket extension rules in section 4 are not honoured.
-#    Covers everything on main today, plus the pact-bectu source files
-#    that are in progress on develop (harmless no-ops until they merge).
-# =====================================================================
 
 # --- Internal / planning / reference Markdown (on main) ---
 [[redirects]]
@@ -242,7 +215,7 @@
   status = 404
   force = true
 
-# --- Config / data / lockfiles (NOT manifest.json - that is allow-listed) ---
+# --- Config / data / lockfiles (NOT manifest.json - that is published) ---
 [[redirects]]
   from = "/package.json"
   to = "/404.html"
@@ -278,43 +251,10 @@
 
 
 # =====================================================================
-# 4. BLANKET extension rules - the "block by extension" layer, and defence
-#    for any FUTURE root file of these types. Placed AFTER the allow-list
-#    so /manifest.json, /robots.txt and /sitemap.xml are never caught.
-#    Netlify's support for a splat placed before a suffix is not guaranteed,
-#    so these BACK UP the exact-path rules above; they do not replace them.
-# =====================================================================
-[[redirects]]
-  from = "/*.md"
-  to = "/404.html"
-  status = 404
-  force = true
-[[redirects]]
-  from = "/*.pdf"
-  to = "/404.html"
-  status = 404
-  force = true
-[[redirects]]
-  from = "/*.py"
-  to = "/404.html"
-  status = 404
-  force = true
-[[redirects]]
-  from = "/*.json"
-  to = "/404.html"
-  status = 404
-  force = true
-[[redirects]]
-  from = "/*.txt"
-  to = "/404.html"
-  status = 404
-  force = true
-
-
-# =====================================================================
-# 5. X-Robots-Tag: noindex, nofollow - second layer on the blocked paths,
-#    in case a file is ever served despite the rules above. Deliberately
-#    NOT applied to /robots.txt, /manifest.json or /sitemap.xml.
+# X-Robots-Tag: noindex, nofollow - second layer on the blocked paths, in
+# case one is ever served despite the above. Applied per exact path / dir,
+# NOT via blanket *.ext (unreliable) and NOT to robots.txt / manifest.json /
+# sitemap.xml (which must stay indexable).
 # =====================================================================
 [[headers]]
   for = "/ios/*"
@@ -337,18 +277,6 @@
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
 [[headers]]
-  for = "/*.md"
-  [headers.values]
-    X-Robots-Tag = "noindex, nofollow"
-[[headers]]
-  for = "/*.pdf"
-  [headers.values]
-    X-Robots-Tag = "noindex, nofollow"
-[[headers]]
-  for = "/*.py"
-  [headers.values]
-    X-Robots-Tag = "noindex, nofollow"
-[[headers]]
   for = "/package.json"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
@@ -368,16 +296,3 @@
   for = "/tailwind.config.js"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
-
-
-# =====================================================================
-# PERMANENT FIX (when the /app move happens):
-#   Replace this deny-list with an allow-list. Introduce a web build step
-#   that copies ONLY the web assets (index.html, the marketing + article
-#   HTML, manifest.json, robots.txt, sitemap.xml, icons/og images, /assets,
-#   /.well-known) into a dedicated publish directory (e.g. /public or
-#   /dist-web), and point Netlify's publish directory there. Then nothing
-#   is served unless it was explicitly copied in, which flips the default
-#   from "everything leaks" to "nothing leaks", and this deny-list can be
-#   retired. See the audit's section 12 recommendation.
-# =====================================================================

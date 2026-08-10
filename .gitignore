@@ -33,6 +33,7 @@ index-backup.html
 # Build outputs (future-proof)
 /dist/
 /build/
+/dist-web/
 
 # Audit harness run artefacts (the harness scripts are committed; their per-run
 # JSON reports are not — they're rewritten every invocation).
