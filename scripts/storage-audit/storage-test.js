@@ -282,6 +282,7 @@ async function transformedAppCode() {
     // §1.3 department list, and RATE_CARDS (for the APA byte-identity check).
     'try { globalThis.__seedAgreementClass = seedAgreementClass; } catch (_) {}\n' +
     'try { globalThis.__roleRegistryFor = roleRegistryFor; } catch (_) {}\n' +
+    'try { globalThis.__lfRoleRefLine = lfRoleRefLine; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
     'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
@@ -3221,6 +3222,23 @@ async function main() {
       check('LF22f the registry filters by agreement (tv=bit 1, film=bit 2, the lists differ), and the APA trainee flat rate is £250',
         tv.filter(r => !r.trainee).length !== film.filter(r => !r.trainee).length && REG('apa').some(r => r.trainee && r.rate === 250),
         JSON.stringify([tv.filter(r => !r.trainee).length, film.filter(r => !r.trainee).length]));
+      // Part 3: the reference line reads the card at the crew member's band,
+      // states the holiday-pay treatment, and shows NOTHING when there's no
+      // usable figure (a band that reads "N/A" / "NOT OFTEN IN THIS BAND").
+      const REF = sb.__lfRoleRefLine;
+      if (typeof REF === 'function') {
+        check('LF22g the reference reads the card at the crew member\'s band with the holiday-pay treatment (Costume Assistant, band 2: £25/hr, holiday pay included)',
+          REF('Costume Assistant', 'pact-tv', 2) === '£25/hr at band 2, holiday pay included',
+          JSON.stringify(REF('Costume Assistant', 'pact-tv', 2)));
+        check('LF22h band-sensitive + film uses MMP; a band that reads "N/A"/"NOT OFTEN IN THIS BAND" shows nothing, and a typed/unknown role shows nothing',
+          REF('Costume Assistant', 'pact-tv', 4) === '£30/hr at band 4, holiday pay included'
+          && REF('Costume Assistant', 'pact-film', null) === '£29/hr (MMP), holiday pay included'
+          && REF('Junior Assistant Set Decorator', 'pact-tv', 2) === null
+          && REF('Some Typed Role', 'pact-tv', 2) === null,
+          JSON.stringify([REF('Costume Assistant', 'pact-tv', 4), REF('Costume Assistant', 'pact-film', null), REF('Junior Assistant Set Decorator', 'pact-tv', 2)]));
+      } else {
+        for (const l of ['LF22g', 'LF22h']) check(l + ' lfRoleRefLine exposed', false, 'not exposed');
+      }
     } else {
       for (const l of ['LF22a', 'LF22b', 'LF22c', 'LF22d', 'LF22e', 'LF22f']) check(l + ' seed/registry exposed', false, 'seedAgreementClass/roleRegistryFor not exposed');
     }

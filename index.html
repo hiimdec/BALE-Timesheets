@@ -3009,6 +3009,30 @@
       return out;
     }
 
+    // The reference line beside the long form rate field (Phase 5a, Part 3): the
+    // published card rate for the crew member's role at their band. SHOWN, never
+    // autofilled - a priced role's rate is the user's deal, not the card's. It
+    // states the holiday-pay treatment so they know whether the figure includes
+    // it. Returns null when there's nothing useful to show (no card entry for the
+    // role, or the band reads "N/A" / "NOT OFTEN IN THIS BAND" / "Refer to...").
+    const LF_REF_UNIT = { d: 'day', w: 'week', h: 'hr' };
+    const LF_REF_HP = { I: 'holiday pay included', E: 'holiday pay excluded', U: 'holiday pay unspecified', S: 'holiday pay shown separately' };
+    function lfRoleRefLine(role, agreement, band) {
+      const entry = LF_ROLE_REF[role];
+      if (!entry) return null;
+      const code = agreement === 'pact-film' ? 'mmp' : (band ? 'tv' + band : null);
+      if (!code || !entry[code]) return null;
+      const [val, unit, hp] = entry[code];
+      const where = agreement === 'pact-film' ? ' (MMP)' : (band ? ` at band ${band}` : '');
+      const hpText = LF_REF_HP[hp] ? ', ' + LF_REF_HP[hp] : '';
+      if (typeof val === 'number') {
+        const u = LF_REF_UNIT[unit] || unit || '';
+        return `£${val}${u ? '/' + u : ''}${where}${hpText}`;
+      }
+      if (/neg/i.test(String(val))) return `negotiated${where}, no set rate`;
+      return null;
+    }
+
     // ═══════════════ THE LONG FORM RULESET TABLE (Phase 3b) ═══════════════
     // DATA, not code. Versioned entries resolved by the production's
     // agreementVersion stamp; two rows; a third agreement is a NEW ROW and
@@ -21379,6 +21403,9 @@ const setDays = (updater) =>
         if (match && match.trainee) { patch.weeklyEntry = false; patch.contractDailyRate = String(match.rate); }
         set(patch);
       };
+      // The published card rate for this role at this band - shown as reference
+      // beside the rate field, never poured into it (Part 3).
+      const roleRefLine = lfRoleRefLine(w.role, w.agreement, w.band);
 
       const stepIndex = steps.indexOf(screen) + 1;
 
@@ -21499,6 +21526,12 @@ const setDays = (updater) =>
                     )}
                     {w.agreement === 'pact-tv' && w.agreementClass === 'ach' && derivedDaily > 0 && (
                       <p className="text-[11px] text-neutral-500 mt-1.5">Total Daily Rate {fmtGBP(derivedDaily + derivedDaily / 10)} - your BDR plus the Additional Contracted Hour at {fmtGBP(derivedDaily / 10)}. Check it against the deal memo (§1.4(c)).</p>
+                    )}
+                    {roleRefLine && (
+                      <div className="mt-2.5 bg-neutral-900/60 border border-neutral-800 rounded-lg px-3 py-2">
+                        <div className="text-[9px] uppercase tracking-wider text-neutral-500 font-bold mb-0.5">Bectu rate card · reference</div>
+                        <div className="text-[11px] text-neutral-300 leading-snug">{roleRefLine}</div>
+                      </div>
                     )}
                   </div>
                 </div>
