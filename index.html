@@ -21961,6 +21961,45 @@ const setDays = (updater) =>
       const [dayToast, setDayToast] = useState(null);
       const showDayToast = (msg) => { setDayToast(msg); setTimeout(() => setDayToast(null), 2000); };
       const enterDay = (dayId) => { setCurrentDayId(dayId); setOpenWeekId(null); setView('day'); };
+      // ── Invoicing from the week view (Phase 4c) ──
+      const [invoiceNav, setInvoiceNav] = useState(null);   // invoiceId | null → the reused editor
+      const [weekKebab, setWeekKebab] = useState(null);      // a week under its action sheet
+      const [selectMode, setSelectMode] = useState(false);
+      const [selectedWeekIds, setSelectedWeekIds] = useState(() => new Set());
+      useBackLevel(!!invoiceNav, () => { setInvoiceNav(null); return false; }, 'longform-invoice');
+      useBackLevel(selectMode, () => { setSelectMode(false); setSelectedWeekIds(new Set()); return false; }, 'longform-select');
+      // Open the week's invoice reuse-first (an existing claim, else mint one
+      // for the selected weeks), then the SAME editor APA uses.
+      const openInvoiceForWeeks = (weekIds) => {
+        const existing = (production.invoices || []).find(inv => Array.isArray(inv.weekIds) && weekIds.some(id => inv.weekIds.includes(id)));
+        if (existing) { setInvoiceNav(existing.id); return; }
+        const inv = createLongFormInvoice(production, setProduction, userPrefs, setUserPrefs, myCrewId, weekIds);
+        setInvoiceNav(inv.id);
+      };
+      // The live figures vs the sent snapshot — computed lazily per visible
+      // week, never stored (ruled). Diverged means the user should resend.
+      const weekDivergence = (inv) => {
+        if (!inv || inv.status === 'draft') return false;   // drafts re-sync live; only issued records freeze
+        const live = invoiceSubtotal(buildLongFormInvoiceLines(production, inv.userCrewId, inv.weekIds || []));
+        const frozen = invoiceSubtotal(inv.lineItems || []);
+        return Math.abs(live - frozen) > 0.005;
+      };
+      // Resend: the SAME invoice, re-frozen (ruled). Freezing prevents SILENT
+      // recomputation; a deliberate resend re-runs the builders, replaces the
+      // snapshot and the client fields, stamps a fresh dateSent, and keeps the
+      // number — because it is the same claim, corrected.
+      const [confirmResend, setConfirmResend] = useState(null);
+      const resendInvoice = (inv) => {
+        setProduction(p => ({ ...p, invoices: (p.invoices || []).map(i => i.id === inv.id ? {
+          ...i,
+          ...clientFieldsFromProduction(p),
+          lineItems: buildLongFormInvoiceLines(p, inv.userCrewId, inv.weekIds || []),
+          dayBreakdown: buildLongFormDayBreakdown(p, inv.userCrewId, inv.weekIds || []),
+          linesEdited: false,
+          status: 'sent',
+          dateSent: todayISO(),
+        } : i) }));
+      };
       // The pill's running total — the sum of every day's engine total,
       // rolling as the wrap lands (same meaning as APA's totalShoot).
       const totalJob = useMemo(() => sortedDays.reduce((s, d) => {
@@ -21988,16 +22027,16 @@ const setDays = (updater) =>
         const r = runFor(d);
         return r.count >= 6 ? { label: r.count === 6 ? '6th day' : `${r.count}th day`, run: r } : null;
       };
-      // Status is a money progression, so invoiced and paid share ONE hue at
-      // two weights (ruled Phase 3a: fuchsia sat too close to the penalty
-      // pink): invoiced = outlined green, the claim is out; paid = solid
-      // green, the money landed. Draft stays neutral, submitted sky.
+      // Derived billing status (Phase 4c) — a money progression: unbilled
+      // neutral, draft neutral-outline (built, not out), sent sky (the claim
+      // is out), paid solid green (the money landed).
       const WEEK_STATUS_CHIP = {
-        draft:     'text-neutral-400 bg-neutral-500/10 border-neutral-500/30',
-        submitted: 'text-sky-500 bg-sky-500/10 border-sky-500/25',
-        invoiced:  'text-tm-good bg-tm-good/10 border-tm-good/30',
-        paid:      'text-neutral-950 bg-tm-good border-tm-good',
+        unbilled: 'text-neutral-500 bg-neutral-500/5 border-neutral-500/20',
+        draft:    'text-neutral-300 bg-neutral-500/10 border-neutral-500/40',
+        sent:     'text-sky-500 bg-sky-500/10 border-sky-500/25',
+        paid:     'text-neutral-950 bg-tm-good border-tm-good',
       };
+      const WEEK_STATUS_LABEL = { unbilled: 'unbilled', draft: 'draft', sent: 'sent', paid: 'paid' };
 
       const addDay = (afterISO) => {
         const lastDate = [...myDays.map(d => d.date)].sort().slice(-1)[0];
@@ -22054,6 +22093,22 @@ const setDays = (updater) =>
         for (let iso = w.startDate; iso <= w.endDate; iso = stepISO(iso, 1)) if (!taken.has(iso)) return iso;
         return null;
       };
+
+      // The invoice editor is the SAME one APA uses — reused whole. Its
+      // draft re-sync is branched for long form (see InvoiceEditorView).
+      if (invoiceNav) {
+        return (
+          <InvoiceEditorView
+            invoiceId={invoiceNav}
+            production={production}
+            setProduction={setProduction}
+            userPrefs={userPrefs}
+            setUserPrefs={setUserPrefs}
+            userCrewId={myCrewId}
+            onBack={() => setInvoiceNav(null)}
+          />
+        );
+      }
       return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           {!NATIVE_CHROME_ACTIVE && (
@@ -22257,8 +22312,32 @@ const setDays = (updater) =>
                     <div className="text-[15px] font-bold text-neutral-100">{fmtLfRange(openWeek)}</div>
                     <div className="text-[10px] text-neutral-500 mt-0.5">{daysInWeek(openWeek).length === 1 ? '1 day' : `${daysInWeek(openWeek).length} days`}</div>
                   </div>
-                  <span className={`text-[10px] uppercase tracking-wide font-bold border rounded-md px-1.5 py-[3px] flex-shrink-0 ${WEEK_STATUS_CHIP[openWeek.status] || WEEK_STATUS_CHIP.draft}`}>{openWeek.status}</span>
+                  {(() => { const b = weekBillingStatus(production, openWeek); return (
+                    <span className={`text-[10px] uppercase tracking-wide font-bold border rounded-md px-1.5 py-[3px] flex-shrink-0 ${WEEK_STATUS_CHIP[b.status] || WEEK_STATUS_CHIP.unbilled}`}>{WEEK_STATUS_LABEL[b.status]}</span>
+                  ); })()}
                 </div>
+                {(() => {
+                  const b = weekBillingStatus(production, openWeek);
+                  const diverged = weekDivergence(b.invoice);
+                  return (
+                    <div className="mb-3">
+                      <Btn variant={b.status === 'unbilled' ? 'primary' : 'subtle'} className="w-full justify-center"
+                        onClick={() => openInvoiceForWeeks([openWeek.id])}>
+                        <IFilePlus size={14}/>{b.status === 'unbilled' ? 'Send invoice' : `Open invoice ${b.invoice.invoiceNumber}`}
+                      </Btn>
+                      {diverged && (
+                        <div className="mt-2 rounded-xl border border-tm-warn/30 bg-tm-warn/5 px-3 py-2.5">
+                          <p className="text-[10px] text-tm-warn leading-tight">The live figures differ from the sent invoice.</p>
+                          <button type="button" onClick={() => setConfirmResend(b.invoice)}
+                            className="mt-1.5 text-[11px] font-bold uppercase tracking-wide text-tm-warn hover:opacity-80 transition-opacity"
+                            style={{ WebkitTapHighlightColor: 'transparent' }}>
+                            Resend {b.invoice.invoiceNumber} →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {/* Box rental (Phase 4b 0.3, ruled): kit is usually WEEKLY
                     with a daily option — the amount lives on the week
                     (absent when unused), days can override in the day
@@ -22326,34 +22405,77 @@ const setDays = (updater) =>
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Weeks</div>
-                  {/* 3.5: weeks are the review layer — the button mints a
-                      WEEK (and its five working days), not a day. */}
-                  <Btn variant="subtle" onClick={addWeek}><IPlus size={13}/>Add week</Btn>
+                  <div className="flex items-center gap-2">
+                    {myWeeks.length > 1 && (
+                      <button type="button" onClick={() => { setSelectMode(s => !s); setSelectedWeekIds(new Set()); }}
+                        className="text-[11px] font-bold uppercase tracking-wide text-sky-500 hover:text-sky-400 transition-colors"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        {selectMode ? 'Cancel' : 'Select'}
+                      </button>
+                    )}
+                    {/* 3.5: the button mints a WEEK (and its five working days). */}
+                    {!selectMode && <Btn variant="subtle" onClick={addWeek}><IPlus size={13}/>Add week</Btn>}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   {myWeeks.map(w => {
                     const wd = daysInWeek(w);
                     const flags = wd.map(d => dayFlag(d)).filter(Boolean);
+                    const billing = weekBillingStatus(production, w);
+                    const diverged = weekDivergence(billing.invoice);
+                    const picked = selectedWeekIds.has(w.id);
+                    // In select mode, only UNBILLED weeks can join a new
+                    // invoice — a billed week's claim already exists.
+                    const selectable = selectMode && billing.status === 'unbilled';
                     return (
-                      <button key={w.id} type="button" onClick={() => setOpenWeekId(w.id)}
-                        className="w-full text-left px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors"
-                        style={{ WebkitTapHighlightColor: 'transparent' }}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[13px] font-semibold text-neutral-100">{fmtLfRange(w)}</div>
-                            <div className="text-[10px] text-neutral-500 mt-0.5">{wd.length === 1 ? '1 day' : `${wd.length} days`}</div>
+                      <div key={w.id} className={`w-full rounded-xl bg-neutral-900 border transition-colors ${picked ? 'border-sky-500' : 'border-neutral-800'}`}>
+                        <button type="button"
+                          onClick={() => {
+                            if (selectMode) { if (!selectable) return; setSelectedWeekIds(prev => { const n = new Set(prev); n.has(w.id) ? n.delete(w.id) : n.add(w.id); return n; }); }
+                            else setOpenWeekId(w.id);
+                          }}
+                          className="w-full text-left px-4 py-3 hover:opacity-90 transition-opacity"
+                          style={{ WebkitTapHighlightColor: 'transparent', opacity: selectMode && !selectable ? 0.4 : 1 }}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1 flex items-center gap-2.5">
+                              {selectMode && (
+                                <span className={`w-4 h-4 rounded flex-shrink-0 border ${picked ? 'bg-sky-500 border-sky-500' : 'border-neutral-600'} flex items-center justify-center`}>
+                                  {picked && <ICheck size={11} className="text-neutral-950" strokeWidth={3} />}
+                                </span>
+                              )}
+                              <div className="min-w-0">
+                                <div className="text-[13px] font-semibold text-neutral-100">{fmtLfRange(w)}</div>
+                                <div className="text-[10px] text-neutral-500 mt-0.5">
+                                  {wd.length === 1 ? '1 day' : `${wd.length} days`}
+                                  {diverged && <span className="text-tm-warn"> · differs from the sent invoice</span>}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {flags.length > 0 && (
+                                <span className="text-[10px] uppercase tracking-wide font-bold text-tm-warn bg-tm-warn/10 border border-tm-warn/30 rounded-md px-1.5 py-[3px]">{flags[flags.length - 1].label}</span>
+                              )}
+                              <span className={`text-[10px] uppercase tracking-wide font-bold border rounded-md px-1.5 py-[3px] ${WEEK_STATUS_CHIP[billing.status] || WEEK_STATUS_CHIP.unbilled}`}>{WEEK_STATUS_LABEL[billing.status]}</span>
+                              {!selectMode && (
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setWeekKebab(w); }}
+                                  className="w-7 h-7 -mr-1.5 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors"
+                                  style={{ WebkitTapHighlightColor: 'transparent' }} aria-label="Week actions">
+                                  <IDots size={14} />
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            {flags.length > 0 && (
-                              <span className="text-[10px] uppercase tracking-wide font-bold text-tm-warn bg-tm-warn/10 border border-tm-warn/30 rounded-md px-1.5 py-[3px]">{flags[flags.length - 1].label}</span>
-                            )}
-                            <span className={`text-[10px] uppercase tracking-wide font-bold border rounded-md px-1.5 py-[3px] ${WEEK_STATUS_CHIP[w.status] || WEEK_STATUS_CHIP.draft}`}>{w.status}</span>
-                          </div>
-                        </div>
-                      </button>
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
+                {selectMode && (
+                  <Btn variant="primary" className="mt-4 w-full justify-center" disabled={selectedWeekIds.size === 0}
+                    onClick={() => { const ids = [...selectedWeekIds]; setSelectMode(false); setSelectedWeekIds(new Set()); openInvoiceForWeeks(ids); }}>
+                    <IFilePlus size={14}/>Invoice {selectedWeekIds.size} week{selectedWeekIds.size === 1 ? '' : 's'}
+                  </Btn>
+                )}
               </div>
             )}
           </div>
@@ -22368,6 +22490,38 @@ const setDays = (updater) =>
             onConfirm={() => { deleteDay(confirmDeleteDayId); setConfirmDeleteDayId(null); }}
             onCancel={() => setConfirmDeleteDayId(null)}
           />
+
+          <ConfirmDialog
+            open={!!confirmResend}
+            title={confirmResend ? `Resend ${confirmResend.invoiceNumber}?` : ''}
+            message="The same invoice, re-frozen under its number with the current figures. The number and its payment reference don't change."
+            confirmLabel="Resend" confirmTone="primary" cancelLabel="Cancel"
+            onConfirm={() => { resendInvoice(confirmResend); setConfirmResend(null); }}
+            onCancel={() => setConfirmResend(null)}
+          />
+
+          {/* Week kebab → send / open the invoice (3.3). */}
+          <Sheet open={!!weekKebab} onClose={() => setWeekKebab(null)} title={weekKebab ? fmtLfRange(weekKebab) : ''}>
+            {weekKebab && (() => {
+              const b = weekBillingStatus(production, weekKebab);
+              return (
+                <div className="px-4 pb-4 flex flex-col gap-2">
+                  <button type="button"
+                    onClick={() => { const wk = weekKebab; setWeekKebab(null); openInvoiceForWeeks([wk.id]); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <IFilePlus size={15}/>{b.status === 'unbilled' ? 'Send invoice' : `Open invoice ${b.invoice.invoiceNumber}`}
+                  </button>
+                  <button type="button"
+                    onClick={() => { const wk = weekKebab; setWeekKebab(null); setOpenWeekId(wk.id); setView('weeks'); }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <ICal size={15}/>Open week
+                  </button>
+                </div>
+              );
+            })()}
+          </Sheet>
 
           {(showBetaExplainer || showBetaInfo) && (
             <InfoModal
@@ -27386,6 +27540,19 @@ const setDays = (updater) =>
       React.useEffect(() => {
         const inv = (production.invoices || []).find(i => i.id === invoiceId);
         if (!inv || inv.status !== "draft") return;
+        // Long form draft re-sync (Phase 4c): a long form invoice is claimed
+        // by weekIds and its lines come from the long form builders, not the
+        // APA calculator — same freeze rule (this effect is draft-gated), same
+        // linesEdited guard. Gated on agreementOf, so the APA path below is
+        // byte-identical.
+        if (agreementOf(production) !== 'apa') {
+          const wids = inv.weekIds || [];
+          const lfUpdates = { ...clientFieldsFromProduction(production) };
+          if (!inv.linesEdited) lfUpdates.lineItems = buildLongFormInvoiceLines(production, inv.userCrewId, wids);
+          lfUpdates.dayBreakdown = buildLongFormDayBreakdown(production, inv.userCrewId, wids);
+          setProduction(p => ({ ...p, invoices: (p.invoices || []).map(i => i.id === invoiceId ? { ...i, ...lfUpdates } : i) }));
+          return;
+        }
         const userCrew = (production.crew || []).find(c => c.id === userCrewId);
         const relevantDays = userCrewId
           ? (production.days || []).filter(d => d.crewId === userCrewId)
