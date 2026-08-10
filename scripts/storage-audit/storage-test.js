@@ -2934,8 +2934,76 @@ async function main() {
       check('LF14h LF_INVOICE_SHOW_NOTICES is ruled false (notices off the document, Phase 4d)',
         /const LF_INVOICE_SHOW_NOTICES = false;/.test(htmlNotices),
         'expected `const LF_INVOICE_SHOW_NOTICES = false;` in index.html');
+
+      // ── LF16: locally-agreed resolution (Phase 4e). The two exceptions
+      //    resolve on the day; a resolution turns the flag into an ordinary
+      //    claimable line (or £0, off the invoice). `resolvable && !resolved`
+      //    is what still needs agreeing. The structural not-worked-bank-holiday
+      //    unclaimable line is never resolvable. Fixtures carry lfResolve; the
+      //    absence of it (every earlier fixture) is the byte-identical path. ──
+      const R711 = (over) => D('2026-08-04', { dayShape: 'cwd', wrapTime: '17:00', cameraOtCalledMins: 180, lunchTime: '12:00', ...over });
+      const R15f = (over) => D('2026-08-05', { dayType: 'prep', dayShape: 'cwd', wrapTime: '18:30', lunchTime: '12:00', ...over });
+      const mkR = (day) => ({ id: 'pr', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wr', '2026-08-03', '2026-08-09')], days: [day] });
+      const resLine = (p, d, key) => CALC(p, d).lines.find(l => l.resolvable === key);
+      {
+        const d = R711(); const p = mkR(d);
+        const line = resLine(p, d, 'cwdCameraOtBeyondCap');
+        const onInv = LINES(p, 'c1', ['wr']).some(l => /beyond the weekly CWD cap/.test(l.label));
+        check('LF16a §7.11 unresolved: the beyond-cap line carries resolvable and no resolved (still needs agreeing), stays unpriced with no amount, and never reaches the page-1 invoice',
+          !!line && line.resolvable === 'cwdCameraOtBeyondCap' && line.resolved === undefined && line.unpriced === true && line.amount === null && !onInv,
+          JSON.stringify(line));
+      }
+      {
+        const dU = R711(); const pU = mkR(dU);
+        const priced = CALC(pU, dU).lines.find(l => l.kind === 'overtime' && !l.resolvable && /120m/.test(l.rateDesc || ''));
+        const d = R711({ lfResolve: { cwdCameraOtBeyondCap: { mode: 'usual' } } }); const p = mkR(d);
+        const line = resLine(p, d, 'cwdCameraOtBeyondCap');
+        const inv = LINES(p, 'c1', ['wr']).find(l => /beyond the weekly CWD cap/.test(l.label));
+        // 60m unpriced at the SAME rate the priced 120m billed = exactly half.
+        check('LF16b §7.11 resolved to the usual rate bills the row camera OT rate across the 60 beyond-cap minutes (half the priced 120m at the same rate), an ordinary line joining the total and the invoice',
+          !!line && line.resolved === 'usual' && !line.unpriced && !line.unclaimable && !!priced && approx(line.amount, priced.amount / 2) && !!inv && approx(inv.amount, priced.amount / 2),
+          JSON.stringify([priced && priced.amount, line, inv]));
+      }
+      {
+        const d = R711({ lfResolve: { cwdCameraOtBeyondCap: { mode: 'custom', amount: 120 } } }); const p = mkR(d);
+        const line = resLine(p, d, 'cwdCameraOtBeyondCap');
+        const inv = LINES(p, 'c1', ['wr']).find(l => /beyond the weekly CWD cap/.test(l.label));
+        check('LF16c §7.11 resolved to a custom amount bills exactly that figure (£120), an ordinary line on the invoice',
+          !!line && line.resolved === 'custom' && !line.unpriced && approx(line.amount, 120) && !!inv && approx(inv.amount, 120), JSON.stringify([line, inv]));
+      }
+      {
+        const d0 = R711(); const p0 = mkR(d0);
+        const d = R711({ lfResolve: { cwdCameraOtBeyondCap: { mode: 'unclaimed' } } }); const p = mkR(d);
+        const line = resLine(p, d, 'cwdCameraOtBeyondCap');
+        const onInv = LINES(p, 'c1', ['wr']).some(l => /beyond the weekly CWD cap/.test(l.label));
+        check('LF16d §7.11 resolved to unclaimed leaves no trace: still unpriced (off the invoice), resolved set (indicator clears), day total unchanged from the unresolved day',
+          !!line && line.resolved === 'unclaimed' && line.unpriced === true && !onInv && approx(CALC(p, d).total, CALC(p0, d0).total), JSON.stringify(line));
+      }
+      {
+        const d = R15f({ lfResolve: { nonShootingCwdOt: { mode: 'agreed', amount: 90 } } }); const p = mkR(d);
+        const r = CALC(p, d); const line = r.lines.find(l => l.resolvable === 'nonShootingCwdOt');
+        // The builder strips the " (...)" suffix for grouping, so it rides the
+        // page-1 Overtime group as a plain "Overtime" line.
+        const invOt = LINES(p, 'c1', ['wr']).filter(l => l.group === 'ot').reduce((s, l) => s + l.amount, 0);
+        check('LF16e §1.5(f) resolved to an agreed amount (£90) becomes an ordinary line that joins the day total (base £250 + £90 = £340) and reaches the page-1 Overtime group',
+          !!line && line.resolved === 'agreed' && !line.unclaimable && approx(line.amount, 90) && approx(r.total, 340) && approx(invOt, 90), JSON.stringify([line, r.total, invOt]));
+      }
+      {
+        const d = R15f({ lfResolve: { nonShootingCwdOt: { mode: 'unclaimed' } } }); const p = mkR(d);
+        const r = CALC(p, d); const line = r.lines.find(l => l.resolvable === 'nonShootingCwdOt');
+        const onInv = LINES(p, 'c1', ['wr']).some(l => /non-shooting CWD/i.test(l.label));
+        check('LF16f §1.5(f) resolved to unclaimed stays unclaimable (off the invoice), resolved set, day total unchanged (£250)',
+          !!line && line.resolved === 'unclaimed' && line.unclaimable === true && !onInv && approx(r.total, 250), JSON.stringify(line));
+      }
+      {
+        const bhRest = { id: 'bh', crewId: 'c1', date: '2026-12-25', dayType: 'rest' };
+        const p = mkR(bhRest);
+        const bhLine = CALC(p, bhRest).lines.find(l => l.unclaimable);
+        check('LF16g the structural not-worked-bank-holiday unclaimable line carries NO resolvable tag - the mechanism never offers to price a wrong-band right',
+          !!bhLine && bhLine.unclaimable === true && bhLine.resolvable === undefined, JSON.stringify(bhLine));
+      }
     } else {
-      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h']) check(l + ' invoice builders exposed', false, 'not exposed');
+      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h', 'LF16a', 'LF16b', 'LF16c', 'LF16d', 'LF16e', 'LF16f', 'LF16g']) check(l + ' invoice builders exposed', false, 'not exposed');
     }
   }
 

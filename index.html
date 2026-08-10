@@ -3495,6 +3495,38 @@
       const push = (line) => { lines.push(line); return line; };
       const flag = (tone, message, ref) => { flags.push({ tone, message, ref: ref || null }); };
 
+      // ── Locally-agreed exceptions (Phase 4e). §7.11 and §1.5(f) give no
+      //    claimable figure, so the user agrees one on set and the app bills
+      //    what they enter (the deal wins over the document). An UNRESOLVED
+      //    line keeps its original unclaimable/unpriced treatment and carries
+      //    `resolvable` — the day control, the week indicator and the
+      //    send-time check all read `resolvable && !resolved`. A resolution
+      //    turns it into an ordinary claimable line (usual/custom/agreed), or
+      //    — `unclaimed` — leaves it £0 and off the invoice with no trace.
+      //    Reading day.lfResolve keeps every fixture (which carries none)
+      //    byte-identical: absent resolution is the original branch verbatim.
+      const emitResolvable = (clauseKey, o) => {
+        const res = (c.day.lfResolve && c.day.lfResolve[clauseKey]) || null;
+        const line = { kind: 'overtime', label: o.label, ref: o.ref, resolvable: clauseKey };
+        if (!res) {
+          return push(o.flavour === 'unpriced'
+            ? { ...line, amount: null, rateDesc: 'agreed locally', unpriced: true, flags: [{ tone: 'unpriced', message: o.message, ref: o.ref }] }
+            : { ...line, amount: o.wouldBe, rateDesc: o.rateDesc, unclaimable: true, flags: [{ tone: 'unclaimable', message: o.message, ref: o.ref }] });
+        }
+        if (res.mode === 'unclaimed') {
+          // Kept unclaimable/unpriced so the invoice never shows it and the
+          // total ignores it; `resolved` clears the indicator; no flag note.
+          return push(o.flavour === 'unpriced'
+            ? { ...line, amount: null, rateDesc: 'agreed locally', unpriced: true, resolved: 'unclaimed', flags: [] }
+            : { ...line, amount: o.wouldBe, rateDesc: o.rateDesc, unclaimable: true, resolved: 'unclaimed', flags: [] });
+        }
+        // Claimable: 'usual' bills the row's own OT rate across the minutes;
+        // 'custom'/'agreed' bills the figure the user entered. An ordinary
+        // line — no unclaimable/unpriced flag, so it joins the total.
+        const amount = res.mode === 'usual' ? (o.usualAmount || 0) : (Number(res.amount) || 0);
+        return push({ ...line, amount, rateDesc: o.resolvedDesc(res), resolved: res.mode, flags: [] });
+      };
+
       const worked = c.typeMeta.worked && c.wrap !== null;
       const trigger = c.dayShape.otTriggerElapsedHours + c.achHours;
       const otStart = c.individualCall + trigger * 60;
@@ -3582,10 +3614,16 @@
           if (nonShootingCwd) {
             // §1.5(f): calculate what WOULD be owed, mark it unclaimable,
             // cite §1.5(c) so the user knows the day type was the wrong call.
+            // Resolvable: the user may agree a figure on set (no 'usual' — the
+            // agreement says nothing is owed, so there is no default rate).
             const wouldBe = lfRoundUp(otActual, rules.overtime.incrementMins || 15);
             const bound = boundRate(hourly * rules.overtime.rate, 'overtime', false);
-            push({ kind: 'overtime', label: 'Overtime (non-shooting CWD)', ref: rules.nonShootingCwd.ref, amount: bound.rate * (wouldBe / 60), rateDesc: `${rules.overtime.rate}T × ${wouldBe}m`, unclaimable: true,
-              flags: [{ tone: 'unclaimable', message: 'Non-shooting CWDs do not incur Overtime (§1.5(f)). A non-shooting SCWD or CWD needs prior written approval to exist at all (§1.5(c)) - the day type itself may have been the wrong call.', ref: rules.nonShootingCwd.ref }] });
+            emitResolvable('nonShootingCwdOt', {
+              flavour: 'unclaimable', label: 'Overtime (non-shooting CWD)', ref: rules.nonShootingCwd.ref,
+              wouldBe: bound.rate * (wouldBe / 60), rateDesc: `${rules.overtime.rate}T × ${wouldBe}m`,
+              message: 'Non-shooting CWDs do not incur Overtime (§1.5(f)). A non-shooting SCWD or CWD needs prior written approval to exist at all (§1.5(c)) - the day type itself may have been the wrong call.',
+              resolvedDesc: () => 'agreed locally',
+            });
           } else if (!splitOt) {
             // Single-type overtime with the called-window anchor (§7.6,
             // Guidance Example 1): bill the greater of actual OT and the
@@ -3621,8 +3659,16 @@
               }
             }
             if (unpricedMins > 0) {
-              push({ kind: 'overtime', label: `Camera overtime beyond the weekly CWD cap (${unpricedMins}m)`, ref: rules.cwdCameraOt.ref, amount: null, rateDesc: 'agreed locally', unpriced: true,
-                flags: [{ tone: 'unpriced', message: 'Beyond the 2-hour weekly cap the rate is agreed locally (§7.11) - the app never invents a figure. Agree it and add it by hand.', ref: rules.cwdCameraOt.ref }] });
+              // §7.11 resolvable: 'usual' bills the row's own camera OT rate
+              // across the beyond-cap minutes; 'custom' bills a figure the
+              // user entered on set.
+              const usualBound = boundRate(hourly * rules.overtime.rate, 'overtime', false);
+              emitResolvable('cwdCameraOtBeyondCap', {
+                flavour: 'unpriced', label: `Camera overtime beyond the weekly CWD cap (${unpricedMins}m)`, ref: rules.cwdCameraOt.ref,
+                usualAmount: usualBound.rate * (unpricedMins / 60),
+                message: 'Beyond the 2-hour weekly cap the rate is agreed locally (§7.11) - the app never invents a figure. Agree it and add it by hand.',
+                resolvedDesc: (res) => res.mode === 'usual' ? `${rules.overtime.rate}T × ${unpricedMins}m` : 'agreed locally',
+              });
             }
           } else {
             // Split overtime (film-style): camera to the camera wrap at 2T,
