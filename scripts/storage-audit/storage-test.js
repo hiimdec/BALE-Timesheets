@@ -2396,6 +2396,43 @@ async function main() {
         `dayDefaults keys: ${Object.keys(lfOut.dayDefaults || {}).join(',') || 'none'}`);
       check('LF7d migrate leaves long form startDate at ppStartDate (no G3 snap from day dates)',
         lfOut.startDate === '2026-08-03');
+
+      // LF17 (Phase 4e Part 3) — the pre-Phase-3c vintage END TO END. The
+      // simulator carried a real old record: dayType holding the SHAPE
+      // ("swd") and weeks with the retired status/invoiceId, together in
+      // one production. Confirm migrate brings BOTH current in one pass, AND
+      // the migrated day computes byte-identical to the same day authored
+      // fresh in the new shape - so the founder's own device carrying this
+      // vintage is safe, not merely assumed to be.
+      const CALC17 = sb.__longFormCalcForDay;
+      if (typeof CALC17 === 'function') {
+        const approx17 = (a, b) => Math.abs(a - b) < 0.005;
+        const oldVintage = {
+          id: 'old', title: 'Old', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2,
+          baseNation: 'england-wales', ppStartDate: '2026-08-03', weekStartDay: 'monday',
+          crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }],
+          iAmCrewId: 'c1', bestBoyMode: false, viewMode: 'mobile', dayDefaults: {}, startDate: '2026-08-03',
+          weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'draft', invoiceId: null, nightWork: { settlement: null } }],
+          days: [{ id: 'd1', crewId: 'c1', date: '2026-08-04', dayType: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '20:00', wrapped: true }],
+        };
+        const migd = JSON.parse(JSON.stringify(mig(oldVintage)));
+        const md = migd.days[0], mw = migd.weeks[0];
+        const fresh = { ...oldVintage,
+          weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', nightWork: { settlement: null } }],
+          days: [{ id: 'd1', crewId: 'c1', date: '2026-08-04', dayType: 'shoot', dayShape: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '20:00', wrapped: true }] };
+        check('LF17a the pre-3c vintage migrates fully current in one pass: dayType "swd" becomes shoot/swd (wrapTime intact), and the week loses status and invoiceId while keeping its bounds and nightWork',
+          md.dayType === 'shoot' && md.dayShape === 'swd' && md.wrapTime === '20:00' &&
+          !('status' in mw) && !('invoiceId' in mw) && mw.startDate === '2026-08-03' && mw.endDate === '2026-08-09' && mw.nightWork && mw.nightWork.settlement === null,
+          JSON.stringify([md.dayType, md.dayShape, md.wrapTime, Object.keys(mw)]));
+        const migCalc = CALC17(migd, md), freshCalc = CALC17(fresh, fresh.days[0]);
+        check('LF17b the migrated old-vintage day computes byte-identical to the same day authored fresh in the new shape - the money does not depend on when the record was written',
+          approx17(migCalc.total, freshCalc.total) &&
+          JSON.stringify(migCalc.lines.map(l => [l.kind, l.label, l.amount])) === JSON.stringify(freshCalc.lines.map(l => [l.kind, l.label, l.amount])),
+          JSON.stringify([migCalc.total, freshCalc.total]));
+      } else {
+        check('LF17a old-vintage migrate + engine parity', false, 'calc not exposed');
+        check('LF17b old-vintage migrate + engine parity', false, 'calc not exposed');
+      }
     }
 
     // ── LF4-LF8: the week/day layer (Phase 2d) ──
