@@ -99,6 +99,3 @@ Allow: /
 
 # --- Sitemap ---
 Sitemap: https://timemachineapp.co.uk/sitemap.xml
-
-# deploy-probe-chunk2: temporary liveness marker for the allow-list publish
-# verification. Removed in the immediately following cleanup deploy.
