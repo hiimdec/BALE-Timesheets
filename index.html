@@ -21340,8 +21340,12 @@ const setDays = (updater) =>
       );
 
       return (
-        <div className="fixed inset-0 z-[80] bg-neutral-950 flex flex-col tm-native-overlay" style={{ paddingTop: 'var(--sat)' }}>
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-neutral-800">
+        <div className="fixed inset-0 z-[80] bg-neutral-950 flex flex-col tm-native-overlay">
+          {/* No inline paddingTop on the root: tm-native-overlay pads --tm-native-top
+              under native chrome (an inline --sat would override it and tuck the
+              search bar under the native nav bar). The header carries --sat for the
+              web notch instead. */}
+          <div className="flex items-center gap-2 px-3 pb-2.5 border-b border-neutral-800" style={{ paddingTop: 'calc(var(--sat) + 0.625rem)' }}>
             <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-200 transition-colors p-2 -ml-1" aria-label="Close role picker">
               <IArrowLeft size={20} />
             </button>
