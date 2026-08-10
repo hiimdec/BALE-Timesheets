@@ -276,6 +276,16 @@ async function transformedAppCode() {
     // Long form invoice builders (LF14).
     'try { globalThis.__buildLongFormInvoiceLines = buildLongFormInvoiceLines; } catch (_) {}\n' +
     'try { globalThis.__buildLongFormDayBreakdown = buildLongFormDayBreakdown; } catch (_) {}\n' +
+    // Role registry + class seeding (LF22, Phase 5a): the ACH seed pin is the
+    // one part of the picker slice that touches money (the §1.3 ACH class drives
+    // the divisor). Expose the seeder, the accessor, the registry data, the
+    // §1.3 department list, and RATE_CARDS (for the APA byte-identity check).
+    'try { globalThis.__seedAgreementClass = seedAgreementClass; } catch (_) {}\n' +
+    'try { globalThis.__roleRegistryFor = roleRegistryFor; } catch (_) {}\n' +
+    'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
+    'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
+    'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
+    'try { globalThis.__RATE_CARDS = RATE_CARDS; } catch (_) {}\n' +
     // Custom comparison item (U-suite): expose the validator + the
     // effective getters so the suite can verify the gate (empty/zero
     // hidden, valid included), plus the base constants for surface
@@ -3174,6 +3184,45 @@ async function main() {
       }
     } else {
       for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h', 'LF16a', 'LF16b', 'LF16c', 'LF16d', 'LF16e', 'LF16f', 'LF16g', 'LF18a', 'LF18b', 'LF18c', 'LF18d', 'LF18e', 'LF18f', 'LF18g', 'LF18h', 'LF20a', 'LF20b', 'LF20c', 'LF20d']) check(l + ' invoice builders exposed', false, 'not exposed');
+    }
+
+    // ── LF22: the role registry + the ACH seed PIN (Phase 5a). The picker and
+    //    the reference rates must not touch money - but seedAgreementClass DOES:
+    //    it decides the §1.3 ACH class, which drives the divisor via the
+    //    Additional Contracted Hour. Pin all six §1.3 departments: five seed by
+    //    department name, Script Supervisor by ROLE (the card registry files it
+    //    under Camera, not as its own department). Plus the accessor's shape and
+    //    the APA byte-identity guarantee. ──
+    const SEED = sb.__seedAgreementClass, REG = sb.__roleRegistryFor;
+    if (typeof SEED === 'function' && typeof REG === 'function') {
+      const achDepts = ['Assistant Directors', 'Costume', 'Hair & Makeup', 'Locations', 'Direction & Production'];
+      check('LF22a the five §1.3 ACH departments each seed the ach class on TV (Assistant Directors, Costume, Hair & Makeup, Locations, Direction & Production)',
+        achDepts.every(d => SEED('pact-tv', d, 'Any Role') === 'ach'),
+        JSON.stringify(achDepts.map(d => [d, SEED('pact-tv', d, 'Any Role')])));
+      check('LF22b Script Supervisor seeds ach BY ROLE (filed under Camera in the card registry); a different Camera role stays standard',
+        SEED('pact-tv', 'Camera', 'Script Supervisor') === 'ach' && SEED('pact-tv', 'Camera', 'Focus Puller / 1st AC') === 'standard',
+        JSON.stringify([SEED('pact-tv', 'Camera', 'Script Supervisor'), SEED('pact-tv', 'Camera', 'Focus Puller / 1st AC')]));
+      check('LF22c ACH is TV-only: the same six seed standard on film, and film Rigging still seeds riggingElectrician',
+        achDepts.every(d => SEED('pact-film', d, 'Any Role') === 'standard') && SEED('pact-film', 'Camera', 'Script Supervisor') === 'standard' && SEED('pact-film', 'Rigging', 'Rigger') === 'riggingElectrician',
+        JSON.stringify([SEED('pact-film', 'Costume', 'x'), SEED('pact-film', 'Rigging', 'Rigger')]));
+      // The accessor: APA byte-identity (no key added), long form draws the registry.
+      const RC = sb.__RATE_CARDS;
+      const apaRoles = REG('apa').filter(r => !r.trainee).map(r => r.role);
+      const cardRoles = [];
+      for (const dept of Object.keys(RC[0].departments)) for (const role of Object.keys(RC[0].departments[dept])) cardRoles.push(role);
+      check('LF22d roleRegistryFor("apa") returns exactly the RATE_CARDS[0] card roles, in order (byte-identical set - no APA production gains a key)',
+        apaRoles.length === cardRoles.length && apaRoles.every((r, i) => r === cardRoles[i]),
+        `apa=${apaRoles.length} card=${cardRoles.length}`);
+      const tv = REG('pact-tv'), film = REG('pact-film');
+      const tvTrainees = tv.filter(r => r.trainee), filmTrainees = film.filter(r => r.trainee);
+      check('LF22e every long form department gains one "<Dept> Trainee" carrying the flat £150 recommendation',
+        tvTrainees.length > 0 && tvTrainees.every(r => r.rate === 150 && /Trainee$/.test(r.role)) && filmTrainees.every(r => r.rate === 150),
+        JSON.stringify([tvTrainees.length, filmTrainees.length]));
+      check('LF22f the registry filters by agreement (tv=bit 1, film=bit 2, the lists differ), and the APA trainee flat rate is £250',
+        tv.filter(r => !r.trainee).length !== film.filter(r => !r.trainee).length && REG('apa').some(r => r.trainee && r.rate === 250),
+        JSON.stringify([tv.filter(r => !r.trainee).length, film.filter(r => !r.trainee).length]));
+    } else {
+      for (const l of ['LF22a', 'LF22b', 'LF22c', 'LF22d', 'LF22e', 'LF22f']) check(l + ' seed/registry exposed', false, 'seedAgreementClass/roleRegistryFor not exposed');
     }
   }
 
