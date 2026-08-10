@@ -1,0 +1,383 @@
+# netlify.toml - TimeMachine edge hardening (web chunk 1.5)
+#
+# The Netlify publish directory is the repo root, so every tracked file is
+# otherwise served at its path. Verified live before this file existed: the
+# internal .md docs, package.json, capacitor.config.json, postcode-distances.json,
+# tailwind.config.js, /brand/make_social.py, /APA RULES.pdf, and the entire iOS
+# native project under /ios (Swift source, App.entitlements, Info.plist), plus
+# /scripts, /src and /docs, all returned HTTP 200.
+#
+# This file 404s those at the edge while keeping the app, the marketing pages,
+# the articles, the icons and the PWA / deep-link machinery reachable. It does
+# NOT delete anything from the repo - blocking at the edge is the whole job for
+# now. The durable fix is a dedicated publish directory (see notes at the end).
+#
+# HOW NETLIFY EVALUATES THIS:
+#   - [[redirects]] are processed top to bottom, FIRST MATCH WINS.
+#   - A real file at a path is served IN PREFERENCE to a redirect rule unless
+#     that rule sets force = true. Every block rule below therefore uses force,
+#     because a real file exists at each blocked path.
+#   - So the order is: allow-list the must-stay-reachable files FIRST (nothing
+#     after can shadow them), then force-404 everything sensitive.
+#   - [[headers]] are additive (there is no first-match for headers). They add
+#     the X-Robots-Tag second layer and are deliberately kept OFF /robots.txt,
+#     /manifest.json and /sitemap.xml so those are never tagged noindex.
+#
+# The existing _headers file (which sets the Content-Type for the AASA file) is
+# left untouched and still applies.
+
+
+# =====================================================================
+# 1. ALLOW-LIST - these MUST keep returning 200. First, so that no later
+#    blanket/extension rule can shadow them.
+# =====================================================================
+[[redirects]]
+  from = "/robots.txt"
+  to = "/robots.txt"
+  status = 200
+
+[[redirects]]
+  from = "/sitemap.xml"
+  to = "/sitemap.xml"
+  status = 200
+
+[[redirects]]
+  from = "/manifest.json"
+  to = "/manifest.json"
+  status = 200
+
+[[redirects]]
+  from = "/.well-known/apple-app-site-association"
+  to = "/.well-known/apple-app-site-association"
+  status = 200
+
+
+# =====================================================================
+# 2. BLOCK non-web directories in full. None are referenced by any served
+#    page (the only runtime fetch is /assets/tailwind.css, which is NOT in
+#    this list). Trailing-splat matching is fully supported by Netlify.
+#      /ios     - native Xcode project: Swift source, entitlements, Info.plist
+#      /scripts - build + audit tooling
+#      /brand   - brand assets + the Instagram generator (make_social.py)
+#      /docs    - internal design mockups
+#      /src     - web-source stylesheet (compiled into the native bundle)
+# =====================================================================
+[[redirects]]
+  from = "/ios/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/scripts/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/brand/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/docs/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/src/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+
+# =====================================================================
+# 3. BLOCK sensitive root files by EXACT PATH. This is the guaranteed
+#    layer: exact-path + force is fully supported by Netlify, so it holds
+#    even if the blanket extension rules in section 4 are not honoured.
+#    Covers everything on main today, plus the pact-bectu source files
+#    that are in progress on develop (harmless no-ops until they merge).
+# =====================================================================
+
+# --- Internal / planning / reference Markdown (on main) ---
+[[redirects]]
+  from = "/APA_RULES.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/AUDIT.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/AUDIT-v2.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/AUDIT-v3.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/BACKLOG.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/BRAND.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/CALC_DECISIONS.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/CHANGELOG.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/CLAUDE.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/DESIGN_v2.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/GO_TO_MARKET.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/HANDOVER.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/MAINTENANCE.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/MARKETING_PLAN.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/README.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/RECON-v4-0.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/TimeMachine_voice_and_tone.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/V52_KICKOFF.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# --- pact-bectu Markdown (in progress on develop; blocked pre-emptively) ---
+[[redirects]]
+  from = "/PACT_BECTU_FILM_RULES.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/PACT_BECTU_PLAN.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/PACT_BECTU_RATE_CARDS.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/PACT_BECTU_TV_RULES.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# --- PDFs (source agreements). /APA RULES.pdf has a space: block both forms. ---
+[[redirects]]
+  from = "/APA RULES.pdf"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/APA%20RULES.pdf"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/pact-bectu-scripted-tv-agreement-2023.pdf"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/pact-bectu-joint-guidance-8-december-2023.pdf"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/pact-bectu-mmp-agreement-as-amended-5-april-2021.pdf"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# --- Config / data / lockfiles (NOT manifest.json - that is allow-listed) ---
+[[redirects]]
+  from = "/package.json"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/package-lock.json"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/capacitor.config.json"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/postcode-distances.json"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/tailwind.config.js"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# --- OCR text sidecar (in progress on develop; blocked pre-emptively) ---
+[[redirects]]
+  from = "/pact-bectu-scripted-tv-agreement-2023.ocr.txt"
+  to = "/404.html"
+  status = 404
+  force = true
+
+
+# =====================================================================
+# 4. BLANKET extension rules - the "block by extension" layer, and defence
+#    for any FUTURE root file of these types. Placed AFTER the allow-list
+#    so /manifest.json, /robots.txt and /sitemap.xml are never caught.
+#    Netlify's support for a splat placed before a suffix is not guaranteed,
+#    so these BACK UP the exact-path rules above; they do not replace them.
+# =====================================================================
+[[redirects]]
+  from = "/*.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/*.pdf"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/*.py"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/*.json"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/*.txt"
+  to = "/404.html"
+  status = 404
+  force = true
+
+
+# =====================================================================
+# 5. X-Robots-Tag: noindex, nofollow - second layer on the blocked paths,
+#    in case a file is ever served despite the rules above. Deliberately
+#    NOT applied to /robots.txt, /manifest.json or /sitemap.xml.
+# =====================================================================
+[[headers]]
+  for = "/ios/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/scripts/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/brand/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/docs/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/src/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/*.md"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/*.pdf"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/*.py"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/package.json"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/package-lock.json"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/capacitor.config.json"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/postcode-distances.json"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/tailwind.config.js"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+
+# =====================================================================
+# PERMANENT FIX (when the /app move happens):
+#   Replace this deny-list with an allow-list. Introduce a web build step
+#   that copies ONLY the web assets (index.html, the marketing + article
+#   HTML, manifest.json, robots.txt, sitemap.xml, icons/og images, /assets,
+#   /.well-known) into a dedicated publish directory (e.g. /public or
+#   /dist-web), and point Netlify's publish directory there. Then nothing
+#   is served unless it was explicitly copied in, which flips the default
+#   from "everything leaks" to "nothing leaks", and this deny-list can be
+#   retired. See the audit's section 12 recommendation.
+# =====================================================================
