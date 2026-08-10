@@ -98,6 +98,33 @@ but it cannot invent a clause.
   resends. The week view shows the divergence.
 - **PAYE users are supported for tracking gross only.** No deductions, no
   holiday pay, no pension. The app never models net pay.
+- **Invoicing (Phase 4c).** Long form invoices look exactly like APA ones and
+  reuse the vector renderer unchanged. They mint through the shared
+  `mintInvoiceShell` and draw from the SAME sequential number run (one
+  business, HMRC). Page 1 groups by charge kind — whole days in Day rates at
+  their day rate, the ACH / night settlement / not-worked bank holiday in
+  Premiums, camera and non-camera overtime as two lines in one Overtime
+  group, the meal/turnaround/early enhancements in Penalties, box rental in
+  Kit. Page 2 is the day-by-day, days grouped under a week header with a week
+  subtotal. Unclaimable (§1.5(f)) and unpriced (§7.11) amounts never enter
+  the page-1 line items (the total stays exact), ride page 2 struck / "agreed
+  locally" with their citation, and drive a derived page-1 advisory — one
+  switch (`LF_INVOICE_SHOW_NOTICES`) makes them fully absent.
+- **The week derives its billing status; it stores none.** A week is
+  `{ id, crewId, startDate, endDate, nightWork }`. `weekBillingStatus` reads
+  the invoice that claims it (the invoice's `weekIds`, one direction) —
+  unbilled / draft / sent / paid. Two stored sources for one fact drift, so
+  `status` and `invoiceId` are retired and `submitted` with them. A draft
+  invoice locks the week-start boundary: its built lines must not shift under
+  it.
+- **Resend is the same invoice, re-frozen.** This reads like a contradiction
+  and isn't. Freezing prevents SILENT recomputation — a sent invoice never
+  changes because the production changed underneath it. A deliberate resend is
+  the user asking: the builders re-run, the snapshot and client fields are
+  replaced, a fresh `dateSent` is stamped, and the same number is kept —
+  because it is the same claim, corrected. The week view surfaces it only when
+  the live figures diverge from the sent snapshot (computed lazily, never
+  stored).
 
 ## Resolved inferences — recorded so nobody reopens them
 
