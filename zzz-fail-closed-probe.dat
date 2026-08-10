@@ -1,0 +1,8 @@
+TimeMachine web chunk 2 - fail-closed verification probe.
+
+This file is committed at the repo root but is deliberately NOT on the
+build-web.js allow-list. Under the allow-list publish directory it must
+return HTTP 404 (it is never copied into dist-web/). If it ever returns
+200, the publish directory has regressed to serving the repo root.
+
+It is removed in the immediately following cleanup deploy.
