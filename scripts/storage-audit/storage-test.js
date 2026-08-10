@@ -6112,8 +6112,12 @@ async function main() {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
 
     // ─ PP1: createNewInvoice returns the OBJECT; callers use .id ─
-    check('PP1a createNewInvoice returns the invoice object (not just the id)',
-      /function createNewInvoice\([\s\S]{0,3200}setUserPrefs\(prev => \(\{ \.\.\.prev, invoiceNextNumber: num \+ 1 \}\)\);[\s\S]{0,500}return invoice;/.test(html) &&
+    // Phase 4c: the numbering draw + `return invoice` moved into
+    // mintInvoiceShell (shared with the long form minter); createNewInvoice
+    // now delegates and RETURNS the shell's result — still the object.
+    check('PP1a mintInvoiceShell owns the numbering draw and returns the invoice object; createNewInvoice delegates and returns it',
+      /function mintInvoiceShell\([\s\S]{0,3600}setUserPrefs\(prev => \(\{ \.\.\.prev, invoiceNextNumber: num \+ 1 \}\)\);[\s\S]{0,500}return invoice;/.test(html) &&
+      /function createNewInvoice\([\s\S]{0,400}return mintInvoiceShell\(production, setProduction, userPrefs, setUserPrefs, userCrewId, \{/.test(html) &&
       !/function createNewInvoice\([\s\S]{0,3600}return newId;/.test(html));
     check('PP1b the three existing callers read .id off the returned object',
       /createNewInvoice\(production, setProduction, userPrefs, setUserPrefs, soloCrew\?\.id\);\s*setInvoiceNav\(inv\.id\)/.test(html) &&
@@ -7812,8 +7816,11 @@ async function main() {
       /lines: \(calc\.lines \|\| \[\]\)\.map\(l => \(\{/.test(html) &&
       /total: Number\(calc\.total\) \|\| 0,/.test(html));
     check('DB3 a new invoice stores the snapshot and starts with EMPTY notes (notes is manual-only now)',
-      /const dayBreakdown = buildDayBreakdown\(production, userPrefs, userCrewId\);/.test(html) &&
-      /\n        dayBreakdown,\n/.test(html) &&
+      // Phase 4c: createNewInvoice feeds buildDayBreakdown into the shell,
+      // which stores it as built.dayBreakdown and forces notes: "".
+      /dayBreakdown: buildDayBreakdown\(production, userPrefs, userCrewId\),/.test(html) &&
+      /dayBreakdown: built\.dayBreakdown,/.test(html) &&
+      /\n        notes: "",\n/.test(html) &&
       !/buildDefaultNotes/.test(html));
     check('DB4 FROZEN: the snapshot is re-derived only inside the draft-gated re-sync, never for sent/paid',
       /if \(!inv \|\| inv\.status !== "draft"\) return;/.test(html) &&

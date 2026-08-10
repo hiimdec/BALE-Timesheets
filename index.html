@@ -6389,18 +6389,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         String(c && c.email || '').toLowerCase().includes(q));
     }
 
-    function createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId) {
+    // The invoice SHELL — everything about an invoice that is agreement-blind:
+    // the numbering draw (one business, one sequential run — HMRC), the
+    // from/bank/VAT snapshot, the client snapshot, the dates, the freeze
+    // scaffolding. APA and long form both mint through here; the ONLY
+    // difference between them is the { lineItems, dayBreakdown } (and long
+    // form's additive `extra`) fed in. Extracted from createNewInvoice with
+    // its behaviour byte-identical (pinned) so the numbering, freeze, send
+    // and list flows are shared unchanged.
+    function mintInvoiceShell(production, setProduction, userPrefs, setUserPrefs, userCrewId, built) {
       const crewMember = (production.crew || []).find(c => c.id === userCrewId);
       const prefix = userPrefs.invoicePrefix || "INV-";
       const num = userPrefs.invoiceNextNumber || 1;
       const invoiceNumber = `${prefix}${String(num).padStart(3, '0')}`;
       const today = todayISO();
       const dueDate = addDays(today, Number(userPrefs.paymentTermsDays) || 30);
-      const lineItems = buildInvoiceLineItems(production, userPrefs, userCrewId);
-      // Notes are manual-only now: the day-by-day lives in its own frozen
-      // snapshot and renders as a styled section, so notes starts EMPTY.
-      const notes = "";
-      const dayBreakdown = buildDayBreakdown(production, userPrefs, userCrewId);
       const newId = uid();
       const invoice = {
         id: newId,
@@ -6410,8 +6413,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         dueDate,
         ...clientFieldsFromProduction(production),
         jobRole: crewMember?.role ?? "",
-        shootDateStart: production.startDate ?? "",
-        shootDateEnd: (() => {
+        shootDateStart: built.shootDateStart ?? production.startDate ?? "",
+        shootDateEnd: built.shootDateEnd ?? (() => {
           const dates = (production.days || []).map(d => d.date).filter(Boolean).sort();
           return dates[dates.length - 1] ?? "";
         })(),
@@ -6434,13 +6437,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         favourableRounding: roundingFav(production),
         // Logo is NOT snapshotted per-invoice — read from userPrefs at render time to avoid
         // duplicating ~500KB of base64 data into every invoice (iOS Safari 5MB localStorage cap).
-        lineItems,
-        notes,
-        dayBreakdown,
+        lineItems: built.lineItems,
+        // Notes are manual-only now: the day-by-day lives in its own frozen
+        // snapshot and renders as a styled section, so notes starts EMPTY.
+        notes: "",
+        dayBreakdown: built.dayBreakdown,
         showIndividualExpenses: false,
         linesEdited: false,
         status: "draft",
         createdAt: new Date().toISOString(),
+        ...(built.extra || {}),
       };
       setProduction(p => ({ ...p, invoices: [...(p.invoices || []), invoice] }));
       setUserPrefs(prev => ({ ...prev, invoiceNextNumber: num + 1 }));
@@ -6449,6 +6455,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // without reading back through the async setProduction. Existing callers
       // use `.id`. The object IS the one pushed into production.invoices.
       return invoice;
+    }
+
+    function createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId) {
+      return mintInvoiceShell(production, setProduction, userPrefs, setUserPrefs, userCrewId, {
+        lineItems: buildInvoiceLineItems(production, userPrefs, userCrewId),
+        dayBreakdown: buildDayBreakdown(production, userPrefs, userCrewId),
+      });
     }
 
     function resolveCrewForDay(resolvedDay, crewMember) {
