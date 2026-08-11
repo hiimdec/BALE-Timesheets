@@ -123,7 +123,9 @@
     .intro { color: var(--text-2); font-size: 16px; line-height: 1.6; margin: 0 0 40px; max-width: 60ch; }
 
     /* Article list */
-    .post-list { display: flex; flex-direction: column; gap: 14px; }
+    .post-list { display: flex; flex-direction: column; gap: 32px; }
+    .cluster { display: flex; flex-direction: column; gap: 14px; }
+    .cluster-title { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 700; color: var(--text-3); margin: 0; }
     .post-card {
       display: block; text-decoration: none;
       background: var(--card); border: 1px solid var(--border);
@@ -167,14 +169,14 @@
       "@type": "ItemList",
       "itemListElement": [
         { "@type": "ListItem", "position": 1, "url": "https://timemachineapp.co.uk/articles/apa-rates-2026", "name": "APA crew rates 2026: what changes on 1 September" },
-        { "@type": "ListItem", "position": 2, "url": "https://timemachineapp.co.uk/articles/apa-mileage-what-you-can-claim", "name": "Mileage: when you can claim it, and when you can't" },
-        { "@type": "ListItem", "position": 3, "url": "https://timemachineapp.co.uk/articles/time-off-the-clock", "name": "Time off the clock: the turnaround rule, and the hour you're owed when it's broken" },
-        { "@type": "ListItem", "position": 4, "url": "https://timemachineapp.co.uk/articles/breaks-and-penalties", "name": "Breaks and penalties: what a late lunch is actually worth" },
-        { "@type": "ListItem", "position": 5, "url": "https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days", "name": "Prep, recce, build and pre-light days: the eight hour day nobody explains" },
-        { "@type": "ListItem", "position": 6, "url": "https://timemachineapp.co.uk/articles/how-apa-rates-work", "name": "How APA rates actually work" },
-        { "@type": "ListItem", "position": 7, "url": "https://timemachineapp.co.uk/articles/night-shoots-what-youre-owed", "name": "Night shoots: what you're actually owed" },
-        { "@type": "ListItem", "position": 8, "url": "https://timemachineapp.co.uk/articles/continuous-working-day", "name": "The continuous working day, and how you end up on one without being told" },
-        { "@type": "ListItem", "position": 9, "url": "https://timemachineapp.co.uk/articles/how-apa-overtime-works", "name": "How APA overtime actually works" },
+        { "@type": "ListItem", "position": 2, "url": "https://timemachineapp.co.uk/articles/how-apa-rates-work", "name": "How APA rates actually work" },
+        { "@type": "ListItem", "position": 3, "url": "https://timemachineapp.co.uk/articles/how-apa-overtime-works", "name": "How APA overtime actually works" },
+        { "@type": "ListItem", "position": 4, "url": "https://timemachineapp.co.uk/articles/continuous-working-day", "name": "The continuous working day, and how you end up on one without being told" },
+        { "@type": "ListItem", "position": 5, "url": "https://timemachineapp.co.uk/articles/night-shoots-what-youre-owed", "name": "Night shoots: what you're actually owed" },
+        { "@type": "ListItem", "position": 6, "url": "https://timemachineapp.co.uk/articles/time-off-the-clock", "name": "Time off the clock: the turnaround rule, and the hour you're owed when it's broken" },
+        { "@type": "ListItem", "position": 7, "url": "https://timemachineapp.co.uk/articles/breaks-and-penalties", "name": "Breaks and penalties: what a late lunch is actually worth" },
+        { "@type": "ListItem", "position": 8, "url": "https://timemachineapp.co.uk/articles/apa-mileage-what-you-can-claim", "name": "Mileage: when you can claim it, and when you can't" },
+        { "@type": "ListItem", "position": 9, "url": "https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days", "name": "Prep, recce, build and pre-light days: the eight hour day nobody explains" },
         { "@type": "ListItem", "position": 10, "url": "https://timemachineapp.co.uk/articles/late-payment-what-youre-owed", "name": "Late payment: the seven day rule, and what you can charge when they miss it" },
         { "@type": "ListItem", "position": 11, "url": "https://timemachineapp.co.uk/articles/shoot-cancelled-what-are-you-owed", "name": "Your shoot got cancelled. What are you owed?" }
       ]
@@ -210,51 +212,76 @@
       <p class="intro">Plain-English guides to how APA pay actually works - overtime, penalties, timesheets and invoicing - for UK film and TV crew. No jargon, no fluff, just the bit you needed to know before you sent the invoice.</p>
 
       <div class="post-list">
-        <!-- One self-contained file per article, listed newest first. -->
-        <a class="post-card" href="/articles/apa-rates-2026">
-          <h2 class="post-title">APA crew rates 2026: what changes on 1 September</h2>
-          <p class="post-teaser">The new card takes effect on 1 September 2026. Most day rates rise about three per cent, your overtime grade and coefficient stay put, and a job that starts before the date keeps the old rates.</p>
-        </a>
-        <a class="post-card" href="/articles/apa-mileage-what-you-can-claim">
-          <h2 class="post-title">Mileage: when you can claim it, and when you can't</h2>
-          <p class="post-teaser">50p per mile, nothing inside the M25, and a fixed Soho postcode as the origin. When mileage is payable and how it's worked out.</p>
-        </a>
-        <a class="post-card" href="/articles/time-off-the-clock">
-          <h2 class="post-title">Time off the clock: the turnaround rule, and the hour you're owed when it's broken</h2>
-          <p class="post-teaser">11 hours between wrap and the next call, a hard floor of 10, and the cut hour paid at your overtime rate on top of a normal day.</p>
-        </a>
-        <a class="post-card" href="/articles/breaks-and-penalties">
-          <h2 class="post-title">Breaks and penalties: what a late lunch is actually worth</h2>
-          <p class="post-teaser">The £10 late lunch, the curtailment rule that moves overtime earlier, and the six and a half hour trigger that converts the whole day.</p>
-        </a>
-        <a class="post-card" href="/articles/prep-recce-and-pre-light-days">
-          <h2 class="post-title">Prep, recce, build and pre-light days: the eight hour day nobody explains</h2>
-          <p class="post-teaser">Non-shooting days are eight hours, not eleven. Pre-light adds a lunch hour, rest days pay flat, and three roles are exempt from all of it.</p>
-        </a>
-        <a class="post-card" href="/articles/how-apa-rates-work">
-          <h2 class="post-title">How APA rates actually work</h2>
-          <p class="post-teaser">A band per role, a BHR that's a tenth of your day rate, and three overtime grades. The two boundaries worth knowing before you negotiate.</p>
-        </a>
-        <a class="post-card" href="/articles/night-shoots-what-youre-owed">
-          <h2 class="post-title">Night shoots: what you're actually owed</h2>
-          <p class="post-teaser">Flat double hourly with a ten hour minimum, no overtime, no triple. Unless it's a continuous night, which pays more and looks identical on the call sheet.</p>
-        </a>
-        <a class="post-card" href="/articles/continuous-working-day">
-          <h2 class="post-title">The continuous working day, and how you end up on one without being told</h2>
-          <p class="post-teaser">Nine hours, no breaks, overtime from nine hours not eleven. If your first break starts late enough, an ordinary day converts automatically, and nobody announces it.</p>
-        </a>
-        <a class="post-card" href="/articles/how-apa-overtime-works">
-          <h2 class="post-title">How APA overtime actually works</h2>
-          <p class="post-teaser">BHR is a tenth of your day rate, and the three grades decide your multiplier. When overtime starts, the round-up rule, and triple time after midnight.</p>
-        </a>
-        <a class="post-card" href="/articles/late-payment-what-youre-owed">
-          <h2 class="post-title">Late payment: the seven day rule, and what you can charge when they miss it</h2>
-          <p class="post-teaser">The APA terms say seven days. The industry drifted to thirty. The statutory interest and fixed recovery fees you can add when an invoice runs late.</p>
-        </a>
-        <a class="post-card" href="/articles/shoot-cancelled-what-are-you-owed">
-          <h2 class="post-title">Your shoot got cancelled. What are you owed?</h2>
-          <p class="post-teaser">Seven days' notice pays nothing, the day before pays the lot. The APA cancellation scale, how the days are counted, and the multi-day rule that catches people out.</p>
-        </a>
+        <!-- Grouped into topic clusters. Every article is a plain <a> anchor; no JS-only navigation. -->
+
+        <section class="cluster">
+          <h2 class="cluster-title">Rates and pay</h2>
+          <a class="post-card" href="/apa-rates">
+            <h3 class="post-title">The APA rate table <span class="post-badge">Reference</span></h3>
+            <p class="post-teaser">Every crew role with its 2025 and 2026 day rate, overtime grade and coefficient. Searchable by role or department.</p>
+          </a>
+          <a class="post-card" href="/articles/apa-rates-2026">
+            <h3 class="post-title">APA crew rates 2026: what changes on 1 September</h3>
+            <p class="post-teaser">The new card takes effect on 1 September 2026. Most day rates rise about three per cent, your overtime grade and coefficient stay put, and a job that starts before the date keeps the old rates.</p>
+          </a>
+          <a class="post-card" href="/articles/how-apa-rates-work">
+            <h3 class="post-title">How APA rates actually work</h3>
+            <p class="post-teaser">A band per role, a BHR that's a tenth of your day rate, and three overtime grades. The two boundaries worth knowing before you negotiate.</p>
+          </a>
+          <a class="post-card" href="/articles/how-apa-overtime-works">
+            <h3 class="post-title">How APA overtime actually works</h3>
+            <p class="post-teaser">BHR is a tenth of your day rate, and the three grades decide your multiplier. When overtime starts, the round-up rule, and triple time after midnight.</p>
+          </a>
+        </section>
+
+        <section class="cluster">
+          <h2 class="cluster-title">The working day</h2>
+          <a class="post-card" href="/articles/continuous-working-day">
+            <h3 class="post-title">The continuous working day, and how you end up on one without being told</h3>
+            <p class="post-teaser">Nine hours, no breaks, overtime from nine hours not eleven. If your first break starts late enough, an ordinary day converts automatically, and nobody announces it.</p>
+          </a>
+          <a class="post-card" href="/articles/night-shoots-what-youre-owed">
+            <h3 class="post-title">Night shoots: what you're actually owed</h3>
+            <p class="post-teaser">Flat double hourly with a ten hour minimum, no overtime, no triple. Unless it's a continuous night, which pays more and looks identical on the call sheet.</p>
+          </a>
+          <a class="post-card" href="/articles/time-off-the-clock">
+            <h3 class="post-title">Time off the clock: the turnaround rule, and the hour you're owed when it's broken</h3>
+            <p class="post-teaser">11 hours between wrap and the next call, a hard floor of 10, and the cut hour paid at your overtime rate on top of a normal day.</p>
+          </a>
+        </section>
+
+        <section class="cluster">
+          <h2 class="cluster-title">Breaks and penalties</h2>
+          <a class="post-card" href="/articles/breaks-and-penalties">
+            <h3 class="post-title">Breaks and penalties: what a late lunch is actually worth</h3>
+            <p class="post-teaser">The £10 late lunch, the curtailment rule that moves overtime earlier, and the six and a half hour trigger that converts the whole day.</p>
+          </a>
+        </section>
+
+        <section class="cluster">
+          <h2 class="cluster-title">Travel and prep</h2>
+          <a class="post-card" href="/articles/apa-mileage-what-you-can-claim">
+            <h3 class="post-title">Mileage: when you can claim it, and when you can't</h3>
+            <p class="post-teaser">50p per mile, nothing inside the M25, and a fixed Soho postcode as the origin. When mileage is payable and how it's worked out.</p>
+          </a>
+          <a class="post-card" href="/articles/prep-recce-and-pre-light-days">
+            <h3 class="post-title">Prep, recce, build and pre-light days: the eight hour day nobody explains</h3>
+            <p class="post-teaser">Non-shooting days are eight hours, not eleven. Pre-light adds a lunch hour, rest days pay flat, and three roles are exempt from all of it.</p>
+          </a>
+        </section>
+
+        <section class="cluster">
+          <h2 class="cluster-title">Getting paid</h2>
+          <a class="post-card" href="/articles/late-payment-what-youre-owed">
+            <h3 class="post-title">Late payment: the seven day rule, and what you can charge when they miss it</h3>
+            <p class="post-teaser">The APA terms say seven days. The industry drifted to thirty. The statutory interest and fixed recovery fees you can add when an invoice runs late.</p>
+          </a>
+          <a class="post-card" href="/articles/shoot-cancelled-what-are-you-owed">
+            <h3 class="post-title">Your shoot got cancelled. What are you owed?</h3>
+            <p class="post-teaser">Seven days' notice pays nothing, the day before pays the lot. The APA cancellation scale, how the days are counted, and the multi-day rule that catches people out.</p>
+          </a>
+        </section>
+
       </div>
     </div>
   </main>
