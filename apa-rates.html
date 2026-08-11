@@ -164,6 +164,38 @@
     }
     .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
 
+    /* Rate-table filter. Progressive enhancement: the controls carry [hidden]
+       in the markup and JS removes it, so with JS off the page is the full,
+       crawlable table and no dead controls show. Chrome from the card tokens
+       only, no new colours. */
+    [hidden] { display: none !important; }
+    .rate-filter { margin: 16px 0 0; }
+    .rate-filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .rate-filter-input, .rate-filter-select {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      font-family: inherit; font-size: 14px; line-height: 1.4;
+      padding: 10px 12px; border-radius: 10px;
+    }
+    .rate-filter-input { flex: 1 1 220px; min-width: 0; }
+    .rate-filter-input::placeholder { color: var(--text-4); }
+    .rate-filter-select { flex: 0 0 auto; cursor: pointer; max-width: 100%; }
+    .rate-filter-input:focus, .rate-filter-select:focus {
+      outline: 2px solid var(--tm-accent); outline-offset: 2px; border-color: var(--tm-accent);
+    }
+    .rate-filter-clear {
+      background: transparent; border: 1px solid var(--border); color: var(--text-2);
+      font-family: inherit; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 10px 14px; border-radius: 10px; cursor: pointer;
+    }
+    .rate-filter-clear:hover { color: var(--text); border-color: var(--text-3); }
+    .rate-filter-clear:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+    .rate-filter-count {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; letter-spacing: 0.04em; color: var(--text-3); margin: 12px 0 0;
+    }
+    .rate-noresults-msg td { font-family: inherit; color: var(--text-2); font-style: italic; }
+
     /* Disclaimer small print */
     .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
 
@@ -242,8 +274,19 @@
       <h2>The rate table</h2>
       <p>Both cards are shown, so you can see what changes. The September 2026 column takes effect on 1 September 2026.</p>
 
+      <div class="rate-filter" id="rate-filter" hidden>
+        <div class="rate-filter-row">
+          <input type="search" id="rate-search" class="rate-filter-input" placeholder="Search role or department" aria-label="Search roles by name or department" autocomplete="off">
+          <select id="rate-dept" class="rate-filter-select" aria-label="Filter by department">
+            <option value="">All departments</option>
+          </select>
+          <button type="button" id="rate-clear" class="rate-filter-clear">Clear</button>
+        </div>
+        <p class="rate-filter-count" id="rate-count" role="status" aria-live="polite"></p>
+      </div>
+
       <div class="table-scroll">
-      <table class="rate-table">
+      <table class="rate-table" id="rate-table">
         <thead>
           <tr>
             <th scope="col">Department</th>
@@ -279,6 +322,8 @@
           <tr><td>Lighting</td><td>Desk Op</td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
           <tr><td>Lighting</td><td>Lighting Technician</td><td>&pound;444</td><td>&pound;457</td><td>&times; 1.5</td></tr>
           <tr><td>Lighting</td><td>Trainee</td><td>&pound;250</td><td>&pound;250</td><td>&times; 1.5</td></tr>
+          <tr><td>Rigging</td><td>Advanced Rigger</td><td>&pound;398</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Rigging</td><td>Basic Rigger</td><td>&pound;355</td><td>&pound;355</td><td>&times; 1.5</td></tr>
           <tr><td>SFX</td><td>SFX Supervisor</td><td>&pound;1516</td><td>&pound;1561</td><td>&times; 1</td></tr>
           <tr><td>SFX</td><td>Sr. SFX Technician</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
           <tr><td>SFX</td><td>SFX Technician</td><td>&pound;519</td><td>&pound;535</td><td>&times; 1.25</td></tr>
@@ -317,6 +362,7 @@
           <tr><td>Hair &amp; Makeup</td><td>Hairdresser</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
           <tr><td>Other</td><td>Driver</td><td>&pound;299</td><td>&pound;308</td><td>&times; 1.5</td></tr>
           <tr><td>Other</td><td>Covid Supervisor</td><td>&pound;435</td><td>&pound;448</td><td>&times; 1.5</td></tr>
+          <tr id="rate-noresults" class="rate-noresults-msg" hidden><td colspan="5">No roles match. Try a different search, or clear the filter.</td></tr>
         </tbody>
       </table>
       </div>
@@ -324,7 +370,7 @@
       <p>The overtime column shows each role's standard coefficient. Directors and producers have no overtime. Production managers, assistants and runners are shown at &times; 1, but their overtime is not a single multiplier: it is your basic hourly rate on a weekday, one and a half times it on a Saturday, and twice it on a Sunday or bank holiday.</p>
 
       <h2>Rigging</h2>
-      <p>Riggers are the exception. The APA card lists Advanced Rigger at £398 and Basic Rigger at £355, both Grade I, but riggers on commercials generally work to the Bectu rate instead, which is higher. TimeMachine defaults to what riggers actually get paid rather than the card figure: Master Rigger £675, Advanced Rigger £515 and Standby Rigger £515. So the card rate and the rate the app applies are different numbers under different names, and the Bectu one is what you are most likely to be paid.</p>
+      <p>The two rigging rows in the table above are the APA card figures: Advanced Rigger £398 and Basic Rigger £355, both Grade I. Riggers on commercials generally work to the higher Bectu rate instead, and that is what TimeMachine applies: Master Rigger £675, Advanced Rigger £515 and Standby Rigger £515. The grade names differ between the two, so note that Advanced Rigger is £398 on the card but £515 on Bectu, and it is the Bectu figure the app uses.</p>
       <p>For the full card and anything not shown, go to the APA's published <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">Recommended Crew Terms</a>.</p>
 
       <!-- ALTERNATIVE TABLE, version 2: a representative subset of 15 roles across departments. To use it instead of the full table, replace the <tbody> rows above with the rows below, and keep the "for the full card" line so the rest is one click away.
@@ -372,6 +418,60 @@
       </div>
     </div>
   </footer>
+
+  <script>
+  (function () {
+    var filter = document.getElementById('rate-filter');
+    var table = document.getElementById('rate-table');
+    if (!filter || !table || !table.tBodies.length) return;
+    var search = document.getElementById('rate-search');
+    var dept = document.getElementById('rate-dept');
+    var clear = document.getElementById('rate-clear');
+    var count = document.getElementById('rate-count');
+    var noRow = document.getElementById('rate-noresults');
+    var rows = [];
+    var seen = {};
+    Array.prototype.forEach.call(table.tBodies[0].rows, function (r) {
+      if (r === noRow) return;
+      rows.push(r);
+      var d = r.cells[0].textContent.trim();
+      if (d && !seen[d]) {
+        seen[d] = true;
+        var o = document.createElement('option');
+        o.value = d; o.textContent = d;
+        dept.appendChild(o);
+      }
+    });
+    var total = rows.length;
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var d = dept.value;
+      var shown = 0;
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var department = r.cells[0].textContent.trim();
+        var role = r.cells[1].textContent;
+        var okText = !q || role.toLowerCase().indexOf(q) !== -1 || department.toLowerCase().indexOf(q) !== -1;
+        var okDept = !d || department === d;
+        var vis = okText && okDept;
+        r.hidden = !vis;
+        if (vis) shown++;
+      }
+      if (noRow) noRow.hidden = shown !== 0;
+      count.textContent = 'Showing ' + shown + ' of ' + total + ' roles';
+    }
+
+    search.addEventListener('input', apply);
+    dept.addEventListener('change', apply);
+    clear.addEventListener('click', function () {
+      search.value = ''; dept.value = ''; apply(); search.focus();
+    });
+
+    filter.hidden = false;
+    apply();
+  })();
+  </script>
 
 </body>
 </html>
