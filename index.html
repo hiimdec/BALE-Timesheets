@@ -2651,6 +2651,15 @@
       return flattenRateCard(resolveRateCard(production && production.startDate));
     }
 
+    // New-production mileage default (Phase 5b bug fix). userPrefs.defaultMileageRate
+    // is a "New-production defaults" setting: it seeds production.mileageRatePerMile
+    // at creation, the one field BOTH engines read (APA + long form). Returns a
+    // spreadable so an unset/zero global leaves the field ABSENT (calc falls back
+    // to the 50p literal - byte-identical to before). Not read by the calc: the
+    // calc stays pure-by-parameter and production-derived, no userPrefs threading.
+    const seededMileageRate = (userPrefs) =>
+      Number(userPrefs && userPrefs.defaultMileageRate) > 0 ? { mileageRatePerMile: Number(userPrefs.defaultMileageRate) } : {};
+
     // Seed-time rate resolution (I2). A stored Settings default
     // (userPrefs.defaultBDR / defaultOTCoef) is a SNAPSHOT taken whenever
     // the user last saved Settings — possibly under an older rate card —
@@ -3984,6 +3993,7 @@
         ppStartDate: w.ppStartDate || todayISO(),
         weekStartDay: w.weekStartDay || 'monday',
         ...(Number(w.scheduledFilmingDays) > 0 ? { scheduledFilmingDays: Number(w.scheduledFilmingDays) } : {}),
+        ...seededMileageRate(userPrefs),                 // new-production default (Phase 5b)
         weeks: [],                                       // the week layer is the next slice
         prodCo: (w.prodCo || '').trim(),
         jobReference: (w.jobReference || '').trim(),
@@ -4863,6 +4873,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     function calculateDay(day, crew, weekendOpts = {}) {
+      // Mileage rate: the per-job production.mileageRatePerMile (spread into
+      // weekendOpts at the call site), seeded from userPrefs.defaultMileageRate at
+      // creation; absent falls back to the 50p literal (Phase 5b bug fix).
+      const mileageRate = Number(weekendOpts.mileageRatePerMile) > 0 ? Number(weekendOpts.mileageRatePerMile) : 0.5;
       const rawBdr = Number(crew.bdr);
       const bdr = Number.isFinite(rawBdr) ? Math.max(0, rawBdr) : 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
@@ -4975,7 +4989,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         lines.push({ label: "Travel Day (BHR)", detail: `${callWrapLabel} · min 5h`, rate: bhr, qty: paidHrs, amount: paidHrs * bhr });
         if (workedHrs < 5) notes.push("Min 5h applied");
         const miles = Number(day.miles) || 0;
-        if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
+        if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: mileageRate, qty: miles, amount: miles * mileageRate });
         const total = lines.reduce((s, l) => s + l.amount, 0);
         return { meta: { workedHrs, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "Travel Day", notes, secondBreakRequired: false, continuousDay: false }, lines, total };
       }
@@ -5351,7 +5365,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
       }
       const miles = Number(day.miles) || 0;
-      if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
+      if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: mileageRate, qty: miles, amount: miles * mileageRate });
 
       const total = lines.reduce((s, l) => s + l.amount, 0);
       const otHrsForMeta = lines.filter((l) => categorizeBreakdownLine(l.label) === 'ot').reduce((s, l) => s + (Number(l.qty) || 0), 0);
@@ -5373,6 +5387,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     /* ─────────────── PM / PA / Runner — APA Appendix 1 §(a) ─────────────── */
 
     function calculatePmpaDay(day, crew, weekendOpts = {}) {
+      const mileageRate = Number(weekendOpts.mileageRatePerMile) > 0 ? Number(weekendOpts.mileageRatePerMile) : 0.5;
       const rawBdr = Number(crew.bdr);
       const bdr = Number.isFinite(rawBdr) ? Math.max(0, rawBdr) : 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
@@ -5486,7 +5501,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // Mileage stays functional even though §3 doesn't apply — defaults to 0.
       const miles = Number(day.miles) || 0;
-      if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: 0.5, qty: miles, amount: miles * 0.5 });
+      if (miles > 0) lines.push({ label: "Mileage", detail: buildMileageDetail(day), rate: mileageRate, qty: miles, amount: miles * mileageRate });
 
       const total = lines.reduce((s, l) => s + l.amount, 0);
 
@@ -11584,8 +11599,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ MILEAGE INPUT ════════════════════════════ */
 
-    function MileageInput({ day, updateDay, days }) {
+    function MileageInput({ day, updateDay, days, production = null }) {
       const method = day.mileageMethod || 'manual';
+      // The job's per-mile rate (Phase 5b): production.mileageRatePerMile, seeded
+      // from the Settings default at creation; absent falls back to 50p.
+      const jobMileageRate = Number(production && production.mileageRatePerMile) > 0 ? Number(production.mileageRatePerMile) : 0.5;
 
       const onMilesBlur = (e) => {
         const raw = parseFloat(e.target.value);
@@ -11618,7 +11636,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
 
       return (
-        <Field label="Mileage" hint="£0.50/mi from W1F 9SE">
+        <Field label="Mileage" hint={`£${jobMileageRate.toFixed(2)}/mi`}>
           {/* Method toggle */}
           <div className="inline-flex rounded-lg bg-neutral-800 p-0.5 mb-3">
             {[{ k: 'manual', label: 'Manual' }, { k: 'postcode', label: 'Postcode' }].map(({ k, label }) => (
@@ -12419,7 +12437,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {/* ── Mileage (chip-gated) ── */}
           {mileageActive && (
             <SectionCard title="Mileage" variant="condition" onClose={() => toggleChip("mileage")}>
-              <MileageInput day={v} updateDay={set} days={days} />
+              <MileageInput day={v} updateDay={set} days={days} production={production} />
             </SectionCard>
           )}
 
@@ -13107,6 +13125,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       day={dateEdit}
                       updateDay={patch => setDateEdit(p => ({...p, ...patch}))}
                       days={[]}
+                      production={production}
                     />
                   </Disclosure>
 
@@ -15065,7 +15084,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       isSet = (Number(dd.miles) || 0) > 0 || !!(dd.mileagePostcode || '').trim();
                       onClear = () => updateDeptMulti({ miles: 0, mileagePostcode: '', mileageMethod: 'manual' });
                       body = (
-                        <MileageInput day={{ ...dd, date: currentDate, crewId: 'dept-default' }} updateDay={updateDeptMulti} days={[]}/>
+                        <MileageInput day={{ ...dd, date: currentDate, crewId: 'dept-default' }} updateDay={updateDeptMulti} days={[]} production={production}/>
                       );
                     } else if (key === 'travel') {
                       title = 'Travel time · Dept default';
@@ -16563,7 +16582,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             }));
                             title = 'Mileage';
                             body = (
-                              <MileageInput day={dayRecord} updateDay={updateMulti} days={production.days || []}/>
+                              <MileageInput day={dayRecord} updateDay={updateMulti} days={production.days || []} production={production}/>
                             );
                             if (mileageOverridden) resetEl = resetButton('Reset to default', () => resetFields('mileage', 'miles', 'mileagePostcode', 'mileageMethod', 'mileageRoundTrip'));
                           } else if (key === 'travel') {
@@ -17580,6 +17599,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </div>
                 )}
               </div>
+            </Disclosure>
+
+            <Disclosure label="Mileage rate" summary={Number(production.mileageRatePerMile) > 0 ? `£${Number(production.mileageRatePerMile).toFixed(2)}/mi` : '50p'}>
+              <p className="text-[11px] text-neutral-500 -mt-1">The rate per mile on this job. Seeded from your Settings default when the job was created; override it here if a producer agreed a different rate. Empty falls back to 50p.</p>
+              <Field label="Mileage rate (£/mile)">
+                <Input type="number" min="0" step="0.01" placeholder="0.50" value={production.mileageRatePerMile ?? ''} onChange={(e) => {
+                  const v = Number(e.target.value) || 0;
+                  setProduction(p => { const n = { ...p }; if (v > 0) n.mileageRatePerMile = v; else delete n.mileageRatePerMile; return n; });
+                }} />
+              </Field>
             </Disclosure>
 
             {soloMember && (() => {
@@ -31772,6 +31801,7 @@ const confirmDelete = (p) => setConfirmOpts({
           roundingMode: roundingModeOf(userPrefs),
           startDate: (shoot.days[0] && shoot.days[0].date) || todayISO(),
           isNew: true,
+          ...seededMileageRate(userPrefs),               // new-production default (Phase 5b)
         };
         setProductions((prev) => [...prev, p]);
         closeShareLinkImport();
@@ -32091,6 +32121,7 @@ const confirmDelete = (p) => setConfirmOpts({
           roundingMode: roundingModeOf(userPrefs),
           startDate: todayISO(),
           isNew: true,
+          ...seededMileageRate(userPrefs),               // new-production default (Phase 5b)
         };
         setProductions((prev) => [...prev, p]);
         setOpenId(p.id);

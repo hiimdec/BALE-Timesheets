@@ -371,6 +371,25 @@ function stageB3(eng, ok) {
   ok('B3m Saturday full Shoot: 2h at 1×BHR £88.80 (total £754.80)', travelIs(m, 2, 88.80) && near(m.total, 754.80), `total=${m.total}`);
 }
 
+// ---- Mileage rate (Phase 5b bug fix) ----------------------------------------
+// production.mileageRatePerMile, spread into weekendOpts at the call site and
+// seeded from userPrefs.defaultMileageRate at creation, is now read by all three
+// APA mileage sites (two in calculateDay, one in calculatePmpaDay). Absent falls
+// back to the 50p literal, so a job that never set a rate is byte-identical.
+
+function stageMileage(eng, ok) {
+  console.log('\nMILEAGE · per-job rate: production.mileageRatePerMile via weekendOpts, absent → 50p');
+  const mLine = (c) => c.lines.find(l => l.label === 'Mileage');
+  const def = mLine(eng.calculateDay(baseDay({ miles: 46 }), baseCrew(), {}));
+  ok('MILE1 absent per-job rate falls back to 50p: 46 mi @ £0.50 = £23.00', !!def && near(def.rate, 0.5) && near(def.amount, 23.00), JSON.stringify(def));
+  const custom = mLine(eng.calculateDay(baseDay({ miles: 46 }), baseCrew(), { mileageRatePerMile: 0.45 }));
+  ok('MILE2 calculateDay reads the per-job rate: 46 mi @ £0.45 = £20.70 (the dead pref is live via seeding)', !!custom && near(custom.rate, 0.45) && near(custom.amount, 20.70), JSON.stringify(custom));
+  const pmpa = mLine(eng.calculateDay(baseDay({ miles: 46 }), baseCrew({ role: 'Production Assistant' }), { mileageRatePerMile: 0.45 }));
+  ok('MILE3 the PMPA path (calculatePmpaDay) reads the same per-job rate: 46 mi @ £0.45 = £20.70', !!pmpa && near(pmpa.rate, 0.45) && near(pmpa.amount, 20.70), JSON.stringify(pmpa));
+  const zero = mLine(eng.calculateDay(baseDay({ miles: 10 }), baseCrew(), { mileageRatePerMile: 0 }));
+  ok('MILE4 a zero per-job rate is ignored, not billed at £0: 10 mi falls back to 50p = £5.00', !!zero && near(zero.rate, 0.5) && near(zero.amount, 5.00), JSON.stringify(zero));
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -384,6 +403,7 @@ async function runCalcBoundaryAssertions() {
   stageA4(eng, ok);
   stageB2(eng, ok);
   stageB3(eng, ok);
+  stageMileage(eng, ok);
   return summary();
 }
 

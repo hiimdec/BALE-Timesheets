@@ -284,6 +284,7 @@ async function transformedAppCode() {
     'try { globalThis.__roleRegistryFor = roleRegistryFor; } catch (_) {}\n' +
     'try { globalThis.__lfRoleRefLine = lfRoleRefLine; } catch (_) {}\n' +
     'try { globalThis.__applyLfRoleOnly = applyLfRoleOnly; } catch (_) {}\n' +
+    'try { globalThis.__seededMileageRate = seededMileageRate; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
     'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
@@ -3346,6 +3347,32 @@ async function main() {
       check('LF25c seedAgreementClass keeps ONE definition + ONE call site (the wizard); the role editor must never re-seed the class, so this count is pinned',
         seedCalls === 2,
         `seedAgreementClass( occurrences = ${seedCalls} (expected 2: the definition + the single wizard call)`);
+    }
+
+    // ── LF26: the mileage-rate seed (Phase 5b bug fix). userPrefs.defaultMileageRate
+    //    was a live, editable "New-production defaults" control that no calc path
+    //    read for three months. It now seeds production.mileageRatePerMile at
+    //    creation - the one field BOTH engines read - spread so an unset/zero
+    //    global leaves the field ABSENT and the calc falls back to 50p
+    //    (byte-identical). The calc reads it (MILE1-4 in calc-boundary); here we
+    //    pin the seed helper and that the 0.5 literal is gone from all three sites. ──
+    {
+      const seed = sb.__seededMileageRate;
+      if (typeof seed === 'function') {
+        const set = seed({ defaultMileageRate: 0.45 }), abs = seed({}), zero = seed({ defaultMileageRate: 0 });
+        check('LF26a a set global seeds production.mileageRatePerMile; an unset or zero global leaves it ABSENT so the calc falls back to 50p (the additive, optional field)',
+          set.mileageRatePerMile === 0.45 && Object.keys(abs).length === 0 && Object.keys(zero).length === 0,
+          JSON.stringify([set, abs, zero]));
+      } else {
+        check('LF26a seededMileageRate exposed', false, 'not exposed');
+      }
+      const src2 = fs.readFileSync(SRC_HTML, 'utf8');
+      const perJob = (src2.match(/amount: miles \* mileageRate/g) || []).length;
+      const literal = (src2.match(/amount: miles \* 0\.5/g) || []).length;
+      const resolve = (src2.match(/Number\(weekendOpts\.mileageRatePerMile\) > 0 \? Number\(weekendOpts\.mileageRatePerMile\) : 0\.5/g) || []).length;
+      check('LF26b all three APA mileage sites read the resolved per-job rate and the hardcoded 0.5 literal is gone (2 resolvers: calculateDay + calculatePmpaDay; 3 push sites)',
+        perJob === 3 && literal === 0 && resolve === 2,
+        `miles*mileageRate=${perJob}, miles*0.5=${literal}, resolvers=${resolve}`);
     }
   }
 
