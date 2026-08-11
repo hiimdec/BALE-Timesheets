@@ -2990,7 +2990,10 @@
     // registry entry itself, never a separate lookup. Returns a flat, already
     // department-grouped list of { role, dept, trainee, rate? }.
     function roleRegistryFor(agreement) {
-      const isApa = agreement !== 'pact-tv' && agreement !== 'pact-film';
+      // 'pact-tv' -> tv roles, 'pact-film' -> film roles, 'longform' -> the union
+      // of both (the agreement-agnostic default-role picker in Settings, Phase 5b),
+      // anything else -> the APA card list.
+      const isApa = agreement !== 'pact-tv' && agreement !== 'pact-film' && agreement !== 'longform';
       const rate = isApa ? LF_TRAINEE_RATE.apa : LF_TRAINEE_RATE.longform;
       const out = [];
       if (isApa) {
@@ -3000,7 +3003,7 @@
           out.push({ role: `${dept} Trainee`, dept, trainee: true, rate });
         }
       } else {
-        const bit = agreement === 'pact-film' ? 2 : 1;
+        const bit = agreement === 'pact-film' ? 2 : agreement === 'longform' ? 3 : 1;
         const byDept = {}, order = [];
         for (const e of LF_ROLE_REGISTRY) {
           if (!(e.a & bit)) continue;
@@ -3031,6 +3034,19 @@
         }
       }
       return out;
+    }
+
+    // Set the long form user's role WITHOUT touching their agreement class
+    // (Phase 5b). The class is a separate stored deal fact the user confirmed in
+    // the wizard; a post-creation role edit is a LABEL change and must never
+    // re-seed it - fixing a typo in your title shouldn't silently move your
+    // divisor. This is the whole safety argument for post-creation role editing,
+    // so it is pinned (LF25) that seedAgreementClass keeps its single wizard call
+    // site and that this helper preserves the class.
+    function applyLfRoleOnly(production, role) {
+      const crew = production.crew || [];
+      const meId = crew[0] && crew[0].id;
+      return { ...production, crew: crew.map(c => c.id === meId ? { ...c, role } : c) };
     }
 
     // The reference line beside the long form rate field (Phase 5a, Part 3): the
@@ -4147,6 +4163,9 @@
       defaultRole: "",
       defaultBDR: 0,
       defaultOTCoef: 1.5,
+      // Long form sibling of defaultRole (Phase 5b): learned from the first long
+      // form job, Settings-managed. Additive merge-over, no migration.
+      lfDefaultRole: "",
       // Appearance — colour theme. 'default' | 'poppy'. A string on purpose: a
       // future third theme is an additive value, not a migration. Additive
       // merge-over-DEFAULT_USER_PREFS (the invoiceEmailMethod precedent):
@@ -21570,6 +21589,15 @@ const setDays = (updater) =>
       const roleRefLine = lfRoleRefLine(w.role, w.agreement, w.band);
       const [showRolePicker, setShowRolePicker] = React.useState(false);
       const roleRecents = React.useMemo(() => lfRecentRoles(productions, 4), [productions]);
+      // Pre-fill the role from the learned long form default (Phase 5b) when the
+      // user reaches the crew step without having chosen one. Applied THROUGH
+      // onRoleChange, so the class seeds by the ordinary single path (no second
+      // seedAgreementClass call site) and a default trainee still autofills.
+      React.useEffect(() => {
+        if (screen === 'crew' && !w.role && (userPrefs.lfDefaultRole || '').trim()) {
+          onRoleChange(userPrefs.lfDefaultRole.trim());
+        }
+      }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
       const stepIndex = steps.indexOf(screen) + 1;
 
@@ -22420,6 +22448,7 @@ const setDays = (updater) =>
     function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete, nativeActionsRef }) {
       useBackLevel(true, () => { onBack(); return true; }, 'longform-area');
       const [showSettings, setShowSettings] = useState(false);
+      const [showRoleEditor, setShowRoleEditor] = useState(false);
       // Native chrome: the bar's prodSettings routes here while the area is
       // mounted (the web header with its gear is suppressed under native
       // chrome, so without this the sheet is unreachable on device).
@@ -23107,6 +23136,19 @@ const setDays = (updater) =>
                   </div>
                   <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">Set at creation and fixed for the job.</p>
                 </div>
+                {/* Your role — editable post-creation (Phase 5b). Writes the role
+                    LABEL only; the class is a separate stored deal fact and is
+                    never re-seeded from a role edit (applyLfRoleOnly, pinned). */}
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold mb-1.5">Your role</div>
+                  <button type="button" onClick={() => setShowRoleEditor(true)}
+                    className="w-full text-left bg-neutral-950 border border-neutral-800 hover:border-neutral-700 rounded-lg px-3 py-2.5 text-sm outline-none flex items-center justify-between gap-2 transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <span className={me.role ? 'text-neutral-100' : 'text-neutral-500'}>{me.role || 'Choose a role'}</span>
+                    <IChevronRight size={16} className="text-neutral-500 flex-shrink-0" />
+                  </button>
+                  <p className="text-[10px] text-neutral-600 mt-1 leading-tight">Your job title on the invoice. Changing it never changes your terms - your class stays exactly as you set it.</p>
+                </div>
                 {production.agreement === 'pact-tv' && (
                   <Field label="Budget band">
                     <Select value={String(production.band || 4)} onChange={(e) => setProduction(p => ({ ...p, band: Number(e.target.value) }))}>
@@ -23252,6 +23294,16 @@ const setDays = (updater) =>
                 </div>
               </div>
             </Sheet>
+          )}
+
+          {showRoleEditor && (
+            <LongFormRolePicker
+              agreement={production.agreement}
+              value={me.role}
+              recents={[]}
+              onPick={(role) => setProduction(p => applyLfRoleOnly(p, role))}
+              onClose={() => setShowRoleEditor(false)}
+            />
           )}
 
           <ConfirmDialog
@@ -24981,6 +25033,7 @@ const setDays = (updater) =>
       // persisted pref (the on/off flag itself lives natively in the App Group,
       // so no new bigals_* key and no KEYS-list change).
       const [laDiagTaps, setLaDiagTaps] = useState(0);
+      const [showLfRolePicker, setShowLfRolePicker] = useState(false);
       // Accountant export — selected tax year. Defaults to the most recent
       // COMPLETE tax year that holds invoices, else the newest on offer.
       const [acctYear, setAcctYear] = useState(() => {
@@ -25199,6 +25252,24 @@ const setDays = (updater) =>
                   />
                 </Field>
               )}
+              {/* Long form default role (Phase 5b) - the fields above are for
+                  commercials; this is the long form (Pact/Bectu) sibling. Learned
+                  from the first long form job, editable here through the same
+                  picker the wizard uses. */}
+              <Field label="Long form default role" hint="Pre-fills your role on new long form (Pact/Bectu) jobs. Learned from your first one.">
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setShowLfRolePicker(true)}
+                    className="flex-1 text-left bg-neutral-950 border border-neutral-800 hover:border-neutral-700 rounded-lg px-3 py-2.5 text-sm outline-none flex items-center justify-between gap-2 transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <span className={userPrefs.lfDefaultRole ? 'text-neutral-100' : 'text-neutral-500'}>{userPrefs.lfDefaultRole || 'None yet'}</span>
+                    <IChevronRight size={16} className="text-neutral-500 flex-shrink-0" />
+                  </button>
+                  {userPrefs.lfDefaultRole && (
+                    <button type="button" onClick={() => set({ lfDefaultRole: '' })}
+                      className="text-[11px] text-neutral-500 hover:text-neutral-300 px-2 py-2.5 flex-shrink-0">Clear</button>
+                  )}
+                </div>
+              </Field>
             </SectionCard>
 
             {/* §2 — Tools: standalone one-offs that don't fit a settings group.
@@ -26053,6 +26124,15 @@ const setDays = (updater) =>
               setCrew={setCalcCrew}
               userPrefs={userPrefs}
               onClose={() => setShowCalc(false)}
+            />
+          )}
+          {showLfRolePicker && (
+            <LongFormRolePicker
+              agreement="longform"
+              value={userPrefs.lfDefaultRole}
+              recents={[]}
+              onPick={(role) => set({ lfDefaultRole: role })}
+              onClose={() => setShowLfRolePicker(false)}
             />
           )}
         </div>
@@ -31745,6 +31825,15 @@ const confirmDelete = (p) => setConfirmOpts({
       const [showLongFormWizard, setShowLongFormWizard] = useState(false);
       const handleCreateLongForm = (wizardState) => {
         const p = makeLongFormProduction(wizardState, userPrefs);
+        // Silent-learn the long form default role from the FIRST long form job:
+        // only when none exists yet and no default is set. Never re-learned - a
+        // second job set up differently is a real choice, and Settings is where
+        // it changes (Phase 5b). Learned from the role the user actually picked.
+        const hadLongForm = (productions || []).some(pr => { const a = agreementOf(pr); return a === 'pact-tv' || a === 'pact-film'; });
+        const learnedRole = (wizardState.role || '').trim();
+        if (!hadLongForm && learnedRole && !(userPrefs.lfDefaultRole || '').trim()) {
+          setUserPrefs(prev => ({ ...prev, lfDefaultRole: learnedRole }));
+        }
         setProductions(prev => [...prev, p]);
         setShowLongFormWizard(false);
         setShowNewProduction(false);

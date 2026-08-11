@@ -283,6 +283,7 @@ async function transformedAppCode() {
     'try { globalThis.__seedAgreementClass = seedAgreementClass; } catch (_) {}\n' +
     'try { globalThis.__roleRegistryFor = roleRegistryFor; } catch (_) {}\n' +
     'try { globalThis.__lfRoleRefLine = lfRoleRefLine; } catch (_) {}\n' +
+    'try { globalThis.__applyLfRoleOnly = applyLfRoleOnly; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
     'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
@@ -3314,6 +3315,37 @@ async function main() {
       }
     } else {
       for (const l of ['LF22a', 'LF22b', 'LF22c', 'LF22d', 'LF22e', 'LF22f']) check(l + ' seed/registry exposed', false, 'seedAgreementClass/roleRegistryFor not exposed');
+    }
+
+    // ── LF25: two default roles + the post-creation role editor (Phase 5b). The
+    //    long form default is a NEW DEFAULT_USER_PREFS key, learned from the first
+    //    long form job and Settings-managed. Editing a role post-creation is
+    //    money-safe ONLY because it never re-seeds the class - the whole safety
+    //    argument - so it is pinned two ways: the helper preserves the class, and
+    //    seedAgreementClass keeps its single wizard call site. ──
+    {
+      const defaults = sb.__DEFAULT_USER_PREFS, applyRole = sb.__applyLfRoleOnly;
+      check('LF25a DEFAULT_USER_PREFS carries the new lfDefaultRole key ("" default, additive merge-over - existing users inherit it with no migration and no data rewrite)',
+        !!defaults && Object.prototype.hasOwnProperty.call(defaults, 'lfDefaultRole') && defaults.lfDefaultRole === '',
+        JSON.stringify(defaults && defaults.lfDefaultRole));
+      if (typeof applyRole === 'function') {
+        const before = { id: 'p', crew: [{ id: 'c1', role: 'Focus Puller / 1st AC', agreementClass: 'ach', contractDailyRate: 300 }], days: [] };
+        const after = applyRole(before, 'Camera Operator');
+        check('LF25b the post-creation role editor writes the role LABEL only: applyLfRoleOnly changes the role, preserves agreementClass and rate, and does not mutate the input (a typo fix never moves the divisor)',
+          after.crew[0].role === 'Camera Operator' && after.crew[0].agreementClass === 'ach' && after.crew[0].contractDailyRate === 300 &&
+          before.crew[0].role === 'Focus Puller / 1st AC',
+          JSON.stringify(after.crew[0]));
+      } else {
+        check('LF25b applyLfRoleOnly exposed', false, 'not exposed');
+      }
+      // The source guard behind LF25b: seedAgreementClass has exactly ONE call
+      // site (the wizard's onRoleChange). If anyone later wires the role editor -
+      // or anything else - through it, this count moves and the pin reddens.
+      const src = fs.readFileSync(SRC_HTML, 'utf8');
+      const seedCalls = (src.match(/seedAgreementClass\s*\(/g) || []).length;
+      check('LF25c seedAgreementClass keeps ONE definition + ONE call site (the wizard); the role editor must never re-seed the class, so this count is pinned',
+        seedCalls === 2,
+        `seedAgreementClass( occurrences = ${seedCalls} (expected 2: the definition + the single wizard call)`);
     }
   }
 
