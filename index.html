@@ -22105,6 +22105,12 @@ const setDays = (updater) =>
       const kitItemsTotal = (d.kitItems || []).reduce((s, it) => s + (Number(it.rate) || 0), 0);
       const kitTotal = kitItemsTotal + (Number(d.kitMoneyAmount) || 0);
       const kitOn = (d.kitItems || []).length > 0 || (Number(d.kitMoneyAmount) || 0) > 0;
+      // Kit and box rental share one chip ("Kit / box"), mirroring APA's single Kit
+      // chip - both already price into the invoice's Kit group. Set if either is set;
+      // the summary is their combined day total. (Phase 6, chip alignment.)
+      const boxRentalSet = d.boxRentalDay !== undefined;
+      const kitBoxOn = kitOn || boxRentalSet;
+      const kitBoxTotal = kitTotal + (boxRentalSet ? (Number(d.boxRentalDay) || 0) : 0);
       const expensesTotal = (d.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
       const expensesOn = (d.expenses || []).length > 0;
       const classes = AGREEMENT_CLASSES[production.agreement] || ['standard'];
@@ -22325,25 +22331,24 @@ const setDays = (updater) =>
                 {isTV && typeMeta.shooting && renderChip('camOt', 'Camera OT called', camOtOn, camOtOn ? `${d.cameraOtCalledMins}m` : null)}
                 {renderChip('stepUp', 'Class / rate', stepUpOn, stepUpOn ? ((AGREEMENT_CLASS_META[d.dayAgreementClass] || {}).label || (d.dayContractDailyRate !== undefined ? fmtGBP(d.dayContractDailyRate) : null)) : null)}
                 {runFlagged && renderChip('sixSeven', runLabel, d.sixthSeventhOverride === true, d.sixthSeventhOverride ? 'waived' : null)}
-                {renderChip('boxRental', 'Box rental', d.boxRentalDay !== undefined, d.boxRentalDay !== undefined ? fmtGBP(d.boxRentalDay) : null)}
-                {renderChip('kit', 'Kit', kitOn, kitOn ? fmtGBP(kitTotal) : null)}
-                {renderChip('expenses', 'Expenses', expensesOn, expensesOn ? fmtGBP(expensesTotal) : null)}
                 {renderChip('mileage', 'Mileage', mileageOn, mileageSummary)}
+                {renderChip('kit', 'Kit / box', kitBoxOn, kitBoxOn ? fmtGBP(kitBoxTotal) : null)}
                 {renderChip('travel', 'Travel time', travelOn, travelSummary)}
+                {renderChip('expenses', 'Expenses', expensesOn, expensesOn ? fmtGBP(expensesTotal) : null)}
                 {notesChipAndPanel}
               </div>
-              {expandedChips.has('boxRental') && (
-                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-2">
-                  <Field label="Box rental for the day (£)">
-                    <Input type="number" min="0" step="1" value={d.boxRentalDay ?? ''} onChange={(e) => { const v = e.target.value; set({ boxRentalDay: v === '' ? undefined : Math.max(0, Number(v) || 0) }); }} />
-                  </Field>
-                  <p className="text-[10px] text-neutral-600 leading-tight">Kit is usually weekly - set that on the week. This overrides just this day (film §5.9 prices a daily's box pro-rata). Leave it empty to claim nothing.</p>
-                </div>
-              )}
               {expandedChips.has('kit') && (
-                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3">
-                  <KitDayPickerBody day={d} userPrefs={userPrefs} isUsersOwnDay={true} onChange={set} />
-                  <p className="text-[10px] text-neutral-600 leading-tight mt-2">Itemised kit prices onto the invoice's Kit group, alongside box rental. Your Kit Room is the same one your commercials use (Settings). Box rental stays separate - it's a cash fee, this is an itemised list.</p>
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3 space-y-3">
+                  <div>
+                    <KitDayPickerBody day={d} userPrefs={userPrefs} isUsersOwnDay={true} onChange={set} />
+                    <p className="text-[10px] text-neutral-600 leading-tight mt-2">Itemised kit prices onto the invoice's Kit group. Your Kit Room is the same one your commercials use (Settings).</p>
+                  </div>
+                  <div className="border-t border-neutral-800 pt-3">
+                    <Field label="Box rental for the day (£)">
+                      <Input type="number" min="0" step="1" value={d.boxRentalDay ?? ''} onChange={(e) => { const v = e.target.value; set({ boxRentalDay: v === '' ? undefined : Math.max(0, Number(v) || 0) }); }} />
+                    </Field>
+                    <p className="text-[10px] text-neutral-600 leading-tight mt-1">Box rental joins kit in the Kit group - a cash fee, not an itemised list. Kit is usually weekly (set that on the week); this overrides just this day (film §5.9 prices a daily's box pro-rata).</p>
+                  </div>
                 </div>
               )}
               {expandedChips.has('expenses') && (
