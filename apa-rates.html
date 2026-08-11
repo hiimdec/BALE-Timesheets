@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>APA crew rates - TimeMachine</title>
+  <meta name="description" content="Current APA recommended crew rates for UK film and TV: the card in force, when it changes, how a day rate becomes an hourly rate, the three overtime grades, and the full table.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="canonical" href="https://timemachineapp.co.uk/apa-rates">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="APA crew rates">
+  <meta property="og:description" content="Current APA recommended crew rates for UK film and TV: the card in force, when it changes, how a day rate becomes an hourly rate, the three overtime grades, and the full table.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/apa-rates">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="APA crew rates">
+  <meta name="twitter:description" content="Current APA recommended crew rates for UK film and TV: the card in force, when it changes, how a day rate becomes an hourly rate, the three overtime grades, and the full table.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #939393;
+      --text-4:    #838383;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100; transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
+
+    main { padding: 40px 0 72px; }
+    @media (min-width: 768px) { main { padding: 56px 0 96px; } }
+
+    .back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-3);
+      text-decoration: none; margin-bottom: 28px;
+    }
+    .back:hover { color: var(--tm-accent); }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(30px, 4.6vw, 46px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.04; margin: 0 0 14px;
+    }
+    .byline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin: 0 0 32px;
+    }
+    h2 {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+      margin: 40px 0 10px; color: var(--text);
+    }
+    p, li { color: var(--text-2); font-size: 16px; line-height: 1.7; }
+    p + p { margin-top: 14px; }
+    ul, ol { padding-left: 18px; margin: 8px 0 14px; }
+    li { margin: 6px 0; }
+    li::marker { color: var(--tm-accent); }
+    strong { color: var(--text); font-weight: 600; }
+
+    /* Rate table - figures mono (BRAND: money/data only), chrome from the
+       card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
+    .rate-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .rate-table th {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; color: var(--text-3); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
+    }
+    .rate-table td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 14px; color: var(--text);
+      padding: 12px 16px;
+    }
+    .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+
+    /* Rate-table filter. Progressive enhancement: the controls carry [hidden]
+       in the markup and JS removes it, so with JS off the page is the full,
+       crawlable table and no dead controls show. Chrome from the card tokens
+       only, no new colours. */
+    [hidden] { display: none !important; }
+    .rate-filter { margin: 16px 0 0; }
+    .rate-filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .rate-filter-input, .rate-filter-select {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      font-family: inherit; font-size: 14px; line-height: 1.4;
+      padding: 10px 12px; border-radius: 10px;
+    }
+    .rate-filter-input { flex: 1 1 220px; min-width: 0; }
+    .rate-filter-input::placeholder { color: var(--text-4); }
+    .rate-filter-select { flex: 0 0 auto; cursor: pointer; max-width: 100%; }
+    .rate-filter-input:focus, .rate-filter-select:focus {
+      outline: 2px solid var(--tm-accent); outline-offset: 2px; border-color: var(--tm-accent);
+    }
+    .rate-filter-clear {
+      background: transparent; border: 1px solid var(--border); color: var(--text-2);
+      font-family: inherit; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 10px 14px; border-radius: 10px; cursor: pointer;
+    }
+    .rate-filter-clear:hover { color: var(--text); border-color: var(--text-3); }
+    .rate-filter-clear:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+    .rate-filter-count {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; letter-spacing: 0.04em; color: var(--text-3); margin: 12px 0 0;
+    }
+    .rate-noresults-msg td { font-family: inherit; color: var(--text-2); font-style: italic; }
+
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
+
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--tm-accent); color: #050505;
+      font-weight: 800; font-size: 14px; letter-spacing: 0.02em;
+      padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    }
+    .btn:hover { background: var(--tm-accent-2); color: #050505; }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "APA crew rates - TimeMachine",
+    "description": "Current APA recommended crew rates for UK film and TV: the card in force, when it changes, how a day rate becomes an hourly rate, the three overtime grades, and the full table.",
+    "url": "https://timemachineapp.co.uk/apa-rates",
+    "isPartOf": { "@type": "WebSite", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" },
+    "publisher": { "@type": "Organization", "@id": "https://timemachineapp.co.uk/#organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/", "logo": "https://timemachineapp.co.uk/icon-512.png", "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"] }
+  }
+  </script>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="/" class="nav-cta">
+          Open the App
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+
+      <p class="label">APA rates</p>
+      <h1>APA crew rates</h1>
+      <p>The current APA recommended rate for UK commercial crew, and when it next changes. These are the figures TimeMachine applies to your days.</p>
+
+      <h2>Which card is current</h2>
+      <p>The card in force is the <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA Recommended Crew Terms</a>, September 2025. It runs until 31 August 2026. The next card, September 2026, takes effect on 1 September 2026. The APA reviews and republishes the rates once a year, always from 1 September.</p>
+
+      <h2>From day rate to hourly rate</h2>
+      <p>Two numbers drive everything. Your <strong>basic day rate</strong> is what you agree with production. Your <strong>basic hourly rate</strong> is exactly one tenth of it, not one eleventh, even though a basic day is eleven hours. Double time is twice the hourly rate, triple is three times it, and overtime is the hourly rate multiplied by a coefficient. Once the day rate is set, every other figure follows from it. There is more on this in <a href="/articles/how-apa-rates-work">how APA rates actually work</a>.</p>
+
+      <h2>The three overtime grades</h2>
+      <p>Each role sits in one of three overtime grades, and the grade sets the multiplier: time and a half, time and a quarter, or flat time with no uplift. The card states which grade each role is in, and as a rule the higher the day rate, the lower the multiplier. There is more on how the grades work in <a href="/articles/how-apa-overtime-works">how APA overtime actually works</a>. Directors and producers have no overtime grade at all.</p>
+
+      <h2>The rate table</h2>
+      <p>Both cards are shown, so you can see what changes. The September 2026 column takes effect on 1 September 2026.</p>
+
+      <div class="rate-filter" id="rate-filter" hidden>
+        <div class="rate-filter-row">
+          <input type="search" id="rate-search" class="rate-filter-input" placeholder="Search role or department" aria-label="Search roles by name or department" autocomplete="off">
+          <select id="rate-dept" class="rate-filter-select" aria-label="Filter by department">
+            <option value="">All departments</option>
+          </select>
+          <button type="button" id="rate-clear" class="rate-filter-clear">Clear</button>
+        </div>
+        <p class="rate-filter-count" id="rate-count" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="table-scroll">
+      <table class="rate-table" id="rate-table">
+        <thead>
+          <tr>
+            <th scope="col">Department</th>
+            <th scope="col">Role</th>
+            <th scope="col">Sept 2025</th>
+            <th scope="col">Sept 2026</th>
+            <th scope="col">Overtime</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Direction &amp; Production</td><td>Director</td><td>&pound;933</td><td>&pound;961</td><td>none</td></tr>
+          <tr><td>Direction &amp; Production</td><td>Producer</td><td>&pound;933</td><td>&pound;961</td><td>none</td></tr>
+          <tr><td>Direction &amp; Production</td><td>Production Manager</td><td>&pound;609</td><td>&pound;627</td><td>&times; 1</td></tr>
+          <tr><td>Direction &amp; Production</td><td>Production Assistant</td><td>&pound;428</td><td>&pound;441</td><td>&times; 1</td></tr>
+          <tr><td>Direction &amp; Production</td><td>Production Runner</td><td>&pound;238</td><td>&pound;245</td><td>&times; 1</td></tr>
+          <tr><td>Assistant Directors</td><td>1st AD</td><td>&pound;785</td><td>&pound;809</td><td>&times; 1</td></tr>
+          <tr><td>Assistant Directors</td><td>2nd AD</td><td>&pound;435</td><td>&pound;448</td><td>&times; 1.5</td></tr>
+          <tr><td>Assistant Directors</td><td>3rd AD</td><td>&pound;326</td><td>&pound;336</td><td>&times; 1.5</td></tr>
+          <tr><td>Assistant Directors</td><td>Floor Runner / AD Trainee</td><td>&pound;238</td><td>&pound;245</td><td>&times; 1</td></tr>
+          <tr><td>Script Supervisor</td><td>Script Supervisor</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
+          <tr><td>Locations</td><td>Location Manager</td><td>&pound;580</td><td>&pound;597</td><td>&times; 1.25</td></tr>
+          <tr><td>Camera</td><td>DoP</td><td>&pound;1516</td><td>&pound;1561</td><td>&times; 1</td></tr>
+          <tr><td>Camera</td><td>Camera Operator</td><td>&pound;637</td><td>&pound;656</td><td>&times; 1.25</td></tr>
+          <tr><td>Camera</td><td>Focus Puller (1st AC)</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
+          <tr><td>Camera</td><td>Clapper Loader (2nd AC)</td><td>&pound;435</td><td>&pound;448</td><td>&times; 1.5</td></tr>
+          <tr><td>Camera</td><td>DIT</td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
+          <tr><td>Camera</td><td>Senior Video Operator</td><td>&pound;503</td><td>&pound;518</td><td>&times; 1.25</td></tr>
+          <tr><td>Camera</td><td>Video Operator</td><td>&pound;391</td><td>&pound;403</td><td>&times; 1.5</td></tr>
+          <tr><td>Grip</td><td>Key Grip</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
+          <tr><td>Grip</td><td>Non-Key Grip</td><td>&pound;511</td><td>&pound;526</td><td>&times; 1.25</td></tr>
+          <tr><td>Lighting</td><td>Gaffer</td><td>&pound;568</td><td>&pound;585</td><td>&times; 1.25</td></tr>
+          <tr><td>Lighting</td><td>Best Boy</td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
+          <tr><td>Lighting</td><td>Desk Op</td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
+          <tr><td>Lighting</td><td>Lighting Technician</td><td>&pound;444</td><td>&pound;457</td><td>&times; 1.5</td></tr>
+          <tr><td>Lighting</td><td>Trainee</td><td>&pound;250</td><td>&pound;250</td><td>&times; 1.5</td></tr>
+          <tr><td>Rigging</td><td>Advanced Rigger</td><td>&pound;398</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Rigging</td><td>Basic Rigger</td><td>&pound;355</td><td>&pound;355</td><td>&times; 1.5</td></tr>
+          <tr><td>SFX</td><td>SFX Supervisor</td><td>&pound;1516</td><td>&pound;1561</td><td>&times; 1</td></tr>
+          <tr><td>SFX</td><td>Sr. SFX Technician</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
+          <tr><td>SFX</td><td>SFX Technician</td><td>&pound;519</td><td>&pound;535</td><td>&times; 1.25</td></tr>
+          <tr><td>SFX</td><td>SFX Assistant</td><td>&pound;435</td><td>&pound;448</td><td>&times; 1.5</td></tr>
+          <tr><td>SFX</td><td>Model Animator</td><td>&pound;796</td><td>&pound;820</td><td>&times; 1</td></tr>
+          <tr><td>SFX</td><td>Model Animator Asst</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
+          <tr><td>Art Dept</td><td>Art Director</td><td>&pound;852</td><td>&pound;878</td><td>&times; 1</td></tr>
+          <tr><td>Art Dept</td><td>Asst. Art Director</td><td>&pound;568</td><td>&pound;585</td><td>&times; 1.25</td></tr>
+          <tr><td>Art Dept</td><td>Stylist</td><td>&pound;628</td><td>&pound;647</td><td>&times; 1.25</td></tr>
+          <tr><td>Art Dept</td><td>Props Buyer</td><td>&pound;568</td><td>&pound;585</td><td>&times; 1.25</td></tr>
+          <tr><td>Art Dept</td><td>Master Props</td><td>&pound;506</td><td>&pound;521</td><td>&times; 1.25</td></tr>
+          <tr><td>Art Dept</td><td>Props</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Art Dept</td><td>Props Assistant</td><td>&pound;310</td><td>&pound;319</td><td>&times; 1.5</td></tr>
+          <tr><td>Art Dept</td><td>Scenic Artist</td><td>&pound;714</td><td>&pound;735</td><td>&times; 1</td></tr>
+          <tr><td>Art Dept</td><td>Home Economist</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
+          <tr><td>Construction</td><td>Construction Manager</td><td>&pound;532</td><td>&pound;548</td><td>&times; 1.25</td></tr>
+          <tr><td>Construction</td><td>Master Painter</td><td>&pound;497</td><td>&pound;512</td><td>&times; 1.25</td></tr>
+          <tr><td>Construction</td><td>Painter</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Construction</td><td>Master Carpenter</td><td>&pound;497</td><td>&pound;512</td><td>&times; 1.25</td></tr>
+          <tr><td>Construction</td><td>Carpenter</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Construction</td><td>Master Plasterer</td><td>&pound;497</td><td>&pound;512</td><td>&times; 1.25</td></tr>
+          <tr><td>Construction</td><td>Plasterer</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Construction</td><td>Standby Construction</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Construction</td><td>Stage Hand</td><td>&pound;359</td><td>&pound;370</td><td>&times; 1.5</td></tr>
+          <tr><td>Construction</td><td>Labourer</td><td>&pound;299</td><td>&pound;308</td><td>&times; 1.5</td></tr>
+          <tr><td>Sound</td><td>Sound Mixer</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
+          <tr><td>Sound</td><td>Boom Operator</td><td>&pound;519</td><td>&pound;535</td><td>&times; 1.25</td></tr>
+          <tr><td>Sound</td><td>Sound Maintenance</td><td>&pound;423</td><td>&pound;436</td><td>&times; 1.5</td></tr>
+          <tr><td>Sound</td><td>Sound Assistant</td><td>&pound;391</td><td>&pound;403</td><td>&times; 1.5</td></tr>
+          <tr><td>Costume</td><td>Costume Designer</td><td>&pound;674</td><td>&pound;694</td><td>&times; 1.25</td></tr>
+          <tr><td>Costume</td><td>Wardrobe Buyer</td><td>&pound;674</td><td>&pound;694</td><td>&times; 1.25</td></tr>
+          <tr><td>Costume</td><td>Wardrobe</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Hair &amp; Makeup</td><td>Chief Make Up Artist</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
+          <tr><td>Hair &amp; Makeup</td><td>Make Up</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Hair &amp; Makeup</td><td>Chief Hair Designer</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
+          <tr><td>Hair &amp; Makeup</td><td>Hairdresser</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Other</td><td>Driver</td><td>&pound;299</td><td>&pound;308</td><td>&times; 1.5</td></tr>
+          <tr><td>Other</td><td>Covid Supervisor</td><td>&pound;435</td><td>&pound;448</td><td>&times; 1.5</td></tr>
+          <tr id="rate-noresults" class="rate-noresults-msg" hidden><td colspan="5">No roles match. Try a different search, or clear the filter.</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>The overtime column shows each role's standard coefficient. Directors and producers have no overtime. Production managers, assistants and runners are shown at &times; 1, but their overtime is not a single multiplier: it is your basic hourly rate on a weekday, one and a half times it on a Saturday, and twice it on a Sunday or bank holiday.</p>
+
+      <h2>Rigging</h2>
+      <p>The two rigging rows in the table above are the APA card figures: Advanced Rigger £398 and Basic Rigger £355, both Grade I. Riggers on commercials generally work to the higher Bectu rate instead, and that is what TimeMachine applies: Master Rigger £675, Advanced Rigger £515 and Standby Rigger £515. The grade names differ between the two, so note that Advanced Rigger is £398 on the card but £515 on Bectu, and it is the Bectu figure the app uses.</p>
+      <p>For the full card and anything not shown, go to the APA's published <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">Recommended Crew Terms</a>.</p>
+
+      <!-- ALTERNATIVE TABLE, version 2: a representative subset of 15 roles across departments. To use it instead of the full table, replace the <tbody> rows above with the rows below, and keep the "for the full card" line so the rest is one click away.
+        <tbody>
+          <tr><td>Direction and Production</td><td>Director</td><td>&pound;933</td><td>&pound;961</td><td>none</td></tr>
+          <tr><td>Direction and Production</td><td>Production Runner</td><td>&pound;238</td><td>&pound;245</td><td>&times; 1</td></tr>
+          <tr><td>Assistant Directors</td><td>1st AD</td><td>&pound;785</td><td>&pound;809</td><td>&times; 1</td></tr>
+          <tr><td>Locations</td><td>Location Manager</td><td>&pound;580</td><td>&pound;597</td><td>&times; 1.25</td></tr>
+          <tr><td>Camera</td><td>DoP</td><td>&pound;1516</td><td>&pound;1561</td><td>&times; 1</td></tr>
+          <tr><td>Camera</td><td>Focus Puller (1st AC)</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
+          <tr><td>Grip</td><td>Key Grip</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
+          <tr><td>Lighting</td><td>Gaffer</td><td>&pound;568</td><td>&pound;585</td><td>&times; 1.25</td></tr>
+          <tr><td>Lighting</td><td>Lighting Technician</td><td>&pound;444</td><td>&pound;457</td><td>&times; 1.5</td></tr>
+          <tr><td>Art Dept</td><td>Art Director</td><td>&pound;852</td><td>&pound;878</td><td>&times; 1</td></tr>
+          <tr><td>Art Dept</td><td>Props</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
+          <tr><td>Construction</td><td>Construction Manager</td><td>&pound;532</td><td>&pound;548</td><td>&times; 1.25</td></tr>
+          <tr><td>Sound</td><td>Sound Mixer</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
+          <tr><td>Costume</td><td>Costume Designer</td><td>&pound;674</td><td>&pound;694</td><td>&times; 1.25</td></tr>
+          <tr><td>Hair and Makeup</td><td>Chief Make Up Artist</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
+        </tbody>
+      -->
+
+      <div class="cta-row">
+        <a href="/" class="btn">
+          Open TimeMachine
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA). It references the publicly available APA Recommended Crew Terms as a rate reference only. The rigging figures the app applies are Bectu rates, not the APA card, as explained above. This is general information, not legal or financial advice.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+  (function () {
+    var filter = document.getElementById('rate-filter');
+    var table = document.getElementById('rate-table');
+    if (!filter || !table || !table.tBodies.length) return;
+    var search = document.getElementById('rate-search');
+    var dept = document.getElementById('rate-dept');
+    var clear = document.getElementById('rate-clear');
+    var count = document.getElementById('rate-count');
+    var noRow = document.getElementById('rate-noresults');
+    var rows = [];
+    var seen = {};
+    Array.prototype.forEach.call(table.tBodies[0].rows, function (r) {
+      if (r === noRow) return;
+      rows.push(r);
+      var d = r.cells[0].textContent.trim();
+      if (d && !seen[d]) {
+        seen[d] = true;
+        var o = document.createElement('option');
+        o.value = d; o.textContent = d;
+        dept.appendChild(o);
+      }
+    });
+    var total = rows.length;
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var d = dept.value;
+      var shown = 0;
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var department = r.cells[0].textContent.trim();
+        var role = r.cells[1].textContent;
+        var okText = !q || role.toLowerCase().indexOf(q) !== -1 || department.toLowerCase().indexOf(q) !== -1;
+        var okDept = !d || department === d;
+        var vis = okText && okDept;
+        r.hidden = !vis;
+        if (vis) shown++;
+      }
+      if (noRow) noRow.hidden = shown !== 0;
+      count.textContent = 'Showing ' + shown + ' of ' + total + ' roles';
+    }
+
+    search.addEventListener('input', apply);
+    dept.addEventListener('change', apply);
+    clear.addEventListener('click', function () {
+      search.value = ''; dept.value = ''; apply(); search.focus();
+    });
+
+    filter.hidden = false;
+    apply();
+  })();
+  </script>
+
+</body>
+</html>
