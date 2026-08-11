@@ -40,8 +40,8 @@
       --border-soft: #1f1f1f;
       --text:      #f5f5f5;
       --text-2:    #a3a3a3;
-      --text-3:    #737373;
-      --text-4:    #525252;
+      --text-3:    #949494;
+      --text-4:    #8a8a8a;
 
       --tm-accent:    #0ea5e9;   /* sky-500 — brand only */
       --tm-accent-2:  #7dd3fc;   /* sky-300 */
@@ -174,7 +174,7 @@
     }
     .label.muted { color: var(--text-3); }
 
-    h1, h2, h3, h4 {
+    h1, h2, h3, h4, .wf-title {
       margin: 0;
       letter-spacing: -0.02em;
       font-weight: 800;
@@ -1017,7 +1017,7 @@
       letter-spacing: 0.18em;
       font-weight: 700;
     }
-    .workflow-step h4 {
+    .workflow-step .wf-title {
       font-size: 14px;
       font-weight: 800;
       letter-spacing: -0.01em;
@@ -1082,7 +1082,7 @@
     .roles-group {
       margin-top: 16px;
     }
-    .roles-group h5 {
+    .roles-group .role-title {
       font-size: 10px;
       letter-spacing: 0.22em;
       text-transform: uppercase;
@@ -1515,7 +1515,7 @@
             </svg>
           </div>
           <div class="ord">01</div>
-          <h4>Track the day</h4>
+          <div class="wf-title">Track the day</div>
           <p>Call time, breaks, wrap. Travel, mileage, kit money.</p>
         </div>
         <div class="workflow-step">
@@ -1525,7 +1525,7 @@
             </svg>
           </div>
           <div class="ord">02</div>
-          <h4>Total the pay</h4>
+          <div class="wf-title">Total the pay</div>
           <p>APA rules applied: penalties, OT grades, CWD, TOC.</p>
         </div>
         <div class="workflow-step">
@@ -1535,7 +1535,7 @@
             </svg>
           </div>
           <div class="ord">03</div>
-          <h4>Send the timesheet</h4>
+          <div class="wf-title">Send the timesheet</div>
           <p>Clean A4 PDF or plain text for WhatsApp / email.</p>
         </div>
         <div class="workflow-step">
@@ -1548,7 +1548,7 @@
             </svg>
           </div>
           <div class="ord">04</div>
-          <h4>Invoice &amp; track</h4>
+          <div class="wf-title">Invoice &amp; track</div>
           <p>One tap to invoice. Mark sent. Watch for paid.</p>
         </div>
       </div>
@@ -1910,7 +1910,7 @@
         </summary>
         <div class="roles-body">
           <div class="roles-group">
-            <h5>Lighting</h5>
+            <div class="role-title">Lighting</div>
             <div class="roles-chips">
               <span class="role-chip">Gaffer</span>
               <span class="role-chip">Best Boy</span>
@@ -1922,7 +1922,7 @@
             </div>
           </div>
           <div class="roles-group">
-            <h5>Camera</h5>
+            <div class="role-title">Camera</div>
             <div class="roles-chips">
               <span class="role-chip">DOP</span>
               <span class="role-chip">Focus Puller (1st AC)</span>
@@ -1934,7 +1934,7 @@
             </div>
           </div>
           <div class="roles-group">
-            <h5>Grip</h5>
+            <div class="role-title">Grip</div>
             <div class="roles-chips">
               <span class="role-chip">Key Grip</span>
               <span class="role-chip">Best Boy Grip</span>
@@ -1945,7 +1945,7 @@
             </div>
           </div>
           <div class="roles-group">
-            <h5>Sound</h5>
+            <div class="role-title">Sound</div>
             <div class="roles-chips">
               <span class="role-chip">Sound Mixer</span>
               <span class="role-chip">Boom Op</span>
@@ -1953,7 +1953,7 @@
             </div>
           </div>
           <div class="roles-group">
-            <h5>Art &amp; Construction</h5>
+            <div class="role-title">Art &amp; Construction</div>
             <div class="roles-chips">
               <span class="role-chip">Art Director</span>
               <span class="role-chip">Set Decorator</span>
@@ -1965,7 +1965,7 @@
             </div>
           </div>
           <div class="roles-group">
-            <h5>Costume, HMU, Locations</h5>
+            <div class="role-title">Costume, HMU, Locations</div>
             <div class="roles-chips">
               <span class="role-chip">Costume Supervisor</span>
               <span class="role-chip">Costume Standby</span>
@@ -1977,7 +1977,7 @@
             </div>
           </div>
           <div class="roles-group">
-            <h5>Production &amp; Direction</h5>
+            <div class="role-title">Production &amp; Direction</div>
             <div class="roles-chips">
               <span class="role-chip">1st AD</span>
               <span class="role-chip">2nd AD</span>
