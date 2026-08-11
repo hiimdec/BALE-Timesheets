@@ -6513,6 +6513,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           }
         }
       }
+      // Kit + expenses (Phase 5b) — the same per-day shapes APA carries, priced
+      // here (never through the engine, the box-rental pattern). Itemised kit and
+      // ad-hoc kit money join box rental in the KIT group; expenses go to EXTRAS,
+      // Per Diem keeping its own label and the rest the "Expense: " prefix so the
+      // printed invoice routes them exactly as APA does. Box rental stays a
+      // separate line - it is a cash fee, kit is an itemised list.
+      for (const { days } of byWeek) {
+        for (const d of days) {
+          for (const it of (d.kitItems || [])) {
+            const rate = Number(it.rate) || 0; if (rate <= 0) continue;
+            const nm = (it.name && String(it.name).trim()) || 'Kit';
+            bump(`kit|item|${it.itemId || nm}|${rate.toFixed(2)}`, { group: 'kit', label: nm, rate }, d.date, { qty: 1, amount: rate });
+          }
+          const km = Number(d.kitMoneyAmount) || 0;
+          if (km > 0) bump(`kit|adhoc|${km.toFixed(2)}`, { group: 'kit', label: 'Kit', rate: km }, d.date, { qty: 1, amount: km });
+          for (const exp of (d.expenses || [])) {
+            const amt = Number(exp.amount) || 0; if (amt <= 0) continue;
+            if (exp.presetId === 'builtin-perdiem') {
+              bump(`extras|perdiem`, { group: 'extras', label: 'Per Diem', rate: null, isExpense: true }, d.date, { qty: 1, amount: amt });
+            } else {
+              const nm = exp.name || exp.category || 'Other';
+              bump(`extras|exp|${nm}|${exp.detail || ''}`, { group: 'extras', label: `Expense: ${nm}`, rate: null, isExpense: true }, d.date, { qty: 1, amount: amt });
+            }
+          }
+        }
+      }
       return [...map.values()].map(e => {
         const n = e.dates.length;
         const detail = e.isMileage
@@ -6522,7 +6548,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           : n === 0 ? ''
           : n === 1 ? fmtDateShort(e.dates[0])
           : `${n} days`;
-        return { id: uid(), label: e.label, detail, qty: e.qty, rate: e.rate, amount: e.amount, discountedQty: null, isExpense: false, group: e.group };
+        return { id: uid(), label: e.label, detail, qty: e.qty, rate: e.rate, amount: e.amount, discountedQty: null, isExpense: e.isExpense || false, group: e.group };
       });
     }
 
@@ -12388,77 +12414,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             // the user can still untick them.
             const myCrewId = getEffectiveUserCrewId(production, userPrefs);
             const isUsersOwnDay = myCrewId != null && v.crewId === myCrewId;
-            const inventory = isUsersOwnDay ? ((userPrefs && userPrefs.kitInventory) || []) : [];
-            const dayItems = v.kitItems || [];
-            const onIds = new Set(dayItems.map(it => it && it.itemId).filter(Boolean));
-            const inventoryIds = new Set(inventory.map(it => it.id));
-            const strandedItems = dayItems.filter(it => it && it.itemId && !inventoryIds.has(it.itemId));
-            const toggleItem = (invItem) => {
-              if (onIds.has(invItem.id)) {
-                set({ kitItems: dayItems.filter(it => it.itemId !== invItem.id) });
-              } else {
-                // Manual toggle-on: snapshot name+rate AT TOGGLE TIME. NO
-                // auto:true flag — items added manually here survive
-                // applyKitAutoRemove when the day stops being kit-bearing.
-                set({ kitItems: [...dayItems, { itemId: invItem.id, name: invItem.name || '', rate: Number(invItem.defaultDailyRate) || 0 }] });
-              }
-            };
-            const untickStranded = (entry) => {
-              set({ kitItems: dayItems.filter(it => it.itemId !== entry.itemId) });
-            };
-            const hasInventory = inventory.length > 0;
-            const hasAny = hasInventory || strandedItems.length > 0;
+            // The picker body is shared with long form (Phase 5b) - APA keeps its
+            // SectionCard chrome, long form wraps the same body in a chip panel.
             return (
               <SectionCard title="Kit" variant="condition" onClose={() => toggleChip("kitMoney")}>
-                {hasAny && (
-                  <div className="space-y-2">
-                    {inventory.map((invItem) => {
-                      const isOn = onIds.has(invItem.id);
-                      const rate = Number(invItem.defaultDailyRate) || 0;
-                      return (
-                        <div key={invItem.id} className="flex items-center gap-2 px-2.5 py-2 bg-neutral-900 border border-neutral-800 rounded-lg">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm text-neutral-100 truncate">{invItem.name || <span className="text-neutral-500 italic">Unnamed item</span>}</div>
-                            <div className="text-[10px] text-neutral-500 font-mono">{fmtGBP(rate)}/day</div>
-                          </div>
-                          <Toggle
-                            value={isOn}
-                            onChange={() => toggleItem(invItem)}
-                            ariaLabel={`Tick ${invItem.name || 'kit item'} for this day`}
-                          />
-                        </div>
-                      );
-                    })}
-                    {strandedItems.length > 0 && (
-                      <>
-                        <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold pt-1">No longer in Kit Room</div>
-                        {strandedItems.map((entry) => (
-                          <div key={entry.itemId} className="flex items-center gap-2 px-2.5 py-2 bg-neutral-900 border border-neutral-800 rounded-lg">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm text-neutral-300 truncate">{entry.name || <span className="text-neutral-500 italic">Unnamed item</span>}</div>
-                              <div className="text-[10px] text-neutral-500 font-mono">{fmtGBP(Number(entry.rate) || 0)}/day · stranded</div>
-                            </div>
-                            <Toggle
-                              value={true}
-                              onChange={() => untickStranded(entry)}
-                              ariaLabel={`Untick stranded ${entry.name || 'kit item'}`}
-                            />
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                )}
-                {!hasAny && isUsersOwnDay && (
-                  <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
-                    Your Kit Room is empty. Add items in <span className="text-neutral-300">Settings → Kit Room</span> to tick them on individual days, or use the ad-hoc amount below for one-off kit charges.
-                  </div>
-                )}
-                <div className={hasAny ? 'mt-3 pt-3 border-t border-neutral-800' : ''}>
-                  <Field label="Kit (ad-hoc) - £/day" hint="Added on top of any ticked items above. Use for one-off kit not in your Kit Room.">
-                    <Input type="number" min="0" step="0.01" value={v.kitMoneyAmount ?? 0} onChange={(e) => set({ kitMoneyAmount: Number(e.target.value) })} />
-                  </Field>
-                </div>
+                <KitDayPickerBody day={v} userPrefs={userPrefs} isUsersOwnDay={isUsersOwnDay} onChange={set} />
               </SectionCard>
             );
           })()}
@@ -13705,6 +13665,85 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           id: uid(), presetId: p.id, name: p.name || '', amount: Number(p.defaultAmount) || 0, detail: '',
         })),
       };
+    }
+
+    // The per-day kit picker body — extracted Phase 5b so long form reuses it
+    // wholesale (no new renderer). Ticks Kit Room items onto the day, snapshotting
+    // name+rate at toggle time so a later Kit Room edit never mutates a day already
+    // set; lists items no longer in the room ("stranded") so they can be unticked;
+    // and takes an ad-hoc one-off amount. Each context supplies its own chrome:
+    // APA a SectionCard, long form a chip panel.
+    function KitDayPickerBody({ day, userPrefs, isUsersOwnDay, onChange }) {
+      const inventory = isUsersOwnDay ? ((userPrefs && userPrefs.kitInventory) || []) : [];
+      const dayItems = day.kitItems || [];
+      const onIds = new Set(dayItems.map(it => it && it.itemId).filter(Boolean));
+      const inventoryIds = new Set(inventory.map(it => it.id));
+      const strandedItems = dayItems.filter(it => it && it.itemId && !inventoryIds.has(it.itemId));
+      const toggleItem = (invItem) => {
+        if (onIds.has(invItem.id)) {
+          onChange({ kitItems: dayItems.filter(it => it.itemId !== invItem.id) });
+        } else {
+          onChange({ kitItems: [...dayItems, { itemId: invItem.id, name: invItem.name || '', rate: Number(invItem.defaultDailyRate) || 0 }] });
+        }
+      };
+      const untickStranded = (entry) => {
+        onChange({ kitItems: dayItems.filter(it => it.itemId !== entry.itemId) });
+      };
+      const hasInventory = inventory.length > 0;
+      const hasAny = hasInventory || strandedItems.length > 0;
+      return (
+        <>
+          {hasAny && (
+            <div className="space-y-2">
+              {inventory.map((invItem) => {
+                const isOn = onIds.has(invItem.id);
+                const rate = Number(invItem.defaultDailyRate) || 0;
+                return (
+                  <div key={invItem.id} className="flex items-center gap-2 px-2.5 py-2 bg-neutral-900 border border-neutral-800 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-neutral-100 truncate">{invItem.name || <span className="text-neutral-500 italic">Unnamed item</span>}</div>
+                      <div className="text-[10px] text-neutral-500 font-mono">{fmtGBP(rate)}/day</div>
+                    </div>
+                    <Toggle
+                      value={isOn}
+                      onChange={() => toggleItem(invItem)}
+                      ariaLabel={`Tick ${invItem.name || 'kit item'} for this day`}
+                    />
+                  </div>
+                );
+              })}
+              {strandedItems.length > 0 && (
+                <>
+                  <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold pt-1">No longer in Kit Room</div>
+                  {strandedItems.map((entry) => (
+                    <div key={entry.itemId} className="flex items-center gap-2 px-2.5 py-2 bg-neutral-900 border border-neutral-800 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-neutral-300 truncate">{entry.name || <span className="text-neutral-500 italic">Unnamed item</span>}</div>
+                        <div className="text-[10px] text-neutral-500 font-mono">{fmtGBP(Number(entry.rate) || 0)}/day · stranded</div>
+                      </div>
+                      <Toggle
+                        value={true}
+                        onChange={() => untickStranded(entry)}
+                        ariaLabel={`Untick stranded ${entry.name || 'kit item'}`}
+                      />
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+          {!hasAny && isUsersOwnDay && (
+            <div className="text-[11px] text-neutral-500 leading-relaxed mb-1">
+              Your Kit Room is empty. Add items in <span className="text-neutral-300">Settings → Kit Room</span> to tick them on individual days, or use the ad-hoc amount below for one-off kit charges.
+            </div>
+          )}
+          <div className={hasAny ? 'mt-3 pt-3 border-t border-neutral-800' : ''}>
+            <Field label="Kit (ad-hoc) - £/day" hint="Added on top of any ticked items above. Use for one-off kit not in your Kit Room.">
+              <Input type="number" min="0" step="0.01" value={day.kitMoneyAmount ?? 0} onChange={(e) => onChange({ kitMoneyAmount: Number(e.target.value) })} />
+            </Field>
+          </div>
+        </>
+      );
     }
 
     // Shared expenses editor — the Rate-style Included/Available picker (mirrors the
@@ -21906,7 +21945,7 @@ const setDays = (updater) =>
     //    film carries CAMERA WRAP then WRAP as two rate boundaries (TV keeps
     //    one wrap — its split lives in the called-minutes chip); the chip
     //    row is the long form set; the money block sits at the bottom. ──
-    function LongFormDayEntryForm({ production, day, onChange, isToday, showToast }) {
+    function LongFormDayEntryForm({ production, day, onChange, isToday, showToast, userPrefs, setUserPrefs }) {
       const d = day;
       const set = (patch) => onChange(patch);
       const isTV = !LONGFORM_AGREEMENTS[production.agreementVersion] ? false : !LONGFORM_AGREEMENTS[production.agreementVersion].overtime.camera;
@@ -22003,6 +22042,14 @@ const setDays = (updater) =>
       const fullLunchMins = effLunchMins;
       const camOtOn = d.cameraOtCalledMins !== undefined;
       const stepUpOn = d.dayAgreementClass !== undefined || d.dayContractDailyRate !== undefined;
+      // Kit + expenses (Phase 5b): the same shapes and editors as APA, surfaced on
+      // long form days. Both price on the invoice (kit -> Kit group, expenses ->
+      // Extras), never through the engine - the box rental pattern.
+      const kitItemsTotal = (d.kitItems || []).reduce((s, it) => s + (Number(it.rate) || 0), 0);
+      const kitTotal = kitItemsTotal + (Number(d.kitMoneyAmount) || 0);
+      const kitOn = (d.kitItems || []).length > 0 || (Number(d.kitMoneyAmount) || 0) > 0;
+      const expensesTotal = (d.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const expensesOn = (d.expenses || []).length > 0;
       const classes = AGREEMENT_CLASSES[production.agreement] || ['standard'];
       // Mileage + travel (Phase 4f): a claim the user enters, never derived.
       const mileageOn = d.lfMileage !== undefined;
@@ -22222,6 +22269,8 @@ const setDays = (updater) =>
                 {renderChip('stepUp', 'Class / rate', stepUpOn, stepUpOn ? ((AGREEMENT_CLASS_META[d.dayAgreementClass] || {}).label || (d.dayContractDailyRate !== undefined ? fmtGBP(d.dayContractDailyRate) : null)) : null)}
                 {runFlagged && renderChip('sixSeven', runLabel, d.sixthSeventhOverride === true, d.sixthSeventhOverride ? 'waived' : null)}
                 {renderChip('boxRental', 'Box rental', d.boxRentalDay !== undefined, d.boxRentalDay !== undefined ? fmtGBP(d.boxRentalDay) : null)}
+                {renderChip('kit', 'Kit', kitOn, kitOn ? fmtGBP(kitTotal) : null)}
+                {renderChip('expenses', 'Expenses', expensesOn, expensesOn ? fmtGBP(expensesTotal) : null)}
                 {renderChip('mileage', 'Mileage', mileageOn, mileageSummary)}
                 {renderChip('travel', 'Travel time', travelOn, travelSummary)}
                 {notesChipAndPanel}
@@ -22232,6 +22281,23 @@ const setDays = (updater) =>
                     <Input type="number" min="0" step="1" value={d.boxRentalDay ?? ''} onChange={(e) => { const v = e.target.value; set({ boxRentalDay: v === '' ? undefined : Math.max(0, Number(v) || 0) }); }} />
                   </Field>
                   <p className="text-[10px] text-neutral-600 leading-tight">Kit is usually weekly - set that on the week. This overrides just this day (film §5.9 prices a daily's box pro-rata). Leave it empty to claim nothing.</p>
+                </div>
+              )}
+              {expandedChips.has('kit') && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3">
+                  <KitDayPickerBody day={d} userPrefs={userPrefs} isUsersOwnDay={true} onChange={set} />
+                  <p className="text-[10px] text-neutral-600 leading-tight mt-2">Itemised kit prices onto the invoice's Kit group, alongside box rental. Your Kit Room is the same one your commercials use (Settings). Box rental stays separate - it's a cash fee, this is an itemised list.</p>
+                </div>
+              )}
+              {expandedChips.has('expenses') && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-3">
+                  <ExpensesEditor
+                    expenses={d.expenses || []}
+                    presets={(userPrefs && userPrefs.expensePresets) || []}
+                    onChange={(next) => set({ expenses: next })}
+                    onSavePreset={setUserPrefs ? (preset) => setUserPrefs(prev => ({ ...prev, expensePresets: [...(prev.expensePresets || []), preset] })) : undefined}
+                  />
+                  <p className="text-[10px] text-neutral-600 leading-tight mt-2">One-off expenses price onto the invoice's Extras group. Per diems are a deal-memo daily rate (TV §8.11) and belong in Job settings - that's coming, not here.</p>
                 </div>
               )}
               {expandedChips.has('mileage') && (
@@ -22688,6 +22754,8 @@ const setDays = (updater) =>
                           onChange={(patch) => updateDayById(day.id, patch)}
                           isToday={day?.date === todayISO()}
                           showToast={showDayToast}
+                          userPrefs={userPrefs}
+                          setUserPrefs={setUserPrefs}
                         />
                       </div>
                     </>

@@ -3221,6 +3221,41 @@ async function main() {
           !!unp && /60m/.test(unp.label || ''),
           JSON.stringify(r2.lines.map(l => [l.kind, l.amount, l.unpriced, l.label])));
       }
+
+      // ── LF24: kit + expenses on long form (Phase 5b). The same per-day shapes
+      //    APA carries, priced on the invoice like box rental - never the engine.
+      //    Itemised kit and ad-hoc kit money join box rental in the KIT group;
+      //    expenses land in EXTRAS with the printed-invoice expense routing; box
+      //    rental stays its own line (a cash fee, not an itemised entry). ──
+      {
+        const kitDay = D('2026-08-10', {
+          kitItems: [{ itemId: 'k1', name: 'Camera body', rate: 60 }, { itemId: 'k2', name: 'Sticks', rate: 15 }],
+          kitMoneyAmount: 20,
+          expenses: [{ id: 'e1', presetId: null, name: 'Parking', amount: 12, detail: '' }, { id: 'e2', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 40, detail: '' }],
+          boxRentalDay: 100,
+        });
+        const kp = { id: 'pk', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wk', '2026-08-10', '2026-08-16')], days: [kitDay] };
+        const kl = LINES(kp, 'c1', ['wk']);
+        const kitG = kl.filter(l => l.group === 'kit'), extrasG = kl.filter(l => l.group === 'extras');
+        const cam = kitG.find(l => l.label === 'Camera body');
+        const adhoc = kitG.find(l => l.label === 'Kit');
+        const box = kitG.find(l => /Box rental/.test(l.label));
+        check('LF24a itemised kit prices into the KIT group as its own lines (Camera body £60, Sticks £15), ad-hoc kit money is a separate £20 line, and box rental stays its OWN line (£100) - never folded into the itemised kit',
+          !!cam && approx(cam.amount, 60) && kitG.some(l => l.label === 'Sticks' && approx(l.amount, 15)) &&
+          !!adhoc && approx(adhoc.amount, 20) && !!box && approx(box.amount, 100),
+          JSON.stringify(kitG.map(l => [l.label, l.amount])));
+        const parking = extrasG.find(l => l.label === 'Expense: Parking');
+        const perdiem = extrasG.find(l => l.label === 'Per Diem');
+        check('LF24b one-off expenses land in EXTRAS with the "Expense: " prefix and isExpense set (Parking £12); a Per Diem entry keeps its own label; the day-rate group is untouched (base still £250)',
+          !!parking && approx(parking.amount, 12) && parking.isExpense === true && parking.group === 'extras' &&
+          !!perdiem && approx(perdiem.amount, 40) && perdiem.isExpense === true &&
+          approx((kl.filter(l => l.group === 'day').find(l => /Basic Daily Rate/.test(l.label)) || {}).amount ?? -1, 250),
+          JSON.stringify(extrasG.map(l => [l.label, l.amount, l.isExpense])));
+        const plain = LINES({ ...kp, days: [D('2026-08-11')], weeks: [W('wk2', '2026-08-10', '2026-08-16')] }, 'c1', ['wk2']);
+        check('LF24c a day with no kit and no expenses emits no kit-item or expense lines (absent means absent, the box-rental pattern - existing LF14 fixtures stay byte-identical)',
+          plain.filter(l => l.group === 'extras').length === 0 && plain.filter(l => l.group === 'kit').length === 0,
+          JSON.stringify(plain.map(l => [l.group, l.label])));
+      }
     } else {
       for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h', 'LF16a', 'LF16b', 'LF16c', 'LF16d', 'LF16e', 'LF16f', 'LF16g', 'LF18a', 'LF18b', 'LF18c', 'LF18d', 'LF18e', 'LF18f', 'LF18g', 'LF18h', 'LF20a', 'LF20b', 'LF20c', 'LF20d']) check(l + ' invoice builders exposed', false, 'not exposed');
     }
