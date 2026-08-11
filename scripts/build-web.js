@@ -57,8 +57,8 @@ const ALLOW = [
   'articles/prep-recce-and-pre-light-days.html',
   'articles/shoot-cancelled-what-are-you-owed.html',
   'articles/time-off-the-clock.html',
-  // New article (chunk 5): unlinked, kept out of the sitemap and the articles index, pending review.
   'articles/apa-rates-2026.html',
+  'articles/how-to-invoice-an-apa-job.html',
   // PWA / crawl metadata
   'manifest.json',
   'robots.txt',

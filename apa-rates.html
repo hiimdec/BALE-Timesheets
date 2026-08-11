@@ -163,6 +163,7 @@
       padding: 12px 16px;
     }
     .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+    .dag { color: var(--tm-accent); font-weight: 700; }
 
     /* Rate-table filter. Progressive enhancement: the controls carry [hidden]
        in the markup and JS removes it, so with JS off the page is the full,
@@ -318,10 +319,10 @@
           <tr><td>Grip</td><td>Key Grip</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
           <tr><td>Grip</td><td>Non-Key Grip</td><td>&pound;511</td><td>&pound;526</td><td>&times; 1.25</td></tr>
           <tr><td>Lighting</td><td>Gaffer</td><td>&pound;568</td><td>&pound;585</td><td>&times; 1.25</td></tr>
-          <tr><td>Lighting</td><td>Best Boy</td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
+          <tr><td>Lighting</td><td>Best Boy<sup class="dag">&dagger;</sup></td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
           <tr><td>Lighting</td><td>Desk Op</td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
           <tr><td>Lighting</td><td>Lighting Technician</td><td>&pound;444</td><td>&pound;457</td><td>&times; 1.5</td></tr>
-          <tr><td>Lighting</td><td>Trainee</td><td>&pound;250</td><td>&pound;250</td><td>&times; 1.5</td></tr>
+          <tr><td>Lighting</td><td>Trainee<sup class="dag">&dagger;</sup></td><td>&pound;250</td><td>&pound;250</td><td>&times; 1.5</td></tr>
           <tr><td>Rigging</td><td>Advanced Rigger</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
           <tr><td>Rigging</td><td>Basic Rigger</td><td>&pound;345</td><td>&pound;355</td><td>&times; 1.5</td></tr>
           <tr><td>SFX</td><td>SFX Supervisor</td><td>&pound;1516</td><td>&pound;1561</td><td>&times; 1</td></tr>
@@ -368,6 +369,9 @@
       </div>
 
       <p>The overtime column shows each role's standard coefficient. Directors and producers have no overtime. Production managers, assistants and runners are shown at &times; 1, but their overtime is not a single multiplier: it is your basic hourly rate on a weekday, one and a half times it on a Saturday, and twice it on a Sunday or bank holiday.</p>
+
+      <h2>Where the figures come from</h2>
+      <p>Almost every row here is the APA card rate. Two are marked <sup class="dag">&dagger;</sup> because they are not: Best Boy and Lighting Trainee are TimeMachine defaults, not card grades. Best Boy's figure matches the card's Programmable Lighting Desk Op grade exactly on both cards, &pound;512 then &pound;527, and the card has no separate Best Boy grade. Lighting Trainee is not an APA grade at all, and its &pound;250 is a TimeMachine default. Rigging is a third case, just below: those rows show the card rate, but the app applies the higher Bectu figures.</p>
 
       <h2>Rigging</h2>
       <p>The two rigging rows in the table above are the APA card figures, both Grade I, and they rise with the 2026 card like the rest. Riggers on commercials generally work to the higher Bectu rate instead, and that is what TimeMachine applies: Master Rigger £675, Advanced Rigger £515 and Standby Rigger £515. Mind the overlap in names: an Advanced Rigger on the card is the rate shown above, but on Bectu an Advanced Rigger is £515, and it is the Bectu figure the app uses.</p>
