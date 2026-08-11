@@ -2519,6 +2519,14 @@
         // Sept 2026 card — BDR-only uplift (~3%, rounded to the pound);
         // otCoef / noOT / pmpa are card-invariant. Allowances (mileage,
         // missed meal, late break) carry over unchanged per Derrick.
+        // Published OT grade CEILINGS (each grade's role maximum from the
+        // Sept 2026 card CSV, committed at the repo root), read only by the
+        // card-less-role fallback (autoOtCoef) - a known role always takes
+        // its own otCoef. Ceilings, never derived from this card's rates:
+        // deriving would let the £675 Master Rigger (Grade I, carried over)
+        // blow Grade I's ceiling. Grade III is the fallthrough. Next
+        // September's card carries its own.
+        otGrades: { '1.5': 457, '1.25': 694 },
         departments: {
           "Direction & Production": {
             "Director":             { bdr: 961,  otCoef: 0,    noOT: true },
@@ -4035,9 +4043,25 @@
     const ROLE_ORDER = Object.values(DEPARTMENTS).flatMap(roles => Object.keys(roles));
     const ROLE_TO_DEPT = Object.fromEntries(Object.entries(DEPARTMENTS).flatMap(([dept, roles]) => Object.keys(roles).map(role => [role, dept])));
 
-    // Reverse lookup: role name → department
-    function autoOtCoef(bdr) {
+    // Fallback OT grade for a role the card doesn't cover - a legacy or
+    // imported record carrying a role string that's not on the card. Every
+    // picker role has a card entry with its own otCoef, and a custom RATE
+    // never changes the GRADE, so this fires for card-less roles only.
+    // The published bands OVERLAP (Sept 2026: I £256-457, II £389-694,
+    // III £553-1,561) - no threshold separates them, because the card
+    // assigns grade per role. So where we must guess: claim the MOST
+    // FAVOURABLE grade consistent with the rate and flag the assumption
+    // at the surface - never silently under-claim. Cards from Sept 2026
+    // carry their published grade ceilings (otGrades, versioned with the
+    // card); the 2025 card has none and keeps the legacy thresholds
+    // (ruled: the card path never reaches this - not worth versioning).
+    function autoOtCoef(bdr, otGrades) {
       const n = Number(bdr) || 0;
+      if (otGrades) {
+        if (n <= Number(otGrades['1.5'])) return 1.5;   // within Grade I's ceiling
+        if (n <= Number(otGrades['1.25'])) return 1.25; // within Grade II's ceiling
+        return 1.0;
+      }
       if (n >= 677) return 1.0;
       if (n >= 445) return 1.25;
       return 1.5;
@@ -10907,6 +10931,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [editing, setEditing] = useState(null);
       // Rate copies resolve through the production's effective-dated card.
       const cardRoles = roleDefaultsFor(production);
+      // The resolved card's published grade ceilings, for the card-less-role
+      // fallback only (undefined on pre-2026 cards → legacy thresholds).
+      const cardOtGrades = resolveRateCard(production && production.startDate).otGrades;
       const blank = { id: "", name: "", role: "Lighting Technician", bdr: cardRoles["Lighting Technician"].bdr, otCoef: cardRoles["Lighting Technician"].otCoef, otRate: cardRoles["Lighting Technician"].otRate ?? null, vatRegistered: false, vatRate: 20, kitMoneyEnabled: false, kitMoneyAmount: 0, isDriver: false, email: "" };
       const [form, setForm] = useState(blank);
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -10933,7 +10960,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         cancel();
       };
       const remove = (id) => { onPushUndo('Crew member removed'); setCrew((prev) => prev.filter((c) => c.id !== id)); setConfirmRemove(null); };
-      const onRoleChange = (role) => { const d = cardRoles[role] || {}; setForm((f) => ({ ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr), otRate: d.otRate ?? null })); };
+      const onRoleChange = (role) => { const d = cardRoles[role] || {}; setForm((f) => ({ ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr, cardOtGrades), otRate: d.otRate ?? null })); };
       const sortByRole = () => {
         setCrew((prev) => [...prev].sort((a, b) => {
           const r = roleRank(a.role) - roleRank(b.role);
@@ -11087,9 +11114,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   </Select>
                 </Field>
                 <Field label="Basic Day Rate (£)" hint="Editable - default is APA max for role">
-                  <Input type="number" step="0.01" min="0" value={form.bdr} onChange={(e) => { const bdr = Number(e.target.value); setForm({ ...form, bdr, otCoef: autoOtCoef(bdr) }); }} />
+                  {/* The rate, not the grade: a custom rate leaves otCoef alone (the
+                      card assigns grade per ROLE - typing £470 doesn't stop you being
+                      a lighting technician). Matches the solo editor. The Grade select
+                      below stays the manual override. */}
+                  <Input type="number" step="0.01" min="0" value={form.bdr} onChange={(e) => setForm({ ...form, bdr: Number(e.target.value) })} />
                 </Field>
-                <Field label="OT Coefficient" hint="Grade I=1.5× · II=1.25× · III=1.0×">
+                <Field label="OT Coefficient" hint={cardRoles[form.role] ? "Grade I=1.5× · II=1.25× · III=1.0×" : "Not on the rate card - graded from the rate at the most favourable consistent grade"}>
                   <Select value={form.otCoef} onChange={(e) => setForm({ ...form, otCoef: Number(e.target.value) })}>
                     <option value={1.5}>Grade I - 1.5×</option>
                     <option value={1.25}>Grade II - 1.25×</option>

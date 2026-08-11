@@ -214,6 +214,32 @@ money: entry points because long form £ becomes meaningful to show and must
 come from the right engine, aggregates because a long form total silently
 joining an APA rollup stops being £0 noise and becomes a wrong number.
 
+## Duplicated gates — a standing hazard (ruled Phase 6)
+
+When one rule has two enforcement points, they share one constant or they
+drift. Three instances have now been found on this project, each caught late:
+
+1. **The two engines' shared literals.** `calculateDay` and `calculatePmpaDay`
+   each hardcoded the same mileage fallback and weekend multipliers. The
+   mileage pref then went in as a third copy of the same figure and stayed
+   dead for three months because the engines' own copies kept answering.
+2. **The OT grade thresholds vs the card.** The card carried the coefficient
+   per role; `autoOtCoef` carried a parallel threshold guess. The card
+   updated in September, the guess didn't, and every custom rate typed in an
+   overlap zone was misgraded.
+3. **The Live Activity qualify conditions.** Start routed through
+   `liveActivityDescriptor`; the reconcile sweep's end branch carried its own
+   inline copy of the qualify test. The Phase 6 day-type allowlist would have
+   gated starts but left a running card unkillable from the sweep if the two
+   hadn't been unified on `LIVE_ACTIVITY_DAY_TYPES` with the same dayType
+   merge.
+
+The rule when adding any gate or figure that already exists somewhere else:
+put the value in ONE place (a shared constant, the rate card, the ruleset
+table) and make every enforcement point read it — or, where the reads must
+stay separate for cheapness (the sweep's inline qualify), pin BOTH sites to
+the same shape in the audit so a drift goes RED instead of silent.
+
 ## Still open (claim-and-flag applies)
 
 The live inference list is in the Phase 1b proposal record; headline items the

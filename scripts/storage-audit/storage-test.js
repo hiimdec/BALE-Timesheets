@@ -285,6 +285,7 @@ async function transformedAppCode() {
     'try { globalThis.__lfRoleRefLine = lfRoleRefLine; } catch (_) {}\n' +
     'try { globalThis.__applyLfRoleOnly = applyLfRoleOnly; } catch (_) {}\n' +
     'try { globalThis.__seededMileageRate = seededMileageRate; } catch (_) {}\n' +
+    'try { globalThis.__autoOtCoef = autoOtCoef; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
     'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
@@ -3373,6 +3374,48 @@ async function main() {
       check('LF26b all three APA mileage sites read the resolved per-job rate and the hardcoded 0.5 literal is gone (2 resolvers: calculateDay + calculatePmpaDay; 3 push sites)',
         perJob === 3 && literal === 0 && resolve === 2,
         `miles*mileageRate=${perJob}, miles*0.5=${literal}, resolvers=${resolve}`);
+    }
+
+    // ── OTG: the OT coefficient comes from the card (Phase 6 Part 1). The crux:
+    //    typing a custom rate changed the GRADE - the crew editor's rate input
+    //    re-ran autoOtCoef on every keystroke, clobbering the card's per-role
+    //    coefficient with a 2025-threshold guess (under-grading ten 2026-card
+    //    roles' defaults, over-grading rates typed below band). Now the rate
+    //    input writes the rate only; autoOtCoef survives solely as the
+    //    card-less-role fallback, reading the PUBLISHED grade ceilings carried
+    //    on the card (otGrades) at the most favourable consistent grade. ──
+    {
+      const fn = sb.__autoOtCoef;
+      const cards = sb.__RATE_CARDS;
+      const g = cards && cards[1] && cards[1].otGrades;
+      if (typeof fn === 'function' && g) {
+        // Genuine-divergence cases (the mileage lesson: pin where old and new
+        // behaviour DIFFER, not a default path where wrong and right agree).
+        // Same input through both paths:
+        check('OTG1 the card-era fallback claims the most favourable consistent grade where the legacy thresholds under-claimed - £450 is Grade I (legacy said II), £680 is Grade II (legacy said III), £700 is beyond both ceilings (III); £400 is Grade I on both paths',
+          fn(450, g) === 1.5 && fn(450) === 1.25 &&
+          fn(680, g) === 1.25 && fn(680) === 1.0 &&
+          fn(700, g) === 1.0 &&
+          fn(400, g) === 1.5 && fn(400) === 1.5,
+          JSON.stringify({ g, at450: [fn(450, g), fn(450)], at680: [fn(680, g), fn(680)] }));
+        check('OTG2 the ceilings are the published Sept 2026 per-grade maxima (I=457, II=694) carried ON the card, versioned with it; the 2025 card carries none (ruled: its fallback keeps the legacy thresholds)',
+          Number(g['1.5']) === 457 && Number(g['1.25']) === 694 && cards[0].otGrades === undefined,
+          JSON.stringify({ g, card0: cards[0].otGrades }));
+      } else {
+        check('OTG1 autoOtCoef + the 2026 card otGrades exposed', false, 'not exposed');
+      }
+      const src3 = fs.readFileSync(SRC_HTML, 'utf8');
+      // The crux at the source: the rate input writes the rate ONLY (the old
+      // clobber pattern is gone), autoOtCoef has exactly one call site (the
+      // onRoleChange card-less fallback, fed the card's ceilings), and the
+      // assumption is flagged on the Grade field when the role is card-less.
+      const clobber = (src3.match(/otCoef: autoOtCoef\(bdr\)/g) || []).length;
+      const calls = (src3.match(/autoOtCoef\(/g) || []).length; // the definition + the single fallback
+      const fallback = (src3.match(/d\.otCoef \?\? autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\)/g) || []).length;
+      const flag = /hint=\{cardRoles\[form\.role\] \? "Grade I=1\.5× · II=1\.25× · III=1\.0×" : "Not on the rate card - graded from the rate at the most favourable consistent grade"\}/.test(src3);
+      check('OTG3 a custom rate changes the rate, not the grade - the crew editor rate input no longer touches otCoef; autoOtCoef survives at exactly ONE call site (the card-less fallback with cardOtGrades); the card-less assumption is FLAGGED on the Grade field',
+        clobber === 0 && calls === 2 && fallback === 1 && flag,
+        `clobber=${clobber} calls=${calls} fallback=${fallback} flag=${flag}`);
     }
   }
 
