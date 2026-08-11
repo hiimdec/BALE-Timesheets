@@ -7027,10 +7027,11 @@ async function main() {
     check('TT9a unmount-persists vs disqualification — the effect cleanup ONLY clears the debounce timer (never ends), so navigating away keeps the card; ends happen solely inside the effect body (disqualify/wrap) or via the sweep',
       /return \(\) => clearTimeout\(timer\);/.test(html) &&
       !/return \(\) => \{[^}]{0,160}LiveActivity\.end/.test(html));
-    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, master pref enabled, per-shoot flag not false), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
+    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, master pref enabled, per-shoot flag not false, SET-DAY allowlist LIVE_ACTIVITY_DAY_TYPES), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
-      /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
+      /const laType = rec \? \(rec\.dayType \?\? \(dd && dd\.dayType\) \?\? \(pr\.defaultDay && pr\.defaultDay\.dayType\) \?\? "Shoot"\) : null;/.test(html) &&
+      /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\) && LIVE_ACTIVITY_DAY_TYPES\.includes\(laType\);/.test(html) &&
       // windows widened 700→900 / 160→340 for the fix/la-diagnostics debugLog
       // lines beside the sweep's console.logs — the assertions (end
       // non-qualifying via endForProduction, converge duplicates by id) are
@@ -7038,6 +7039,14 @@ async function main() {
       /if \(!qualifies\) \{[\s\S]{0,900}LiveActivity\.endForProduction\(pid, !wrappedSendOff\);/.test(html) &&
       /\} else if \(ids\.length > 1\) \{[\s\S]{0,340}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
       /if \(dupeIds\.length\) LiveActivity\.endActivityIds\(dupeIds\);/.test(html));
+    // TT9g — the SET-DAY allowlist (Phase 6). The Live Activity runs on shoot and
+    // pre-light days ONLY; an allowlist (not blocklist) means a day type added to
+    // DAY_TYPES later is off by default, never accidentally live. Pinned across the
+    // two lifecycle gates so they can't drift: the shared constant + the descriptor's
+    // gate here, and the sweep's end gate via TT9b/TT17a (same dayType merge).
+    check('TT9g Live Activity set-day allowlist — LIVE_ACTIVITY_DAY_TYPES = [Shoot, Pre-light]; liveActivityDescriptor resolves the effective dayType (record → today\'s dayDefaults → defaultDay → Shoot) and returns null for any non-allowlisted day, so neither the mounted controller nor the sweep start branch begins a card on a travel / prep / recce / build / de-rig / rest / day-off day; a running card whose day flips to a non-set type flips the descriptor to null and the controller ends it immediately',
+      /const LIVE_ACTIVITY_DAY_TYPES = \["Shoot", "Pre-light"\];/.test(html) &&
+      /const laDayType = rec\.dayType \?\? dd\.dayType \?\? \(production\.defaultDay && production\.defaultDay\.dayType\) \?\? "Shoot";\s*if \(!LIVE_ACTIVITY_DAY_TYPES\.includes\(laDayType\)\) return null;/.test(html));
     check('TT9e single-activity invariant — the endActivityIds bridge method is IS_NATIVE-guarded (the sweep\'s by-id duplicate-converge; native startActivity adopt-or-update is the primary dedupe, compile-verified)',
       /async endActivityIds\(ids\) \{\s*if \(!IS_NATIVE \|\| !ids \|\| !ids\.length\) return;/.test(html) &&
       /_capPlugins\(\)\.LiveActivity; if \(p && p\.endActivityIds\)/.test(html));
@@ -7752,7 +7761,7 @@ async function main() {
           /if \(!passed && nextDay\.wrapped === true\) return \{ \.\.\.nextDay, wrapped: false \};/.test(fn);
         const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html) &&
           /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html);
-        const sweepOk = /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html);
+        const sweepOk = /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\) && LIVE_ACTIVITY_DAY_TYPES\.includes\(laType\);/.test(html);
         return fnOk && wiredOk && sweepOk;
       })());
 

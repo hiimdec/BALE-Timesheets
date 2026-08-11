@@ -4050,6 +4050,12 @@
     // travels and the 0-7 decoder range stays untouched.
     const DAY_TYPES = ["Shoot", "Pre-light", "Prep Day", "Recce", "Build Day", "De-rig", "Travel Day", "Rest Day", "Day off"];
     const DISCRETIONARY_LUNCH_DAY_TYPES = ["Prep Day", "Recce", "Build Day", "De-rig"];
+    // Live Activity runs on set days only. ALLOWLIST, not blocklist: a shoot or
+    // pre-light day starts a card; every other type never does. Allowlisting means
+    // a day type added to DAY_TYPES later is off by default, not accidentally live.
+    // Read in BOTH lifecycle gates - liveActivityDescriptor (start + controller-side
+    // end) and the reconcile sweep's end branch - so they can't drift. (Phase 6.)
+    const LIVE_ACTIVITY_DAY_TYPES = ["Shoot", "Pre-light"];
 
     // UK England & Wales bank holidays (gov.uk-verified). APA §2.4 treats
     // these identically to Sundays — 2× BDR / 2× BHR for all hours worked.
@@ -19592,6 +19598,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dd = (production.dayDefaults && production.dayDefaults[today]) || {};
       const callTime = rec.callTime || dd.callTime || null;
       if (!callTime) return null;
+      // Set days only (allowlist). Mirror resolveDay's dayType merge cheaply -
+      // record wins, then today's dayDefaults, then defaultDay, else "Shoot" - and
+      // gate on LIVE_ACTIVITY_DAY_TYPES. A non-set day yields no descriptor, so
+      // neither the controller nor the sweep's start branch begins a card; and a
+      // running card whose day flips to a non-set type flips this to null, ending
+      // it immediately via the controller's disqualification branch.
+      const laDayType = rec.dayType ?? dd.dayType ?? (production.defaultDay && production.defaultDay.dayType) ?? "Shoot";
+      if (!LIVE_ACTIVITY_DAY_TYPES.includes(laDayType)) return null;
       // Anchor the elapsed timer at pre-call if one is set (record-wins, then the
       // dayDefaults overlay — mirrors resolveDay), else at call. truckCallTime is
       // the legacy pre-call back-compat field.
@@ -31231,7 +31245,11 @@ const confirmDelete = (p) => setConfirmOpts({
           const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
           // A wrapped day (explicit user flag — card wrap, WrapNow, or a solo
           // wrap-time edit that already passed) can never keep or restart a card.
-          const qualifies = enabled && !!pr && pr.liveActivityEnabled !== false && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime));
+          // Set-day allowlist mirrors liveActivityDescriptor's (same dayType merge,
+          // same LIVE_ACTIVITY_DAY_TYPES): so a card whose day flipped to a non-set
+          // type ends here too when no controller is mounted to catch it.
+          const laType = rec ? (rec.dayType ?? (dd && dd.dayType) ?? (pr.defaultDay && pr.defaultDay.dayType) ?? "Shoot") : null;
+          const qualifies = enabled && !!pr && pr.liveActivityEnabled !== false && !!rec && rec.wrapped !== true && !!(rec.callTime || (dd && dd.callTime)) && LIVE_ACTIVITY_DAY_TYPES.includes(laType);
           if (!qualifies) {
             // A day disqualified BY THE WRAP FLAG ends WITH the linger — that
             // window is the wrapped send-off (freshly corrected by the wrap
