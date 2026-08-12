@@ -306,6 +306,10 @@ async function transformedAppCode() {
     'try { globalThis.__makeApaProduction = makeApaProduction; } catch (_) {}\n' +
     'try { globalThis.__makeImportedProduction = makeImportedProduction; } catch (_) {}\n' +
     'try { globalThis.__makeLongFormProduction = makeLongFormProduction; } catch (_) {}\n' +
+    // Phase 11: the standalone carrier record + its invoice wrapper.
+    'try { globalThis.__makeStandaloneProduction = makeStandaloneProduction; } catch (_) {}\n' +
+    'try { globalThis.__createStandaloneInvoice = createStandaloneInvoice; } catch (_) {}\n' +
+    'try { globalThis.__makeBlankInvoiceLine = makeBlankInvoiceLine; } catch (_) {}\n' +
     'try { globalThis.__finalizeProductionUpdate = finalizeProductionUpdate; } catch (_) {}\n' +
     'try { globalThis.__roundingModeOf = roundingModeOf; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
@@ -3718,6 +3722,65 @@ async function main() {
           JSON.stringify(p3.dayDefaults['2026-08-10']));
       } else {
         check('RC4 setDayDefault exposed', false, 'not exposed');
+      }
+
+      // ── SA: standalone invoicing (Phase 11). The first invoice with no
+      //    production behind it - no days, no crew, no calc. The carrier
+      //    record exists only because invoices live at production.invoices[]
+      //    and every enumeration walks productions -> p.invoices. ──
+      {
+        const mkSA = sb.__makeStandaloneProduction;
+        const mkLine = sb.__makeBlankInvoiceLine;
+        const src5 = fs.readFileSync(SRC_HTML, 'utf8');
+        if (typeof mkSA === 'function' && typeof mkLine === 'function') {
+          const sa = mkSA({});
+          check('SA1 the carrier record is APA-SHAPED and marked, not a third agreement value: `standalone: true`, no `agreement` key at all - so every `=== apa` path keeps working and every `!== apa` long form path (the screen dispatch, migrateProduction\'s long form branch, ~9 sites) correctly excludes it without being re-armed',
+            sa.standalone === true && !('agreement' in sa), JSON.stringify({ standalone: sa.standalone, hasAgreement: 'agreement' in sa }));
+          check('SA2 NO DAYS and NO CREW, both load-bearing: no days means zero contribution to every aggregate by construction; no crew is the second lock on SoloDayPage\'s auto-create (`days.length === 0 && crew.length > 0` mints an APA day - the leak that bit this project before)',
+            Array.isArray(sa.days) && sa.days.length === 0 && Array.isArray(sa.crew) && sa.crew.length === 0,
+            JSON.stringify({ days: sa.days, crew: sa.crew }));
+
+          // The £0 aggregate contribution, EXECUTED rather than asserted in a
+          // comment. This is the same reduce the month totals / stats hours
+          // maps run; a dayless record yields 0 through it.
+          const aggregate = (p) => (p.days ?? []).reduce((sum, d) => {
+            const c = (p.crew ?? []).find(cc => cc.id === d.crewId);
+            return c ? sum + 1 : sum;   // stand-in for calcForDisplay(...).total
+          }, 0);
+          const realApa = { days: [{ id: 'd', crewId: 'c', date: '2026-06-01' }], crew: [{ id: 'c' }] };
+          check('SA3 the aggregate contribution is ZERO, executed: the reduce every totals map runs yields 0 over the standalone record - and the SAME reduce yields non-zero over a real day-bearing production, so this passes because the record has no days, not because the expression is inert',
+            aggregate(sa) === 0 && aggregate(realApa) > 0,
+            JSON.stringify({ standalone: aggregate(sa), realApa: aggregate(realApa) }));
+
+          check('SA4 a blank line carries the exact shape the renderer reads: rate null (its FIXED-FEE signal - amount only, no Qty x Rate columns) and discountedQty present as null, not absent, or the Waived/Reduced badge logic misreads it',
+            (() => { const l = mkLine(); return l.rate === null && l.discountedQty === null && l.qty === 1 && typeof l.id === 'string'; })(),
+            JSON.stringify(mkLine()));
+        } else {
+          check('SA1-4 standalone helpers exposed', false, 'not exposed');
+        }
+
+        check('SA5 the number sequence is SHARED: standalone routes through mintInvoiceShell like the APA and long form creators, so one business keeps one sequential run (HMRC) and the reference on the document stays the payment reference',
+          /function createStandaloneInvoice\(production, setProduction, userPrefs, setUserPrefs\) \{\s*return mintInvoiceShell\(/.test(src5) &&
+          (src5.match(/return mintInvoiceShell\(/g) || []).length === 3,
+          'all three creators must mint through the one shell');
+        check('SA6 page 2 is omitted, not emptied: the standalone invoice carries dayBreakdown [] and the print view already gates the back page on hasBreakdown - so the renderer needs NO change for a page-1-only document',
+          /dayBreakdown: \[\],/.test(src5) &&
+          /const hasBreakdown = \(snapshot && snapshot\.length > 0\) \|\| showLegacyBreakdown;/.test(src5) &&
+          /if \(hasBreakdown\) \{/.test(src5),
+          'the back-page gate changed');
+        check('SA7 the screen dispatch tests `standalone` BEFORE the long form branch - without that ordering an APA-shaped standalone falls through to SoloDayPage and its mount-time auto-create',
+          src5.indexOf("} else if (currentProduction.standalone === true) {") > 0 &&
+          src5.indexOf("} else if (currentProduction.standalone === true) {") < src5.indexOf("} else if (agreementOf(currentProduction) !== 'apa') {"),
+          'the standalone branch must precede the long form branch');
+        check('SA8 presentation gates (ruled: Invoices tab only, it is not a shoot): filtered out of the Shoots list AT SOURCE so the hero pick, In Progress group, month groups, month totals and search all exclude it by construction; excluded from the New Invoice production picker; never pinned In Progress',
+          /const sorted = \[\.\.\.productions\]\.filter\(p => !p\.standalone\)\.sort/.test(src5) &&
+          /filter\(p => agreementOf\(p\) === 'apa' && !p\.standalone\)/.test(src5) &&
+          /const isInProgressProduction = \(p\) => !p\.standalone &&/.test(src5),
+          'a presentation gate is missing');
+        check('SA9 standalone invoices DO reach the invoice-scoped enumerations (they are real income): the Invoices tab, the accountant tax-year export and the client usage stats all walk p.invoices with no day or agreement filter, so none of them needs - or has - a standalone gate',
+          /function issuedInvoicesInTaxYear\(productions, startYear\) \{[\s\S]{0,300}for \(const inv of p\.invoices \|\| \[\]\) \{/.test(src5) &&
+          !/p\.invoices[\s\S]{0,80}!p\.standalone/.test(src5),
+          'an invoice enumeration started excluding standalone income');
       }
 
       // ── RATE: the per-day-type agreed rate (Phase 9). A per-job negotiated

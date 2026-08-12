@@ -2830,7 +2830,9 @@
     // drops it into normal month grouping. jobWrapped is an additive key on
     // long form productions only — an APA production never gains it (pinned
     // LF1a/LF1b), and `!== true` reads its absence as still in progress.
-    const isInProgressProduction = (p) => agreementOf(p) !== 'apa' && p.jobWrapped !== true;
+    // Standalone records are excluded: they are invoices, not shoots, and
+    // live under the Invoices tab only (ruled Phase 11).
+    const isInProgressProduction = (p) => !p.standalone && agreementOf(p) !== 'apa' && p.jobWrapped !== true;
 
     // Week-start lock — DERIVED live from week status, never a stored flag
     // (a stored flag could desync from the weeks that justify it). Ruled
@@ -4263,6 +4265,51 @@
           isNew: true,
           ...seededMileageRate(userPrefs),               // new-production default (Phase 5b)
         };
+    }
+
+    // The STANDALONE creation envelope (Phase 11) — the third sibling of
+    // makeApaProduction and makeImportedProduction. Invoicing work that was
+    // never tracked: a day for a mate, a kit hire, anything with no shoot
+    // behind it. The record exists only to hang an invoice off, because
+    // invoices live at production.invoices[] and every enumeration (the
+    // Invoices tab, the accountant export, the ledgers) walks
+    // productions -> p.invoices. A parentless invoice would be invisible to
+    // all of them.
+    //
+    // APA-SHAPED ON PURPOSE, marked by `standalone: true` rather than a third
+    // `agreement` value (ruled). agreementOf is read as a boolean at ~9 sites
+    // where `!== 'apa'` means "therefore long form" — including the screen
+    // dispatch and migrateProduction's long form branch — so a third enum
+    // value would re-arm all of them at once. The marker re-arms nothing:
+    // every `=== 'apa'` path keeps working, every long form path correctly
+    // excludes it, and only the surfaces that must DIFFER test `standalone`.
+    //
+    // NO DAYS and NO CREW, both load-bearing. No days means it contributes
+    // zero to every aggregate by construction (they all reduce over days).
+    // No crew is the second lock on SoloDayPage's mount-time auto-create,
+    // which mints an APA day when `days.length === 0 && crew.length > 0` —
+    // the leak that bit this project before. Routing never sends a standalone
+    // there either; that is belt AND braces, deliberately.
+    function makeStandaloneProduction(userPrefs) {
+      return {
+        id: uid(),
+        standalone: true,
+        title: 'Invoice',
+        prodCo: "",
+        jobReference: "",
+        invoicingEmail: "",
+        ccEmail: "",
+        crew: [],
+        days: [],
+        bestBoyMode: false,
+        viewMode: 'mobile',
+        iAmCrewId: null,
+        dayDefaults: {},
+        startDate: todayISO(),
+        roundingMode: roundingModeOf(userPrefs),
+        invoices: [],
+        isNew: true,
+      };
     }
 
     // Rules-side structure (role names / departments / display order) —
@@ -7223,6 +7270,36 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return mintInvoiceShell(production, setProduction, userPrefs, setUserPrefs, userCrewId, {
         lineItems: buildInvoiceLineItems(production, userPrefs, userCrewId),
         dayBreakdown: buildDayBreakdown(production, userPrefs, userCrewId),
+      });
+    }
+
+    // A blank hand-entered line, in the exact shape the renderer reads.
+    // `rate: null` is the renderer's FIXED-FEE signal (amount only, no
+    // Qty x Rate columns), and discountedQty must be present as null rather
+    // than absent or the Waived/Reduced badge logic misreads it.
+    const makeBlankInvoiceLine = () => ({
+      id: uid(), label: "", detail: "", rate: null, qty: 1, amount: 0, discountedQty: null,
+    });
+
+    // The STANDALONE invoice (Phase 11) — the third thin wrapper over
+    // mintInvoiceShell, which is agreement-blind: it takes lineItems and
+    // dayBreakdown as parameters and never inspects where they came from. So
+    // the shared number sequence, client fields, dates, VAT, freeze and send
+    // all come for free and identically.
+    //
+    // ONE BLANK ROW rather than an empty list (ruled): an empty editor is a
+    // screen with nothing on it and no obvious next move.
+    //
+    // dayBreakdown is [] — the print view's back page is gated on
+    // `hasBreakdown`, so an empty snapshot with no legacy notes omits page 2
+    // entirely. Nothing in the renderer changes for this to work.
+    function createStandaloneInvoice(production, setProduction, userPrefs, setUserPrefs) {
+      return mintInvoiceShell(production, setProduction, userPrefs, setUserPrefs, null, {
+        lineItems: [makeBlankInvoiceLine()],
+        dayBreakdown: [],
+        shootDateStart: "",
+        shootDateEnd: "",
+        extra: { standalone: true, linesEdited: true },
       });
     }
 
@@ -28489,6 +28566,31 @@ const setDays = (updater) =>
       );
     }
 
+    // The standalone screen (Phase 11): a thin frame that mounts the EXISTING
+    // invoice editor against a standalone record. No day UI, no calc, no
+    // Production settings — the record has none of those. Deleting the last
+    // invoice deletes the record with it, since a standalone production has no
+    // reason to exist without one.
+    function StandaloneInvoiceArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete }) {
+      const invoices = production.invoices || [];
+      const invoice = invoices[invoices.length - 1] || null;
+      // A standalone record whose invoice is gone is an orphan — drop it
+      // rather than stranding an empty shell in storage.
+      useEffect(() => { if (!invoice) onDelete(); }, [!!invoice]);
+      if (!invoice) return null;
+      return (
+        <InvoiceEditorView
+          invoiceId={invoice.id}
+          production={production}
+          setProduction={setProduction}
+          userPrefs={userPrefs}
+          setUserPrefs={setUserPrefs}
+          userCrewId={null}
+          onBack={onBack}
+        />
+      );
+    }
+
     function InvoiceEditorView({ invoiceId, production, setProduction, userPrefs, setUserPrefs, userCrewId, onBack }) {
       const invoice = (production.invoices || []).find(inv => inv.id === invoiceId);
       const [actionSheetItem, setActionSheetItem] = React.useState(null);
@@ -29919,7 +30021,7 @@ const setDays = (updater) =>
       );
     }
 
-    function ProductionPickerSheet({ productions, onClose, onCreateInvoice, onOpenInvoice }) {
+    function ProductionPickerSheet({ productions, onClose, onCreateInvoice, onOpenInvoice, onCreateStandalone }) {
       // Wave 1 (Phase D): routed through <Sheet>. The header X stays inside
       // the children block — Sheet's slot is just the slide-up frame.
       // Long form productions are excluded: createNewInvoice mints an APA
@@ -29927,7 +30029,7 @@ const setDays = (updater) =>
       // week-invoiced job. List-presentation gate, not a surface check —
       // long form invoicing arrives with the week layer.
       const sorted = React.useMemo(() => {
-        return [...productions].filter(p => agreementOf(p) === 'apa').sort((a, b) => {
+        return [...productions].filter(p => agreementOf(p) === 'apa' && !p.standalone).sort((a, b) => {
           const aDate = [...(a.days || [])].map(d => d.date).filter(Boolean).sort().slice(-1)[0] || a.startDate || '';
           const bDate = [...(b.days || [])].map(d => d.date).filter(Boolean).sort().slice(-1)[0] || b.startDate || '';
           return bDate.localeCompare(aDate);
@@ -29943,6 +30045,17 @@ const setDays = (updater) =>
             <button type="button" onClick={onClose} className="text-neutral-500 hover:text-neutral-300 transition-colors flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }}><IX size={18}/></button>
           </div>
           <div className="px-5 pb-2 text-xs text-neutral-500">Choose a production to invoice</div>
+          {/* Standalone (Phase 11): work that was never tracked here — a day
+              for a mate, a kit hire. Same numbering, same document. */}
+          <div className="px-4 pb-3">
+            <button type="button"
+              onClick={() => { onClose(); onCreateStandalone(); }}
+              className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 transition-colors border border-neutral-700"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>
+              <div className="text-sm font-semibold text-neutral-100">Something else</div>
+              <div className="text-[10px] text-neutral-500 mt-0.5">Invoice work that isn't tracked here - you type the lines</div>
+            </button>
+          </div>
           {sorted.length === 0 ? (
             <div className="px-5 pb-6 text-center text-neutral-500 text-sm">No productions to invoice yet.</div>
           ) : (
@@ -30596,7 +30709,7 @@ const setDays = (updater) =>
       );
     }
 
-    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, homeTab, setHomeTab, searchSignal, searchConsumedRef, onSearchActiveChange, searchActionsRef, newInvoiceActionRef }) {
+    function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, onCreateStandalone, homeTab, setHomeTab, searchSignal, searchConsumedRef, onSearchActiveChange, searchActionsRef, newInvoiceActionRef }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
       const [confirmOpts, setConfirmOpts] = useState(null);
@@ -30801,7 +30914,13 @@ const confirmDelete = (p) => setConfirmOpts({
         return `${d.toLocaleString("default", { month: "long" })} · ${d.getFullYear()}`;
       };
 
-      const sorted = [...productions].sort((a, b) => {
+      // Sweep gate S5 (ruled Phase 11): standalone records are invoices, not
+      // shoots. They are filtered OUT of the Shoots list at its source, so
+      // every downstream consumer here — the hero pick, the In Progress
+      // group, the month groups, the month totals, search — excludes them by
+      // construction rather than by a check each. List-presentation gate, the
+      // plan file's method.
+      const sorted = [...productions].filter(p => !p.standalone).sort((a, b) => {
         const ka = sortKey(a), kb = sortKey(b);
         if (ka === kb) return 0; if (!ka) return 1; if (!kb) return -1;
         return ka < kb ? 1 : -1;
@@ -31324,6 +31443,7 @@ const confirmDelete = (p) => setConfirmOpts({
               productions={productions}
               onClose={() => setShowProductionPicker(false)}
               onCreateInvoice={onCreateInvoice}
+              onCreateStandalone={onCreateStandalone}
               onOpenInvoice={(productionId, invoiceId) => onOpen(productionId, { invoiceId })}
             />
           )}
@@ -32402,6 +32522,18 @@ const confirmDelete = (p) => setConfirmOpts({
         const newInvoice = createNewInvoice(production, setProduction, userPrefs, setUserPrefs, userCrewId);
         openProduction(productionId, { invoiceId: newInvoice.id });
       };
+      // Standalone (Phase 11): mint the carrier record and its invoice in ONE
+      // commit, then open it. Two commits would leave a dayless, invoiceless
+      // record visible for a frame if the second failed — and an empty
+      // standalone shell has no reason to exist.
+      const handleCreateStandaloneInvoice = () => {
+        const production = makeStandaloneProduction(userPrefs);
+        const staged = { ...production };
+        const setStaged = updater => { Object.assign(staged, typeof updater === 'function' ? updater(staged) : updater); };
+        const newInvoice = createStandaloneInvoice(staged, setStaged, userPrefs, setUserPrefs);
+        setProductions(prev => [...prev, staged]);
+        openProduction(staged.id, { invoiceId: newInvoice.id });
+      };
       const deleteProduction = (id) => {
         setProductions((prev) => prev.filter((p) => p.id !== id));
         if (openId === id) setOpenId(null);
@@ -32861,7 +32993,14 @@ const confirmDelete = (p) => setConfirmOpts({
           />
         );
       } else if (!openId || !currentProduction) {
-        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} homeTab={homeTab} setHomeTab={setHomeTab} searchSignal={searchSignal} searchConsumedRef={searchConsumedRef} onSearchActiveChange={setSearchActive} searchActionsRef={searchActionsRef} newInvoiceActionRef={newInvoiceActionRef} />;
+        screen = <ProductionsScreen productions={productions} onOpen={openProduction} onNewProduction={() => setShowNewProduction(true)} onDelete={deleteProduction} onDuplicate={duplicateProduction} onUpdateDays={handleUpdateDays} onOpenSettings={() => setShowSettings(true)} onOpenStats={() => setShowStats(true)} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onUpdateInvoice={handleUpdateInvoice} onDeleteInvoice={handleDeleteInvoice} onCreateInvoice={handleCreateInvoice} onCreateStandalone={handleCreateStandaloneInvoice} homeTab={homeTab} setHomeTab={setHomeTab} searchSignal={searchSignal} searchConsumedRef={searchConsumedRef} onSearchActiveChange={setSearchActive} searchActionsRef={searchActionsRef} newInvoiceActionRef={newInvoiceActionRef} />;
+      } else if (currentProduction.standalone === true) {
+        // THE standalone dispatch point (Phase 11), deliberately BEFORE the
+        // long form branch. A standalone record is APA-shaped, so without
+        // this it would fall through to SoloDayPage — whose mount-time
+        // auto-create is exactly the leak this ordering prevents (the record
+        // also carries no crew, which is the second lock).
+        screen = <StandaloneInvoiceArea production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} onDelete={() => deleteProduction(currentProduction.id)} />;
       } else if (agreementOf(currentProduction) !== 'apa') {
         // THE long form dispatch point (PACT_BECTU_PLAN.md): a long form
         // production opens here and nowhere else. The APA branches below
