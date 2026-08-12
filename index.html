@@ -4139,6 +4139,71 @@
         };
     }
 
+    // The share-import creation envelope. Import ALWAYS creates a new
+    // production — the makeApaProduction shape verbatim (receiver as crew[0]
+    // from their OWN prefs and rate), days via makeBlankDay + explicit
+    // assignment of the wire fields (records born at the current schema;
+    // nothing wrapped/logged — times are the plan). Nonzero per diem
+    // constructs the builtin-perdiem instance (the recorded canonical home);
+    // zero constructs nothing and the receiver's own preset default applies
+    // at add-time. Module scope since Phase 7 (moved out of the App's
+    // handleShareLinkImport, body verbatim); `shoot` is the DECODED wire
+    // payload — the handler keeps the staged-state guard and navigation.
+    function makeImportedProduction(shoot, userPrefs) {
+        const role = userPrefs.defaultRole || "Lighting Technician";
+        const seeded = seedRateFromPrefs(userPrefs, role, null);
+        const crewId = uid();
+        const newDays = shoot.days.map(d => ({
+          ...makeBlankDay(crewId),
+          date: d.date, dayType: d.dayType,
+          callTime: d.callTime, lunchStartTime: d.lunchStartTime, lunchDurationMins: d.lunchDurationMins,
+          secondBreakStartTime: d.secondBreakStartTime, secondBreakDurationMins: d.secondBreakDurationMins,
+          preCallTime: d.preCallTime, wrapTime: d.wrapTime, wrapNextDay: d.wrapNextDay,
+          travelOutMins: d.travelOutMins, travelBackMins: d.travelBackMins, miles: d.miles,
+          expenses: d.perDiemPence > 0
+            ? [{ id: uid(), presetId: 'builtin-perdiem', name: 'Per Diem', amount: d.perDiemPence / 100, detail: '' }]
+            : [],
+        }));
+        return {
+          id: uid(),
+          title: shoot.title || 'Shared shoot',
+          prodCo: shoot.prodCo || '',
+          jobReference: shoot.jobReference || '',
+          toAddress: shoot.toAddress || '',
+          invoicingEmail: shoot.invoicingEmail || '',
+          ccEmail: '',
+          crew: [{
+            id: crewId,
+            name: userPrefs.displayName || "You",
+            role,
+            bdr: seeded.bdr,
+            otCoef: seeded.otCoef,
+            otRate: seeded.otRate,
+            vatRegistered: userPrefs.vatRegistered ?? false,
+            vatRate: userPrefs.vatRate ?? 20,
+            kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
+            kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
+            isDriver: false,
+            email: '',
+          }],
+          days: newDays,
+          defaultDay: DEFAULT_PRODUCTION_DAY,
+          bestBoyMode: false,
+          viewMode: 'mobile',
+          iAmCrewId: null,
+          dayDefaults: {},
+          isElevenHourDay: false,
+          // The sender's per-shoot opt-out does NOT cross the wire (the codec is
+          // a 19-field allowlist), so an imported shoot follows the RECEIVER's
+          // own default, like every other personal setting.
+          liveActivityEnabled: true,
+          roundingMode: roundingModeOf(userPrefs),
+          startDate: (shoot.days[0] && shoot.days[0].date) || todayISO(),
+          isNew: true,
+          ...seededMileageRate(userPrefs),               // new-production default (Phase 5b)
+        };
+    }
+
     // Rules-side structure (role names / departments / display order) —
     // card-invariant, bound once to the base card.
     const DEPARTMENTS = RATE_CARDS[0].departments;
@@ -31907,70 +31972,14 @@ const confirmDelete = (p) => setConfirmOpts({
         return () => { try { if (urlHandle && urlHandle.remove) urlHandle.remove(); } catch (_) {} };
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
       const closeShareLinkImport = () => { setShareLinkImport(null); lastShareLinkRef.current = ''; };
-      // Import ALWAYS creates a new production — the handleNewProduction shape
-      // verbatim (receiver as crew[0] from their OWN prefs and rate), days via
-      // makeBlankDay + explicit assignment of the wire fields (records born at
-      // the current schema; nothing wrapped/logged — times are the plan).
-      // Nonzero per diem constructs the builtin-perdiem instance (the recorded
-      // canonical home); zero constructs nothing and the receiver's own preset
-      // default applies at add-time. No new storage keys — bigals_productions
+      // The envelope lives in makeImportedProduction (module scope, beside the
+      // other two makers) — Phase 7. This handler is the staged-state guard,
+      // persistence and navigation. No new storage keys — bigals_productions
       // through the normal setProductions path.
       const handleShareLinkImport = () => {
         const st = shareLinkImport;
         if (!st || !st.ok) return;
-        const shoot = st.shoot;
-        const role = userPrefs.defaultRole || "Lighting Technician";
-        const seeded = seedRateFromPrefs(userPrefs, role, null);
-        const crewId = uid();
-        const newDays = shoot.days.map(d => ({
-          ...makeBlankDay(crewId),
-          date: d.date, dayType: d.dayType,
-          callTime: d.callTime, lunchStartTime: d.lunchStartTime, lunchDurationMins: d.lunchDurationMins,
-          secondBreakStartTime: d.secondBreakStartTime, secondBreakDurationMins: d.secondBreakDurationMins,
-          preCallTime: d.preCallTime, wrapTime: d.wrapTime, wrapNextDay: d.wrapNextDay,
-          travelOutMins: d.travelOutMins, travelBackMins: d.travelBackMins, miles: d.miles,
-          expenses: d.perDiemPence > 0
-            ? [{ id: uid(), presetId: 'builtin-perdiem', name: 'Per Diem', amount: d.perDiemPence / 100, detail: '' }]
-            : [],
-        }));
-        const p = {
-          id: uid(),
-          title: shoot.title || 'Shared shoot',
-          prodCo: shoot.prodCo || '',
-          jobReference: shoot.jobReference || '',
-          toAddress: shoot.toAddress || '',
-          invoicingEmail: shoot.invoicingEmail || '',
-          ccEmail: '',
-          crew: [{
-            id: crewId,
-            name: userPrefs.displayName || "You",
-            role,
-            bdr: seeded.bdr,
-            otCoef: seeded.otCoef,
-            otRate: seeded.otRate,
-            vatRegistered: userPrefs.vatRegistered ?? false,
-            vatRate: userPrefs.vatRate ?? 20,
-            kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
-            kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
-            isDriver: false,
-            email: '',
-          }],
-          days: newDays,
-          defaultDay: DEFAULT_PRODUCTION_DAY,
-          bestBoyMode: false,
-          viewMode: 'mobile',
-          iAmCrewId: null,
-          dayDefaults: {},
-          isElevenHourDay: false,
-          // The sender's per-shoot opt-out does NOT cross the wire (the codec is
-          // a 19-field allowlist), so an imported shoot follows the RECEIVER's
-          // own default, like every other personal setting.
-          liveActivityEnabled: true,
-          roundingMode: roundingModeOf(userPrefs),
-          startDate: (shoot.days[0] && shoot.days[0].date) || todayISO(),
-          isNew: true,
-          ...seededMileageRate(userPrefs),               // new-production default (Phase 5b)
-        };
+        const p = makeImportedProduction(st.shoot, userPrefs);
         setProductions((prev) => [...prev, p]);
         closeShareLinkImport();
         setOpenId(p.id);
