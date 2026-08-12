@@ -297,6 +297,13 @@ async function transformedAppCode() {
     'try { globalThis.__mapDayNow = mapDayNow; } catch (_) {}\n' +
     'try { globalThis.__applySoloWrapIntent = applySoloWrapIntent; } catch (_) {}\n' +
     'try { globalThis.__setDayDefault = setDayDefault; } catch (_) {}\n' +
+    // Phase 7: the creation envelopes + the H2 finalizer, module scope now —
+    // the executions these moves unlocked (RC5-8).
+    'try { globalThis.__makeApaProduction = makeApaProduction; } catch (_) {}\n' +
+    'try { globalThis.__makeImportedProduction = makeImportedProduction; } catch (_) {}\n' +
+    'try { globalThis.__makeLongFormProduction = makeLongFormProduction; } catch (_) {}\n' +
+    'try { globalThis.__finalizeProductionUpdate = finalizeProductionUpdate; } catch (_) {}\n' +
+    'try { globalThis.__roundingModeOf = roundingModeOf; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
     'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
@@ -3655,6 +3662,103 @@ async function main() {
           JSON.stringify(p3.dayDefaults['2026-08-10']));
       } else {
         check('RC4 setDayDefault exposed', false, 'not exposed');
+      }
+
+      // ── RC5-8: the creation envelopes + the H2 finalizer, EXECUTED (the
+      //    Phase 7 moves' payoff - these were the last regex-only money
+      //    paths). Money assertions are EQUIVALENCES against the seeders the
+      //    envelopes route through (seedRateFromPrefs, seededMileageRate,
+      //    roundingModeOf), so the pins hold across card boundaries and
+      //    default changes rather than freezing today's literals. ──
+      const makeApa = sb.__makeApaProduction;
+      const makeImp = sb.__makeImportedProduction;
+      const makeLf = sb.__makeLongFormProduction;
+      const finalize = sb.__finalizeProductionUpdate;
+      const seedRate2 = sb.__seedRateFromPrefs;
+      const rmOf = sb.__roundingModeOf;
+      if (makeApa && makeImp && makeLf && finalize && seedRate2 && rmOf) {
+        // RC5: the APA creation envelope.
+        const prefsA = { displayName: 'Dec', defaultRole: 'Gaffer', defaultMileageRate: 0.45, vatRegistered: true, vatRate: 20, defaultKitMoneyEnabled: true, defaultKitMoneyAmount: 15 };
+        const pa = makeApa({ title: 'Job', bestBoyMode: false }, prefsA);
+        const seedA = seedRate2(prefsA, 'Gaffer', null);
+        check('RC5a solo envelope: crew[0] takes the Settings role and routes rate seeding through seedRateFromPrefs (bdr/otCoef/otRate equivalence), prefs flow to VAT + kit money',
+          pa.crew.length === 1 && pa.crew[0].role === 'Gaffer' &&
+          pa.crew[0].bdr === seedA.bdr && pa.crew[0].otCoef === seedA.otCoef && pa.crew[0].otRate === seedA.otRate &&
+          pa.crew[0].vatRegistered === true && pa.crew[0].kitMoneyEnabled === true && pa.crew[0].kitMoneyAmount === 15,
+          JSON.stringify(pa.crew[0]));
+        check('RC5b the envelope shape: born with no days, empty dayDefaults, isNew, Live Activity on, startDate today, roundingMode from prefs, mileage seeded 0.45',
+          Array.isArray(pa.days) && pa.days.length === 0 && JSON.stringify(pa.dayDefaults) === '{}' &&
+          pa.isNew === true && pa.liveActivityEnabled === true && pa.startDate === sb.__todayISO() &&
+          pa.roundingMode === rmOf(prefsA) && pa.mileageRatePerMile === 0.45,
+          JSON.stringify({ days: pa.days.length, startDate: pa.startDate, rm: pa.roundingMode, mi: pa.mileageRatePerMile }));
+        const paBB = makeApa({ title: 'BB', bestBoyMode: true }, {});
+        check('RC5c Best Boy mode: crew starts EMPTY, bestBoyMode true; an unset mileage global leaves the field ABSENT (the 50p fallback)',
+          paBB.crew.length === 0 && paBB.bestBoyMode === true && !('mileageRatePerMile' in paBB),
+          JSON.stringify({ crew: paBB.crew.length, has: 'mileageRatePerMile' in paBB }));
+
+        // RC6: the share-import envelope.
+        const wireShoot = { title: 'Acme', prodCo: 'Acme Ltd', jobReference: 'J1', toAddress: '', invoicingEmail: '', days: [
+          { date: '2026-08-10', dayType: 'Shoot', callTime: '08:00', lunchStartTime: '13:00', lunchDurationMins: 60, secondBreakStartTime: '', secondBreakDurationMins: 0, preCallTime: '07:00', wrapTime: '19:00', wrapNextDay: false, travelOutMins: 30, travelBackMins: 30, miles: 12, perDiemPence: 3500 },
+          { date: '2026-08-11', dayType: 'Travel Day', callTime: '09:00', lunchStartTime: '', lunchDurationMins: 60, secondBreakStartTime: '', secondBreakDurationMins: 0, preCallTime: '', wrapTime: '17:00', wrapNextDay: false, travelOutMins: 0, travelBackMins: 0, miles: 0, perDiemPence: 0 },
+        ] };
+        const pi = makeImp(wireShoot, { defaultRole: 'Lighting Technician' });
+        const seedI = seedRate2({ defaultRole: 'Lighting Technician' }, 'Lighting Technician', null);
+        check('RC6a wire days land as records: one per shared day, SAME crewId as crew[0], wire times/miles verbatim, startDate = the first shared day',
+          pi.days.length === 2 && pi.days[0].crewId === pi.crew[0].id && pi.days[1].crewId === pi.crew[0].id &&
+          pi.days[0].callTime === '08:00' && pi.days[0].miles === 12 && pi.days[1].dayType === 'Travel Day' &&
+          pi.startDate === '2026-08-10',
+          JSON.stringify({ n: pi.days.length, start: pi.startDate }));
+        check('RC6b nonzero per diem constructs the builtin-perdiem instance (£35); zero constructs NOTHING (the receiver\'s own preset default applies at add-time)',
+          pi.days[0].expenses.length === 1 && pi.days[0].expenses[0].presetId === 'builtin-perdiem' && pi.days[0].expenses[0].amount === 35 &&
+          pi.days[1].expenses.length === 0,
+          JSON.stringify(pi.days.map(d => d.expenses)));
+        check('RC6c the receiver is crew[0] on their OWN prefs and seeded rate (never the sender\'s); imported days are born at the blank-day baseline - wrapped and lunchLogged explicitly FALSE (times are the plan, the wire can never mark a day worked)',
+          pi.crew[0].bdr === seedI.bdr && pi.crew[0].otCoef === seedI.otCoef &&
+          pi.days[0].wrapped === false && pi.days[0].lunchLogged === false,
+          JSON.stringify({ crew: pi.crew[0], wrapped: pi.days[0].wrapped, lunchLogged: pi.days[0].lunchLogged }));
+
+        // RC7 (S3): the long form creation envelope.
+        const wiz = { title: 'Drama', agreement: 'pact-tv', band: 2, baseNation: 'england-wales', ppStartDate: '2026-07-27', weekStartDay: 'monday', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250, prodCo: '', jobReference: '', invoicingEmail: '', toAddress: '' };
+        const pl = makeLf(wiz, { defaultMileageRate: 0.45 });
+        check('RC7a the LF envelope: agreement immutable-from-birth with a resolved agreementVersion, TV band carried, weeks [], startDate = ppStartDate, isNew, mileage seeded',
+          pl.agreement === 'pact-tv' && pl.agreementVersion === 'pact-tv@2023-01-01' && pl.band === 2 &&
+          Array.isArray(pl.weeks) && pl.weeks.length === 0 && pl.startDate === '2026-07-27' && pl.isNew === true &&
+          pl.mileageRatePerMile === 0.45,
+          JSON.stringify({ v: pl.agreementVersion, band: pl.band, start: pl.startDate }));
+        check('RC7b LF crew[0]: the wizard role, class and contract rate land verbatim; iAmCrewId binds to crew[0]',
+          pl.crew[0].role === 'Gaffer' && pl.crew[0].agreementClass === 'standard' && pl.crew[0].contractDailyRate === 250 &&
+          pl.iAmCrewId === pl.crew[0].id,
+          JSON.stringify(pl.crew[0]));
+
+        // RC8: finalizeProductionUpdate - H2 derivation + automatic card
+        // application + the FUTURE-card notice, on a dummy ref. Date-proof:
+        // the notice expectation is computed from todayISO() at run time.
+        const ref = { current: null };
+        const noop = { id: 'p', startDate: '2026-08-01', days: [{ date: '2026-08-01' }], crew: [] };
+        const same = finalize(noop, noop, ref);
+        check('RC8a a same-card no-op edit derives nothing, rewrites nothing, queues nothing (identity through withDate)',
+          same === noop && ref.current === null, JSON.stringify({ same: same === noop, ref: ref.current }));
+        const derived = finalize(noop, { ...noop, days: [{ date: '2026-07-27' }, { date: '2026-08-03' }] }, ref);
+        check('RC8b startDate DERIVES from the earliest dated day on every edit (2026-08-01 -> 2026-07-27)',
+          derived.startDate === '2026-07-27', JSON.stringify(derived.startDate));
+        const flat25 = sb.__flattenRateCard(sb.__resolveRateCard('2026-08-01'));
+        const lt = { id: 'c1', role: 'Lighting Technician', bdr: flat25['Lighting Technician'].bdr, otCoef: flat25['Lighting Technician'].otCoef, otRate: null };
+        const neg = { id: 'c2', role: 'Lighting Technician', bdr: 470, otCoef: 1.5, otRate: null };
+        const prevP = { id: 'p', startDate: '2026-08-20', days: [{ date: '2026-08-20' }], crew: [lt, neg] };
+        const ref2 = { current: null };
+        const crossed = finalize(prevP, { ...prevP, days: [{ date: '2026-09-10' }] }, ref2);
+        const toCard = sb.__resolveRateCard('2026-09-10');
+        const toLt = sb.__flattenRateCard(toCard)['Lighting Technician'];
+        const expectNotice = toCard.effectiveFrom > sb.__todayISO();
+        check('RC8c a card-boundary edit applies the new card to the exact-match member ONLY (444/1.5 moves to the 2026 LT row, the negotiated 470 is untouched) and the derived date lands',
+          crossed.startDate === '2026-09-10' && crossed.crew[0].bdr === toLt.bdr && crossed.crew[0].bdr === 457 && crossed.crew[1].bdr === 470,
+          JSON.stringify(crossed.crew.map(c => c.bdr)));
+        check('RC8d the FUTURE-card notice queues on the PASSED ref exactly when effectiveFrom > today (computed at run time, so this pin survives 1 September): shape { label, effectiveFrom }',
+          (ref2.current !== null) === expectNotice &&
+          (!expectNotice || (ref2.current.label === toCard.label && ref2.current.effectiveFrom === toCard.effectiveFrom)),
+          JSON.stringify({ expectNotice, ref: ref2.current }));
+      } else {
+        check('RC5-8 creation envelopes + finalizer exposed', false, JSON.stringify({ makeApa: !!makeApa, makeImp: !!makeImp, makeLf: !!makeLf, finalize: !!finalize }));
       }
     }
   }
