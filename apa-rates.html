@@ -164,6 +164,7 @@
     }
     .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
     .dag { color: var(--tm-accent); font-weight: 700; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
     /* Rate-table filter. Progressive enhancement: the controls carry [hidden]
        in the markup and JS removes it, so with JS off the page is the full,
@@ -288,6 +289,7 @@
 
       <div class="table-scroll">
       <table class="rate-table" id="rate-table">
+        <caption class="sr-only">APA recommended crew day rates by role, September 2025 and September 2026 cards, with each role's overtime coefficient.</caption>
         <thead>
           <tr>
             <th scope="col">Department</th>
