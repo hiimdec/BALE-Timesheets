@@ -2696,6 +2696,33 @@
       };
     }
 
+    // The ONE role-change OT profile write (Phase 8 collapse). Given the card
+    // row for a newly picked role, apply that role's OT profile to a crew
+    // record: the coefficient, the explicit otRate, and the noOT flag tracked
+    // BOTH ways — set for the roles that carry it (Director/Producer), DELETED
+    // when the role is re-picked away. Both directions matter: absent, the
+    // engine's `crew.noOT ? 0 : (Number(crew.otCoef) || 1)` reads the card's
+    // stored 0 as 1.0 and bills OT the card forbids; stale, it zeroes the OT
+    // the new role IS owed. Three hand-maintained copies of this rule existed
+    // and two of them were missing the flag entirely (Phase 8 Part 1).
+    //
+    // bdr is deliberately NOT here. The role pickers fill the rate from the
+    // card at pick time; the add sheets take the typed rate at submit. That
+    // difference is real, and a helper that owned bdr would need to know which
+    // surface it was on.
+    //
+    // fallbackCoef is what a surface means by "no card row for this role".
+    // Provably unreachable today — both cards carry identical role sets, so
+    // roleDefaultsFor always returns a row for any pickable role (recorded in
+    // MAINTENANCE.md) — so each caller keeps its own answer rather than three
+    // dead branches being silently unified inside a refactor.
+    function applyRoleOtProfile(rec, cardRow, fallbackCoef) {
+      const d = cardRow || {};
+      const next = { ...rec, otCoef: d.otCoef ?? fallbackCoef, otRate: d.otRate ?? null };
+      if (d.noOT) next.noOT = true; else delete next.noOT;
+      return next;
+    }
+
     // Card-boundary crew refresh (H2's exact-match safety rule). Module scope
     // (moved from the App closure, Phase 7) so the audits execute it directly:
     // pure production-in/production-out, no captures. Body verbatim.
@@ -11139,12 +11166,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         cancel();
       };
       const remove = (id) => { onPushUndo('Crew member removed'); setCrew((prev) => prev.filter((c) => c.id !== id)); setConfirmRemove(null); };
-      // noOT tracks the new role BOTH ways (as QuickAddCrewSheet's edit branch
-      // does): set for Director/Producer, deleted when re-picked away — a stale
-      // true would zero the OT the new role is owed, and a missing one lets the
-      // engine's `crew.noOT ? 0 : (Number(crew.otCoef) || 1)` turn the card's
-      // stored 0 into 1.0 and accrue OT the card says they never get.
-      const onRoleChange = (role) => { const d = cardRoles[role] || {}; setForm((f) => { const next = { ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr, cardOtGrades), otRate: d.otRate ?? null }; if (d.noOT) next.noOT = true; else delete next.noOT; return next; }); };
+      // Rate from the card, OT profile through the shared helper. This surface's
+      // card-less answer is the graded fallback (Phase 6): claim the most
+      // favourable grade consistent with the rate.
+      const onRoleChange = (role) => { const d = cardRoles[role] || {}; setForm((f) => applyRoleOtProfile({ ...f, role, bdr: d.bdr ?? f.bdr }, d, autoOtCoef(d.bdr ?? f.bdr, cardOtGrades))); };
       const sortByRole = () => {
         setCrew((prev) => [...prev].sort((a, b) => {
           const r = roleRank(a.role) - roleRank(b.role);
@@ -16054,15 +16079,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // card name; noOT rides along for the roles that carry it
         // (Director/Producer) — a field the calc already reads.
         const roleDefaults = roleDefaultsFor(production)[role] || {};
-        onSubmit({
+        // The rate is the TYPED value (the select filled it from the card when
+        // the role was picked); the OT profile comes through the shared helper.
+        onSubmit(applyRoleOtProfile({
           name: name.trim(),
           role,
           bdr: Number(bdr) || 0,
-          otCoef: roleDefaults.otCoef ?? 1.5,
-          otRate: roleDefaults.otRate ?? null,
-          ...(roleDefaults.noOT ? { noOT: true } : {}),
           email: '',
-        });
+        }, roleDefaults, 1.5));
       };
       return (
         <>
@@ -16199,25 +16223,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           };
           // Re-derive the OT profile ONLY when the role actually changed —
           // an untouched role keeps whatever custom otCoef/otRate the
-          // member carries. On change, noOT tracks the new role both ways:
-          // set for Director/Producer, removed when re-picked away (a
-          // stale true would zero OT the new role is owed).
-          if (role !== crewMember.role) {
-            updated.otCoef = roleDefaults.otCoef ?? 1.5;
-            updated.otRate = roleDefaults.otRate ?? null;
-            if (roleDefaults.noOT) updated.noOT = true; else delete updated.noOT;
-          }
-          onSubmit(updated);
+          // member carries. The profile itself is the shared helper.
+          onSubmit(role !== crewMember.role ? applyRoleOtProfile(updated, roleDefaults, 1.5) : updated);
         } else {
-          onSubmit({
+          onSubmit(applyRoleOtProfile({
             name: name.trim(),
             role,
             bdr: Number(bdr) || 0,
-            otCoef: roleDefaults.otCoef ?? 1.5,
-            otRate: roleDefaults.otRate ?? null,
-            ...(roleDefaults.noOT ? { noOT: true } : {}),
             email: email.trim(),
-          });
+          }, roleDefaults, 1.5));
         }
       };
 
@@ -17844,10 +17858,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <Select value={m.role} onChange={(e) => {
                       const role = e.target.value;
                       const d = roleDefaultsFor(production)[role] || {};
-                      // noOT tracks the new role both ways — see CrewManager's
-                      // onRoleChange: absent, the engine reads the card's stored
-                      // 0 as 1.0 and a Director accrues OT they never get.
-                      setProduction(p => ({ ...p, crew: p.crew.map((c, i) => { if (i !== 0) return c; const next = { ...c, role, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null }; if (d.noOT) next.noOT = true; else delete next.noOT; return next; }) }));
+                      // Rate from the card, OT profile through the shared
+                      // helper. This surface's card-less answer is "keep the
+                      // coefficient the member already carries".
+                      setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? applyRoleOtProfile({ ...c, role, bdr: d.bdr ?? c.bdr }, d, c.otCoef) : c) }));
                     }}>
                       {Object.entries(DEPARTMENTS).map(([dept, roles]) =>
                         <optgroup key={dept} label={dept}>

@@ -3429,7 +3429,10 @@ async function main() {
       // assumption is flagged on the Grade field when the role is card-less.
       const clobber = (src3.match(/otCoef: autoOtCoef\(bdr\)/g) || []).length;
       const calls = (src3.match(/autoOtCoef\(/g) || []).length; // the definition + the single fallback
-      const fallback = (src3.match(/d\.otCoef \?\? autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\)/g) || []).length;
+      // Phase 8: the fallback is no longer an inline ?? — it is the third
+      // ARGUMENT to the shared applyRoleOtProfile helper. Same rule, same one
+      // site, same graded answer; the anchor tracks the call shape.
+      const fallback = (src3.match(/applyRoleOtProfile\(\{ \.\.\.f, role, bdr: d\.bdr \?\? f\.bdr \}, d, autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\)\)/g) || []).length;
       const flag = /hint=\{cardRoles\[form\.role\] \? "Grade I=1\.5× · II=1\.25× · III=1\.0×" : "Not on the rate card - graded from the rate at the most favourable consistent grade"\}/.test(src3);
       check('OTG3 a custom rate changes the rate, not the grade - the crew editor rate input no longer touches otCoef; autoOtCoef survives at exactly ONE call site (the card-less fallback with cardOtGrades); the card-less assumption is FLAGGED on the Grade field',
         clobber === 0 && calls === 2 && fallback === 1 && flag,
@@ -3513,13 +3516,14 @@ async function main() {
         sunRateCustom:      [/sunRateCustom: p\.sunRateCustom \?\? 2/],
         // crew.* (effectiveCrew = the crew record + the step-up overlay)
         bdr:    [/bdr: d\.bdr \?\? f\.bdr/],                               // role-selection copy
-        otCoef: [/otCoef: d\.otCoef \?\? autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\)/],
+        // Phase 8: written inside the ONE shared role-change helper.
+        otCoef: [/otCoef: d\.otCoef \?\? fallbackCoef/],
         otRate: [/otRate: d\.otRate \?\? null/],
-        // Phase 8: CrewManager's onRoleChange became a block-body arrow (it has
-        // to delete a key, which a concise body cannot), so the anchor tracks
-        // the new shape. Both role-change writers listed - the solo editor's
-        // form is the second entry, so losing either still names the survivor.
-        role:   [/const next = \{ \.\.\.f, role,/, /const next = \{ \.\.\.c, role,/],
+        // Phase 8: role rides into the shared helper as part of the record the
+        // caller builds (the caller owns role + bdr, the helper owns the OT
+        // profile). Both role-change call sites listed, so losing either still
+        // names the survivor.
+        role:   [/applyRoleOtProfile\(\{ \.\.\.f, role,/, /applyRoleOtProfile\(\{ \.\.\.c, role,/],
         // noOT: FULL coverage since Phase 8 Part 1 - the BB commit and
         // QuickAddCrewSheet (add + edit) carry it, and CrewManager and the solo
         // job-settings editor now track it both ways too (set for the roles that
