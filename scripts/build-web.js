@@ -46,6 +46,8 @@ const ALLOW = [
   's.html',
   // Reference page (chunk 5): unlinked, kept out of the sitemap and the articles index, pending review.
   'apa-rates.html',
+  // Homepage preview (chunk 12): noindex meta + X-Robots-Tag header (netlify.toml), kept out of the sitemap. Becomes the homepage at the /app move.
+  'home-preview.html',
   // Articles (all ten)
   'articles/apa-mileage-what-you-can-claim.html',
   'articles/breaks-and-penalties.html',
