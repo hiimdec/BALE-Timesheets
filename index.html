@@ -2716,6 +2716,47 @@
         });
         return changed ? { ...production, crew } : production;
       };
+    // ── Derived start date + AUTOMATIC rate-card application (H2) ───────
+    // startDate is derived from the earliest dated day, and EVERY
+    // production edit funnels through App.setProduction — so derivation
+    // and card application live here ONCE, covering day add / date edit /
+    // delete on every screen AND the manual no-days start-date edit.
+    // Application is AUTOMATIC (no accept/decline — superseding the
+    // D6/G3 prompt): when an edit moves the production onto a different
+    // resolved card, the new card's numbers are applied on the spot, but
+    // ONLY to crew whose current bdr, otCoef AND otRate all EXACTLY match
+    // the PREVIOUSLY-resolved card's values for their role. That
+    // exact-match rule is what makes automatic application safe: a member
+    // still carrying the old table's values is provably table-derived, so
+    // moving them to the new table is a correction, not an overwrite; ANY
+    // mismatch means a hand-edited / negotiated rate and is never
+    // touched. Custom roles (absent from either card) are never touched.
+    // Step-ups stay snapshotted on day records by design. Application is
+    // EVENT-DRIVEN only — the migrate/load-time snap never passes through
+    // here, so stored data is never rewritten at load.
+    //
+    // One informational notice remains: when the newly-resolved card is a
+    // FUTURE card (effectiveFrom after today — e.g. booking a September
+    // shoot in July), a single-OK heads-up says the new rates apply. It
+    // is a notice, not a gate — rates apply underneath regardless — and
+    // it never fires once today has passed the card's effectiveFrom.
+    // Module scope since Phase 7 (pure production-in/production-out) so
+    // the audits execute it; noticeRef is the App's pending-notice ref,
+    // passed in — written synchronously here exactly as the closure did,
+    // flushed post-commit by the App effect (updaters must stay pure:
+    // StrictMode double-invokes them, so no setState from inside).
+    const finalizeProductionUpdate = (prevP, nextP, noticeRef) => {
+        const derived = deriveStartDate(nextP);
+        const withDate = (derived && derived !== nextP.startDate) ? { ...nextP, startDate: derived } : nextP;
+        const fromCard = resolveRateCard(prevP.startDate);
+        const toCard = resolveRateCard(withDate.startDate);
+        if (fromCard === toCard) return withDate;
+        const applied = applyRateCardToCrew(withDate, fromCard, toCard);
+        if (toCard.effectiveFrom > todayISO()) {
+          noticeRef.current = { label: toCard.label, effectiveFrom: toCard.effectiveFrom };
+        }
+        return applied;
+      };
 
     /* ═══════════ LONG FORM (Pact/Bectu) — agreement metadata ═══════════ */
     // Slice 1: the SHAPE of a long form job only. No calculator, no ruleset
@@ -32202,32 +32243,11 @@ const confirmDelete = (p) => setConfirmOpts({
         setOpenId(p.id);
         setShowNewProduction(false);
       };
-      // ── Derived start date + AUTOMATIC rate-card application (H2) ───────
-      // startDate is derived from the earliest dated day, and EVERY
-      // production edit funnels through setProduction — so derivation and
-      // card application live here ONCE, covering day add / date edit /
-      // delete on every screen AND the manual no-days start-date edit.
-      // Application is AUTOMATIC (no accept/decline — superseding the
-      // D6/G3 prompt): when an edit moves the production onto a different
-      // resolved card, the new card's numbers are applied on the spot, but
-      // ONLY to crew whose current bdr, otCoef AND otRate all EXACTLY match
-      // the PREVIOUSLY-resolved card's values for their role. That
-      // exact-match rule is what makes automatic application safe: a member
-      // still carrying the old table's values is provably table-derived, so
-      // moving them to the new table is a correction, not an overwrite; ANY
-      // mismatch means a hand-edited / negotiated rate and is never
-      // touched. Custom roles (absent from either card) are never touched.
-      // Step-ups stay snapshotted on day records by design. Application is
-      // EVENT-DRIVEN only — the migrate/load-time snap never passes through
-      // here, so stored data is never rewritten at load.
-      //
-      // One informational notice remains: when the newly-resolved card is a
-      // FUTURE card (effectiveFrom after today — e.g. booking a September
-      // shoot in July), a single-OK heads-up says the new rates apply. It
-      // is a notice, not a gate — rates apply underneath regardless — and
-      // it never fires once today has passed the card's effectiveFrom. It
-      // is QUEUED on a ref and flushed post-commit: updaters must stay pure
-      // (StrictMode double-invokes them), so no setState from inside.
+      // The FUTURE-card notice queue: finalizeProductionUpdate (module scope
+      // since Phase 7, beside applyRateCardToCrew in the rate-card zone)
+      // writes this ref synchronously from inside the updater; the effect
+      // flushes it post-commit (updaters stay pure — StrictMode double-
+      // invokes them, so no setState from inside).
       const [rateCardNotice, setRateCardNotice] = useState(null);
       const pendingRateNoticeRef = React.useRef(null);
       useEffect(() => {
@@ -32236,23 +32256,9 @@ const confirmDelete = (p) => setConfirmOpts({
           pendingRateNoticeRef.current = null;
         }
       });
-      // applyRateCardToCrew moved to module scope (the rate-card zone, beside
-      // seedRateFromPrefs) so the audits execute it directly — Phase 7.
-      const finalizeProductionUpdate = (prevP, nextP) => {
-        const derived = deriveStartDate(nextP);
-        const withDate = (derived && derived !== nextP.startDate) ? { ...nextP, startDate: derived } : nextP;
-        const fromCard = resolveRateCard(prevP.startDate);
-        const toCard = resolveRateCard(withDate.startDate);
-        if (fromCard === toCard) return withDate;
-        const applied = applyRateCardToCrew(withDate, fromCard, toCard);
-        if (toCard.effectiveFrom > todayISO()) {
-          pendingRateNoticeRef.current = { label: toCard.label, effectiveFrom: toCard.effectiveFrom };
-        }
-        return applied;
-      };
       const setProduction = (updater) =>
         setProductions((prev) => prev.map((p) =>
-          p.id === openId ? finalizeProductionUpdate(p, (typeof updater === "function" ? updater(p) : updater)) : p
+          p.id === openId ? finalizeProductionUpdate(p, (typeof updater === "function" ? updater(p) : updater), pendingRateNoticeRef) : p
         ));
 
       const handleExport = () => {

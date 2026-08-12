@@ -7829,13 +7829,16 @@ async function main() {
           /const matchesOldCard = Number\(c\.bdr\) === Number\(oldD\.bdr\)\s*&& Number\(c\.otCoef\) === Number\(oldD\.otCoef\)\s*&& \(\(c\.otRate \?\? null\) === \(oldD\.otRate \?\? null\)\);/.test(html) &&
           /if \(!matchesOldCard\) return c;/.test(html) &&
           /return \{ \.\.\.c, bdr: newD\.bdr, otCoef: newD\.otCoef, otRate: newD\.otRate \?\? null \};/.test(html);
-        const finalizeOk = /const finalizeProductionUpdate = \(prevP, nextP\) => \{/.test(html) &&
+        // Phase 7: finalizeProductionUpdate is module scope. The notice ref is
+        // a PARAMETER (noticeRef) — the App router passes pendingRateNoticeRef,
+        // so the write is the same synchronous ref write it always was.
+        const finalizeOk = /const finalizeProductionUpdate = \(prevP, nextP, noticeRef\) => \{/.test(html) &&
           /const withDate = \(derived && derived !== nextP\.startDate\) \? \{ \.\.\.nextP, startDate: derived \} : nextP;/.test(html) &&
           /if \(fromCard === toCard\) return withDate;/.test(html) &&
           /const applied = applyRateCardToCrew\(withDate, fromCard, toCard\);/.test(html) &&
           /if \(toCard\.effectiveFrom > todayISO\(\)\) \{/.test(html) &&
-          /pendingRateNoticeRef\.current = \{ label: toCard\.label, effectiveFrom: toCard\.effectiveFrom \};/.test(html) &&
-          /p\.id === openId \? finalizeProductionUpdate\(p, \(typeof updater === "function" \? updater\(p\) : updater\)\) : p/.test(html);
+          /noticeRef\.current = \{ label: toCard\.label, effectiveFrom: toCard\.effectiveFrom \};/.test(html) &&
+          /p\.id === openId \? finalizeProductionUpdate\(p, \(typeof updater === "function" \? updater\(p\) : updater\), pendingRateNoticeRef\) : p/.test(html);
         const noticeOk = /cancelLabel=\{null\}/.test(html) &&
           /so the \$\{month\} \$\{d\.getFullYear\(\)\} APA rates apply\./.test(html) &&
           !/confirmLabel="Update rates"/.test(html) && !/applyRateCardRefresh/.test(html);
