@@ -37,6 +37,19 @@
 
 
 # =====================================================================
+# STICKER PATH — /scan is the short URL for the NEXT print run of the
+# physical QR stickers. It 301s to /welcome, which is where the stickers
+# already in the world point; those keep hitting /welcome directly and
+# are unaffected by this rule. Kept permanent (301) so the short path can
+# be printed on a physical object and relied on indefinitely.
+# =====================================================================
+[[redirects]]
+  from = "/scan"
+  to = "/welcome"
+  status = 301
+
+
+# =====================================================================
 # SECOND-LAYER 404s (defence in depth; the publish allow-list is primary).
 # force = true so the rule wins even if a real file exists at the path.
 # to = /404.html has no such file, so Netlify returns its default 404 page.

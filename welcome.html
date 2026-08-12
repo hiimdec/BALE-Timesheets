@@ -755,6 +755,175 @@
     }
     .ios-callout .store-link:hover { color: var(--tm-accent-2); }
     .ios-callout .store-link svg { width: 12px; height: 12px; }
+    /* ─────────────────────────────────────────────────────
+       Chunk 19 - the three beats
+       ───────────────────────────────────────────────────── */
+    .beat {
+      font-size: clamp(21px, 5.6vw, 27px);
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      line-height: 1.15;
+      margin: 0 0 4px;
+      color: var(--text);
+    }
+    .beat.soft { color: var(--text-3); }
+    .beats { margin-bottom: 24px; }
+
+    /* ─────────────────────────────────────────────────────
+       Dual CTAs. BOTH are always rendered and always visible.
+       The base .dual style is the JS-OFF state: two equal,
+       fully-styled buttons. JS may add .is-primary to one and
+       reorder the row; it never hides or disables either.
+       ───────────────────────────────────────────────────── */
+    .cta.dual {
+      background: rgba(14,165,233,0.12);
+      color: var(--tm-accent);
+      border: 1px solid var(--tm-accent);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .cta.dual:hover { background: rgba(14,165,233,0.2); }
+    .cta.dual.is-primary {
+      background: var(--tm-accent);
+      color: #050505;
+      border-color: var(--tm-accent);
+      box-shadow:
+        0 0 0 1px var(--tm-accent),
+        0 12px 36px -10px rgba(14,165,233,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.18);
+    }
+    .cta.dual.is-primary:hover { background: #38bdf8; }
+    .ctas.prefer-store .cta-store { order: -1; }
+
+    /* ─────────────────────────────────────────────────────
+       Stages - the workflow centrepiece (ported .workflow-step
+       treatment, one column on a phone)
+       ───────────────────────────────────────────────────── */
+    .stages { margin-top: 46px; }
+    .stage {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 22px 18px;
+      margin-top: 16px;
+    }
+    .stage-head { display: flex; align-items: center; gap: 12px; }
+    .stage .ic {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: rgba(14,165,233,0.10);
+      border: 1px solid rgba(14,165,233,0.30);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--tm-accent); flex-shrink: 0;
+    }
+    .stage .ic svg { width: 18px; height: 18px; }
+    .stage .ord {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 10px; color: var(--text-4);
+      letter-spacing: 0.18em; font-weight: 700;
+    }
+    .stage h3 {
+      font-size: 17px; font-weight: 800; letter-spacing: -0.02em;
+      color: var(--text); margin: 2px 0 0;
+    }
+    .stage p { font-size: 14.5px; color: var(--text-2); line-height: 1.6; margin: 14px 0 0; }
+    .stage p.aside { font-size: 13px; color: var(--text-3); }
+    .stage-note {
+      font-size: 12px; color: var(--text-4); line-height: 1.55;
+      margin-top: 14px; padding-left: 12px; border-left: 2px solid var(--border);
+    }
+    .stage-art { margin-top: 20px; }
+
+    /* Six-field call-sheet mock (ported from home-preview) */
+    .fields-mock { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px; padding: 16px 16px 6px; }
+    .fields-mock .fm-head { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 700; color: var(--tm-accent); margin-bottom: 10px; }
+    .fm-field { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border-soft); }
+    .fm-field:first-of-type { border-top: none; }
+    .fm-field .fm-body { min-width: 0; flex: 1; }
+    .fm-field .fm-k { font-size: 9px; color: var(--text-3); letter-spacing: 0.10em; text-transform: uppercase; font-weight: 700; }
+    .fm-field .fm-v { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 12px; color: var(--text); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fm-check { width: 18px; height: 18px; border-radius: 5px; background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.45); color: var(--tm-good); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .fm-check svg { width: 11px; height: 11px; }
+
+    /* Live Activity mock (ported from how-it-works) */
+    .la-card {
+      width: 100%;
+      background:
+        radial-gradient(70% 130% at 16% 26%, rgba(255,138,61,0.12) 0%, transparent 52%),
+        linear-gradient(180deg, #171717, #0f0f0f);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 16px 16px 14px;
+      box-shadow: 0 30px 60px -30px rgba(0,0,0,0.85);
+    }
+    .la-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+    .la-title { font-size: 14px; font-weight: 600; color: #e9e9ea; letter-spacing: -0.01em; }
+    .la-k { font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); font-weight: 700; margin-top: 12px; }
+    .la-total { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 28px; font-weight: 800; color: #f5f5f5; margin-top: 3px; line-height: 1; }
+    .la-total .gbp { color: var(--tm-accent); }
+    .la-timer { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 15px; color: #d4d4d4; margin-top: 7px; font-weight: 700; }
+    .la-meta { text-align: right; padding-top: 2px; }
+    .la-call { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 12.5px; color: var(--text-2); font-weight: 700; letter-spacing: 0.08em; }
+    .la-ot { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 11.5px; color: var(--text-3); margin-top: 30px; letter-spacing: 0.04em; }
+    .la-btns { display: flex; gap: 10px; margin-top: 16px; }
+    .la-btn { flex: 1; text-align: center; border-radius: 12px; padding: 11px 8px; font-weight: 800; font-size: 13.5px; }
+    .la-btn.lunch { color: var(--tm-warn); border: 1px solid rgba(255,138,61,0.55); background: rgba(255,138,61,0.06); }
+    .la-btn.wrap { color: #06121c; background: var(--tm-accent); }
+    .la-cap { text-align: center; font-size: 11px; color: var(--text-4); margin-top: 12px; letter-spacing: 0.04em; }
+
+    /* Invoice mock (ported .mock family from how-it-works) */
+    .mock {
+      background: var(--tm-pill-paper);
+      color: var(--tm-pill-ink);
+      border-radius: 14px;
+      padding: 20px 18px;
+      box-shadow: 0 30px 80px -30px rgba(0,0,0,0.7), 0 0 0 1px var(--border);
+      background-image:
+        linear-gradient(rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(var(--tm-pill-paper), var(--tm-pill-paper));
+      background-size: 16px 16px, 16px 16px, 100% 100%;
+    }
+    .mock-head { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid rgba(21,23,26,0.12); gap: 12px; }
+    .mock-name { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+    .mock-sub { font-size: 11px; color: rgba(21,23,26,0.55); margin-top: 6px; }
+    .mock-total-label { font-size: 9px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(21,23,26,0.5); text-align: right; }
+    .mock-total { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 20px; font-weight: 800; margin-top: 3px; letter-spacing: -0.01em; text-align: right; }
+    .mock-rows { display: flex; flex-direction: column; gap: 11px; }
+    .mock-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+    .mock-row .left { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+    .mock-row .date { font-weight: 700; }
+    .mock-row .times { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; color: rgba(21,23,26,0.55); font-size: 12px; }
+    .mock-row .right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .mock-row .amount { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-weight: 700; font-size: 13px; }
+    .mock-chip { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-weight: 700; font-size: 9.5px; letter-spacing: 0.10em; text-transform: uppercase; padding: 3px 7px; border-radius: 4px; line-height: 1; white-space: nowrap; }
+    .mock-chip.shoot { background: rgba(14,165,233,0.16); color: #075985; border: 1px solid rgba(14,165,233,0.3); }
+    .mock-chip.ot { background: rgba(255,138,61,0.14); color: #b04714; border: 1px solid rgba(255,138,61,0.4); }
+
+    /* Getting paid */
+    .owed { margin-top: 46px; }
+    .owed .punch { font-size: clamp(19px, 5vw, 24px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.25; margin: 0; color: var(--text); }
+    .owed .punch.soft { color: var(--text-3); margin-bottom: 6px; }
+    .owed p { font-size: 14.5px; color: var(--text-2); line-height: 1.6; margin: 16px 0 0; }
+    .owed .flat { color: var(--text-3); font-size: 13.5px; }
+
+    /* iPhone extras, split by what they actually need */
+    .ios-group { margin-top: 22px; }
+    .ios-group h3 {
+      font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent); margin: 0 0 12px;
+    }
+    .ios-group.later h3 { color: var(--text-3); }
+    .say {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 12.5px; color: var(--text); background: var(--bg-soft);
+      border: 1px solid var(--border-soft); border-radius: 6px;
+      padding: 2px 6px; display: inline-block; margin-top: 4px;
+    }
+    .roadmap {
+      margin-top: 40px; font-size: 13px; color: var(--text-3);
+      line-height: 1.6; padding-left: 12px; border-left: 2px solid var(--border);
+    }
+    .roadmap strong { color: var(--text-2); font-weight: 700; }
+
     a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
   </style>
 
@@ -786,7 +955,12 @@
 
     <!-- ─────────────── Hero ─────────────── -->
     <main id="main" class="hero">
-      <p class="scan-line">Work in film? You found TimeMachine.</p>
+      <!-- The three beats. The sticker asks "WORK IN FILM??" - this answers it. -->
+      <div class="beats">
+        <p class="scan-line">Work in film?</p>
+        <p class="beat soft">Sorry to hear that.</p>
+        <p class="beat">Here&rsquo;s something useful.</p>
+      </div>
 
       <h1>
         <span class="time">TIME</span>
@@ -799,19 +973,21 @@
         Your <strong>APA day</strong>, totalled.
       </p>
       <p class="sub">
-        The APA timesheet calculator for UK commercial crew. From call sheet to invoice, all in one app, penalties caught before you spot them. No login, nothing tracked.
+        The APA timesheet calculator for UK commercial crew. Call sheet to timesheet to invoice, with the overtime, penalties and mileage worked out as the day runs. No login, nothing tracked, free.
       </p>
 
-      <!-- Two buttons: open the app now, or get the native iPhone one -->
+      <!-- BOTH CTAs are always here and always visible. The .dual style IS the
+           no-JavaScript state: two equal, complete buttons. The script below may
+           promote one and move it first; it can never hide or disable either. -->
       <div class="ctas">
-        <a href="/app/" class="cta primary">
+        <a href="/app/" class="cta dual cta-web">
           Open the app
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"/>
             <polyline points="12 5 19 12 12 19"/>
           </svg>
         </a>
-        <a href="https://apps.apple.com/app/id6775970098" class="cta secondary" target="_blank" rel="noopener">
+        <a href="https://apps.apple.com/app/id6775970098" class="cta dual cta-store" target="_blank" rel="noopener">
           Download for iPhone
         </a>
       </div>
@@ -820,19 +996,17 @@
         Built to the <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA Recommended Crew Terms</a>, September 2025.
       </p>
 
-      <!-- Pro tip, folded in by the buttons - for the Android/desktop scanner -->
       <div class="tip">
-        <div class="tip-label">◇ Pro tip</div>
+        <div class="tip-label">&#9671; Pro tip</div>
         <p>
-          No App Store? On Android or desktop, open the app and tap <strong>Share → Add to Home Screen</strong> - it behaves like an installed app.
+          No App Store? On Android or desktop, open the app and tap <strong>Share &rarr; Add to Home Screen</strong> - it behaves like an installed app.
         </p>
       </div>
 
-      <!-- One demo - the in-app card, rotating through real days -->
       <div class="stat-card" aria-label="Sample day from the app">
         <div class="row1">
           <span class="live-dot"></span>
-          <span class="live-label rot" data-rot="liveLabel">ON CALL · DAY 4 OF 7</span>
+          <span class="live-label rot" data-rot="liveLabel">ON CALL &middot; DAY 4 OF 7</span>
         </div>
         <div class="rot prod-title" data-rot="productionTitle">Tesco Christmas - Day 4</div>
         <div class="meta rot" data-rot="productionMeta">Plover Films &middot; Tue 14 Oct &middot; Stage 6</div>
@@ -844,54 +1018,224 @@
           </div>
           <div class="stat">
             <div class="l">TODAY</div>
-            <div class="v mono accent rot" data-rot="todayValue">£215.00</div>
-            <div class="sub mono rot" data-rot="todayOt" style="color: var(--tm-warn);">+£15.00 OT</div>
+            <div class="v mono accent rot" data-rot="todayValue">&pound;215.00</div>
+            <div class="sub mono rot" data-rot="todayOt" style="color: var(--tm-warn);">+&pound;15.00 OT</div>
           </div>
           <div class="stat">
             <div class="l">SHOOT</div>
-            <div class="v mono rot" data-rot="shootValue">£940.00</div>
+            <div class="v mono rot" data-rot="shootValue">&pound;940.00</div>
             <div class="sub rot" data-rot="shootDays">3 days</div>
           </div>
         </div>
-        <div class="caption">↑ a day, on your rates, totalled.</div>
+        <div class="caption">&uarr; a day, on your rates, totalled.</div>
       </div>
     </main>
 
-    <!-- ─────────────── What it does ─────────────── -->
-    <section class="features">
-      <h2 class="label-bare">What it does</h2>
-      <ul>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Calculates the day.</strong> Your role, your rates, OT and penalties worked out as the day runs.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Makes the timesheet.</strong> A clean A4 PDF for production. No more biro on the back of a call sheet.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Sends the invoice.</strong> One tap from timesheet to invoice. VAT-aware, auto-numbered, your bank details already on it.</span>
-        </li>
-      </ul>
+    <!-- ─────────────── The workflow ─────────────── -->
+    <section class="stages">
+      <h2 class="label-bare">A shoot day, end to end</h2>
+
+      <!-- 01 -->
+      <div class="stage">
+        <div class="stage-head">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
+          </div>
+          <div>
+            <div class="ord">01</div>
+            <h3>The night before</h3>
+          </div>
+        </div>
+        <p>
+          The call sheet arrives by email, as ever, at about eleven at night. Share it into TimeMachine and it reads the invoicing details straight off the sheet, then shows you what it found so you can check every field before anything is saved. The job is set up before the kettle has boiled.
+        </p>
+        <p class="aside">No retyping production details out of a PDF at eleven at night.</p>
+        <div class="stage-art">
+          <div class="fields-mock" role="img" aria-label="Six invoicing fields read off a call sheet: production, production company, job reference, invoicing email, cc, and invoicing address, each ticked as checked">
+            <div class="fm-head">Read off the sheet - check each one</div>
+        <div class="fm-field">
+          <div class="fm-body">
+            <div class="fm-k">Production</div>
+            <div class="fm-v">Volvo EX90 - Spot 2</div>
+          </div>
+          <span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        </div>
+        <div class="fm-field">
+          <div class="fm-body">
+            <div class="fm-k">Production company</div>
+            <div class="fm-v">Northbank Pictures Ltd</div>
+          </div>
+          <span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        </div>
+        <div class="fm-field">
+          <div class="fm-body">
+            <div class="fm-k">Job reference</div>
+            <div class="fm-v">NU684</div>
+          </div>
+          <span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        </div>
+        <div class="fm-field">
+          <div class="fm-body">
+            <div class="fm-k">Invoicing email</div>
+            <div class="fm-v">accounts@northbankpictures.co.uk</div>
+          </div>
+          <span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        </div>
+        <div class="fm-field">
+          <div class="fm-body">
+            <div class="fm-k">CC</div>
+            <div class="fm-v">production@northbankpictures.co.uk</div>
+          </div>
+          <span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        </div>
+        <div class="fm-field">
+          <div class="fm-body">
+            <div class="fm-k">Invoicing address</div>
+            <div class="fm-v">5 Margaret Street, London W1W 8RG</div>
+          </div>
+          <span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        </div>
+          </div>
+        </div>
+        <p class="stage-note">
+          iPhone, on iOS 26 with Apple Intelligence. It runs on the phone, so the call sheet is never uploaded anywhere.
+        </p>
+      </div>
+
+      <!-- 02 -->
+      <div class="stage">
+        <div class="stage-head">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div>
+            <div class="ord">02</div>
+            <h3>On set</h3>
+          </div>
+        </div>
+        <p>
+          Set your call time in the app and the day starts running. After that the lock screen does the work: <strong>Lunch</strong>, and <strong>Wrap</strong>. Both are two-tap, arm then confirm, because a phone in your back pocket should not be able to wrap your day.
+        </p>
+        <p>
+          If lunch gets cut short, <strong>Back early?</strong> records the curtailment. That is time you worked that would otherwise quietly go missing: recorded, and paid.
+        </p>
+        <div class="stage-art">
+          <div class="la-card" role="img" aria-label="TimeMachine Live Activity on the lock screen: Northbank, Volvo EX90, day total 653 pounds 80, timer 2 hours 59 minutes, call 07:00, overtime from 19:00, with Lunch now and Wrap now buttons">
+            <div class="la-top">
+              <div>
+                <div class="la-title">Northbank &middot; Volvo EX90</div>
+                <div class="la-k">Day total</div>
+                <div class="la-total"><span class="gbp">&pound;</span>653.80</div>
+                <div class="la-timer">2:59:12</div>
+              </div>
+              <div class="la-meta">
+                <div class="la-call">CALL 07:00</div>
+                <div class="la-ot">OT from 19:00</div>
+              </div>
+            </div>
+            <div class="la-btns">
+              <div class="la-btn lunch">Lunch now</div>
+              <div class="la-btn wrap">Wrap now</div>
+            </div>
+          </div>
+          <p class="la-cap">Your lock screen, somewhere around the second setup.</p>
+        </div>
+      </div>
+
+      <!-- 03 -->
+      <div class="stage">
+        <div class="stage-head">
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+          </div>
+          <div>
+            <div class="ord">03</div>
+            <h3>After wrap</h3>
+          </div>
+        </div>
+        <p>
+          Generate invoice. On iPhone the PDF comes attached to an email with the recipient, subject and body already filled in. You read it over and press send: the app never sends anything on your behalf.
+        </p>
+        <p class="aside">
+          On the web it is a prefilled email without the attachment, because a mailto link cannot carry a file. The PDF comes from print, and you attach it yourself.
+        </p>
+        <div class="stage-art">
+          <div class="mock" role="img" aria-label="Invoice mock: Volvo EX90 for Northbank Pictures, three shoot days totalling 1,675 pounds">
+            <div class="mock-head">
+              <div>
+                <div class="mock-name">Invoice 0142</div>
+                <div class="mock-sub">Northbank Pictures &middot; Lighting Technician &middot; BDR &pound;444</div>
+              </div>
+              <div>
+                <div class="mock-total-label">Total</div>
+                <div class="mock-total">&pound;1,675.00</div>
+              </div>
+            </div>
+            <div class="mock-rows">
+              <div class="mock-row">
+                <div class="left"><span class="date">Mon 10 Aug</span><span class="times">07:00 &rarr; 19:00</span><span class="mock-chip shoot">Shoot</span></div>
+                <div class="right"><span class="amount">&pound;510.60</span></div>
+              </div>
+              <div class="mock-row">
+                <div class="left"><span class="date">Tue 11 Aug</span><span class="times">07:00 &rarr; 21:00</span><span class="mock-chip shoot">Shoot</span><span class="mock-chip ot">OT</span></div>
+                <div class="right"><span class="amount">&pound;653.80</span></div>
+              </div>
+              <div class="mock-row">
+                <div class="left"><span class="date">Wed 12 Aug</span><span class="times">07:00 &rarr; 19:00</span><span class="mock-chip shoot">Shoot</span></div>
+                <div class="right"><span class="amount">&pound;510.60</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────── Getting paid ─────────────── -->
+    <section class="owed">
+      <p class="punch soft">Getting production to pay on time?</p>
+      <p class="punch">That&rsquo;s outside my scope.</p>
+      <p>
+        If they don&rsquo;t, TimeMachine handles that bit too. It flags the invoice overdue, and it will remind you on the due date if you want it to. When you decide to charge for it, it works out the statutory charges where applicable: interest at 8% over the Bank of England base rate, plus the fixed recovery fee. They go onto the invoice as their own section, and it drafts the chase email for you to send.
+      </p>
+      <p class="flat">
+        It cannot make anyone pay. It can make the asking quick, correct, and hard to argue with.
+      </p>
+      <p class="provenance">
+        <a href="/articles/late-payment-what-youre-owed">Late payment: the seven day rule, and what you can charge</a>
+      </p>
     </section>
 
     <!-- ─────────────── On iPhone ─────────────── -->
     <div class="ios-callout">
       <div class="head">On iPhone, it goes further</div>
-      <ul class="ios-list">
-        <li><strong>Call-sheet reader.</strong> Import a call sheet and it fills in your invoicing details for you, on-device. Nothing leaves the phone. <span class="ios-tag">iOS 26, Apple Intelligence</span></li>
-        <li><strong>Live Activity.</strong> Your shoot day on the lock screen: running total, a live timer, two-tap Lunch / Wrap. <span class="ios-tag">iPhone</span></li>
-        <li><strong>Siri.</strong> &ldquo;Hey Siri, wrap now in TimeMachine&rdquo; stamps the time, hands full of cable. <span class="ios-tag">iPhone</span></li>
-        <li><strong>iCloud backup.</strong> A quiet daily snapshot in your own iCloud - nobody else can see it. New phone or reinstalled app, your shoots come back. <span class="ios-tag">iPhone</span></li>
-      </ul>
+
+      <div class="ios-group">
+        <h3>On any iPhone, from iOS 17</h3>
+        <ul class="ios-list">
+          <li><strong>Live Activity.</strong> Your shoot day on the lock screen: running total, a live timer, and the two-tap Lunch and Wrap. <span class="ios-tag">iPhone</span></li>
+          <li><strong>Siri.</strong> <span class="say">&ldquo;Hey Siri, wrap now in TimeMachine&rdquo;</span> <span class="say">&ldquo;Hey Siri, lunch in TimeMachine&rdquo;</span> Hands full of cable, day still logged. It reads the time back to you. <span class="ios-tag">iPhone</span></li>
+          <li><strong>iCloud backup.</strong> A quiet daily snapshot in your own iCloud - nobody else can see it. New phone or reinstalled app, your shoots come back. <span class="ios-tag">iPhone</span></li>
+        </ul>
+      </div>
+
+      <div class="ios-group later">
+        <h3>Needs a newer phone</h3>
+        <ul class="ios-list">
+          <li><strong>Call-sheet reader.</strong> Reads your invoicing details off a call sheet, on the device. Nothing leaves the phone. <span class="ios-tag">iOS 26, Apple Intelligence</span></li>
+        </ul>
+      </div>
+
       <a href="https://apps.apple.com/app/id6775970098" class="store-link" target="_blank" rel="noopener">
         Download on the App Store
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </a>
     </div>
 
-    <!-- ─────────────── Quiet link + signoff ─────────────── -->
+    <!-- ─────────────── Housekeeping ─────────────── -->
+    <p class="roadmap">
+      <strong>Commercials now.</strong> Long form is in development.
+    </p>
+
     <p class="provenance">
       Want the detail? <a href="/how-it-works">See how it works</a>.
     </p>
@@ -923,6 +1267,33 @@
        the stat card through real-feeling crew examples.
        Maths verified against the APA Recommended Terms.
        ───────────────────────────────────────────────────── -->
+  <!-- ─────────────────────────────────────────────────────
+       CTA emphasis. PROGRESSIVE ONLY: both buttons are already
+       rendered and fully styled without this script - it adds a
+       highlight and moves one first. It never hides, disables or
+       removes either button, so the no-JS state stays complete.
+
+       iPad reports a Macintosh user agent in its default desktop
+       mode, so a plain UA test files it as a desktop and offers the
+       web app, when the iPhone app runs on it perfectly well. Pair
+       the Mac UA with maxTouchPoints > 1: no Mac reports any touch
+       points, so this catches iPad without catching a real Mac.
+       Anything we cannot place gets the web app highlighted, which
+       is the safe default - it works everywhere.
+       ───────────────────────────────────────────────────── -->
+  <script>
+    (function () {
+      var row = document.querySelector('.ctas');
+      if (!row) return;
+      var ua = navigator.userAgent || '';
+      var applePocket = /iPhone|iPod|iPad/.test(ua) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      var pick = row.querySelector(applePocket ? '.cta-store' : '.cta-web');
+      if (pick) pick.classList.add('is-primary');
+      if (applePocket) row.classList.add('prefer-store');
+    })();
+  </script>
+
   <script>
     (function () {
       var states = [
