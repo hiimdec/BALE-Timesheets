@@ -3459,6 +3459,92 @@ async function main() {
         check('OTG4 resolveRateCard/flattenRateCard exposed for the construction-path pin', false, 'not exposed');
       }
     }
+
+    // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
+    //    class of bug: a field the engine reads that no construction path writes
+    //    sits dead - the engine is correct given its inputs, the calc suite hands
+    //    it finished records, and the gate stays green around a dead preference.
+    //    This section enumerates the engine's reads DYNAMICALLY from source (a
+    //    newly added read self-registers and demands a writer declaration) and
+    //    requires every read to name at least one VERIFIED construction writer.
+    //    A read with no table entry, or an entry whose writer regex no longer
+    //    matches, goes RED. ──
+    {
+      const src = fs.readFileSync(SRC_HTML, 'utf8');
+      // The engine slice: calculateDay + calculatePmpaDay. weekendOpts is used
+      // NOWHERE outside the engine (verified), so its scan is whole-file and a
+      // new engine entry point using it self-registers; crew.* IS used elsewhere,
+      // so crew reads scan the slice only.
+      const dStart = src.indexOf('function calculateDay(');
+      const pStart = src.indexOf('function calculatePmpaDay(', dStart);
+      const pEnd = src.indexOf('\n    function ', pStart + 10);
+      const engine = src.slice(dStart, pEnd);
+      check('RW0 engine slice extracted (calculateDay then calculatePmpaDay, in order)',
+        dStart > 0 && pStart > dStart && pEnd > pStart, JSON.stringify({ dStart, pStart, pEnd }));
+
+      // Every production/crew field the engine reads, mapped to at least one
+      // verified construction writer (a regex matching a real write site outside
+      // the engine). calcForDisplay spreads the WHOLE production as weekendOpts
+      // ({ ...production, apaRounding: roundingApa(production) }), so each
+      // weekendOpts key is a production field; apaRounding is derived at that
+      // call site from roundingMode, so roundingMode's writer is its proof.
+      const WRITERS = {
+        // weekendOpts.* (= production.*)
+        apaRounding:        [/roundingMode: m \}\)\)/],                    // RoundingModeSelect -> production.roundingMode
+        isElevenHourDay:    [/isElevenHourDay: v \}\)\)/],                 // the Mode toggle
+        mileageRatePerMile: [/n\.mileageRatePerMile = v; else delete n\.mileageRatePerMile/,   // both settings editors
+                             /\.\.\.seededMileageRate\(userPrefs\)/],                          // the three creation seeds
+        satRateMode:        [/satRateMode: v \? "custom" : "apa"/],        // weekend overrides
+        satRateCustom:      [/satRateCustom: p\.satRateCustom \?\? 1\.5/],
+        sunRateMode:        [/sunRateMode: v \? "custom" : "apa"/],
+        sunRateCustom:      [/sunRateCustom: p\.sunRateCustom \?\? 2/],
+        // crew.* (effectiveCrew = the crew record + the step-up overlay)
+        bdr:    [/bdr: d\.bdr \?\? f\.bdr/],                               // role-selection copy
+        otCoef: [/otCoef: d\.otCoef \?\? autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\)/],
+        otRate: [/otRate: d\.otRate \?\? null/],
+        role:   [/setForm\(\(f\) => \(\{ \.\.\.f, role,/],
+        // noOT: written by the BB commit and QuickAddCrewSheet (seed + role
+        // change, both ways). PARTIAL coverage - the CrewManager editor and the
+        // solo job-settings editor do NOT copy it (the tracked Director/Producer
+        // phantom-OT item). One writer means not-dead, which is this pin's whole
+        // claim; completing the copy belongs to that item, not here.
+        noOT:   [/\.\.\.\(roleDefaults\.noOT \? \{ noOT: true \} : \{\}\)/],
+      };
+      const readKeys = new Set();
+      for (const m of src.matchAll(/weekendOpts\.([a-zA-Z]\w*)/g)) readKeys.add(m[1]);
+      for (const m of engine.matchAll(/crew\.([a-zA-Z]\w*)/g)) readKeys.add(m[1]);
+      const undeclared = [...readKeys].filter(k => !WRITERS[k]);
+      check('RW1 every engine read (weekendOpts.* whole-file + crew.* in the engine slice) has a declared construction writer - a NEW engine read with no WRITERS entry goes RED here: declare its writer when you add the read',
+        undeclared.length === 0,
+        'undeclared engine reads: ' + JSON.stringify(undeclared) + ' of ' + JSON.stringify([...readKeys].sort()));
+      const dead = Object.entries(WRITERS).filter(([, res]) => !res.some(re => re.test(src))).map(([k]) => k);
+      check('RW2 every declared writer still matches source - an engine-read field that nothing writes any more goes RED here (the defaultMileageRate class of bug)',
+        dead.length === 0, 'dead fields (no construction writer matches): ' + JSON.stringify(dead));
+
+      // The step-up overlay (resolveCrewForDay): four stepUp* fields read off
+      // the day record, each written by the pickers.
+      const overlayReads = /role: resolvedDay\.stepUpRole \|\| crewMember\.role,\s*bdr: Number\(resolvedDay\.stepUpBDR\) \|\| crewMember\.bdr,\s*otCoef: Number\(resolvedDay\.stepUpOTCoef\) \|\| crewMember\.otCoef,\s*otRate: resolvedDay\.stepUpOTRate \?\? null,/.test(src);
+      const overlayWrites = /stepUpRole: role,/.test(src) && /stepUpBDR: d\.bdr/.test(src) &&
+        /stepUpOTCoef: role \?/.test(src) && /stepUpOTRate: role \? \(d\.otRate \?\? null\) : null/.test(src);
+      check('RW3 the step-up overlay reads four day fields (stepUpRole/BDR/OTCoef/OTRate) and the pickers write all four',
+        overlayReads && overlayWrites, JSON.stringify({ overlayReads, overlayWrites }));
+
+      // The resolveDay merge set: DEFAULT_PRODUCTION_DAY's keys are what the
+      // engine receives with NO record write (the defaults), and the dayDefaults
+      // cascade carries exactly the same five. A sixth key goes RED - declare
+      // its writer here when the field is added.
+      const ddObj = (src.match(/const DEFAULT_PRODUCTION_DAY = \{([\s\S]*?)\};/) || ['', ''])[1];
+      const ddKeys = [...ddObj.matchAll(/^\s*([a-zA-Z]\w*):/gm)].map(m => m[1]);
+      const CASCADE = ['dayType', 'callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins'];
+      const cascadeLines = CASCADE.every(f => new RegExp('if \\(day\\.' + f + ' === undefined && dateDefaults\\.' + f + ' !== undefined\\) merged\\.' + f + ' = dateDefaults\\.' + f + ';').test(src));
+      const dayWriters = /dayType: SHARE_DAY_TYPES\[type\]/.test(src) &&    // share decode writes dayType
+        (src.match(/updateTimeField/g) || []).length >= 3 &&                // the single-edit time writer
+        /callTime: call,/.test(src) && /wrapTime: wrap/.test(src) &&
+        /lunchStartTime:/.test(src) && /lunchDurationMins:/.test(src);
+      check('RW4 the resolveDay merge set is exactly the five known fields (dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins): defaults keys match, the five cascade lines exist, and each field has at least one writer; a sixth DEFAULT_PRODUCTION_DAY key goes RED',
+        JSON.stringify(ddKeys) === JSON.stringify(CASCADE) && cascadeLines && dayWriters,
+        JSON.stringify({ ddKeys, cascadeLines, dayWriters }));
+    }
   }
 
   // ===== T. INLINE 5-MINUTE TIME WHEEL — touch-branch TimeInput =====
