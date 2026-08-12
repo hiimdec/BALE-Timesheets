@@ -3547,9 +3547,15 @@ async function main() {
       // The step-up overlay (resolveCrewForDay): four stepUp* fields read off
       // the day record, each written by the pickers.
       const overlayReads = /role: resolvedDay\.stepUpRole \|\| crewMember\.role,\s*bdr: Number\(resolvedDay\.stepUpBDR\) \|\| crewMember\.bdr,\s*otCoef: Number\(resolvedDay\.stepUpOTCoef\) \|\| crewMember\.otCoef,\s*otRate: resolvedDay\.stepUpOTRate \?\? null,/.test(src);
-      const overlayWrites = /stepUpRole: role,/.test(src) && /stepUpBDR: d\.bdr/.test(src) &&
-        /stepUpOTCoef: role \?/.test(src) && /stepUpOTRate: role \? \(d\.otRate \?\? null\) : null/.test(src);
-      check('RW3 the step-up overlay reads four day fields (stepUpRole/BDR/OTCoef/OTRate) and the pickers write all four',
+      // Phase 8: all four fields are written by the ONE shared helper
+      // (stepUpPatch), so the anchors point at its body rather than at three
+      // hand-rolled copies — a strengthening: losing any single field from the
+      // helper now goes RED here, where before a surviving copy could mask it.
+      const overlayWrites = /stepUpRole: role,/.test(src) &&
+        /stepUpBDR: role \? \(d\.bdr \?\? prev\.stepUpBDR\) : 0,/.test(src) &&
+        /stepUpOTCoef: role \? \(d\.otCoef \?\? fallbackCoef\) : 1,/.test(src) &&
+        /stepUpOTRate: role \? \(d\.otRate \?\? null\) : null,/.test(src);
+      check('RW3 the step-up overlay reads four day fields (stepUpRole/BDR/OTCoef/OTRate) and the ONE shared step-up helper writes all four',
         overlayReads && overlayWrites, JSON.stringify({ overlayReads, overlayWrites }));
 
       // The resolveDay merge set: DEFAULT_PRODUCTION_DAY's keys are what the

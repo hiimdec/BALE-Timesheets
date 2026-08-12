@@ -250,56 +250,76 @@ function runS1(label, eng, srcHtml) {
     `${quad(w1)} | ${quad(w2)} | ${quad(w3)}`);
 }
 
-// ── S6: step-up picker equivalence (mirrors, source-pinned) ─────────────────
-// THREE hand-maintained copies of the same stepUp write (the solo day form,
-// the bulk date edit, CrewMemberDayView) — the fourth duplicated-gate
-// instance in PACT_BECTU_PLAN.md, where the ruled fix is removing the copies,
-// not pinning them into agreement. Until that slice runs, this is the drift
-// alarm the plan file's cheapness clause allows: the SELECTED-role writes must
-// agree, and the one divergence that exists today (clear-role residue) must
-// stay pay-inert through resolveCrewForDay's stepUpRole guard.
+// ── S6: the step-up write (ONE helper since Phase 8) ───────────────────────
+// Three hand-maintained copies collapsed into stepUpPatch — the fourth
+// duplicated-gate instance in PACT_BECTU_PLAN.md, closed by DELETING the
+// copies rather than pinning them into agreement. So "the three surfaces
+// agree" is now definitional and gone. What can still fail: a call site that
+// stops routing through the helper, the call-site count, and the helper's own
+// behaviour. The pay-inertness proof SURVIVES unchanged, because it is about
+// the engine's stepUpRole guard, not about the copies.
 function runS6(label, eng, srcHtml) {
+  const callSites = (srcHtml.match(/stepUpPatch\(/g) || []).length;
   const pins = {
-    'S6 source: solo day form step-up write':
-      /set\(\{ stepUpRole: role, stepUpBDR: d\.bdr \?\? v\.stepUpBDR, stepUpOTCoef: d\.otCoef \?\? v\.stepUpOTCoef, stepUpOTRate: d\.otRate \?\? null \}\);/.test(srcHtml),
-    'S6 source: bulk date-edit step-up write':
-      /stepUpRole: role,\s*stepUpBDR: role \? \(d\.bdr \?\? p\.stepUpBDR\) : 0,\s*stepUpOTCoef: role \? \(d\.otCoef \?\? 1\) : 1,\s*stepUpOTRate: role \? \(d\.otRate \?\? null\) : null,/.test(srcHtml),
-    'S6 source: CrewMemberDayView step-up write':
-      /stepUpRole: role,\s*stepUpBDR: role \? \(d\.bdr \?\? rec\.stepUpBDR\) : 0,\s*stepUpOTCoef: role \? \(d\.otCoef \?\? rec\.stepUpOTCoef\) : 1,\s*stepUpOTRate: role \? \(d\.otRate \?\? null\) : null,/.test(srcHtml),
+    'S6 call site: solo day form role select routes through the helper':
+      /set\(stepUpPatch\(v, role, d, v\.stepUpOTCoef\)\)/.test(srcHtml),
+    'S6 call site: solo day form CLEAR button routes through the helper (canonical reset)':
+      /set\(stepUpPatch\(v, '', null, 1\)\)/.test(srcHtml),
+    'S6 call site: bulk date edit routes through the helper':
+      /setDateEdit\(p => \(\{ \.\.\.p, \.\.\.stepUpPatch\(p, role, d, 1\) \}\)\)/.test(srcHtml),
+    'S6 call site: CrewMemberDayView role select routes through the helper':
+      /\{ \.\.\.rec, \.\.\.stepUpPatch\(rec, role, d, rec\.stepUpOTCoef\) \}/.test(srcHtml),
+    'S6 call site: CrewMemberDayView CLEAR button routes through the helper (canonical reset)':
+      /\{ \.\.\.d, \.\.\.stepUpPatch\(d, '', null, 1\) \}/.test(srcHtml),
+    'S6 exactly FIVE call sites + the definition — a sixth hand-rolled stepUp write goes RED here':
+      callSites === 6,
+    // The quadruple must exist EXACTLY ONCE — in the helper's own body. Zero
+    // would be wrong (the helper would be gone); two means a caller kept a
+    // hand-rolled copy. The clear-button literal must be gone outright.
+    'S6 the stepUp quadruple is written in exactly ONE place (the helper body) and the hand-rolled clear literal is gone':
+      (srcHtml.match(/stepUpBDR: role \? \(d\.bdr \?\? prev\.stepUpBDR\) : 0/g) || []).length === 1 &&
+      (srcHtml.match(/stepUpBDR: role \? \(d\.bdr/g) || []).length === 1 &&
+      !/stepUpRole: '', stepUpBDR: 0, stepUpOTCoef: 1, stepUpOTRate: null/.test(srcHtml),
   };
   for (const [name, ok] of Object.entries(pins)) {
-    check(label, name, ok, 'the mirrored picker expression changed — update the mirror WITH the source');
+    check(label, name, ok, 'a step-up call site stopped routing through the shared helper');
   }
   if (!Object.values(pins).every(Boolean)) return;
 
+  // The rule itself, EXECUTED.
+  const patch = eng.stepUpPatch;
   const flat = eng.flattenRateCard(eng.resolveRateCard('2026-09-15'));
-  const role = 'Gaffer';
-  const d = flat[role];
-  const prev = { stepUpBDR: 111, stepUpOTCoef: 1.25 };
-  // The three writes with a role SELECTED:
-  const w1 = { stepUpRole: role, stepUpBDR: d.bdr ?? prev.stepUpBDR, stepUpOTCoef: d.otCoef ?? prev.stepUpOTCoef, stepUpOTRate: d.otRate ?? null };
-  const w2 = { stepUpRole: role, stepUpBDR: role ? (d.bdr ?? prev.stepUpBDR) : 0, stepUpOTCoef: role ? (d.otCoef ?? 1) : 1, stepUpOTRate: role ? (d.otRate ?? null) : null };
-  const w3 = { stepUpRole: role, stepUpBDR: role ? (d.bdr ?? prev.stepUpBDR) : 0, stepUpOTCoef: role ? (d.otCoef ?? prev.stepUpOTCoef) : 1, stepUpOTRate: role ? (d.otRate ?? null) : null };
+  const d = flat['Gaffer'];
+  const prev = { stepUpRole: 'DoP', stepUpBDR: 111, stepUpOTCoef: 1.25, stepUpOTRate: 9 };
   const quad = (w) => JSON.stringify(w);
-  check(label, 'S6 a SELECTED card role writes the identical stepUp quadruple on all three surfaces (Gaffer 585/1.25/null)',
-    quad(w1) === quad(w2) && quad(w2) === quad(w3) && w1.stepUpBDR === 585 && w1.stepUpOTCoef === 1.25,
-    `${quad(w1)} | ${quad(w2)} | ${quad(w3)}`);
+  const selected = patch(prev, 'Gaffer', d, prev.stepUpOTCoef);
+  check(label, 'S6 a SELECTED card role snapshots the card row onto the day (Gaffer 585 / 1.25 / null), replacing whatever the day carried',
+    selected.stepUpRole === 'Gaffer' && selected.stepUpBDR === 585 && selected.stepUpOTCoef === 1.25 && selected.stepUpOTRate === null,
+    quad(selected));
+  const cleared = patch(prev, '', null, 1);
+  check(label, 'S6 CLEARING the role resets the residue to 0 / 1 / null — canonical since Phase 8 (the solo form used to keep the prior numbers); no stale figures survive on the record',
+    cleared.stepUpRole === '' && cleared.stepUpBDR === 0 && cleared.stepUpOTCoef === 1 && cleared.stepUpOTRate === null,
+    quad(cleared));
+  check(label, 'S6 the fallback applies only when the card row lacks a coefficient, and stays per-surface',
+    patch(prev, 'X', {}, 1).stepUpOTCoef === 1 && patch(prev, 'X', {}, prev.stepUpOTCoef).stepUpOTCoef === 1.25 &&
+    patch(prev, 'X', {}, 1).stepUpBDR === prev.stepUpBDR,
+    JSON.stringify({ flat1: patch(prev, 'X', {}, 1), keep: patch(prev, 'X', {}, prev.stepUpOTCoef) }));
 
-  // The KNOWN divergence: clearing the role leaves different residue (the solo
-  // form keeps old BDR/coef and nulls the rate; the other two reset to 0/1).
-  // Prove it stays pay-inert: resolveCrewForDay ignores the whole overlay when
-  // stepUpRole is empty — both residue shapes resolve to the crew member
-  // UNCHANGED (the identical object), so no divergent number can reach money.
-  const noRole = '';
-  const dEmpty = flat[noRole] || {};
-  const r1 = { stepUpRole: noRole, stepUpBDR: dEmpty.bdr ?? prev.stepUpBDR, stepUpOTCoef: dEmpty.otCoef ?? prev.stepUpOTCoef, stepUpOTRate: dEmpty.otRate ?? null };
-  const r2 = { stepUpRole: noRole, stepUpBDR: noRole ? (dEmpty.bdr ?? prev.stepUpBDR) : 0, stepUpOTCoef: noRole ? (dEmpty.otCoef ?? 1) : 1, stepUpOTRate: noRole ? (dEmpty.otRate ?? null) : null };
+  // The pay-inertness proof survives the collapse unchanged: it is about the
+  // ENGINE's guard, not about the copies. resolveCrewForDay ignores the whole
+  // overlay unless stepUpRole is set — so the canonical residue (and any
+  // legacy keep-prior residue still stored on old day records) is inert.
   const crewMember = { role: 'Lighting Technician', bdr: 457, otCoef: 1.5, otRate: null };
-  const res1 = eng.resolveCrewForDay({ ...r1 }, crewMember);
-  const res2 = eng.resolveCrewForDay({ ...r2 }, crewMember);
-  check(label, 'S6 the clear-role residue DIVERGES across surfaces (solo keeps 111/1.25, the others reset 0/1) but is pay-inert: resolveCrewForDay returns the crew member untouched for BOTH shapes (stepUpRole guard)',
-    quad(r1) !== quad(r2) && res1 === crewMember && res2 === crewMember,
-    JSON.stringify({ r1, r2, inert: res1 === crewMember && res2 === crewMember }));
+  const legacyResidue = { stepUpRole: '', stepUpBDR: 111, stepUpOTCoef: 1.25, stepUpOTRate: 9 };
+  const resCanonical = eng.resolveCrewForDay({ ...cleared }, crewMember);
+  const resLegacy = eng.resolveCrewForDay({ ...legacyResidue }, crewMember);
+  check(label, 'S6 the residue is pay-inert BOTH ways: resolveCrewForDay returns the crew member untouched for the canonical reset AND for a legacy keep-prior record (stepUpRole guard) — which is why the canonicalisation cannot move money, and why old records keeping the legacy residue is safe',
+    resCanonical === crewMember && resLegacy === crewMember,
+    JSON.stringify({ canonical: resCanonical === crewMember, legacy: resLegacy === crewMember }));
+  const applied = eng.resolveCrewForDay({ ...selected }, crewMember);
+  check(label, 'S6 vacuity guard: with a role SET the overlay does reach the crew record (585 / 1.25), so the inertness assertions above are not passing because the guard never fires',
+    applied !== crewMember && applied.bdr === 585 && applied.otCoef === 1.25,
+    JSON.stringify(applied));
 }
 
 async function main() {

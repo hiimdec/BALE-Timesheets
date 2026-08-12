@@ -106,10 +106,11 @@ const ENGINE_NAMES = [
   // The card-less-role grade fallback: S1's crew-editor mirrors reproduce the
   // onRoleChange expression character-faithfully, which names it.
   'autoOtCoef',
-  // The ONE role-change OT profile write (Phase 8 collapse) — executed
-  // directly by construction-assertions, which is the point of collapsing
-  // three copies into a helper.
+  // The ONE role-change OT profile write and the ONE step-up write (Phase 8
+  // collapse) — executed directly by construction-assertions, which is the
+  // point of collapsing three copies of each into a helper.
   'applyRoleOtProfile',
+  'stepUpPatch',
 ];
 
 const EXPORT_LINE =
