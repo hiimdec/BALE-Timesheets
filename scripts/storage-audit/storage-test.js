@@ -3515,13 +3515,19 @@ async function main() {
         bdr:    [/bdr: d\.bdr \?\? f\.bdr/],                               // role-selection copy
         otCoef: [/otCoef: d\.otCoef \?\? autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\)/],
         otRate: [/otRate: d\.otRate \?\? null/],
-        role:   [/setForm\(\(f\) => \(\{ \.\.\.f, role,/],
-        // noOT: written by the BB commit and QuickAddCrewSheet (seed + role
-        // change, both ways). PARTIAL coverage - the CrewManager editor and the
-        // solo job-settings editor do NOT copy it (the tracked Director/Producer
-        // phantom-OT item). One writer means not-dead, which is this pin's whole
-        // claim; completing the copy belongs to that item, not here.
-        noOT:   [/\.\.\.\(roleDefaults\.noOT \? \{ noOT: true \} : \{\}\)/],
+        // Phase 8: CrewManager's onRoleChange became a block-body arrow (it has
+        // to delete a key, which a concise body cannot), so the anchor tracks
+        // the new shape. Both role-change writers listed - the solo editor's
+        // form is the second entry, so losing either still names the survivor.
+        role:   [/const next = \{ \.\.\.f, role,/, /const next = \{ \.\.\.c, role,/],
+        // noOT: FULL coverage since Phase 8 Part 1 - the BB commit and
+        // QuickAddCrewSheet (add + edit) carry it, and CrewManager and the solo
+        // job-settings editor now track it both ways too (set for the roles that
+        // carry it, deleted when re-picked away). S1-noOT in
+        // construction-assertions proves the three editors agree; NOOT1-4 in
+        // calc-boundary proves the flag is £192.20 of money on an OT day.
+        noOT:   [/\.\.\.\(roleDefaults\.noOT \? \{ noOT: true \} : \{\}\)/,
+                 /if \(d\.noOT\) next\.noOT = true; else delete next\.noOT;/],
       };
       const readKeys = new Set();
       for (const m of src.matchAll(/weekendOpts\.([a-zA-Z]\w*)/g)) readKeys.add(m[1]);

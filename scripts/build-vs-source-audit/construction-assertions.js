@@ -150,19 +150,21 @@ function runSuite(label, eng) {
 // QuickAddCrewSheet yields the same { bdr, otCoef, otRate }. crew.otCoef has
 // six hand-maintained writers; the seventh (the rate input) is the one that
 // drifted — this equivalence is the standing alarm for the other six until a
-// collapse slice runs. (noOT is deliberately OUTSIDE the triple: QuickAdd
-// carries it, the other two do not — the tracked Director/Producer phantom-OT
-// item in MAINTENANCE.md. Pinning that asymmetry would bless it.)
+// collapse slice runs. Since Phase 8 Part 1 noOT is INSIDE the contract: all
+// three editors carry it now (set for Director/Producer, deleted when the role
+// is re-picked away), so the equivalence covers the whole money quadruple.
 function runS1(label, eng, srcHtml) {
   const pins = {
-    'S1 source: CrewManager onRoleChange expression':
-      /setForm\(\(f\) => \(\{ \.\.\.f, role, bdr: d\.bdr \?\? f\.bdr, otCoef: d\.otCoef \?\? autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\), otRate: d\.otRate \?\? null \}\)\)/.test(srcHtml),
+    'S1 source: CrewManager onRoleChange expression (noOT tracked both ways since Phase 8)':
+      /const next = \{ \.\.\.f, role, bdr: d\.bdr \?\? f\.bdr, otCoef: d\.otCoef \?\? autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\), otRate: d\.otRate \?\? null \}; if \(d\.noOT\) next\.noOT = true; else delete next\.noOT;/.test(srcHtml),
     'S1 source: CrewManager rate input writes the rate only':
       /onChange=\{\(e\) => setForm\(\{ \.\.\.form, bdr: Number\(e\.target\.value\) \}\)\}/.test(srcHtml),
-    'S1 source: solo editor role-change expression':
-      /crew: p\.crew\.map\(\(c, i\) => i === 0 \? \{ \.\.\.c, role, bdr: d\.bdr \?\? c\.bdr, otCoef: d\.otCoef \?\? c\.otCoef, otRate: d\.otRate \?\? null \} : c\)/.test(srcHtml),
+    'S1 source: solo editor role-change expression (noOT tracked both ways since Phase 8)':
+      /const next = \{ \.\.\.c, role, bdr: d\.bdr \?\? c\.bdr, otCoef: d\.otCoef \?\? c\.otCoef, otRate: d\.otRate \?\? null \}; if \(d\.noOT\) next\.noOT = true; else delete next\.noOT;/.test(srcHtml),
     'S1 source: QuickAddCrewSheet submit shape (card coefficient at submit time, noOT rides)':
       /otCoef: roleDefaults\.otCoef \?\? 1\.5,\s*otRate: roleDefaults\.otRate \?\? null,\s*\.\.\.\(roleDefaults\.noOT \? \{ noOT: true \} : \{\}\),/.test(srcHtml),
+    'S1 source: QuickAddCrewSheet edit branch tracks noOT both ways (the pattern the other two now follow)':
+      /if \(roleDefaults\.noOT\) updated\.noOT = true; else delete updated\.noOT;/.test(srcHtml),
   };
   for (const [name, ok] of Object.entries(pins)) {
     check(label, name, ok, 'the mirrored editor expression changed — update the mirror WITH the source');
@@ -201,6 +203,30 @@ function runS1(label, eng, srcHtml) {
     triple(e1) === triple(e2) && triple(e2) === triple(e3) &&
     e1.bdr === 475 && e1.otCoef === 1.5 && e1.otRate === null,
     `${triple(e1)} | ${triple(e2)} | ${triple(e3)}`);
+
+  // ── noOT, inside the contract since Phase 8 Part 1 ──
+  // Selecting Director must carry noOT through ALL THREE editors (the calc
+  // reads `crew.noOT ? 0 : (Number(crew.otCoef) || 1)`, so the card's stored 0
+  // alone bills 1.0 — see NOOT1-4 in calc-boundary for the money).
+  const DIR = 'Director';
+  const dd = flat[DIR];
+  const quad = (r) => JSON.stringify({ bdr: r.bdr, otCoef: r.otCoef, otRate: r.otRate, noOT: r.noOT });
+  const mkE1 = (from, role, row) => { const next = { ...from, role, bdr: row.bdr ?? from.bdr, otCoef: row.otCoef ?? autoOtCoef(row.bdr ?? from.bdr, cardOtGrades), otRate: row.otRate ?? null }; if (row.noOT) next.noOT = true; else delete next.noOT; return next; };
+  const mkE2 = (from, role, row) => { const next = { ...from, role, bdr: row.bdr ?? from.bdr, otCoef: row.otCoef ?? from.otCoef, otRate: row.otRate ?? null }; if (row.noOT) next.noOT = true; else delete next.noOT; return next; };
+  const mkE3 = (role, typedBdr, row) => ({ role, bdr: Number(typedBdr) || 0, otCoef: row.otCoef ?? 1.5, otRate: row.otRate ?? null, ...(row.noOT ? { noOT: true } : {}) });
+  const start = { role: 'Best Boy', bdr: 0, otCoef: 1, otRate: null };
+  const d1 = mkE1(start, DIR, dd), d2 = mkE2(start, DIR, dd), d3 = mkE3(DIR, dd.bdr, dd);
+  check(label, 'S1-noOT selecting Director carries noOT:true AND the card coefficient 0 through all three editors identically (the over-claim both editors used to ship)',
+    quad(d1) === quad(d2) && quad(d2) === quad(d3) && d1.noOT === true && d1.otCoef === 0,
+    `${quad(d1)} | ${quad(d2)} | ${quad(d3)}`);
+  // Re-picking AWAY from Director must DELETE the flag on all three — a stale
+  // true would zero the OT the new role is genuinely owed (the mirror bug).
+  const g = flat['Gaffer'];
+  const a1 = mkE1(d1, 'Gaffer', g), a2 = mkE2(d2, 'Gaffer', g), a3 = mkE3('Gaffer', g.bdr, g);
+  check(label, 'S1-noOT re-picking AWAY from Director removes the flag on all three (a stale true would zero the OT the new role IS owed) — Gaffer resolves to 1.25 with no noOT key',
+    quad(a1) === quad(a2) && quad(a2) === quad(a3) &&
+    !('noOT' in a1) && !('noOT' in a2) && !('noOT' in a3) && a1.otCoef === 1.25,
+    `${quad(a1)} | ${quad(a2)} | ${quad(a3)}`);
 }
 
 // ── S6: step-up picker equivalence (mirrors, source-pinned) ─────────────────

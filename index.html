@@ -11139,7 +11139,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         cancel();
       };
       const remove = (id) => { onPushUndo('Crew member removed'); setCrew((prev) => prev.filter((c) => c.id !== id)); setConfirmRemove(null); };
-      const onRoleChange = (role) => { const d = cardRoles[role] || {}; setForm((f) => ({ ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr, cardOtGrades), otRate: d.otRate ?? null })); };
+      // noOT tracks the new role BOTH ways (as QuickAddCrewSheet's edit branch
+      // does): set for Director/Producer, deleted when re-picked away — a stale
+      // true would zero the OT the new role is owed, and a missing one lets the
+      // engine's `crew.noOT ? 0 : (Number(crew.otCoef) || 1)` turn the card's
+      // stored 0 into 1.0 and accrue OT the card says they never get.
+      const onRoleChange = (role) => { const d = cardRoles[role] || {}; setForm((f) => { const next = { ...f, role, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr, cardOtGrades), otRate: d.otRate ?? null }; if (d.noOT) next.noOT = true; else delete next.noOT; return next; }); };
       const sortByRole = () => {
         setCrew((prev) => [...prev].sort((a, b) => {
           const r = roleRank(a.role) - roleRank(b.role);
@@ -17839,7 +17844,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     <Select value={m.role} onChange={(e) => {
                       const role = e.target.value;
                       const d = roleDefaultsFor(production)[role] || {};
-                      setProduction(p => ({ ...p, crew: p.crew.map((c, i) => i === 0 ? { ...c, role, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null } : c) }));
+                      // noOT tracks the new role both ways — see CrewManager's
+                      // onRoleChange: absent, the engine reads the card's stored
+                      // 0 as 1.0 and a Director accrues OT they never get.
+                      setProduction(p => ({ ...p, crew: p.crew.map((c, i) => { if (i !== 0) return c; const next = { ...c, role, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null }; if (d.noOT) next.noOT = true; else delete next.noOT; return next; }) }));
                     }}>
                       {Object.entries(DEPARTMENTS).map(([dept, roles]) =>
                         <optgroup key={dept} label={dept}>

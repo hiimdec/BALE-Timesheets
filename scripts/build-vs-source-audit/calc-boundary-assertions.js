@@ -390,6 +390,38 @@ function stageMileage(eng, ok) {
   ok('MILE4 a zero per-job rate is ignored, not billed at £0: 10 mi falls back to 50p = £5.00', !!zero && near(zero.rate, 0.5) && near(zero.amount, 5.00), JSON.stringify(zero));
 }
 
+// ---- NOOT: the no-overtime flag is money, not decoration --------------------
+// The engine reads `crew.noOT ? 0 : (Number(crew.otCoef) || 1)`. The card gives
+// Director/Producer otCoef 0 AND noOT true; the 0 alone cannot carry the rule,
+// because `Number(0) || 1` falls through to 1.0 — so a crew record that lost the
+// flag bills phantom overtime at 1T. Two editors were dropping it (Phase 8
+// Part 1). This is a DIVERGENCE pin, not a default-path one: the same day and
+// the same stored coefficient produce different money with the flag and without.
+function stageNoOT(eng, ok) {
+  console.log('\nNOOT · the no-overtime flag: present vs absent must differ in MONEY');
+  const director = (o = {}) => baseCrew({ role: 'Director', bdr: 961, otCoef: 0, otRate: null, ...o });
+  // Weekday shoot, 08:00–21:00 (13h span, 1h lunch) — 2h past the basic day.
+  const otDay = baseDay({ callTime: '08:00', wrapTime: '21:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+  const withFlag = eng.calculateDay(otDay, director({ noOT: true }), {});
+  const without = eng.calculateDay(otDay, director({ noOT: false }), {});
+  ok('NOOT1 flag PRESENT: a Director works 2h past the basic day and bills NO overtime — BDR only (£961 + the £48.05 missed-2nd-break penalty = £1,009.05), no OT line at all',
+    near(withFlag.total, 1009.05) && !withFlag.lines.some(l => /^OT\b/.test(l.label)) && otQty(withFlag) === 0,
+    JSON.stringify({ total: withFlag.total, labels: withFlag.lines.map(l => l.label) }));
+  ok('NOOT2 flag ABSENT (the bug both editors shipped): the SAME day and the SAME stored otCoef 0 bill 2h phantom OT at 1T (£96.10/h = £192.20), total £1,201.25 — the over-claim that reached invoices',
+    near(without.total, 1201.25) && near(otQty(without), 2) && near(without.total - withFlag.total, 192.20),
+    JSON.stringify({ total: without.total, otQty: otQty(without) }));
+  ok('NOOT3 the divergence is the point: flag present and absent are NOT equal (£192.20 apart), so this pin cannot pass by both paths agreeing at a default',
+    !near(withFlag.total, without.total) && near(without.total - withFlag.total, 192.20),
+    JSON.stringify({ withFlag: withFlag.total, without: without.total }));
+  // The flag only bites where OT exists: a day inside the basic day pays the
+  // same either way, which is why the bug hid — most Director days have no OT.
+  const shortDay = baseDay({ callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+  const shortWith = eng.calculateDay(shortDay, director({ noOT: true }), {});
+  const shortWithout = eng.calculateDay(shortDay, director({ noOT: false }), {});
+  ok('NOOT4 inside the basic day the two agree — the reason the bug hid for so long; the pin above deliberately does NOT sit on this path',
+    near(shortWith.total, shortWithout.total), JSON.stringify({ w: shortWith.total, wo: shortWithout.total }));
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -404,6 +436,7 @@ async function runCalcBoundaryAssertions() {
   stageB2(eng, ok);
   stageB3(eng, ok);
   stageMileage(eng, ok);
+  stageNoOT(eng, ok);
   return summary();
 }
 
