@@ -20737,6 +20737,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           {day?.dayType || 'Shoot'}
                           <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
                         </span>
+                        {/* Day rates (Phase 9): the solo view hides the Day card,
+                            so the job-rate indicator rides beside the type chip
+                            here - otherwise the day's money changes with nothing
+                            on screen saying why. */}
+                        {(() => {
+                          const r = Number((production && production.dayTypeRates || {})[day?.dayType]) || 0;
+                          if (!(r > 0)) return null;
+                          return (
+                            <span className="ml-1.5 text-[10px] font-mono text-neutral-500">
+                              {day?.stepUpRole ? `${fmtGBP(r)} · step-up wins` : `${fmtGBP(r)} job rate`}
+                            </span>
+                          );
+                        })()}
                       </label>
                     )}
                   />
