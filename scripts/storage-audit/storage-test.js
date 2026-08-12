@@ -291,6 +291,12 @@ async function transformedAppCode() {
     // instead of hand-setting the values the path is supposed to produce.
     'try { globalThis.__resolveRateCard = resolveRateCard; } catch (_) {}\n' +
     'try { globalThis.__flattenRateCard = flattenRateCard; } catch (_) {}\n' +
+    // Record-construction executions (RC, ruled): the module-level writers the
+    // RC section runs for real instead of regex-pinning their prose.
+    'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
+    'try { globalThis.__mapDayNow = mapDayNow; } catch (_) {}\n' +
+    'try { globalThis.__applySoloWrapIntent = applySoloWrapIntent; } catch (_) {}\n' +
+    'try { globalThis.__setDayDefault = setDayDefault; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
     'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
@@ -3544,6 +3550,112 @@ async function main() {
       check('RW4 the resolveDay merge set is exactly the five known fields (dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins): defaults keys match, the five cascade lines exist, and each field has at least one writer; a sixth DEFAULT_PRODUCTION_DAY key goes RED',
         JSON.stringify(ddKeys) === JSON.stringify(CASCADE) && cascadeLines && dayWriters,
         JSON.stringify({ ddKeys, cascadeLines, dayWriters }));
+    }
+
+    // ── RC: record-construction executions (S2 + S5, ruled). These four
+    //    module-level writers were regex-pinned prose until now; here they RUN.
+    //    The engine suites prove "correct given its inputs" - this section
+    //    proves the inputs. ──
+    {
+      // RC1: seedRateFromPrefs - TT20e's prose matrix, executed. A stored
+      // Settings default exactly matching ANY card for the role is a stale
+      // table-derived snapshot: the card resolved for the effective date wins
+      // (identical numbers when current, a CORRECTION when stale). A default
+      // matching NO card is a deliberate custom rate, seeded VERBATIM.
+      const seedRate = sb.__seedRateFromPrefs;
+      if (typeof seedRate === 'function') {
+        const stale = seedRate({ defaultBDR: 444, defaultOTCoef: 1.5 }, 'Lighting Technician', '2026-09-15');
+        check('RC1a stale snapshot -> the card wins: LT prefs 444/1.5 (the 2025 card values) on a 2026-card date seed 457/1.5 - the correction case',
+          stale.bdr === 457 && stale.otCoef === 1.5 && stale.otRate === null, JSON.stringify(stale));
+        const current = seedRate({ defaultBDR: 457, defaultOTCoef: 1.5 }, 'Lighting Technician', '2026-09-15');
+        check('RC1b current snapshot -> the card wins with identical numbers (457/1.5 stays 457/1.5)',
+          current.bdr === 457 && current.otCoef === 1.5, JSON.stringify(current));
+        const custom = seedRate({ defaultBDR: 500, defaultOTCoef: 1.5 }, 'Lighting Technician', '2026-09-15');
+        check('RC1c custom rate (matches NO card) -> seeded VERBATIM: 500/1.5 stays 500/1.5, never overridden',
+          custom.bdr === 500 && custom.otCoef === 1.5, JSON.stringify(custom));
+        const pairMismatch = seedRate({ defaultBDR: 444, defaultOTCoef: 1.25 }, 'Lighting Technician', '2026-09-15');
+        check('RC1d the pref PAIR must match a card together - 444 with a custom 1.25 grade is deliberate, seeded verbatim (bdr 444, otCoef 1.25)',
+          pairMismatch.bdr === 444 && pairMismatch.otCoef === 1.25, JSON.stringify(pairMismatch));
+        const empty = seedRate({}, 'Lighting Technician', '2026-09-15');
+        check('RC1e no stored default -> the effective card seeds outright (457/1.5)',
+          empty.bdr === 457 && empty.otCoef === 1.5, JSON.stringify(empty));
+      } else {
+        check('RC1 seedRateFromPrefs exposed', false, 'not exposed');
+      }
+
+      // RC2: mapDayNow - the ONE day-record mutation every solo "now" writer
+      // (WrapNow / LunchNow / curtail / Siri) routes through.
+      const mapNow = sb.__mapDayNow;
+      if (typeof mapNow === 'function') {
+        const days = [
+          { date: '2026-08-10', crewId: 'u1', callTime: '08:00' },
+          { date: '2026-08-10', crewId: 'u2', callTime: '09:00' },
+          { date: '2026-08-11', crewId: 'u1' },
+        ];
+        const out = mapNow(days, '2026-08-10', 'u1', { wrapTime: '19:30', wrapped: true });
+        check('RC2a patches exactly the matched date+crew record (wrapTime lands, wrapped lands, callTime survives)',
+          out[0].wrapTime === '19:30' && out[0].wrapped === true && out[0].callTime === '08:00', JSON.stringify(out[0]));
+        check('RC2b other crew and other dates untouched (same object references - no incidental rewrite)',
+          out[1] === days[1] && out[2] === days[2] && out[1].wrapTime === undefined, 'refs preserved: ' + (out[1] === days[1]) + ',' + (out[2] === days[2]));
+        const all = mapNow(days, '2026-08-10', '', { flag: 1 });
+        check('RC2c an empty uid patches every record of the date (the !uid branch), other dates still untouched',
+          all[0].flag === 1 && all[1].flag === 1 && all[2] === days[2], JSON.stringify(all.map(d => d.flag)));
+      } else {
+        check('RC2 mapDayNow exposed', false, 'not exposed');
+      }
+
+      // RC3: applySoloWrapIntent - wrap-passed sets wrapped, future or cleared
+      // clears it. The function anchors "passed" on nextDay.date, so fixed
+      // past/future dates make every case deterministic (no clock races).
+      const wrapIntent = sb.__applySoloWrapIntent;
+      const today = sb.__todayISO();
+      if (typeof wrapIntent === 'function') {
+        const noChange = wrapIntent({ wrapTime: '19:00', wrapNextDay: false }, { wrapTime: '19:00', wrapNextDay: false, wrapped: true, date: '2000-01-01' });
+        check('RC3a fires ONLY on a wrapTime/wrapNextDay change - an unrelated edit passes through untouched (wrapped flag left as-is)',
+          noChange.wrapped === true, JSON.stringify(noChange));
+        const passed = wrapIntent({ wrapTime: '19:00' }, { date: '2000-01-01', callTime: '08:00', wrapTime: '20:00' });
+        check('RC3b a PASSED wrap moment sets wrapped:true (the card-wrap flag, same WRAPPED send-off)',
+          passed.wrapped === true, JSON.stringify(passed));
+        const future = wrapIntent({ wrapTime: '19:00' }, { date: '2099-01-01', callTime: '08:00', wrapTime: '20:00', wrapped: true });
+        check('RC3c a FUTURE wrap moment clears wrapped:false (editing the plan un-wraps)',
+          future.wrapped === false, JSON.stringify(future));
+        const cleared = wrapIntent({ wrapTime: '19:00' }, { wrapTime: '', wrapped: true, date: '2000-01-01' });
+        check('RC3d a CLEARED (unparseable) wrap clears wrapped:false',
+          cleared.wrapped === false, JSON.stringify(cleared));
+        const nightShift = wrapIntent({ wrapTime: '19:00' }, { date: today, callTime: '20:00', wrapTime: '02:00' });
+        check('RC3e call-relative next-day handling protects night shifts - wrap 02:00 against call 20:00 TODAY is tomorrow 02:00, always future, so wrapped is never set by the edit',
+          nightShift.wrapped !== true, JSON.stringify(nightShift));
+      } else {
+        check('RC3 applySoloWrapIntent exposed', false, 'not exposed');
+      }
+
+      // RC4: setDayDefault - the dayDefaults[date] merge shape (the overlay the
+      // resolveDay cascade reads) + the blank-record seed that keeps cascading.
+      const setDD = sb.__setDayDefault;
+      if (typeof setDD === 'function') {
+        const p0 = { crew: [{ id: 'u1' }], days: [], dayDefaults: {} };
+        const p1 = setDD(p0, '2026-08-10', 'callTime', '07:00');
+        const dd1 = p1.dayDefaults['2026-08-10'];
+        check('RC4a first write bakes the FULL defaults shape for the date (dayType Shoot, lunch 13:30/60, preCall/miles/travel/perDiem/expenses zeroed) with the new callTime',
+          dd1.callTime === '07:00' && dd1.dayType === 'Shoot' && dd1.lunchStartTime === '13:30' && dd1.lunchDurationMins === 60 &&
+          dd1.preCallTime === '' && dd1.miles === 0 && Array.isArray(dd1.expenses) && dd1.expenses.length === 0,
+          JSON.stringify(dd1));
+        check('RC4b setting callTime with no explicit wrap derives wrap = call + 11h (07:00 -> 18:00) so future days never render an empty wrap',
+          dd1.wrapTime === '18:00', JSON.stringify(dd1.wrapTime));
+        check('RC4c the write seeds a blank user day record WITHOUT time fields, so resolveDay keeps cascading from the overlay (a frozen copy would shadow later edits)',
+          p1.days.length === 1 && p1.days[0].crewId === 'u1' && p1.days[0].date === '2026-08-10' && p1.days[0].callTime === undefined,
+          JSON.stringify(p1.days[0]));
+        const p2 = setDD({ ...p1 }, '2026-08-10', 'callTime', '06:00');
+        check('RC4d merge, not replace: re-setting callTime keeps the EXISTING explicit wrapTime (no re-derive over 18:00) and does not duplicate the day record',
+          p2.dayDefaults['2026-08-10'].callTime === '06:00' && p2.dayDefaults['2026-08-10'].wrapTime === '18:00' && p2.days.length === 1,
+          JSON.stringify(p2.dayDefaults['2026-08-10']));
+        const p3 = setDD({ ...p2 }, '2026-08-10', 'wrapTime', '21:00');
+        check('RC4e writing wrapTime alone never touches callTime',
+          p3.dayDefaults['2026-08-10'].wrapTime === '21:00' && p3.dayDefaults['2026-08-10'].callTime === '06:00',
+          JSON.stringify(p3.dayDefaults['2026-08-10']));
+      } else {
+        check('RC4 setDayDefault exposed', false, 'not exposed');
+      }
     }
   }
 
