@@ -233,12 +233,39 @@ drift. Three instances have now been found on this project, each caught late:
    gated starts but left a running card unkillable from the sweep if the two
    hadn't been unified on `LIVE_ACTIVITY_DAY_TYPES` with the same dayType
    merge.
+4. **The two step-up pickers.** The APA solo day form and CrewMemberDayView
+   each carry their own hand-maintained copy of the same stepUp write
+   (stepUpRole / stepUpBDR / stepUpOTCoef / stepUpOTRate from the card row).
+   They agree today; nothing makes them keep agreeing. The fix is REMOVING
+   the second copy — one shared write helper both surfaces call — not
+   pinning the two copies into agreement, which would entrench the
+   duplication as load-bearing. (RW3 deliberately proves only that all four
+   fields are written somewhere, not that the copies match.)
 
 The rule when adding any gate or figure that already exists somewhere else:
 put the value in ONE place (a shared constant, the rate card, the ruleset
 table) and make every enforcement point read it — or, where the reads must
 stay separate for cheapness (the sweep's inline qualify), pin BOTH sites to
 the same shape in the audit so a drift goes RED instead of silent.
+
+## Candidate slice — extract the App-closure record writers (not scheduled)
+
+`applyRateCardToCrew`, `finalizeProductionUpdate`, `handleNewProduction` and
+`handleShareLinkImport` live inside the App component closure, so the audits
+cannot execute them directly. Today's coverage: `construction-assertions.js`
+extracts `applyRateCardToCrew`'s source text and evaluates it (C0 pins the
+exact expressions so the extraction can't silently evolve), and the creation
+envelopes are regex-pinned only.
+
+The slice: move them to module scope as pure production-in/production-out
+functions (the component keeps thin `setProductions` wrappers). Why it's
+worth a slice: it converts the extract-and-evaluate into a plain execution,
+removes the extraction-drift category entirely, and unlocks executing the
+creation envelopes — the last regex-only money paths (crew[0] seeding,
+mileage seed, startDate, dayDefaults zeroing at birth). The functions already
+take and return plain data, so extraction is behaviour-neutral — but it
+touches record-construction code, so propose-first applies when it runs.
+Not scheduled; the founder rules on timing.
 
 ## Still open (claim-and-flag applies)
 

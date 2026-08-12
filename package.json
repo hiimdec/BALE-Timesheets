@@ -6,7 +6,7 @@
   "scripts": {
     "generate-icons": "node scripts/generate-icons.js",
     "build": "node scripts/build.js",
-    "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js && node scripts/build-vs-source-audit/kit-assertions.js && node scripts/build-vs-source-audit/calc-boundary-assertions.js && node scripts/build-vs-source-audit/share-link-assertions.js && node scripts/build-vs-source-audit/la-ordering-assertions.js && node scripts/build-vs-source-audit/variance-detection-assertions.js && node scripts/build-vs-source-audit/quick-set-assertions.js && node scripts/build-vs-source-audit/day-off-assertions.js && node scripts/build-vs-source-audit/day-presence-assertions.js && node scripts/build-vs-source-audit/theme-parity.js",
+    "audit:build": "node scripts/build-vs-source-audit/compare.js && node scripts/build-vs-source-audit/textual-diff.js && node scripts/build-vs-source-audit/kit-assertions.js && node scripts/build-vs-source-audit/calc-boundary-assertions.js && node scripts/build-vs-source-audit/share-link-assertions.js && node scripts/build-vs-source-audit/la-ordering-assertions.js && node scripts/build-vs-source-audit/variance-detection-assertions.js && node scripts/build-vs-source-audit/quick-set-assertions.js && node scripts/build-vs-source-audit/day-off-assertions.js && node scripts/build-vs-source-audit/day-presence-assertions.js && node scripts/build-vs-source-audit/theme-parity.js && node scripts/build-vs-source-audit/construction-assertions.js",
     "audit:build:exec": "node scripts/build-vs-source-audit/compare.js",
     "audit:build:textual": "node scripts/build-vs-source-audit/textual-diff.js",
     "audit:kit": "node scripts/build-vs-source-audit/kit-assertions.js",
@@ -17,6 +17,7 @@
     "audit:dayoff": "node scripts/build-vs-source-audit/day-off-assertions.js",
     "audit:presence": "node scripts/build-vs-source-audit/day-presence-assertions.js",
     "audit:theme": "node scripts/build-vs-source-audit/theme-parity.js",
+    "audit:construction": "node scripts/build-vs-source-audit/construction-assertions.js",
     "audit:storage": "node scripts/storage-audit/storage-test.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
     "gate": "bash scripts/gate.sh",

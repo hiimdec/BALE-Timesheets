@@ -96,6 +96,11 @@ const ENGINE_NAMES = [
   // directions — day-presence-assertions.js proves tick/un-tick round-trips,
   // never double-appends, and leaves the turnaround feed correct.
   'applyDayPresence',
+  // Rate-card resolution primitives: construction-assertions.js runs the
+  // card-refresh rule (applyRateCardToCrew, an App closure it extracts and
+  // evaluates) against the REAL cards, not fixture copies.
+  'resolveRateCard',
+  'flattenRateCard',
 ];
 
 const EXPORT_LINE =
