@@ -28589,6 +28589,12 @@ const setDays = (updater) =>
     function StandaloneInvoiceArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete }) {
       const invoices = production.invoices || [];
       const invoice = invoices[invoices.length - 1] || null;
+      // Register the root back level, as every other top-level screen does
+      // ('shoot-root'). Without it the native chrome's back chevron has
+      // nothing to pop and the screen is a dead end - the editor's own onBack
+      // is wired only to delete. Found by the device pass; no pin sees it,
+      // because navigation registration is not something source shape reveals.
+      useBackLevel(true, onBack, 'standalone-root');
       // A standalone record whose invoice is gone is an orphan — drop it
       // rather than stranding an empty shell in storage.
       useEffect(() => { if (!invoice) onDelete(); }, [!!invoice]);
@@ -28980,7 +28986,12 @@ const setDays = (updater) =>
         return (
           <div key={item.id} className="flex items-start gap-2 py-2 border-b border-neutral-800 last:border-0">
             <div className="flex-1 min-w-0">
-              <div className={`text-sm font-semibold ${isWaived ? "line-through text-neutral-500" : "text-neutral-100"}`}>{label}</div>
+              {/* A blank line (a standalone invoice starts with one) would
+                  otherwise render as nothing but £0.00 and a kebab - no
+                  description, no visible next move. Name the affordance. */}
+              <div className={`text-sm font-semibold ${isWaived ? "line-through text-neutral-500" : "text-neutral-100"}`}>
+                {label || <span className="font-normal italic text-neutral-500">Describe this line - tap the ⋮ to edit</span>}
+              </div>
               {item.detail && <div className="text-[11px] text-neutral-500 truncate">{item.detail}</div>}
               {!roundingFav(invoice) && item.rate !== null && (
                 <div className="text-[10px] text-neutral-600 mt-0.5">
