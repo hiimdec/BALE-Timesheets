@@ -9195,6 +9195,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // to "not add up"). Exact mode keeps the full Qty × Rate × Amount breakdown.
       const fav = roundingFav(invoice);
 
+      // invChipKind derives OT / L1 / MSB / CWD chips from LABEL TEXT alone.
+      // On an app-generated invoice that is a vocabulary the engine put there.
+      // On a hand-typed standalone one it is the app asserting a contravention
+      // about work it knows nothing about - "Overtime for the second unit"
+      // would print an OT chip on a document a client reads. Same guard, same
+      // reason as the group headers (ruled Phase 11). The two page-2 breakdown
+      // uses are deliberately untouched: a standalone never renders that page.
+      const chipFor = (label) => invoice.standalone ? null : invChipKind(label);
+
       const renderLineRows = (item, labelOverride) => {
         const label = labelOverride ?? item.label ?? "";
         const isFixed = item.rate === null;
@@ -9211,7 +9220,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <tr key={`${item.id}-${fullyWaived ? 'w' : 'k'}`} className={fullyWaived ? 'inv-waived' : undefined}>
               <td className="inv-td desc">
                 <div className="inv-linelabel">
-                  {invChipKind(label) && <InvChip kind={invChipKind(label)} />}{label}
+                  {chipFor(label) && <InvChip kind={chipFor(label)} />}{label}
                   {fullyWaived && <span className="inv-badge">Waived</span>}
                   {partiallyWaived && <span className="inv-badge">Reduced</span>}
                 </div>
@@ -9228,7 +9237,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <tr key={`${item.id}-w`} className="inv-waived">
               <td className="inv-td desc">
                 <div className="inv-linelabel">
-                  {invChipKind(label) && <InvChip kind={invChipKind(label)} />}{label}
+                  {chipFor(label) && <InvChip kind={chipFor(label)} />}{label}
                   <span className="inv-badge">Waived</span>
                 </div>
                 {item.detail && <div className="inv-linedetail">{item.detail}</div>}
@@ -9243,7 +9252,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           rows.push(
             <tr key={`${item.id}-k`}>
               <td className="inv-td desc">
-                <div className="inv-linelabel">{invChipKind(label) && <InvChip kind={invChipKind(label)} />}{label}</div>
+                <div className="inv-linelabel">{chipFor(label) && <InvChip kind={chipFor(label)} />}{label}</div>
                 {item.detail && <div className="inv-linedetail">{item.detail}</div>}
               </td>
               <td className="inv-td inv-mono">{isFixed ? "" : (partiallyWaived ? billedQty : item.qty)}</td>
@@ -9259,7 +9268,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <tr key={`${item.id}-w`} className="inv-waived">
                 <td className="inv-td desc">
                   <div className="inv-linelabel">
-                    {invChipKind(label) && <InvChip kind={invChipKind(label)} />}{label}
+                    {chipFor(label) && <InvChip kind={chipFor(label)} />}{label}
                     <span className="inv-badge">Waived</span>
                   </div>
                 </td>
@@ -9661,7 +9670,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
               const items = [];
               sections.forEach(s => {
-                items.push({ h: GH, el: (
+                // Groups organise lines the APP generated. On a hand-typed
+                // standalone invoice they impose a structure the user never
+                // asked for - and because invLineGroup falls back to the label
+                // categoriser, an unrecognised line lands under "Day rates",
+                // which is that showing through. Headers are suppressed for
+                // standalone only (ruled Phase 11); APA and long form take the
+                // identical branch, since `standalone` is undefined on both.
+                if (!invoice.standalone) items.push({ h: GH, el: (
                   <tr key={`gh-${s.key}`}>
                     <td className="inv-grouphead" colSpan={fav ? 2 : 4}>
                       <div className="inv-grouphead-row">
@@ -9764,7 +9780,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="inv-page" key="inv-p1">
                   {HEAD_MATTER}
                   {tableFor(p1Rows)}
-                  <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />
+                  {/* The bar visualises the group split. With headers gone a
+                      standalone would show one solid segment representing a
+                      grouping that no longer exists - a leftover, not a design
+                      (ruled). The packer's BARH budget is deliberately left as
+                      is: it only reserves 21px standalone no longer uses, which
+                      is invisible, and touching the packer would be a far larger
+                      change than this removes. */}
+                  {!invoice.standalone && <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />}
                   {p1Tail}
                   <PageFoot n={1} of={total} />
                 </div>

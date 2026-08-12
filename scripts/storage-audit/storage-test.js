@@ -3777,6 +3777,28 @@ async function main() {
           /filter\(p => agreementOf\(p\) === 'apa' && !p\.standalone\)/.test(src5) &&
           /const isInProgressProduction = \(p\) => !p\.standalone &&/.test(src5),
           'a presentation gate is missing');
+        // SA10-13: the THREE renderer guards (Phase 11, ruled). A standalone
+        // invoice prints its lines one after another - no group headers, no
+        // contravention chips, no segment bar - because all three organise
+        // lines the APP generated and a hand-typed invoice never asked for
+        // that structure. Each guard is `standalone`-conditional, so APA and
+        // long form take the IDENTICAL branch (the flag is undefined on both).
+        // These pins are what make dropping a guard - and silently stripping
+        // APA's headers - go RED rather than ship.
+        check('SA10 group headers are suppressed for standalone ONLY: the header push is guarded on !invoice.standalone, so an APA or long form invoice (where the flag is undefined) still pushes every section header exactly as before',
+          /if \(!invoice\.standalone\) items\.push\(\{ h: GH, el: \(/.test(src5),
+          'the header guard is missing or no longer standalone-conditional - APA would lose its group headers');
+        check('SA11 contravention chips are suppressed for standalone ONLY: chipFor returns null when standalone and defers to invChipKind otherwise, so APA/long form chips are unchanged (invChipKind derives OT/L1/MSB from label TEXT, which on a hand-typed line asserts a contravention the app knows nothing about)',
+          /const chipFor = \(label\) => invoice\.standalone \? null : invChipKind\(label\);/.test(src5) &&
+          (src5.match(/chipFor\(label\)/g) || []).length === 8,
+          'the chip guard changed, or the four page-1 rows no longer route through it');
+        check('SA12 the two PAGE-2 breakdown chip uses are deliberately UNTOUCHED - a standalone never renders that page, and not widening the blast radius was the ruling',
+          (src5.match(/invChipKind\(l\.label\)/g) || []).length === 3,
+          'the page-2 breakdown chip calls changed - they were meant to stay exactly as they were');
+        check('SA13 the segment bar is suppressed for standalone ONLY: with headers gone it would show one solid segment for a grouping that no longer exists. APA and long form still render it, and the packer\'s height budget is deliberately untouched',
+          /\{!invoice\.standalone && <InvSegmentBar segments=\{INV_GROUPS\.map/.test(src5),
+          'the segment bar guard is missing or no longer standalone-conditional');
+
         check('SA9 standalone invoices DO reach the invoice-scoped enumerations (they are real income): the Invoices tab, the accountant tax-year export and the client usage stats all walk p.invoices with no day or agreement filter, so none of them needs - or has - a standalone gate',
           /function issuedInvoicesInTaxYear\(productions, startYear\) \{[\s\S]{0,300}for \(const inv of p\.invoices \|\| \[\]\) \{/.test(src5) &&
           !/p\.invoices[\s\S]{0,80}!p\.standalone/.test(src5),
