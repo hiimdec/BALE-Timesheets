@@ -11,20 +11,21 @@
  * suite cannot execute: applyRateCardToCrew, the card-boundary crew refresh,
  * which lives inside the App component closure.
  *
- * Mechanism — extract-and-evaluate, the OTG3/OTG4 mirror pattern taken one
- * step further: the closure's SOURCE TEXT is extracted from index.html and
- * evaluated with the engine's real flattenRateCard injected, so the executed
- * logic IS the shipped logic (a hand mirror could drift on its own). The C0
- * source pins fail loudly if the function's shape changes, so the extraction
- * gets reviewed rather than silently evolving.
+ * Mechanism — plain execution since Phase 7: applyRateCardToCrew moved from
+ * the App closure to module scope, so the suite runs the real function
+ * through the engine loader (both source and built). The extract-and-evaluate
+ * era (and its extraction-drift category) is over. The C0 source pins remain
+ * as shape guards on the exact expressions, so a rewrite of the rule still
+ * fails loudly even though execution is the primary proof.
  *
- * The rule under test (TT20d's safety rule, executed for the first time): on
- * a rate-card boundary, rewrite ONLY crew whose bdr + otCoef + otRate exactly
- * match the PREVIOUS card for their role — negotiated, hand-edited and
- * custom-role crew are never touched.
+ * The rule under test (TT20d's safety rule): on a rate-card boundary, rewrite
+ * ONLY crew whose bdr + otCoef + otRate exactly match the PREVIOUS card for
+ * their role — negotiated, hand-edited and custom-role crew are never
+ * touched.
  *
- *   C0  source pins: the exact expressions evaluated (the two guards, the
- *       exact-match triple, the rewrite line, the identity return)
+ *   C0  source pins: module-scope declaration (single copy) + the exact
+ *       expressions (the two guards, the exact-match triple, the rewrite
+ *       line, the identity return)
  *   C1  crew at the previous card's defaults MOVE to the new card
  *   C2  a negotiated rate never moves
  *   C3  a custom otRate breaks the exact match — never moves
@@ -54,42 +55,37 @@ function check(engine, id, pass, detail) {
   console.log(`  ${pass ? '✓' : '✗'} [${engine}] ${id}${pass ? '' : ' — ' + detail}`);
 }
 
-// ── Extraction + C0 source pins ─────────────────────────────────────────────
-function extractApplyRateCardToCrew(src) {
-  const m = src.match(/const applyRateCardToCrew = \(production, fromCard, toCard\) => \{[\s\S]*?\n {6}\};/);
-  return m ? m[0] : null;
-}
-
-function runC0(block) {
+// ── C0 source pins ──────────────────────────────────────────────────────────
+// applyRateCardToCrew is MODULE SCOPE since Phase 7, so the fixtures below
+// execute the real function through the engine loader — no extraction, no
+// mirror, no drift category. C0 survives as plain source pins on the exact
+// expressions: a rewrite of the rule's shape fails loudly here even though
+// execution is now the primary proof.
+function runC0(src) {
   const pins = {
+    'module-scope declaration (the App closure copy is gone)':
+      /const applyRateCardToCrew = \(production, fromCard, toCard\) => \{/.test(src) &&
+      (src.match(/const applyRateCardToCrew = /g) || []).length === 1,
     'guard: custom role (on neither card) returns untouched':
-      /if \(!oldD \|\| !newD\) return c;\s+\/\/ custom role — never touched/.test(block),
+      /if \(!oldD \|\| !newD\) return c;\s+\/\/ custom role — never touched/.test(src),
     'the exact-match triple (bdr + otCoef + otRate, null-normalised)':
-      /const matchesOldCard = Number\(c\.bdr\) === Number\(oldD\.bdr\)\s*&& Number\(c\.otCoef\) === Number\(oldD\.otCoef\)\s*&& \(\(c\.otRate \?\? null\) === \(oldD\.otRate \?\? null\)\);/.test(block),
+      /const matchesOldCard = Number\(c\.bdr\) === Number\(oldD\.bdr\)\s*&& Number\(c\.otCoef\) === Number\(oldD\.otCoef\)\s*&& \(\(c\.otRate \?\? null\) === \(oldD\.otRate \?\? null\)\);/.test(src),
     'guard: negotiated / hand-edited returns untouched':
-      /if \(!matchesOldCard\) return c;/.test(block),
+      /if \(!matchesOldCard\) return c;/.test(src),
     'the rewrite: new card values, otRate null-normalised':
-      /return \{ \.\.\.c, bdr: newD\.bdr, otCoef: newD\.otCoef, otRate: newD\.otRate \?\? null \};/.test(block),
+      /return \{ \.\.\.c, bdr: newD\.bdr, otCoef: newD\.otCoef, otRate: newD\.otRate \?\? null \};/.test(src),
     'identity return when nothing changed':
-      /return changed \? \{ \.\.\.production, crew \} : production;/.test(block),
+      /return changed \? \{ \.\.\.production, crew \} : production;/.test(src),
   };
   for (const [name, ok] of Object.entries(pins)) {
-    check('src', `C0 ${name}`, ok, 'source expression no longer matches — review the extraction before trusting C1-C7');
+    check('src', `C0 ${name}`, ok, 'source expression no longer matches the pinned rule shape');
   }
   return Object.values(pins).every(Boolean);
 }
 
-// ── The executable, built FROM the extracted source ────────────────────────
-function buildFn(block, flattenRateCard) {
-  // The block is `const applyRateCardToCrew = (…) => {…};` and depends only
-  // on flattenRateCard (plus Number). Evaluate the shipped text verbatim.
-  // eslint-disable-next-line no-new-func
-  return new Function('flattenRateCard', `"use strict";\n${block}\nreturn applyRateCardToCrew;`)(flattenRateCard);
-}
-
 // ── The fixture suite (per engine) ──────────────────────────────────────────
-function runSuite(label, eng, block) {
-  const apply = buildFn(block, eng.flattenRateCard);
+function runSuite(label, eng) {
+  const apply = eng.applyRateCardToCrew;
   const from = eng.resolveRateCard('2025-09-15');   // Sept 2025
   const to = eng.resolveRateCard('2026-09-15');     // Sept 2026
   const fromFlat = eng.flattenRateCard(from);
@@ -147,28 +143,23 @@ function runSuite(label, eng, block) {
 
 async function main() {
   const srcHtml = fs.readFileSync(SRC_HTML, 'utf8');
-  const block = extractApplyRateCardToCrew(srcHtml);
-  if (!block) {
-    console.log('  ✗ applyRateCardToCrew not found in index.html — the extraction regex needs updating');
-    process.exit(1);
-  }
-  const c0ok = runC0(block);
+  const c0ok = runC0(srcHtml);
   if (!c0ok) {
-    // The pins name exactly which expression drifted; refuse to run fixtures
-    // against an extraction that no longer matches its reviewed shape.
-    console.log('  ✗ C0 failed — fixtures skipped until the extraction is re-reviewed');
+    // The pins name exactly which expression drifted; the execution below
+    // would still run, but a shape change deserves review before green.
+    console.log('  ✗ C0 failed — fixtures skipped until the rule shape is re-reviewed');
     process.exit(1);
   }
 
   const src = await loadSourceEngine();
   const built = loadBuiltEngine();
-  if (typeof src.flattenRateCard !== 'function' || typeof built.flattenRateCard !== 'function') {
-    console.log('      ✗ flattenRateCard/resolveRateCard missing from an engine (src=' +
-      typeof src.flattenRateCard + ', built=' + typeof built.flattenRateCard + ')');
+  if (typeof src.applyRateCardToCrew !== 'function' || typeof built.applyRateCardToCrew !== 'function') {
+    console.log('      ✗ applyRateCardToCrew missing from an engine (src=' +
+      typeof src.applyRateCardToCrew + ', built=' + typeof built.applyRateCardToCrew + ')');
     process.exit(1);
   }
-  runSuite('src', src, block);
-  runSuite('built', built, block);
+  runSuite('src', src);
+  runSuite('built', built);
 
   const pass = results.every((r) => r.pass);
   console.log('');

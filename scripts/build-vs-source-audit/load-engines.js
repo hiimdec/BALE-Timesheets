@@ -97,10 +97,12 @@ const ENGINE_NAMES = [
   // never double-appends, and leaves the turnaround feed correct.
   'applyDayPresence',
   // Rate-card resolution primitives: construction-assertions.js runs the
-  // card-refresh rule (applyRateCardToCrew, an App closure it extracts and
-  // evaluates) against the REAL cards, not fixture copies.
+  // card-refresh rule against the REAL cards, not fixture copies.
   'resolveRateCard',
   'flattenRateCard',
+  // The card-boundary crew refresh itself — module scope since Phase 7, so
+  // the suite executes it directly (the extract-and-evaluate era is over).
+  'applyRateCardToCrew',
 ];
 
 const EXPORT_LINE =

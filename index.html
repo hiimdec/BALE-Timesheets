@@ -2696,6 +2696,27 @@
       };
     }
 
+    // Card-boundary crew refresh (H2's exact-match safety rule). Module scope
+    // (moved from the App closure, Phase 7) so the audits execute it directly:
+    // pure production-in/production-out, no captures. Body verbatim.
+    const applyRateCardToCrew = (production, fromCard, toCard) => {
+        const fromFlat = flattenRateCard(fromCard);
+        const toFlat = flattenRateCard(toCard);
+        let changed = false;
+        const crew = (production.crew || []).map(c => {
+          const oldD = fromFlat[c.role];
+          const newD = toFlat[c.role];
+          if (!oldD || !newD) return c;                 // custom role — never touched
+          const matchesOldCard = Number(c.bdr) === Number(oldD.bdr)
+            && Number(c.otCoef) === Number(oldD.otCoef)
+            && ((c.otRate ?? null) === (oldD.otRate ?? null));
+          if (!matchesOldCard) return c;                // negotiated / hand-edited — never touched
+          changed = true;
+          return { ...c, bdr: newD.bdr, otCoef: newD.otCoef, otRate: newD.otRate ?? null };
+        });
+        return changed ? { ...production, crew } : production;
+      };
+
     /* ═══════════ LONG FORM (Pact/Bectu) — agreement metadata ═══════════ */
     // Slice 1: the SHAPE of a long form job only. No calculator, no ruleset
     // table and no £ arithmetic lives here yet — those land behind the audit
@@ -32215,23 +32236,8 @@ const confirmDelete = (p) => setConfirmOpts({
           pendingRateNoticeRef.current = null;
         }
       });
-      const applyRateCardToCrew = (production, fromCard, toCard) => {
-        const fromFlat = flattenRateCard(fromCard);
-        const toFlat = flattenRateCard(toCard);
-        let changed = false;
-        const crew = (production.crew || []).map(c => {
-          const oldD = fromFlat[c.role];
-          const newD = toFlat[c.role];
-          if (!oldD || !newD) return c;                 // custom role — never touched
-          const matchesOldCard = Number(c.bdr) === Number(oldD.bdr)
-            && Number(c.otCoef) === Number(oldD.otCoef)
-            && ((c.otRate ?? null) === (oldD.otRate ?? null));
-          if (!matchesOldCard) return c;                // negotiated / hand-edited — never touched
-          changed = true;
-          return { ...c, bdr: newD.bdr, otCoef: newD.otCoef, otRate: newD.otRate ?? null };
-        });
-        return changed ? { ...production, crew } : production;
-      };
+      // applyRateCardToCrew moved to module scope (the rate-card zone, beside
+      // seedRateFromPrefs) so the audits execute it directly — Phase 7.
       const finalizeProductionUpdate = (prevP, nextP) => {
         const derived = deriveStartDate(nextP);
         const withDate = (derived && derived !== nextP.startDate) ? { ...nextP, startDate: derived } : nextP;
