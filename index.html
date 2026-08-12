@@ -4087,6 +4087,58 @@
       };
     }
 
+    // The APA creation envelope — makeLongFormProduction's twin. Module scope
+    // since Phase 7 (moved out of the App's handleNewProduction) so the audits
+    // execute the envelope; the App handler keeps persistence and navigation.
+    // Body verbatim from the closure.
+    function makeApaProduction({ title, bestBoyMode }, userPrefs) {
+        const role = userPrefs.defaultRole || "Lighting Technician";
+        // New production starts today → seed through the card current at
+        // creation time. seedRateFromPrefs applies the exact-match rule: a
+        // stored Settings default that matches an older card is a stale
+        // table snapshot (resolved card wins); one matching no card is a
+        // deliberate custom rate (seeded verbatim). Previously
+        // userPrefs.defaultBDR shadowed the resolved card outright — a shoot
+        // created after a boundary was silently born on the OLD card, and no
+        // crossing event ever fired to correct it.
+        const seeded = seedRateFromPrefs(userPrefs, role, null);
+        const soloCrew = bestBoyMode ? [] : [{
+          id: uid(),
+          name: userPrefs.displayName || "You",
+          role,
+          bdr: seeded.bdr,
+          otCoef: seeded.otCoef,
+          otRate: seeded.otRate,
+          vatRegistered: userPrefs.vatRegistered ?? false,
+          vatRate: userPrefs.vatRate ?? 20,
+          kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
+          kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
+          isDriver: false,
+          email: '',
+        }];
+        return {
+          id: uid(),
+          title,
+          prodCo: "",
+          jobReference: "",
+          invoicingEmail: "",
+          ccEmail: "",
+          crew: soloCrew,
+          days: [],
+          defaultDay: DEFAULT_PRODUCTION_DAY,
+          bestBoyMode,
+          viewMode: 'mobile',
+          iAmCrewId: null,
+          dayDefaults: {},
+          isElevenHourDay: false,
+          liveActivityEnabled: true,
+          roundingMode: roundingModeOf(userPrefs),
+          startDate: todayISO(),
+          isNew: true,
+          ...seededMileageRate(userPrefs),               // new-production default (Phase 5b)
+        };
+    }
+
     // Rules-side structure (role names / departments / display order) —
     // card-invariant, bound once to the base card.
     const DEPARTMENTS = RATE_CARDS[0].departments;
@@ -32193,52 +32245,10 @@ const confirmDelete = (p) => setConfirmOpts({
         setProductions(prev => [...prev, copy]);
         setOpenId(newId);
       };
+      // The envelope lives in makeApaProduction (module scope, beside its
+      // long form twin) — Phase 7. This handler is persistence + navigation.
       const handleNewProduction = ({ title, bestBoyMode }) => {
-        const role = userPrefs.defaultRole || "Lighting Technician";
-        // New production starts today → seed through the card current at
-        // creation time. seedRateFromPrefs applies the exact-match rule: a
-        // stored Settings default that matches an older card is a stale
-        // table snapshot (resolved card wins); one matching no card is a
-        // deliberate custom rate (seeded verbatim). Previously
-        // userPrefs.defaultBDR shadowed the resolved card outright — a shoot
-        // created after a boundary was silently born on the OLD card, and no
-        // crossing event ever fired to correct it.
-        const seeded = seedRateFromPrefs(userPrefs, role, null);
-        const soloCrew = bestBoyMode ? [] : [{
-          id: uid(),
-          name: userPrefs.displayName || "You",
-          role,
-          bdr: seeded.bdr,
-          otCoef: seeded.otCoef,
-          otRate: seeded.otRate,
-          vatRegistered: userPrefs.vatRegistered ?? false,
-          vatRate: userPrefs.vatRate ?? 20,
-          kitMoneyEnabled: userPrefs.defaultKitMoneyEnabled ?? false,
-          kitMoneyAmount: userPrefs.defaultKitMoneyAmount ?? 0,
-          isDriver: false,
-          email: '',
-        }];
-        const p = {
-          id: uid(),
-          title,
-          prodCo: "",
-          jobReference: "",
-          invoicingEmail: "",
-          ccEmail: "",
-          crew: soloCrew,
-          days: [],
-          defaultDay: DEFAULT_PRODUCTION_DAY,
-          bestBoyMode,
-          viewMode: 'mobile',
-          iAmCrewId: null,
-          dayDefaults: {},
-          isElevenHourDay: false,
-          liveActivityEnabled: true,
-          roundingMode: roundingModeOf(userPrefs),
-          startDate: todayISO(),
-          isNew: true,
-          ...seededMileageRate(userPrefs),               // new-production default (Phase 5b)
-        };
+        const p = makeApaProduction({ title, bestBoyMode }, userPrefs);
         setProductions((prev) => [...prev, p]);
         setOpenId(p.id);
         setShowNewProduction(false);
