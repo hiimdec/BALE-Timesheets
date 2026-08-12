@@ -43,6 +43,33 @@
   }
   </script>
 
+  <!-- Site-wide WebSite + Organization structured data. Lives on the domain root
+       (currently this app page). When the homepage moves to /app, this block must
+       move with it to the new root, not be dropped. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://timemachineapp.co.uk/#organization",
+        "name": "TimeMachine",
+        "url": "https://timemachineapp.co.uk/",
+        "logo": "https://timemachineapp.co.uk/icon-512.png",
+        "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://timemachineapp.co.uk/#website",
+        "name": "TimeMachine",
+        "url": "https://timemachineapp.co.uk/",
+        "publisher": { "@id": "https://timemachineapp.co.uk/#organization" },
+        "inLanguage": "en-GB"
+      }
+    ]
+  }
+  </script>
+
   <!-- PWA / iOS Home Screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="TimeMachine">
