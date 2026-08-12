@@ -103,6 +103,9 @@ const ENGINE_NAMES = [
   // The card-boundary crew refresh itself — module scope since Phase 7, so
   // the suite executes it directly (the extract-and-evaluate era is over).
   'applyRateCardToCrew',
+  // The card-less-role grade fallback: S1's crew-editor mirrors reproduce the
+  // onRoleChange expression character-faithfully, which names it.
+  'autoOtCoef',
 ];
 
 const EXPORT_LINE =

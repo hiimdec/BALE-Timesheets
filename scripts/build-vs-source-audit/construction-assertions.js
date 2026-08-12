@@ -141,6 +141,120 @@ function runSuite(label, eng) {
     JSON.stringify(p7.crew.map(c => c.bdr)));
 }
 
+// ── S1: cross-editor crew equivalence (mirrors, source-pinned) ──────────────
+// The three crew editors are React closures, so their write expressions are
+// MIRRORED here and each mirror is pinned to the exact source expression it
+// reproduces (the OTG3/OTG4 pairing) — an unpinned mirror could drift on its
+// own. The contract: the same logical action (pick role R, type rate X)
+// through the CrewManager editor, the solo job-settings editor and
+// QuickAddCrewSheet yields the same { bdr, otCoef, otRate }. crew.otCoef has
+// six hand-maintained writers; the seventh (the rate input) is the one that
+// drifted — this equivalence is the standing alarm for the other six until a
+// collapse slice runs. (noOT is deliberately OUTSIDE the triple: QuickAdd
+// carries it, the other two do not — the tracked Director/Producer phantom-OT
+// item in MAINTENANCE.md. Pinning that asymmetry would bless it.)
+function runS1(label, eng, srcHtml) {
+  const pins = {
+    'S1 source: CrewManager onRoleChange expression':
+      /setForm\(\(f\) => \(\{ \.\.\.f, role, bdr: d\.bdr \?\? f\.bdr, otCoef: d\.otCoef \?\? autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\), otRate: d\.otRate \?\? null \}\)\)/.test(srcHtml),
+    'S1 source: CrewManager rate input writes the rate only':
+      /onChange=\{\(e\) => setForm\(\{ \.\.\.form, bdr: Number\(e\.target\.value\) \}\)\}/.test(srcHtml),
+    'S1 source: solo editor role-change expression':
+      /crew: p\.crew\.map\(\(c, i\) => i === 0 \? \{ \.\.\.c, role, bdr: d\.bdr \?\? c\.bdr, otCoef: d\.otCoef \?\? c\.otCoef, otRate: d\.otRate \?\? null \} : c\)/.test(srcHtml),
+    'S1 source: QuickAddCrewSheet submit shape (card coefficient at submit time, noOT rides)':
+      /otCoef: roleDefaults\.otCoef \?\? 1\.5,\s*otRate: roleDefaults\.otRate \?\? null,\s*\.\.\.\(roleDefaults\.noOT \? \{ noOT: true \} : \{\}\),/.test(srcHtml),
+  };
+  for (const [name, ok] of Object.entries(pins)) {
+    check(label, name, ok, 'the mirrored editor expression changed — update the mirror WITH the source');
+  }
+  if (!Object.values(pins).every(Boolean)) return;
+
+  const card = eng.resolveRateCard('2026-09-15');
+  const cardOtGrades = card.otGrades;
+  const flat = eng.flattenRateCard(card);
+  const autoOtCoef = eng.autoOtCoef;
+  const ROLE = 'Lighting Technician';   // 1.5 — a grade the rate-derived path would get WRONG at £475
+  const d = flat[ROLE];
+  const X = 475;
+
+  // Vacuity guard: at this fixture a regression to rate-derived grading would
+  // produce a DIFFERENT coefficient, so triple-equality below is discriminating,
+  // not agreeing-at-default.
+  check(label, 'S1 vacuity guard: the rate-derived grade at £475 differs from the card grade (1.25 vs 1.5) — the equivalence can actually fail',
+    autoOtCoef(X, cardOtGrades) !== d.otCoef, JSON.stringify({ derived: autoOtCoef(X, cardOtGrades), card: d.otCoef }));
+
+  // E1 CrewManager: role select, then the rate edit (writes the rate only).
+  let f = { role: 'Best Boy', bdr: 0, otCoef: 1, otRate: null };
+  const e1sel = { ...f, role: ROLE, bdr: d.bdr ?? f.bdr, otCoef: d.otCoef ?? autoOtCoef(d.bdr ?? f.bdr, cardOtGrades), otRate: d.otRate ?? null };
+  const e1 = { ...e1sel, bdr: Number(String(X)) };
+  // E2 solo editor: role select, then setSoloNum("bdr").
+  let c = { role: 'Best Boy', bdr: 0, otCoef: 1, otRate: null };
+  const e2sel = { ...c, role: ROLE, bdr: d.bdr ?? c.bdr, otCoef: d.otCoef ?? c.otCoef, otRate: d.otRate ?? null };
+  const e2 = { ...e2sel, bdr: Number(String(X)) };
+  // E3 QuickAddCrewSheet: the typed rate submits with the CURRENT role's card
+  // coefficient resolved at submit time.
+  const roleDefaults = flat[ROLE] || {};
+  const e3 = { role: ROLE, bdr: Number(String(X)) || 0, otCoef: roleDefaults.otCoef ?? 1.5, otRate: roleDefaults.otRate ?? null };
+
+  const triple = (r) => JSON.stringify({ bdr: r.bdr, otCoef: r.otCoef, otRate: r.otRate });
+  check(label, 'S1 the same action through all three editors yields the same {bdr, otCoef, otRate} — LT at a typed £475 keeps the card 1.5 everywhere',
+    triple(e1) === triple(e2) && triple(e2) === triple(e3) &&
+    e1.bdr === 475 && e1.otCoef === 1.5 && e1.otRate === null,
+    `${triple(e1)} | ${triple(e2)} | ${triple(e3)}`);
+}
+
+// ── S6: step-up picker equivalence (mirrors, source-pinned) ─────────────────
+// THREE hand-maintained copies of the same stepUp write (the solo day form,
+// the bulk date edit, CrewMemberDayView) — the fourth duplicated-gate
+// instance in PACT_BECTU_PLAN.md, where the ruled fix is removing the copies,
+// not pinning them into agreement. Until that slice runs, this is the drift
+// alarm the plan file's cheapness clause allows: the SELECTED-role writes must
+// agree, and the one divergence that exists today (clear-role residue) must
+// stay pay-inert through resolveCrewForDay's stepUpRole guard.
+function runS6(label, eng, srcHtml) {
+  const pins = {
+    'S6 source: solo day form step-up write':
+      /set\(\{ stepUpRole: role, stepUpBDR: d\.bdr \?\? v\.stepUpBDR, stepUpOTCoef: d\.otCoef \?\? v\.stepUpOTCoef, stepUpOTRate: d\.otRate \?\? null \}\);/.test(srcHtml),
+    'S6 source: bulk date-edit step-up write':
+      /stepUpRole: role,\s*stepUpBDR: role \? \(d\.bdr \?\? p\.stepUpBDR\) : 0,\s*stepUpOTCoef: role \? \(d\.otCoef \?\? 1\) : 1,\s*stepUpOTRate: role \? \(d\.otRate \?\? null\) : null,/.test(srcHtml),
+    'S6 source: CrewMemberDayView step-up write':
+      /stepUpRole: role,\s*stepUpBDR: role \? \(d\.bdr \?\? rec\.stepUpBDR\) : 0,\s*stepUpOTCoef: role \? \(d\.otCoef \?\? rec\.stepUpOTCoef\) : 1,\s*stepUpOTRate: role \? \(d\.otRate \?\? null\) : null,/.test(srcHtml),
+  };
+  for (const [name, ok] of Object.entries(pins)) {
+    check(label, name, ok, 'the mirrored picker expression changed — update the mirror WITH the source');
+  }
+  if (!Object.values(pins).every(Boolean)) return;
+
+  const flat = eng.flattenRateCard(eng.resolveRateCard('2026-09-15'));
+  const role = 'Gaffer';
+  const d = flat[role];
+  const prev = { stepUpBDR: 111, stepUpOTCoef: 1.25 };
+  // The three writes with a role SELECTED:
+  const w1 = { stepUpRole: role, stepUpBDR: d.bdr ?? prev.stepUpBDR, stepUpOTCoef: d.otCoef ?? prev.stepUpOTCoef, stepUpOTRate: d.otRate ?? null };
+  const w2 = { stepUpRole: role, stepUpBDR: role ? (d.bdr ?? prev.stepUpBDR) : 0, stepUpOTCoef: role ? (d.otCoef ?? 1) : 1, stepUpOTRate: role ? (d.otRate ?? null) : null };
+  const w3 = { stepUpRole: role, stepUpBDR: role ? (d.bdr ?? prev.stepUpBDR) : 0, stepUpOTCoef: role ? (d.otCoef ?? prev.stepUpOTCoef) : 1, stepUpOTRate: role ? (d.otRate ?? null) : null };
+  const quad = (w) => JSON.stringify(w);
+  check(label, 'S6 a SELECTED card role writes the identical stepUp quadruple on all three surfaces (Gaffer 585/1.25/null)',
+    quad(w1) === quad(w2) && quad(w2) === quad(w3) && w1.stepUpBDR === 585 && w1.stepUpOTCoef === 1.25,
+    `${quad(w1)} | ${quad(w2)} | ${quad(w3)}`);
+
+  // The KNOWN divergence: clearing the role leaves different residue (the solo
+  // form keeps old BDR/coef and nulls the rate; the other two reset to 0/1).
+  // Prove it stays pay-inert: resolveCrewForDay ignores the whole overlay when
+  // stepUpRole is empty — both residue shapes resolve to the crew member
+  // UNCHANGED (the identical object), so no divergent number can reach money.
+  const noRole = '';
+  const dEmpty = flat[noRole] || {};
+  const r1 = { stepUpRole: noRole, stepUpBDR: dEmpty.bdr ?? prev.stepUpBDR, stepUpOTCoef: dEmpty.otCoef ?? prev.stepUpOTCoef, stepUpOTRate: dEmpty.otRate ?? null };
+  const r2 = { stepUpRole: noRole, stepUpBDR: noRole ? (dEmpty.bdr ?? prev.stepUpBDR) : 0, stepUpOTCoef: noRole ? (dEmpty.otCoef ?? 1) : 1, stepUpOTRate: noRole ? (dEmpty.otRate ?? null) : null };
+  const crewMember = { role: 'Lighting Technician', bdr: 457, otCoef: 1.5, otRate: null };
+  const res1 = eng.resolveCrewForDay({ ...r1 }, crewMember);
+  const res2 = eng.resolveCrewForDay({ ...r2 }, crewMember);
+  check(label, 'S6 the clear-role residue DIVERGES across surfaces (solo keeps 111/1.25, the others reset 0/1) but is pay-inert: resolveCrewForDay returns the crew member untouched for BOTH shapes (stepUpRole guard)',
+    quad(r1) !== quad(r2) && res1 === crewMember && res2 === crewMember,
+    JSON.stringify({ r1, r2, inert: res1 === crewMember && res2 === crewMember }));
+}
+
 async function main() {
   const srcHtml = fs.readFileSync(SRC_HTML, 'utf8');
   const c0ok = runC0(srcHtml);
@@ -160,6 +274,10 @@ async function main() {
   }
   runSuite('src', src);
   runSuite('built', built);
+  runS1('src', src, srcHtml);
+  runS1('built', built, srcHtml);
+  runS6('src', src, srcHtml);
+  runS6('built', built, srcHtml);
 
   const pass = results.every((r) => r.pass);
   console.log('');
