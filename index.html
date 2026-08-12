@@ -3545,9 +3545,17 @@
     // Read through the production's baseNation; unknown nations fall back to
     // England & Wales (the record can only hold the three keys, but a read
     // must never crash on a malformed one).
-    const lfBankHolidayName = (dateISO, baseNation) =>
+    //
+    // SHARED BY BOTH ENGINES since Phase 10 — the names are deliberately
+    // neutral, because these are read from the APA engine too and an `lf`
+    // prefix inside APA code reads as a bug. An APA production with no
+    // baseNation resolves to england-wales, which is key-AND-value identical
+    // to the audited UK_BANK_HOLIDAYS table (pinned LF12e), so an existing
+    // production computes byte-identically. UK_BANK_HOLIDAYS and
+    // isBankHoliday themselves stay byte-untouched.
+    const nationBankHolidayName = (dateISO, baseNation) =>
       (LF_NATION_BANK_HOLIDAYS[baseNation] || LF_NATION_BANK_HOLIDAYS['england-wales'])[dateISO] || null;
-    const lfIsBankHoliday = (dateISO, baseNation) => !!lfBankHolidayName(dateISO, baseNation);
+    const isNationBankHoliday = (dateISO, baseNation) => !!nationBankHolidayName(dateISO, baseNation);
 
     // ═══════════════ THE LONG FORM ENGINE (Phase 3d) ═══════════════
     // A SIBLING of the APA engine, reached only through longFormCalcForDay
@@ -3620,8 +3628,8 @@
         cameraOtCalledMins: day.cameraOtCalledMins,
         lunchMinsTaken: day.lunchMinsTaken,
         sixthSeventhOverride: day.sixthSeventhOverride === true,
-        isBankHoliday: lfIsBankHoliday(day.date, production.baseNation),
-        bankHolidayName: lfBankHolidayName(day.date, production.baseNation),
+        isBankHoliday: isNationBankHoliday(day.date, production.baseNation),
+        bankHolidayName: nationBankHolidayName(day.date, production.baseNation),
         productionBand: Number(production.band) || null,
         mileageRate: Number(production.mileageRatePerMile) > 0 ? Number(production.mileageRatePerMile) : 0.5,
         dayStartMins: dayStart,
@@ -5151,6 +5159,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // weekendOpts at the call site), seeded from userPrefs.defaultMileageRate at
       // creation; absent falls back to the 50p literal (Phase 5b bug fix).
       const mileageRate = Number(weekendOpts.mileageRatePerMile) > 0 ? Number(weekendOpts.mileageRatePerMile) : 0.5;
+      // Bank holidays by NATION (Phase 10). weekendOpts is the spread production,
+      // so baseNation rides in the same way mileageRatePerMile does. ABSENT means
+      // england-wales, which is key-and-value identical to the audited
+      // UK_BANK_HOLIDAYS table - so a production with no nation computes
+      // byte-identically. UK_BANK_HOLIDAYS and isBankHoliday stay untouched.
+      const bhNation = weekendOpts.baseNation;
+      const dayIsBH = (d) => isNationBankHoliday(d, bhNation);
+      const dayBHName = (d) => nationBankHolidayName(d, bhNation);
       const rawBdr = Number(crew.bdr);
       const bdr = Number.isFinite(rawBdr) ? Math.max(0, rawBdr) : 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
@@ -5236,7 +5252,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dow = dayOfWeek(day.date);
       const isSunday = dow === 0;
       const isSaturday = dow === 6;
-      const isBH = isBankHoliday(day.date);
+      const isBH = dayIsBH(day.date);
       const isNightPre5  = callH < 5;
       const isNightPost5 = callH >= 17;
       const isNightShoot = isNightPre5 || isNightPost5;
@@ -5648,7 +5664,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         meta: {
           workedHrs, otHrs: otHrsForMeta, waivedOtHrs, bhr, otRate,
           notes, secondBreakRequired, continuousDay,
-          isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
+          isBankHoliday: isBH, bankHolidayName: dayBHName(day.date),
           dayLabel: isNightShoot ? (isNightPre5 ? "Night Shoot (pre-5am)" : "Night Shoot (post-5pm)")
                   : treatAsSat ? "Saturday"
                   : treatAsSun ? (isBH && !isSunday ? "Bank Holiday" : "Sunday")
@@ -5662,6 +5678,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function calculatePmpaDay(day, crew, weekendOpts = {}) {
       const mileageRate = Number(weekendOpts.mileageRatePerMile) > 0 ? Number(weekendOpts.mileageRatePerMile) : 0.5;
+      // Bank holidays by NATION (Phase 10). weekendOpts is the spread production,
+      // so baseNation rides in the same way mileageRatePerMile does. ABSENT means
+      // england-wales, which is key-and-value identical to the audited
+      // UK_BANK_HOLIDAYS table - so a production with no nation computes
+      // byte-identically. UK_BANK_HOLIDAYS and isBankHoliday stay untouched.
+      const bhNation = weekendOpts.baseNation;
+      const dayIsBH = (d) => isNationBankHoliday(d, bhNation);
+      const dayBHName = (d) => nationBankHolidayName(d, bhNation);
       const rawBdr = Number(crew.bdr);
       const bdr = Number.isFinite(rawBdr) ? Math.max(0, rawBdr) : 0;
       const bhr = computeAPArate(bdr, 1, weekendOpts.apaRounding);
@@ -5675,8 +5699,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             workedHrs: 0, otHrs: 0, waivedOtHrs: 0, bhr, otRate: bhr,
             dayLabel: day.dayType || "-", notes: [],
             secondBreakRequired: false, continuousDay: false, isPmpa: true,
-            isBankHoliday: isBankHoliday(day.date),
-            bankHolidayName: getBankHolidayName(day.date),
+            isBankHoliday: dayIsBH(day.date),
+            bankHolidayName: dayBHName(day.date),
           },
           lines: [{ label: `${day.dayType} (flat BDR)`, detail: "", rate: null, qty: 1, amount: bdr }],
           total: bdr,
@@ -5707,7 +5731,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dow = dayOfWeek(day.date);
       const isSaturday = dow === 6;
       const isSunday = dow === 0;
-      const isBH = isBankHoliday(day.date);
+      const isBH = dayIsBH(day.date);
       const isNightPre5 = callH < 5;
       const isNightPost5 = callH >= 17;
       const isNightShoot = isNightPre5 || isNightPost5;
@@ -5789,7 +5813,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         meta: {
           workedHrs, otHrs, waivedOtHrs, bhr, otRate, dayLabel,
           notes: dayClamped ? ["Day length exceeded 24h - clamped to 24h. Check the wrap time / +1 flag."] : [], secondBreakRequired: false, continuousDay: false, isPmpa: true,
-          isBankHoliday: isBH, bankHolidayName: getBankHolidayName(day.date),
+          isBankHoliday: isBH, bankHolidayName: dayBHName(day.date),
         },
         lines, total,
       };
@@ -12169,7 +12193,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dow = dayOfWeek(v.date);
       const dayLabel = v.date ? weekday(v.date) : "";
       const isWeekend = dow === 0 || dow === 6;
-      const bhName = getBankHolidayName(v.date);
+      const bhName = nationBankHolidayName(v.date, production && production.baseNation);
       const isBH = !!bhName;
       const isTravelDay = vr.dayType === "Travel Day";
       const activeCrew = fixedCrewId ? crew.find(c => c.id === fixedCrewId) : crew.find(c => c.id === v.crewId);
@@ -13251,7 +13275,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       const dow = dayOfWeek(date);
                       const isSat = dow === 6;
                       const isSun = dow === 0;
-                      const isBH = isBankHoliday(date);
+                      const isBH = isNationBankHoliday(date, production.baseNation);
                       const treatAsSunCol = isSun || isBH;
                       const isEditingThis = editingDate === date;
                       // Bank holidays reuse the Sunday red tint per APA §2.4.
@@ -13265,7 +13289,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                             if (hasEntries) { openDateEdit(date); } else { onAddAllOnDate(date, addDayType); }
                           }}
                           className={`px-2 py-1.5 text-center cursor-pointer border-r border-neutral-700 transition-colors hover:bg-neutral-800/60 ${cellBg}${isEditingThis ? " ring-2 ring-inset ring-sky-500" : ""}`}
-                          title={isBH ? `Bank Holiday - ${getBankHolidayName(date)}` : undefined}>
+                          title={isBH ? `Bank Holiday - ${nationBankHolidayName(date, production.baseNation)}` : undefined}>
                           <div className={`text-[11px] font-bold leading-none ${numColor}`}>
                             {new Date(date + "T12:00:00").getDate()}
                           </div>
@@ -15152,7 +15176,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dateDow = currentDate ? new Date(currentDate + 'T12:00:00').getDay() : -1;
       const isSat = dateDow === 6;
       const isSun = dateDow === 0;
-      const isBH = isBankHoliday(currentDate);
+      const isBH = isNationBankHoliday(currentDate, production.baseNation);
       const dateColorCls = (isSun || isBH) ? 'text-tm-pen' : isSat ? 'text-tm-warn' : 'text-neutral-200';
 
       const gbp = fmtGBP(grandTotal);
@@ -15210,7 +15234,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     />
                   </span>
                   {isBH && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider bg-tm-pen/10 text-tm-pen border border-tm-pen/25 rounded px-1 py-0.5" title={getBankHolidayName(currentDate) || 'Bank Holiday'}>BH</span>
+                    <span className="text-[8px] font-bold uppercase tracking-wider bg-tm-pen/10 text-tm-pen border border-tm-pen/25 rounded px-1 py-0.5" title={nationBankHolidayName(currentDate, production.baseNation) || 'Bank Holiday'}>BH</span>
                   )}
                 </>
               )}
@@ -17907,6 +17931,37 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </Disclosure>
 
             {(() => {
+              // Base nation (Phase 10). Bank holidays differ by UK nation and
+              // they pay a premium, so the wrong set is real money in both
+              // directions - Scotland has no Easter Monday, England & Wales has
+              // no 2 January. Per PRODUCTION, not a global: a global would be
+              // read at calc time by every job at once, so changing it would
+              // silently re-price existing (and invoiced) shoots. Absent means
+              // england-wales, which is identical to the audited APA table.
+              const nation = production.baseNation || 'england-wales';
+              const opts = [
+                { key: 'england-wales', label: 'England & Wales', detail: 'The standard set of bank holidays.' },
+                { key: 'scotland', label: 'Scotland', detail: "2 January and St Andrew's Day; no Easter Monday." },
+                { key: 'northern-ireland', label: 'Northern Ireland', detail: "St Patrick's Day and the Twelfth." },
+              ];
+              const current = opts.find(o => o.key === nation) || opts[0];
+              return (
+                <Disclosure label="Base nation" summary={current.label}>
+                  <p className="text-[11px] text-neutral-500 -mt-1">This is the UK production base, usually the production office, not the location. It decides which bank holidays apply regardless of where filming happens.</p>
+                  <Field label="Production base">
+                    <Select value={nation} onChange={(e) => {
+                      const v = e.target.value;
+                      setProduction(p => { const n = { ...p }; if (v && v !== 'england-wales') n.baseNation = v; else delete n.baseNation; return n; });
+                    }}>
+                      {opts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                    </Select>
+                  </Field>
+                  <p className="text-[10px] text-neutral-600 leading-tight">{current.detail}</p>
+                </Disclosure>
+              );
+            })()}
+
+            {(() => {
               // Day rates (Phase 9). A per-job agreed figure for a non-shoot day
               // type — the rate BASIS for that day, not a fixed fee: overtime
               // derives from it like any other day.
@@ -19082,7 +19137,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   }
                   const hasOT = dayBuckets.ot > 0;
                   const hasPen = dayBuckets.pen > 0;
-                  const isBH = !!getBankHolidayName(d.date);
+                  const isBH = !!nationBankHolidayName(d.date, production && production.baseNation);
                   const dow = dayOfWeek(d.date);
                   const isWeekendChip = !isBH && (dow === 6 || dow === 0);
                   const weekendChipLabel = dow === 6 ? 'SAT' : 'SUN';

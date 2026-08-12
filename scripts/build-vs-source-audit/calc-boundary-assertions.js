@@ -480,6 +480,76 @@ function stageDayRate(eng, ok) {
     'zero/absent must return the same object');
 }
 
+// ---- NATION: bank holidays by UK production base (Phase 10) ------------------
+// UK_BANK_HOLIDAYS is England & Wales only, so a Scottish or Northern Irish job
+// missed holidays it should pay and paid one it shouldn't. Bank holidays pay at
+// a premium (§2.4: Sunday rate, 2× BDR), so the error was real money in BOTH
+// directions. The engine now resolves through the composed nation sets keyed by
+// production.baseNation, which rides in weekendOpts like every other per-job
+// setting. ABSENT = england-wales = byte-identical to before.
+function stageNation(eng, ok) {
+  console.log('\nNATION · bank holidays follow the production base, and the error runs both ways');
+  const crew = baseCrew();                                   // BDR 444
+  const day = (date) => baseDay({ date, dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00' });
+  const run = (date, nation) => eng.calculateDay(day(date), crew, nation ? { baseNation: nation } : {});
+
+  // Direction 1: Scotland pays 2 January; England & Wales does not.
+  const jan2London = run('2026-01-02');
+  const jan2Scot = run('2026-01-02', 'scotland');
+  ok('NATION1 2 January 2026 is a SCOTTISH bank holiday only: a Glasgow-based job pays the §2.4 premium (£888) where a London one pays an ordinary day (£444) - money the Scottish user was previously losing',
+    near(jan2London.total, 444) && near(jan2Scot.total, 888) &&
+    jan2London.meta.isBankHoliday === false && jan2Scot.meta.isBankHoliday === true &&
+    jan2Scot.meta.bankHolidayName === '2nd January',
+    JSON.stringify({ london: jan2London.total, scotland: jan2Scot.total, name: jan2Scot.meta.bankHolidayName }));
+
+  // Direction 2: England & Wales pays Easter Monday; Scotland does not.
+  const emLondon = run('2026-04-06');
+  const emScot = run('2026-04-06', 'scotland');
+  ok('NATION2 Easter Monday 2026 is E&W (and NI) only, NOT Scottish: the SAME job pays £888 in London and £444 in Glasgow - the other direction, money the Scottish user was previously over-claiming',
+    near(emLondon.total, 888) && near(emScot.total, 444) &&
+    emLondon.meta.isBankHoliday === true && emScot.meta.isBankHoliday === false,
+    JSON.stringify({ london: emLondon.total, scotland: emScot.total }));
+
+  ok('NATION3 the divergence is the point, both ways: each date differs by £444 between the two nations, and the two dates disagree in OPPOSITE directions - neither pin can pass by both paths agreeing at a default',
+    !near(jan2London.total, jan2Scot.total) && !near(emLondon.total, emScot.total) &&
+    near(jan2Scot.total - jan2London.total, 444) && near(emLondon.total - emScot.total, 444),
+    JSON.stringify({ jan2Delta: jan2Scot.total - jan2London.total, easterDelta: emLondon.total - emScot.total }));
+
+  // Vacuity guard: the SAME day on the SAME nation must agree with itself, so
+  // the differences above are attributable to the nation and not to the
+  // fixtures drifting apart for some unrelated reason.
+  ok('NATION4 vacuity guard: the same date on the same nation gives the same money (both nations, both dates), so NATION1-3 differ because of the NATION and not because the fixtures drift',
+    near(run('2026-01-02', 'scotland').total, jan2Scot.total) &&
+    near(run('2026-01-02').total, jan2London.total) &&
+    near(run('2026-04-06', 'scotland').total, emScot.total) &&
+    near(run('2026-04-06').total, emLondon.total),
+    'a fixture is not reproducible');
+
+  // Northern Ireland: E&W plus its own two, so it must agree with London on
+  // Easter Monday AND carry St Patrick's Day that neither other nation has.
+  const patLondon = run('2026-03-17');
+  const patNI = run('2026-03-17', 'northern-ireland');
+  ok('NATION5 Northern Ireland is E&W PLUS its own: St Patrick\'s Day 2026 pays £888 in Belfast and £444 in London, while NI still carries E&W\'s Easter Monday (£888) - proving NI composes rather than replaces',
+    near(patLondon.total, 444) && near(patNI.total, 888) &&
+    near(run('2026-04-06', 'northern-ireland').total, 888),
+    JSON.stringify({ london: patLondon.total, ni: patNI.total, niEaster: run('2026-04-06', 'northern-ireland').total }));
+
+  // The DEFAULT PATH: absent nation must equal the old behaviour exactly. An
+  // unknown value must fall back to E&W rather than crashing or paying nothing.
+  ok('NATION6 an ABSENT baseNation computes exactly as before (every existing production), and an unknown/malformed value falls back to England & Wales rather than silently paying an ordinary day on a real holiday',
+    near(run('2026-04-06').total, 888) && near(run('2026-04-06', undefined).total, 888) &&
+    near(run('2026-04-06', 'atlantis').total, 888) && near(run('2026-01-02', 'atlantis').total, 444),
+    JSON.stringify({ absent: run('2026-04-06').total, unknown: run('2026-04-06', 'atlantis').total }));
+
+  // The PMPA path shares the same resolver - Production Manager/Assistant/
+  // Runner route to calculatePmpaDay, which reads the nation too.
+  const pmpaScot = eng.calculateDay(day('2026-01-02'), baseCrew({ role: 'Production Assistant', bdr: 441 }), { baseNation: 'scotland' });
+  const pmpaLondon = eng.calculateDay(day('2026-01-02'), baseCrew({ role: 'Production Assistant', bdr: 441 }), {});
+  ok('NATION7 the PMPA path (calculatePmpaDay) reads the nation too - a Production Assistant on a Scottish 2 January diverges from the same day in London, so the second engine entry point was not missed',
+    !near(pmpaScot.total, pmpaLondon.total) && pmpaScot.meta.isBankHoliday === true && pmpaLondon.meta.isBankHoliday === false,
+    JSON.stringify({ scot: pmpaScot.total, london: pmpaLondon.total }));
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -496,6 +566,7 @@ async function runCalcBoundaryAssertions() {
   stageMileage(eng, ok);
   stageNoOT(eng, ok);
   stageDayRate(eng, ok);
+  stageNation(eng, ok);
   return summary();
 }
 

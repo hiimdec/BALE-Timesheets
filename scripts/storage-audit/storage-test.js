@@ -266,8 +266,12 @@ async function transformedAppCode() {
     // Nation bank holidays (LF12): the composed sets, the reader, and the
     // APA table (read-only reference for the no-drift cross-check).
     'try { globalThis.__LF_NATION_BANK_HOLIDAYS = LF_NATION_BANK_HOLIDAYS; } catch (_) {}\n' +
-    'try { globalThis.__lfIsBankHoliday = lfIsBankHoliday; } catch (_) {}\n' +
+    'try { globalThis.__isNationBankHoliday = isNationBankHoliday; } catch (_) {}\n' +
+    'try { globalThis.__nationBankHolidayName = nationBankHolidayName; } catch (_) {}\n' +
     'try { globalThis.__UK_BANK_HOLIDAYS = UK_BANK_HOLIDAYS; } catch (_) {}\n' +
+    // The ORIGINAL E&W-only reader, byte-untouched — LF12f compares the
+    // nation-aware resolver's default path against it date by date.
+    'try { globalThis.__isBankHoliday = isBankHoliday; } catch (_) {}\n' +
     // The engine (LF11/LF13): the dispatcher, the pure core and the
     // settlement helper, for the worked-example fixtures.
     'try { globalThis.__longFormCalcForDay = longFormCalcForDay; } catch (_) {}\n' +
@@ -2684,7 +2688,9 @@ async function main() {
     //    asserted in BOTH directions so the composition cannot regress into
     //    England-plus-extras. Dates verified against gov.uk (2025-2027) and
     //    weekday-checked substitutions beyond. ──
-    const BH = sb.__lfIsBankHoliday, NATIONS = sb.__LF_NATION_BANK_HOLIDAYS, APA_BH = sb.__UK_BANK_HOLIDAYS;
+    // Phase 10: renamed from lfIsBankHoliday - the composed sets are read by
+    // BOTH engines now, so the reader names are neutral.
+    const BH = sb.__isNationBankHoliday, NATIONS = sb.__LF_NATION_BANK_HOLIDAYS, APA_BH = sb.__UK_BANK_HOLIDAYS;
     if (typeof BH === 'function' && NATIONS && APA_BH) {
       check('LF12a Scotland vs England & Wales, both directions: 2 Jan and first-Mon-Aug are Scottish only; Easter Monday and last-Mon-Aug are E&W only',
         BH('2026-01-02', 'scotland') === true  && BH('2026-01-02', 'england-wales') === false &&
@@ -2702,11 +2708,39 @@ async function main() {
         BH('2027-01-04', 'scotland') === true && BH('2027-01-02', 'scotland') === false &&
         BH('2029-03-19', 'northern-ireland') === true && BH('2029-03-17', 'northern-ireland') === false &&
         BH('2025-12-01', 'scotland') === true && BH('2025-11-30', 'scotland') === false);
-      const composedEW = Object.keys(NATIONS['england-wales']).sort().join(',');
-      const apaKeys = Object.keys(APA_BH).sort().join(',');
-      check('LF12e the composed England & Wales set is key-identical to the audited APA UK_BANK_HOLIDAYS table (no drift between the two)',
-        composedEW === apaKeys,
-        composedEW === apaKeys ? '' : 'first difference: ' + (Object.keys(NATIONS['england-wales']).sort().find((k, i) => k !== Object.keys(APA_BH).sort()[i]) || 'length mismatch'));
+      // LF12e, strengthened in Phase 10 from keys to keys AND VALUES. It now
+      // proves the APA migration was LOSSLESS: the composed E&W set the APA
+      // engine reads carries the same dates AND the same holiday names as the
+      // audited table it used to read, so no display string moved either.
+      const ewKeys = Object.keys(NATIONS['england-wales']).sort();
+      const apaKeysArr = Object.keys(APA_BH).sort();
+      const keysSame = ewKeys.join(',') === apaKeysArr.join(',');
+      const valDiffs = apaKeysArr.filter(k => APA_BH[k] !== NATIONS['england-wales'][k]);
+      check('LF12e the composed England & Wales set is key-AND-VALUE identical to the audited APA UK_BANK_HOLIDAYS table (88 entries, 2025-2035) - since Phase 10 the APA engine reads the composed set, so this is the proof that migration was lossless in dates and in names',
+        keysSame && valDiffs.length === 0 && ewKeys.length === 88,
+        keysSame ? ('value differences: ' + JSON.stringify(valDiffs.slice(0, 5))) : 'key mismatch; first difference: ' + (ewKeys.find((k, i) => k !== apaKeysArr[i]) || 'length'));
+      // The guarantee that SURVIVES the migration. LF12e compares two tables;
+      // once APA reads the composed sets, table agreement no longer proves the
+      // ENGINE is right. This pin tests the RESOLVER: with no baseNation (every
+      // existing production), the nation-aware reader must agree with the
+      // original isBankHoliday on every date across the full range - so a
+      // regression in resolution, not just in data, goes RED.
+      const APA_IS_BH = sb.__isBankHoliday;
+      if (typeof APA_IS_BH === 'function') {
+        const allDates = new Set([...apaKeysArr, ...Object.keys(NATIONS['scotland']), ...Object.keys(NATIONS['northern-ireland'])]);
+        // Plus a sweep of ordinary (non-holiday) days, so agreement on `false`
+        // is proven too, not just agreement on the holidays themselves.
+        for (let y = 2025; y <= 2035; y++) for (const d of ['03-11', '06-20', '09-09', '11-05']) allDates.add(`${y}-${d}`);
+        const mismatches = [...allDates].filter(d => APA_IS_BH(d) !== BH(d, undefined));
+        check('LF12f the DEFAULT PATH is unchanged by the migration: with no baseNation the nation-aware resolver returns the same verdict as the original isBankHoliday on every date in range (' + allDates.size + ' dates, holidays and ordinary days alike) - this tests the resolver, not the table, so it fails if resolution regresses even when the data is fine',
+          mismatches.length === 0, 'mismatches: ' + JSON.stringify(mismatches.slice(0, 5)));
+        check('LF12g the resolver is not vacuous: it DOES vary by nation on the dates that differ (2 Jan 2026 Scotland only, Easter Monday 2026 E&W and NI only), so LF12f passes because the default resolves to E&W - not because nation is ignored',
+          BH('2026-01-02', 'scotland') === true && BH('2026-01-02', undefined) === false &&
+          BH('2026-04-06', undefined) === true && BH('2026-04-06', 'scotland') === false,
+          'the nation argument must actually be consulted');
+      } else {
+        check('LF12f/g isBankHoliday exposed for the default-path comparison', false, 'not exposed');
+      }
     } else {
       for (const l of ['LF12a', 'LF12b', 'LF12c', 'LF12d', 'LF12e']) check(l + ' nation sets exposed', false, 'not exposed');
     }
@@ -3514,6 +3548,12 @@ async function main() {
         satRateCustom:      [/satRateCustom: p\.satRateCustom \?\? 1\.5/],
         sunRateMode:        [/sunRateMode: v \? "custom" : "apa"/],
         sunRateCustom:      [/sunRateCustom: p\.sunRateCustom \?\? 2/],
+        // Phase 10: the production's UK base, which selects the bank-holiday
+        // nation set. Written by the Base nation control only (delete-when-
+        // england-wales, so the default stores nothing). Declared here because
+        // RW1 caught it as an undeclared engine read the moment it landed -
+        // which is exactly what that pin is for.
+        baseNation:         [/if \(v && v !== 'england-wales'\) n\.baseNation = v; else delete n\.baseNation;/],
         // crew.* (effectiveCrew = the crew record + the step-up overlay)
         bdr:    [/bdr: d\.bdr \?\? f\.bdr/],                               // role-selection copy
         // Phase 8: written inside the ONE shared role-change helper.
