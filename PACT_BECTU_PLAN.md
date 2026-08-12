@@ -283,6 +283,29 @@ take and return plain data, so extraction is behaviour-neutral — but it
 touches record-construction code, so propose-first applies when it runs.
 Not scheduled; the founder rules on timing.
 
+## Resolved rulings — the APA day-type rate (Phase 9)
+
+**TOC into a rated day: leave the inherited behaviour, no special case.**
+`calcTOC` takes the effective crew, so a short turnaround into a recce day
+prices its penalty from the recce rate rather than the shoot rate the crew
+actually worked. Theoretically arguable; practically close to hypothetical, and
+ruled closed on that basis. TOC only exists between two working days on the
+same job, and a recce is prep for a job that has not started — so a shoot day
+immediately before one would almost always belong to a different production.
+Recorded here so it is not rediscovered as an open question. If a real
+turnaround-into-a-rated-day case ever appears, this is the entry to reopen.
+
+**The rate basis belongs in an APA ruleset table — when one exists.**
+`production.dayTypeRates` is a per-job override, and the DAY SHAPES it sits
+beside (Shoot 11h, Pre-light 9h, the §2.3 group 8h/9h) are still literals in
+`calculateDay`, while long form's equivalents are declarative data in
+`LONGFORM_AGREEMENTS`. "Per-day-type rate basis" is a general concept and does
+belong as data — but moving ONE concept into a table now would leave the engine
+running two idioms for the same kind of rule, which is worse than either. The
+sequencing: when APA gets its own ruleset table (the sibling of
+`LONGFORM_AGREEMENTS`), the day-type rate basis moves in alongside the day
+shapes it belongs with. Not scheduled.
+
 ## Still open (claim-and-flag applies)
 
 The live inference list is in the Phase 1b proposal record; headline items the
