@@ -296,13 +296,3 @@
   for = "/tailwind.config.js"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
-# Homepage PREVIEW (chunk 12) — noindex while under review. The page also carries a
-# noindex meta tag. Remove both blocks when it becomes the homepage at the /app move.
-[[headers]]
-  for = "/home-preview"
-  [headers.values]
-    X-Robots-Tag = "noindex, nofollow"
-[[headers]]
-  for = "/home-preview.html"
-  [headers.values]
-    X-Robots-Tag = "noindex, nofollow"

@@ -7,14 +7,12 @@
   <meta name="description" content="Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. TimeMachine takes UK commercial crew from call sheet to timesheet to invoice.">
   <meta name="theme-color" content="#0a0a0a">
 
-  <!-- PREVIEW: not for indexing. Removed when this becomes the homepage at the /app move. -->
-  <meta name="robots" content="noindex, nofollow">
-  <link rel="canonical" href="https://timemachineapp.co.uk/home-preview">
+  <link rel="canonical" href="https://timemachineapp.co.uk/">
 
   <meta property="og:site_name" content="TimeMachine">
   <meta property="og:title" content="APA rate calculator for UK commercial crew">
   <meta property="og:description" content="Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. TimeMachine takes UK commercial crew from call sheet to timesheet to invoice.">
-  <meta property="og:url" content="https://timemachineapp.co.uk/home-preview">
+  <meta property="og:url" content="https://timemachineapp.co.uk/">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
   <meta property="og:image:width" content="1200">
@@ -37,7 +35,7 @@
     // DISABLED until the /app move: /app does not exist yet, so leaving this
     // on would send installed users (and this preview, if added to a home
     // screen) to a 404. To enable at the move: set the flag to true.
-    var TM_ENABLE_STANDALONE_REDIRECT = false;
+    var TM_ENABLE_STANDALONE_REDIRECT = true;
     if (TM_ENABLE_STANDALONE_REDIRECT &&
         (window.navigator.standalone === true ||
          window.matchMedia('(display-mode: standalone)').matches)) {
@@ -1441,7 +1439,7 @@
         "description": "Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. From call sheet to timesheet to invoice, for UK commercial crew.",
         "operatingSystem": "iOS, Web",
         "applicationCategory": "BusinessApplication",
-        "url": "https://timemachineapp.co.uk/",
+        "url": "https://timemachineapp.co.uk/app/",
         "image": "https://timemachineapp.co.uk/og-image.png",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
         "publisher": { "@id": "https://timemachineapp.co.uk/#organization" }
@@ -1452,9 +1450,8 @@
 </head>
 <body>
 
-  <!-- APP LINKS: every href="/" on this page points at the app and becomes "/app/"
-       at the move. A single find-and-replace of  href="/"  ->  href="/app/"  catches
-       them all. The nav brand uses href="#main" (scroll to top), so it is NOT caught. -->
+  <!-- APP LINKS: the app lives at /app/ (chunk 14 move applied). Every "Open the app"
+       link below points at /app/. The nav brand uses href="#main" (scroll to top). -->
 
   <a href="#main" class="skip-link">Skip to content</a>
 
@@ -1463,7 +1460,7 @@
       <a href="#main" class="nav-brand">TIMEMACHINE</a>
       <div class="nav-ctas">
         <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
-        <a href="/" class="nav-cta">
+        <a href="/app/" class="nav-cta">
           Open the app
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
@@ -1485,7 +1482,7 @@
             Put in your call and wrap; it works out the day, catches the penalties, and carries the total through to a sent invoice.
           </p>
           <div class="hero-ctas">
-            <a href="/" class="btn primary">Open the app</a>
+            <a href="/app/" class="btn primary">Open the app</a>
             <a href="https://apps.apple.com/app/id6775970098" class="btn secondary" target="_blank" rel="noopener">
               Download for iPhone
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
@@ -1859,7 +1856,7 @@
     <div class="container">
       <h2>Your APA day, <span class="em">totalled</span>.</h2>
       <div class="hero-ctas" style="justify-content: center;">
-        <a href="/" class="btn primary">Open the app</a>
+        <a href="/app/" class="btn primary">Open the app</a>
         <a href="https://apps.apple.com/app/id6775970098" class="btn secondary" target="_blank" rel="noopener">Download for iPhone</a>
       </div>
       <p class="sub">Free. No login. iPhone or web.</p>
@@ -1870,7 +1867,7 @@
     <div class="container footer-inner">
       <span>APA Sept 2025</span>
       <div class="footer-links">
-        <a href="/">App</a>
+        <a href="/app/">App</a>
         <a href="https://apps.apple.com/app/id6775970098" target="_blank" rel="noopener">App Store</a>
         <a href="/welcome">Welcome</a>
         <a href="/how-it-works">How it works</a>

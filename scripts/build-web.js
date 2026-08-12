@@ -95,6 +95,13 @@ const fail = (m) => problems.push(m);
 const toPosix = (p) => p.split(path.sep).join('/');
 const ALLOW_SET = new Set(ALLOW.map(toPosix));
 
+// Source -> destination remap for the /app move (web chunk 14): the app moves
+// to /app/, the homepage takes the root. Everything else lands at its own path.
+const REMAP = { 'index.html': 'app/index.html', 'home-preview.html': 'index.html' };
+const destOf = (rel) => REMAP[rel] || rel;
+const EXPECTED = ALLOW.map(destOf);
+const EXPECTED_SET = new Set(EXPECTED.map(toPosix));
+
 function walk(dir) {
   const out = [];
   for (const name of fs.readdirSync(dir)) {
@@ -139,23 +146,23 @@ for (const d of WATCH_DIRS) {
 // 3. Copy - allow-list only.
 rmrf(OUT);
 for (const rel of ALLOW) {
-  const dst = path.join(OUT, rel);
+  const dst = path.join(OUT, destOf(rel));
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.copyFileSync(path.join(SRC, rel), dst);
 }
 
 // 4. Verify the publish dir contains EXACTLY the allow-list.
 const landed = walk(OUT).map((f) => toPosix(path.relative(OUT, f)));
-for (const rel of landed) if (!ALLOW_SET.has(rel)) fail(`UNLISTED file in ${OUT_DIR}/: ${rel}`);
-for (const rel of ALLOW) if (!landed.includes(rel)) fail(`allow-listed file failed to copy: ${rel}`);
-if (landed.length !== ALLOW.length) fail(`count mismatch: expected ${ALLOW.length}, found ${landed.length}`);
+for (const rel of landed) if (!EXPECTED_SET.has(rel)) fail(`UNLISTED file in ${OUT_DIR}/: ${rel}`);
+for (const rel of EXPECTED) if (!landed.includes(rel)) fail(`expected file failed to land: ${rel}`);
+if (landed.length !== EXPECTED.length) fail(`count mismatch: expected ${EXPECTED.length}, found ${landed.length}`);
 if (problems.length) finish(1);
 
 // 5. Manifest.
 console.log(`\n[build-web] source : ${SRC}`);
 console.log(`[build-web] publish: ${OUT_DIR}/  (${landed.length} files, allow-list only)\n`);
 let total = 0;
-for (const rel of ALLOW.slice().sort()) {
+for (const rel of EXPECTED.slice().sort()) {
   const size = fs.statSync(path.join(OUT, rel)).size;
   total += size;
   console.log(`  ${String(size).padStart(9)}  ${rel}`);
