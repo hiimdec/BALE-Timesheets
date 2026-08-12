@@ -3680,6 +3680,43 @@ async function main() {
         check('RC4 setDayDefault exposed', false, 'not exposed');
       }
 
+      // ── RATE: the per-day-type agreed rate (Phase 9). A per-job negotiated
+      //    figure, so it is NOT seeded from prefs and NOT normalised by the
+      //    migration: absent is the state, exactly like mileageRatePerMile.
+      //    The calc is pinned by DAYRATE1-7 in calc-boundary; here we pin the
+      //    field's optionality, the scope list, and the control's gating. ──
+      {
+        const src4 = fs.readFileSync(SRC_HTML, 'utf8');
+        check('RATE1 the eligible types are the five WORKING non-shoot types (APA §2.3 groups prep/recce/build/strike; pre-light is an engagement beside them). Travel Day, Rest Day and Day off are NOT rateable - travel is priced from BHR x hours, the other two by their own rulings',
+          /const RATEABLE_DAY_TYPES = \["Prep Day", "Recce", "Build Day", "De-rig", "Pre-light"\];/.test(src4),
+          'the scope list changed');
+        check('RATE2 the resolver enforces scope itself (not just the control): an ineligible day type returns the crew record before any rate lookup, so a stray key from a hand-edited backup can never re-rate a shoot day',
+          /if \(!RATEABLE_DAY_TYPES\.includes\(dayType\)\) return crewMember;/.test(src4),
+          'the resolver-side scope guard is gone');
+        check('RATE3 step-up WINS over the job rate (ruled): the stepUpRole branch returns BEFORE the day-rate lookup is reached',
+          src4.indexOf('if (resolvedDay?.stepUpRole) {') > 0 &&
+          src4.indexOf('if (resolvedDay?.stepUpRole) {') < src4.indexOf('if (!RATEABLE_DAY_TYPES.includes(dayType)) return crewMember;'),
+          'the step-up branch must precede the day-rate branch');
+        check('RATE4 the rate replaces the BASE and clears an explicit otRate (so a negotiated OT figure cannot shadow the new base and break "overtime derives from the agreed rate"); otCoef - the person\'s grade - is untouched',
+          /if \(dayRate > 0\) return \{ \.\.\.crewMember, bdr: dayRate, otRate: null \};/.test(src4),
+          'the override shape changed');
+        check('RATE5 the field is ADDITIVE and optional: the setter deletes the key when a rate is cleared and deletes the whole map when the last one goes, so a job that never used it stores nothing (no migration, absent is the state - the mileageRatePerMile precedent)',
+          /if \(v > 0\) next\[type\] = v; else delete next\[type\];/.test(src4) &&
+          /if \(Object\.keys\(next\)\.length\) n\.dayTypeRates = next; else delete n\.dayTypeRates;/.test(src4),
+          'the additive delete-when-empty setter changed');
+        check('RATE6 dayTypeRates is NOT seeded at creation and NOT normalised by migrateProduction - it is a per-job negotiated figure with no sensible global default (contrast seededMileageRate, which IS seeded)',
+          !/dayTypeRates: \{\}/.test(src4) && !/dayTypeRates: p\.dayTypeRates/.test(src4) &&
+          !/defaultDayTypeRates/.test(src4),
+          'something started seeding or normalising the map');
+        check('RATE7 the settings control shows a type when the job HAS such a day OR a rate is already set for it - so a rate cannot vanish from view (and become uneditable) when the last matching day is deleted, while the stored figure would still apply if a day came back',
+          /const shown = RATEABLE_DAY_TYPES\.filter\(t => present\.has\(t\) \|\| Number\(rates\[t\]\) > 0\);/.test(src4),
+          'the visibility gate changed - a set rate must stay reachable');
+        check('RATE8 the day form says WHY the money changed: the day-type field carries the job rate when one is in force, and says the step-up wins when both are present',
+          /job rate \$\{fmtGBP\(r\)\} - step-up wins today/.test(src4) &&
+          /job rate \$\{fmtGBP\(r\)\} for this day type/.test(src4),
+          'the day-form indicator changed');
+      }
+
       // ── RC5-8: the creation envelopes + the H2 finalizer, EXECUTED (the
       //    Phase 7 moves' payoff - these were the last regex-only money
       //    paths). Money assertions are EQUIVALENCES against the seeders the

@@ -422,6 +422,64 @@ function stageNoOT(eng, ok) {
     near(shortWith.total, shortWithout.total), JSON.stringify({ w: shortWith.total, wo: shortWithout.total }));
 }
 
+// ---- DAYRATE: the per-day-type agreed rate (Phase 9) ------------------------
+// A per-job figure for a non-shoot day (production.dayTypeRates), resolved onto
+// the day by resolveCrewForDay. It is a RATE OVERRIDE, not a fixed fee: the
+// engine knows nothing about it — it simply receives a crew whose bdr is the
+// agreed figure, so BHR, OT, weekends and penalties all re-derive. These pins
+// assert the two paths give DIFFERENT money (the mileage / NOOT lesson), and
+// that a production with no rate set is untouched.
+function stageDayRate(eng, ok) {
+  console.log('\nDAYRATE · a per-day-type agreed rate overrides the BASE, and OT follows it');
+  const crew = baseCrew();                       // Spark, BDR 444 → BHR 44.40, OT 66.60
+  // Recce, weekday, 08:00–18:00 = 10h. §2.3: 8h basic (no lunch), 2h OT.
+  const recce = baseDay({ dayType: 'Recce', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '', lunchDurationMins: 0 });
+
+  const apaCrew = eng.resolveCrewForDay(recce, crew, null);
+  const rateCrew = eng.resolveCrewForDay(recce, crew, { 'Recce': 300 });
+  ok('DAYRATE1 the overlay replaces the BASE only: bdr 444 → 300, and the coefficient (the person\'s grade) is untouched',
+    apaCrew.bdr === 444 && rateCrew.bdr === 300 && rateCrew.otCoef === crew.otCoef,
+    JSON.stringify({ apa: apaCrew.bdr, rated: rateCrew.bdr, coef: rateCrew.otCoef }));
+
+  const apa = eng.calculateDay(recce, apaCrew, {});
+  const rated = eng.calculateDay(recce, rateCrew, {});
+  ok('DAYRATE2 no rate set → the day is unchanged: 8h × £44.40 + 2h OT × £66.60 = £488.40 (the APA path, byte-identical to before the feature)',
+    near(apa.total, 488.40) && near(otQty(apa), 2), JSON.stringify({ total: apa.total, ot: otQty(apa) }));
+  ok('DAYRATE3 a £300 recce rate re-derives the WHOLE day: 8h × £30.00 + 2h OT × £45.00 = £330.00 — the overtime computes from £300, not from the shoot rate',
+    near(rated.total, 330.00) && near(otQty(rated), 2) &&
+    near(rated.lines.find(l => /^OT\b/.test(l.label)).rate, 45), JSON.stringify({ total: rated.total, otRate: rated.lines.find(l => /^OT\b/.test(l.label)).rate }));
+  ok('DAYRATE4 the divergence is the point: the two paths are £158.40 apart on the same day, and their OT lines differ too (£133.20 vs £90.00) — this pin cannot pass by both agreeing at a default',
+    !near(apa.total, rated.total) && near(apa.total - rated.total, 158.40) &&
+    !near(apa.lines.find(l => /^OT\b/.test(l.label)).amount, rated.lines.find(l => /^OT\b/.test(l.label)).amount),
+    JSON.stringify({ apa: apa.total, rated: rated.total, delta: apa.total - rated.total }));
+
+  // Step-up WINS over the day-type rate (ruled): more specific, hand-entered,
+  // and it carries a role and coefficient the day rate does not.
+  const steppedUp = { ...recce, stepUpRole: 'Gaffer', stepUpBDR: 585, stepUpOTCoef: 1.25, stepUpOTRate: null };
+  const suCrew = eng.resolveCrewForDay(steppedUp, crew, { 'Recce': 300 });
+  ok('DAYRATE5 a step-up on the day WINS over the job rate: bdr 585 (the step-up), not 300 — and it brings its own role and coefficient',
+    suCrew.bdr === 585 && suCrew.otCoef === 1.25 && suCrew.role === 'Gaffer',
+    JSON.stringify({ bdr: suCrew.bdr, coef: suCrew.otCoef, role: suCrew.role }));
+
+  // Scope is enforced in the RESOLVER, not only at the control: a stray key for
+  // an ineligible type (a hand-edited backup, a future bug) must never silently
+  // re-rate a shoot or travel day. Both return the crew record UNCHANGED —
+  // asserted by object identity, so a copy that happened to match would fail.
+  const shoot = baseDay({ dayType: 'Shoot' });
+  const travel = baseDay({ dayType: 'Travel Day' });
+  ok('DAYRATE6 an ineligible day type is never rate-overridden even when a rate IS keyed to it: Shoot and Travel Day both pass the crew record through untouched (identity), so a stray key cannot reach money',
+    eng.resolveCrewForDay(shoot, crew, { 'Shoot': 300 }) === crew &&
+    eng.resolveCrewForDay(travel, crew, { 'Travel Day': 300 }) === crew,
+    JSON.stringify({ shoot: eng.resolveCrewForDay(shoot, crew, { 'Shoot': 300 }).bdr, travel: eng.resolveCrewForDay(travel, crew, { 'Travel Day': 300 }).bdr }));
+  ok('DAYRATE6b the scope guard is not vacuous: the SAME rate value on an ELIGIBLE type does override (Recce 300 lands), so DAYRATE6 passes because of the type, not because the mechanism is dead',
+    eng.resolveCrewForDay(recce, crew, { 'Recce': 300 }).bdr === 300, 'the eligible case must still apply');
+  ok('DAYRATE7 an absent or zero rate is ignored rather than billed as £0 (the mileage-zero lesson): the crew record passes through IDENTICALLY',
+    eng.resolveCrewForDay(recce, crew, { 'Recce': 0 }) === crew &&
+    eng.resolveCrewForDay(recce, crew, {}) === crew &&
+    eng.resolveCrewForDay(recce, crew, null) === crew,
+    'zero/absent must return the same object');
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -437,6 +495,7 @@ async function runCalcBoundaryAssertions() {
   stageB3(eng, ok);
   stageMileage(eng, ok);
   stageNoOT(eng, ok);
+  stageDayRate(eng, ok);
   return summary();
 }
 

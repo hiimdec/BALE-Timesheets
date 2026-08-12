@@ -4306,6 +4306,18 @@
     // travels and the 0-7 decoder range stays untouched.
     const DAY_TYPES = ["Shoot", "Pre-light", "Prep Day", "Recce", "Build Day", "De-rig", "Travel Day", "Rest Day", "Day off"];
     const DISCRETIONARY_LUNCH_DAY_TYPES = ["Prep Day", "Recce", "Build Day", "De-rig"];
+    // Day types that can carry their own agreed day rate (Phase 9). APA §2.3
+    // groups Prep / Recce / Build / Strike as one category and the rules list
+    // pre-light beside them as an engagement in its own right, so all five
+    // working non-shoot types are eligible. Travel Day is NOT: it is priced from
+    // BHR × hours (min 5h), a derived rate rather than a day rate. Rest Day and
+    // Day off are settled by their own rulings (flat BDR / £0).
+    //
+    // The rate is a per-job negotiated figure — production.dayTypeRates, e.g.
+    // { "Recce": 300 } — resolved onto the day through resolveCrewForDay. It is
+    // a RATE OVERRIDE, not a fixed fee: overtime on a £300 recce derives from
+    // £300, the same hourly maths as any other day with a different base.
+    const RATEABLE_DAY_TYPES = ["Prep Day", "Recce", "Build Day", "De-rig", "Pre-light"];
     // Live Activity runs on set days only. ALLOWLIST, not blocklist: a shoot or
     // pre-light day starts a card; every other type never does. Allowlisting means
     // a day type added to DAY_TYPES later is off by default, not accidentally live.
@@ -7190,15 +7202,42 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       });
     }
 
-    function resolveCrewForDay(resolvedDay, crewMember) {
-      if (!resolvedDay?.stepUpRole) return crewMember;
-      return {
-        ...crewMember,
-        role: resolvedDay.stepUpRole || crewMember.role,
-        bdr: Number(resolvedDay.stepUpBDR) || crewMember.bdr,
-        otCoef: Number(resolvedDay.stepUpOTCoef) || crewMember.otCoef,
-        otRate: resolvedDay.stepUpOTRate ?? null,
-      };
+    // The effective crew for ONE day: the crew record with any per-day rate
+    // overlay applied. Two overlays exist and STEP-UP WINS (ruled Phase 9):
+    // it is the more specific, hand-entered, per-day instruction and it carries
+    // a role and a coefficient the day-type rate does not.
+    //
+    // The day-type rate (production.dayTypeRates[dayType], Phase 9) replaces the
+    // BASE only. Everything downstream — BHR, the OT rate, weekend and night
+    // multipliers, break penalties — already derives from bdr inside the engine,
+    // so a different base is the whole mechanism: no engine branch knows this
+    // feature exists. otRate is cleared alongside it for the same reason step-up
+    // clears it: an explicit negotiated OT figure would shadow the new base and
+    // break "overtime on a £300 recce computes from £300". otCoef is the
+    // person's grade and is untouched — a recce does not change your grade.
+    //
+    // Keyed on the BOOKED day type, not the §2.3 BWD-override effective type: the
+    // producer agreed a figure for the recce, and the override changes the day's
+    // SHAPE (11h basic for DoP / Art Director / Location Manager), not what was
+    // agreed for it.
+    function resolveCrewForDay(resolvedDay, crewMember, dayTypeRates = null) {
+      if (resolvedDay?.stepUpRole) {
+        return {
+          ...crewMember,
+          role: resolvedDay.stepUpRole || crewMember.role,
+          bdr: Number(resolvedDay.stepUpBDR) || crewMember.bdr,
+          otCoef: Number(resolvedDay.stepUpOTCoef) || crewMember.otCoef,
+          otRate: resolvedDay.stepUpOTRate ?? null,
+        };
+      }
+      // Scope is enforced HERE, not only at the control: a stray key for an
+      // ineligible type (a hand-edited backup, a future bug) must never
+      // silently re-rate shoot or travel days.
+      const dayType = resolvedDay?.dayType;
+      if (!RATEABLE_DAY_TYPES.includes(dayType)) return crewMember;
+      const dayRate = Number(dayTypeRates && dayTypeRates[dayType]) || 0;
+      if (dayRate > 0) return { ...crewMember, bdr: dayRate, otRate: null };
+      return crewMember;
     }
 
     function applyRateRounding(calc) {
@@ -7506,7 +7545,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     function calcForDisplay(production, day, crewMember, prevDay = null) {
       const resolved = resolveDay(production, day, crewMember);
-      const effectiveCrew = resolveCrewForDay(resolved, crewMember);
+      const effectiveCrew = resolveCrewForDay(resolved, crewMember, production && production.dayTypeRates);
       let calc;
       try {
         calc = augmentCalc(calculateDay(resolved, effectiveCrew, { ...production, apaRounding: roundingApa(production) }), resolved, crewMember);
@@ -12257,7 +12296,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
                     </Field>
                   )}
-                  <Field label="Day Type">
+                  {/* Day rates (Phase 9): say so on the day when a job rate is
+                      in force for this type, and say when a step-up is
+                      overriding it — the day's money is otherwise unexplained. */}
+                  <Field label="Day Type" hint={(() => {
+                    const r = Number((production && production.dayTypeRates || {})[vr.dayType]) || 0;
+                    if (!(r > 0)) return undefined;
+                    return v.stepUpRole ? `job rate ${fmtGBP(r)} - step-up wins today` : `job rate ${fmtGBP(r)} for this day type`;
+                  })()}>
                     <Select value={vr.dayType ?? ''} onChange={(e) => onDayTypeChange(e.target.value)}>{DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
                   </Field>
                 </div>
@@ -17859,6 +17905,41 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 }} />
               </Field>
             </Disclosure>
+
+            {(() => {
+              // Day rates (Phase 9). A per-job agreed figure for a non-shoot day
+              // type — the rate BASIS for that day, not a fixed fee: overtime
+              // derives from it like any other day.
+              //
+              // Shown for a type when the job HAS such a day, OR when a rate is
+              // already set for it. The second half matters: gating on days alone
+              // would make a rate vanish from view the moment the last matching
+              // day was deleted, and the figure would still be stored and still
+              // apply if a day came back. A set rate stays visible and editable.
+              const rates = production.dayTypeRates || {};
+              const present = new Set((production.days || []).map(d => d.dayType).filter(Boolean));
+              const shown = RATEABLE_DAY_TYPES.filter(t => present.has(t) || Number(rates[t]) > 0);
+              if (!shown.length) return null;
+              const setRate = (type, v) => setProduction(p => {
+                const next = { ...(p.dayTypeRates || {}) };
+                if (v > 0) next[type] = v; else delete next[type];
+                const n = { ...p };
+                if (Object.keys(next).length) n.dayTypeRates = next; else delete n.dayTypeRates;
+                return n;
+              });
+              const setCount = shown.filter(t => Number(rates[t]) > 0).length;
+              return (
+                <Disclosure label="Day rates" summary={setCount ? `${setCount} set` : 'APA rate'}>
+                  <p className="text-[11px] text-neutral-500 -mt-1">An agreed figure for a non-shoot day, when a producer prices one separately. It replaces the day's basic rate, so overtime, weekends and penalties all derive from it. Empty means the day pays your normal APA rate.</p>
+                  {shown.map(type => (
+                    <Field key={type} label={type} hint={present.has(type) ? undefined : 'no days of this type right now'}>
+                      <Input type="number" min="0" step="1" placeholder="APA rate" value={rates[type] ?? ''} onChange={(e) => setRate(type, Number(e.target.value) || 0)} />
+                    </Field>
+                  ))}
+                  <p className="text-[10px] text-neutral-600 leading-tight">A step-up on a particular day still wins over these - it is the more specific instruction.</p>
+                </Disclosure>
+              );
+            })()}
 
             {soloMember && (() => {
               const m = soloMember;
