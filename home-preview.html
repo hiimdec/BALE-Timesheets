@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>APA rate calculator for UK commercial crew | TimeMachine</title>
+  <meta name="description" content="Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. TimeMachine takes UK commercial crew from call sheet to timesheet to invoice.">
+  <meta name="theme-color" content="#0a0a0a">
+
+  <!-- PREVIEW: not for indexing. Removed when this becomes the homepage at the /app move. -->
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="canonical" href="https://timemachineapp.co.uk/home-preview">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="APA rate calculator for UK commercial crew">
+  <meta property="og:description" content="Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. TimeMachine takes UK commercial crew from call sheet to timesheet to invoice.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/home-preview">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="APA rate calculator for UK commercial crew">
+  <meta name="twitter:description" content="Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. TimeMachine takes UK commercial crew from call sheet to timesheet to invoice.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <script>
+    // ── STANDALONE REDIRECT ──────────────────────────────────────────────
+    // When this is the homepage at / and the app is at /app, a phone that
+    // launched the installed app should land in the app, not this page.
+    // DISABLED until the /app move: /app does not exist yet, so leaving this
+    // on would send installed users (and this preview, if added to a home
+    // screen) to a 404. To enable at the move: set the flag to true.
+    var TM_ENABLE_STANDALONE_REDIRECT = false;
+    if (TM_ENABLE_STANDALONE_REDIRECT &&
+        (window.navigator.standalone === true ||
+         window.matchMedia('(display-mode: standalone)').matches)) {
+      location.replace('/app/');
+    }
+  </script>
+
+  <style>
+    /* ─────────────────────────────────────────────────────
+       TimeMachine v2 — tokens
+       ───────────────────────────────────────────────────── */
+    :root {
+      --bg:        #0a0a0a;
+      --bg-soft:   #0e0e0e;
+      --card:      #171717;
+      --card-2:    #1f1f1f;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #939393;
+      --text-4:    #838383;
+
+      --tm-accent:    #0ea5e9;   /* sky-500 — brand only */
+      --tm-accent-2:  #7dd3fc;   /* sky-300 */
+
+      --tm-warn: #ff8a3d;
+      --tm-pen:  #f43f5e;
+      --tm-good: #4ade80;
+
+      --tm-pill-paper: #e6e9ed;
+      --tm-pill-ink:   #15171a;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.5;
+    }
+
+    /* Eased tail (see welcome.html): a short linear stop quantised into a
+       hard-edged band on OLED; multi-stop falloff to 100% reads as a true fade. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 90vh;
+      z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(60% 50% at 50% -5%,
+          rgba(14,165,233,0.14) 0%, rgba(14,165,233,0.08) 25%,
+          rgba(14,165,233,0.035) 50%, rgba(14,165,233,0.014) 70%,
+          rgba(14,165,233,0.005) 86%, transparent 100%),
+        radial-gradient(40% 30% at 85% 12%,
+          rgba(125,211,252,0.05) 0%, rgba(125,211,252,0.025) 35%,
+          rgba(125,211,252,0.01) 65%, rgba(125,211,252,0.004) 85%,
+          transparent 100%);
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
+                   "Cascadia Code", "Roboto Mono", monospace;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img, svg { display: block; max-width: 100%; }
+
+    /* ─────────────────────────────────────────────────────
+       Accessibility — skip link
+       ───────────────────────────────────────────────────── */
+    .skip-link {
+      position: absolute;
+      top: -100px;
+      left: 16px;
+      background: var(--tm-accent);
+      color: #050505;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+      z-index: 100;
+      transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    /* ─────────────────────────────────────────────────────
+       Rotation fade utility — fades only inner content so
+       the paper card itself never goes transparent.
+       Stops the "flash to black" between rotation states.
+       ───────────────────────────────────────────────────── */
+    .rot { transition: opacity 320ms ease; }
+    .mock-name, .mock-sub, .mock-total,
+    .mock-row .times, .mock-row .right {
+      transition: opacity 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .mock.is-fading .mock-name,
+    .mock.is-fading .mock-sub,
+    .mock.is-fading .mock-total,
+    .mock.is-fading .mock-row .times,
+    .mock.is-fading .mock-row .right {
+      opacity: 0;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .rot,
+      .mock-name, .mock-sub, .mock-total,
+      .mock-row .times, .mock-row .right { transition: none; }
+      .mock.is-fading .mock-name,
+      .mock.is-fading .mock-sub,
+      .mock.is-fading .mock-total,
+      .mock.is-fading .mock-row .times,
+      .mock.is-fading .mock-row .right { opacity: 1; }
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Containers & spacing
+       ───────────────────────────────────────────────────── */
+    .container {
+      width: 100%;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+    section { padding: 56px 0; border-top: 1px solid var(--border-soft); }
+    section:first-of-type { border-top: none; }
+    @media (min-width: 768px) { section { padding: 80px 0; } }
+
+    /* ─────────────────────────────────────────────────────
+       Type
+       ───────────────────────────────────────────────────── */
+    .label {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--tm-accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+    }
+    .label::after {
+      content: ""; flex: 1; height: 1px; min-width: 40px;
+      background: var(--border-soft);
+    }
+    .label.muted { color: var(--text-3); }
+
+    h1, h2, h3, h4, .wf-title {
+      margin: 0;
+      letter-spacing: -0.02em;
+      font-weight: 800;
+      line-height: 1.05;
+      color: var(--text);
+    }
+    h2 {
+      font-size: clamp(30px, 5vw, 44px);
+      letter-spacing: -0.025em;
+    }
+    h3 { font-size: 16px; font-weight: 700; letter-spacing: -0.005em; }
+
+    p { margin: 0; color: var(--text-2); }
+
+    /* ─────────────────────────────────────────────────────
+       Top nav
+       ───────────────────────────────────────────────────── */
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: var(--tm-accent);
+      text-transform: uppercase;
+    }
+    .nav-cta {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--tm-accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 150ms;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+
+    /* ─────────────────────────────────────────────────────
+       Hero
+       ───────────────────────────────────────────────────── */
+    .hero {
+      padding-top: 64px !important;
+      padding-bottom: 64px;
+      border-top: none;
+    }
+    @media (min-width: 768px) {
+      .hero { padding-top: 80px !important; padding-bottom: 80px; }
+    }
+    @media (min-width: 980px) {
+      .hero { padding-top: 100px !important; padding-bottom: 100px; }
+    }
+
+    /* Split layout: content left, phone mockup right (desktop only) */
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    @media (min-width: 980px) {
+      .hero-grid {
+        grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr);
+        gap: 48px;
+      }
+    }
+    .hero-content { min-width: 0; }
+    .hero-visual {
+      display: none; /* hide on mobile — user is holding their phone */
+    }
+    @media (min-width: 980px) {
+      .hero-visual {
+        display: flex;
+        justify-content: flex-end;
+        position: relative;
+      }
+    }
+
+    /* Phone mockup */
+    .phone {
+      width: 100%;
+      max-width: 340px;
+      aspect-ratio: 280 / 580;
+      position: relative;
+      filter: drop-shadow(0 30px 60px rgba(14,165,233,0.10));
+    }
+    .phone svg { width: 100%; height: 100%; display: block; }
+    .phone-placeholder-tag {
+      position: absolute;
+      top: -8px; right: -8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--tm-accent-2);
+      background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.30);
+      padding: 4px 8px;
+      border-radius: 6px;
+      transform: rotate(3deg);
+    }
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 28px;
+    }
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .tag-pill.live {
+      background: rgba(14,165,233,0.10);
+      border: 1px solid rgba(14,165,233,0.30);
+      color: var(--tm-accent-2);
+    }
+    .tag-pill.live::before {
+      content: ""; width: 5px; height: 5px; border-radius: 50%;
+      background: var(--tm-good);
+      box-shadow: 0 0 6px var(--tm-good);
+    }
+    .tag-pill.soon {
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      color: var(--text-3);
+    }
+    .hero h1 {
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+    }
+    .hero h1 .line1 {
+      display: block;
+      font-size: clamp(48px, 9vw, 96px);
+      color: var(--tm-accent);
+      padding-bottom: 0.08em;
+      text-shadow:
+        0 1px 0 rgba(125,211,252,0.10),
+        0 12px 50px rgba(14,165,233,0.18);
+    }
+    .hero h1 .line2 {
+      display: block;
+      font-size: clamp(34px, 6.5vw, 68px);
+      color: var(--tm-accent-2);
+      letter-spacing: 0.005em;
+      font-weight: 800;
+    }
+    .hero .lede {
+      font-size: clamp(17px, 2vw, 21px);
+      color: var(--text-2);
+      max-width: 600px;
+      line-height: 1.45;
+      margin: 32px 0 0;
+      font-weight: 500;
+    }
+    .hero .lede a {
+      color: var(--tm-accent);
+      text-decoration: underline;
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px;
+    }
+    .hero .lede a:hover { color: var(--tm-accent-2); }
+    .hero .lede strong { color: var(--text); font-weight: 700; }
+
+    .hero-ctas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 36px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 14px 22px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: transform 100ms ease, background 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary {
+      background: var(--tm-accent);
+      color: #050505;
+      box-shadow:
+        0 0 0 1px var(--tm-accent),
+        0 10px 30px -10px rgba(14,165,233,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.16);
+    }
+    .btn.primary:hover { background: #38bdf8; }
+    .btn.ghost {
+      border: 1px solid var(--border);
+      color: var(--text-2);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      padding: 13px 20px;
+    }
+    .btn.ghost:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
+    .btn svg { width: 13px; height: 13px; }
+
+    /* ─────────────────────────────────────────────────────
+       Chip rail — now sits with the heading, not at the foot
+       ───────────────────────────────────────────────────── */
+    .chip-rail-wrap { margin-top: 32px; }
+    .chip-rail-wrap .head {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 5px 9px;
+      border-radius: 5px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+    .chip.shoot {
+      background: rgba(14,165,233,0.10);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(14,165,233,0.30);
+    }
+    .chip.prelight {
+      background: rgba(14,165,233,0.18);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(14,165,233,0.40);
+    }
+    .chip.recce {
+      background: var(--tm-accent);
+      color: #050505;
+    }
+    .chip.prep {
+      background: transparent;
+      color: var(--tm-accent);
+      border: 1px solid var(--tm-accent);
+    }
+    .chip.derig {
+      background: transparent;
+      color: var(--tm-accent-2);
+      border: 1px solid var(--tm-accent-2);
+    }
+    .chip.travel {
+      background: transparent;
+      color: var(--tm-accent-2);
+      border: 1px dashed rgba(125,211,252,0.4);
+    }
+    .chip.ot {
+      background: rgba(255,138,61,0.10);
+      color: var(--tm-warn);
+      border: 1px solid rgba(255,138,61,0.30);
+    }
+    .chip.msb {
+      background: rgba(244,63,94,0.10);
+      color: var(--tm-pen);
+      border: 1px solid rgba(244,63,94,0.30);
+    }
+    .chip.cwd {
+      background: var(--tm-warn);
+      color: #15171a;
+      border: 1px solid var(--tm-warn);
+    }
+    .chip.toc {
+      background: var(--card-2);
+      color: var(--tm-warn);
+      border: 1px solid rgba(255,138,61,0.40);
+    }
+    .chip.ns {
+      background: rgba(125,211,252,0.10);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(125,211,252,0.30);
+    }
+    .chip-divider {
+      width: 1px; height: 18px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Two-col split
+       ───────────────────────────────────────────────────── */
+    .split {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+    @media (min-width: 768px) {
+      .split { grid-template-columns: 5fr 7fr; gap: 48px; }
+      .split.flip { grid-template-columns: 7fr 5fr; }
+    }
+    .split > .col p { color: var(--text-2); font-size: 16px; line-height: 1.6; }
+    .split > .col p + p { margin-top: 14px; }
+    .split > .col strong { color: var(--text); font-weight: 600; }
+
+    /* ─────────────────────────────────────────────────────
+       "A real day" — mock invoice in cool grey paper
+       ───────────────────────────────────────────────────── */
+    .mock {
+      background: var(--tm-pill-paper);
+      color: var(--tm-pill-ink);
+      border-radius: 14px;
+      padding: 26px 24px;
+      box-shadow:
+        0 30px 80px -30px rgba(0,0,0,0.7),
+        0 0 0 1px var(--border);
+      background-image:
+        linear-gradient(rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(var(--tm-pill-paper), var(--tm-pill-paper));
+      background-size: 16px 16px, 16px 16px, 100% 100%;
+    }
+    .mock-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid rgba(21,23,26,0.12);
+      gap: 12px;
+    }
+    .mock-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+    .mock-sub {
+      font-size: 11px;
+      color: rgba(21,23,26,0.55);
+      margin-top: 6px;
+    }
+    .mock-total-label {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(21,23,26,0.5);
+    }
+    .mock-total {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 22px;
+      font-weight: 800;
+      margin-top: 3px;
+      letter-spacing: -0.01em;
+      text-align: right;
+    }
+    .mock-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+    .mock-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+    .mock-row .left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+    .mock-row .date { font-weight: 700; }
+    .mock-row .times {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      color: rgba(21,23,26,0.55);
+      font-size: 12px;
+    }
+    .mock-row .right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .mock-row .amount {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .mock-chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 700;
+      font-size: 9.5px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      padding: 3px 7px;
+      border-radius: 4px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .mock-chip.shoot {
+      background: rgba(14,165,233,0.16);
+      color: #075985;
+      border: 1px solid rgba(14,165,233,0.3);
+    }
+    .mock-chip.ot {
+      background: rgba(255,138,61,0.14);
+      color: #b04714;
+      border: 1px solid rgba(255,138,61,0.4);
+    }
+    .mock-chip.msb {
+      background: rgba(244,63,94,0.14);
+      color: #b91c3a;
+      border: 1px solid rgba(244,63,94,0.4);
+    }
+    .mock-chip.cwd {
+      background: var(--tm-warn);
+      color: #050505;
+    }
+    .mock-foot {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(21,23,26,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: rgba(21,23,26,0.5);
+    }
+    .mock-foot .made { font-weight: 600; }
+    .mock-foot .ver { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; }
+
+    /* legend list on the right of the mock */
+    .legend-list {
+      list-style: none;
+      padding: 0;
+      margin: 16px 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .legend-list li {
+      display: flex;
+      gap: 12px;
+      font-size: 13.5px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+    .legend-list .chip { margin-top: 1px; }
+
+    /* ─────────────────────────────────────────────────────
+       Features grid
+       ───────────────────────────────────────────────────── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    @media (min-width: 600px) {
+      .features-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (min-width: 900px) {
+      .features-grid { grid-template-columns: 1fr 1fr 1fr; }
+    }
+
+    .feature-card {
+      background: rgba(23,23,23,0.7);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      padding: 20px;
+      transition: border-color 200ms, background 200ms;
+    }
+    .feature-card:hover {
+      border-color: var(--border);
+      background: var(--card);
+    }
+    .feature-card .ic {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.22);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .feature-card .ic svg {
+      width: 18px; height: 18px;
+      stroke: var(--tm-accent);
+    }
+    .feature-card h3 {
+      font-size: 14.5px;
+      font-weight: 700;
+      margin: 0 0 6px;
+      color: var(--text);
+      letter-spacing: -0.005em;
+    }
+    .feature-card p {
+      font-size: 13px;
+      color: var(--text-3);
+      line-height: 1.55;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Details that matter
+       ───────────────────────────────────────────────────── */
+    .details-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 28px;
+      max-width: 760px;
+    }
+    @media (min-width: 600px) {
+      .details-grid { grid-template-columns: 1fr 1fr; gap: 32px 56px; }
+    }
+    .details-grid h3 {
+      color: var(--text);
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+    .details-grid p {
+      font-size: 13.5px;
+      color: var(--text-3);
+      line-height: 1.55;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       How a day flows — 3 steps
+       ───────────────────────────────────────────────────── */
+    .steps {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+    @media (min-width: 700px) {
+      .steps { grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+    }
+    .step .num {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 56px;
+      font-weight: 800;
+      color: var(--tm-accent);
+      line-height: 1;
+      letter-spacing: -0.02em;
+      margin-bottom: 14px;
+    }
+    .step h3 {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -0.015em;
+      margin: 0 0 8px;
+    }
+    .step p {
+      font-size: 14px;
+      color: var(--text-3);
+      line-height: 1.55;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Trust block
+       ───────────────────────────────────────────────────── */
+    .trust-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+    .trust-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .trust-row .ic {
+      width: 38px; height: 38px;
+      border-radius: 9px;
+      background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.25);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      color: var(--tm-accent);
+      font-weight: 800;
+      font-size: 15px;
+    }
+    .trust-row .ic svg { width: 16px; height: 16px; stroke: var(--tm-accent); }
+    .trust-row h3 {
+      font-size: 14.5px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 1px 0 4px;
+    }
+    .trust-row p {
+      font-size: 13px;
+      color: var(--text-3);
+      line-height: 1.55;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       FAQ
+       ───────────────────────────────────────────────────── */
+    .faq-list {
+      max-width: 760px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .faq-item {
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      padding: 16px 18px;
+      transition: border-color 200ms;
+    }
+    .faq-item[open] { border-color: var(--border); }
+    .faq-item summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14.5px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item .plus {
+      width: 18px; height: 18px;
+      color: var(--tm-accent);
+      font-size: 18px;
+      font-weight: 400;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 200ms ease;
+      flex-shrink: 0;
+    }
+    .faq-item[open] .plus { transform: rotate(45deg); }
+    .faq-item p {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-3);
+      line-height: 1.6;
+    }
+    .faq-item a {
+      color: var(--tm-accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .faq-item strong { color: var(--text); font-weight: 700; }
+
+    /* ─────────────────────────────────────────────────────
+       Built by
+       ───────────────────────────────────────────────────── */
+    .built-by {
+      max-width: 720px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      padding: 26px;
+      position: relative;
+      overflow: hidden;
+    }
+    .built-by::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--tm-accent), transparent);
+    }
+    .built-by h3 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 8px 0 10px;
+    }
+    .built-by p {
+      font-size: 14.5px;
+      color: var(--text-2);
+      line-height: 1.55;
+    }
+    .built-by a {
+      color: var(--tm-accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Final CTA
+       ───────────────────────────────────────────────────── */
+    .final-cta { text-align: center; }
+    .final-cta h2 {
+      font-size: clamp(38px, 8vw, 72px);
+      letter-spacing: -0.03em;
+      margin-bottom: 32px;
+    }
+    .final-cta h2 .em { color: var(--tm-accent); }
+    .final-cta .btn {
+      padding: 18px 28px;
+      font-size: 14px;
+    }
+    .final-cta .sub {
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--text-3);
+      letter-spacing: 0.06em;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Built-by — wrapped in the paper-pill style for warmth
+       ───────────────────────────────────────────────────── */
+    .built-by-pill {
+      background: var(--tm-pill-paper);
+      color: var(--tm-pill-ink);
+      border-radius: 18px;
+      padding: 32px 28px;
+      max-width: 720px;
+      margin: 0 auto;
+      box-shadow:
+        0 30px 80px -30px rgba(0,0,0,0.7),
+        0 0 0 1px var(--border);
+      background-image:
+        linear-gradient(rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.018) 1px, transparent 1px),
+        linear-gradient(var(--tm-pill-paper), var(--tm-pill-paper));
+      background-size: 16px 16px, 16px 16px, 100% 100%;
+      position: relative;
+    }
+    @media (min-width: 768px) {
+      .built-by-pill { padding: 40px 36px; }
+    }
+    .built-by-pill .label {
+      color: var(--tm-accent);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      margin: 0 0 14px;
+      display: block;
+    }
+    .built-by-pill .label::after { display: none; }
+    .built-by-pill h3 {
+      color: var(--tm-pill-ink);
+      font-size: clamp(22px, 3vw, 30px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin: 0 0 18px;
+    }
+    .built-by-pill p {
+      color: rgba(21,23,26,0.78);
+      font-size: 15px;
+      line-height: 1.65;
+      margin: 0;
+    }
+    .built-by-pill p + p { margin-top: 12px; }
+    .built-by-pill a {
+      color: #075985;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .built-by-pill .signature {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-style: italic;
+      color: rgba(21,23,26,0.55);
+      font-size: 14px;
+      margin-top: 22px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Workflow strip — Day → Total → PDF → Invoice
+       ───────────────────────────────────────────────────── */
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 28px;
+    }
+    @media (min-width: 720px) {
+      .workflow { grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: stretch; }
+    }
+    .workflow-step {
+      position: relative;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .workflow-step .ic {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: rgba(14,165,233,0.10);
+      border: 1px solid rgba(14,165,233,0.30);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--tm-accent);
+    }
+    .workflow-step .ic svg { width: 18px; height: 18px; }
+    .workflow-step .ord {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 10px;
+      color: var(--text-4);
+      letter-spacing: 0.18em;
+      font-weight: 700;
+    }
+    .workflow-step .wf-title {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      margin: 0;
+    }
+    .workflow-step p {
+      font-size: 12px;
+      color: var(--text-3);
+      line-height: 1.5;
+      margin: 0;
+    }
+    /* connector arrows between steps on desktop */
+    @media (min-width: 720px) {
+      .workflow-step:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        right: -14px;
+        top: 32px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+        font-size: 16px;
+        color: var(--tm-accent);
+        font-weight: 700;
+        z-index: 1;
+      }
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Supported roles — collapsed chip cloud
+       ───────────────────────────────────────────────────── */
+    .roles-expand {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0;
+      overflow: hidden;
+    }
+    .roles-expand summary {
+      padding: 18px 20px;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .roles-expand summary::-webkit-details-marker { display: none; }
+    .roles-expand summary .plus {
+      width: 18px; height: 18px;
+      color: var(--tm-accent);
+      font-size: 18px;
+      transition: transform 200ms ease;
+      flex-shrink: 0;
+    }
+    .roles-expand[open] .plus { transform: rotate(45deg); }
+    .roles-expand .roles-body {
+      padding: 0 20px 22px;
+    }
+    .roles-group {
+      margin-top: 16px;
+    }
+    .roles-group .role-title {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+    .roles-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .role-chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      padding: 5px 9px;
+      border-radius: 5px;
+      background: rgba(14,165,233,0.06);
+      color: var(--tm-accent-2);
+      border: 1px solid rgba(14,165,233,0.20);
+    }
+    .roles-note {
+      font-size: 12px;
+      color: var(--text-3);
+      margin-top: 14px;
+      line-height: 1.5;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       Testimonial placeholders — waiting for real voices
+       ───────────────────────────────────────────────────── */
+    .testimonials {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 28px;
+    }
+    @media (min-width: 720px) {
+      .testimonials { grid-template-columns: repeat(3, 1fr); }
+    }
+    .testimonial {
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      padding: 22px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 160px;
+      transition: border-color 200ms ease;
+    }
+    .testimonial:hover { border-color: rgba(14,165,233,0.40); }
+    .testimonial .quote {
+      font-size: 14px;
+      color: var(--text-3);
+      line-height: 1.5;
+      font-style: italic;
+      margin: 0;
+    }
+    .testimonial .quote::before {
+      content: "“";
+      color: var(--tm-accent);
+      font-size: 24px;
+      font-weight: 800;
+      margin-right: 4px;
+      line-height: 0;
+      vertical-align: -10px;
+    }
+    .testimonial .who {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-soft);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 10px;
+      color: var(--text-4);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .testimonial .who a {
+      color: var(--tm-accent);
+      text-decoration: none;
+    }
+    .testimonial .who a:hover { text-decoration: underline; }
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft);
+    }
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px;
+      color: var(--text-4);
+      letter-spacing: 0.04em;
+    }
+    .footer-links {
+      display: flex;
+      gap: 18px;
+    }
+    .footer-links a {
+      color: var(--text-3);
+      transition: color 150ms;
+    }
+    .footer-links a:hover { color: var(--tm-accent); }
+
+    /* ─────────────────────────────────────────────────────
+       v5 additions — nav iOS link, On iPhone band, maths toggle
+       ───────────────────────────────────────────────────── */
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
+    a.tag-pill { text-decoration: none; }
+
+    .btn.secondary {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .btn.secondary:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
+
+    .ios-band {
+      background:
+        radial-gradient(80% 120% at 100% 0%, rgba(14,165,233,0.07) 0%, transparent 55%),
+        var(--bg-soft);
+      border-top: 1px solid var(--border-soft);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .ios-band .label { color: var(--tm-accent); }
+    .ios-cards {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    @media (min-width: 760px) { .ios-cards { grid-template-columns: 1fr 1fr 1fr; } }
+    .ios-card {
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ios-card::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--tm-accent), transparent);
+      opacity: 0.6;
+    }
+    .ios-card .ic {
+      width: 36px; height: 36px; border-radius: 9px;
+      background: rgba(14,165,233,0.08);
+      border: 1px solid rgba(14,165,233,0.22);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 14px;
+    }
+    .ios-card .ic svg { width: 18px; height: 18px; stroke: var(--tm-accent); }
+    .ios-card h3 {
+      font-size: 14.5px; font-weight: 700; color: var(--text);
+      margin: 0 0 6px; letter-spacing: -0.005em;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .ios-card p { font-size: 13px; color: var(--text-3); line-height: 1.55; }
+    .ios-tag {
+      font-size: 8.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--text-3); background: var(--bg-soft);
+      border: 1px solid var(--border); border-radius: 5px;
+      padding: 2px 6px; white-space: nowrap;
+    }
+    .ios-band .store-link {
+      display: inline-flex; align-items: center; gap: 8px;
+      margin-top: 26px;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+      color: var(--tm-accent); text-decoration: none;
+    }
+    .ios-band .store-link:hover { color: var(--tm-accent-2); }
+    .ios-band .store-link svg { width: 14px; height: 14px; }
+
+    /* Show-the-maths toggle */
+    .maths-detail { margin-top: 22px; }
+    .maths-detail .sumlabel {
+      font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--tm-accent); font-weight: 700; display: block; margin-bottom: 2px;
+    }
+    .maths-rows {
+      margin-top: 14px;
+      border-top: 1px solid var(--border-soft);
+    }
+    .maths-row {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .maths-row .k { font-size: 13px; color: var(--text-2); line-height: 1.4; }
+    .maths-row .k small { display: block; color: var(--text-4); font-size: 11px; margin-top: 1px; }
+    .maths-row .v {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 13.5px; color: var(--text); font-weight: 700; white-space: nowrap;
+    }
+    .maths-row .v.pen { color: var(--tm-pen); }
+    .maths-row .v.warn { color: var(--tm-warn); }
+    .maths-row.total { border-bottom: none; }
+    .maths-row.total .k { color: var(--text); font-weight: 700; }
+    .maths-row.total .v { color: var(--tm-accent); font-size: 16px; }
+    .maths-note { font-size: 11.5px; color: var(--text-4); margin-top: 12px; line-height: 1.5; }
+
+    /* Live Activity mock (On iPhone) */
+    .la-wrap { display: flex; justify-content: center; margin-top: 30px; }
+    .la-card {
+      width: 100%; max-width: 430px;
+      background:
+        radial-gradient(70% 130% at 16% 26%, rgba(255,138,61,0.12) 0%, transparent 52%),
+        linear-gradient(180deg, #171717, #0f0f0f);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 18px 18px 16px;
+      box-shadow: 0 30px 60px -30px rgba(0,0,0,0.85);
+    }
+    .la-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .la-title { font-size: 15px; font-weight: 600; color: #e9e9ea; letter-spacing: -0.01em; }
+    .la-k { font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); font-weight: 700; margin-top: 12px; }
+    .la-total { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 30px; font-weight: 800; color: #f5f5f5; margin-top: 3px; line-height: 1; }
+    .la-total .gbp { color: var(--tm-accent); }
+    .la-timer { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 16px; color: #d4d4d4; margin-top: 7px; font-weight: 700; }
+    .la-meta { text-align: right; padding-top: 2px; }
+    .la-call { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 13px; color: var(--text-2); font-weight: 700; letter-spacing: 0.08em; }
+    .la-ot { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 12px; color: var(--text-3); margin-top: 34px; letter-spacing: 0.04em; }
+    .la-btns { display: flex; gap: 12px; margin-top: 16px; }
+    .la-btn { flex: 1; text-align: center; border-radius: 12px; padding: 12px 8px; font-weight: 800; font-size: 14px; }
+    .la-btn.lunch { color: var(--tm-warn); border: 1px solid rgba(255,138,61,0.55); background: rgba(255,138,61,0.06); }
+    .la-btn.wrap { color: #06121c; background: var(--tm-accent); }
+    .la-cap { text-align: center; font-size: 11px; color: var(--text-4); margin-top: 12px; letter-spacing: 0.04em; }
+
+    /* ── Homepage additions ── */
+    .brandline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: clamp(18px, 3.4vw, 30px);
+      font-weight: 700; letter-spacing: -0.01em;
+      color: var(--tm-accent-2); margin: 16px 0 0;
+    }
+    .hero h1.home {
+      font-size: clamp(34px, 6.4vw, 62px);
+      font-weight: 900; letter-spacing: -0.035em; line-height: 0.98;
+      color: var(--text); max-width: 12ch;
+    }
+    .hero h1.home .sky { color: var(--tm-accent); }
+    .trust-line {
+      margin-top: 20px; font-size: 12px; letter-spacing: 0.04em;
+      color: var(--text-3); font-weight: 600;
+    }
+    /* gross breakdown (section 2) */
+    .gross { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 18px; }
+    @media (min-width: 560px) { .gross { grid-template-columns: repeat(4, 1fr); } }
+    .gross .cell { background: var(--card); border: 1px solid var(--border-soft); border-radius: 12px; padding: 13px 14px; }
+    .gross .cell .k { font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700; color: var(--text-3); }
+    .gross .cell .v { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 16px; font-weight: 800; color: var(--text); margin-top: 6px; }
+    .gross .cell.ot .v { color: var(--tm-warn); }
+    .gross .cell.pen .v { color: var(--tm-pen); }
+    .gross .cell.extra .v { color: var(--tm-good); }
+    .gross .cell.tot { background: rgba(14,165,233,0.08); border-color: rgba(14,165,233,0.30); }
+    .gross .cell.tot .v { color: var(--tm-accent); }
+    .mock-chip.extra { background: rgba(74,222,128,0.14); color: #15803d; border: 1px solid rgba(74,222,128,0.4); }
+    /* stepped flow (sections 3 + 7) */
+    .flow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+    .flow .fstep {
+      flex: 1 1 130px; min-width: 128px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 15px 14px; display: flex; flex-direction: column; gap: 9px; position: relative;
+    }
+    .flow .fstep .ic { width: 32px; height: 32px; border-radius: 9px; background: rgba(14,165,233,0.10); border: 1px solid rgba(14,165,233,0.30); display: flex; align-items: center; justify-content: center; color: var(--tm-accent); }
+    .flow .fstep .ic svg { width: 16px; height: 16px; }
+    .flow .fstep .ord { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 9px; color: var(--text-4); letter-spacing: 0.16em; font-weight: 700; }
+    .flow .fstep .fname { font-size: 13px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; }
+    .flow .fstep .fsub { font-size: 11px; color: var(--text-3); line-height: 1.4; margin: 0; }
+    /* confirm-step field mockup (section 7) */
+    .fields-mock { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px 20px 8px; max-width: 440px; }
+    .fields-mock .fm-head { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 700; color: var(--tm-accent); margin-bottom: 12px; }
+    .fm-field { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border-soft); }
+    .fm-field:first-of-type { border-top: none; }
+    .fm-field .fm-body { min-width: 0; flex: 1; }
+    .fm-field .fm-k { font-size: 9px; color: var(--text-3); letter-spacing: 0.10em; text-transform: uppercase; font-weight: 700; }
+    .fm-field .fm-v { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 12.5px; color: var(--text); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fm-check { width: 18px; height: 18px; border-radius: 5px; background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.45); color: var(--tm-good); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .fm-check svg { width: 11px; height: 11px; }
+    /* honest constraint callout */
+    .constraint { background: var(--bg-soft); border: 1px solid var(--border-soft); border-radius: 12px; padding: 16px 18px; margin-top: 22px; font-size: 13.5px; color: var(--text-3); line-height: 1.6; }
+    .constraint strong { color: var(--text-2); font-weight: 700; }
+    /* reasoning list (section 7) */
+    .reason-list { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-direction: column; gap: 14px; }
+    .reason-list li { font-size: 14.5px; color: var(--text-2); line-height: 1.55; padding-left: 18px; position: relative; }
+    .reason-list li::before { content: ""; position: absolute; left: 0; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--tm-accent); }
+    .reason-list strong { color: var(--text); font-weight: 700; }
+    /* status chips (section 8) */
+    .status-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+    /* guide links (section 9) */
+    .guide-links { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 22px; max-width: 680px; }
+    @media (min-width: 620px) { .guide-links { grid-template-columns: 1fr 1fr; } }
+    .guide-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); border: 1px solid var(--border-soft); border-radius: 12px; padding: 14px 16px; transition: border-color 150ms; }
+    .guide-link:hover { border-color: var(--tm-accent); }
+    .guide-link .gl-t { font-size: 13.5px; font-weight: 700; color: var(--text); }
+    .guide-link .gl-a { color: var(--tm-accent); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 14px; }
+    /* day-type notes (section 6) */
+    .shape-notes { margin-top: 24px; display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 720px; }
+    @media (min-width: 640px) { .shape-notes { grid-template-columns: 1fr 1fr; } }
+    .shape-note { font-size: 14px; color: var(--text-2); line-height: 1.5; padding-left: 14px; border-left: 2px solid var(--border); }
+    .shape-note strong { color: var(--text); font-weight: 700; }
+    a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+  </style>
+
+  <!-- Site-wide structured data. Currently duplicated on index.html (the app root).
+       At the /app move this page becomes the root and these three nodes belong HERE,
+       and the ones on index.html (moving to /app) should be removed. Do not lose them. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://timemachineapp.co.uk/#organization",
+        "name": "TimeMachine",
+        "url": "https://timemachineapp.co.uk/",
+        "logo": "https://timemachineapp.co.uk/icon-512.png",
+        "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://timemachineapp.co.uk/#website",
+        "name": "TimeMachine",
+        "url": "https://timemachineapp.co.uk/",
+        "publisher": { "@id": "https://timemachineapp.co.uk/#organization" },
+        "inLanguage": "en-GB"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "TimeMachine",
+        "description": "Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. From call sheet to timesheet to invoice, for UK commercial crew.",
+        "operatingSystem": "iOS, Web",
+        "applicationCategory": "BusinessApplication",
+        "url": "https://timemachineapp.co.uk/",
+        "image": "https://timemachineapp.co.uk/og-image.png",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
+        "publisher": { "@id": "https://timemachineapp.co.uk/#organization" }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+  <!-- APP LINKS: every href="/" on this page points at the app and becomes "/app/"
+       at the move. A single find-and-replace of  href="/"  ->  href="/app/"  catches
+       them all. The nav brand uses href="#main" (scroll to top), so it is NOT caught. -->
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="#main" class="nav-brand">TIMEMACHINE</a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="/" class="nav-cta">
+          Open the app
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─────────── 1 · HERO ─────────── -->
+  <section id="main" class="hero">
+    <div class="container">
+      <div class="hero-grid">
+        <div class="hero-content">
+          <p class="label">APA rate calculator</p>
+          <h1 class="home">The APA rate calculator for <span class="sky">UK commercial crew</span></h1>
+          <p class="brandline">Your APA day, totalled.</p>
+          <p class="lede">
+            You know your BDR, your grade, what an L1 costs. TimeMachine already knows the rest of the
+            <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA terms</a>.
+            Put in your call and wrap; it works out the day, catches the penalties, and carries the total through to a sent invoice.
+          </p>
+          <div class="hero-ctas">
+            <a href="/" class="btn primary">Open the app</a>
+            <a href="https://apps.apple.com/app/id6775970098" class="btn secondary" target="_blank" rel="noopener">
+              Download for iPhone
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
+          </div>
+          <p class="trust-line">Free, no login, built for UK commercials.</p>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="phone">
+            <span class="phone-placeholder-tag">Sample day</span>
+            <svg viewBox="0 0 280 580" xmlns="http://www.w3.org/2000/svg">
+              <!-- Phone outer shell -->
+              <rect x="2" y="2" width="276" height="576" rx="38" ry="38"
+                    fill="#1a1a1a" stroke="#262626" stroke-width="2"/>
+              <!-- Screen -->
+              <rect x="14" y="14" width="252" height="552" rx="26" ry="26"
+                    fill="#0a0a0a"/>
+              <!-- Dynamic island / notch -->
+              <rect x="108" y="28" width="64" height="20" rx="10" ry="10"
+                    fill="#1a1a1a"/>
+
+              <!-- ── Day view (sample, fictional data) ── -->
+              <!-- Header -->
+              <path d="M36 78 l-7 6 l7 6" fill="none" stroke="#a3a3a3" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="140" y="89" text-anchor="middle" fill="#f5f5f5" font-family="ui-sans-serif, sans-serif" font-size="12" font-weight="700">Northbank · Spot 2</text>
+              <circle cx="236" cy="84" r="2.4" fill="#737373"/>
+              <circle cx="244" cy="84" r="2.4" fill="#737373"/>
+              <circle cx="252" cy="84" r="2.4" fill="#737373"/>
+
+              <!-- Day meta row -->
+              <text x="30" y="116" fill="#a3a3a3" font-family="ui-monospace, monospace" font-size="8" font-weight="700" letter-spacing="1.2">DAY 1/1 · SHOOT</text>
+              <text x="250" y="116" text-anchor="end" fill="#737373" font-family="ui-monospace, monospace" font-size="8" letter-spacing="1.2">MON · 22 JUN</text>
+              <line x1="22" y1="128" x2="258" y2="128" stroke="#1a1a1a" stroke-width="1"/>
+
+              <!-- TIMES card -->
+              <rect x="22" y="142" width="236" height="266" rx="16" ry="16" fill="#141414" stroke="#262626" stroke-width="1"/>
+              <text x="36" y="166" fill="#0ea5e9" font-family="ui-monospace, monospace" font-size="8" font-weight="700" letter-spacing="2">TIMES</text>
+
+              <!-- CALL -->
+              <rect x="34" y="178" width="102" height="66" rx="11" ry="11" fill="#0c0c0c" stroke="#1f1f1f" stroke-width="1"/>
+              <text x="46" y="200" fill="#0ea5e9" font-family="ui-monospace, monospace" font-size="8" font-weight="700" letter-spacing="1.5">CALL</text>
+              <rect x="98" y="190" width="28" height="13" rx="4" fill="#0a2230"/>
+              <text x="112" y="199.5" text-anchor="middle" fill="#0ea5e9" font-family="ui-monospace, monospace" font-size="6.5" font-weight="700">NOW</text>
+              <text x="46" y="231" fill="#f5f5f5" font-family="ui-monospace, monospace" font-size="20" font-weight="700">08:00</text>
+
+              <!-- WRAP · OT -->
+              <rect x="144" y="178" width="102" height="66" rx="11" ry="11" fill="#150f0a" stroke="#ff8a3d" stroke-width="1.2"/>
+              <text x="156" y="200" fill="#ff8a3d" font-family="ui-monospace, monospace" font-size="7.5" font-weight="700" letter-spacing="0.4">WRAP · OT</text>
+              <rect x="212" y="190" width="26" height="13" rx="4" fill="#2a190d"/>
+              <text x="225" y="199.5" text-anchor="middle" fill="#ff8a3d" font-family="ui-monospace, monospace" font-size="6.5" font-weight="700">NOW</text>
+              <text x="156" y="231" fill="#ff8a3d" font-family="ui-monospace, monospace" font-size="20" font-weight="700">21:00</text>
+
+              <!-- LUNCH -->
+              <rect x="34" y="252" width="212" height="60" rx="11" ry="11" fill="#0c0c0c" stroke="#1f1f1f" stroke-width="1"/>
+              <text x="46" y="273" fill="#0ea5e9" font-family="ui-monospace, monospace" font-size="8" font-weight="700" letter-spacing="1.5">LUNCH</text>
+              <rect x="200" y="263" width="34" height="14" rx="4" fill="none" stroke="#ff8a3d" stroke-width="1"/>
+              <text x="217" y="273" text-anchor="middle" fill="#ff8a3d" font-family="ui-monospace, monospace" font-size="6.5" font-weight="700">LATE</text>
+              <text x="46" y="300" fill="#f5f5f5" font-family="ui-monospace, monospace" font-size="16" font-weight="700">13:50</text>
+              <path d="M120 294 h12 m-5 -4 l5 4 l-5 4" fill="none" stroke="#737373" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="140" y="300" fill="#f5f5f5" font-family="ui-monospace, monospace" font-size="16" font-weight="700">14:50</text>
+
+              <!-- Penalty banner -->
+              <rect x="34" y="324" width="212" height="40" rx="9" ry="9" fill="#1a120b" stroke="#8a5a30" stroke-width="1"/>
+              <circle cx="48" cy="344" r="5" fill="none" stroke="#ff8a3d" stroke-width="1.2"/>
+              <text x="48" y="347" text-anchor="middle" fill="#ff8a3d" font-family="ui-sans-serif, sans-serif" font-size="8" font-weight="800">!</text>
+              <text x="60" y="340" fill="#ff8a3d" font-family="ui-sans-serif, sans-serif" font-size="7.5">Late - should have started by 13:30</text>
+              <text x="60" y="352" fill="#ff8a3d" font-family="ui-sans-serif, sans-serif" font-size="7.5">(5.5h from call). £10 penalty applied.</text>
+
+              <!-- CONDITIONS -->
+              <text x="30" y="430" fill="#525252" font-family="ui-monospace, monospace" font-size="7.5" font-weight="700" letter-spacing="1.8">CONDITIONS</text>
+              <rect x="30" y="440" width="116" height="22" rx="7" fill="#1a0c11" stroke="#7a2738" stroke-width="1"/>
+              <text x="40" y="454.5" fill="#f43f5e" font-family="ui-sans-serif, sans-serif" font-size="8.5" font-weight="700">2nd break <tspan fill="#fb7185" font-size="7.5">MISSED</tspan></text>
+              <rect x="152" y="440" width="58" height="22" rx="7" fill="#141414" stroke="#1f1f1f" stroke-width="1"/>
+              <text x="181" y="454.5" text-anchor="middle" fill="#737373" font-family="ui-monospace, monospace" font-size="7.5" font-weight="700">STEP-UP</text>
+              <rect x="216" y="440" width="34" height="22" rx="7" fill="#141414" stroke="#1f1f1f" stroke-width="1"/>
+              <text x="233" y="454.5" text-anchor="middle" fill="#737373" font-family="ui-monospace, monospace" font-size="7.5" font-weight="700">KIT</text>
+
+              <!-- Money pill (paper) -->
+              <rect x="22" y="486" width="236" height="48" rx="14" ry="14" fill="#f4f4f5"/>
+              <path d="M40 506 l-5 4 l5 4" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="140" y="505" text-anchor="middle" fill="#6b7280" font-family="ui-monospace, monospace" font-size="7" font-weight="700" letter-spacing="1.2">DAY 1 OF 1 · TODAY</text>
+              <text x="140" y="524" text-anchor="middle" fill="#111114" font-family="ui-monospace, monospace" font-size="17" font-weight="800">£609.40</text>
+              <rect x="226" y="498" width="24" height="24" rx="7" fill="#0ea5e9"/>
+              <text x="238" y="515.5" text-anchor="middle" fill="#06121c" font-family="ui-sans-serif, sans-serif" font-size="16" font-weight="800">+</text>
+
+              <!-- Home indicator -->
+              <rect x="100" y="552" width="80" height="4" rx="2" fill="#525252"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 2 · SHOW THE PRODUCT ─────────── -->
+  <section>
+    <div class="container">
+      <p class="label">The shoot, added up</p>
+      <h2 style="margin-bottom: 10px;">One week, every day totalled.</h2>
+      <p style="color: var(--text-3); max-width: 620px; font-size: 15px;">
+        A row for each day: the times, the penalties caught, and what the day is worth. The week's gross split into what it is actually made of.
+      </p>
+      <div class="split flip" style="margin-top: 32px;">
+        <div class="col">
+          <div class="mock">
+            <div class="mock-head">
+              <div>
+                <div class="mock-name">Beacon Pictures</div>
+                <div class="mock-sub">Lighting Technician &middot; BDR &pound;444 &middot; week of 10 Aug</div>
+              </div>
+              <div>
+                <div class="mock-total-label">Week</div>
+                <div class="mock-total">&pound;2,291.10</div>
+              </div>
+            </div>
+            <div class="mock-rows">
+              <div class="mock-row">
+                <div class="left"><span class="mock-chip shoot">SHOOT</span><span class="date">Mon 10 Aug</span><span class="times">07:00 &rarr; 19:00</span></div>
+                <div class="right"><span class="mock-chip ot">OT 1h</span><span class="amount">&pound;510.60</span></div>
+              </div>
+              <div class="mock-row">
+                <div class="left"><span class="mock-chip shoot">SHOOT</span><span class="date">Tue 11 Aug</span><span class="times">07:00 &rarr; 21:00</span></div>
+                <div class="right"><span class="mock-chip msb">L1</span><span class="mock-chip ot">OT 3h</span><span class="amount">&pound;653.80</span></div>
+              </div>
+              <div class="mock-row">
+                <div class="left"><span class="mock-chip shoot">SHOOT</span><span class="date">Wed 12 Aug</span><span class="times">08:00 &rarr; 18:00</span></div>
+                <div class="right"><span class="mock-chip extra">KIT</span><span class="amount">&pound;494.00</span></div>
+              </div>
+              <div class="mock-row">
+                <div class="left"><span class="mock-chip shoot">SHOOT</span><span class="date">Thu 13 Aug</span><span class="times">07:00 &rarr; 20:30</span></div>
+                <div class="right"><span class="mock-chip msb">L2</span><span class="mock-chip ot">OT 2h 30m</span><span class="amount">&pound;632.70</span></div>
+              </div>
+            </div>
+            <div class="mock-foot">
+              <span class="made">Made with TimeMachine</span>
+              <span class="ver">APA Sept 2025</span>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <p>Every row is a day. Every chip is a penalty or an extra the app caught. The week's gross is not one number, it is four:</p>
+          <div class="gross">
+            <div class="cell"><div class="k">Basic</div><div class="v">&pound;1,776.00</div></div>
+            <div class="cell ot"><div class="k">Overtime</div><div class="v">&pound;432.90</div></div>
+            <div class="cell pen"><div class="k">Penalties</div><div class="v">&pound;32.20</div></div>
+            <div class="cell extra"><div class="k">Extras</div><div class="v">&pound;50.00</div></div>
+          </div>
+          <div class="gross" style="grid-template-columns: 1fr; margin-top: 10px;">
+            <div class="cell tot"><div class="k">Week total</div><div class="v">&pound;2,291.10</div></div>
+          </div>
+          <p style="font-size: 13px; color: var(--text-3); margin-top: 16px;">
+            Four basic days, six and a half hours of overtime, a late lunch and a missed break, one day of kit. Sample figures on a Lighting Technician's rate, September 2025 card.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 3 · DAY TO PAID ─────────── -->
+  <section>
+    <div class="container">
+      <p class="label">Day to paid</p>
+      <h2 style="margin-bottom: 10px;">The calculation is the middle, not the end.</h2>
+      <p style="color: var(--text-3); max-width: 620px; font-size: 15px;">
+        Most tools stop at the number. The job is not done until the money lands. TimeMachine carries a day the whole way, and most of what competitors do stops at step three.
+      </p>
+      <div class="flow">
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg></div><div class="ord">01</div><div class="fname">Call sheet</div><p class="fsub">Read the invoicing details off it.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="ord">02</div><div class="fname">Track the day</div><p class="fsub">Call, breaks, wrap, kit, mileage.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="8" y2="11"/><line x1="12" y1="11" x2="12" y2="11"/><line x1="16" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="8" y2="15"/><line x1="12" y1="15" x2="12" y2="15"/><line x1="16" y1="14" x2="16" y2="18"/></svg></div><div class="ord">03</div><div class="fname">Calculate</div><p class="fsub">The APA terms, applied to the day.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></div><div class="ord">04</div><div class="fname">Timesheet</div><p class="fsub">A clean day-by-day, PDF or text.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg></div><div class="ord">05</div><div class="fname">Invoice</div><p class="fsub">Totals carried across, numbered.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="ord">06</div><div class="fname">Sent</div><p class="fsub">Frozen as a record of what you claimed.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></svg></div><div class="ord">07</div><div class="fname">Paid</div><p class="fsub">Tracked, and flagged if it runs late.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 4 · FOUR THINGS IT DOES ─────────── -->
+  <section id="features">
+    <div class="container">
+      <p class="label">What it does</p>
+      <h2 style="margin-bottom: 8px;">Four jobs, one app.</h2>
+      <div class="features-grid">
+        <a class="feature-card" href="/how-it-works">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="8" y2="11"/><line x1="12" y1="11" x2="12" y2="11"/><line x1="16" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="8" y2="15"/><line x1="12" y1="15" x2="12" y2="15"/><line x1="16" y1="14" x2="16" y2="18"/></svg></div>
+          <h3>Calculates the day</h3>
+          <p>Call to wrap on the APA terms: overtime grade, break penalties, weekends and nights, all worked out.</p>
+        </a>
+        <a class="feature-card" href="/how-it-works">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></div>
+          <h3>Makes the timesheet</h3>
+          <p>A clean day-by-day you can send as a PDF or plain text, your name on top, the maths behind it.</p>
+        </a>
+        <a class="feature-card" href="/how-it-works">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg></div>
+          <h3>Makes the invoice</h3>
+          <p>Carries the totals across, adds VAT and your bank details, numbers it, and tracks it to paid.</p>
+        </a>
+        <a class="feature-card" href="/how-it-works">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></div>
+          <h3>Knows your role</h3>
+          <p>Pick your grade and the right rate card loads, with the parts of the terms that apply to you.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 5 · ONE REAL DAY ─────────── -->
+  <section>
+    <div class="container">
+      <div class="split">
+        <div class="col">
+          <p class="label">One real day</p>
+          <h2>A day from a real invoice.</h2>
+          <p style="margin-top: 18px; color: var(--text-2); font-size: 16px; line-height: 1.6;">
+            Lighting Technician, basic day rate &pound;444, so a basic hourly rate of &pound;44.40. Tuesday 4 August, a shoot day: call 07:00, wrap 21:30, 14.5 hours. Here is the whole day, and it reconciles.
+          </p>
+          <p style="margin-top: 14px; font-size: 13.5px; color: var(--text-3);">
+            Costed on the APA <a href="/apa-rates" style="color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px;">September 2025 card</a>. Nothing here is rounded or adjusted.
+          </p>
+        </div>
+        <div class="col">
+          <div class="maths-rows" style="border-top: none;">
+            <div class="maths-row"><div class="k">Basic day<small>10 worked + 1hr lunch &middot; BDR &pound;444</small></div><div class="v">&pound;444.00</div></div>
+            <div class="maths-row"><div class="k">Overtime, 18:00 to 21:30<small>3.5h at 1.5 &times; BHR (&pound;66.60)</small></div><div class="v warn">&pound;233.10</div></div>
+            <div class="maths-row"><div class="k">Late first break<small>lunch started after 5.5h from call</small></div><div class="v warn">&pound;10.00</div></div>
+            <div class="maths-row"><div class="k">Missed second break<small>30 min owed at BHR (&pound;44.40)</small></div><div class="v pen">&pound;22.20</div></div>
+            <div class="maths-row total"><div class="k">Day total</div><div class="v">&pound;709.30</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 6 · BUILT FOR ACTUAL COMMERCIALS ─────────── -->
+  <section>
+    <div class="container">
+      <p class="label">Built for actual commercials</p>
+      <h2 style="margin-bottom: 10px;">Different days, not one timer.</h2>
+      <p style="color: var(--text-3); max-width: 640px; font-size: 15px;">
+        A commercial week is not a stopwatch with overtime bolted on. The days have different shapes, and the pay follows the shape. The app knows which day it is.
+      </p>
+      <div class="chip-row" style="margin-top: 26px;">
+        <span class="chip shoot">SHOOT</span>
+        <span class="chip prelight">PRE-LIGHT</span>
+        <span class="chip recce">RECCE</span>
+        <span class="chip prep">PREP</span>
+        <span class="chip travel">TRAVEL</span>
+        <span class="chip derig">DERIG</span>
+        <span class="chip-divider"></span>
+        <span class="chip ot">OT</span>
+        <span class="chip msb">L1</span>
+        <span class="chip msb">L2</span>
+        <span class="chip cwd">CWD</span>
+        <span class="chip toc">TOC</span>
+        <span class="chip ns">NIGHT</span>
+        <span class="chip prep">EARLY CALL</span>
+        <span class="chip travel">MILEAGE</span>
+        <span class="chip travel">PER DIEM</span>
+      </div>
+      <div class="shape-notes">
+        <p class="shape-note"><strong>A travel day pays your basic hourly rate</strong>, on a minimum, not a flat day rate.</p>
+        <p class="shape-note"><strong>A pre-light day is eight hours plus a lunch hour</strong>, not the eleven of a shoot day.</p>
+        <p class="shape-note"><strong>A continuous working day starts overtime after nine</strong>, not eleven, and you can land on one without being told.</p>
+        <p class="shape-note"><strong>A night shoot is flat double hourly</strong> with a ten hour minimum, no overtime on top.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 7 · THE CALL SHEET READER ─────────── -->
+  <section class="ios-band">
+    <div class="container">
+      <p class="label">The call sheet reader</p>
+      <h2 style="margin-bottom: 10px;">Your invoicing details, straight off the sheet.</h2>
+      <p style="color: var(--text-2); max-width: 660px; font-size: 16px; line-height: 1.6;">
+        The tedious part of a new job is retyping the same billing details. On iPhone, TimeMachine reads them off the call sheet for you. Six steps, and you check the result before anything is saved.
+      </p>
+
+      <div class="flow">
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg></div><div class="ord">01</div><div class="fname">Email</div><p class="fsub">The call sheet lands, as it always does.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><polyline points="8 7 12 3 16 7"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><div class="ord">02</div><div class="fname">Share</div><p class="fsub">Share the PDF from Mail or Files.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="10" y1="18" x2="14" y2="18"/></svg></div><div class="ord">03</div><div class="fname">TimeMachine</div><p class="fsub">Pick TimeMachine from the share sheet.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></div><div class="ord">04</div><div class="fname">Pick the job</div><p class="fsub">New job, or add to an existing one.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6a4 4 0 0 1 4-4h4v18H6a4 4 0 0 0-4 4z" transform="translate(2 0)"/><line x1="12" y1="8" x2="17" y2="8"/><line x1="12" y1="12" x2="16" y2="12"/></svg></div><div class="ord">05</div><div class="fname">Read</div><p class="fsub">On-device, it finds the invoicing fields.</p></div>
+        <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div><div class="ord">06</div><div class="fname">Confirm</div><p class="fsub">Check the six fields, then save.</p></div>
+      </div>
+
+      <div class="split flip" style="margin-top: 40px;">
+        <div class="col">
+          <div class="fields-mock">
+            <div class="fm-head">Confirm &mdash; 6 fields read</div>
+            <div class="fm-field"><div class="fm-body"><div class="fm-k">Job title</div><div class="fm-v">Beacon &mdash; Spot 2</div></div><span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span></div>
+            <div class="fm-field"><div class="fm-body"><div class="fm-k">Production company</div><div class="fm-v">Beacon Pictures Ltd</div></div><span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span></div>
+            <div class="fm-field"><div class="fm-body"><div class="fm-k">Job reference</div><div class="fm-v">BP-0242</div></div><span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span></div>
+            <div class="fm-field"><div class="fm-body"><div class="fm-k">Invoicing email</div><div class="fm-v">accounts@beaconpictures.co.uk</div></div><span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span></div>
+            <div class="fm-field"><div class="fm-body"><div class="fm-k">CC email</div><div class="fm-v">prod@beaconpictures.co.uk</div></div><span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span></div>
+            <div class="fm-field"><div class="fm-body"><div class="fm-k">Invoicing address</div><div class="fm-v">14 Wharf Rd, London N1 7GR</div></div><span class="fm-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span></div>
+          </div>
+        </div>
+        <div class="col">
+          <h3 style="font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; margin: 0 0 6px;">Six fields, and not the rest.</h3>
+          <p style="font-size: 14px; color: var(--text-3);">The honest version is the strong one. It takes what helps you get paid and leaves what would only mislead.</p>
+          <ul class="reason-list">
+            <li><strong>It reads the invoicing details.</strong> The fields that are the same every day of the job and tedious to retype.</li>
+            <li><strong>It does not take call times.</strong> Calls are often individual and they change, so importing them would import something likely to be wrong. Entering your own call takes a second.</li>
+            <li><strong>It does not take wrap.</strong> Wrap on a call sheet is an estimate. The app assumes a full day with no overtime, and you set wrap when the day actually runs long. Wrapping early costs you nothing.</li>
+            <li><strong>Nothing else on a call sheet</strong> is any use for getting paid.</li>
+          </ul>
+          <div class="constraint">
+            <strong>iPhone only.</strong> It needs iOS 26 on an Apple Intelligence capable device, and it runs entirely on your phone: the call sheet is never uploaded. The web app does not have this.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 8 · COMMERCIALS NOW, LONG FORM NEXT ─────────── -->
+  <section>
+    <div class="container">
+      <p class="label">Now, and next</p>
+      <h2 style="margin-bottom: 10px;">Commercials now. Long form next.</h2>
+      <p style="color: var(--text-3); max-width: 640px; font-size: 15px;">
+        The APA calculation is live and complete. The rest is being built to the same standard, and the app says which is which rather than pretending.
+      </p>
+      <div class="status-row">
+        <span class="tag-pill live">APA &middot; live</span>
+        <span class="tag-pill soon">MMP &middot; in development</span>
+        <span class="tag-pill soon">TV bands 1 to 4 &middot; in development</span>
+      </div>
+      <p style="font-size: 13px; color: var(--text-4); margin-top: 20px; max-width: 620px; line-height: 1.6;">
+        In development means being built, not calculating yet. When a band is ready it will say live, and not before. Nothing here totals a day it cannot total correctly.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────── 9 · GUIDES ─────────── -->
+  <section>
+    <div class="container">
+      <p class="label">The terms, explained</p>
+      <h2 style="margin-bottom: 10px;">It does the sum, and shows its working.</h2>
+      <p style="color: var(--text-3); max-width: 640px; font-size: 15px;">
+        TimeMachine does the calculation. These explain it, in plain English, from someone who has had to argue an invoice.
+      </p>
+      <div class="guide-links">
+        <a class="guide-link" href="/apa-rates"><span class="gl-t">The APA rate table</span><span class="gl-a">&rarr;</span></a>
+        <a class="guide-link" href="/articles/how-apa-overtime-works"><span class="gl-t">How APA overtime actually works</span><span class="gl-a">&rarr;</span></a>
+        <a class="guide-link" href="/articles/breaks-and-penalties"><span class="gl-t">Breaks and penalties</span><span class="gl-a">&rarr;</span></a>
+        <a class="guide-link" href="/articles/how-to-invoice-an-apa-job"><span class="gl-t">How to invoice an APA job</span><span class="gl-a">&rarr;</span></a>
+        <a class="guide-link" href="/articles/late-payment-what-youre-owed"><span class="gl-t">Late payment: what you can charge</span><span class="gl-a">&rarr;</span></a>
+        <a class="guide-link" href="/articles"><span class="gl-t">All guides</span><span class="gl-a">&rarr;</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 10 · BUILT BY A WORKING CREW MEMBER ─────────── -->
+  <section>
+    <div class="container">
+      <div class="built-by-pill">
+        <span class="label">Who built it</span>
+        <h3>By a spark, for the crew.</h3>
+        <p>TimeMachine was built by a working lighting technician who got tired of totalling days on a phone calculator at wrap. Every rule in it is one that has cost someone money on a real job.</p>
+        <p>It is not a product with a crew theme. It is the tool the person building it needed, so the details are the ones that actually catch you out.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 11 · FINAL CTA ─────────── -->
+  <section class="final-cta">
+    <div class="container">
+      <h2>Your APA day, <span class="em">totalled</span>.</h2>
+      <div class="hero-ctas" style="justify-content: center;">
+        <a href="/" class="btn primary">Open the app</a>
+        <a href="https://apps.apple.com/app/id6775970098" class="btn secondary" target="_blank" rel="noopener">Download for iPhone</a>
+      </div>
+      <p class="sub">Free. No login. iPhone or web.</p>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="/">App</a>
+        <a href="https://apps.apple.com/app/id6775970098" target="_blank" rel="noopener">App Store</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/apa-rates">APA rates</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
