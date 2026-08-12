@@ -233,14 +233,30 @@ drift. Three instances have now been found on this project, each caught late:
    gated starts but left a running card unkillable from the sweep if the two
    hadn't been unified on `LIVE_ACTIVITY_DAY_TYPES` with the same dayType
    merge.
-4. **The two step-up pickers.** The APA solo day form and CrewMemberDayView
-   each carry their own hand-maintained copy of the same stepUp write
-   (stepUpRole / stepUpBDR / stepUpOTCoef / stepUpOTRate from the card row).
-   They agree today; nothing makes them keep agreeing. The fix is REMOVING
-   the second copy — one shared write helper both surfaces call — not
-   pinning the two copies into agreement, which would entrench the
-   duplication as load-bearing. (RW3 deliberately proves only that all four
-   fields are written somewhere, not that the copies match.)
+4. **The two step-up pickers.** ~~The APA solo day form and CrewMemberDayView
+   each carry their own hand-maintained copy of the same stepUp write.~~
+   **CLOSED, Phase 8.** It was three copies, not two (the bulk date edit is
+   the third), plus two hand-rolled clear-button literals. All five now call
+   `stepUpPatch`. Closed the ruled way — the copies were deleted, not pinned
+   into agreement. The clear-role residue divergence resolved with them: one
+   shape now (reset to 0/1/null), proven pay-inert by executing
+   `resolveCrewForDay` over both the canonical and the legacy residue.
+5. **Six writers for `crew.otCoef`.** **CLOSED, Phase 8.** The three
+   role-change copies became `applyRoleOtProfile` (five call sites: the two
+   role pickers, the two add sheets, the QuickAdd edit branch). Two of the
+   three had been shipping the `noOT` bug. Six writers to four:
+   `applyRoleOtProfile`, `applyRateCardToCrew`, `seedRateFromPrefs`, and the
+   Grade select (the deliberate manual override) are genuinely different
+   operations and stay separate.
+
+**What the two closures deliberately did NOT unify.** Both helpers take a
+`fallbackCoef` from the caller rather than picking one. The three surfaces
+mean different things by "no card row for this role" (the graded Phase 6
+fallback, keep the member's existing coefficient, a flat 1.5) and all three
+branches are unreachable — so unifying them would have silently changed three
+behaviours nobody can trigger, inside commits whose whole point was behaviour
+preservation. A value parameter is honest about what was collapsed and what
+was not. See MAINTENANCE.md for the invariant that keeps those branches dead.
 
 The rule when adding any gate or figure that already exists somewhere else:
 put the value in ONE place (a shared constant, the rate card, the ruleset

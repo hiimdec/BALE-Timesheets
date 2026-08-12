@@ -65,3 +65,19 @@ Both editors now track the flag exactly as QuickAddCrewSheet's edit branch does:
 **What holds it shut now.** `NOOT1-4` (calc-boundary) pin the money: the same day and the same stored coefficient bill £1,009.05 with the flag and £1,201.25 without — £192.20 of phantom OT — and NOOT4 records that the two agree inside the basic day, which is why the bug hid. `S1-noOT` (construction-assertions) pins that all three editors carry the flag identically on selecting Director and all three delete it on re-picking away. `RW2`'s writers table now lists both patterns.
 
 **Not repaired retroactively:** records already saved with the flag missing keep their stored shape until the role is re-picked, per the standing rule that preference and card changes are not applied backwards. A Director whose day already billed phantom OT on a sent invoice stays as invoiced (invoices are frozen); a draft re-derives on the next edit that re-picks the role.
+
+## Any rate-card change — both cards must carry identical role-name sets
+
+**Trigger:** adding, renaming or removing a role on any card in `RATE_CARDS` (so: every September uplift, and any mid-year correction).
+
+Both cards carry the same 66 role names today (verified Phase 8: the Sept 2026 card is a BDR-only uplift of Sept 2025, same rows). Every role `<Select>` in the app is bound to `DEPARTMENTS`, which is `RATE_CARDS[0].departments` — the BASE card — while the *values* come from `roleDefaultsFor(production)`, which resolves the card by the production's start date. So a role can be **listed** from card 0 but **looked up** on a later card.
+
+While the sets are identical that never bites, and it makes several `?? fallback` branches provably unreachable:
+
+- `applyRoleOtProfile`'s `fallbackCoef` — three surfaces pass three different answers (the graded Phase 6 fallback, keep-existing, a flat 1.5)
+- `stepUpPatch`'s `fallbackCoef` — likewise
+- `autoOtCoef`'s card-less path, and the `d.bdr ?? …` rate fallbacks in every role picker
+
+**Add a role to one card and not the other, and all of those become reachable at once** — on the same edit, with three different answers, none of them reviewed. The 2025 card is the one that matters most here: it is `RATE_CARDS[0]`, so it defines the pickable list for *every* production regardless of date.
+
+**What to do:** when changing role names on any card, change them on all cards in the same commit, or make the picker resolve its list from the production's own card rather than the base card. If neither is possible, the three fallbacks stop being dead code and need adjudicating before the change lands — they were deliberately left per-surface (Phase 8) precisely because they were unreachable.
