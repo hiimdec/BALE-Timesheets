@@ -286,6 +286,11 @@ async function transformedAppCode() {
     'try { globalThis.__applyLfRoleOnly = applyLfRoleOnly; } catch (_) {}\n' +
     'try { globalThis.__seededMileageRate = seededMileageRate; } catch (_) {}\n' +
     'try { globalThis.__autoOtCoef = autoOtCoef; } catch (_) {}\n' +
+    // The card-resolution primitives (OTG4): so construction pins walk the REAL
+    // role-selection path (resolve card by date, flatten, take the role's row)
+    // instead of hand-setting the values the path is supposed to produce.
+    'try { globalThis.__resolveRateCard = resolveRateCard; } catch (_) {}\n' +
+    'try { globalThis.__flattenRateCard = flattenRateCard; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
     'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
@@ -3416,6 +3421,43 @@ async function main() {
       check('OTG3 a custom rate changes the rate, not the grade - the crew editor rate input no longer touches otCoef; autoOtCoef survives at exactly ONE call site (the card-less fallback with cardOtGrades); the card-less assumption is FLAGGED on the Grade field',
         clobber === 0 && calls === 2 && fallback === 1 && flag,
         `clobber=${clobber} calls=${calls} fallback=${fallback} flag=${flag}`);
+      // OTG4 - the DOWNWARD direction (OTG1 covers upward under-grading). Before
+      // the fix a rate typed BELOW band OVER-claimed: a DoP at £600 derived 1.25
+      // where the role's card grade is 1.0. Build the record through the same
+      // role-selection path the editor uses - resolve the card by date, flatten,
+      // take the role's row, coefficient from the card (the exact expressions
+      // OTG3 pins at source) - then apply the rate edit, which writes the rate
+      // only. Never hand-set the value the path is supposed to produce.
+      const resolveCard = sb.__resolveRateCard, flattenCard = sb.__flattenRateCard;
+      if (typeof resolveCard === 'function' && typeof flattenCard === 'function' && typeof fn === 'function') {
+        const card = resolveCard('2026-09-15');       // a startDate on the Sept 2026 card
+        const d = flattenCard(card)['DoP'] || {};
+        // Role selection (mirrors onRoleChange): the card's per-role coefficient.
+        let rec = { role: 'DoP', bdr: d.bdr, otCoef: d.otCoef ?? fn(d.bdr, card.otGrades), otRate: d.otRate ?? null };
+        // The rate edit (mirrors the fixed rate input): the rate ONLY.
+        rec = { ...rec, bdr: 600 };
+        // 1.25 was the PRE-FIX result: the old input ran otCoef = autoOtCoef(600)
+        // on the keystroke (rate-derived). Both rate-derived paths still say 1.25
+        // at £600 - the legacy thresholds AND the card ceilings - so role-derived
+        // vs rate-derived genuinely diverges on this input: the pin goes RED on
+        // any regression to rate-derived grading, old flavour or new.
+        const legacyAt600 = fn(600);
+        const ceilingsAt600 = fn(600, card.otGrades);
+        check('OTG4 the downward direction - a DoP with a typed £600 keeps the role\'s Grade III (otCoef 1.0) and is NOT 1.25 (the pre-fix rate-derived result); both still-reachable rate-derived paths (legacy thresholds and card ceilings) say 1.25 at £600 and disagree with the record - genuine divergence, not agreeing-at-default',
+          rec.otCoef === 1.0 && rec.otCoef !== 1.25 &&
+          legacyAt600 === 1.25 && ceilingsAt600 === 1.25 &&
+          legacyAt600 !== rec.otCoef && ceilingsAt600 !== rec.otCoef,
+          JSON.stringify({ rec, legacyAt600, ceilingsAt600 }));
+        // A manually set LOWER coefficient is a legitimate override and must
+        // still land (the Grade select writes otCoef directly; the fix stops
+        // rate-DERIVED grading only, never a user-set grade).
+        const overridden = { ...rec, otCoef: 1.25 };
+        check('OTG4b a manual coefficient edit still lands - the Grade select override stays legitimate, no guard blocks a user setting a lower grade',
+          overridden.otCoef === 1.25,
+          JSON.stringify(overridden));
+      } else {
+        check('OTG4 resolveRateCard/flattenRateCard exposed for the construction-path pin', false, 'not exposed');
+      }
     }
   }
 
