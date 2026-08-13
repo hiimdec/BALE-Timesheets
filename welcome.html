@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>TimeMachine — Your APA day, totalled</title>
+  <meta name="description" content="TimeMachine turns a call sheet into a live APA day, then a timesheet and invoice. Free for UK commercial crew on iPhone and the web.">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://timemachineapp.co.uk/welcome">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="Work in film? Here’s something useful.">
+  <meta property="og:description" content="Your APA day, totalled. Call sheet to timesheet to invoice.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/welcome">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel: #151515;
+      --line: #292929;
+      --text: #f5f5f5;
+      --muted: #a3a3a3;
+      --quiet: #737373;
+      --sky: #0ea5e9;
+      --sky-light: #7dd3fc;
+      --green: #4ade80;
+      --orange: #ff8a3d;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; background: var(--bg); }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+      background-image: radial-gradient(65% 42% at 72% 10%, rgba(14,165,233,.065), transparent 70%);
+    }
+    a { color: inherit; }
+    a:focus-visible { outline: 2px solid var(--sky-light); outline-offset: 4px; }
+    .skip { position: absolute; left: -9999px; }
+    .skip:focus { left: 16px; top: 16px; z-index: 9; background: white; color: black; padding: 10px 14px; }
+    .page { width: min(100% - 40px, 1016px); margin: 0 auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+    header {
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: calc(env(safe-area-inset-top) + 14px) 0 14px;
+      color: var(--sky);
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: -.03em;
+      text-transform: uppercase;
+    }
+    header::after { content: ""; position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 49px); border-bottom: 1px solid #1f1f1f; }
+    .top-links { display: flex; align-items: center; gap: 20px; }
+    .top-links a { color: var(--sky-light); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; letter-spacing: .18em; text-decoration: none; }
+
+    .hero { max-width: 900px; padding: clamp(72px, 13vh, 125px) 0 88px; }
+    .question {
+      margin: 0 0 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--sky);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .2em;
+    }
+    .question::after { content: ""; width: 48px; height: 1px; background: var(--line); }
+    h1 {
+      margin: 0;
+      font-size: clamp(46px, 9vw, 88px);
+      font-weight: 900;
+      letter-spacing: -.065em;
+      line-height: .94;
+    }
+    h1 span { display: block; }
+    h1 .useful { color: var(--sky); }
+    .intro {
+      max-width: 675px;
+      margin: 34px 0 0;
+      color: var(--muted);
+      font-size: clamp(18px, 4.5vw, 22px);
+    }
+    .intro strong { color: var(--text); }
+    .free { margin: 15px 0 0; color: var(--quiet); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; letter-spacing: .04em; }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px; }
+    .button {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 22px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 800;
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      text-decoration: none;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease;
+    }
+    .button:hover { transform: translateY(-1px); border-color: #454545; background: #1a1a1a; }
+    .button.primary { background: var(--sky); border-color: var(--sky); color: #00131d; }
+    .button small { display: block; margin-top: 1px; color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .05em; }
+    .button.primary small { color: #073d56; }
+    .arrow { font-size: 20px; }
+    .device-note { margin: 12px 3px 0; color: var(--quiet); font-size: 12px; }
+
+    .workflow { padding: 84px 0 88px; border-top: 1px solid #1f1f1f; }
+    .eyebrow { margin: 0 0 38px; color: var(--sky); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 800; letter-spacing: .19em; text-transform: uppercase; }
+    .steps { display: grid; }
+    .step { display: grid; grid-template-columns: 36px 1fr; column-gap: 15px; position: relative; padding-bottom: 42px; }
+    .step:last-child { padding-bottom: 0; }
+    .step:not(:last-child)::before { content: ""; position: absolute; top: 35px; bottom: 7px; left: 15px; width: 1px; background: var(--line); }
+    .number {
+      width: 31px; height: 31px; display: grid; place-items: center;
+      border: 1px solid var(--line); border-radius: 50%; background: var(--bg);
+      color: var(--sky-light); font-size: 11px; font-weight: 800;
+    }
+    .when { margin: 1px 0 5px; color: var(--quiet); font-size: 11px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+    .step h2 { margin: 0; font-size: 25px; letter-spacing: -.035em; }
+    .step p { margin: 11px 0 0; color: var(--muted); font-size: 16px; }
+    .step strong { color: var(--text); }
+    .feature {
+      display: inline-flex; align-items: center; gap: 7px; margin-top: 13px;
+      color: var(--sky-light); font-size: 12px; font-weight: 700;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 9px rgba(74,222,128,.55); }
+
+    .late {
+      max-width: 760px;
+      margin-bottom: 72px;
+      padding: 25px;
+      border: 1px solid #1f1f1f;
+      border-radius: 15px;
+      background: var(--panel);
+    }
+    .late h2 { margin: 0; font-size: clamp(25px, 7vw, 35px); line-height: 1.08; letter-spacing: -.045em; }
+    .late h2 span { display: block; color: var(--muted); }
+    .late p { margin: 16px 0 0; color: var(--muted); }
+    .late a { color: var(--sky-light); text-underline-offset: 3px; }
+
+    .choose { padding: 84px 0; border-top: 1px solid #1f1f1f; }
+    .choose h2 { margin: 0 0 9px; font-size: 32px; letter-spacing: -.045em; }
+    .choose > p { margin: 0 0 27px; color: var(--muted); }
+    .platforms { display: grid; gap: 13px; }
+    .platform { padding: 21px; border: 1px solid var(--line); border-radius: 14px; }
+    .platform h3 { margin: 0 0 8px; font-size: 19px; }
+    .platform p { margin: 0 0 17px; color: var(--muted); font-size: 14px; }
+    .platform .button { min-height: 52px; }
+    .install { margin-top: 12px !important; color: var(--quiet) !important; font-size: 12px !important; }
+
+    .signoff { padding: 38px 0 34px; border-top: 1px solid #1f1f1f; color: var(--muted); }
+    .signoff strong { color: var(--text); }
+    .signoff .sky { color: var(--sky); }
+    nav { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 28px; }
+    nav a { color: var(--quiet); font-size: 12px; text-underline-offset: 3px; }
+
+    @media (min-width: 680px) {
+      .platforms { grid-template-columns: 1fr 1fr; }
+    }
+    @media (min-width: 860px) {
+      .steps { grid-template-columns: repeat(3, 1fr); gap: 30px; }
+      .step { display: block; padding: 0; }
+      .step:not(:last-child)::before { display: none; }
+      .number { margin-bottom: 25px; }
+      .step h2 { font-size: 24px; }
+    }
+    @media (max-width: 560px) {
+      .top-links a:first-child { display: none; }
+      .hero { padding-top: 70px; }
+      h1 { font-size: clamp(42px, 13vw, 64px); }
+      .actions .button { width: 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button { transition: none; } }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "TimeMachine — Your APA day, totalled",
+    "description": "TimeMachine turns a call sheet into a live APA day, then a timesheet and invoice.",
+    "url": "https://timemachineapp.co.uk/welcome",
+    "isPartOf": { "@id": "https://timemachineapp.co.uk/#website" },
+    "publisher": { "@id": "https://timemachineapp.co.uk/#organization" }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="page">
+    <header>
+      <span>TimeMachine</span>
+      <span class="top-links">
+        <a href="https://apps.apple.com/app/id6775970098" target="_blank" rel="noopener" data-track="app_store_click">App Store</a>
+        <a href="/app/" data-track="web_app_click">Open the app →</a>
+      </span>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <p class="question">Work in film?</p>
+        <h1>
+          <span>Sorry to hear that.</span>
+          <span class="useful">Here’s something useful.</span>
+        </h1>
+        <p class="intro"><strong>Your APA day, totalled.</strong> Give TimeMachine the call sheet. Tell it when you call, eat and wrap. It gives you the timesheet and invoice.</p>
+        <p class="free">Made by a spark, for the crew. Free.</p>
+
+        <div class="actions" aria-label="Get TimeMachine">
+          <a class="button app-store" href="https://apps.apple.com/app/id6775970098" target="_blank" rel="noopener" data-track="app_store_click">
+            <span>Get it for iPhone<small>On the App Store</small></span><span class="arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="button web-app" href="/app/" data-track="web_app_click">
+            <span>Open the web app<small>Android &amp; desktop</small></span><span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+        <p class="device-note" id="device-note">No account. Your shoot data stays on your device.</p>
+      </section>
+
+      <section class="workflow" aria-labelledby="workflow-title">
+        <p class="eyebrow" id="workflow-title">One job. Start to finish.</p>
+
+        <div class="steps">
+        <article class="step">
+          <span class="number mono">01</span>
+          <div>
+            <p class="when">The night before</p>
+            <h2>Share in the call sheet.</h2>
+            <p>TimeMachine reads the job and invoicing details. You check what it found, set your rate and go to bed.</p>
+            <span class="feature"><span class="dot"></span> No typing a production address at 11pm</span>
+          </div>
+        </article>
+
+        <article class="step">
+          <span class="number mono">02</span>
+          <div>
+            <p class="when">On set</p>
+            <h2>Your day, on your lock screen.</h2>
+            <p>Set your call. Tap <strong>Lunch</strong> and <strong>Wrap</strong> from the Live Activity. Your running total, overtime and penalties update as the day happens.</p>
+            <span class="feature"><span class="dot"></span> Less remembering. More getting paid.</span>
+          </div>
+        </article>
+
+        <article class="step">
+          <span class="number mono">03</span>
+          <div>
+            <p class="when">After wrap</p>
+            <h2>Timesheet. Invoice. Done.</h2>
+            <p>TimeMachine turns the day into the paperwork, with mileage and extras included. Check it, attach it and send it.</p>
+            <span class="feature"><span class="dot"></span> The numbers already add up</span>
+          </div>
+        </article>
+        </div>
+      </section>
+
+      <aside class="late">
+        <h2><span>Getting production to pay on time?</span> That’s outside my scope.</h2>
+        <p>If they don’t, TimeMachine can calculate the late-payment interest and recovery fee, then draft the chase email too. <a href="/articles/late-payment-what-youre-owed" data-track="late_payment_click">See what you’re owed.</a></p>
+      </aside>
+
+      <section class="choose" aria-labelledby="choose-title">
+        <h2 id="choose-title">Use it on your phone.</h2>
+        <p>The iPhone app gets the full on-set experience. The web app works on Android and desktop.</p>
+        <div class="platforms">
+          <div class="platform">
+            <h3>On an iPhone</h3>
+            <p>Get the native app, including Live Activities, Siri and call-sheet reading on supported phones.</p>
+            <a class="button app-store" href="https://apps.apple.com/app/id6775970098" target="_blank" rel="noopener" data-track="app_store_click"><span>Get TimeMachine</span><span aria-hidden="true">→</span></a>
+          </div>
+          <div class="platform">
+            <h3>On Android</h3>
+            <p>Open the web app. It calculates the same APA day, timesheet and invoice.</p>
+            <a class="button web-app" href="/app/" data-track="web_app_click"><span>Open TimeMachine</span><span aria-hidden="true">→</span></a>
+            <p class="install">Then use your browser menu → <strong>Add to Home screen.</strong></p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="signoff">
+      <strong>Commercials now.</strong> Long form is in development.<br>
+      Built to the APA Recommended Crew Terms. <span class="sky">Free.</span>
+      <nav aria-label="Footer">
+        <a href="/how-it-works" data-track="how_it_works_click">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">Feedback</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Instagram</a>
+      </nav>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      var ua = navigator.userAgent || '';
+      var ios = /iPhone|iPod|iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      var android = /Android/i.test(ua);
+      var preferred = document.querySelectorAll(ios ? '.app-store' : '.web-app');
+      preferred.forEach(function (link) { link.classList.add('primary'); });
+
+      var note = document.getElementById('device-note');
+      if (note && ios) note.textContent = 'You’re on iPhone — the native app gives you Live Activities on set.';
+      if (note && android) note.textContent = 'You’re on Android — open the web app, then add it to your home screen.';
+
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({ event: 'sticker_welcome_view', page_path: '/welcome', source: 'sticker_qr' });
+
+      document.addEventListener('click', function (event) {
+        var link = event.target.closest('[data-track]');
+        if (!link) return;
+        var name = link.getAttribute('data-track');
+        window.dataLayer.push({ event: name, page_path: '/welcome', source: 'sticker_qr', link_url: link.href });
+        if (typeof window.gtag === 'function') window.gtag('event', name, { page_location: location.href, link_url: link.href, campaign_source: 'sticker_qr' });
+        if (window.plausible) window.plausible(name, { props: { source: 'sticker_qr' } });
+      });
+    })();
+  </script>
+</body>
+</html>
