@@ -2401,15 +2401,21 @@
       return custom ? [...COMPARISON_SURFACE, custom.label] : COMPARISON_SURFACE;
     };
 
-    // ── APA rate cards — effective-dated (numbers only) ─────────────────────
-    // The RULES never vary by card: role names, departments, pmpa/noOT flags
-    // and the whole calc engine are card-invariant — only the figures
-    // (bdr/otCoef, any explicit otRate) move between cards. A production
-    // resolves its card by startDate at the COPY sites only (crew creation,
-    // role change, step-up pickers, the boundary-crossing refresh prompt);
-    // the engine reads nothing but the values already snapshotted onto
-    // crew/day records, so an existing production never moves retroactively
-    // when a new card lands.
+    // ── APA rate cards — effective-dated ────────────────────────────────────
+    // The RULES never vary by card, with ONE documented exception: role
+    // names, departments, pmpa/noOT flags and the calc engine are
+    // card-invariant — only the figures (bdr/otCoef, any explicit otRate)
+    // move between cards. A production resolves its card by startDate at the
+    // COPY sites only (crew creation, role change, step-up pickers, the
+    // boundary-crossing refresh prompt); the engine reads nothing but the
+    // values already snapshotted onto crew/day records, so an existing
+    // production never moves retroactively when a new card lands.
+    //
+    // THE EXCEPTION (Phase 12): `terms` — card-versioned RULE changes, born
+    // with the Sept 2026 prep-day rewrite (clause 2.3). Resolved ONCE at the
+    // calcForDisplay call site via resolveApaTerms and passed as a parameter,
+    // so the engine still never resolves a card. Single-sited by design: a
+    // future rule change extends the term set, never adds a second mechanism.
     const RATE_CARDS = [
       {
         effectiveFrom: "2025-09-01",
@@ -2529,6 +2535,16 @@
         // always takes its own otCoef. Grade III is the fallthrough. Next
         // September's card carries its own.
         otGrades: { '1.5': 458, '1.25': 696 },
+        // Card-versioned TERMS (Phase 12) — the one documented exception to
+        // "the rules never vary by card" (see the RATE_CARDS comment above).
+        // Clause 2.3, Sept 2026: prep may be booked for 8 or 10 hours and
+        // weekday prep OT applies only after 10 hours worked. Absent on the
+        // 2025 card, so an August shoot keeps the 2025 prep rule for its
+        // whole run, September days included. Resolved ONCE at the
+        // calcForDisplay call site (resolveApaTerms) - the engine reads the
+        // parameter and never resolves a card itself. A future rule change
+        // extends THIS term set; it does not add a second mechanism.
+        terms: { prepOtAfter10: true },
         departments: {
           "Direction & Production": {
             "Director":             { bdr: 961,  otCoef: 0,    noOT: true },
@@ -2660,6 +2676,11 @@
     function roleDefaultsFor(production) {
       return flattenRateCard(resolveRateCard(production && production.startDate));
     }
+
+    // Card-versioned TERMS (Phase 12): the effective-dated RULE set, resolved
+    // by the production's start date exactly as the rates are. {} for every
+    // card without one (2025), so absent means the existing behaviour.
+    const resolveApaTerms = (startDate) => resolveRateCard(startDate).terms || {};
 
     // New-production mileage default (Phase 5b bug fix). userPrefs.defaultMileageRate
     // is a "New-production defaults" setting: it seeds production.mileageRatePerMile
@@ -5333,10 +5354,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return { meta: { workedHrs, otHrs: 0, waivedOtHrs: 0, bhr, otRate, dayLabel: "Travel Day", notes, secondBreakRequired: false, continuousDay: false }, lines, total };
       }
 
+      // Sept 2026 prep rule (clause 2.3, card-versioned via apaTerms - the
+      // 2025 card carries no terms, so an August shoot never enters here).
+      // WEEKDAY ONLY: clauses 2.4(vii)-(viii) are unchanged, so Saturday and
+      // Sunday/BH prep keep 8h at 1.5x/2x with OT after 8 - the 10-hour
+      // threshold must not leak into them (both weekend branches read
+      // basicHrs). Night prep is also excluded: the clause is silent on
+      // nights, so a night-call prep keeps its 2025 behaviour rather than
+      // gaining an unstated 10-hour rule.
+      const prepOtAfter10 = (weekendOpts.apaTerms || {}).prepOtAfter10 === true &&
+        effectiveDayType === "Prep Day" && !treatAsSat && !treatAsSun && !isNightShoot;
+
       let basicHrs;
       if (continuousDay) basicHrs = 9;
       else if (effectiveDayType === "Shoot") { basicHrs = isElevenHourDay ? 12 : 11; if (lunchDuration < 60 && !lunchMissed) basicHrs -= (60 - lunchDuration) / 60; }
       else if (effectiveDayType === "Pre-light") { basicHrs = 9; if (lunchDuration < 60 && !lunchMissed) basicHrs = 9 - (60 - lunchDuration) / 60; }
+      else if (prepOtAfter10) {
+        // Sept 2026, clause 2.3: "Overtime shall only apply after 10 hours
+        // have been worked." The threshold attaches to hours WORKED, not to
+        // the booking - an 8-hour booking still reaches OT only past 10 (the
+        // change log is explicit: do not infer the threshold from the
+        // booking). The 2025 break-extension row ("shifts up by lunch
+        // duration") was DELETED by the rewrite, not revised, so no lunch
+        // shift here: the threshold is a flat 10. Recce/Build/De-rig keep
+        // the extension on the unchanged branch below.
+        basicHrs = 10;
+      }
       else if (DISCRETIONARY_LUNCH_DAY_TYPES.includes(effectiveDayType)) {
         // APA §2.3: 8h base, no lunch obligation. OT after 8h normally.
         // If a 1st break is given, basic shifts up by lunch duration (capped at 1h → 9h base).
@@ -5555,6 +5598,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         } else if (effectiveDayType === "Pre-light") {
           const baseHrs = continuousDay ? 9 : 8;
           lines.push({ label: continuousDay ? "Pre-light Day (CWD 9h × BHR)" : "Pre-light Day (8h × BHR + 1h lunch)", detail: callWrapLabel, rate: bhr, qty: baseHrs, amount: baseHrs * bhr });
+        } else if (prepOtAfter10) {
+          // Sept 2026 prep (clause 2.3): the BOOKING is charged at BHR - 8 or
+          // 10 hours (day.prepBookingHours; absent means 8, the clause's
+          // first-listed option and the 2025-shaped default). The booking is
+          // a minimum: it's charged even when fewer hours are worked. Hours
+          // worked beyond the booking but inside the 10-hour threshold are
+          // ALSO at BHR, not overtime - the LITERAL reading of "overtime
+          // shall only apply after 10 hours have been worked", which the
+          // founder is checking against practice. If that ruling changes,
+          // this band is the one place that changes. OT past 10 comes from
+          // the shared block below (basicHrs = 10).
+          const booked = day.prepBookingHours === 10 ? 10 : 8;
+          lines.push({ label: `Prep Day (${booked}h booking × BHR)`, detail: callWrapLabel, rate: bhr, qty: booked, amount: booked * bhr });
+          const extraBhr = ceilHalf(Math.max(0, Math.min(effectiveHrs, 10) - booked));
+          if (extraBhr > 0) {
+            lines.push({ label: "Additional prep hours (BHR)", detail: `beyond the ${booked}h booking, within 10h`, rate: bhr, qty: extraBhr, amount: extraBhr * bhr });
+          }
         } else if (DISCRETIONARY_LUNCH_DAY_TYPES.includes(effectiveDayType)) {
           // APA §2.3: 8h × BHR. Lunch is at producer's discretion and unpaid.
           // basicHrs (above) is the OT threshold and shifts with lunch; the paid
@@ -7651,7 +7711,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const effectiveCrew = resolveCrewForDay(resolved, crewMember, production && production.dayTypeRates);
       let calc;
       try {
-        calc = augmentCalc(calculateDay(resolved, effectiveCrew, { ...production, apaRounding: roundingApa(production) }), resolved, crewMember);
+        calc = augmentCalc(calculateDay(resolved, effectiveCrew, { ...production, apaRounding: roundingApa(production), apaTerms: resolveApaTerms(production && production.startDate) }), resolved, crewMember);
       } catch (err) {
         // Fail safe: a corrupt/legacy day (e.g. an unknown dayType) must not crash
         // the many render sites that call calcForDisplay. Return a zero day + note.

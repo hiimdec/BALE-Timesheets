@@ -550,6 +550,119 @@ function stageNation(eng, ok) {
     JSON.stringify({ scot: pmpaScot.total, london: pmpaLondon.total }));
 }
 
+// ---- PREP: Sept 2026 prep-day rewrite (clause 2.3), card-versioned ----------
+//
+// The 2026 card carries terms: { prepOtAfter10: true }; the 2025 card carries
+// none. The engine reads weekendOpts.apaTerms (resolved from the PRODUCTION
+// START DATE at the calcForDisplay call site), so an August-started shoot
+// keeps 2025 prep money for its whole run, September days included.
+//
+// PREP2 pins the LITERAL reading of "overtime shall only apply after 10 hours
+// have been worked" - hours 9 and 10 at BHR, not OT, threshold on hours
+// worked not on the booking. The founder is checking that reading against
+// practice; if the ruling changes, PREP1/PREP2/PREP6 move and the engine's
+// one prep2026 emit block is the place that changes.
+
+function stagePrep(eng, ok) {
+  console.log('\nPREP · Sept 2026 prep rule (clause 2.3): 8-or-10 booking, OT after 10 worked, weekday only');
+  const crew = baseCrew();                                   // BDR 444 → BHR 44.40, OT 66.60
+  // No lunch on the core fixtures - the 2025 lunch extension is PREP6's job.
+  const prepDay = (o = {}) => baseDay({ dayType: 'Prep Day', lunchStartTime: '', lunchDurationMins: 0, ...o });
+  const T26 = { prepOtAfter10: true };
+  const run = (day, terms) => eng.calculateDay(day, crew, terms ? { apaTerms: terms } : {});
+  const addlQty = (calc) => calc.lines.filter(l => l.label === 'Additional prep hours (BHR)').reduce((s, l) => s + l.qty, 0);
+
+  // PREP1 — the OT threshold moves from 8 (no lunch) to a flat 10.
+  const span12 = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '20:00' }); // Tuesday, 12h span
+  const p1new = run(span12, T26);
+  const p1old = run(span12);
+  ok('PREP1 12h weekday prep, 8h booking: 2026 pays 8h booking (£355.20) + 2h more BHR to the 10h threshold (£88.80) + 2h OT (£133.20) = £577.20; the SAME day on 2025 terms pays 8h + 4h OT = £621.60 - the rule is £44.40 of real divergence, in the producer\'s favour',
+    near(p1new.total, 577.20) && near(p1old.total, 621.60) &&
+    addlQty(p1new) === 2 && otQty(p1new) === 2 &&
+    addlQty(p1old) === 0 && otQty(p1old) === 4,
+    JSON.stringify({ new: p1new.total, old: p1old.total, addl: addlQty(p1new), ot: [otQty(p1new), otQty(p1old)] }));
+
+  // PREP2 — THE LITERAL READING, flagged: hours 9-10 at BHR, not OT.
+  const span10 = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '18:00' }); // 10h span exactly
+  const p2new = run(span10, T26);
+  const p2old = run(span10);
+  ok('PREP2 [LITERAL READING - founder checking against practice] 10h weekday prep, 8h booking: hours 9-10 are BHR (£444.00 total, NO OT line), where 2025 paid them as OT (£488.40). Threshold is on hours WORKED, never inferred from the booking',
+    near(p2new.total, 444.00) && otQty(p2new) === 0 && addlQty(p2new) === 2 &&
+    near(p2old.total, 488.40) && otQty(p2old) === 2,
+    JSON.stringify({ new: p2new.total, old: p2old.total }));
+
+  // PREP3 — the booking is a charged minimum, and the control is money.
+  const span7b10 = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '15:00', prepBookingHours: 10 });
+  const span7b8  = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '15:00' });
+  const p3b10 = run(span7b10, T26);
+  const p3b8  = run(span7b8, T26);
+  ok('PREP3 7h worked on a 10h booking still charges the full booking (£444.00); the same day booked at 8h charges £355.20 - prepBookingHours is £88.80 of money, so the day-record field cannot be decorative',
+    near(p3b10.total, 444.00) && near(p3b8.total, 355.20) && otQty(p3b10) === 0 && otQty(p3b8) === 0,
+    JSON.stringify({ b10: p3b10.total, b8: p3b8.total }));
+
+  // PREP4 — Saturday precedence: clauses 2.4(vii)-(viii) unchanged, so the
+  // 10h threshold must NOT leak into Saturday prep (which reads basicHrs for
+  // its OT). Byte-equal lines with terms on/off; PREP1 proves the same terms
+  // object is live money on a weekday, so the equality is not vacuous.
+  const sat12 = prepDay({ date: '2026-09-05', callTime: '08:00', wrapTime: '20:00' }); // Saturday
+  const p4on = run(sat12, T26);
+  const p4off = run(sat12);
+  ok('PREP4 Saturday prep is UNTOUCHED by the 2026 terms: identical lines and total with terms on and off (2.4(vii)-(viii) unchanged), while the SAME terms object moves weekday money in PREP1 - a basicHrs leak into the Saturday branch goes RED here',
+    JSON.stringify(p4on.lines) === JSON.stringify(p4off.lines) && near(p4on.total, p4off.total) &&
+    p4on.total > 0 && !near(p1new.total, p1old.total),
+    JSON.stringify({ on: p4on.total, off: p4off.total }));
+
+  // PREP5 — the other two exclusions. HONESTY NOTE (mutation-tested): unlike
+  // Saturday, the Sunday/BH non-Shoot emit (flat hourly, min 8) and the night
+  // emit (flat hourly, min 10) never read basicHrs TODAY, so dropping
+  // !treatAsSun or !isNightShoot from the guard moves no money on any fixture
+  // - these equalities cannot go red on the guard edit alone. They are
+  // TRIPWIRES: they fire the day either branch starts reading basicHrs while
+  // the guard is wrong. The guard EDIT itself is what goes RED, at source, in
+  // PT4 (storage suite) - that pin, not this one, holds those two exclusions.
+  const sun12 = prepDay({ date: '2026-09-06', callTime: '08:00', wrapTime: '20:00' });   // Sunday
+  const bh12  = prepDay({ date: '2026-08-31', callTime: '08:00', wrapTime: '20:00' });   // August BH (E&W)
+  const night = prepDay({ date: '2026-09-01', callTime: '20:00', wrapTime: '06:00', wrapNextDay: true });
+  const eq = (day) => { const a = run(day, T26), b = run(day); return JSON.stringify(a.lines) === JSON.stringify(b.lines) && near(a.total, b.total) && a.total > 0; };
+  ok('PREP5 Sunday prep, bank-holiday prep and NIGHT prep are byte-equal with terms on and off - a TRIPWIRE, not a load-bearing pin: those branches do not read basicHrs today (so this cannot fail on the guard edit alone - PT4 pins the guard at source); it fires if they ever start',
+    eq(sun12) && eq(bh12) && eq(night),
+    JSON.stringify({ sun: [run(sun12, T26).total, run(sun12).total], bh: [run(bh12, T26).total, run(bh12).total], night: [run(night, T26).total, run(night).total] }));
+
+  // PREP6 — the split is prep-ONLY: Recce/Build/De-rig keep the 2025 branch
+  // (lunch extension included) under 2026 terms, while the SAME times as a
+  // Prep Day diverge - proving the extension was deleted for prep, retained
+  // for the other three discretionary types.
+  const recce = baseDay({ dayType: 'Recce', date: '2026-09-01', callTime: '08:00', wrapTime: '18:00' }); // 10h span, 1h lunch given
+  const r26 = run(recce, T26);
+  const r25 = run(recce);
+  const prepSameTimes = run(baseDay({ dayType: 'Prep Day', date: '2026-09-01', callTime: '08:00', wrapTime: '18:00' }), T26);
+  const otherTypesUntouched = ['Build Day', 'De-rig'].every((t) => {
+    const d = baseDay({ dayType: t, date: '2026-09-01', callTime: '08:00', wrapTime: '20:00' });
+    const a = run(d, T26), b = run(d);
+    return JSON.stringify(a.lines) === JSON.stringify(b.lines) && near(a.total, b.total);
+  });
+  ok('PREP6 Recce with a 1h lunch pays £421.80 (8h + 1h OT past the 9h extension) IDENTICALLY on both term sets, and Build/De-rig are byte-equal too - but the same times as a 2026 Prep Day pay £444.00 with no OT (extension deleted, threshold 10): the split is prep-only',
+    near(r26.total, 421.80) && near(r25.total, 421.80) &&
+    JSON.stringify(r26.lines) === JSON.stringify(r25.lines) &&
+    near(prepSameTimes.total, 444.00) && otQty(prepSameTimes) === 0 &&
+    otherTypesUntouched,
+    JSON.stringify({ recce: [r26.total, r25.total], prep: prepSameTimes.total }));
+
+  // PREP7 — the resolution seam itself: terms come from the START date's
+  // card, so an August-started shoot never sees the 2026 rule. (No pin on an
+  // absent date - resolveRateCard falls back to today, which would flip this
+  // suite on 1 September.)
+  const t0901 = eng.resolveApaTerms('2026-09-01');
+  const t0831 = eng.resolveApaTerms('2026-08-31');
+  const t0601 = eng.resolveApaTerms('2026-06-01');
+  ok('PREP7 resolveApaTerms: a 2026-09-01 start carries { prepOtAfter10: true }; 2026-08-31 and 2026-06-01 starts carry {} - and feeding the resolver\'s own outputs through the engine reproduces PREP1\'s divergence, so the seam is live end to end',
+    t0901 && t0901.prepOtAfter10 === true && Object.keys(t0901).length === 1 &&
+    t0831 && Object.keys(t0831).length === 0 && t0601 && Object.keys(t0601).length === 0 &&
+    near(eng.calculateDay(span12, crew, { apaTerms: t0901 }).total, 577.20) &&
+    near(eng.calculateDay(span12, crew, { apaTerms: t0831 }).total, 621.60),
+    JSON.stringify({ t0901, t0831, t0601 }));
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -567,6 +680,7 @@ async function runCalcBoundaryAssertions() {
   stageNoOT(eng, ok);
   stageDayRate(eng, ok);
   stageNation(eng, ok);
+  stagePrep(eng, ok);
   return summary();
 }
 

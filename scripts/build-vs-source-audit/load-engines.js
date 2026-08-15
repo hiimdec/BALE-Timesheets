@@ -100,6 +100,10 @@ const ENGINE_NAMES = [
   // card-refresh rule against the REAL cards, not fixture copies.
   'resolveRateCard',
   'flattenRateCard',
+  // Phase 12: the card-versioned TERM resolver (the one documented rules
+  // exception) — stagePrep executes it against the real cards so the pins
+  // cover the resolution seam, not just the engine parameter.
+  'resolveApaTerms',
   // The card-boundary crew refresh itself — module scope since Phase 7, so
   // the suite executes it directly (the extract-and-evaluate era is over).
   'applyRateCardToCrew',

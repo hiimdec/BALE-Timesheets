@@ -325,3 +325,71 @@ Grade III under legacy), so it cannot pass by the two paths agreeing.
 **Reach:** these ceilings are read *only* by `autoOtCoef`, the card-less-role
 fallback. A role that exists on the card always takes its own `otCoef`, so for
 every pickable role this changes nothing — which is why no calc pin moves.
+
+---
+
+## Sept 2026 terms — card-versioned RULES (`apaTerms`): **RESOLVED — IMPLEMENTED** (Phase 12)
+
+**The "numbers only" invariant now has exactly one documented exception.**
+Since the cards landed, the rule has been: cards carry figures, never rules —
+the engine is card-invariant and an existing production never moves when a new
+card is published. The Sept 2026 prep-day rewrite is the first *rule* change
+that must version with the card, so the mechanism gains one exception, built
+narrow on the `apaRounding` precedent:
+
+- The Sept 2026 card carries `terms: { prepOtAfter10: true }`. The 2025 card
+  carries no `terms` key; absent means existing behaviour.
+- `resolveApaTerms(startDate)` (= `resolveRateCard(startDate).terms || {}`)
+  resolves the term set from the **production start date**, so an
+  August-started shoot keeps 2025 rules for its whole run, September days
+  included — same retroactivity contract as the rates.
+- Resolution happens at exactly **one** call site: the `calcForDisplay` spread,
+  beside `apaRounding`. The engine reads `weekendOpts.apaTerms` and never
+  resolves a card itself — it stays pure-by-parameter.
+- **A future rule change extends this term set; it does not add a second
+  mechanism.** `PT3` pins single-sitedness (one definition, one call site);
+  `PT1`/`PT2` pin the card shape and the resolver; `RW1` auto-caught the new
+  engine read and its writer declaration names the call-site resolution.
+
+## Sept 2026 terms — prep day (clause 2.3): **IMPLEMENTED — ONE READING FLAGGED** (Phase 12)
+
+**Source:** `APA_CREW_TERMS_2026.md` lines 578–579 (PDF p.4), effective
+1 September 2026, card-versioned via `apaTerms` (above):
+
+> Preparation days can be booked for 8 hours or 10 hours. Overtime shall only
+> apply after 10 hours have been worked.
+
+**Built (founder-ruled, items 1, 3, 4):**
+
+- `prepBookingHours` on the **day record** — `10` or absent (absent = 8, the
+  clause's first-listed option and the 2025-shaped default). The booking is a
+  charged minimum: 7h worked on a 10h booking still bills 10 × BHR (`PREP3`).
+- Prep is **split out** of the shared discretionary branch. Recce, Build Day
+  and De-rig keep the byte-identical 2025 path, lunch extension included
+  (`PREP6`, `PT5`). For 2026 prep the extension row was *deleted* by the
+  rewrite, not revised: the threshold is a flat 10, no lunch shift.
+- **Weekday only.** Clauses 2.4(vii)–(viii) are unchanged, so Saturday and
+  Sunday/BH prep keep 8h at 1.5×/2× with their own structures; night prep
+  (clause silent on nights) keeps 2025 behaviour. Guard:
+  `!treatAsSat && !treatAsSun && !isNightShoot`. `PREP4` proves the Saturday
+  direction with money (the Saturday branch reads `basicHrs`, so a leak is
+  £-visible); the Sunday/BH and night emits do **not** read `basicHrs` today,
+  so those two exclusions are pinned at source by `PT4` and tripwired by
+  `PREP5` — recorded honestly rather than claimed as money pins.
+
+**FLAGGED — a reading, not a certainty (founder checking against practice):**
+hours 9 and 10 on an 8-hour booking are billed at **BHR**, not OT, and the
+threshold attaches to hours **worked**, never inferred from the booking. That
+is the literal text of both the clause and the change log ("do not infer the
+OT threshold from the selected 8-hour booking"), and it is what ships. It is
+also £44.40/hr *against* the crew relative to 2025 (`PREP2`: a 10h weekday
+prep pays £444.00 under 2026 terms where 2025 paid £488.40). The whole reading
+lives in **one place** — the `prepOtAfter10` emit block in `calculateDay` —
+so a different ruling is a small change, and `PREP1`/`PREP2`/`PREP6` are the
+pins that move with it.
+
+**Deliberately untouched:** `travelBarNet` keeps prep at 8 — the §3.1
+travel-absorption bar is a separate rule the 2026 terms do not amend, and
+raising it to 10 would quietly absorb more travel pay (crew-unfavourable).
+Claim-and-flag: left at 8, flagged here. `DEFAULT_HOURS` ("Prep Day": 8, wrap
+derivation) and PMPA (§2-exempt) also unchanged.

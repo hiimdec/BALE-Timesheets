@@ -295,6 +295,8 @@ async function transformedAppCode() {
     // instead of hand-setting the values the path is supposed to produce.
     'try { globalThis.__resolveRateCard = resolveRateCard; } catch (_) {}\n' +
     'try { globalThis.__flattenRateCard = flattenRateCard; } catch (_) {}\n' +
+    // Phase 12: the card-versioned TERM resolver (PT pins).
+    'try { globalThis.__resolveApaTerms = resolveApaTerms; } catch (_) {}\n' +
     // Record-construction executions (RC, ruled): the module-level writers the
     // RC section runs for real instead of regex-pinning their prose.
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
@@ -3532,6 +3534,55 @@ async function main() {
       }
     }
 
+    // ── PT: card-versioned TERMS (Phase 12) - the ONE documented exception to
+    //    "the rules never vary by card", born with the Sept 2026 prep rewrite
+    //    (clause 2.3). The money itself is pinned in calc-boundary (PREP1-7);
+    //    these pins hold the MECHANISM's shape: terms live on the card, resolve
+    //    through resolveApaTerms at exactly one call site, and the engine guard
+    //    keeps every exclusion. ──
+    {
+      const cards = sb.__RATE_CARDS;
+      const rTerms = sb.__resolveApaTerms;
+      if (cards && typeof rTerms === 'function') {
+        check('PT1 the term set rides ON the 2026 card ({ prepOtAfter10: true }, nothing else) and the 2025 card carries NO terms key at all - absent means existing behaviour, so an August-started shoot never sees the 2026 rule',
+          cards[1] && cards[1].terms && cards[1].terms.prepOtAfter10 === true &&
+          Object.keys(cards[1].terms).length === 1 &&
+          cards[0] && cards[0].terms === undefined,
+          JSON.stringify({ card1: cards[1] && cards[1].terms, card0: cards[0] && cards[0].terms }));
+        check('PT2 resolveApaTerms executes: a Sept 2026 start resolves { prepOtAfter10: true }, an August 2026 start resolves {} (not undefined - the || {} means the engine never branches on presence)',
+          rTerms('2026-09-01').prepOtAfter10 === true &&
+          typeof rTerms('2026-08-31') === 'object' && Object.keys(rTerms('2026-08-31')).length === 0,
+          JSON.stringify({ sept: rTerms('2026-09-01'), aug: rTerms('2026-08-31') }));
+      } else {
+        check('PT1 RATE_CARDS + resolveApaTerms exposed', false, 'not exposed');
+      }
+      const src12 = fs.readFileSync(SRC_HTML, 'utf8');
+      // The single-sited invariant: resolveApaTerms is resolved at EXACTLY one
+      // call site (calcForDisplay, beside apaRounding - the precedent). Its
+      // name appears exactly thrice: the definition comment, the definition,
+      // and the call site. A second resolution site is a second mechanism.
+      const callSites = (src12.match(/apaTerms: resolveApaTerms\(production && production\.startDate\)/g) || []).length;
+      const defs = (src12.match(/const resolveApaTerms = \(startDate\) => resolveRateCard\(startDate\)\.terms \|\| \{\};/g) || []).length;
+      check('PT3 single-sited by design: resolveApaTerms has exactly ONE definition and exactly ONE resolution call site (the calcForDisplay spread, beside apaRounding) - a second site would be a second mechanism and goes RED here',
+        callSites === 1 && defs === 1,
+        `callSites=${callSites} defs=${defs}`);
+      // The engine guard, character-anchored with ALL THREE exclusions. Losing
+      // any ! silently changes weekend/night prep money - PREP4/PREP5 catch
+      // the behaviour; this catches the edit itself.
+      const guard = (src12.match(/const prepOtAfter10 = \(weekendOpts\.apaTerms \|\| \{\}\)\.prepOtAfter10 === true &&\n\s*effectiveDayType === "Prep Day" && !treatAsSat && !treatAsSun && !isNightShoot;/g) || []).length;
+      check('PT4 the engine guard carries all three exclusions in one expression (weekday-only: !treatAsSat && !treatAsSun && !isNightShoot) and the terms parameter defaults to {} - clause 2.4 weekends and night prep stay on 2025 behaviour under 2026 terms',
+        guard === 1, `guard=${guard}`);
+      // The split is prep-only: the shared discretionary branch survives
+      // byte-identically (Recce/Build/De-rig keep the lunch extension), and
+      // the prep2026 threshold branch sits in front of it.
+      const sharedBranch = (src12.match(/basicHrs = 8;\n\s*if \(!lunchMissed && lunchDuration >= 60\) basicHrs = 9;\n\s*else if \(!lunchMissed && lunchDuration > 0\) basicHrs = 8 \+ \(lunchDuration \/ 60\);/g) || []).length;
+      const prepBranch = (src12.match(/else if \(prepOtAfter10\) \{/g) || []).length;
+      const bookingRead = (src12.match(/const booked = day\.prepBookingHours === 10 \? 10 : 8;/g) || []).length;
+      check('PT5 the prep split leaves the other three discretionary types on the byte-identical shared branch (lunch extension intact, exactly one copy) with the prep2026 branch in front (one threshold site + one emit site) and the 8-or-10 booking read at exactly one place',
+        sharedBranch === 1 && prepBranch === 2 && bookingRead === 1,
+        `shared=${sharedBranch} prepBranches=${prepBranch} bookingRead=${bookingRead}`);
+    }
+
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
     //    class of bug: a field the engine reads that no construction path writes
     //    sits dead - the engine is correct given its inputs, the calc suite hands
@@ -3576,6 +3627,12 @@ async function main() {
         // RW1 caught it as an undeclared engine read the moment it landed -
         // which is exactly what that pin is for.
         baseNation:         [/if \(v && v !== 'england-wales'\) n\.baseNation = v; else delete n\.baseNation;/],
+        // Phase 12: the card-versioned term set - NOT a stored production
+        // field. Derived at the calcForDisplay call site from startDate via
+        // resolveApaTerms, exactly like apaRounding is derived from
+        // roundingMode, so the call-site resolution IS the writer. RW1
+        // caught this read the moment it landed, same as baseNation.
+        apaTerms:           [/apaTerms: resolveApaTerms\(production && production\.startDate\)/],
         // crew.* (effectiveCrew = the crew record + the step-up overlay)
         bdr:    [/bdr: d\.bdr \?\? f\.bdr/],                               // role-selection copy
         // Phase 8: written inside the ONE shared role-change helper.
