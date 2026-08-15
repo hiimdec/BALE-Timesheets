@@ -291,3 +291,37 @@ early call), B3 (travel-time gate, net-worked model, 2026-07-13). Kept
 deliberately: B4 (night penalties at 2×), B5, B7. Backlog: B6, B8. Remaining
 follow-ups: the APA_RULES.md editorial pass, and the optional "booked CWD"
 carve-out noted under A4.*
+
+---
+
+## Sept 2026 terms — OT grade boundaries: **RESOLVED — IMPLEMENTED** (Phase 12)
+
+**Source:** `APA_CREW_TERMS_2026.md` clauses 4.1–4.3 (repo root; PDF at
+`apa-crew-terms-sept-2026.pdf`, p.9), effective 1 September 2026.
+
+> 4.1 Grade I (Basic Daily Rate £0 – £458) … one and a half times (1.5)
+> 4.2 Grade II (Basic Daily Rate £459 – £696) … one and a quarter times (1.25)
+> 4.3 Grade III (Basic Daily Rate £697 and more) … one times (1.0)
+
+**The clause supersedes an inference.** Phase 6 had only the rate CSV, so the
+2026 ceilings were *derived* from each grade's role maximum on the card, giving
+`{ '1.5': 457, '1.25': 694 }`. Those figures were never wrong by much — the
+uplift happened to land near them — but they were a derivation, and the terms
+now state the boundaries outright: **458 and 696**. Both corrected. Anywhere the
+earlier reasoning survives (the Phase 6 commit message `6130901`, and the
+superseded code comment) should be read as history, not as the rule.
+
+The boundaries **abut exactly** — £696 then £697 — so no BDR can fall in a gap
+between grades. Pinned as such (`OTG2b`), because the adjacency is the property
+worth protecting, not the two numbers on their own.
+
+**Card-versioned, not global.** The ceilings live in `otGrades` on the Sept 2026
+card only. The 2025 card carries none, so a production that started before
+1 September keeps the legacy thresholds for its whole run, September days
+included. `OTG2c` pins both directions with rates that genuinely diverge (£458
+is Grade I under 2026 but Grade II under legacy; £696 is Grade II under 2026 but
+Grade III under legacy), so it cannot pass by the two paths agreeing.
+
+**Reach:** these ceilings are read *only* by `autoOtCoef`, the card-less-role
+fallback. A role that exists on the card always takes its own `otCoef`, so for
+every pickable role this changes nothing — which is why no calc pin moves.

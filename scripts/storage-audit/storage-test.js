@@ -3454,9 +3454,27 @@ async function main() {
           fn(700, g) === 1.0 &&
           fn(400, g) === 1.5 && fn(400) === 1.5,
           JSON.stringify({ g, at450: [fn(450, g), fn(450)], at680: [fn(680, g), fn(680)] }));
-        check('OTG2 the ceilings are the published Sept 2026 per-grade maxima (I=457, II=694) carried ON the card, versioned with it; the 2025 card carries none (ruled: its fallback keeps the legacy thresholds)',
-          Number(g['1.5']) === 457 && Number(g['1.25']) === 694 && cards[0].otGrades === undefined,
+        check('OTG2 the ceilings are the ones STATED IN THE TERMS (clauses 4.1-4.3: Grade I £0-458, Grade II £459-696, Grade III £697+), carried ON the 2026 card and versioned with it; the 2025 card carries none, so its fallback keeps the legacy thresholds',
+          Number(g['1.5']) === 458 && Number(g['1.25']) === 696 && cards[0].otGrades === undefined,
           JSON.stringify({ g, card0: cards[0].otGrades }));
+        // The four clause boundaries, each side of both edges. £458/£459 and
+        // £696/£697 abut exactly, so a rate can never fall in a gap between
+        // grades - that adjacency is the thing worth pinning, not the numbers
+        // alone.
+        check('OTG2b the clause boundaries land exactly where the terms put them: £458 is Grade I and £459 is Grade II; £696 is Grade II and £697 is Grade III - the two pairs abut, so no BDR falls between grades',
+          fn(458, g) === 1.5 && fn(459, g) === 1.25 &&
+          fn(696, g) === 1.25 && fn(697, g) === 1.0,
+          JSON.stringify({ at458: fn(458, g), at459: fn(459, g), at696: fn(696, g), at697: fn(697, g) }));
+        // Card versioning: a production on the 2025 card must NOT pick up the
+        // 2026 boundaries. £458 is Grade I under 2026 but Grade II under the
+        // legacy thresholds (which broke at 445), and £696 is Grade II under
+        // 2026 but Grade III under legacy (which broke at 677). Both diverge,
+        // so this cannot pass by the two paths agreeing.
+        check('OTG2c a 2025-card production still uses the OLD boundaries: £458 is Grade II there but Grade I under 2026, and £696 is Grade III there but Grade II under 2026 - a shoot that started in August keeps its own terms, and both test rates diverge so the pin cannot pass by agreement',
+          fn(458) === 1.25 && fn(458, g) === 1.5 &&
+          fn(696) === 1.0 && fn(696, g) === 1.25 &&
+          cards[0].otGrades === undefined,
+          JSON.stringify({ legacy458: fn(458), card2026_458: fn(458, g), legacy696: fn(696), card2026_696: fn(696, g) }));
       } else {
         check('OTG1 autoOtCoef + the 2026 card otGrades exposed', false, 'not exposed');
       }

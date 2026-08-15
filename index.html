@@ -2519,14 +2519,16 @@
         // Sept 2026 card — BDR-only uplift (~3%, rounded to the pound);
         // otCoef / noOT / pmpa are card-invariant. Allowances (mileage,
         // missed meal, late break) carry over unchanged per Derrick.
-        // Published OT grade CEILINGS (each grade's role maximum from the
-        // Sept 2026 card CSV, committed at the repo root), read only by the
-        // card-less-role fallback (autoOtCoef) - a known role always takes
-        // its own otCoef. Ceilings, never derived from this card's rates:
-        // deriving would let the £675 Master Rigger (Grade I, carried over)
-        // blow Grade I's ceiling. Grade III is the fallthrough. Next
+        // OT grade ceilings, STATED IN THE TERMS (APA_CREW_TERMS_2026.md,
+        // clauses 4.1-4.3): Grade I £0-£458, Grade II £459-£696, Grade III
+        // £697+. Phase 6 had to infer these from the card's role maxima
+        // (457/694) because only the rate CSV was available; the clauses now
+        // supersede that inference and correct both figures. The boundaries
+        // abut exactly - £696 then £697 - so no rate falls in a gap.
+        // Read only by the card-less-role fallback (autoOtCoef): a known role
+        // always takes its own otCoef. Grade III is the fallthrough. Next
         // September's card carries its own.
-        otGrades: { '1.5': 457, '1.25': 694 },
+        otGrades: { '1.5': 458, '1.25': 696 },
         departments: {
           "Direction & Production": {
             "Director":             { bdr: 961,  otCoef: 0,    noOT: true },
