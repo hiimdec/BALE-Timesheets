@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>TimeMachine — Your APA day, totalled</title>
+  <title>TimeMachine - Your APA day, totalled</title>
   <meta name="description" content="TimeMachine turns a call sheet into a live APA day, then a timesheet and invoice. Free for UK commercial crew on iPhone and the web.">
   <meta name="theme-color" content="#0a0a0a">
   <meta name="robots" content="index, follow">
@@ -15,8 +15,16 @@
   <meta property="og:url" content="https://timemachineapp.co.uk/welcome">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TimeMachine - Your APA day, totalled">
+  <meta name="twitter:description" content="TimeMachine turns a call sheet into a live APA day, then a timesheet and invoice. Free for UK commercial crew on iPhone and the web.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
   <link rel="apple-touch-icon" href="/icon-180.png">
 
   <style>
@@ -26,7 +34,7 @@
       --line: #292929;
       --text: #f5f5f5;
       --muted: #a3a3a3;
-      --quiet: #737373;
+      --quiet: #797979; /* minimum grey clearing 4.5:1 on --bg; #737373 measured 4.18 */
       --sky: #0ea5e9;
       --sky-light: #7dd3fc;
       --green: #4ade80;
@@ -123,7 +131,7 @@
     .button:hover { transform: translateY(-1px); border-color: #454545; background: #1a1a1a; }
     .button.primary { background: var(--sky); border-color: var(--sky); color: #00131d; }
     .button small { display: block; margin-top: 1px; color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .05em; }
-    .button.primary small { color: #073d56; }
+    .button.primary small { color: #063348; } /* 4.8:1 on the sky fill; #073d56 measured 4.18 */
     .arrow { font-size: 20px; }
     .device-note { margin: 12px 3px 0; color: var(--quiet); font-size: 12px; }
 
@@ -236,11 +244,11 @@
   {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    "name": "TimeMachine — Your APA day, totalled",
+    "name": "TimeMachine - Your APA day, totalled",
     "description": "TimeMachine turns a call sheet into a live APA day, then a timesheet and invoice.",
     "url": "https://timemachineapp.co.uk/welcome",
     "isPartOf": { "@id": "https://timemachineapp.co.uk/#website" },
-    "publisher": { "@id": "https://timemachineapp.co.uk/#organization" }
+    "publisher": { "@type": "Organization", "@id": "https://timemachineapp.co.uk/#organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/", "logo": "https://timemachineapp.co.uk/icon-512.png", "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"] }
   }
   </script>
 </head>
@@ -250,8 +258,8 @@
     <header>
       <a class="wordmark" href="/" aria-label="TimeMachine home">TimeMachine</a>
       <span class="top-links">
-        <a href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=work%20in%20film??&amp;mt=8" target="_blank" rel="noopener" data-track="app_store_click">App Store</a>
-        <a href="/app/" data-track="web_app_click">Open the app →</a>
+        <a href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=welcome-sticker&amp;mt=8" target="_blank" rel="noopener">App Store</a>
+        <a href="/app/?from=welcome">Open the app →</a>
       </span>
     </header>
 
@@ -266,11 +274,11 @@
         <p class="free">Made by a spark, for the crew. Free.</p>
 
         <div class="actions" aria-label="Get TimeMachine">
-          <a class="button primary app-store" href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=work%20in%20film??&amp;mt=8" target="_blank" rel="noopener" data-track="app_store_click">
+          <a class="button primary app-store" href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=welcome-sticker&amp;mt=8" target="_blank" rel="noopener">
             <span>Download for iPhone<small>On the App Store</small></span><span class="arrow" aria-hidden="true">→</span>
           </a>
-          <a class="button web-app" href="/app/" data-track="web_app_click">
-            <span>Open the web app<small>Android &amp; desktop</small></span><span class="arrow" aria-hidden="true">→</span>
+          <a class="button web-app" href="/app/?from=welcome">
+            <span>Open the web app<small>In any browser</small></span><span class="arrow" aria-hidden="true">→</span>
           </a>
         </div>
         <p class="device-note" id="device-note">No account. Your shoot data stays on your device.</p>
@@ -305,7 +313,7 @@
           <div>
             <p class="when">After wrap</p>
             <h2>Timesheet. Invoice. Done.</h2>
-            <p>TimeMachine turns the day into the paperwork, with mileage and extras included. Check it, attach it and send it.</p>
+            <p>TimeMachine turns the day into the paperwork, with mileage and extras included. On iPhone the PDF arrives attached to a prefilled email; on the web the email is prefilled and you attach the printed PDF yourself. Check it and send it.</p>
             <span class="feature"><span class="dot"></span> The numbers already add up</span>
           </div>
         </article>
@@ -315,7 +323,7 @@
       <aside class="late">
         <div class="late-copy">
           <h2><span>Getting production to pay on time?</span> That’s outside my scope.</h2>
-          <p>If they don’t, TimeMachine can calculate the late-payment interest and recovery fee, then draft the chase email too. <a href="/articles/late-payment-what-youre-owed" data-track="late_payment_click">See what you’re owed.</a></p>
+          <p>If they don’t, TimeMachine can calculate the late-payment interest and recovery fee, then draft the chase email too. <a href="/articles/late-payment-what-youre-owed">See what you’re owed.</a></p>
         </div>
         <div class="late-demo" role="img" aria-label="TimeMachine showing two pounds twenty-nine interest plus a forty-pound recovery fee after sixteen days, with an Add late-payment charges control">
           <p class="late-amount">£2.29 interest + £40 fee · 16 days</p>
@@ -331,17 +339,17 @@
 
       <section class="choose" aria-labelledby="choose-title">
         <h2 id="choose-title">Use it on your phone.</h2>
-        <p>The iPhone app gets the full on-set experience. The web app works on Android and desktop.</p>
+        <p>The iPhone app gets the full on-set experience. The web app runs in any browser: Android, desktop, or iPhone too.</p>
         <div class="platforms">
           <div class="platform">
             <h3>On an iPhone</h3>
             <p>Get the native app, including Live Activities, Siri and call-sheet reading on supported phones.</p>
-            <a class="button primary app-store" href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=work%20in%20film??&amp;mt=8" target="_blank" rel="noopener" data-track="app_store_click"><span>Download for iPhone</span><span aria-hidden="true">→</span></a>
+            <a class="button primary app-store" href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=welcome-sticker&amp;mt=8" target="_blank" rel="noopener"><span>Download for iPhone</span><span aria-hidden="true">→</span></a>
           </div>
           <div class="platform">
             <h3>On Android</h3>
             <p>Open the web app. It calculates the same APA day, timesheet and invoice.</p>
-            <a class="button web-app" href="/app/" data-track="web_app_click"><span>Open TimeMachine</span><span aria-hidden="true">→</span></a>
+            <a class="button web-app" href="/app/?from=welcome"><span>Open TimeMachine</span><span aria-hidden="true">→</span></a>
             <p class="install">Then use your browser menu → <strong>Add to Home screen.</strong></p>
           </div>
         </div>
@@ -350,9 +358,9 @@
 
     <footer class="signoff">
       <strong>Commercials now.</strong> Long form is in development.<br>
-      Built to the APA Recommended Crew Terms. <span class="sky">Free.</span>
+      Built to the <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA Recommended Crew Terms</a>. <span class="sky">Free.</span>
       <nav aria-label="Footer">
-        <a href="/how-it-works" data-track="how_it_works_click">How it works</a>
+        <a href="/how-it-works">How it works</a>
         <a href="/articles">Articles</a>
         <a href="/privacy">Privacy</a>
         <a href="mailto:feedback@timemachineapp.co.uk">Feedback</a>
@@ -361,26 +369,18 @@
     </footer>
   </div>
 
+  <!-- Progressive enhancement only: swaps one sentence by device. No tracking,
+       no event dispatch, nothing outbound - /privacy invites devtools checks
+       and must stay literally true. Measurement lives server-side (Netlify
+       logs, the App Store campaign token, and /app/?from=welcome). -->
   <script>
     (function () {
       var ua = navigator.userAgent || '';
       var ios = /iPhone|iPod|iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
       var android = /Android/i.test(ua);
       var note = document.getElementById('device-note');
-      if (note && ios) note.textContent = 'You’re on iPhone — the native app gives you Live Activities on set.';
-      if (note && android) note.textContent = 'You’re on Android — open the web app, then add it to your home screen.';
-
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({ event: 'sticker_welcome_view', page_path: '/welcome', source: 'sticker_qr' });
-
-      document.addEventListener('click', function (event) {
-        var link = event.target.closest('[data-track]');
-        if (!link) return;
-        var name = link.getAttribute('data-track');
-        window.dataLayer.push({ event: name, page_path: '/welcome', source: 'sticker_qr', link_url: link.href });
-        if (typeof window.gtag === 'function') window.gtag('event', name, { page_location: location.href, link_url: link.href, campaign_source: 'sticker_qr' });
-        if (window.plausible) window.plausible(name, { props: { source: 'sticker_qr' } });
-      });
+      if (note && ios) note.textContent = 'You’re on iPhone, the native app gives you Live Activities on set.';
+      if (note && android) note.textContent = 'You’re on Android, open the web app, then add it to your home screen.';
     })();
   </script>
 </body>
