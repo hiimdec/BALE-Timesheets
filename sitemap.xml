@@ -103,6 +103,12 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://timemachineapp.co.uk/about</loc>
+    <lastmod>2026-08-15</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
     <loc>https://timemachineapp.co.uk/privacy</loc>
     <lastmod>2026-07-06</lastmod>
     <changefreq>yearly</changefreq>

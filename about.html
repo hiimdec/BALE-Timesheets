@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>About - TimeMachine: by a spark, for the crew</title>
+  <meta name="description" content="Who builds TimeMachine: a best boy in lighting who did the department's pay by hand in the notes app. Where the figures come from, and why there is no tracking.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="canonical" href="https://timemachineapp.co.uk/about">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="About TimeMachine">
+  <meta property="og:description" content="Who builds TimeMachine: a best boy in lighting who did the department's pay by hand in the notes app. Where the figures come from, and why there is no tracking.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/about">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="About TimeMachine">
+  <meta name="twitter:description" content="Who builds TimeMachine: a best boy in lighting who did the department's pay by hand in the notes app. Where the figures come from, and why there is no tracking.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #939393;
+      --text-4:    #838383;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100; transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
+
+    main { padding: 40px 0 72px; }
+    @media (min-width: 768px) { main { padding: 56px 0 96px; } }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(30px, 4.6vw, 46px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.04; margin: 0 0 14px;
+    }
+    .byline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin: 0 0 32px;
+    }
+    h2 {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+      margin: 40px 0 10px; color: var(--text);
+    }
+    p, li { color: var(--text-2); font-size: 16px; line-height: 1.7; }
+    p + p { margin-top: 14px; }
+    strong { color: var(--text); font-weight: 600; }
+
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+    a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "AboutPage",
+        "name": "About - TimeMachine: by a spark, for the crew",
+        "description": "Who builds TimeMachine: a best boy in lighting who did the department's pay by hand in the notes app. Where the figures come from, and why there is no tracking.",
+        "url": "https://timemachineapp.co.uk/about",
+        "isPartOf": { "@id": "https://timemachineapp.co.uk/#website" },
+        "mainEntity": { "@id": "https://timemachineapp.co.uk/about#person" },
+        "publisher": { "@id": "https://timemachineapp.co.uk/#organization" }
+      },
+      {
+        "@type": "Person",
+        "@id": "https://timemachineapp.co.uk/about#person",
+        "name": "Declan Patrick Duffy",
+        "url": "https://timemachineapp.co.uk/about",
+        "jobTitle": "Best Boy (Lighting)",
+        "description": "Best boy in the lighting department, over five years in the UK film industry across long form and commercials. Builds and runs TimeMachine.",
+        "worksFor": { "@id": "https://timemachineapp.co.uk/#organization" },
+        "sameAs": ["https://apps.apple.com/gb/developer/declan-patrick-duffy/id1828571983"]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://timemachineapp.co.uk/#organization",
+        "name": "TimeMachine",
+        "url": "https://timemachineapp.co.uk/",
+        "logo": "https://timemachineapp.co.uk/icon-512.png",
+        "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/" class="nav-brand">TIMEMACHINE</a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="/app/" class="nav-cta">
+          Open the App
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+
+      <p class="label">About</p>
+      <h1>By a spark, for the crew.</h1>
+      <p class="byline">Declan Patrick Duffy &middot; Updated 15 August 2026</p>
+
+      <p>TimeMachine started in the notes app. Best boying a shoot means keeping the department&rsquo;s timesheets, and for years that meant eight or more crew&rsquo;s call, lunch and wrap handwritten into a phone at the end of the day, then every rate, overtime hour and penalty worked out by hand, one person at a time. Building the calculator was easier than staying the calculator.</p>
+
+      <p>I&rsquo;m Declan Patrick Duffy, a best boy in the lighting department, over five years in the film industry across long form and commercials. TimeMachine is the tool I needed on my own jobs.</p>
+
+      <h2>Where the figures come from</h2>
+      <p>The rates on this site are the APA card figures, taken from the published <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">Recommended Crew Terms</a>. Where TimeMachine&rsquo;s defaults differ from the card, the <a href="/apa-rates">rate page</a> says so in the open: Best Boy carries the Programmable Lighting Desk Op figure because the card has no Best Boy grade, Lighting Trainee is an app default because it is not an APA grade at all, and rigging follows the Bectu rates because that is what riggers actually take. I keep the terms current, track the changes as they land, and stay in contact with union representatives.</p>
+
+      <h2>When something breaks</h2>
+      <p>A bug report here goes to the person who wrote the code, and gets fixed. That is the whole pipeline. The address is <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>.</p>
+
+      <h2>On your data</h2>
+      <p>I&rsquo;m just not interested in your data. That is the whole privacy position: no accounts, no tracking, your shoots on your phone and nowhere else. The <a href="/privacy">privacy page</a> has the long version, and you can check the short one in your browser&rsquo;s developer tools.</p>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew, built and run by one person. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA), and it references the publicly available APA Recommended Crew Terms as a rate reference only. This is general information, not legal or financial advice.</p>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="/">Home</a>
+        <a href="/app/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/about">About</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
