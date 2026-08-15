@@ -3581,6 +3581,31 @@ async function main() {
       check('PT5 the prep split leaves the other three discretionary types on the byte-identical shared branch (lunch extension intact, exactly one copy) with the prep2026 branch in front (one threshold site + one emit site) and the 8-or-10 booking read at exactly one place',
         sharedBranch === 1 && prepBranch === 2 && bookingRead === 1,
         `shared=${sharedBranch} prepBranches=${prepBranch} bookingRead=${bookingRead}`);
+      // PT6 - the booking CONTROL (commit B). Fully gated: APA agreement, the
+      // card term resolved from the production start date, Prep Day, not a
+      // BWD-override role, not PMPA - every case where the engine never reads
+      // the booking gets no control. The write is 10-or-undefined at exactly
+      // one site (absent = 8, the engine's default).
+      const ctrlGate = (src12.match(/agreementOf\(production\) === 'apa' &&\n\s*resolveApaTerms\(production\.startDate\)\.prepOtAfter10 === true &&\n\s*vr\.dayType === "Prep Day" && !bwdOverrideApplies && !isPmpa &&/g) || []).length;
+      const ctrlWrite = (src12.match(/set\(\{ prepBookingHours: val \? 10 : undefined \}\)/g) || []).length;
+      check('PT6 the prep-booking control is gated on all five conditions (APA + card term from startDate + Prep Day + !bwdOverride + !isPmpa) and writes prepBookingHours 10-or-undefined at exactly one site - dropping any gate or writing any other value goes RED',
+        ctrlGate === 1 && ctrlWrite === 1,
+        `gate=${ctrlGate} write=${ctrlWrite}`);
+      // PT7 - solo visibility (the Phase 9 day-rate lesson: a control on the
+      // DAY card is invisible in solo, which hides that card). The control
+      // must sit in the notices region - after the DAY card closes, before
+      // the Times card - which renders regardless of hideDayCard. And the
+      // clearing mechanism must actually clear: undefined drops through the
+      // JSON round-trip every storage layer performs, leaving the key ABSENT
+      // (= 8), not null.
+      const idxNotices = src12.indexOf('render whether or not the DAY card is shown');
+      const idxCtrl = src12.indexOf('10-Hour Booking?');
+      const idxTimes = src12.indexOf('── Section: Times + Lunch');
+      const cleared = JSON.parse(JSON.stringify({ id: 'd1', prepBookingHours: undefined }));
+      check('PT7 the control renders in the notices region (after the DAY card, before Times) so solo sees it - hideDayCard cannot hide it - and clearing to undefined genuinely drops the key through the JSON round-trip (absent = 8, never null)',
+        idxNotices > 0 && idxCtrl > idxNotices && idxTimes > idxCtrl &&
+        !('prepBookingHours' in cleared) && cleared.id === 'd1',
+        JSON.stringify({ idxNotices, idxCtrl, idxTimes, clearedKeys: Object.keys(cleared) }));
     }
 
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate

@@ -12514,6 +12514,31 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </StatusMsg>
           )}
 
+          {/* Prep booking (Sept 2026 terms, clause 2.3) — rendered OUTSIDE the
+              DAY card so solo sees it too (the Phase 9 day-rate lesson).
+              Gated to APA productions whose card carries the 2026 term, on
+              Prep Days, excluding BWD-override roles (their prep calculates
+              as Shoot) and PMPA roles (Appendix 1 exempt) — for all of those
+              the engine never reads the booking, so no control. Absent = 8h:
+              OFF writes undefined and the JSON round-trip drops the key. */}
+          {production && agreementOf(production) === 'apa' &&
+            resolveApaTerms(production.startDate).prepOtAfter10 === true &&
+            vr.dayType === "Prep Day" && !bwdOverrideApplies && !isPmpa && (
+            <SectionCard title="Prep Booking">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">10-Hour Booking?</div>
+                  <div className="text-[10px] text-neutral-500 mt-0.5">
+                    {(isWeekend || isBH)
+                      ? "Weekend rate applies today, so the booking does not change pay."
+                      : "Sept 2026 terms: prep is booked for 8 or 10 hours and the booking is charged even if fewer hours are worked. OT after 10 hours worked."}
+                  </div>
+                </div>
+                <Toggle value={v.prepBookingHours === 10} onChange={(val) => set({ prepBookingHours: val ? 10 : undefined })} ariaLabel="10-hour prep booking" />
+              </div>
+            </SectionCard>
+          )}
+
           {/* ── Section: Times + Lunch (primary block) ── */}
           <SectionCard title="Times">
             <div className="space-y-3">
