@@ -393,3 +393,41 @@ travel-absorption bar is a separate rule the 2026 terms do not amend, and
 raising it to 10 would quietly absorb more travel pay (crew-unfavourable).
 Claim-and-flag: left at 8, flagged here. `DEFAULT_HOURS` ("Prep Day": 8, wrap
 derivation) and PMPA (§2-exempt) also unchanged.
+
+---
+
+## Sept 2026 terms — equipment-hire base-to-base exclusion (clause 3.1): **DEFERRED — RECORDED** (Phase 12, founder-ruled)
+
+**Source:** `APA_CREW_TERMS_2026.md` clause 3.1 note (PDF p.8), effective
+1 September 2026:
+
+> Note: base to base is not applicable to equipment hired from the crew member.
+
+The change log's instruction: suppress the base-to-base working-time treatment
+when the collected equipment is hired *from the crew member*; keep it for
+production/third-party equipment and personnel collection; and — explicitly —
+"the document does not provide a replacement paid-travel formula for the
+excluded case, so do not invent one."
+
+**The Phase 12 investigation found there is nothing to suppress.** The
+base-to-base *collection* rule of clause 3.1 was never implemented. What the
+engine implements from §3.1 is the travel-time row only — billable travel
+minutes past the net-worked bar (`travelBarNet`, the B3 model). There is no
+"collecting equipment" day input, no base-to-base working-time computation,
+and therefore no code path the new note can except. An
+`equipmentHiredFromCrew` flag today would gate a rule that does not exist —
+decoration, the exact class of pin/flag this project deletes on sight.
+
+**Ruling (founder, 2026-08): defer with a record.** No inert flag ships.
+Base-to-base collection becomes its own scoped item, and **when it is built,
+the exclusion is built in from the start** — the builder starts from this
+entry, not from the 2025 text. Two term sets already diverge here at day one:
+
+- 2025-card production: base-to-base applies to ALL collection, including
+  crew-hired equipment.
+- Sept 2026-card production: crew-hired equipment excluded, no replacement
+  formula (do not invent one — no paid-travel fallback for that case beyond
+  the ordinary travel-time row).
+
+That will be the second entry in `apaTerms` (see the card-versioned RULES
+entry above): extend the term set, do not add a second mechanism.
