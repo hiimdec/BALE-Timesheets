@@ -3492,6 +3492,16 @@ async function main() {
       // site, same graded answer; the anchor tracks the call shape.
       const fallback = (src3.match(/applyRoleOtProfile\(\{ \.\.\.f, role, bdr: d\.bdr \?\? f\.bdr \}, d, autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\)\)/g) || []).length;
       const flag = /hint=\{cardRoles\[form\.role\] \? "Grade I=1\.5× · II=1\.25× · III=1\.0×" : "Not on the rate card - graded from the rate at the most favourable consistent grade"\}/.test(src3);
+      // OTG3b (Phase 13 crash fix): the Grade-field hint reads cardRoles
+      // inside CrewEditModal, a DIFFERENT component from CrewManager where
+      // the const lives. Referencing the parent's const was a ReferenceError
+      // that crashed the grid crew editor on OPEN - undetected since Phase 6
+      // because every device pass used the mobile add-crew sheet. The value
+      // must ride in as a prop, and the mount must pass it.
+      const modalProp = (src3.match(/function CrewEditModal\(\{ editing, form, setForm, onSave, onCancel, onRoleChange, cardRoles = \{\} \}\) \{/g) || []).length;
+      const modalPass = (src3.match(/cardRoles=\{cardRoles\}/g) || []).length;
+      check('OTG3b CrewEditModal takes cardRoles as a PROP and CrewManager passes it - the hint reading the parent component\'s const was a ReferenceError that crashed the grid crew editor on open (Phase 13 device-pass find)',
+        modalProp === 1 && modalPass === 1, `prop=${modalProp} pass=${modalPass}`);
       check('OTG3 a custom rate changes the rate, not the grade - the crew editor rate input no longer touches otCoef; autoOtCoef survives at exactly ONE call site (the card-less fallback with cardOtGrades); the card-less assumption is FLAGGED on the Grade field',
         clobber === 0 && calls === 2 && fallback === 1 && flag,
         `clobber=${clobber} calls=${calls} fallback=${fallback} flag=${flag}`);

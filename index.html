@@ -11509,6 +11509,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onSave={save}
               onCancel={cancel}
               onRoleChange={onRoleChange}
+              cardRoles={cardRoles}
             />
           )}
         </div>
@@ -11517,7 +11518,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ CREW EDIT MODAL ═══════════════════════════ */
 
-    function CrewEditModal({ editing, form, setForm, onSave, onCancel, onRoleChange }) {
+    // cardRoles rides in from CrewManager (Phase 13 crash fix): the Phase 6
+    // grade hint reads it, but this is a separate component - referencing the
+    // parent's const was a ReferenceError that crashed the GRID crew editor
+    // on open, undetected because every device pass used the mobile sheet.
+    function CrewEditModal({ editing, form, setForm, onSave, onCancel, onRoleChange, cardRoles = {} }) {
       const [selectedDept, setSelectedDept] = useState(() => ROLE_TO_DEPT[form.role] || "All");
 
       // (c) editor — parent-held `form` buffer until Save. Snapshot on open;
