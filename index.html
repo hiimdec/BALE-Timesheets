@@ -18193,7 +18193,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               // day was deleted, and the figure would still be stored and still
               // apply if a day came back. A set rate stays visible and editable.
               const rates = production.dayTypeRates || {};
-              const present = new Set((production.days || []).map(d => d.dayType).filter(Boolean));
+              // RESOLVED types, not raw (Phase 13): the solo write path thins
+              // day records - a stored Prep Day can persist as {date} with its
+              // type cascading from dayDefaults - so gating on raw d.dayType
+              // hid this whole section on exactly the productions that have
+              // only cascaded days. Same class as the header-chip fix.
+              const present = new Set((production.days || []).map(d => {
+                const c = (production.crew || []).find(cc => cc.id === d.crewId) || (production.crew || [])[0];
+                return (resolveDay(production, d, c) || d).dayType;
+              }).filter(Boolean));
               const shown = RATEABLE_DAY_TYPES.filter(t => present.has(t) || Number(rates[t]) > 0);
               if (!shown.length) return null;
               const setRate = (type, v) => setProduction(p => {

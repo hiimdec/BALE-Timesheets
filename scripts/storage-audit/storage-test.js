@@ -3639,6 +3639,14 @@ async function main() {
       const deleters = (srcDR.match(/delete n\.dayTypeRates/g) || []).length;
       check('DR5 the route stores nothing: production.dayTypeRates still has exactly ONE write site and ONE delete site (the Phase 9 setRate in the settings sheet) - a second writer would be a second store and goes RED',
         writers === 1 && deleters === 1, `writers=${writers} deleters=${deleters}`);
+      // DR6 - the disclosure's own gate reads RESOLVED day types. Raw
+      // d.dayType hid the whole Day rates section on solo productions whose
+      // day records are thin (type cascading from dayDefaults) - the route
+      // would open the sheet onto nothing. Found on the Phase 13 device pass.
+      const resolvedGate = (srcDR.match(/return \(resolveDay\(production, d, c\) \|\| d\)\.dayType;/g) || []).length;
+      const rawGate = (srcDR.match(/\.map\(d => d\.dayType\)/g) || []).length;
+      check('DR6 the Day rates disclosure gates on RESOLVED day types (thin solo records included) and the raw-type map is gone - regressing to raw hides the control from cascaded-day productions and goes RED',
+        resolvedGate === 1 && rawGate === 0, `resolved=${resolvedGate} raw=${rawGate}`);
     }
 
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
