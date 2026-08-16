@@ -81,3 +81,35 @@ While the sets are identical that never bites, and it makes several `?? fallback
 **Add a role to one card and not the other, and all of those become reachable at once** — on the same edit, with three different answers, none of them reviewed. The 2025 card is the one that matters most here: it is `RATE_CARDS[0]`, so it defines the pickable list for *every* production regardless of date.
 
 **What to do:** when changing role names on any card, change them on all cards in the same commit, or make the picker resolve its list from the production's own card rather than the base card. If neither is possible, the three fallbacks stop being dead code and need adjudicating before the change lands — they were deliberately left per-surface (Phase 8) precisely because they were unreachable.
+
+## Grid mode's tab bar can render un-tappable right after the view-mode switch (native)
+
+**Found:** Phase 13 device pass (iPhone 17 Pro sim), pre-existing, transient.
+
+Immediately after switching a Best Boy production from Mobile to Grid ·
+Spreadsheet in production settings, the grid landed on the Setup content with
+NO visible area tab bar (Setup / Timesheets / Export / Invoices) — taps where
+it should sit did nothing, so the grid looked unreachable past Setup. After
+leaving the production and relaunching, the tab bar rendered normally and the
+whole grid (Timesheets, the day editor, the Phase 13 day-rate route including
+its `bb-day-rates-sheet` back level) worked on the phone, verified end to end.
+So this is a transient render state around the mode switch, not a permanent
+layout clash — worth a look next time someone is in that header code (likely
+the sticky bar's first render against the native chrome inset), not urgent.
+One related observation from the same pass: on iOS the left-EDGE swipe is not
+wired to the back-level stack anywhere in the app — the chrome chevron is the
+back affordance and pops one level correctly, stacked sheets included.
+
+## The mobile BB day editor (CMDV) has no day-rate route
+
+**Found:** Phase 13, while walking the approved route.
+
+The founder-approved Phase 13 route lives on the two DayEntryForm surfaces
+(solo header, grid day editor) plus production settings. The phone's Best Boy
+day editor is a THIRD surface — the crew-member day view reached from the
+mobile ticker — with its own DAY TYPE row and none of the route. So on the
+phone, a Best Boy pricing a recce day still has no path from the day to the
+Day rates control. Extending the same two-state affordance to CMDV's DAY TYPE
+row is a natural follow-up but is a new surface the founder has not ruled on;
+propose before building. (The plumbing exists: the sheet already takes
+initialOpen + routedDayType.)
