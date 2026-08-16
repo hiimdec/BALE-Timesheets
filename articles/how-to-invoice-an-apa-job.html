@@ -167,7 +167,7 @@
     /* Disclaimer small print */
     .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
 
-    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 10px; }
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
       background: var(--tm-accent); color: #050505;
@@ -175,6 +175,14 @@
       padding: 12px 20px; border-radius: 10px; text-decoration: none;
     }
     .btn:hover { background: var(--tm-accent-2); color: #050505; }
+    /* Secondary CTA (chunk 25): the web app sits beside the App Store primary.
+       Same treatment as .btn.secondary on the homepage and /how-it-works. */
+    .btn.secondary {
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .btn.secondary:hover { background: var(--card); border-color: var(--tm-accent); color: var(--tm-accent); }
 
     .footer {
       padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
@@ -310,9 +318,12 @@
       </ul>
 
       <div class="cta-row">
-        <a href="/app/" class="btn">
-          Open TimeMachine
+        <a href="https://apps.apple.com/app/id6775970098" class="btn" target="_blank" rel="noopener">
+          Download for iPhone
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="/app/" class="btn secondary">
+          Open the web app
         </a>
       </div>
 
