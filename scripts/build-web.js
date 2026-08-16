@@ -80,6 +80,11 @@ const ALLOW = [
   // Social / OG images
   'og-image.png',
   'og-shoot-share.png',
+  // Per-page OG cards (four pages only; every other page keeps og-image.png)
+  'og-apa-rates.png',
+  'og-apa-rates-2026.png',
+  'og-invoicing.png',
+  'og-late-payment.png',
   // Static asset + deep-link association (named explicitly, not by wildcard)
   'assets/logo.png',
   '.well-known/apple-app-site-association',
