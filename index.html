@@ -12251,7 +12251,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    const DayEntryForm = React.memo(function DayEntryFormImpl({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null, userPrefs = null, setUserPrefs = null }) {
+    const DayEntryForm = React.memo(function DayEntryFormImpl({ value, onChange, crew, allCrewMode, fixedCrewId = null, fixedDate = null, isToday = false, showToast, days = [], hideDayCard = false, isElevenHourDay = false, production = null, userPrefs = null, setUserPrefs = null, onOpenDayRates = null }) {
       const v = value;
       // DISPLAY-ONLY resolved view: call/wrap/lunch/dayType can cascade from
       // dayDefaults, so the raw `v` may leave those fields undefined. Resolve
@@ -12481,13 +12481,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       <Input type="date" value={v.date} onChange={(e) => set({ date: e.target.value })} />
                     </Field>
                   )}
-                  {/* Day rates (Phase 9): say so on the day when a job rate is
-                      in force for this type, and say when a step-up is
-                      overriding it — the day's money is otherwise unexplained. */}
+                  {/* Day rates (Phase 9 indicator, Phase 13 route): say what
+                      the day pays, and be the way to change it. With the route
+                      available, every rateable type gets the line - the unset
+                      state ("set day rate") is the findability fix. preventDefault
+                      stops the wrapping Field <label> re-activating the select.
+                      The production settings sheet stays the single store. */}
                   <Field label="Day Type" hint={(() => {
                     const r = Number((production && production.dayTypeRates || {})[vr.dayType]) || 0;
-                    if (!(r > 0)) return undefined;
-                    return v.stepUpRole ? `job rate ${fmtGBP(r)} - step-up wins today` : `job rate ${fmtGBP(r)} for this day type`;
+                    const set = r > 0;
+                    const setLabel = () => v.stepUpRole ? `job rate ${fmtGBP(r)} - step-up wins today` : `job rate ${fmtGBP(r)} for this day type`;
+                    if (!onOpenDayRates || !RATEABLE_DAY_TYPES.includes(vr.dayType)) {
+                      return set ? setLabel() : undefined;
+                    }
+                    return (
+                      <button type="button" className="text-left" style={{ WebkitTapHighlightColor: 'transparent' }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenDayRates(); }}>
+                        {set ? setLabel() : 'paying your APA rate'}<span className="text-sky-500"> · {set ? 'edit' : 'set day rate'}</span>
+                      </button>
+                    );
                   })()}>
                     <Select value={vr.dayType ?? ''} onChange={(e) => onDayTypeChange(e.target.value)}>{DAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
                   </Field>
@@ -13066,7 +13078,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ DAY EDIT MODAL ═══════════════════════════ */
 
-    function DayEditModal({ editing, form, setForm, crew, production, days, onSave, onCancel, onRemove, fixedCrewId = null, fixedDate = null, userPrefs = null }) {
+    function DayEditModal({ editing, form, setForm, crew, production, days, onSave, onCancel, onRemove, fixedCrewId = null, fixedDate = null, userPrefs = null, onOpenDayRates = null }) {
       const isNewAll = editing === "new-all";
       const isNew    = editing === "new";
       const isKnown  = !isNew && !isNewAll;
@@ -13147,6 +13159,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 allCrewMode={isNewAll}
                 fixedCrewId={fixedCrewId}
                 fixedDate={fixedDate}
+                onOpenDayRates={onOpenDayRates}
                 days={days}
                 isElevenHourDay={!!production?.isElevenHourDay}
                 production={production}
@@ -14525,7 +14538,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function DaysManager({ days, setDays, crew, production, setProduction, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, userPrefs = null }) {
+    function DaysManager({ days, setDays, crew, production, setProduction, showToast, onAddDate, onAddWeek, onAddCrew, onPushUndo, onRemoveWeek, userPrefs = null, setUserPrefs = null }) {
+      // Day-rate route (Phase 13): the settings sheet opened OVER the day
+      // editor, on the Day rates disclosure. A fixed overlay, not the usual
+      // early-return mount, so the editor and its unsaved form buffer stay
+      // mounted underneath; the back level registers on ACTIVATION, after
+      // the editor sheet's own level, so native back pops this first.
+      const [dayRatesOpen, setDayRatesOpen] = useState(false);
+      useBackLevel(dayRatesOpen, () => setDayRatesOpen(false), 'bb-day-rates-sheet');
       const [editing, setEditing] = useState(null);
       const [form, setForm] = useState(() => makeBlankDay());
       const [confirmRemove, setConfirmRemove] = useState(null);
@@ -14797,7 +14817,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               fixedCrewId={fixedCrewId}
               fixedDate={fixedDate}
               userPrefs={userPrefs}
+              onOpenDayRates={() => setDayRatesOpen(true)}
             />
+          )}
+
+          {dayRatesOpen && (
+            <div className="fixed inset-0 overflow-y-auto bg-neutral-950" style={{ zIndex: 200 }}>
+              <ProductionSettingsSheet
+                production={production}
+                setProduction={setProduction}
+                crew={crew}
+                initialOpen="day-rates"
+                onClose={() => setDayRatesOpen(false)}
+                userPrefs={userPrefs}
+                setUserPrefs={setUserPrefs}
+              />
+            </div>
           )}
 
           {!gridView && days.length === 0 && !editing && crew.length > 0 && (
@@ -17687,7 +17722,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION SETTINGS SHEET ═══════════════════════════ */
 
-    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile, onImportApplied, onReset }) {
+    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile, onImportApplied, onReset, initialOpen = null }) {
       const set = (k) => (e) => setProduction(p => ({ ...p, [k]: e.target.value }));
       const setNum = (k) => (e) => setProduction(p => ({ ...p, [k]: Number(e.target.value) }));
       // Saved Clients Stage 4 — nudge for the Basics "Invoicing details"
@@ -18170,7 +18205,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               });
               const setCount = shown.filter(t => Number(rates[t]) > 0).length;
               return (
-                <Disclosure label="Day rates" summary={setCount ? `${setCount} set` : 'APA rate'}>
+                <Disclosure label="Day rates" summary={setCount ? `${setCount} set` : 'APA rate'} defaultOpen={initialOpen === 'day-rates'}>
                   <p className="text-[11px] text-neutral-500 -mt-1">An agreed figure for a non-shoot day, when a producer prices one separately. It replaces the day's basic rate, so overtime, weekends and penalties all derive from it. Empty means the day pays your normal APA rate.</p>
                   {shown.map(type => (
                     <Field key={type} label={type} hint={present.has(type) ? undefined : 'no days of this type right now'}>
@@ -20661,6 +20696,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const [showCalc, setShowCalc] = useState(false);
       const [showSettings, setShowSettings] = useState(false);
+      // Day-rate route (Phase 13): which disclosure the settings sheet opens on.
+      const [settingsInitial, setSettingsInitial] = useState(null);
       const [showJumpSheet, setShowJumpSheet] = useState(false);
       const [showDayActions, setShowDayActions] = useState(false);
       // Per-day kebab actions. Extensible: append { label, action, variant } entries
@@ -20821,7 +20858,8 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             production={production}
             setProduction={setProduction}
             crew={crew}
-            onClose={() => setShowSettings(false)}
+            initialOpen={settingsInitial}
+            onClose={() => { setShowSettings(false); setSettingsInitial(null); }}
             userPrefs={userPrefs}
             setUserPrefs={setUserPrefs}
             importFile={pendingImportFile}
@@ -20954,6 +20992,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     onDateChange={(v2) => dayOnChange({ ...day, date: v2 })}
                     onKebab={() => setShowDayActions(true)}
                     chipSlot={(
+                      <>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <select
                           value={day?.dayType || "Shoot"}
@@ -20978,20 +21017,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           {day?.dayType || 'Shoot'}
                           <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
                         </span>
-                        {/* Day rates (Phase 9): the solo view hides the Day card,
-                            so the job-rate indicator rides beside the type chip
-                            here - otherwise the day's money changes with nothing
-                            on screen saying why. */}
-                        {(() => {
-                          const r = Number((production && production.dayTypeRates || {})[day?.dayType]) || 0;
-                          if (!(r > 0)) return null;
-                          return (
-                            <span className="ml-1.5 text-[10px] font-mono text-neutral-500">
-                              {day?.stepUpRole ? `${fmtGBP(r)} · step-up wins` : `${fmtGBP(r)} job rate`}
-                            </span>
-                          );
-                        })()}
                       </label>
+                      {/* Day rates (Phase 9 indicator, Phase 13 route): the solo
+                          view hides the Day card, so this line beside the type
+                          chip is where the day's rate is explained - and now the
+                          way to CHANGE it. A sibling of the label, never inside
+                          it: the label's full-bleed select would eat the tap.
+                          Renders for every rateable type, set or not - the unset
+                          state is the findability fix. Tap opens the production
+                          settings sheet on the Day rates disclosure; the sheet
+                          stays the single store and editor. */}
+                      {(() => {
+                        if (!RATEABLE_DAY_TYPES.includes(day?.dayType)) return null;
+                        const r = Number((production && production.dayTypeRates || {})[day?.dayType]) || 0;
+                        const openDayRates = () => { setSettingsInitial('day-rates'); setShowSettings(true); };
+                        return (
+                          <button type="button" onClick={openDayRates} className="ml-1.5 text-[10px] font-mono text-neutral-500 inline-flex items-baseline" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                            {r > 0
+                              ? <>{day?.stepUpRole ? `${fmtGBP(r)} · step-up wins` : `${fmtGBP(r)} job rate`}<span className="text-sky-500">&nbsp;· edit</span></>
+                              : <>APA rate<span className="text-sky-500">&nbsp;· set day rate</span></>}
+                          </button>
+                        );
+                      })()}
+                      </>
                     )}
                   />
 
@@ -21685,7 +21733,7 @@ const setDays = (updater) =>
                         onCrewTap={setDrilldownCrewMember}
                         showToast={showToast}
                       />)
-                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} setProduction={setProduction} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} userPrefs={userPrefs} />
+                : <DaysManager days={days} setDays={setDays} crew={crew} production={production} setProduction={setProduction} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} userPrefs={userPrefs} setUserPrefs={setUserPrefs} />
             )}
             {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
           </div>

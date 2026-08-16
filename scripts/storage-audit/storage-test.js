@@ -3608,6 +3608,39 @@ async function main() {
         JSON.stringify({ idxNotices, idxCtrl, idxTimes, clearedKeys: Object.keys(cleared) }));
     }
 
+    // ── DR: the day-rate ROUTE (Phase 13, founder-approved shape). The Phase 9
+    //    control stays in production settings as the single store and editor;
+    //    the day surfaces gain a route TO it, with an unset state - the
+    //    findability fix. Not a chip: chips store day-level data, this is a
+    //    production-level rule keyed by type. ──
+    {
+      const srcDR = fs.readFileSync(SRC_HTML, 'utf8');
+      const sheetProp = (srcDR.match(/onReset, initialOpen = null \}\) \{/g) || []).length;
+      const discWired = (srcDR.match(/defaultOpen=\{initialOpen === 'day-rates'\}/g) || []).length;
+      check('DR1 the settings sheet takes initialOpen and wires it to the Day rates disclosure at exactly one place - the route lands the user ON the control, not at the top of a long sheet',
+        sheetProp === 1 && discWired === 1, `prop=${sheetProp} disc=${discWired}`);
+      const soloGate = (srcDR.match(/if \(!RATEABLE_DAY_TYPES\.includes\(day\?\.dayType\)\) return null;/g) || []).length;
+      const soloOpen = (srcDR.match(/setSettingsInitial\('day-rates'\); setShowSettings\(true\);/g) || []).length;
+      const soloUnset = (srcDR.match(/APA rate<span className="text-sky-500">&nbsp;· set day rate<\/span>/g) || []).length;
+      check('DR2 the SOLO route: rateable-type gate, the unset "set day rate" state (the findability fix), and the tap opens settings on the Day rates disclosure - all at exactly one site each, in the header region solo always renders',
+        soloGate === 1 && soloOpen === 1 && soloUnset === 1,
+        `gate=${soloGate} open=${soloOpen} unset=${soloUnset}`);
+      const bbBtn = (srcDR.match(/e\.preventDefault\(\); e\.stopPropagation\(\); onOpenDayRates\(\);/g) || []).length;
+      const bbUnset = (srcDR.match(/'paying your APA rate'/g) || []).length;
+      check('DR3 the BB route: the Day Type hint is a button (preventDefault stops the Field label re-activating the select) with the unset state, at exactly one site',
+        bbBtn === 1 && bbUnset === 1, `btn=${bbBtn} unset=${bbUnset}`);
+      const backLevel = (srcDR.match(/useBackLevel\(dayRatesOpen, \(\) => setDayRatesOpen\(false\), 'bb-day-rates-sheet'\);/g) || []).length;
+      const overlay = (srcDR.match(/initialOpen="day-rates"/g) || []).length;
+      check('DR4 the BB overlay mounts the sheet OVER the day editor (buffer intact underneath) with its own back level - losing the level breaks native back on the stacked sheet and goes RED here',
+        backLevel === 1 && overlay === 1, `back=${backLevel} overlay=${overlay}`);
+      // The source-of-truth pin: the route added ZERO writers. dayTypeRates
+      // is written at exactly the one Phase 9 site in the settings sheet.
+      const writers = (srcDR.match(/n\.dayTypeRates = next/g) || []).length;
+      const deleters = (srcDR.match(/delete n\.dayTypeRates/g) || []).length;
+      check('DR5 the route stores nothing: production.dayTypeRates still has exactly ONE write site and ONE delete site (the Phase 9 setRate in the settings sheet) - a second writer would be a second store and goes RED',
+        writers === 1 && deleters === 1, `writers=${writers} deleters=${deleters}`);
+    }
+
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
     //    class of bug: a field the engine reads that no construction path writes
     //    sits dead - the engine is correct given its inputs, the calc suite hands
