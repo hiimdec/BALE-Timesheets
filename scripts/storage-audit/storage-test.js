@@ -3625,7 +3625,7 @@ async function main() {
     //    production-level rule keyed by type. ──
     {
       const srcDR = fs.readFileSync(SRC_HTML, 'utf8');
-      const sheetProp = (srcDR.match(/onReset, initialOpen = null \}\) \{/g) || []).length;
+      const sheetProp = (srcDR.match(/onReset, initialOpen = null, routedDayType = null \}\) \{/g) || []).length;
       const discWired = (srcDR.match(/defaultOpen=\{initialOpen === 'day-rates'\}/g) || []).length;
       check('DR1 the settings sheet takes initialOpen and wires it to the Day rates disclosure at exactly one place - the route lands the user ON the control, not at the top of a long sheet',
         sheetProp === 1 && discWired === 1, `prop=${sheetProp} disc=${discWired}`);
@@ -3657,6 +3657,14 @@ async function main() {
       const rawGate = (srcDR.match(/\.map\(d => d\.dayType\)/g) || []).length;
       check('DR6 the Day rates disclosure gates on RESOLVED day types (thin solo records included) and the raw-type map is gone - regressing to raw hides the control from cascaded-day productions and goes RED',
         resolvedGate === 1 && rawGate === 0, `resolved=${resolvedGate} raw=${rawGate}`);
+      // DR7 - the routed type is always shown: a brand-new day exists only in
+      // the editor's unsaved buffer, so gating on saved days alone would open
+      // the sheet onto NOTHING from the very tap that asked for it (found on
+      // the Phase 13 web walk). The overlay passes the editor buffer's type.
+      const routedProp = (srcDR.match(/\|\| t === routedDayType\);/g) || []).length;
+      const routedPass = (srcDR.match(/routedDayType=\{RATEABLE_DAY_TYPES\.includes\(form\?\.dayType\) \? form\.dayType : null\}/g) || []).length;
+      check('DR7 the sheet always shows the ROUTED day type (new unsaved days included) - the shown filter carries routedDayType and the BB overlay passes the editor buffer\'s type - dropping either opens the sheet onto nothing and goes RED',
+        routedProp === 1 && routedPass === 1, `prop=${routedProp} pass=${routedPass}`);
     }
 
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
@@ -3984,9 +3992,9 @@ async function main() {
           !/dayTypeRates: \{\}/.test(src4) && !/dayTypeRates: p\.dayTypeRates/.test(src4) &&
           !/defaultDayTypeRates/.test(src4),
           'something started seeding or normalising the map');
-        check('RATE7 the settings control shows a type when the job HAS such a day OR a rate is already set for it - so a rate cannot vanish from view (and become uneditable) when the last matching day is deleted, while the stored figure would still apply if a day came back',
-          /const shown = RATEABLE_DAY_TYPES\.filter\(t => present\.has\(t\) \|\| Number\(rates\[t\]\) > 0\);/.test(src4),
-          'the visibility gate changed - a set rate must stay reachable');
+        check('RATE7 the settings control shows a type when the job HAS such a day OR a rate is already set OR it is the type the Phase 13 route came from - a set rate cannot vanish when the last matching day is deleted, and the routed type cannot be absent from the very tap that asked for it',
+          /const shown = RATEABLE_DAY_TYPES\.filter\(t => present\.has\(t\) \|\| Number\(rates\[t\]\) > 0 \|\| t === routedDayType\);/.test(src4),
+          'the visibility gate changed - a set rate and the routed type must stay reachable');
         check('RATE8 the day form says WHY the money changed: the day-type field carries the job rate when one is in force, and says the step-up wins when both are present',
           /job rate \$\{fmtGBP\(r\)\} - step-up wins today/.test(src4) &&
           /job rate \$\{fmtGBP\(r\)\} for this day type/.test(src4),

@@ -14833,6 +14833,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 setProduction={setProduction}
                 crew={crew}
                 initialOpen="day-rates"
+                routedDayType={RATEABLE_DAY_TYPES.includes(form?.dayType) ? form.dayType : null}
                 onClose={() => setDayRatesOpen(false)}
                 userPrefs={userPrefs}
                 setUserPrefs={setUserPrefs}
@@ -17727,7 +17728,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ PRODUCTION SETTINGS SHEET ═══════════════════════════ */
 
-    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile, onImportApplied, onReset, initialOpen = null }) {
+    function ProductionSettingsSheet({ production, setProduction, crew, onClose, userPrefs, setUserPrefs, importFile, onImportApplied, onReset, initialOpen = null, routedDayType = null }) {
       const set = (k) => (e) => setProduction(p => ({ ...p, [k]: e.target.value }));
       const setNum = (k) => (e) => setProduction(p => ({ ...p, [k]: Number(e.target.value) }));
       // Saved Clients Stage 4 — nudge for the Basics "Invoicing details"
@@ -18207,7 +18208,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const c = (production.crew || []).find(cc => cc.id === d.crewId) || (production.crew || [])[0];
                 return (resolveDay(production, d, c) || d).dayType;
               }).filter(Boolean));
-              const shown = RATEABLE_DAY_TYPES.filter(t => present.has(t) || Number(rates[t]) > 0);
+              // routedDayType (Phase 13): the day the route came FROM. A brand-new
+              // day lives only in the editor's unsaved buffer, so present alone
+              // would hide this section from the very tap that asked for it -
+              // the routed type is always shown, and the rate applies the
+              // moment the day saves (the Phase 9 stored-but-no-days rule).
+              const shown = RATEABLE_DAY_TYPES.filter(t => present.has(t) || Number(rates[t]) > 0 || t === routedDayType);
               if (!shown.length) return null;
               const setRate = (type, v) => setProduction(p => {
                 const next = { ...(p.dayTypeRates || {}) };
