@@ -418,6 +418,32 @@
     .btn svg { width: 13px; height: 13px; }
 
     /* ─────────────────────────────────────────────────────
+       Hero pair (chunk 26). BOTH buttons are always rendered
+       and fully styled by .dual - that IS the no-JavaScript
+       state, and what a crawler sees: two equal buttons. The
+       script only adds .is-primary to one and reorders the
+       row; it never hides or disables either.
+       ───────────────────────────────────────────────────── */
+    .btn.dual {
+      background: rgba(14,165,233,0.12);
+      color: var(--tm-accent);
+      border: 1px solid var(--tm-accent);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .btn.dual:hover { background: rgba(14,165,233,0.2); }
+    .btn.dual.is-primary {
+      background: var(--tm-accent);
+      color: #050505;
+      border-color: var(--tm-accent);
+      box-shadow:
+        0 0 0 1px var(--tm-accent),
+        0 10px 30px -10px rgba(14,165,233,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.16);
+    }
+    .btn.dual.is-primary:hover { background: #38bdf8; }
+    .hero-ctas.prefer-store .cta-store { order: -1; }
+
+    /* ─────────────────────────────────────────────────────
        Chip rail — now sits with the heading, not at the foot
        ───────────────────────────────────────────────────── */
     .chip-rail-wrap { margin-top: 32px; }
@@ -1491,9 +1517,12 @@
             <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA terms</a>.
             Put in your call and wrap; it works out the day, catches the penalties, and carries the total through to a sent invoice.
           </p>
+          <!-- Both CTAs are always here and always visible, equally styled by
+               .dual. The script at the foot of the page may promote one and
+               move it first; it can never hide or disable either. -->
           <div class="hero-ctas">
-            <a href="/app/" class="btn primary">Open the app</a>
-            <a href="https://apps.apple.com/app/id6775970098" class="btn secondary" target="_blank" rel="noopener">
+            <a href="/app/" class="btn dual cta-web">Open the app</a>
+            <a href="https://apps.apple.com/app/id6775970098" class="btn dual cta-store" target="_blank" rel="noopener">
               Download for iPhone
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </a>
@@ -1892,6 +1921,30 @@
       </div>
     </div>
   </footer>
+
+  <!-- ─────────────────────────────────────────────────────
+       Hero CTA emphasis. PROGRESSIVE ONLY: both buttons are
+       already rendered and fully styled by .dual without this
+       script - it adds a highlight and moves one first. It
+       never hides, disables or removes either, so the no-JS
+       state stays complete and equal.
+
+       iPhone versus everything else, deliberately. The app is
+       iPhone-only, so an iPad - which reports a Macintosh user
+       agent in its default desktop mode - falls through to the
+       web app, which is the right answer for it anyway. Same
+       for anything unrecognised: the web app works everywhere.
+       ───────────────────────────────────────────────────── -->
+  <script>
+    (function () {
+      var row = document.querySelector('.hero-ctas');
+      if (!row) return;
+      var isIPhone = /iPhone|iPod/.test(navigator.userAgent || '');
+      var pick = row.querySelector(isIPhone ? '.cta-store' : '.cta-web');
+      if (pick) pick.classList.add('is-primary');
+      if (isIPhone) row.classList.add('prefer-store');
+    })();
+  </script>
 
 </body>
 </html>
