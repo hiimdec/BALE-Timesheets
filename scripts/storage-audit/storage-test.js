@@ -3637,12 +3637,21 @@ async function main() {
         `gate=${soloGate} open=${soloOpen} unset=${soloUnset}`);
       const bbBtn = (srcDR.match(/e\.preventDefault\(\); e\.stopPropagation\(\); onOpenDayRates\(\);/g) || []).length;
       const bbUnset = (srcDR.match(/'paying your APA rate'/g) || []).length;
-      check('DR3 the BB route: the Day Type hint is a button (preventDefault stops the Field label re-activating the select) with the unset state, at exactly one site',
-        bbBtn === 1 && bbUnset === 1, `btn=${bbBtn} unset=${bbUnset}`);
+      check('DR3 the BB routes: the grid Day Type hint is a button (preventDefault stops the Field label re-activating the select) at exactly one site, and the unset copy is shared by exactly the TWO BB editors (grid hint + CMDV row)',
+        bbBtn === 1 && bbUnset === 2, `btn=${bbBtn} unset=${bbUnset}`);
       const backLevel = (srcDR.match(/useBackLevel\(dayRatesOpen, \(\) => setDayRatesOpen\(false\), 'bb-day-rates-sheet'\);/g) || []).length;
+      const cmdvLevel = (srcDR.match(/useBackLevel\(dayRatesOpen, \(\) => setDayRatesOpen\(false\), 'cmdv-day-rates-sheet'\);/g) || []).length;
       const overlay = (srcDR.match(/initialOpen="day-rates"/g) || []).length;
-      check('DR4 the BB overlay mounts the sheet OVER the day editor (buffer intact underneath) with its own back level - losing the level breaks native back on the stacked sheet and goes RED here',
-        backLevel === 1 && overlay === 1, `back=${backLevel} overlay=${overlay}`);
+      check('DR4 both BB overlays mount the sheet OVER their editor (grid day editor + CMDV, view state intact underneath), each with its OWN back level - losing either level breaks native back on that stacked sheet and goes RED here',
+        backLevel === 1 && cmdvLevel === 1 && overlay === 2, `bbBack=${backLevel} cmdvBack=${cmdvLevel} overlays=${overlay}`);
+      // DR8 - the CMDV route (Phase 13 third surface, the one the founder
+      // uses running a crew): the line under DayTypeRow reads the RESOLVED
+      // type, and the overlay passes it as routedDayType so the sheet always
+      // shows the routed field.
+      const cmdvGate = (srcDR.match(/const rdt = resolvedDay\?\.dayType;\n\s*if \(!RATEABLE_DAY_TYPES\.includes\(rdt\)\) return null;/g) || []).length;
+      const cmdvRouted = (srcDR.match(/routedDayType=\{RATEABLE_DAY_TYPES\.includes\(resolvedDay\?\.dayType\) \? resolvedDay\.dayType : null\}/g) || []).length;
+      check('DR8 the CMDV route gates on the RESOLVED day type at exactly one site and its overlay passes routedDayType from the resolved day - the third surface behaves identically to the other two',
+        cmdvGate === 1 && cmdvRouted === 1, `gate=${cmdvGate} routed=${cmdvRouted}`);
       // The source-of-truth pin: the route added ZERO writers. dayTypeRates
       // is written at exactly the one Phase 9 site in the settings sheet.
       const writers = (srcDR.match(/n\.dayTypeRates = next/g) || []).length;

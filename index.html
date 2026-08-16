@@ -16669,11 +16669,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onTriggerCrewTimesheet, showToast, userPrefs }) {
+    function CrewMemberDayView({ crewMember, currentDate, production, setProduction, onBack, onTriggerCrewTimesheet, showToast, userPrefs, setUserPrefs = null }) {
       const [showLunchEdit, setShowLunchEdit] = useState(false);
       // Native back: lunch + note overlays are bespoke fixed-inset sheets (not <Sheet>), so
       // register them explicitly — back closes the open sheet, not the whole drilldown.
       useBackLevel(showLunchEdit, () => setShowLunchEdit(false), 'cmdv-lunch');
+      // Day-rate route (Phase 13, third surface): the settings sheet opened
+      // OVER this view on the Day rates disclosure - same overlay + own back
+      // level pattern as the grid editor, so native back pops the sheet
+      // first and lands back here with this view's state intact.
+      const [dayRatesOpen, setDayRatesOpen] = useState(false);
+      useBackLevel(dayRatesOpen, () => setDayRatesOpen(false), 'cmdv-day-rates-sheet');
       const [expandedExtras, setExpandedExtras] = useState(() => new Set());
       const extraRefs = useRef({});
       const toggleExtra = (key) => {
@@ -16951,6 +16957,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   onChange={(v) => updateTimeField('dayType', v)}
                   onResetToDefault={() => resetField('dayType')}
                 />
+                {/* Day-rate route (Phase 13): same two states as the solo
+                    header and the grid editor hint, reading the RESOLVED
+                    type. The unset state is the findability fix. */}
+                {(() => {
+                  const rdt = resolvedDay?.dayType;
+                  if (!RATEABLE_DAY_TYPES.includes(rdt)) return null;
+                  const r = Number((production.dayTypeRates || {})[rdt]) || 0;
+                  return (
+                    <button type="button" onClick={() => setDayRatesOpen(true)} className="text-left text-[11px] text-neutral-500 -mt-1 px-1" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      {r > 0
+                        ? (dayRecord.stepUpRole ? `job rate ${fmtGBP(r)} - step-up wins today` : `job rate ${fmtGBP(r)} for this day type`)
+                        : 'paying your APA rate'}<span className="text-sky-500"> · {r > 0 ? 'edit' : 'set day rate'}</span>
+                    </button>
+                  );
+                })()}
 
                 {(() => {
                   const isTravelDay = dayRecord.dayType === 'Travel Day';
@@ -17306,6 +17327,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </>
             )}
           </div>
+
+          {dayRatesOpen && (
+            <div className="fixed inset-0 overflow-y-auto bg-neutral-950" style={{ zIndex: 200 }}>
+              <ProductionSettingsSheet
+                production={production}
+                setProduction={setProduction}
+                crew={production.crew || []}
+                initialOpen="day-rates"
+                routedDayType={RATEABLE_DAY_TYPES.includes(resolvedDay?.dayType) ? resolvedDay.dayType : null}
+                onClose={() => setDayRatesOpen(false)}
+                userPrefs={userPrefs}
+                setUserPrefs={setUserPrefs}
+              />
+            </div>
+          )}
 
           {showLunchEdit && dayRecord && (
             <div
@@ -21753,6 +21789,7 @@ const setDays = (updater) =>
                         onTriggerCrewTimesheet={triggerCrewTimesheetPrint}
                         showToast={showToast}
                         userPrefs={userPrefs}
+                        setUserPrefs={setUserPrefs}
                       />
                     : <BestBoyMobileDayView
                         production={production}
