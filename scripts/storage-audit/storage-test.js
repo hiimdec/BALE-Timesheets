@@ -5612,12 +5612,16 @@ async function main() {
       body.includes('Object.keys(DEPARTMENTS)'));
     check('Z9d makeDeptRoleHandlers wires dept/role/BDR cascades',
       body.includes('makeDeptRoleHandlers(set, userPrefs)'));
-    // Wording fix only — the assertion is unchanged. RELEASE_NOTES moved from
-    // About & help to Tutorial & what's new, and must render in exactly ONE
-    // place (the move was explicitly not a duplication).
-    check('Z9e RELEASE_NOTES still rendered, now under Tutorial & what\'s new — and exactly once',
-      body.includes('RELEASE_NOTES.added.map') && body.includes('RELEASE_NOTES.version') &&
-      (body.match(/RELEASE_NOTES\.added\.map/g) || []).length === 1);
+    // Phase 13 (founder-ruled): the what's-new is not a version announcement.
+    // The block still renders exactly once under Tutorial & what's new, but
+    // carries NO version number - RELEASE_NOTES has no version field and no
+    // update/what's-new surface prints one (the About screen is the one
+    // place the version belongs). A version reappearing here goes RED.
+    check('Z9e RELEASE_NOTES rendered exactly once and VERSIONLESS - no RELEASE_NOTES.version anywhere, no "Version {" line; the what\'s-new announces features, the About screen owns the number',
+      body.includes('RELEASE_NOTES.added.map') &&
+      (body.match(/RELEASE_NOTES\.added\.map/g) || []).length === 1 &&
+      !body.includes('RELEASE_NOTES.version') &&
+      !body.includes('Version {RELEASE_NOTES'));
 
     // ─ Z10: Kit Room Stage 2 row rework — each item is a padded card with
     //   full-width name on line 1, then labelled "Default on new shoots"

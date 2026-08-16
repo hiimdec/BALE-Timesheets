@@ -2248,10 +2248,9 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "2026.1";
+    const APP_VERSION = "2026.11";
 
     const RELEASE_NOTES = {
-      version: APP_VERSION,
       date: "2026-08-05",
       added: [
         "Redesigned invoices and timesheets - cleaner, sharper, with a detailed day-by-day breakdown",
@@ -2294,7 +2293,7 @@
     // and leaves `items` empty — the copy is prose by design, and splitting it
     // into title/blurb pairs would have meant rewriting it.
     const WHATS_NEW = {
-      title: "New in 5.4.0",
+      title: "What's new",
       framing: "Redesigned invoices and timesheets, a new Poppy theme, and a quick tutorial to show you around. Plus a few improvements under the hood.",
       items: [],
       footer: "You can replay the tutorial any time in Settings, under Tutorial & what's new.",
@@ -26536,8 +26535,7 @@ const setDays = (updater) =>
               {/* What's new — moved from About & help. Same RELEASE_NOTES
                   source, same markup; only its home changed. */}
               <div className="mt-5 pt-4 border-t border-neutral-800">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">What's new - v{RELEASE_NOTES.version}</div>
-                <div className="font-semibold text-sm text-neutral-200 mb-0.5">Version {RELEASE_NOTES.version}</div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">What's new</div>
                 <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
                 <ul className="space-y-1.5 mb-3">
                   {RELEASE_NOTES.added.map((item, i) => (
@@ -33364,7 +33362,7 @@ const confirmDelete = (p) => setConfirmOpts({
    text with a themed tm-good border — deliberately not theme-integrated,
    rare success-banner surface. */
               background: '#052e16', border: '1px solid rgb(var(--tm-good))', borderRadius: 12, color: '#bbf7d0', padding: '10px 14px', fontSize: 12, textAlign: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
-              Updated to TimeMachine v{APP_VERSION} ✓
+              TimeMachine updated ✓
             </div>
           )}
           {/* The intro is the tutorial deck rather than a text popup, gated on
