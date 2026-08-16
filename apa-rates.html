@@ -163,6 +163,19 @@
       padding: 12px 16px;
     }
     .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+    /* Crew alias (chunk 27). The APA card name stays primary; the alias sits
+       under it in the muted token, smaller, so it reads as a note rather than
+       a second role. Block, not inline, so it adds height and never widens the
+       role column on a phone. Its text is inside the role cell, which is the
+       cell the filter already matches on, so a search for "spark" finds it. */
+    .rate-table .alias {
+      display: block;
+      font-size: 11.5px;
+      color: var(--text-3);
+      font-weight: 400;
+      margin-top: 3px;
+      white-space: normal;
+    }
     .dag { color: var(--tm-accent); font-weight: 700; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
@@ -318,9 +331,9 @@
           <tr><td>Assistant Directors</td><td>2nd AD</td><td>&pound;435</td><td>&pound;448</td><td>&times; 1.5</td></tr>
           <tr><td>Assistant Directors</td><td>3rd AD</td><td>&pound;326</td><td>&pound;336</td><td>&times; 1.5</td></tr>
           <tr><td>Assistant Directors</td><td>Floor Runner / AD Trainee</td><td>&pound;238</td><td>&pound;245</td><td>&times; 1</td></tr>
-          <tr><td>Script Supervisor</td><td>Script Supervisor</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
+          <tr><td>Script Supervisor</td><td>Script Supervisor<span class="alias">continuity</span></td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
           <tr><td>Locations</td><td>Location Manager</td><td>&pound;580</td><td>&pound;597</td><td>&times; 1.25</td></tr>
-          <tr><td>Camera</td><td>DoP</td><td>&pound;1516</td><td>&pound;1561</td><td>&times; 1</td></tr>
+          <tr><td>Camera</td><td>DoP<span class="alias">Director of Photography, DP</span></td><td>&pound;1516</td><td>&pound;1561</td><td>&times; 1</td></tr>
           <tr><td>Camera</td><td>Camera Operator</td><td>&pound;637</td><td>&pound;656</td><td>&times; 1.25</td></tr>
           <tr><td>Camera</td><td>Focus Puller (1st AC)</td><td>&pound;558</td><td>&pound;575</td><td>&times; 1.25</td></tr>
           <tr><td>Camera</td><td>Clapper Loader (2nd AC)</td><td>&pound;435</td><td>&pound;448</td><td>&times; 1.5</td></tr>
@@ -332,7 +345,7 @@
           <tr><td>Lighting</td><td>Gaffer</td><td>&pound;568</td><td>&pound;585</td><td>&times; 1.25</td></tr>
           <tr><td>Lighting</td><td>Best Boy<sup class="dag">&dagger;</sup></td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
           <tr><td>Lighting</td><td>Desk Op</td><td>&pound;512</td><td>&pound;527</td><td>&times; 1.25</td></tr>
-          <tr><td>Lighting</td><td>Lighting Technician</td><td>&pound;444</td><td>&pound;457</td><td>&times; 1.5</td></tr>
+          <tr><td>Lighting</td><td>Lighting Technician<span class="alias">spark</span></td><td>&pound;444</td><td>&pound;457</td><td>&times; 1.5</td></tr>
           <tr><td>Lighting</td><td>Trainee<sup class="dag">&dagger;</sup></td><td>&pound;250</td><td>&pound;250</td><td>&times; 1.5</td></tr>
           <tr><td>Rigging</td><td>Advanced Rigger</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
           <tr><td>Rigging</td><td>Basic Rigger</td><td>&pound;345</td><td>&pound;355</td><td>&times; 1.5</td></tr>
@@ -346,7 +359,7 @@
           <tr><td>Art Dept</td><td>Asst. Art Director</td><td>&pound;568</td><td>&pound;585</td><td>&times; 1.25</td></tr>
           <tr><td>Art Dept</td><td>Stylist</td><td>&pound;628</td><td>&pound;647</td><td>&times; 1.25</td></tr>
           <tr><td>Art Dept</td><td>Props Buyer</td><td>&pound;568</td><td>&pound;585</td><td>&times; 1.25</td></tr>
-          <tr><td>Art Dept</td><td>Master Props</td><td>&pound;506</td><td>&pound;521</td><td>&times; 1.25</td></tr>
+          <tr><td>Art Dept</td><td>Master Props<span class="alias">props master</span></td><td>&pound;506</td><td>&pound;521</td><td>&times; 1.25</td></tr>
           <tr><td>Art Dept</td><td>Props</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
           <tr><td>Art Dept</td><td>Props Assistant</td><td>&pound;310</td><td>&pound;319</td><td>&times; 1.5</td></tr>
           <tr><td>Art Dept</td><td>Scenic Artist</td><td>&pound;714</td><td>&pound;735</td><td>&times; 1</td></tr>
@@ -361,7 +374,7 @@
           <tr><td>Construction</td><td>Standby Construction</td><td>&pound;386</td><td>&pound;398</td><td>&times; 1.5</td></tr>
           <tr><td>Construction</td><td>Stage Hand</td><td>&pound;359</td><td>&pound;370</td><td>&times; 1.5</td></tr>
           <tr><td>Construction</td><td>Labourer</td><td>&pound;299</td><td>&pound;308</td><td>&times; 1.5</td></tr>
-          <tr><td>Sound</td><td>Sound Mixer</td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
+          <tr><td>Sound</td><td>Sound Mixer<span class="alias">sound recordist</span></td><td>&pound;649</td><td>&pound;668</td><td>&times; 1.25</td></tr>
           <tr><td>Sound</td><td>Boom Operator</td><td>&pound;519</td><td>&pound;535</td><td>&times; 1.25</td></tr>
           <tr><td>Sound</td><td>Sound Maintenance</td><td>&pound;423</td><td>&pound;436</td><td>&times; 1.5</td></tr>
           <tr><td>Sound</td><td>Sound Assistant</td><td>&pound;391</td><td>&pound;403</td><td>&times; 1.5</td></tr>
