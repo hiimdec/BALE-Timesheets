@@ -3619,7 +3619,7 @@ async function main() {
       const discWired = (srcDR.match(/defaultOpen=\{initialOpen === 'day-rates'\}/g) || []).length;
       check('DR1 the settings sheet takes initialOpen and wires it to the Day rates disclosure at exactly one place - the route lands the user ON the control, not at the top of a long sheet',
         sheetProp === 1 && discWired === 1, `prop=${sheetProp} disc=${discWired}`);
-      const soloGate = (srcDR.match(/if \(!RATEABLE_DAY_TYPES\.includes\(day\?\.dayType\)\) return null;/g) || []).length;
+      const soloGate = (srcDR.match(/if \(!RATEABLE_DAY_TYPES\.includes\(chipType\)\) return null;/g) || []).length;
       const soloOpen = (srcDR.match(/setSettingsInitial\('day-rates'\); setShowSettings\(true\);/g) || []).length;
       const soloUnset = (srcDR.match(/APA rate<span className="text-sky-500">&nbsp;· set day rate<\/span>/g) || []).length;
       check('DR2 the SOLO route: rateable-type gate, the unset "set day rate" state (the findability fix), and the tap opens settings on the Day rates disclosure - all at exactly one site each, in the header region solo always renders',

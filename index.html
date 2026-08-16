@@ -20991,11 +20991,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     date={day?.date}
                     onDateChange={(v2) => dayOnChange({ ...day, date: v2 })}
                     onKebab={() => setShowDayActions(true)}
-                    chipSlot={(
+                    chipSlot={(() => {
+                      // The solo write path thins the day record - persistent
+                      // fields (dayType included) live in dayDefaults and
+                      // cascade back through resolveDay. Reading the RAW
+                      // record here showed "Shoot" on a stored Prep Day
+                      // (pre-existing display bug, surfaced by the Phase 13
+                      // route gate needing the real type). One resolution
+                      // feeds the chip, the select and the route line so the
+                      // header can never disagree with the form below it.
+                      const chipDay = production ? resolveDay(production, day, (production.crew || [])[0]) : day;
+                      const chipType = chipDay?.dayType || 'Shoot';
+                      return (
                       <>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <select
-                          value={day?.dayType || "Shoot"}
+                          value={chipType}
                           onChange={(e) => {
                             const newType = e.target.value;
                             const callH = parseHHMM(day?.callTime);
@@ -21010,11 +21021,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           {DAY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                         <span className={`text-[10px] uppercase tracking-[0.14em] font-bold px-2 py-[3px] rounded inline-flex items-center gap-1 transition-colors ${
-                          (day?.dayType || 'Shoot') === 'Shoot'
+                          chipType === 'Shoot'
                             ? 'bg-neutral-800 border border-neutral-700 text-neutral-300'
                             : 'bg-tm-warn/10 border border-tm-warn/25 text-tm-warn'
                         }`}>
-                          {day?.dayType || 'Shoot'}
+                          {chipType}
                           <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
                         </span>
                       </label>
@@ -21028,19 +21039,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           settings sheet on the Day rates disclosure; the sheet
                           stays the single store and editor. */}
                       {(() => {
-                        if (!RATEABLE_DAY_TYPES.includes(day?.dayType)) return null;
-                        const r = Number((production && production.dayTypeRates || {})[day?.dayType]) || 0;
+                        if (!RATEABLE_DAY_TYPES.includes(chipType)) return null;
+                        const r = Number((production && production.dayTypeRates || {})[chipType]) || 0;
                         const openDayRates = () => { setSettingsInitial('day-rates'); setShowSettings(true); };
                         return (
                           <button type="button" onClick={openDayRates} className="ml-1.5 text-[10px] font-mono text-neutral-500 inline-flex items-baseline" style={{ WebkitTapHighlightColor: 'transparent' }}>
                             {r > 0
-                              ? <>{day?.stepUpRole ? `${fmtGBP(r)} · step-up wins` : `${fmtGBP(r)} job rate`}<span className="text-sky-500">&nbsp;· edit</span></>
+                              ? <>{chipDay?.stepUpRole ? `${fmtGBP(r)} · step-up wins` : `${fmtGBP(r)} job rate`}<span className="text-sky-500">&nbsp;· edit</span></>
                               : <>APA rate<span className="text-sky-500">&nbsp;· set day rate</span></>}
                           </button>
                         );
                       })()}
                       </>
-                    )}
+                      );
+                    })()}
                   />
 
                   {/* Day editor body — ALWAYS this slot's day, ALWAYS this slot's onChange. */}
