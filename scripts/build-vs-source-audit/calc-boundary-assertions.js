@@ -557,11 +557,12 @@ function stageNation(eng, ok) {
 // START DATE at the calcForDisplay call site), so an August-started shoot
 // keeps 2025 prep money for its whole run, September days included.
 //
-// PREP2 pins the LITERAL reading of "overtime shall only apply after 10 hours
-// have been worked" - hours 9 and 10 at BHR, not OT, threshold on hours
-// worked not on the booking. The founder is checking that reading against
-// practice; if the ruling changes, PREP1/PREP2/PREP6 move and the engine's
-// one prep2026 emit block is the place that changes.
+// PREP2 pins the reading of "overtime shall only apply after 10 hours have
+// been worked" - hours 9 and 10 at BHR, not OT, threshold on hours worked
+// not on the booking. CONFIRMED against practice by the founder (Phase 13):
+// booked 8, worked 10 is ten hours at basic rate, overtime only after that.
+// The rule lives in the engine's one prep2026 emit block; PREP1/PREP2/PREP6
+// pin it.
 
 function stagePrep(eng, ok) {
   console.log('\nPREP · Sept 2026 prep rule (clause 2.3): 8-or-10 booking, OT after 10 worked, weekday only');
@@ -586,7 +587,7 @@ function stagePrep(eng, ok) {
   const span10 = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '18:00' }); // 10h span exactly
   const p2new = run(span10, T26);
   const p2old = run(span10);
-  ok('PREP2 [LITERAL READING - founder checking against practice] 10h weekday prep, 8h booking: hours 9-10 are BHR (£444.00 total, NO OT line), where 2025 paid them as OT (£488.40). Threshold is on hours WORKED, never inferred from the booking',
+  ok('PREP2 [CONFIRMED by the founder against practice] 10h weekday prep, 8h booking: hours 9-10 are BHR (£444.00 total, NO OT line), where 2025 paid them as OT (£488.40). Threshold is on hours WORKED, never inferred from the booking',
     near(p2new.total, 444.00) && otQty(p2new) === 0 && addlQty(p2new) === 2 &&
     near(p2old.total, 488.40) && otQty(p2old) === 2,
     JSON.stringify({ new: p2new.total, old: p2old.total }));

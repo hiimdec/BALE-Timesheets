@@ -5604,11 +5604,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           // first-listed option and the 2025-shaped default). The booking is
           // a minimum: it's charged even when fewer hours are worked. Hours
           // worked beyond the booking but inside the 10-hour threshold are
-          // ALSO at BHR, not overtime - the LITERAL reading of "overtime
-          // shall only apply after 10 hours have been worked", which the
-          // founder is checking against practice. If that ruling changes,
-          // this band is the one place that changes. OT past 10 comes from
-          // the shared block below (basicHrs = 10).
+          // ALSO at BHR, not overtime - "overtime shall only apply after 10
+          // hours have been worked", CONFIRMED against practice by the
+          // founder (Phase 13, CALC_DECISIONS): booked 8, worked 10 is ten
+          // hours at basic rate. OT past 10 comes from the shared block
+          // below (basicHrs = 10).
           const booked = day.prepBookingHours === 10 ? 10 : 8;
           lines.push({ label: `Prep Day (${booked}h booking × BHR)`, detail: callWrapLabel, rate: bhr, qty: booked, amount: booked * bhr });
           const extraBhr = ceilHalf(Math.max(0, Math.min(effectiveHrs, 10) - booked));

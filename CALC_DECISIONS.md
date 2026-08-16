@@ -351,7 +351,7 @@ narrow on the `apaRounding` precedent:
   `PT1`/`PT2` pin the card shape and the resolver; `RW1` auto-caught the new
   engine read and its writer declaration names the call-site resolution.
 
-## Sept 2026 terms — prep day (clause 2.3): **IMPLEMENTED — ONE READING FLAGGED** (Phase 12)
+## Sept 2026 terms — prep day (clause 2.3): **RESOLVED — CONFIRMED** (founder, 2026-08, Phase 13)
 
 **Source:** `APA_CREW_TERMS_2026.md` lines 578–579 (PDF p.4), effective
 1 September 2026, card-versioned via `apaTerms` (above):
@@ -377,16 +377,18 @@ narrow on the `apaRounding` precedent:
   so those two exclusions are pinned at source by `PT4` and tripwired by
   `PREP5` — recorded honestly rather than claimed as money pins.
 
-**FLAGGED — a reading, not a certainty (founder checking against practice):**
-hours 9 and 10 on an 8-hour booking are billed at **BHR**, not OT, and the
-threshold attaches to hours **worked**, never inferred from the booking. That
-is the literal text of both the clause and the change log ("do not infer the
-OT threshold from the selected 8-hour booking"), and it is what ships. It is
-also £44.40/hr *against* the crew relative to 2025 (`PREP2`: a 10h weekday
-prep pays £444.00 under 2026 terms where 2025 paid £488.40). The whole reading
-lives in **one place** — the `prepOtAfter10` emit block in `calculateDay` —
-so a different ruling is a small change, and `PREP1`/`PREP2`/`PREP6` are the
-pins that move with it.
+**CONFIRMED (founder, 2026-08 — Phase 13):** hours 9 and 10 on an 8-hour
+booking are billed at **BHR**, not OT, and the threshold attaches to hours
+**worked**, never inferred from the booking. Shipped in Phase 12 as the
+literal text of both the clause and the change log ("do not infer the OT
+threshold from the selected 8-hour booking"), flagged as a reading; the
+founder has since checked it against practice and confirmed: *booked 8,
+worked 10 is ten hours at basic rate, overtime only after that* — the literal
+reading is also the practical one. It is £44.40/hr *against* the crew
+relative to 2025 (`PREP2`: a 10h weekday prep pays £444.00 under 2026 terms
+where 2025 paid £488.40), and that is the agreed rate, not an open question.
+The whole rule stays in **one place** — the `prepOtAfter10` emit block in
+`calculateDay` — with `PREP1`/`PREP2`/`PREP6` pinning it.
 
 **Deliberately untouched:** `travelBarNet` keeps prep at 8 — the §3.1
 travel-absorption bar is a separate rule the 2026 terms do not amend, and
