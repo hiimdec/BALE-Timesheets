@@ -80,6 +80,10 @@ const ALLOW = [
   // Social / OG images
   'og-image.png',
   'og-shoot-share.png',
+  // IndexNow ownership key (chunk 29). The protocol requires this file to be
+  // publicly served; the key is a bearer-less token that only proves the pinger
+  // controls the host. It grants no access to anything.
+  'd263510123ec0559d8221266b85ea084f85f86c9a89c767f49b1a8180443b9d1.txt',
   // Per-page OG cards (four pages only; every other page keeps og-image.png)
   'og-apa-rates.png',
   'og-apa-rates-2026.png',
