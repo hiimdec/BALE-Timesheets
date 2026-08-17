@@ -3772,6 +3772,20 @@ async function main() {
       const stamp = (srcIE.match(/dayKeys: \(built\.dayBreakdown \|\| \[\]\)\.map\(e => invoiceDayKey\(userCrewId, e && e\.date\)\)\.filter\(Boolean\),/g) || []).length;
       check('IE7 the day claim is stamped at exactly ONE site - the shared invoice shell - so APA, long form and standalone all mint the same shape from their own dayBreakdown, and a standalone (no dayBreakdown) claims nothing',
         stamp === 1, `stampSites=${stamp}`);
+      // IE8-9: the HOME read path. productionTotals (which monthTotal sums)
+      // takes the invoiced amount for a covered day and computes only the
+      // rest; the kit deal discount scales to the uncovered share so an
+      // invoiced day cannot have its negotiated kit money deducted twice.
+      const invRead = (srcIE.match(/const claimed = cov\.idx\.get\(invoiceDayKey\(d\.crewId, d\.date\)\);\n\s*if \(claimed\) return sum \+ claimed\.amount;/g) || []).length;
+      const kitScale = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      check('IE8 the home total reads the invoiced amount for a covered day and runs calcForDisplay only for uncovered ones, and the kit deal discount scales to the uncovered share - so an invoiced day never has its negotiated kit money subtracted twice',
+        invRead === 1 && kitScale === 1, `read=${invRead} kitScale=${kitScale}`);
+      const marker = (srcIE.match(/<Badge variant="draft">PART INVOICED<\/Badge>/g) || []).length;
+      const markerGate = (srcIE.match(/const partInvoicedChip = \(cov && cov\.partial\)/g) || []).length;
+      const markerRows = (srcIE.match(/\{partInvoicedChip\}/g) || []).length;
+      check('IE9 a PART INVOICED marker renders on both card variants when some but not all days are billed (ruled: one number, never a silent blend), and is absent when the job is wholly invoiced - the SENT chip already says that',
+        marker === 1 && markerGate === 1 && markerRows === 2,
+        `marker=${marker} gate=${markerGate} rows=${markerRows}`);
     }
 
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate

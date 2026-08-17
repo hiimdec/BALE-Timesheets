@@ -31117,6 +31117,27 @@ const confirmDelete = (p) => setConfirmOpts({
       // rollup level so the per-production figure (and `monthTotal` derived
       // from it below) matches what the invoice will charge. Per-day surfaces
       // — DayBreakdownView and `todayTotal` — stay at daily rate by design.
+      // Phase 14 (founder-ruled): where a day is covered by a SENT invoice,
+      // the figure reported is what that invoice actually billed - discount
+      // included - not what the day computes to. Uncovered days compute
+      // exactly as before, so a production with no sent invoice is
+      // byte-identical to the previous behaviour.
+      const productionInvoiceCoverage = useMemo(() => {
+        const today = todayISO();
+        const out = {};
+        for (const p of productions) {
+          const idx = productionInvoicedIndex(p);
+          let covered = 0, past = 0;
+          for (const d of (p.days ?? [])) {
+            if (!d.date || d.date >= today) continue;
+            past++;
+            if (idx.has(invoiceDayKey(d.crewId, d.date))) covered++;
+          }
+          out[p.id] = { idx, covered, past, partial: covered > 0 && covered < past, all: past > 0 && covered === past };
+        }
+        return out;
+      }, [productions]);
+
       const productionTotals = useMemo(() => {
         const today = todayISO();
         const totals = {};
@@ -31127,16 +31148,27 @@ const confirmDelete = (p) => setConfirmOpts({
           if (agreementOf(p) !== 'apa') { totals[p.id] = 0; continue; }
           const crew = p.crew ?? [];
           const days = p.days ?? [];
+          const cov = productionInvoiceCoverage[p.id] || { idx: new Map(), covered: 0, past: 0 };
           const raw = days.reduce((sum, d) => {
             if (!d.date || d.date >= today) return sum;
+            // Invoiced days report the invoice. calcForDisplay still runs for
+            // uncovered days only, so nothing about the engine changes.
+            const claimed = cov.idx.get(invoiceDayKey(d.crewId, d.date));
+            if (claimed) return sum + claimed.amount;
             const c = crew.find(cc => cc.id === d.crewId);
             if (!c) return sum;
             return sum + calcForDisplay(p, d, c, findPrevDay(days, d)).total;
           }, 0);
-          totals[p.id] = raw - computeProductionKitDiscount(p, userPrefs);
+          // The kit deal discount adjusts COMPUTED figures; an invoiced day
+          // already carries the negotiated kit money inside its invoice net,
+          // so subtracting the whole production's discount again would double
+          // count it. Scale it to the uncovered share: unchanged when nothing
+          // is invoiced (every existing figure holds), gone when everything is.
+          const uncoveredShare = cov.past > 0 ? (cov.past - cov.covered) / cov.past : 1;
+          totals[p.id] = raw - (computeProductionKitDiscount(p, userPrefs) * uncoveredShare);
         }
         return totals;
-      }, [productions, userPrefs]);
+      }, [productions, userPrefs, productionInvoiceCoverage]);
 
       // Stage 7: full per-production total — ALL of the user's days in the
       // production (no d.date < today gate), kit discount applied. Read ONLY
@@ -31313,6 +31345,14 @@ const confirmDelete = (p) => setConfirmOpts({
         const bestBoyBadge = p.bestBoyMode ? <Badge variant="bestboy">BEST BOY</Badge> : null;
         const invStatus = getProductionInvoiceStatus(p);
         const invChip = invStatus ? <Badge variant={invStatus.variant}>{invStatus.label}</Badge> : null;
+        // Phase 14: when only SOME days are invoiced the figure is a blend of
+        // billed and computed money. One number (ruled), but never a silent
+        // one - this says which. Fully-invoiced needs no marker: the existing
+        // SENT/PAID chip already says the whole job is claimed.
+        const cov = productionInvoiceCoverage[p.id];
+        const partInvoicedChip = (cov && cov.partial)
+          ? <Badge variant="draft">PART INVOICED</Badge>
+          : null;
         const metaText = p.prodCo || `${(p.days ?? []).length} day${(p.days ?? []).length !== 1 ? 's' : ''}`;
         const wrapperClass = "bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden active:bg-neutral-800 transition-colors cursor-pointer select-none touch-manipulation";
 
@@ -31531,9 +31571,10 @@ const confirmDelete = (p) => setConfirmOpts({
                 <div className="text-[14px] font-semibold text-neutral-100 truncate">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</div>
                 <div className="text-[11px] font-mono text-neutral-500 truncate mt-0.5">{metaContent}</div>
               </div>
-              {(bestBoyBadge || invChip) && (
+              {(bestBoyBadge || invChip || partInvoicedChip) && (
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   {bestBoyBadge}
+                  {partInvoicedChip}
                   {invChip}
                 </div>
               )}
@@ -31574,6 +31615,7 @@ const confirmDelete = (p) => setConfirmOpts({
             <div className="flex items-center gap-3 px-3.5 py-2.5">
               <h3 className="flex-1 min-w-0 truncate text-[13px] text-neutral-400">{p.title || <span className="text-neutral-500 italic">Untitled</span>}</h3>
               {bestBoyBadge}
+              {partInvoicedChip}
               {invChip}
               {/* Same rule as the full card: no APA £ on a long form row,
                   wrapped or not — gate on the agreement. Real meta fills
