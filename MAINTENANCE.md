@@ -113,3 +113,51 @@ Day rates control. Extending the same two-state affordance to CMDV's DAY TYPE
 row is a natural follow-up but is a new surface the founder has not ruled on;
 propose before building. (The plumbing exists: the sheet already takes
 initialOpen + routedDayType.)
+
+## Pattern: an error boundary can hide a fully broken surface from every gate
+
+**Found:** Phase 13 — the grid crew editor crash (`cardRoles` out of scope)
+shipped past 1,356 storage assertions and seven phases of device passes.
+
+The mechanics, worth recording separately from the fix: the audit sandbox
+stubs React, so component bodies never execute — a ReferenceError inside a
+render exists for every gate only as source text, and source-shape pins can
+only catch the shapes someone thought to pin. At runtime the RootErrorBoundary
+catches the throw, logs to console, and shows "Something went wrong on this
+screen" with a Go back button. That is correct product behaviour and also
+means: a surface can be entirely broken while the gate stays green and the
+app looks fine from every OTHER surface. The failure only becomes visible
+when a person renders that exact surface — and device passes walk the
+surfaces the phase touched, not all of them. The grid crew editor was on
+nobody's walk for seven phases.
+
+Standing mitigation until a render audit exists: when a phase's device pass
+is in an area, open every editor that area can reach, not just the one the
+phase changed.
+
+## Raw day-record gates — the remaining sites (Phase 13 sweep, parked)
+
+**Context:** solo AND Best Boy mobile write paths thin day records — dayType
+(and times) can live in `dayDefaults` and cascade back through `resolveDay`.
+Phase 13 fixed the solo header chip, the Day rates disclosure gate, and made
+all three day-rate routes read resolved types. A sweep of every remaining
+`.dayType` read (86 sites) found the rest are resolved, explicit-by-
+construction (LF days, wire days, invoice snapshots, cancellation columns,
+form buffers), or raw BY DESIGN (override/variance detection reads rawness
+deliberately). Three sites remain in the same class as the fixed bugs — all
+display/behaviour gates, none money — parked for a ruling, not fixed:
+
+- `CrewMemberDayView` — `isTravelDay = dayRecord.dayType === 'Travel Day'`
+  gates the travel-day chip behaviour on the RAW record; a BB day whose
+  Travel Day type cascades from dept defaults gets non-travel chip handling
+  while the header says TRAVEL DAY.
+- `CrewMemberDayView` — `canRemove={dayRecord.dayType !== 'Day off'}` on the
+  raw record; a defaults-driven Day off is removable when an explicit one is
+  not.
+- `DayBreakdownView` — the crew-on-date filter tests `d.dayType !== 'Rest
+  Day'` raw, so a defaults-driven Rest Day still lists the crew member on
+  that date.
+
+The fix in each case is the same one already ruled correct twice: resolve
+first. Not built here because each changes visible behaviour in a surface a
+phase has not walked; they should land together with their own device pass.
