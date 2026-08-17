@@ -27425,7 +27425,7 @@ const setDays = (updater) =>
       const toggleExpand = (key) => { setExpandedStat(prev => prev === key ? null : key); setShowAllMonths(false); };
       const fmtMonth = (yyyymm) => new Date(yyyymm + '-01T12:00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 
-      const { enrichedDays, excludedCount, notYetCountedDays } = useMemo(() => {
+      const { enrichedDays, excludedCount, notYetCountedDays, anyInvoiced } = useMemo(() => {
         const now = new Date();
         // LOCAL calendar date, not toISOString()'s UTC date: day.date comes
         // from local pickers, so the count rollover must be local midnight
@@ -27470,6 +27470,7 @@ const setDays = (updater) =>
           // can surface the "N day(s) not yet counted" hint. Note: only the
           // solo flows set day.wrapped - Best Boy multi-crew days keep the
           // day-after behaviour (recorded in MAINTENANCE.md).
+          const invoicedIdx = productionInvoicedIndex(p);
           for (const day of (p.days || [])) {
             if (!userCrewIds.includes(day.crewId)) continue;
             if (!inWindow(day)) continue;
@@ -27479,11 +27480,17 @@ const setDays = (updater) =>
             try {
               const resolved = resolveDay(p, day, crew);
               const calc = calcForDisplay(p, day, crew, findPrevDay(p.days || [], day));
-              days.push({ day, resolved, production: p, crew, calc });
+              // Phase 14: a day covered by a SENT invoice reports what that
+              // invoice billed. Every stats consumer reads this one array, so
+              // scaling here keeps the hero figure, the monthly rollup and the
+              // category buckets telling the same story.
+              const claimed = invoicedIdx.get(invoiceDayKey(day.crewId, day.date));
+              days.push({ day, resolved, production: p, crew, calc: applyInvoicedToCalc(calc, claimed) });
             } catch {}
           }
         }
-        return { enrichedDays: days, excludedCount: excluded, notYetCountedDays: notYetCounted };
+        return { enrichedDays: days, excludedCount: excluded, notYetCountedDays: notYetCounted,
+                 anyInvoiced: days.some(e => e.calc && e.calc.invoicedFrom) };
       }, [productions, filter, userPrefs]);
 
       const stats = useMemo(() => {
@@ -27848,6 +27855,24 @@ const setDays = (updater) =>
                       this the user (or a reviewer) sees a bare "No stats
                       yet" while a live shoot is sitting right there. Same
                       card and copy as the data-branch hint. */}
+                  {/* Phase 14: figures now come from the SENT invoice where
+                      one covers the day, so months already looked at can read
+                      differently than before. More correct, but a surprise if
+                      unannounced - said once, then dismissed for good. */}
+                  {anyInvoiced && !userPrefs.seenInvoicedEarningsNote && (
+                    <div className="mt-6 max-w-xs mx-auto bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4 text-left">
+                      <div className="text-xs font-semibold text-sky-400 mb-1">Earnings now follow your invoices</div>
+                      <p className="text-xs text-neutral-400 leading-relaxed">
+                        Where a day is covered by an invoice you have sent, these figures show what you invoiced rather than what the day calculates to. Discounts included. Some past months may read differently than before.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setUserPrefs(prev => ({ ...prev, seenInvoicedEarningsNote: true }))}
+                        className="mt-2 text-[11px] uppercase tracking-[0.15em] font-bold text-sky-500"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                      >Got it</button>
+                    </div>
+                  )}
                   {notYetCountedDays > 0 && (
                     <div className="mt-6 max-w-xs mx-auto bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4 text-left">
                       <div className="text-xs font-semibold text-sky-400 mb-1">
@@ -28109,6 +28134,26 @@ const setDays = (updater) =>
         }
       }
       return byKey;
+    }
+
+    // ONE seam for the stats side. Where a day is invoiced, its calc is
+    // scaled to what the invoice billed. Scaling the LINES too (rather than
+    // just overwriting the total) keeps every downstream consumer consistent
+    // - the basic/OT/penalty buckets still sum to the reported figure, so no
+    // two stats surfaces can disagree. calc.meta is untouched: an invoice
+    // changes what a day PAID, never how long it was, so hours stay honest.
+    function applyInvoicedToCalc(calc, claimed) {
+      if (!calc || !claimed) return calc;
+      const billed = Number(claimed.amount) || 0;
+      const computed = Number(calc.total) || 0;
+      if (computed === billed) return calc;
+      const ratio = computed !== 0 ? billed / computed : 0;
+      return {
+        ...calc,
+        total: billed,
+        invoicedFrom: claimed.invoiceId,
+        lines: (calc.lines || []).map(l => ({ ...l, amount: (Number(l.amount) || 0) * ratio })),
+      };
     }
 
     /* ═══════════════ INVOICE EXPORT — accounting formats ═══════════════════

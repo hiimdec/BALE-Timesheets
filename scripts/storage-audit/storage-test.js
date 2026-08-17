@@ -304,6 +304,7 @@ async function transformedAppCode() {
     'try { globalThis.__invoiceDayClaim = invoiceDayClaim; } catch (_) {}\n' +
     'try { globalThis.__invoiceIsClaimed = invoiceIsClaimed; } catch (_) {}\n' +
     'try { globalThis.__productionInvoicedIndex = productionInvoicedIndex; } catch (_) {}\n' +
+    'try { globalThis.__applyInvoicedToCalc = applyInvoicedToCalc; } catch (_) {}\n' +
     // Record-construction executions (RC, ruled): the module-level writers the
     // RC section runs for real instead of regex-pinning their prose.
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
@@ -3786,6 +3787,33 @@ async function main() {
       check('IE9 a PART INVOICED marker renders on both card variants when some but not all days are billed (ruled: one number, never a silent blend), and is absent when the job is wholly invoiced - the SENT chip already says that',
         marker === 1 && markerGate === 1 && markerRows === 2,
         `marker=${marker} gate=${markerGate} rows=${markerRows}`);
+      // IE10-12: the STATS read path. One seam scales the day's calc, so the
+      // hero figure, the monthly rollup and the category buckets cannot
+      // disagree; hours stay computed (an invoice changes what a day PAID,
+      // not how long it was); and the retrospective change is announced once.
+      const scale = sb.__applyInvoicedToCalc;
+      if (typeof scale === 'function') {
+        const calc = { total: 400, meta: { workedHrs: 12, dayType: 'Recce' },
+          lines: [{ label: 'Recce', amount: 300 }, { label: 'OT', amount: 100 }] };
+        const out = scale(calc, { invoiceId: 'i1', amount: 360 });
+        const sumLines = out.lines.reduce((x, l) => x + l.amount, 0);
+        check('IE10 an invoiced day scales its whole calc, not just the headline: a £400 day billed at £360 reports 360 AND its lines still sum to 360 (270/90), so the basic/OT buckets can never disagree with the total they are meant to explain',
+          Math.abs(out.total - 360) < 0.01 && Math.abs(sumLines - 360) < 0.01 &&
+          Math.abs(out.lines[0].amount - 270) < 0.01 && out.invoicedFrom === 'i1',
+          JSON.stringify({ total: out.total, sumLines, first: out.lines[0].amount }));
+        check('IE11 hours are NEVER rescaled - calc.meta passes through untouched - because an invoice changes what a day paid, not how long it was; and an uninvoiced day returns the identical calc object, so nothing changes for days with no sent invoice',
+          out.meta.workedHrs === 12 && out.meta.dayType === 'Recce' &&
+          scale(calc, null) === calc && scale(null, { amount: 1 }) === null,
+          JSON.stringify({ hrs: out.meta.workedHrs, passthrough: scale(calc, null) === calc }));
+      } else {
+        check('IE10 applyInvoicedToCalc exposed', false, 'not exposed');
+      }
+      const statsSeam = (srcIE.match(/calc: applyInvoicedToCalc\(calc, claimed\)/g) || []).length;
+      const note = (srcIE.match(/anyInvoiced && !userPrefs\.seenInvoicedEarningsNote/g) || []).length;
+      const noteDismiss = (srcIE.match(/seenInvoicedEarningsNote: true/g) || []).length;
+      check('IE12 stats routes through the ONE enrichment seam (every consumer reads that array), and the retrospective change is announced exactly once - shown only when an invoiced day is actually in view, dismissed for good through userPrefs',
+        statsSeam === 1 && note === 1 && noteDismiss === 1,
+        `seam=${statsSeam} note=${note} dismiss=${noteDismiss}`);
     }
 
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
