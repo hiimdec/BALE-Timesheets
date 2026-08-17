@@ -159,5 +159,30 @@ display/behaviour gates, none money — parked for a ruling, not fixed:
   that date.
 
 The fix in each case is the same one already ruled correct twice: resolve
-first. Not built here because each changes visible behaviour in a surface a
-phase has not walked; they should land together with their own device pass.
+first. **Ruled (founder, 2026-08-17): approved, parked until after the
+2026.11 submission.** Land all three as a SINGLE item, one commit, with one
+device walk covering CrewMemberDayView and DayBreakdownView.
+
+## Boundary breadcrumb — approved, after the 2026.11 submission
+
+**Ruled (founder, 2026-08-17).** `componentDidCatch` writes a
+`bigals_last_render_error` record (message, component stack, APP_VERSION,
+date) through the storage adapter; Settings → Help & data surfaces it as a
+"Last screen error" row. Deliberately NOT before submission: it adds a
+persisted `bigals_*` key, which means the adapter's KEYS warm list in the
+same commit (the T1 rule) — a schema change, not a slip-in. One commit when
+picked up.
+
+## Render-smoke audit stage — the next phase, once 2026.11 is away
+
+**Ruled (founder, 2026-08-17): this is the one they want.** Scope it as its
+own proposal when picked up. The argument, in the founder's words: a whole
+surface was broken for seven phases while every gate stayed green, because
+nothing in the suite renders anything — everything built so far tests
+calculation and record construction, which is why both money bugs were
+caught and this wasn't. Sketch to start the proposal from: an `audit:render`
+stage loading the bundle with real react-dom in jsdom against a seeded
+fixture, mounting the app, opening each editor surface once (solo day, grid
+crew editor, grid day editor, CMDV, settings sheet, LF day editor), failing
+on any RootErrorBoundary trip. react/react-dom/jsdom as devDependencies
+only — the shipped app stays on the CDN.
