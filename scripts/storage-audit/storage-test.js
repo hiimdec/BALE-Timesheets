@@ -299,6 +299,11 @@ async function transformedAppCode() {
     'try { globalThis.__resolveApaTerms = resolveApaTerms; } catch (_) {}\n' +
     // Phase 14: the email sign-off first-namer (EM pins).
     'try { globalThis.__emailFirstName = emailFirstName; } catch (_) {}\n' +
+    // Phase 14: the invoiced-earnings seam (IE pins).
+    'try { globalThis.__invoiceDayKey = invoiceDayKey; } catch (_) {}\n' +
+    'try { globalThis.__invoiceDayClaim = invoiceDayClaim; } catch (_) {}\n' +
+    'try { globalThis.__invoiceIsClaimed = invoiceIsClaimed; } catch (_) {}\n' +
+    'try { globalThis.__productionInvoicedIndex = productionInvoicedIndex; } catch (_) {}\n' +
     // Record-construction executions (RC, ruled): the module-level writers the
     // RC section runs for real instead of regex-pinning their prose.
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
@@ -3699,6 +3704,74 @@ async function main() {
       check('EM2 both outbound bodies sign through emailFirstName - the invoice email (company fallback whole, never first-named) and the chase email - and the raw formal-name interpolation is gone',
         invUse === 1 && chaseUse === 1 && rawGone === 0,
         `inv=${invUse} chase=${chaseUse} raw=${rawGone}`);
+    }
+
+    // ── IE: what was actually INVOICED (Phase 14, founder-ruled). The
+    //    reporting surfaces report the SENT invoice where one covers the day,
+    //    and compute otherwise. These pins hold the seam: the claim, the
+    //    sent-only rule, and the attribution arithmetic. ──
+    {
+      const key = sb.__invoiceDayKey, claim = sb.__invoiceDayClaim,
+            isClaimed = sb.__invoiceIsClaimed, index = sb.__productionInvoicedIndex;
+      if ([key, claim, isClaimed, index].every(f => typeof f === 'function')) {
+        check('IE1 a day key needs BOTH parts - crew and date - so a dateless or crewless record can never collide into a shared "" key that would claim every such day at once',
+          key('c1', '2026-09-01') === 'c1:2026-09-01' && key('c1', '') === '' &&
+          key('', '2026-09-01') === '' && key(null, null) === '',
+          JSON.stringify({ ok: key('c1','2026-09-01'), noDate: key('c1',''), noCrew: key('','2026-09-01') }));
+
+        // The claim: stamped dayKeys win; a legacy invoice falls back to its
+        // OWN frozen dayBreakdown (not a date range).
+        const bd = [{ date: '2026-09-01', total: 400 }, { date: '2026-09-02', total: 600 }];
+        check('IE2 the claim reads stamped dayKeys when present and falls back to the invoice\'s OWN dayBreakdown dates otherwise - so an invoice minted before the claim existed still reports exactly the days it billed, with nothing migrated and no frozen record touched',
+          JSON.stringify(claim({ dayKeys: ['c1:2026-09-01'], userCrewId: 'c1', dayBreakdown: bd })) === JSON.stringify(['c1:2026-09-01']) &&
+          JSON.stringify(claim({ userCrewId: 'c1', dayBreakdown: bd })) === JSON.stringify(['c1:2026-09-01', 'c1:2026-09-02']) &&
+          JSON.stringify(claim({ userCrewId: 'c1' })) === JSON.stringify([]) &&
+          JSON.stringify(claim(null)) === JSON.stringify([]),
+          'claim resolution');
+
+        check('IE3 SENT and PAID claim their days; a DRAFT never does - a draft re-syncs from the days, so reading one would make the reported figure move while it is edited (ruled)',
+          isClaimed({ status: 'sent' }) === true && isClaimed({ status: 'paid' }) === true &&
+          isClaimed({ status: 'draft' }) === false && isClaimed({}) === false && isClaimed(null) === false,
+          'status gate');
+
+        // Attribution: a £1,000 pair of days discounted to £900 must report
+        // £900 across the two days, split by their frozen day totals (40/60).
+        const disc = { id: 'i1', status: 'sent', createdAt: '2026-09-05T10:00:00Z', userCrewId: 'c1',
+          dayBreakdown: bd, lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: null }] };
+        const discounted = { ...disc, lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: 1.8 }] };
+        const idxFull = index({ invoices: [disc] });
+        const idxDisc = index({ invoices: [discounted] });
+        const sumOf = (m) => [...m.values()].reduce((s, v) => s + v.amount, 0);
+        check('IE4 the invoiced figure is the NET the invoice actually bills and it lands PROPORTIONALLY: an undiscounted £1,000 over a 400/600 pair reports 400/600, and the same pair discounted to £900 reports 360/540 - the discount is spread by the frozen day totals, never dumped on one day',
+          Math.abs(sumOf(idxFull) - 1000) < 0.01 &&
+          Math.abs(idxFull.get('c1:2026-09-01').amount - 400) < 0.01 &&
+          Math.abs(sumOf(idxDisc) - 900) < 0.01 &&
+          Math.abs(idxDisc.get('c1:2026-09-01').amount - 360) < 0.01 &&
+          Math.abs(idxDisc.get('c1:2026-09-02').amount - 540) < 0.01,
+          JSON.stringify({ full: sumOf(idxFull), disc: sumOf(idxDisc), d1: idxDisc.get('c1:2026-09-01').amount }));
+
+        check('IE5 a DRAFT contributes nothing to the index (the same invoice sent DOES), so editing a draft can never move a reported figure',
+          index({ invoices: [{ ...disc, status: 'draft' }] }).size === 0 && index({ invoices: [disc] }).size === 2,
+          'draft exclusion');
+
+        // Contested day: the LATER invoice wins, by createdAt - the same rule
+        // long form's lfInvoiceForWeek already uses.
+        const later = { ...disc, id: 'i2', createdAt: '2026-09-09T10:00:00Z',
+          dayBreakdown: [{ date: '2026-09-01', total: 100 }],
+          lineItems: [{ label: 'Re-bill', qty: 1, rate: 100, amount: 100, discountedQty: null }] };
+        const contested = index({ invoices: [disc, later] });
+        check('IE6 when two sent invoices claim the same day the LATER one wins by createdAt (matching lfInvoiceForWeek), so a re-billed day reports the re-bill and is never counted twice',
+          contested.get('c1:2026-09-01').invoiceId === 'i2' &&
+          Math.abs(contested.get('c1:2026-09-01').amount - 100) < 0.01 &&
+          contested.get('c1:2026-09-02').invoiceId === 'i1',
+          JSON.stringify({ d1: contested.get('c1:2026-09-01'), d2: contested.get('c1:2026-09-02') }));
+      } else {
+        check('IE1 the invoiced-earnings seam is exposed', false, 'not exposed');
+      }
+      const srcIE = fs.readFileSync(SRC_HTML, 'utf8');
+      const stamp = (srcIE.match(/dayKeys: \(built\.dayBreakdown \|\| \[\]\)\.map\(e => invoiceDayKey\(userCrewId, e && e\.date\)\)\.filter\(Boolean\),/g) || []).length;
+      check('IE7 the day claim is stamped at exactly ONE site - the shared invoice shell - so APA, long form and standalone all mint the same shape from their own dayBreakdown, and a standalone (no dayBreakdown) claims nothing',
+        stamp === 1, `stampSites=${stamp}`);
     }
 
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate

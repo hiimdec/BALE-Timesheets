@@ -7307,6 +7307,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         favourableRounding: roundingFav(production),
         // Logo is NOT snapshotted per-invoice — read from userPrefs at render time to avoid
         // duplicating ~500KB of base64 data into every invoice (iOS Safari 5MB localStorage cap).
+        // The DAY CLAIM (Phase 14): which of the user's days this invoice
+        // bills, stamped from the invoice's OWN dayBreakdown so the claim and
+        // the money always come from one snapshot. One direction, on the
+        // invoice, mirroring long form's weekIds. A standalone invoice has no
+        // dayBreakdown and so claims nothing - correct, it bills no days.
+        dayKeys: (built.dayBreakdown || []).map(e => invoiceDayKey(userCrewId, e && e.date)).filter(Boolean),
         lineItems: built.lineItems,
         // Notes are manual-only now: the day-by-day lives in its own frozen
         // snapshot and renders as a styled section, so notes starts EMPTY.
@@ -28041,6 +28047,68 @@ const setDays = (updater) =>
     function invoiceVAT(invoice, subtotal) {
       const vatAmount = invoice?.vatRegistered ? subtotal * (Number(invoice.vatRate) || 20) / 100 : 0;
       return { vatAmount, total: subtotal + vatAmount };
+    }
+
+    /* ── What was actually INVOICED, per day (Phase 14, founder-ruled) ──
+     * The reporting surfaces compute a day's money from the day record. Once
+     * a day has been billed on a SENT invoice, that invoice is what the user
+     * actually claimed - discounts and manual edits included - so it, not the
+     * computation, is what the app should report back. Nothing here changes
+     * what an invoice BILLS: these read frozen invoices and never write one.
+     */
+    // A day's identity across the seam: the crew member plus the date.
+    const invoiceDayKey = (crewId, date) => (crewId && date) ? `${crewId}:${date}` : '';
+
+    // The days a frozen invoice claims. New invoices carry `dayKeys` stamped
+    // at mint; older ones fall back to their own dayBreakdown - the SAME
+    // enumerated list the claim is built from, never a date-range guess - so
+    // no existing invoice needs migrating and no frozen record is touched.
+    function invoiceDayClaim(invoice) {
+      if (!invoice) return [];
+      if (Array.isArray(invoice.dayKeys)) return invoice.dayKeys.filter(Boolean);
+      const crewId = invoice.userCrewId || '';
+      return (invoice.dayBreakdown || []).map(e => invoiceDayKey(crewId, e && e.date)).filter(Boolean);
+    }
+
+    // SENT is the claim. 'paid' counts too - paid is sent-and-settled. A
+    // DRAFT never does (ruled): its lines re-sync from the days, so reading
+    // one would make the reported figure move while it is being edited, and
+    // a draft is not yet a claim on anyone.
+    const invoiceIsClaimed = (inv) => !!inv && (inv.status === 'sent' || inv.status === 'paid');
+
+    // Per-day invoiced amounts for a production: Map<dayKey, {invoiceId, amount}>.
+    // The figure attributed is the invoice's NET (ex-VAT) subtotal, which is
+    // what was earned - VAT is collected for HMRC, not income - and which
+    // getLineTotal already computes net of any per-line discount. That net is
+    // spread across the claimed days in proportion to the day totals frozen
+    // on the invoice, so a discount lands proportionally instead of on one
+    // arbitrary day; an equal split is the fallback when a snapshot carries
+    // no day totals. Later invoices win a contested day, by createdAt, the
+    // same rule long form's lfInvoiceForWeek already uses.
+    function productionInvoicedIndex(production) {
+      const byKey = new Map();
+      const claimed = (((production && production.invoices) || []).filter(invoiceIsClaimed))
+        .slice()
+        .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+      for (const inv of claimed) {
+        const keys = invoiceDayClaim(inv);
+        if (!keys.length) continue;
+        const net = invoiceSubtotal(inv.lineItems);
+        const bd = (inv.dayBreakdown || []).filter(e => e && e.date);
+        const sumDays = bd.reduce((sum, e) => sum + (Number(e.total) || 0), 0);
+        const share = new Map();
+        if (bd.length && sumDays > 0) {
+          const crewId = inv.userCrewId || '';
+          for (const e of bd) {
+            const k = invoiceDayKey(crewId, e.date);
+            if (k) share.set(k, ((Number(e.total) || 0) / sumDays) * net);
+          }
+        }
+        for (const k of keys) {
+          byKey.set(k, { invoiceId: inv.id, amount: share.has(k) ? share.get(k) : (net / keys.length) });
+        }
+      }
+      return byKey;
     }
 
     /* ═══════════════ INVOICE EXPORT — accounting formats ═══════════════════
