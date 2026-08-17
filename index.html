@@ -31618,7 +31618,7 @@ const confirmDelete = (p) => setConfirmOpts({
               setShowWizard={setShowWizard}
             />
           ) : (
-          <div className="max-w-6xl mx-auto px-4">
+          <div className="max-w-6xl mx-auto px-4 pt-4">
             {trimmedQuery ? (
               /* Search results */
               filteredSorted.length === 0 ? (
@@ -31648,12 +31648,17 @@ const confirmDelete = (p) => setConfirmOpts({
                 {/* In progress — pinned at the very top, above the months.
                     Long form jobs only this slice (isInProgressProduction). */}
                 {inProgress.length > 0 && (
-                  <div>
+                  <div className="mb-8">
                     <div className="flex items-baseline justify-between border-b border-dashed border-neutral-800 mb-2.5" style={{ padding: '0 2px 10px' }}>
                       <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">In progress</div>
                     </div>
+                    {/* FULL cards, not compact (Phase 14): these are the
+                        pinned active jobs - the compact variant is the dim
+                        older-month row and read as unfinished here. The full
+                        branch already carries the ruled long form treatment
+                        (weeks + days meta, no money). */}
                     <div className="space-y-2">
-                      {inProgress.map(p => renderCard(p, { compact: true }))}
+                      {inProgress.map(p => renderCard(p, { compact: false }))}
                     </div>
                   </div>
                 )}
