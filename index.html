@@ -9881,15 +9881,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // building — no I/O, no behaviour change (the strings are byte-identical to
     // the templates each path used to inline). invoiceSubtotal/invoiceVAT are
     // hoisted function declarations, so this runs fine despite being defined above them.
+    // The email sign-off name: FIRST name, no title (Phase 14) - "Mr Declan
+    // Duffy" signs as "Declan". Email body copy only; the invoice DOCUMENT
+    // keeps the formal name untouched. Titles strip only when a real name
+    // follows (a bare "Mr" stays rather than signing nothing), and company
+    // names never pass through here - first-naming a company would sign
+    // "Many thanks, Big".
+    const EMAIL_TITLE_RE = /^(mr|mrs|ms|miss|mx|dr|prof)\.?$/i;
+    function emailFirstName(name) {
+      const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+      while (parts.length > 1 && EMAIL_TITLE_RE.test(parts[0])) parts.shift();
+      return parts[0] || '';
+    }
+
     function buildInvoiceEmailContent(invoice) {
       const subjectBase = `Invoice ${invoice.invoiceNumber}`;
       const subject = invoice.jobTitle ? `${subjectBase} - ${invoice.jobTitle}` : subjectBase;
       const subtotal = invoiceSubtotal(invoice.lineItems);
       const { vatAmount } = invoiceVAT(invoice, subtotal);
       const totalStr = fmtGBP(subtotal + vatAmount);
-      const fromName = invoice.fromName || invoice.fromCompanyName || '';
+      // Personal name first-named; the company fallback stays whole.
+      const signoff = emailFirstName(invoice.fromName) || invoice.fromCompanyName || '';
       const jobBit = invoice.jobTitle ? ` for ${invoice.jobTitle}` : '';
-      const body = `Hi,\n\nPlease find attached invoice ${invoice.invoiceNumber}${jobBit}, total ${totalStr}.\n\nPlease quote ${invoice.invoiceNumber} when making payment.\n\nMany thanks,\n${fromName}`;
+      const body = `Hi,\n\nPlease find attached invoice ${invoice.invoiceNumber}${jobBit}, total ${totalStr}.\n\nPlease quote ${invoice.invoiceNumber} when making payment.\n\nMany thanks,\n${signoff}`;
       return { subject, body };
     }
 
@@ -9954,7 +9968,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dueStr = invoice.dueDate
         ? new Date(invoice.dueDate + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
         : '';
-      const signoff = String((userPrefs && userPrefs.displayName) || invoice.fromName || '').trim();
+      const signoff = emailFirstName((userPrefs && userPrefs.displayName) || invoice.fromName || '');
       const body = `Hi${contact ? ' ' + contact : ''},\n\nJust chasing invoice ${invoice.invoiceNumber}${production ? ` for ${production}` : ''} (${totalStr}), which was due on ${dueStr} and is now overdue.\n\nCould you let me know when I can expect payment? Late-payment charges will apply under the standard terms if it remains unpaid.\n\nThanks,\n${signoff}`;
       return { subject, body };
     }

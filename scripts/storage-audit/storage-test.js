@@ -297,6 +297,8 @@ async function transformedAppCode() {
     'try { globalThis.__flattenRateCard = flattenRateCard; } catch (_) {}\n' +
     // Phase 12: the card-versioned TERM resolver (PT pins).
     'try { globalThis.__resolveApaTerms = resolveApaTerms; } catch (_) {}\n' +
+    // Phase 14: the email sign-off first-namer (EM pins).
+    'try { globalThis.__emailFirstName = emailFirstName; } catch (_) {}\n' +
     // Record-construction executions (RC, ruled): the module-level writers the
     // RC section runs for real instead of regex-pinning their prose.
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
@@ -3674,6 +3676,29 @@ async function main() {
       const routedPass = (srcDR.match(/routedDayType=\{RATEABLE_DAY_TYPES\.includes\(form\?\.dayType\) \? form\.dayType : null\}/g) || []).length;
       check('DR7 the sheet always shows the ROUTED day type (new unsaved days included) - the shown filter carries routedDayType and the BB overlay passes the editor buffer\'s type - dropping either opens the sheet onto nothing and goes RED',
         routedProp === 1 && routedPass === 1, `prop=${routedProp} pass=${routedPass}`);
+    }
+
+    // ── EM: the email sign-off drops the title (Phase 14). First name only
+    //    in OUTBOUND EMAIL BODIES; the invoice document keeps the formal
+    //    name; a company-name fallback stays whole. ──
+    {
+      const fn = sb.__emailFirstName;
+      if (typeof fn === 'function') {
+        check('EM1 emailFirstName executes: "Mr Declan Duffy" signs "Declan"; a mid-name title only strips from the FRONT ("Dr Jane A Smith" -> "Jane"); a plain first name passes through; a bare "Mr" survives rather than signing nothing; empty stays empty',
+          fn('Mr Declan Duffy') === 'Declan' && fn('Dr Jane A Smith') === 'Jane' &&
+          fn('Declan') === 'Declan' && fn('Mrs. Jo Bloggs') === 'Jo' &&
+          fn('Mr') === 'Mr' && fn('') === '' && fn(null) === '',
+          JSON.stringify({ mr: fn('Mr Declan Duffy'), dr: fn('Dr Jane A Smith'), bare: fn('Mr') }));
+      } else {
+        check('EM1 emailFirstName exposed', false, 'not exposed');
+      }
+      const srcEM = fs.readFileSync(SRC_HTML, 'utf8');
+      const invUse = (srcEM.match(/const signoff = emailFirstName\(invoice\.fromName\) \|\| invoice\.fromCompanyName \|\| '';/g) || []).length;
+      const chaseUse = (srcEM.match(/const signoff = emailFirstName\(\(userPrefs && userPrefs\.displayName\) \|\| invoice\.fromName \|\| ''\);/g) || []).length;
+      const rawGone = (srcEM.match(/Many thanks,\\n\$\{fromName\}/g) || []).length;
+      check('EM2 both outbound bodies sign through emailFirstName - the invoice email (company fallback whole, never first-named) and the chase email - and the raw formal-name interpolation is gone',
+        invUse === 1 && chaseUse === 1 && rawGone === 0,
+        `inv=${invUse} chase=${chaseUse} raw=${rawGone}`);
     }
 
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
