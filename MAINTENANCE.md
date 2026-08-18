@@ -62,6 +62,18 @@ welcome.html and how-it-works.html footers carry static "APA Sept 2025" markers.
 **Why parked:** Phase 15 made the card reference tappable for `d` (fills the daily rate as published) and `w` (switches "my deal is weekly" on and fills the weekly field, so the wizard's own visible ÷5 does the conversion). Hourly entries are left as a plain, untappable reference because there is no hourly field and any conversion invents a number. Non-numeric entries (NEG, N/A, "not often in this band", the MMP referral) carry no figure and were never fillable.
 **Which departments this covers.** Counted from the registry: **109 roles carry an hourly figure**, against 74 daily and 6 weekly — so the unfilled case is the majority of the card, not a corner. The hourly departments are Camera, Sound, Grip, Costume, Hair & Make-up, Locations, Editorial, Production and Transport (Unit Driver). Art Department, Assistant Directors, Construction, Props, Lighting/Electrical and Intimacy Coordinator are `d` or `w` and are already fillable.
 
+## Canary — "Late lunch earned" is where an S4 lapse would show first
+
+**Trigger:** any change to the Stats aggregation loop, to `agreementOf`, or to the long form engine's penalty lines. Also read this before diagnosing a strange figure on that card.
+**Change:** none. This is a diagnostic note, recorded so the next person reaches for it instead of re-deriving it.
+**Why it is worth writing down.** Sweep gate S4 (`if (agreementOf(p) !== 'apa') continue;`, the first statement in the loop that builds `enrichedDays`) keeps long form days out of Stats entirely. If it ever lapses, the **late lunch card is the figure that would show it first, and it would show it as a wrong number rather than as a crash**:
+
+- APA's late-first-break penalty is a hard-coded flat `amount: 10` (§6.2). Two of them are exactly £20, so that card is normally a multiple of ten and a non-round figure is immediately legible as wrong.
+- Long form emits a line labelled **`'Late lunch'`** whose amount is `bound.rate * (delay / 60)` — rate-based, not flat, and at the overtime rate where the clause applies it. Its label lowercases to a "late" prefix.
+- So a long form day reaching the loop would add a rate-based amount to a figure that is otherwise always a multiple of ten.
+
+Phase 16 investigated exactly this shape — LATE LUNCHES 2 against LATE LUNCH EARNED £19.42 — and **it was not a leak**: S4 was intact, and the 58p came from Phase 14's invoiced pro-rata scaling plus a loose label-prefix match (fixed, `isLateFirstBreakLine`, pinned ST1). The hypothesis was right about the shape and wrong about the cause. Next time: check S4 and the pin first (LF32 asserts S4 by its own comment anchor and counts both same-shaped lines), then the scaling, then arithmetic.
+
 ## Marketing copy pass — soften the Greggs/Leatherman trademark usage
 
 **Trigger:** next marketing/copy pass, or any trademark complaint (then immediately).
