@@ -22567,7 +22567,14 @@ const setDays = (updater) =>
 
           <div className="fixed bottom-0 left-0 right-0 bg-neutral-950/95 border-t border-neutral-800" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
             <div className="max-w-2xl mx-auto px-4 pt-3">
+              {/* Keyed by SCREEN so every step mounts its own button node. The
+                  footer button is otherwise the same element for all nine
+                  steps, so React patches its label in place and the touch
+                  state raised on the tap that advanced the step is left
+                  sitting on the node the next step renders — the button comes
+                  up already looking pressed. A fresh node cannot carry it. */}
               <Btn
+                key={screen}
                 variant="primary"
                 onClick={goNext}
                 disabled={!canContinue}
@@ -30569,8 +30576,13 @@ const setDays = (updater) =>
           </div>
           {step < 3 && (
             <div className="px-4 pt-4 pb-6 border-t border-neutral-800 flex gap-3" style={{ paddingBottom: 'max(1.5rem, var(--sab))' }}>
-              {step === 2 && <Btn variant="ghost" className="flex-1" onClick={() => setStep(1)}>Back</Btn>}
-              <Btn variant="primary" className="flex-1"
+              {/* Keyed per step for the same reason as the long form wizard's
+                  footer: one element served both steps, so the tap that moved
+                  step 1 -> step 2 left its pressed state on the button step 2
+                  renders. Keys also stop Back's arrival at index 0 shifting
+                  the primary's reconciliation slot. */}
+              {step === 2 && <Btn key="back" variant="ghost" className="flex-1" onClick={() => setStep(1)}>Back</Btn>}
+              <Btn key={`next-${step}`} variant="primary" className="flex-1"
                 onClick={() => step === 1 ? setStep(2) : save()}
                 disabled={step === 1 && !local.displayName.trim()}>
                 {step === 2 ? 'Save' : 'Next'}
