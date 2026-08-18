@@ -82,6 +82,19 @@ Phase 16 investigated exactly this shape — LATE LUNCHES 2 against LATE LUNCH E
 **Why it was left.** The long form today card added in Phase 16 sits in exactly the same slot, so the two hero cards are consistent with each other. Moving them above In Progress changes where the APA hero sits too, which is a layout judgement on a shipped surface rather than a bug fix. Device-verified in Phase 16: the card renders correctly, just lower than the comment claims.
 **If it is taken:** move both hero slots together, or the two agreements diverge — and fix the comment either way, since a comment that survives the move would be wrong in the opposite direction.
 
+## Design gap — no invoice-level discount concept
+
+**Trigger:** any work on per-line attribution, or the next time a reported figure and an invoice disagree.
+**Change:** none yet. This is the design problem underneath Phase 17.
+**The gap.** The app has no invoice-level discount field. `discountedQty` is a per-LINE quantity override. Every reduction — "10% off the whole job", "the recce was actually £125", "drop the mileage" — is expressed the same way, sets the same `linesEdited: true`, and produces the same lower net. **Two users wanting opposite semantics leave identical data**, so intent is never recorded, because the UI never asks. That is why Phase 17 stopped trying to infer it: billed money is now read at invoice granularity and nowhere finer.
+**The specific cause is closed; the ambiguity is not.** The founder's own case was the invoice editor being used as a *rate* editor — a recce corrected from the APA rate down to £125 because custom day rates did not exist yet. Phase 9 filled that gap from the other side, so nobody needs to do that again. But nothing stops the next person expressing a genuine whole-invoice discount as a line edit, or a rate correction as one, and the stored data will not tell them apart.
+
+## `dates` is computed and dropped in buildInvoiceLineItems
+
+**Trigger:** if per-line attribution is ever built.
+**Change:** one line. `buildInvoiceLineItems` (index.html, the `return [...map.values()].map(...)` at the end) builds `e.dates` — the exact set of dates feeding each aggregated line — uses it to write the human-readable `detail` string, and then **discards it**. The returned item is `{ id, label, detail, qty, rate, amount, discountedQty, isExpense }`. Keeping `dates` would make per-line attribution a record rather than an inference.
+**Why parked:** it cannot retrofit. Invoices already sent are frozen, so historical attribution would still have to be inferred by rebuilding the aggregation from the frozen `dayBreakdown` (which does store every day's full line list, so the mapping IS reconstructible — keyed `${label.split(" (")[0]}|${rate}`). Named failure modes for that inference: a renamed label breaks the key; an added line matches nothing (correctly whole-invoice); expense lines key on label *and* detail, both editable. And per-line attribution still needs the discount-concept gap above resolved before intent stops being guessed.
+
 ## Marketing copy pass — soften the Greggs/Leatherman trademark usage
 
 **Trigger:** next marketing/copy pass, or any trademark complaint (then immediately).
