@@ -3788,14 +3788,18 @@ async function main() {
           JSON.stringify({ noAmounts, full: idxFull.size, entry: idxFull.get('c1:2026-09-01') }));
 
         const moneyOf = sb.__claimedInvoicesOf;
+        // Defensive indexing: a mutation that empties this list must produce a
+        // RED ASSERTION, not a crash that kills every check after it. Learned
+        // the hard way twice in this phase.
+        const rec0 = (arg) => (typeof moneyOf === 'function' ? (moneyOf(arg)[0] || {}) : {});
         check('IE4b the money is read ONCE per invoice, whole, carrying its own dateSent: £1,000 discounted to £900 reports 900 as a single figure, never a per-day one, and a DRAFT reports nothing',
           typeof moneyOf === 'function'
-            && Math.abs(moneyOf({ invoices: [disc] })[0].net - 1000) < 0.01
-            && Math.abs(moneyOf({ invoices: [discounted] })[0].net - 900) < 0.01
-            && moneyOf({ invoices: [disc] })[0].date === '2026-09-30'
-            && moneyOf({ invoices: [disc] })[0].dayKeys.length === 2
+            && Math.abs((rec0({ invoices: [disc] }).net || 0) - 1000) < 0.01
+            && Math.abs((rec0({ invoices: [discounted] }).net || 0) - 900) < 0.01
+            && rec0({ invoices: [disc] }).date === '2026-09-30'
+            && (rec0({ invoices: [disc] }).dayKeys || []).length === 2
             && moneyOf({ invoices: [{ ...disc, status: 'draft' }] }).length === 0,
-          typeof moneyOf === 'function' ? JSON.stringify(moneyOf({ invoices: [discounted] })[0]) : 'not exposed');
+          typeof moneyOf === 'function' ? JSON.stringify(rec0({ invoices: [discounted] })) : 'not exposed');
 
         check('IE5 a DRAFT contributes nothing to the index (the same invoice sent DOES), so editing a draft can never move a reported figure',
           index({ invoices: [{ ...disc, status: 'draft' }] }).size === 0 && index({ invoices: [disc] }).size === 2,
@@ -3893,7 +3897,7 @@ async function main() {
         const inv = { id: 'x', status: 'sent', dateSent: '2026-10-02', userCrewId: 'c1',
           dayBreakdown: [{ date: '2026-10-01', total: 400 }, { date: '2026-10-02', total: 600 }],
           lineItems: [{ label: 'A', amount: 300, discountedQty: null }, { label: 'B', amount: 600, discountedQty: null }] };
-        const rec = moneyFn({ invoices: [inv] })[0];
+        const rec = moneyFn({ invoices: [inv] })[0] || {};   // defensive: a red assertion, never a crash
         check('IE11 the invoice-level arithmetic: the reported net is exactly the sum of its line items (900 from 300+600), independent of what the days computed (1000) - the gap is the discount and it stays AT invoice level instead of being spread',
           Math.abs(rec.net - 900) < 0.01 && rec.dayKeys.length === 2 && rec.date === '2026-10-02',
           JSON.stringify(rec));
@@ -3912,6 +3916,36 @@ async function main() {
             && !/if \(!Array\.isArray\(enrichedDays\) \|\| enrichedDays\.length === 0\) return \[\];/.test(html);
           return jsxOk && memoOk && seriesOk;
         })());
+      check('WIN4 an invoice with NO day link contributes NO billed money and its days compute normally - a paid invoice carrying neither dayKeys nor dayBreakdown, on a production that HAS stored days, must report the days alone and never the days PLUS the net. Reproduced from real data: Wagamamas, one £568 day and one £568 paid invoice naming nothing, read £1,136',
+        (() => {
+          const idxFn = sb.__productionInvoicedIndex, moneyFn = sb.__claimedInvoicesOf;
+          if (typeof idxFn !== 'function' || typeof moneyFn !== 'function') return false;
+          const key = (c, d) => `${c}|${d}`;
+          // EXACTLY the stored shape: no dayKeys property, no dayBreakdown
+          // property. Not empty arrays - ABSENT, which is what invoices minted
+          // before 17 Aug (dayKeys) and 10 Aug (dayBreakdown) actually carry.
+          const orphan = { id: 'sbhkqiog', status: 'paid', dateSent: '2026-07-10', userCrewId: 'cv',
+            lineItems: [{ label: 'L', amount: 568, discountedQty: null }] };
+          const p = { id: 'p', invoices: [orphan] };
+          const days = [{ crewId: 'cv', date: '2026-07-08', total: 568 }];
+          const idx = idxFn(p);
+          const billed = moneyFn(p).reduce((s, i) => s + i.net, 0);
+          const computed = days.reduce((s, d) => idx.has(key(d.crewId, d.date)) ? s : s + d.total, 0);
+          const total = billed + computed;
+          // The days alone. Never the sum, and never zero either - dropping the
+          // claim must not drop the WORK.
+          const daysAlone = Math.abs(total - 568) < 0.01 && Math.abs(billed) < 0.01;
+          // A dayBreakdown-only invoice (minted 10-17 Aug) still links, via the
+          // documented fallback - the rule is "no link", not "no dayKeys".
+          const viaFallback = moneyFn({ id: 'q', invoices: [{ ...orphan, id: 'b',
+            dayBreakdown: [{ date: '2026-07-08', total: 568 }] }] });
+          const fallbackOk = viaFallback.length === 1 && viaFallback[0].dayKeys.length === 1;
+          return daysAlone && fallbackOk;
+        })());
+      check('WIN5 the dayKeys STAMP still runs at invoice creation - a newly minted invoice carries the day claim, so the stamp cannot silently stop again and leave every future invoice unlinkable (it has only existed since 17 August, which is why every invoice in the founder\'s real data predates it)',
+        /dayKeys: \(built\.dayBreakdown \|\| \[\]\)\.map\(e => invoiceDayKey\(userCrewId, e && e\.date\)\)\.filter\(Boolean\),/.test(html)
+          && (html.match(/setProduction\(p => \(\{ \.\.\.p, invoices: \[\.\.\.\(p\.invoices \|\| \[\]\), invoice\] \}\)\);/g) || []).length === 1
+          && /function mintInvoiceShell\(production, setProduction, userPrefs, setUserPrefs, userCrewId, built\)/.test(html));
       check('WIN2 an invoice appears in the tax year it was SENT and NOT in the year the work was done - the case attributing on dateSent exists for. Work in 25/26, invoice sent in 26/27: the year of the WORK reports the computed day and no claim; the year of the SENDING reports the claim with no work at all, which also means a window holding money but no days must not render as empty',
         (() => {
           const idxFn2 = sb.__productionInvoicedIndex, moneyFn2 = sb.__claimedInvoicesOf;
@@ -3961,14 +3995,19 @@ async function main() {
           const y1 = [mk('2025-06-01', 1000), mk('2025-06-02', 1000)];   // invoiced in 25/26
           const y2 = [mk('2026-06-01', 1000), mk('2026-06-02', 1000)];   // invoiced in 26/27
           const loose = [mk('2026-07-01', 700)];                          // never invoiced
+          const linked = [mk('2026-08-01', 300)];                         // the undated invoice's own day
           const inv = (id, sent, ds, net) => ({ id, status: 'sent', createdAt: sent, dateSent: sent, userCrewId: 'me',
             dayKeys: ds.map(d => key('me', d.date)),
             dayBreakdown: ds.map(d => ({ date: d.date, total: d.total })),
             lineItems: [{ label: 'Days', amount: net, discountedQty: null }] });
           // The third invoice carries NO dateSent: no period to sit in.
-          const undated = { ...inv('i3', '2026-06-30', [], 500), dateSent: '', dayKeys: [], dayBreakdown: [] };
+          // NO dateSent: no period to sit in. It DOES carry a day link -
+          // Phase 17's no-link rule is WIN4's job, and a fixture that trips
+          // both at once tests neither. It moved here when the no-link rule
+          // landed, which is how the overlap was noticed.
+          const undated = { ...inv('i3', '2026-06-30', linked, 500), dateSent: '' };
           const p = { id: 'p1', prodCo: 'Acme', invoices: [inv('i1', '2025-06-30', y1, 2000), inv('i2', '2026-06-30', y2, 2000), undated] };
-          const allDays = [...y1, ...y2, ...loose];
+          const allDays = [...y1, ...y2, ...loose, ...linked];
           const idx = idxFn(p);
 
           // The shipped rule, reproduced: filter days AND invoices by ONE predicate.

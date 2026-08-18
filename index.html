@@ -28659,7 +28659,24 @@ const setDays = (updater) =>
         net: invoiceSubtotal(inv.lineItems),
         date: String(inv.dateSent || '').slice(0, 10),
         dayKeys: invoiceDayClaim(inv),
-      }));
+      }))
+      // NO DAY LINK, NO BILLED MONEY (ruled). An invoice that names no days
+      // cannot have its net used, because nothing tells us which days to stop
+      // computing - so its net would be added ON TOP of days that still
+      // compute, and the production would report double. That is exactly what
+      // happened: `dayKeys` has only existed since 17 August and the
+      // dayBreakdown it falls back to since 10 August, so every invoice older
+      // than that names nothing, and ten of one real dataset's fourteen were
+      // doubled - £7,933.05 on top of a ~£12.1k year.
+      //
+      // The fallback is what the app DOES know: the days compute. The cost,
+      // stated rather than papered over: for those invoices a discount is not
+      // reflected, because the app cannot attribute a discount it has no day
+      // link for. Back-filling was rejected (it repairs the minority that has
+      // a dayBreakdown and leaves the rest), as was treating the invoice as
+      // covering every day (it guesses, and on a part-invoiced production it
+      // would swallow days that were never billed).
+      .filter(rec => rec.dayKeys.length > 0);
     }
 
 
