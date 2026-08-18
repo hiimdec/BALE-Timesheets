@@ -21,6 +21,7 @@
     "audit:storage": "node scripts/storage-audit/storage-test.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
     "gate": "bash scripts/gate.sh",
+    "ship:ios": "bash scripts/ship-ios.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
