@@ -23996,6 +23996,25 @@ const setDays = (updater) =>
               </div>
             ) : (
               <div>
+                {/* Today's shortcut (Phase 16). With the week view as the front
+                    door, a working day would otherwise cost three taps — week,
+                    day, edit. This is deliberately a SHORTCUT and not part of
+                    the structure: one line rather than a card, its own sky
+                    treatment against the neutral week rows, sitting above the
+                    Weeks label so it reads as something offered rather than a
+                    member of the list — and absent entirely on any day that
+                    isn't today, which is the strongest signal of all. */}
+                {todayDay && (
+                  <button type="button" onClick={() => enterDay(todayDay.id)}
+                    className="w-full mb-6 flex items-center gap-2.5 rounded-xl bg-sky-500/[0.07] border border-sky-500/25 px-3 py-2.5 text-left hover:bg-sky-500/[0.11] transition-colors"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}>
+                    <span className="text-[10px] uppercase tracking-[0.14em] font-bold text-sky-400 flex-shrink-0">Today</span>
+                    <span className="text-[12px] text-neutral-300 min-w-0 flex-1 truncate">
+                      {fmtLfDay(todayDay.date)} · {(LF_DAY_TYPE_META[todayDay.dayType] || LF_DAY_TYPE_META.shoot).long}
+                    </span>
+                    <IChevronRight size={15} className="text-sky-500 flex-shrink-0" />
+                  </button>
+                )}
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Weeks</div>
                   <div className="flex items-center gap-2">
