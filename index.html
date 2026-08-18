@@ -23878,7 +23878,7 @@ const setDays = (updater) =>
               <span className="text-[10px] uppercase tracking-wide font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-md px-1.5 py-[3px]">Beta</span>
               <span className="text-[11px] text-neutral-400">{meta.join(' · ')}</span>
             </div>
-            <div className="text-[11px] text-neutral-500 mb-8">
+            <div className="text-[11px] text-neutral-500 mb-6">
               {me.role || 'Crew'}{me.agreementClass && me.agreementClass !== 'standard' ? ` · ${(AGREEMENT_CLASS_META[me.agreementClass] || {}).label || me.agreementClass}` : ''} · PP from {fmtDateShort(production.ppStartDate)}
             </div>
 
@@ -24025,8 +24025,12 @@ const setDays = (updater) =>
                         {selectMode ? 'Cancel' : 'Select'}
                       </button>
                     )}
-                    {/* 3.5: the button mints a WEEK (and its five working days). */}
-                    {!selectMode && <Btn variant="subtle" onClick={addWeek}><IPlus size={13}/>Add week</Btn>}
+                    {/* 3.5: the button mints a WEEK (and its five working days).
+                        size="sm" so the section header reads as a header: at the
+                        default md it was a chunky block beside a 10px label and
+                        an 11px text button, and it dominated the row it was
+                        supposed to sit in. */}
+                    {!selectMode && <Btn variant="subtle" size="sm" onClick={addWeek}><IPlus size={12}/>Add week</Btn>}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -24084,6 +24088,13 @@ const setDays = (updater) =>
                     );
                   })}
                 </div>
+
+                {selectMode && (
+                  <Btn variant="primary" className="mt-4 w-full justify-center" disabled={selectedWeekIds.size === 0}
+                    onClick={() => { const ids = [...selectedWeekIds]; setSelectMode(false); setSelectedWeekIds(new Set()); openInvoiceForWeeks(ids); }}>
+                    <IFilePlus size={14}/>Invoice {selectedWeekIds.size} week{selectedWeekIds.size === 1 ? '' : 's'}
+                  </Btn>
+                )}
                 {/* Invoicing details (moved here Phase 15). Entered once per
                     job and reused for every weekly invoice — per-job, not
                     per-day, so it sat oddly in a settings sheet reached from
@@ -24092,6 +24103,7 @@ const setDays = (updater) =>
                     then left alone. Same client machinery as the APA
                     production settings — the picker fills from
                     userPrefs.clients and links clientId. */}
+                <div className="mt-6 pt-6 border-t border-neutral-800">
                 <Disclosure label="Invoicing details" summary={invoicingDetailsSummary}>
                   <Field label="Production company">
                     <ClientPicker
@@ -24145,12 +24157,7 @@ const setDays = (updater) =>
                     Used for every invoice on this job. Invoices you've already sent keep the details they were sent with.
                   </p>
                 </Disclosure>
-                {selectMode && (
-                  <Btn variant="primary" className="mt-4 w-full justify-center" disabled={selectedWeekIds.size === 0}
-                    onClick={() => { const ids = [...selectedWeekIds]; setSelectMode(false); setSelectedWeekIds(new Set()); openInvoiceForWeeks(ids); }}>
-                    <IFilePlus size={14}/>Invoice {selectedWeekIds.size} week{selectedWeekIds.size === 1 ? '' : 's'}
-                  </Btn>
-                )}
+                </div>
               </div>
             )}
           </div>
