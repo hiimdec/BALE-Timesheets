@@ -33220,11 +33220,31 @@ const confirmDelete = (p) => setConfirmOpts({
       // invokes them, so no setState from inside).
       const [rateCardNotice, setRateCardNotice] = useState(null);
       const pendingRateNoticeRef = React.useRef(null);
+      // One announcement per production per card. The trigger is right — it
+      // fires exactly when a production crosses onto a card that has not
+      // started yet — but it had no memory, so every crossing re-announced:
+      // move the earliest day back to August and forward to September again
+      // and the dialog returns, without limit.
+      //
+      // Session-scoped on purpose (ruled Phase 15). A stored key would
+      // survive a relaunch, but it is a schema change and this is a dialog,
+      // not money; a repeat after a cold start is a minor annoyance against
+      // a migration before a submission. Persisting it is parked in
+      // MAINTENANCE.md.
+      //
+      // Keyed on openId rather than anything inside the payload: setProduction
+      // only ever finalizes the production whose id IS openId, so that is the
+      // production being announced, and effectiveFrom identifies the card.
+      // Deduping HERE also leaves finalizeProductionUpdate pure and untouched.
+      const announcedCardsRef = React.useRef(new Set());
       useEffect(() => {
-        if (pendingRateNoticeRef.current) {
-          setRateCardNotice(pendingRateNoticeRef.current);
-          pendingRateNoticeRef.current = null;
-        }
+        const pending = pendingRateNoticeRef.current;
+        if (!pending) return;
+        pendingRateNoticeRef.current = null;
+        const key = `${openId}:${pending.effectiveFrom}`;
+        if (announcedCardsRef.current.has(key)) return;
+        announcedCardsRef.current.add(key);
+        setRateCardNotice(pending);
       });
       const setProduction = (updater) =>
         setProductions((prev) => prev.map((p) =>

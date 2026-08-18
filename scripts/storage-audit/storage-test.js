@@ -8538,6 +8538,18 @@ async function main() {
           && !/<SectionCard title="Prep Booking">/.test(html);
         return gateOk && compOk && callSites && soloOk && bbOk && oldGone;
       })());
+    check('TT20h the future-card notice announces ONCE per production per card — the flush effect consults a session Set keyed openId:effectiveFrom before showing, so re-crossing the boundary (August -> September -> August -> September) cannot re-fire it; the dedupe lives at the announcement point so finalizeProductionUpdate stays pure and unchanged',
+      (() => {
+        const setOk = /const announcedCardsRef = React\.useRef\(new Set\(\)\);/.test(html);
+        const keyOk = /const key = `\$\{openId\}:\$\{pending\.effectiveFrom\}`;/.test(html);
+        const guardOk = /if \(announcedCardsRef\.current\.has\(key\)\) return;\n\s*announcedCardsRef\.current\.add\(key\);\n\s*setRateCardNotice\(pending\);/.test(html);
+        // The old unconditional flush must be GONE, not merely bypassed.
+        const oldGone = !/setRateCardNotice\(pendingRateNoticeRef\.current\);/.test(html);
+        // And the pure updater is untouched: still the same two-field write.
+        const pureOk = /noticeRef\.current = \{ label: toCard\.label, effectiveFrom: toCard\.effectiveFrom \};/.test(html)
+          && !/announcedCards/.test((html.match(/const finalizeProductionUpdate[\s\S]*?\n    \};/) || [''])[0]);
+        return setOk && keyOk && guardOk && oldGone && pureOk;
+      })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {
         const fn = (html.match(/function seedRateFromPrefs\(userPrefs, role, effectiveDate\)[\s\S]*?\n    \}/) || [''])[0];
