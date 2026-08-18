@@ -117,6 +117,17 @@ phase once 2026.11 is away and wants its own proposal.
   only mutating the source did.** When a pin names a containment rule, check that
   its anchor can actually express containment — an ordering test against an
   opening tag cannot.
+- **Verifying on the default path proves nothing when the default is the case
+  where the bug is invisible.** The Phase 17 window bug added every claimed
+  invoice to every windowed total — a ~£12k tax year read ~£20k. On **All-time**
+  the window predicate is the identity, so every invoice is legitimately in
+  scope and the figure was exactly right. That is the figure the device pass
+  checked, and it was reported as verified. Same shape as the mileage near-miss,
+  where the right and the wrong code agreed at the default 50p. **Before
+  believing a check, ask which input would distinguish correct from broken —
+  and if the default cannot, the default is the one case not worth checking.**
+  Pins have the same failure: WIN1 exists because no All-time assertion, however
+  strict, could have caught it.
 - **The device finds what pins cannot.** Recent: the grid crew editor crashed on
   open for *seven phases* behind 1,356 green assertions (`cardRoles` out of scope,
   swallowed by the error boundary); the solo day-rate indicator sat on a card the
