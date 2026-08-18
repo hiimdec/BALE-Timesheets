@@ -23368,11 +23368,17 @@ const setDays = (updater) =>
       const totalJob = useMemo(() => sortedDays.reduce((s, d) => {
         try { return s + longFormCalcForDay(production, d).total; } catch (_) { return s; }
       }, 0), [sortedDays, production]);
-      // Back stack: the DAY view is the job's root (back → productions);
-      // weeks with days behind it pops to the day; the week detail pops to
-      // the week list first.
+      // Back stack: the WEEK view is the job's root (back → productions);
+      // the day editor sits one level under it, and the week detail one
+      // level under the week list. Ruled Phase 15: the level above a day is
+      // its week, not the shoots list — the day editor is where the app
+      // opens, so backing out of it used to skip the job entirely.
+      const upOneLevel = () => {
+        if (view === 'day' && sortedDays.length > 0) { setView('weeks'); return false; }
+        onBack(); return true;
+      };
       useBackLevel(view === 'weeks' && !!openWeek, () => { setOpenWeekId(null); return false; }, 'longform-week');
-      useBackLevel(view === 'weeks' && !openWeek && sortedDays.length > 0, () => { setView('day'); return false; }, 'longform-weeks');
+      useBackLevel(view === 'day' && sortedDays.length > 0, () => { setView('weeks'); return false; }, 'longform-day');
 
       const stepISO = (iso, n) => { const t = new Date(iso + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
       const fmtRangeDay = (iso, withMonth) => {
@@ -23484,11 +23490,12 @@ const setDays = (updater) =>
           {!NATIVE_CHROME_ACTIVE && (
           <div className="border-b border-sky-500 bg-black sticky top-0 z-40" style={{ paddingTop: 'var(--sat)' }}>
             <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-              <button onClick={onBack} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Back" aria-label="Back">
+              <button onClick={upOneLevel} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1 -ml-1" title="Back" aria-label="Back">
                 <IArrowLeft size={18}/>
               </button>
               <div className="min-w-0 flex-1">
-                <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">Shoots</div>
+                {/* The eyebrow names where back goes, so it tracks the level. */}
+                <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">{(view === 'day' && sortedDays.length > 0) ? 'Weeks' : 'Shoots'}</div>
                 <div className="text-sm font-bold tracking-tight truncate">{production.title || 'Untitled'}</div>
               </div>
               <button onClick={() => setShowSettings(true)} className="text-neutral-400 hover:text-neutral-200 transition-colors p-1" title="Job settings" aria-label="Job settings">
