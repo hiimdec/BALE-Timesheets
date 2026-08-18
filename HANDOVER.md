@@ -128,6 +128,22 @@ phase once 2026.11 is away and wants its own proposal.
   and if the default cannot, the default is the one case not worth checking.**
   Pins have the same failure: WIN1 exists because no All-time assertion, however
   strict, could have caught it.
+- **Read the assertion COUNT, not just the colour.** A pin placed in a scope
+  where its sandbox does not exist *throws*, and the throw kills every
+  assertion after it in the file. WIN1 first landed outside the `sb` block: the
+  suite reported **1,352 passing against 1,392**, and the gate went red on a
+  crash rather than on a failure — which reads as one problem when it is forty
+  untested. A red gate always deserves the tail of the output, not just its
+  verdict.
+- **A screen deciding it has nothing to show, on a test that doesn't cover
+  everything it can show.** Three instances now: Phase 14's invoiced note
+  shipped inside the empty-state block where it could never render; the crew
+  editor that crashed on open behind green pins; and the stats memo returning
+  null on `enrichedDays.length === 0`, which hid a tax year holding an invoice
+  but no work. Each was a guard written against the *usual* content and blind
+  to the rest. **When a surface has an empty state, enumerate everything it can
+  render and check the guard admits all of them.** More evidence for the
+  render-smoke stage, queued as the next phase after submission.
 - **The device finds what pins cannot.** Recent: the grid crew editor crashed on
   open for *seven phases* behind 1,356 green assertions (`cardRoles` out of scope,
   swallowed by the error boundary); the solo day-rate indicator sat on a card the
