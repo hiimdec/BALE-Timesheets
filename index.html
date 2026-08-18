@@ -27855,24 +27855,6 @@ const setDays = (updater) =>
                       this the user (or a reviewer) sees a bare "No stats
                       yet" while a live shoot is sitting right there. Same
                       card and copy as the data-branch hint. */}
-                  {/* Phase 14: figures now come from the SENT invoice where
-                      one covers the day, so months already looked at can read
-                      differently than before. More correct, but a surprise if
-                      unannounced - said once, then dismissed for good. */}
-                  {anyInvoiced && !userPrefs.seenInvoicedEarningsNote && (
-                    <div className="mt-6 max-w-xs mx-auto bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4 text-left">
-                      <div className="text-xs font-semibold text-sky-400 mb-1">Earnings now follow your invoices</div>
-                      <p className="text-xs text-neutral-400 leading-relaxed">
-                        Where a day is covered by an invoice you have sent, these figures show what you invoiced rather than what the day calculates to. Discounts included. Some past months may read differently than before.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setUserPrefs(prev => ({ ...prev, seenInvoicedEarningsNote: true }))}
-                        className="mt-2 text-[11px] uppercase tracking-[0.15em] font-bold text-sky-500"
-                        style={{ WebkitTapHighlightColor: 'transparent' }}
-                      >Got it</button>
-                    </div>
-                  )}
                   {notYetCountedDays > 0 && (
                     <div className="mt-6 max-w-xs mx-auto bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4 text-left">
                       <div className="text-xs font-semibold text-sky-400 mb-1">
@@ -27896,6 +27878,26 @@ const setDays = (updater) =>
               </>
             ) : (
               <>
+                {/* Phase 14: these figures now come from the SENT invoice
+                    wherever one covers the day, so months already looked at
+                    can read differently than before. More correct, but a
+                    surprise if unannounced - said once, above the hero it
+                    explains, then dismissed for good. Only shown when an
+                    invoiced day is actually in view. */}
+                {anyInvoiced && !userPrefs.seenInvoicedEarningsNote && (
+                  <div className="mt-2 bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4">
+                    <div className="text-xs font-semibold text-sky-400 mb-1">Earnings now follow your invoices</div>
+                    <p className="text-xs text-neutral-400 leading-relaxed">
+                      Where a day is covered by an invoice you have sent, these figures show what you invoiced rather than what the day calculates to - discounts included. Some past months may read differently than before.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setUserPrefs(prev => ({ ...prev, seenInvoicedEarningsNote: true }))}
+                      className="mt-2 text-[11px] uppercase tracking-[0.15em] font-bold text-sky-500"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >Got it</button>
+                  </div>
+                )}
                 <div className="mt-2">
                   <div
                     onClick={() => toggleExpand('hero')}

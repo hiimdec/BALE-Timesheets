@@ -3811,9 +3811,17 @@ async function main() {
       const statsSeam = (srcIE.match(/calc: applyInvoicedToCalc\(calc, claimed\)/g) || []).length;
       const note = (srcIE.match(/anyInvoiced && !userPrefs\.seenInvoicedEarningsNote/g) || []).length;
       const noteDismiss = (srcIE.match(/seenInvoicedEarningsNote: true/g) || []).length;
-      check('IE12 stats routes through the ONE enrichment seam (every consumer reads that array), and the retrospective change is announced exactly once - shown only when an invoiced day is actually in view, dismissed for good through userPrefs',
-        statsSeam === 1 && note === 1 && noteDismiss === 1,
-        `seam=${statsSeam} note=${note} dismiss=${noteDismiss}`);
+      // The note must sit in the POPULATED branch, ABOVE the hero it explains.
+      // First placement put it in the EMPTY-state block, where it could never
+      // fire - green pins, dead UI, found only on the device pass. Anchoring
+      // to the hero's own container is what makes the placement checkable.
+      const idxNote = srcIE.indexOf('Earnings now follow your invoices');
+      const idxHero = srcIE.indexOf("onClick={() => toggleExpand('hero')}");
+      const idxEmpty = srcIE.indexOf('<div className="py-20 text-center">');
+      check('IE12 stats routes through the ONE enrichment seam (every consumer reads that array), and the retrospective note is announced exactly once - in the POPULATED branch immediately above the hero it explains, not in the empty state where it could never fire - shown only when an invoiced day is in view and dismissed for good through userPrefs',
+        statsSeam === 1 && note === 1 && noteDismiss === 1 &&
+        idxNote > 0 && idxHero > idxNote && idxNote > idxEmpty,
+        `seam=${statsSeam} note=${note} dismiss=${noteDismiss} order=${idxEmpty}<${idxNote}<${idxHero}`);
     }
 
     // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
