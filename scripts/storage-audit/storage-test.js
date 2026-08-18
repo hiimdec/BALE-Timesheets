@@ -3900,6 +3900,53 @@ async function main() {
       } else {
         check('IE11 claimedInvoicesOf exposed', false, 'not exposed');
       }
+      check('WIN1 for ANY window the reported total is exactly SUM(nets of invoices whose dateSent is in the window) + SUM(computed for uncovered days in the window) - EXECUTED over a fixture spanning two tax years, which is the case All-time structurally cannot exercise: with the identity predicate every invoice is in scope, so the missing window filter was invisible there and only there',
+        (() => {
+          const idxFn = sb.__productionInvoicedIndex, moneyFn = sb.__claimedInvoicesOf;
+          if (typeof idxFn !== 'function' || typeof moneyFn !== 'function') return false;
+          const key = (c, d) => `${c}|${d}`;
+          const mk = (date, total) => ({ date, crewId: 'me', total });
+          const y1 = [mk('2025-06-01', 1000), mk('2025-06-02', 1000)];   // invoiced in 25/26
+          const y2 = [mk('2026-06-01', 1000), mk('2026-06-02', 1000)];   // invoiced in 26/27
+          const loose = [mk('2026-07-01', 700)];                          // never invoiced
+          const inv = (id, sent, ds, net) => ({ id, status: 'sent', createdAt: sent, dateSent: sent, userCrewId: 'me',
+            dayKeys: ds.map(d => key('me', d.date)),
+            dayBreakdown: ds.map(d => ({ date: d.date, total: d.total })),
+            lineItems: [{ label: 'Days', amount: net, discountedQty: null }] });
+          // The third invoice carries NO dateSent: no period to sit in.
+          const undated = { ...inv('i3', '2026-06-30', [], 500), dateSent: '', dayKeys: [], dayBreakdown: [] };
+          const p = { id: 'p1', prodCo: 'Acme', invoices: [inv('i1', '2025-06-30', y1, 2000), inv('i2', '2026-06-30', y2, 2000), undated] };
+          const allDays = [...y1, ...y2, ...loose];
+          const idx = idxFn(p);
+
+          // The shipped rule, reproduced: filter days AND invoices by ONE predicate.
+          const total = (startISO, endISO) => {
+            const inWin = startISO ? (iso) => !!iso && iso >= startISO && iso <= endISO : () => true;
+            const days = allDays.filter(d => inWin(d.date));
+            const covered = new Set(days.filter(d => idx.has(key('me', d.date))).map(d => d.date));
+            const computed = days.reduce((s, d) => covered.has(d.date) ? s : s + d.total, 0);
+            const billed = moneyFn(p).filter(i => inWin(i.date)).reduce((s, i) => s + i.net, 0);
+            return { computed, billed, total: computed + billed };
+          };
+          const allTime = total(null, null);
+          const ty2526  = total('2025-04-06', '2026-04-05');
+          const ty2627  = total('2026-04-06', '2027-04-05');
+
+          // All-time: both invoices + the uninvoiced day + the UNDATED invoice
+          // (the identity predicate admits it, and it belongs to no period).
+          const allOk = Math.abs(allTime.total - (2000 + 2000 + 700 + 500)) < 0.01;
+          // 25/26: i1 only, no uncovered days in that window.
+          const ty1Ok = Math.abs(ty2526.billed - 2000) < 0.01 && Math.abs(ty2526.computed - 0) < 0.01;
+          // 26/27: i2 only - NOT i1 (the bug added it) and NOT the undated one -
+          // plus the £700 day nothing claims.
+          const ty2Ok = Math.abs(ty2627.billed - 2000) < 0.01 && Math.abs(ty2627.computed - 700) < 0.01;
+          // The windows must not sum to more than all-time: the failure mode was
+          // additive, so this is the shape of the regression, stated directly.
+          const noInflation = (ty2526.total + ty2627.total) <= allTime.total + 0.01;
+          // And no day is ever both claimed and counted as uncovered.
+          const noDouble = allDays.every(d => !(idx.has(key('me', d.date)) && !new Set(allDays.filter(x => idx.has(key('me', x.date))).map(x => x.date)).has(d.date)));
+          return allOk && ty1Ok && ty2Ok && noInflation && noDouble;
+        })());
       // Phase 17 MOVER: the seam no longer SCALES, it just pushes the
       // computed calc through with its claim provenance. Same one-seam rule -
       // every stats consumer still reads one array - anchored on the new shape.
