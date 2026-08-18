@@ -128,6 +128,16 @@ phase once 2026.11 is away and wants its own proposal.
   and if the default cannot, the default is the one case not worth checking.**
   Pins have the same failure: WIN1 exists because no All-time assertion, however
   strict, could have caught it.
+- **A discipline that depends on remembering a step will eventually be skipped.**
+  Every check on this project that relied on someone remembering has failed at
+  least once: the gate (a commit landed on a red storage pin because
+  `| tail` reported tail's exit code), the cap-copy checksum (twice — the second
+  cost a week of diagnosing fixes that were never on the phone), and a parity
+  check that compared two missing files and called them identical. **If a step
+  is load-bearing, it belongs in a command, and that command must be able to
+  fail.** `npm run gate` and `npm run ship:ios` exist for exactly this reason —
+  and both print their verdict in band, because a step you can skip and a check
+  you can pipe away are the same failure.
 - **A finding that doesn't become an assertion isn't a finding, it's a note.**
   The sharpest lesson on this project, and it cost the founder a week of wrong
   numbers. The invoice-with-no-day-link double count was *reproduced, measured
@@ -183,24 +193,38 @@ npm run gate          # build + all audits; must end RESULT: GREEN
 npm run build         # esbuild → dist/ only
 ```
 
-For the device, from the repo root:
+For the device, from the repo root — **this is the only supported way**:
 
 ```bash
-npx cap copy ios
-shasum dist/assets/app.js ios/App/App/public/assets/app.js
+npm run ship:ios
 ```
 
-**The two checksums must match.** The device runs a *separate copy* that goes
-stale silently and has already cost one wasted build — `npx cap copy ios` is not
-in the gate, so run it and check by hand before every device build.
+It builds, runs `npx cap copy ios`, verifies `dist/assets/app.js` against
+`ios/App/App/public/assets/app.js`, prints the checksum and `APP_VERSION`, and
+opens Xcode. It ends `RESULT: SHIPPED` or `RESULT: FAILED` in band, with an
+honest exit code, and it refuses to continue if the two differ.
 
-Check **`assets/app.js`**, not `index.html`. The root `index.html` is the
+**Why it exists in one line:** Xcode builds the Swift and reuses whatever
+`cap copy` last wrote — it never refreshes the web assets — so building without
+the copy ships **old JavaScript in a new wrapper**, with the version string and
+build date both looking correct. That has cost two cycles here, the second one a
+week long: three fixes to a money bug were green on this Mac while the founder's
+phone kept reporting the pre-fix figure.
+
+`--no-open` skips Xcode. `--widget` also compiles the extension scheme, which is
+a compile check rather than a shipping step: the App scheme already embeds
+`TimeMachineWidgetExtension.appex` into `App.app/PlugIns`, and the widget reads
+no web assets at all. `TM_SHIP_VERIFY_ONLY=1` runs the verification alone — it
+exists so the check can be proven to fail, since build and copy otherwise
+regenerate both files and it could never go red.
+
+Check **`assets/app.js`**, never `index.html`. The root `index.html` is the
 self-contained source we edit; what `cap copy` puts on the device is
 `dist/index.html`, a ~800-line **loader shell** (vendored React, one
 `<script src="./assets/app.js">`). All app code lives in `app.js`, so the shell's
 checksum is stable by design — comparing shells proves nothing.
 
-Then both schemes:
+For CI or a verification pass, both schemes still build directly:
 
 ```bash
 xcodebuild -project ios/App/App.xcodeproj -scheme App -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData build
