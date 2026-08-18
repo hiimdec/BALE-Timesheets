@@ -27790,7 +27790,15 @@ const setDays = (updater) =>
       const toggleExpand = (key) => { setExpandedStat(prev => prev === key ? null : key); setShowAllMonths(false); };
       const fmtMonth = (yyyymm) => new Date(yyyymm + '-01T12:00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 
-      const { enrichedDays, excludedCount, notYetCountedDays, anyInvoiced } = useMemo(() => {
+      // ONE window predicate, shared. It used to be a local inside the
+      // enrichedDays memo, so when the invoice-scope money was added to the
+      // STATS memo there was no `inWindow` in that scope to filter with -
+      // and every claimed invoice on a production landed in every windowed
+      // total, whatever period its days or its dateSent belonged to. All-time
+      // hid it completely, because there the predicate is the identity.
+      // Hoisted so both consumers read the same rule, the same way the kit
+      // guard is now shared across its three paths (KG1).
+      const statsWindow = useMemo(() => {
         const now = new Date();
         // LOCAL calendar date, not toISOString()'s UTC date: day.date comes
         // from local pickers, so the count rollover must be local midnight
@@ -27806,12 +27814,18 @@ const setDays = (updater) =>
         } else if (filter === 'ytd') {
           startISO = `${now.getFullYear()}-01-01`; endISO = today;
         }
-        // True iff a day sits inside the current filter window (no today-bound).
-        // Drives both the excluded-productions check and the "not yet counted"
-        // tally, so the hint surfaces only days the user is actively looking at.
-        const inWindow = filter === 'all'
+        // True iff a DATE sits inside the current filter window. Takes a bare
+        // ISO date so days and invoices can be asked the same question.
+        const inWindowDate = filter === 'all'
           ? () => true
-          : (d) => d.date >= startISO && d.date <= endISO;
+          : (iso) => !!iso && iso >= startISO && iso <= endISO;
+        return { today, startISO, endISO, inWindowDate, isAllTime: filter === 'all' };
+      }, [filter]);
+
+      const { enrichedDays, excludedCount, notYetCountedDays, anyInvoiced } = useMemo(() => {
+        const { today, inWindowDate } = statsWindow;
+        // Day-side wrapper over the shared predicate.
+        const inWindow = (d) => inWindowDate(d && d.date);
         const days = [];
         let excluded = 0;
         let notYetCounted = 0;
@@ -27859,7 +27873,7 @@ const setDays = (updater) =>
         }
         return { enrichedDays: days, excludedCount: excluded, notYetCountedDays: notYetCounted,
                  anyInvoiced: days.some(e => e.invoicedFrom) };
-      }, [productions, filter, userPrefs]);
+      }, [productions, filter, userPrefs, statsWindow]);
 
       const stats = useMemo(() => {
         if (enrichedDays.length === 0) return null;
@@ -27873,9 +27887,23 @@ const setDays = (updater) =>
         const coveredKeys = new Set();
         for (const e of enrichedDays) if (e.invoicedFrom) coveredKeys.add(`${e.production.id}:${e.day.date}`);
         const isCovered = (e) => coveredKeys.has(`${e.production.id}:${e.day.date}`);
+        // Filtered by the SAME predicate the days are, on the invoice's own
+        // dateSent - the invoice is atomic and belongs to the period it was
+        // sent in, so that is the date the window must ask about. Without
+        // this every claimed invoice on the production landed in every
+        // windowed total: a tax-year figure carried invoices from every other
+        // year, which is what took a ~£12k year to ~£20k.
+        //
+        // A claimed invoice with NO dateSent has no period to sit in, so it
+        // is excluded from windowed figures and counts only at all-time
+        // scope (where the predicate is the identity) and in per-production
+        // totals, which have no period at all.
         const billedInvoices = [];
         for (const p of new Map(enrichedDays.map(e => [e.production.id, e.production])).values()) {
-          for (const inv of claimedInvoicesOf(p)) billedInvoices.push({ ...inv, production: p });
+          for (const inv of claimedInvoicesOf(p)) {
+            if (!statsWindow.inWindowDate(inv.date)) continue;
+            billedInvoices.push({ ...inv, production: p });
+          }
         }
         let totalEarnings = enrichedDays.reduce((s, e) => isCovered(e) ? s : s + e.calc.total, 0)
           + billedInvoices.reduce((s, inv) => s + inv.net, 0);
@@ -28053,7 +28081,7 @@ const setDays = (updater) =>
           busiestMonth: busiestMonthEntry ? { key: busiestMonthEntry[0], amount: busiestMonthEntry[1] } : null,
           topProdCo: topProdCoEntry ? { name: topProdCoEntry[0], amount: topProdCoEntry[1] } : null,
         };
-      }, [enrichedDays, filter]);
+      }, [enrichedDays, filter, statsWindow, userPrefs]);
 
       const heroLabel = filter === 'all' ? 'All-time earnings' : filter === 'taxyear' ? 'Tax year earnings' : 'Year to date';
 
