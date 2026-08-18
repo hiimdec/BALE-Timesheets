@@ -3848,9 +3848,29 @@ async function main() {
       // First placement put it in the EMPTY-state block, where it could never
       // fire - green pins, dead UI, found only on the device pass. Anchoring
       // to the hero's own container is what makes the placement checkable.
-      const idxNote = srcIE.indexOf('Earnings now follow your invoices');
+      //
+      // Phase 16 MOVER, and a strengthening. This anchored on the note's COPY
+      // ('Earnings now follow your invoices'), which stopped marking the
+      // render site the moment the note was extracted into a shared component
+      // (the copy moved to the definition, ~6k characters ABOVE the empty
+      // state, so the ordering assertion inverted and went red). The rule is
+      // unchanged and still right; the anchor is now the render CONDITION,
+      // which is what actually marks the site and cannot drift with wording.
+      // Second time this session that a structural pin was anchored on copy -
+      // PT7 had the same disease last phase.
+      const idxNote = srcIE.indexOf('anyInvoiced && !userPrefs.seenInvoicedEarningsNote');
       const idxHero = srcIE.indexOf("onClick={() => toggleExpand('hero')}");
-      const idxEmpty = srcIE.indexOf('<div className="py-20 text-center">');
+      // NOT an empty-branch marker. Ordering against the OPENING div of an
+      // empty branch cannot express "not inside it" - anything dropped inside
+      // that branch still sits after its opening tag, so the note could be
+      // moved into the empty state and this stayed GREEN. It was only ever
+      // guarding the first of the two empty branches, and not even that
+      // properly. Found by negative-testing, not by reading it.
+      //
+      // The populated branch is what the note must be inside, so anchor on
+      // its OPENING: the last `) : (` before the hero, which is that branch's
+      // own ternary arm. Anything in either empty branch sits before it.
+      const idxEmpty = srcIE.lastIndexOf(') : (', srcIE.indexOf("onClick={() => toggleExpand('hero')}"));
       check('IE12 stats routes through the ONE enrichment seam (every consumer reads that array), and the retrospective note is announced exactly once - in the POPULATED branch immediately above the hero it explains, not in the empty state where it could never fire - shown only when an invoiced day is in view and dismissed for good through userPrefs',
         statsSeam === 1 && note === 1 && noteDismiss === 1 &&
         idxNote > 0 && idxHero > idxNote && idxNote > idxEmpty,
@@ -8641,6 +8661,37 @@ async function main() {
         // Phase 14's pro-rata, the count reads labels, which do not scale.
         const scalingIntact = /lines: \(calc\.lines \|\| \[\]\)\.map\(l => \(\{ \.\.\.l, amount: \(Number\(l\.amount\) \|\| 0\) \* ratio \}\)\),/.test(html);
         return helper && count && money && oldGone && l2Separate && scalingIntact;
+      })());
+    check('ST2 the invoiced-earnings note is RE-FINDABLE and its affordance is REACHABLE — one InvoicedEarningsNote component (no duplicated sentence), a "why?" on the Earnings breakdown header, and the note rendered INLINE beneath that header; placement is asserted by SOURCE ORDER inside the has-data branch, not merely by presence, because Phase 14 shipped this very note where it could never render and Phase 13\'s crew editor crashed the same way — present, unreachable, every gate green',
+      (() => {
+        // ONE copy of the sentence.
+        const single = (html.match(/const InvoicedEarningsNote = /g) || []).length === 1
+          && (html.match(/Where a day is covered by an invoice you have sent/g) || []).length === 1;
+        // Both triggers go through it, and they are mutually exclusive so a
+        // first-run user tapping why? never gets two copies.
+        const firstRun = /\{anyInvoiced && !userPrefs\.seenInvoicedEarningsNote && !whyInvoicedOpen && \(\n\s*<InvoicedEarningsNote/.test(html);
+        const onDemand = /\{anyInvoiced && whyInvoicedOpen && \(\n\s*<InvoicedEarningsNote dismissLabel="Close" onDismiss=\{\(\) => setWhyInvoicedOpen\(false\)\} \/>/.test(html);
+        // PLACEMENT. The hero block exists ONLY in the has-data branch, and
+        // the billed cards are what the note explains, so requiring the
+        // affordance and the inline note to sit BETWEEN them puts them
+        // provably on the reachable path and next to the figures. Moving
+        // either into the empty state, or above the hero, breaks the order.
+        const iHero = html.indexOf("toggleExpand('hero')");
+        const iHdr  = html.indexOf('<SectionHdr>\n                  Earnings breakdown');
+        const iWhy  = html.indexOf('aria-label="Why these figures follow your invoices">why?</button>');
+        const iInline = html.indexOf('{anyInvoiced && whyInvoicedOpen && (');
+        const iCard = html.indexOf('<StatCard label="Overtime billed"');
+        const placed = iHero > 0 && iHdr > iHero && iWhy > iHdr && iInline > iWhy && iCard > iInline;
+        // The affordance is gated on there being invoiced days at all — an
+        // explanation for a screen with nothing to explain is noise.
+        const gated = /\{anyInvoiced && \(\n\s*<button type="button" onClick=\{\(\) => setWhyInvoicedOpen\(o => !o\)\}/.test(html);
+        // The two labels that asserted what a RULE paid now say what a period
+        // BILLED. The other eleven cards are deliberately untouched.
+        const labels = /<StatCard label="Overtime billed" value=\{fmtGBP\(stats\.otEarnings\)\}\/>/.test(html)
+          && /<StatCard label="Late lunch billed" value=\{fmtGBP\(stats\.lateLunchEarnings\)\}\/>/.test(html)
+          && !/label="Overtime earned"/.test(html) && !/label="Late lunch earned"/.test(html)
+          && /<StatCard label="Avg day earnings"/.test(html);
+        return single && firstRun && onDemand && placed && gated && labels;
       })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {
