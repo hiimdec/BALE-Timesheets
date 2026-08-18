@@ -128,6 +128,22 @@ phase once 2026.11 is away and wants its own proposal.
   and if the default cannot, the default is the one case not worth checking.**
   Pins have the same failure: WIN1 exists because no All-time assertion, however
   strict, could have caught it.
+- **A finding that doesn't become an assertion isn't a finding, it's a note.**
+  The sharpest lesson on this project, and it cost the founder a week of wrong
+  numbers. The invoice-with-no-day-link double count was *reproduced, measured
+  and reported* — "invoice claims no days at all → old £900, new £1,700,
+  INFLATED by £800" — one turn before it shipped. It was report-only work, so
+  it never became a pin, and the defect went out anyway. **The moment a
+  diagnostic reproduces a defect, that diagnostic is a pin — write it as one
+  before writing the report.** A finding held only in prose has no way to stop
+  the thing it found.
+- **Fixtures assert the happy path unless you make them do otherwise.** Every
+  money fixture written for the invoice-atomic model gave its invoices
+  well-formed `dayKeys`. The founder's real data had **none** — ten of fourteen
+  invoices named no days at all, because `dayKeys` was seven days old and the
+  `dayBreakdown` it falls back to was fourteen. The fixture was the exact
+  inverse of reality and passed fourteen times over. **Every money fixture
+  carries at least one broken claim link from here.**
 - **Read the assertion COUNT, not just the colour.** A pin placed in a scope
   where its sandbox does not exist *throws*, and the throw kills every
   assertion after it in the file. WIN1 first landed outside the `sb` block: the
