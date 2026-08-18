@@ -8565,6 +8565,23 @@ async function main() {
           && !/announcedCards/.test((html.match(/const finalizeProductionUpdate[\s\S]*?\n    \};/) || [''])[0]);
         return setOk && keyOk && guardOk && oldGone && pureOk;
       })());
+    check('LF30 a long form job ALWAYS opens on the WEEK view (Phase 16 reversal of Phase 4a\'s land-on-today rule) — the view state initialises to the literal \'weeks\' with no today-day branch, currentDayId initialises null, and the day editor is reached only through enterDay; the back stack already treats weeks as the job root',
+      (() => {
+        // The landing rule itself: literals, no conditional.
+        const landsOnWeeks = /const \[view, setView\] = useState\('weeks'\);/.test(html)
+          && /const \[currentDayId, setCurrentDayId\] = useState\(null\);/.test(html)
+          // The Phase 4a forms must be GONE, not merely bypassed.
+          && !/useState\(\(\) => \(todayDay \? 'day' : 'weeks'\)\)/.test(html)
+          && !/useState\(\(\) => \(todayDay \? todayDay\.id : null\)\)/.test(html);
+        // The only way into the day view stays the explicit one.
+        const entryOk = /const enterDay = \(dayId\) => \{ setCurrentDayId\(dayId\); setOpenWeekId\(null\); setView\('day'\); \};/.test(html);
+        // And the hierarchy Phase 15 established still holds: day pops to
+        // weeks, weeks is the job root. A landing rule that says weeks while
+        // the back stack says day would be the same bug in reverse.
+        const stackOk = /useBackLevel\(view === 'day' && sortedDays\.length > 0, \(\) => \{ setView\('weeks'\); return false; \}, 'longform-day'\);/.test(html)
+          && /useBackLevel\(true, \(\) => \{ onBack\(\); return true; \}, 'longform-area'\);/.test(html);
+        return landsOnWeeks && entryOk && stackOk;
+      })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {
         const fn = (html.match(/function seedRateFromPrefs\(userPrefs, role, effectiveDate\)[\s\S]*?\n    \}/) || [''])[0];

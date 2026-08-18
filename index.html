@@ -23496,17 +23496,27 @@ const setDays = (updater) =>
       const [confirmDeleteDayId, setConfirmDeleteDayId] = useState(null);
 
       // ── Phase 4a: the DAY is the way in; weeks are the review and
-      //    billing layer. Opening rule (3.1): a day dated today → straight
-      //    into the day editor on that day; otherwise the week view — the
-      //    APA anchor principle with weeks as the fallback, never a
-      //    silently minted day. ──
+      //    billing layer. Opening rule, REVERSED in Phase 16: a long form job
+      //    ALWAYS opens on the week view, whether or not a day is dated today.
+      //    Phase 4a landed on today's day by analogy with APA, where opening a
+      //    production lands you on a day — but an APA job is one to five days,
+      //    so there the day IS the job. A long form job runs months, and the
+      //    week list is the surface you manage it from. The day editor sits
+      //    beneath it: tap a week, then a day. Today keeps a direct route (the
+      //    shortcut row below the header), so the front door costs nothing. ──
       const sortedDays = useMemo(() => [...myDays].sort((a, b) => {
         const da = a.date || '', db = b.date || '';
         return da !== db ? da.localeCompare(db) : (a.id || '').localeCompare(b.id || '');
       }), [myDays]);
       const todayDay = sortedDays.find(d => d.date === todayISO()) || null;
-      const [view, setView] = useState(() => (todayDay ? 'day' : 'weeks'));
-      const [currentDayId, setCurrentDayId] = useState(() => (todayDay ? todayDay.id : null));
+      // 'weeks' unconditionally. todayDay is still read — it drives the
+      // shortcut row on the week view — but it no longer decides where the
+      // job opens.
+      const [view, setView] = useState('weeks');
+      const [currentDayId, setCurrentDayId] = useState(null);
+      // Still needed: entering the day view sets currentDayId explicitly
+      // (enterDay), but a day deleted while the editor is open leaves the id
+      // dangling, and this re-anchors to the day nearest today.
       useEffect(() => {
         if (view !== 'day' || sortedDays.length === 0) return;
         const stillValid = currentDayId && sortedDays.some(d => d.id === currentDayId);
