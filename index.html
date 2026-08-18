@@ -3244,6 +3244,30 @@
       return null;
     }
 
+    // The FILLABLE half of the same reference (Phase 15). lfRoleRefLine is the
+    // sentence; this is the figure behind it, returned ONLY when the card
+    // states a number the wizard has a field for:
+    //   'd' -> the daily rate field, as published.
+    //   'w' -> the weekly rate field, with "my deal is weekly" switched on so
+    //          the wizard's own visible ÷5 does the conversion.
+    //   'h' -> null. There is no hourly field, and turning an hourly card rate
+    //          into a day rate needs a contracted-hours assumption — a money
+    //          judgement, not a UI one. Those roles keep a plain, untappable
+    //          reference until that is ruled.
+    // Non-numeric entries (NEG, N/A, "NOT OFTEN IN THIS BAND", the MMP
+    // referral) carry no figure and return null. This does NOT make card
+    // rates an autofill: nothing writes until the user taps.
+    function lfRoleRefFill(role, agreement, band) {
+      const entry = LF_ROLE_REF[role];
+      if (!entry) return null;
+      const code = agreement === 'pact-film' ? 'mmp' : (band ? 'tv' + band : null);
+      if (!code || !entry[code]) return null;
+      const [val, unit] = entry[code];
+      if (typeof val !== 'number' || !(val > 0)) return null;
+      if (unit !== 'd' && unit !== 'w') return null;
+      return { value: val, unit };
+    }
+
     // ═══════════════ THE LONG FORM RULESET TABLE (Phase 3b) ═══════════════
     // DATA, not code. Versioned entries resolved by the production's
     // agreementVersion stamp; two rows; a third agreement is a NEW ROW and
@@ -22362,6 +22386,9 @@ const setDays = (updater) =>
       // The published card rate for this role at this band - shown as reference
       // beside the rate field, never poured into it (Part 3).
       const roleRefLine = lfRoleRefLine(w.role, w.agreement, w.band);
+      // The figure behind that sentence, when the card states one the wizard
+      // can put in a field. null keeps the reference a plain, untappable line.
+      const roleRefFill = lfRoleRefFill(w.role, w.agreement, w.band);
       const [showRolePicker, setShowRolePicker] = React.useState(false);
       const roleRecents = React.useMemo(() => lfRecentRoles(productions, 4), [productions]);
       // Pre-fill the role from the learned long form default (Phase 5b) when the
@@ -22496,12 +22523,41 @@ const setDays = (updater) =>
                     {w.agreement === 'pact-tv' && w.agreementClass === 'ach' && derivedDaily > 0 && (
                       <p className="text-[11px] text-neutral-500 mt-1.5">Total Daily Rate {fmtGBP(derivedDaily + derivedDaily / 10)} - your BDR plus the Additional Contracted Hour at {fmtGBP(derivedDaily / 10)}. Check it against the deal memo (§1.4(c)).</p>
                     )}
-                    {roleRefLine && (
-                      <div className="mt-2.5 bg-neutral-900/60 border border-neutral-800 rounded-lg px-3 py-2">
-                        <div className="text-[9px] uppercase tracking-wider text-neutral-500 font-bold mb-0.5">Bectu rate card · reference</div>
-                        <div className="text-[11px] text-neutral-300 leading-snug">{roleRefLine}</div>
-                      </div>
-                    )}
+                    {/* The reference, and — when the card states a figure this
+                        wizard has a field for — the way to take it. Tapping
+                        fills the field and leaves the reference standing, so
+                        where the number came from is still on screen and the
+                        field is still free to edit. Card rates remain a
+                        reference the user chooses, never an autofill. */}
+                    {roleRefLine && (() => {
+                      const body = (
+                        <>
+                          <div className="text-[9px] uppercase tracking-wider text-neutral-500 font-bold mb-0.5">Bectu rate card · reference</div>
+                          <div className="text-[11px] text-neutral-300 leading-snug">{roleRefLine}</div>
+                        </>
+                      );
+                      if (!roleRefFill) {
+                        return (
+                          <div className="mt-2.5 bg-neutral-900/60 border border-neutral-800 rounded-lg px-3 py-2">{body}</div>
+                        );
+                      }
+                      const taken = roleRefFill.unit === 'w'
+                        ? (w.weeklyEntry && Number(w.weeklyRate) === roleRefFill.value)
+                        : (!w.weeklyEntry && Number(w.contractDailyRate) === roleRefFill.value);
+                      return (
+                        <button type="button"
+                          onClick={() => set(roleRefFill.unit === 'w'
+                            ? { weeklyEntry: true, weeklyRate: String(roleRefFill.value) }
+                            : { weeklyEntry: false, contractDailyRate: String(roleRefFill.value) })}
+                          className="mt-2.5 w-full text-left bg-neutral-900/60 border border-neutral-800 hover:border-neutral-700 rounded-lg px-3 py-2 transition-colors"
+                          style={{ WebkitTapHighlightColor: 'transparent' }}>
+                          {body}
+                          <div className="text-[11px] font-semibold mt-1 text-sky-500">
+                            {taken ? 'Using this rate - edit it above if your deal differs' : `Tap to use ${fmtGBP(roleRefFill.value)}${roleRefFill.unit === 'w' ? ' a week' : ' a day'}`}
+                          </div>
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
