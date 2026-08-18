@@ -8465,6 +8465,25 @@ async function main() {
           /\{!hasDatedDays && \(\s*<input\s*type="date"/.test(html);
         return deriveOk && autoOk && finalizeOk && noticeOk && fieldOk;
       })());
+    check('TT20f the time wheel clears the floating day pill — ONE constant (--tm-pill-clear) is read by BOTH the wheel\'s scroll-margin-bottom AND the two day pages that carry the pill, so the space reserved and the thing being cleared cannot drift; WheelExpand scrolls the opened panel into view with block:\'nearest\' (already-clear wheels do not move) on a timer, not the rAF',
+      (() => {
+        // The constant exists once, on :root, beside the safe-area vars.
+        const varOk = /--tm-pill-clear: 92px;/.test(html)
+          && (html.match(/--tm-pill-clear:/g) || []).length === 1;
+        // The wheel reserves it as scroll-margin, over the same safe-area base
+        // the pill itself sits on.
+        const marginOk = /scroll-margin-bottom: calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ var\(--tm-pill-clear\)\);/.test(html);
+        // Both pill-bearing day pages (solo APA + long form) read the SAME
+        // constant. A hand-written px value here is the drift this pins out.
+        const pageOk = (html.match(/paddingBottom: 'calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ var\(--tm-pill-clear\)\)'/g) || []).length === 2
+          && !/paddingBottom: 'calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ 80px\)'/.test(html);
+        // The scroll itself: minimum-movement, and driven by a timeout so a
+        // frame never has to be served for the wheel to become reachable.
+        const scrollOk = /el\.scrollIntoView\(\{ block: 'nearest', behavior: reduce \? 'auto' : 'smooth' \}\)/.test(html)
+          && /\}, 240\);/.test(html)
+          && /return \(\) => \{ cancelAnimationFrame\(raf\); clearTimeout\(t\); \};/.test(html);
+        return varOk && marginOk && pageOk && scrollOk;
+      })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {
         const fn = (html.match(/function seedRateFromPrefs\(userPrefs, role, effectiveDate\)[\s\S]*?\n    \}/) || [''])[0];

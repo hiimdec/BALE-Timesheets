@@ -214,6 +214,13 @@
          heights (incl. safe areas) on the native shell. */
       --tm-native-top: 0px;
       --tm-native-bottom: 0px;
+      /* The floating day pill's vertical footprint: its 12px bottom offset
+         + 64px of pill + 16px of breathing room. ONE constant, read by the
+         day pages' bottom padding AND by the time wheel's scroll-margin, so
+         the space reserved and the thing being cleared cannot drift apart.
+         Both sites add it to max(--sab, --tm-native-bottom), which is what
+         the pill itself sits on. */
+      --tm-pill-clear: 92px;
     }
     /* ── Poppy theme (stage 2) ──────────────────────────────────────────────
        The alternate palette: the SAME 26 tokens plus the pill pair, values
@@ -818,6 +825,11 @@
        max-height 320px is comfortably above the panel's ~260px so the
        wheel never clips when open. */
     .tm-wheel-anim {
+      /* Scrolled into view on open (WheelExpand). The margin keeps the
+         floating day pill off the wheel's bottom edge — without it, a wheel
+         opened low in the form settles under the pill with its Done button
+         and its selection row unreachable. */
+      scroll-margin-bottom: calc(max(var(--sab), var(--tm-native-bottom)) + var(--tm-pill-clear));
       max-height: 0;
       opacity: 0;
       overflow: hidden;
@@ -10586,13 +10598,35 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function WheelExpand({ open, className, children }) {
       const [render, setRender] = React.useState(open);
       const [animOpen, setAnimOpen] = React.useState(open);
+      const rootRef = React.useRef(null);
       React.useEffect(() => {
         if (open) {
           setRender(true);
           // One rAF for the browser to register the closed state, then
           // flip to open so the transition plays from 0 → full.
           const raf = requestAnimationFrame(() => setAnimOpen(true));
-          return () => cancelAnimationFrame(raf);
+          // Bring the opened wheel into view. The composers place the panel
+          // wherever their trigger is, and a trigger low in the form opens
+          // the wheel underneath the fixed day pill — 235px of panel against
+          // 4px of clearance between the page's reserved bottom padding and
+          // the pill. Nothing used to move, and the wheel's own scroll
+          // columns swallow the drag that would have moved it, so the Done
+          // button and the selection row were simply out of reach.
+          // block:'nearest' honours the scroll-margin above and scrolls the
+          // MINIMUM amount, so a wheel that is already clear (the CALL/WRAP
+          // pair at the top of the form) does not move at all. Timed to the
+          // 220ms expand rather than the rAF, so it measures the panel at
+          // full height and never depends on a frame being served.
+          const reduce = (() => {
+            try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+            catch (_) { return false; }
+          })();
+          const t = setTimeout(() => {
+            const el = rootRef.current;
+            if (!el) return;
+            try { el.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' }); } catch (_) {}
+          }, 240);
+          return () => { cancelAnimationFrame(raf); clearTimeout(t); };
         } else {
           setAnimOpen(false);
           // Match the CSS transition duration (220ms) + small buffer.
@@ -10602,7 +10636,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [open]);
       if (!render) return null;
       return (
-        <div className={`tm-wheel-anim ${animOpen ? 'tm-wheel-anim-open' : ''} ${className || ''}`}>
+        <div ref={rootRef} className={`tm-wheel-anim ${animOpen ? 'tm-wheel-anim-open' : ''} ${className || ''}`}>
           <div className="tm-wheel-anim-inner">
             {children}
           </div>
@@ -21026,7 +21060,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         : `Delete ${deleteDateLabel} (Day ${currentIdx + 1} of ${sortedDays.length})?`;
 
       return (
-        <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)' }}>
+        <div className="min-h-screen bg-neutral-950 text-neutral-100" style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + var(--tm-pill-clear))' }}>
           <Toast show={!!toastMsg}>{toastMsg}</Toast>
 
           {/* Page header — suppressed under native chrome (the native bar owns back / title / share / production settings) */}
@@ -23566,7 +23600,7 @@ const setDays = (updater) =>
               layer behind the kebab. The day view is the APA day screen —
               carousel, form-top, tiles, pill — with the long form form. ── */}
           {view === 'day' && currentDay ? (
-            <div style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 80px)' }}>
+            <div style={{ paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + var(--tm-pill-clear))' }}>
               <Toast show={!!dayToast}>{dayToast}</Toast>
               <DayCarousel
                 ref={carouselRef}
