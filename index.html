@@ -24092,9 +24092,18 @@ const setDays = (updater) =>
             />
           )}
 
+          {/* Job settings. Capped + scrollable, the DayEditModal pattern:
+              Sheet's card is overflow:hidden with no height cap and no scroll
+              region unless the caller supplies one, and it is bottom-anchored
+              — so this sheet grew to 1515px in an 812px viewport and put its
+              top 703px (the title, Agreement, Your role, Budget band, base
+              nation, week start, scheduled days, mileage) above the top of the
+              screen with no way to reach it. data-sheet-scroll opts the body's
+              gestures out of the swipe-to-dismiss drag, so a scroll inside it
+              is a scroll and not a pull-down. */}
           {showSettings && (
-            <Sheet open onClose={() => setShowSettings(false)} title="Job settings">
-              <div className="px-5 pb-5 flex flex-col gap-5">
+            <Sheet open onClose={() => setShowSettings(false)} title="Job settings" contentClassName="flex flex-col max-h-[90vh]">
+              <div data-sheet-scroll className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 flex flex-col gap-5">
                 {/* The agreement is immutable — shown, never editable, and in
                     plain English rather than a raw version stamp (ruled). */}
                 <div>
