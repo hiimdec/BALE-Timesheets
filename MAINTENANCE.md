@@ -74,6 +74,14 @@ welcome.html and how-it-works.html footers carry static "APA Sept 2025" markers.
 
 Phase 16 investigated exactly this shape — LATE LUNCHES 2 against LATE LUNCH EARNED £19.42 — and **it was not a leak**: S4 was intact, and the 58p came from Phase 14's invoiced pro-rata scaling plus a loose label-prefix match (fixed, `isLateFirstBreakLine`, pinned ST1). The hypothesis was right about the shape and wrong about the cause. Next time: check S4 and the pin first (LF32 asserts S4 by its own comment anchor and counts both same-shaped lines), then the scaling, then arithmetic.
 
+## Home screen — the hero cards render BELOW In Progress, and the comment says otherwise
+
+**Trigger:** any change to the home screen's ordering, or the next time someone reads that comment and believes it.
+**Change:** none taken. Ruled Phase 16: not a pre-submission change.
+**The disagreement, recorded because the next person will hit it.** `ProductionsScreen` renders the In Progress group first, then the long form today card (S1b), then the APA hero (`currentShoot`). The APA hero's own comment reads `{/* Current shoot pinned at top */}` — **it is not pinned at top**, it renders after the In Progress block. The code and its comment have disagreed since the In Progress group was introduced, and the comment is the one that will be believed.
+**Why it was left.** The long form today card added in Phase 16 sits in exactly the same slot, so the two hero cards are consistent with each other. Moving them above In Progress changes where the APA hero sits too, which is a layout judgement on a shipped surface rather than a bug fix. Device-verified in Phase 16: the card renders correctly, just lower than the comment claims.
+**If it is taken:** move both hero slots together, or the two agreements diverge — and fix the comment either way, since a comment that survives the move would be wrong in the opposite direction.
+
 ## Marketing copy pass — soften the Greggs/Leatherman trademark usage
 
 **Trigger:** next marketing/copy pass, or any trademark complaint (then immediately).
