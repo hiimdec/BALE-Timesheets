@@ -5838,6 +5838,22 @@ async function main() {
       (body.match(/RELEASE_NOTES\.added\.map/g) || []).length === 1 &&
       !body.includes('RELEASE_NOTES.version') &&
       !body.includes('Version {RELEASE_NOTES'));
+    // Z9f: the release copy has TWO surfaces (the launch popup and the
+    // Settings block) and ONE source. Two surfaces each keeping their own
+    // copy of one release is the drift shape this project keeps re-learning,
+    // so both must read RELEASE_HIGHLIGHTS. The popup also only fires when
+    // WHATS_NEW_VERSION EQUALS APP_VERSION - an internal gate that renders
+    // nothing, so the displayed copy stays versionless either way.
+    {
+      const srcRN = fs.readFileSync(SRC_HTML, 'utf8');
+      const source = (srcRN.match(/const RELEASE_HIGHLIGHTS = \[/g) || []).length;
+      const notesRead = (srcRN.match(/added: RELEASE_HIGHLIGHTS,/g) || []).length;
+      const popupRead = (srcRN.match(/items: RELEASE_HIGHLIGHTS,/g) || []).length;
+      const armed = /const WHATS_NEW_VERSION = "2026\.11";/.test(srcRN) && /const APP_VERSION = "2026\.11";/.test(srcRN);
+      check('Z9f one release copy, two surfaces: RELEASE_HIGHLIGHTS is declared once and read by BOTH the Settings block (added:) and the launch popup (items:) - neither keeps its own copy to drift - and the popup is armed for this release (WHATS_NEW_VERSION === APP_VERSION, an internal gate that renders no number)',
+        source === 1 && notesRead === 1 && popupRead === 1 && armed,
+        `source=${source} notes=${notesRead} popup=${popupRead} armed=${armed}`);
+    }
 
     // ─ Z10: Kit Room Stage 2 row rework — each item is a padded card with
     //   full-width name on line 1, then labelled "Default on new shoots"

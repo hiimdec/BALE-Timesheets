@@ -2250,19 +2250,34 @@
 
     const APP_VERSION = "2026.11";
 
+    // The release copy, written ONCE and read by BOTH surfaces: the launch
+    // popup (InfoModal, whose items are already {title, blurb}) and the
+    // Settings what's-new block. Two surfaces quoting one release is exactly
+    // the shape that drifts, so they share this constant rather than each
+    // keeping a copy. No version number in any of it - the what's-new
+    // announces features; the About screen owns the number.
+    const RELEASE_HIGHLIGHTS = [
+      {
+        title: "September 2026 APA terms",
+        blurb: "New rates, and the prep day change: prep can be booked for 8 or 10 hours, with overtime only after 10 hours worked.",
+      },
+      {
+        title: "Long form, in beta",
+        blurb: "Pact/Bectu Scripted TV and Major Motion Pictures. Track by week, invoice by week, and the day editor works the way it always has.",
+      },
+      {
+        title: "Custom day rates",
+        blurb: "Set your own rate for prep, recce, build, de-rig and pre-light days when a production agrees a flat figure.",
+      },
+      {
+        title: "Fixes",
+        blurb: "Mileage now bills at the rate you set. Overtime grades read from your role rather than being worked out from your day rate. Earnings on the home screen reflect what you invoiced, including any discount.",
+      },
+    ];
+
     const RELEASE_NOTES = {
-      date: "2026-08-05",
-      added: [
-        "Redesigned invoices and timesheets - cleaner, sharper, with a detailed day-by-day breakdown",
-        "Poppy mode - a new colour theme, with a matching app icon",
-        "A swipe-through tutorial covering the features you might not have found",
-        "Per-shoot Live Activity - turn the lock-screen card off for a specific shoot when you don't need it",
-        "The call sheet reader now fills your invoicing details straight from a shared PDF",
-      ],
-      // The shape carries ONE list plus a summary line, so the "Improved"
-      // group rides in `notes` — the added items stay bullets, the
-      // improvements read as the closing line. No new field invented.
-      notes: "Also improved: a tidier settings screen, various pay-calculation and display improvements, and faster, crisper PDF exports.",
+      date: "2026-08-18",
+      added: RELEASE_HIGHLIGHTS,
     };
 
     // ── Announcements ─────────────────────────────────────────────────────
@@ -2279,7 +2294,7 @@
     // stamped when the INTRO fires (the intro covers everything, so its
     // edition never shows to that user; what's-new starts mattering at the
     // NEXT edition).
-    const WHATS_NEW_VERSION = "5.4.0";
+    const WHATS_NEW_VERSION = "2026.11";
     // The tutorial deck's CONTENT edition — deliberately NOT the app version.
     // The deck is re-shown when its cards change, which is not every release,
     // so tying it to APP_VERSION would either re-show it for unrelated
@@ -2294,8 +2309,8 @@
     // into title/blurb pairs would have meant rewriting it.
     const WHATS_NEW = {
       title: "What's new",
-      framing: "Redesigned invoices and timesheets, a new Poppy theme, and a quick tutorial to show you around. Plus a few improvements under the hood.",
-      items: [],
+      framing: "",
+      items: RELEASE_HIGHLIGHTS,
       footer: "You can replay the tutorial any time in Settings, under Tutorial & what's new.",
     };
 
@@ -26673,15 +26688,15 @@ const setDays = (updater) =>
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">What's new</div>
                 <div className="text-[11px] text-neutral-500 mb-3">Released {RELEASE_NOTES.date}</div>
-                <ul className="space-y-1.5 mb-3">
+                <ul className="space-y-3 mb-1">
                   {RELEASE_NOTES.added.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
-                      <span className="text-sky-500 flex-shrink-0 leading-snug">·</span>
-                      <span className="leading-snug">{item}</span>
+                    <li key={i}>
+                      <div className="text-[13px] font-semibold text-neutral-100">{item.title}</div>
+                      <div className="text-[12px] text-neutral-400 leading-relaxed mt-0.5">{item.blurb}</div>
                     </li>
                   ))}
                 </ul>
-                <div className="text-[11px] text-neutral-400 italic">{RELEASE_NOTES.notes}</div>
+                {RELEASE_NOTES.notes && <div className="text-[11px] text-neutral-400 italic">{RELEASE_NOTES.notes}</div>}
               </div>
             </Disclosure>
 
