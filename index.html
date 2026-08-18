@@ -7913,12 +7913,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // and no late lunch added money with nothing counted.
     //
     // Both sites read this now, so the count and the money cannot drift.
-    // NOTE what this does NOT change: the amount is still scaled by Phase
-    // 14's invoiced pro-rata (applyInvoicedToCalc) and the count is not,
-    // because labels survive scaling and amounts do not. That difference is
-    // deliberate and ruled — the screen reports what was invoiced, and a
-    // penalty under a discounted invoice was genuinely billed at less than
-    // its computed value.
+    // Both figures are COMPUTED (Phase 17 removed the per-day scaling that
+    // used to make the money differ from the count): two late first breaks
+    // now read £20.00 against 2.
     const isLateFirstBreakLine = (label) => (label || '').toLowerCase() === 'late 1st break';
 
     function penaltyFlags(calc) {
@@ -14050,7 +14047,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     //   { month: "YYYY-MM", amount, grossBuckets, kitDiscount, days,
     //     shoots, dayTypes, notYetCounted, isCurrentMonth }
     //
-    // Invariant: amount === Σ grossBuckets − kitDiscount  (per month).
+    // Invariant (Phase 17): amount === Σ grossBuckets − kitDiscount
+    //                              + invoicedAdj   (per month).
+    // invoicedAdj is 0 whenever nothing in the month is invoiced, so the
+    // pre-Phase-17 identity still holds for uninvoiced months.
     // Holds by construction — each calc.lines entry falls in exactly
     // one bucket via categorizeBreakdownLine, and the per-day Σ lines
     // equals calc.total. The discount is allocated to the deal-month
@@ -14066,7 +14066,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // earningsByMonth)` length). Keeping the helper separate +
     // asserting parity preserves all existing stats outputs byte-
     // identical.
-    function aggregateMonthly(enrichedDays, productions, userPrefs) {
+    // Phase 17: `billedInvoices` and `coveredKeys` carry the invoice-scope
+    // money in. A covered day contributes its COMPUTED value to the buckets
+    // (the categories are what the agreement paid) but not to the month's
+    // amount; the invoice supplies that, whole, in the month it was SENT. The
+    // two therefore no longer agree by construction, and `invoicedAdj` is the
+    // difference — surfaced as its own row beside the kit deal row rather
+    // than hidden, because that gap is precisely what nobody could see when a
+    // £10 late break read £8.66.
+    function aggregateMonthly(enrichedDays, productions, userPrefs, billedInvoices = [], coveredKeys = new Set()) {
       if (!Array.isArray(enrichedDays) || enrichedDays.length === 0) return [];
 
       // String-arithmetic month walker — bypasses Date / timezone shifts
@@ -14086,6 +14094,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const shootsByMonth = new Map(); // mo → Set<pid>
       const dayTypesMonth = new Map(); // mo → { [type]: Set<pKey> }
       const earliestByProd = new Map(); // pid → "YYYY-MM-DD"
+      const billedByMonth = new Map();  // mo (dateSent) → net
+      const coveredGross = new Map();   // mo (work) → computed total of covered days
+      const coveredCount = new Map();   // pid → covered day count (kit guard)
+      const pastCount = new Map();      // pid → day count (kit guard)
 
       for (const e of enrichedDays) {
         if (!e || !e.day || !e.calc || !e.day.date) continue;
@@ -14095,7 +14107,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const pKey = `${pid}:${date}`;
         const type = (e.calc.meta && e.calc.meta.dayType) || 'Unknown';
 
-        grossAmount.set(mo, (grossAmount.get(mo) || 0) + (Number(e.calc.total) || 0));
+        const covered = coveredKeys.has(pKey);
+        pastCount.set(pid, (pastCount.get(pid) || 0) + 1);
+        if (covered) {
+          coveredCount.set(pid, (coveredCount.get(pid) || 0) + 1);
+          coveredGross.set(mo, (coveredGross.get(mo) || 0) + (Number(e.calc.total) || 0));
+        } else {
+          grossAmount.set(mo, (grossAmount.get(mo) || 0) + (Number(e.calc.total) || 0));
+        }
 
         if (!grossBuckets.has(mo)) {
           grossBuckets.set(mo, { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 });
@@ -14137,7 +14156,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const earliest = earliestByProd.get(pid);
         if (!earliest) continue;
         const dealMonth = earliest.slice(0, 7);
-        kitDiscount.set(dealMonth, (kitDiscount.get(dealMonth) || 0) + discount);
+        // Same guard as the stats rollup and the home totals: an invoiced
+        // day already carries the negotiated kit money inside its invoice
+        // net, so only the uncovered share is subtracted again here.
+        const past = pastCount.get(pid) || 0, cov = coveredCount.get(pid) || 0;
+        const applied = discount * (past > 0 ? (past - cov) / past : 1);
+        if (!(applied > 0)) continue;
+        kitDiscount.set(dealMonth, (kitDiscount.get(dealMonth) || 0) + applied);
+      }
+
+      // The claims, each whole, each in the month it was SENT.
+      for (const inv of (billedInvoices || [])) {
+        if (!inv || !inv.date) continue;   // no dateSent → no month to file it under
+        const imo = String(inv.date).slice(0, 7);
+        billedByMonth.set(imo, (billedByMonth.get(imo) || 0) + (Number(inv.net) || 0));
       }
 
       // Pass 3 — per-month "not yet counted" hint. Walks productions
@@ -14169,7 +14201,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // month (impossible in practice — future days are excluded
       // upstream — but defensive), the series still emits earliest as
       // a single entry.
-      const allMonths = [...grossAmount.keys()].sort();
+      // Billed months join the span: an invoice sent in a month with no work
+      // of its own still has to appear somewhere.
+      const allMonths = [...new Set([...grossAmount.keys(), ...coveredGross.keys(), ...billedByMonth.keys()])].sort();
       if (allMonths.length === 0) return [];
       const earliest = allMonths[0];
       const currentMo = todayStr.slice(0, 7);
@@ -14191,10 +14225,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const dt = dayTypesMonth.get(mo) || {};
         const dayTypesOut = {};
         for (const [type, set] of Object.entries(dt)) dayTypesOut[type] = set.size;
+        // The month's money: computed for uncovered days + whatever was
+        // billed here. invoicedAdj is the visible gap between the buckets
+        // (computed, for every day including covered ones) and the amount.
+        const billed = billedByMonth.get(mo) || 0;
+        const coveredComputed = coveredGross.get(mo) || 0;
+        const amount = gross + billed - discount;
         return {
           month: mo,
-          amount: gross - discount,
+          amount,
           grossBuckets: buckets,
+          invoicedAdj: (billed - coveredComputed),
+          hasInvoiced: coveredComputed > 0 || billed > 0,
           kitDiscount: discount,
           days,
           shoots,
@@ -14235,6 +14277,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const zero = (mo) => ({
         month: mo, amount: 0,
         grossBuckets: { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 },
+        invoicedAdj: 0, hasInvoiced: false,
         kitDiscount: 0, days: 0, shoots: 0, dayTypes: {},
         notYetCounted: 0, isCurrentMonth: false,
       });
@@ -27548,6 +27591,17 @@ const setDays = (updater) =>
                       <span className="text-tm-good">{fmtGBP(-selEntry.kitDiscount)}</span>
                     </div>
                   )}
+                  {/* Phase 17: the bars are what the days COMPUTE; the month's
+                      total is what the invoices BILLED. The gap is real and
+                      gets its own row rather than being spread back across the
+                      bars - spreading it is the bug this replaced. Same
+                      position and treatment as the kit deal row above. */}
+                  {selEntry.hasInvoiced && Math.abs(selEntry.invoicedAdj || 0) >= 0.005 && (
+                    <div className="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800 text-[12px] font-mono text-neutral-400">
+                      <span className="flex-1">Invoiced {selEntry.invoicedAdj < 0 ? '−' : '+'} {fmtGBP(Math.abs(selEntry.invoicedAdj))}</span>
+                      <span className={selEntry.invoicedAdj < 0 ? 'text-tm-good' : 'text-neutral-300'}>{fmtGBP(selEntry.invoicedAdj)}</span>
+                    </div>
+                  )}
                   <div className="mt-4 pt-3 border-t border-neutral-800 text-[12px] text-neutral-400 leading-snug">
                     {!vsLY ? (
                       <span>No comparison - first {fmtMonShort(selEntry.month).split(' ')[0]} on record.</span>
@@ -27795,18 +27849,36 @@ const setDays = (updater) =>
               // invoice billed. Every stats consumer reads this one array, so
               // scaling here keeps the hero figure, the monthly rollup and the
               // category buckets telling the same story.
+              // Phase 17: the calc is the COMPUTED day, unscaled. Day- and
+              // line-level figures report what the day is worth under the
+              // agreement; billed money is added separately, per invoice.
               const claimed = invoicedIdx.get(invoiceDayKey(day.crewId, day.date));
-              days.push({ day, resolved, production: p, crew, calc: applyInvoicedToCalc(calc, claimed) });
+              days.push({ day, resolved, production: p, crew, calc, invoicedFrom: claimed ? claimed.invoiceId : null });
             } catch {}
           }
         }
         return { enrichedDays: days, excludedCount: excluded, notYetCountedDays: notYetCounted,
-                 anyInvoiced: days.some(e => e.calc && e.calc.invoicedFrom) };
+                 anyInvoiced: days.some(e => e.invoicedFrom) };
       }, [productions, filter, userPrefs]);
 
       const stats = useMemo(() => {
         if (enrichedDays.length === 0) return null;
-        let totalEarnings = enrichedDays.reduce((s, e) => s + e.calc.total, 0);
+        // ── Money, Phase 17 ──────────────────────────────────────────────
+        // Billed at INVOICE granularity, computed everywhere finer. A day
+        // covered by a claim contributes nothing here — its invoice does,
+        // whole, in the period it was SENT. A claimed invoice with no
+        // dateSent is skipped by period figures (nothing to file it under)
+        // but still counts in whole-production totals. An invoice covering a
+        // future day counts WHOLE: a sent invoice is money claimed.
+        const coveredKeys = new Set();
+        for (const e of enrichedDays) if (e.invoicedFrom) coveredKeys.add(`${e.production.id}:${e.day.date}`);
+        const isCovered = (e) => coveredKeys.has(`${e.production.id}:${e.day.date}`);
+        const billedInvoices = [];
+        for (const p of new Map(enrichedDays.map(e => [e.production.id, e.production])).values()) {
+          for (const inv of claimedInvoicesOf(p)) billedInvoices.push({ ...inv, production: p });
+        }
+        let totalEarnings = enrichedDays.reduce((s, e) => isCovered(e) ? s : s + e.calc.total, 0)
+          + billedInvoices.reduce((s, inv) => s + inv.net, 0);
         // Use RESOLVED times (call/wrap can cascade from dayDefaults — the raw
         // day record may have them undefined), so cascade-inheriting days still
         // count as worked and avgDayEarnings isn't divided by too few days.
@@ -27840,12 +27912,18 @@ const setDays = (updater) =>
           const co = e.production.prodCo?.trim() || '(Unknown)';
           const type = e.calc.meta.dayType || 'Unknown';
           const dayEntry = earningsByDay[pKey] || { date: e.day.date, amount: 0, buckets: { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 } };
+          // earningsByDay is COMPUTED for every day, covered or not — a day's
+          // worth under the agreement is knowable and is what "highest day"
+          // asks. The period and prod-co rollups take only UNCOVERED days;
+          // their invoices are added below, by dateSent.
           dayEntry.amount += e.calc.total;
           earningsByDay[pKey] = dayEntry;
-          earningsByMonth[mo] = (earningsByMonth[mo] || 0) + e.calc.total;
+          if (!isCovered(e)) {
+            earningsByMonth[mo] = (earningsByMonth[mo] || 0) + e.calc.total;
+            earningsByProdCo[co] = (earningsByProdCo[co] || 0) + e.calc.total;
+          }
           if (!uniqueDaysByMonth[mo]) uniqueDaysByMonth[mo] = new Set();
           uniqueDaysByMonth[mo].add(pKey);
-          earningsByProdCo[co] = (earningsByProdCo[co] || 0) + e.calc.total;
           if (!dayTypeMap[type]) dayTypeMap[type] = new Set();
           dayTypeMap[type].add(pKey);
           for (const l of e.calc.lines) {
@@ -27871,6 +27949,15 @@ const setDays = (updater) =>
           if ((e.calc.meta.dayLabel || '').includes('Night Shoot')) nightShootSet.add(pKey);
         }
 
+        // The claims themselves, each whole, each in the period it was sent.
+        for (const inv of billedInvoices) {
+          const co = inv.production.prodCo?.trim() || '(Unknown)';
+          earningsByProdCo[co] = (earningsByProdCo[co] || 0) + inv.net;
+          if (!inv.date) continue;   // no dateSent → no period to file it under
+          const imo = inv.date.slice(0, 7);
+          earningsByMonth[imo] = (earningsByMonth[imo] || 0) + inv.net;
+        }
+
         // Stage 6: apply per-production kit discount at rollup level only.
         // Per-day surfaces (earningsByDay → highestDay, .buckets.kit) stay at
         // daily rate — the deal is shoot-wide and can't be pinned to one day.
@@ -27886,17 +27973,36 @@ const setDays = (updater) =>
           const prev = firstUserMonthForProd.get(e.production.id);
           if (prev == null || e.day.date < prev) firstUserMonthForProd.set(e.production.id, e.day.date);
         }
+        // PRE-EXISTING FIX, riding along (not part of the revert). The home
+        // screen scales this discount to the UNCOVERED share and says why:
+        // "an invoiced day already carries the negotiated kit money inside
+        // its invoice net, so subtracting the whole production's discount
+        // again would double count it". Stats had no such guard, so a
+        // fully-invoiced production has had its kit deal subtracted TWICE on
+        // this screen — once inside the invoice net, once here. The guard
+        // existing on one path and not the other is exactly what let that
+        // survive, so both paths now compute it the same way.
+        const coveredCountByProd = new Map(), pastCountByProd = new Map();
+        for (const e of enrichedDays) {
+          pastCountByProd.set(e.production.id, (pastCountByProd.get(e.production.id) || 0) + 1);
+          if (isCovered(e)) coveredCountByProd.set(e.production.id, (coveredCountByProd.get(e.production.id) || 0) + 1);
+        }
         const seenProds = new Set();
         for (const e of enrichedDays) {
           if (seenProds.has(e.production.id)) continue;
           seenProds.add(e.production.id);
           const discount = computeProductionKitDiscount(e.production, userPrefs);
           if (discount <= 0) continue;
-          totalEarnings -= discount;
+          const past = pastCountByProd.get(e.production.id) || 0;
+          const covered = coveredCountByProd.get(e.production.id) || 0;
+          const uncoveredShare = past > 0 ? (past - covered) / past : 1;
+          const applied = discount * uncoveredShare;
+          if (applied <= 0) continue;
+          totalEarnings -= applied;
           const dealMonth = firstUserMonthForProd.get(e.production.id).slice(0, 7);
-          earningsByMonth[dealMonth] = (earningsByMonth[dealMonth] || 0) - discount;
+          earningsByMonth[dealMonth] = (earningsByMonth[dealMonth] || 0) - applied;
           const co = e.production.prodCo?.trim() || '(Unknown)';
-          earningsByProdCo[co] = (earningsByProdCo[co] || 0) - discount;
+          earningsByProdCo[co] = (earningsByProdCo[co] || 0) - applied;
         }
 
         const highestDay = Object.values(earningsByDay).reduce((best, d) => d.amount > (best?.amount || 0) ? d : best, null);
@@ -27943,6 +28049,7 @@ const setDays = (updater) =>
           totalEarnings, workingDaysCount: wdc, shootDaysCount: sdc, totalHours, productionsWorkedCount, longestStreak,
           avgDayEarnings, avgPerShoot, avgShootLen, highestDay, daysByType, monthBreakdown, otEarnings,
           lateLunchEarnings, lateLunchCount: lateLunchSet.size, tocBreachCount: tocBreachSet.size, nightShootCount: nightShootSet.size,
+          billedInvoices, coveredKeys,
           busiestMonth: busiestMonthEntry ? { key: busiestMonthEntry[0], amount: busiestMonthEntry[1] } : null,
           topProdCo: topProdCoEntry ? { name: topProdCoEntry[0], amount: topProdCoEntry[1] } : null,
         };
@@ -27953,8 +28060,8 @@ const setDays = (updater) =>
       // Stage 2: monthly series for the chart drill-down. Reads the
       // SAME enrichedDays the rest of stats reads — no parallel calc.
       const monthlySeries = useMemo(
-        () => aggregateMonthly(enrichedDays, productions, userPrefs),
-        [enrichedDays, productions, userPrefs]
+        () => aggregateMonthly(enrichedDays, productions, userPrefs, stats?.billedInvoices || [], stats?.coveredKeys || new Set()),
+        [enrichedDays, productions, userPrefs, stats]
       );
 
       if (drilldown === 'monthly') {
@@ -28060,13 +28167,14 @@ const setDays = (updater) =>
       // one of the two renders at a time.
       const InvoicedEarningsNote = ({ onDismiss, dismissLabel }) => (
         <div className="mt-2 bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4">
-          {/* Not "Earnings NOW follow your invoices". That was a release
-              announcement; this is a permanent explanation reachable from the
-              why? button, and "now" would have it describing a change rather
-              than a rule. */}
-          <div className="text-xs font-semibold text-sky-400 mb-1">Earnings follow your invoices</div>
+          {/* States the GRANULARITY, which is the whole finding: the app knows
+              what each invoice billed and what each day computes, and does not
+              know what each day billed. The last clause is load-bearing - it
+              is what would have explained a £10 late break reading £8.66. No
+              "now": this is a rule, not a release announcement. */}
+          <div className="text-xs font-semibold text-sky-400 mb-1">Job and monthly totals follow your invoices</div>
           <p className="text-xs text-neutral-400 leading-relaxed">
-            Where a day is covered by an invoice you have sent, these figures show what you invoiced rather than what the day calculates to - discounts included. Some past months may read differently than they used to.
+            Job and monthly totals show what you invoiced, discounts included, and an invoice counts in the month you sent it - so money can sit in a different month from the work. Day and line figures show what the day calculates to, because an invoice doesn't record how a discount was split across days.
           </p>
           <button
             type="button"
@@ -28334,8 +28442,8 @@ const setDays = (updater) =>
                   <InvoicedEarningsNote dismissLabel="Close" onDismiss={() => setWhyInvoicedOpen(false)} />
                 )}
                 <div className="grid grid-cols-2 gap-3">
-                  <StatCard label="Overtime billed" value={fmtGBP(stats.otEarnings)}/>
-                  <StatCard label="Late lunch billed" value={fmtGBP(stats.lateLunchEarnings)}/>
+                  <StatCard label="Overtime earned" value={fmtGBP(stats.otEarnings)}/>
+                  <StatCard label="Late lunch earned" value={fmtGBP(stats.lateLunchEarnings)}/>
                   <StatCard label="Late lunches" value={stats.lateLunchCount}/>
                   <StatCard label="TOC breaches" value={stats.tocBreachCount}/>
                   <StatCard label="Night shoots" value={stats.nightShootCount}/>
@@ -28464,51 +28572,49 @@ const setDays = (updater) =>
     // arbitrary day; an equal split is the fallback when a snapshot carries
     // no day totals. Later invoices win a contested day, by createdAt, the
     // same rule long form's lfInvoiceForWeek already uses.
+    // ── Phase 17: AN INVOICE IS ATOMIC ───────────────────────────────────
+    // What replaced a per-day money claim, and why.
+    //
+    // Phase 14 gave every claimed day an `amount`: its computed share of the
+    // invoice's final net. That number is INVENTED. An invoice records what
+    // it billed in total; it does not record how a reduction was split across
+    // the days it covers. So one edited line — a recce corrected from the APA
+    // rate down to £125, because custom day rates did not exist yet — moved
+    // money off every OTHER day on that invoice and onto the discounted one.
+    // The discounted day reported HIGHER than it was billed and the untouched
+    // days reported LOWER, while the invoice total stayed exact, which is why
+    // it survived two phases: the redistribution preserves the sum.
+    //
+    // The rule now: billed money is read at INVOICE granularity and nowhere
+    // finer. This index therefore carries MEMBERSHIP ONLY — which days a
+    // claim covers, for coverage, the PART INVOICED marker and the invoiced
+    // note. No amount, so nothing downstream can spend one.
     function productionInvoicedIndex(production) {
       const byKey = new Map();
       const claimed = (((production && production.invoices) || []).filter(invoiceIsClaimed))
         .slice()
         .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
       for (const inv of claimed) {
-        const keys = invoiceDayClaim(inv);
-        if (!keys.length) continue;
-        const net = invoiceSubtotal(inv.lineItems);
-        const bd = (inv.dayBreakdown || []).filter(e => e && e.date);
-        const sumDays = bd.reduce((sum, e) => sum + (Number(e.total) || 0), 0);
-        const share = new Map();
-        if (bd.length && sumDays > 0) {
-          const crewId = inv.userCrewId || '';
-          for (const e of bd) {
-            const k = invoiceDayKey(crewId, e.date);
-            if (k) share.set(k, ((Number(e.total) || 0) / sumDays) * net);
-          }
-        }
-        for (const k of keys) {
-          byKey.set(k, { invoiceId: inv.id, amount: share.has(k) ? share.get(k) : (net / keys.length) });
-        }
+        for (const k of invoiceDayClaim(inv)) byKey.set(k, { invoiceId: inv.id });
       }
       return byKey;
     }
 
-    // ONE seam for the stats side. Where a day is invoiced, its calc is
-    // scaled to what the invoice billed. Scaling the LINES too (rather than
-    // just overwriting the total) keeps every downstream consumer consistent
-    // - the basic/OT/penalty buckets still sum to the reported figure, so no
-    // two stats surfaces can disagree. calc.meta is untouched: an invoice
-    // changes what a day PAID, never how long it was, so hours stay honest.
-    function applyInvoicedToCalc(calc, claimed) {
-      if (!calc || !claimed) return calc;
-      const billed = Number(claimed.amount) || 0;
-      const computed = Number(calc.total) || 0;
-      if (computed === billed) return calc;
-      const ratio = computed !== 0 ? billed / computed : 0;
-      return {
-        ...calc,
-        total: billed,
-        invoicedFrom: claimed.invoiceId,
-        lines: (calc.lines || []).map(l => ({ ...l, amount: (Number(l.amount) || 0) * ratio })),
-      };
+    // The money side, at the only granularity it is known. `date` is the
+    // invoice's OWN date (dateSent) — ruled: an invoice is atomic and lands
+    // wholly in the period it was sent, which is what an invoice means and
+    // what an accountant files. A claimed invoice with no dateSent has no
+    // period to land in and is skipped by period figures (it still counts in
+    // whole-production totals, which have no period).
+    function claimedInvoicesOf(production) {
+      return (((production && production.invoices) || []).filter(invoiceIsClaimed)).map(inv => ({
+        id: inv.id,
+        net: invoiceSubtotal(inv.lineItems),
+        date: String(inv.dateSent || '').slice(0, 10),
+        dayKeys: invoiceDayClaim(inv),
+      }));
     }
+
 
     /* ═══════════════ INVOICE EXPORT — accounting formats ═══════════════════
      * READ-ONLY over invoices. Figures are RECOMPUTED at the invoice's OWN
@@ -31607,12 +31713,18 @@ const confirmDelete = (p) => setConfirmOpts({
           const crew = p.crew ?? [];
           const days = p.days ?? [];
           const cov = productionInvoiceCoverage[p.id] || { idx: new Map(), covered: 0, past: 0 };
-          const raw = days.reduce((sum, d) => {
+          // Phase 17: THE SECOND CONSUMER. This path never went through the
+          // stats scaling seam — it read the per-day claim's `amount`
+          // directly — so removing that function alone would have left this
+          // screen wrong while looking fixed. Billed is read at invoice
+          // granularity here too: every claimed invoice contributes its net
+          // WHOLE (a sent invoice is money claimed, including one covering a
+          // day still ahead), and calcForDisplay runs only for days no claim
+          // covers.
+          const billed = claimedInvoicesOf(p).reduce((sum, inv) => sum + inv.net, 0);
+          const raw = billed + days.reduce((sum, d) => {
             if (!d.date || d.date >= today) return sum;
-            // Invoiced days report the invoice. calcForDisplay still runs for
-            // uncovered days only, so nothing about the engine changes.
-            const claimed = cov.idx.get(invoiceDayKey(d.crewId, d.date));
-            if (claimed) return sum + claimed.amount;
+            if (cov.idx.has(invoiceDayKey(d.crewId, d.date))) return sum;
             const c = crew.find(cc => cc.id === d.crewId);
             if (!c) return sum;
             return sum + calcForDisplay(p, d, c, findPrevDay(days, d)).total;

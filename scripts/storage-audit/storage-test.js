@@ -304,7 +304,7 @@ async function transformedAppCode() {
     'try { globalThis.__invoiceDayClaim = invoiceDayClaim; } catch (_) {}\n' +
     'try { globalThis.__invoiceIsClaimed = invoiceIsClaimed; } catch (_) {}\n' +
     'try { globalThis.__productionInvoicedIndex = productionInvoicedIndex; } catch (_) {}\n' +
-    'try { globalThis.__applyInvoicedToCalc = applyInvoicedToCalc; } catch (_) {}\n' +
+    'try { globalThis.__claimedInvoicesOf = claimedInvoicesOf; } catch (_) {}\n' +
     // Record-construction executions (RC, ruled): the module-level writers the
     // RC section runs for real instead of regex-pinning their prose.
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
@@ -3768,21 +3768,34 @@ async function main() {
           isClaimed({ status: 'draft' }) === false && isClaimed({}) === false && isClaimed(null) === false,
           'status gate');
 
-        // Attribution: a £1,000 pair of days discounted to £900 must report
-        // £900 across the two days, split by their frozen day totals (40/60).
+        // Phase 17 MOVER. This pinned the redistribution: a £900 net landing
+        // 360/540 across a 400/600 pair. That proportional split IS the
+        // defect - a reduction on ONE line was spread over every day the
+        // invoice covered, so the discounted day reported HIGH and untouched
+        // days reported LOW. The rule is inverted: the index carries no money
+        // at all, and the net is read once, whole, per invoice.
         const disc = { id: 'i1', status: 'sent', createdAt: '2026-09-05T10:00:00Z', userCrewId: 'c1',
+          dateSent: '2026-09-30',
           dayBreakdown: bd, lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: null }] };
         const discounted = { ...disc, lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: 1.8 }] };
         const idxFull = index({ invoices: [disc] });
         const idxDisc = index({ invoices: [discounted] });
-        const sumOf = (m) => [...m.values()].reduce((s, v) => s + v.amount, 0);
-        check('IE4 the invoiced figure is the NET the invoice actually bills and it lands PROPORTIONALLY: an undiscounted £1,000 over a 400/600 pair reports 400/600, and the same pair discounted to £900 reports 360/540 - the discount is spread by the frozen day totals, never dumped on one day',
-          Math.abs(sumOf(idxFull) - 1000) < 0.01 &&
-          Math.abs(idxFull.get('c1:2026-09-01').amount - 400) < 0.01 &&
-          Math.abs(sumOf(idxDisc) - 900) < 0.01 &&
-          Math.abs(idxDisc.get('c1:2026-09-01').amount - 360) < 0.01 &&
-          Math.abs(idxDisc.get('c1:2026-09-02').amount - 540) < 0.01,
-          JSON.stringify({ full: sumOf(idxFull), disc: sumOf(idxDisc), d1: idxDisc.get('c1:2026-09-01').amount }));
+        const noAmounts = [...idxFull.values()].every(v => v && v.amount === undefined)
+          && [...idxDisc.values()].every(v => v && v.amount === undefined);
+        check('IE4 the day index carries MEMBERSHIP ONLY - no per-day amount exists to be spent (Phase 17 inversion: it used to split the net proportionally across days, which is the redistribution that reported a discounted day HIGH and untouched days LOW)',
+          noAmounts && idxFull.size === 2 && idxDisc.size === 2
+            && idxFull.get('c1:2026-09-01').invoiceId === 'i1',
+          JSON.stringify({ noAmounts, full: idxFull.size, entry: idxFull.get('c1:2026-09-01') }));
+
+        const moneyOf = sb.__claimedInvoicesOf;
+        check('IE4b the money is read ONCE per invoice, whole, carrying its own dateSent: £1,000 discounted to £900 reports 900 as a single figure, never a per-day one, and a DRAFT reports nothing',
+          typeof moneyOf === 'function'
+            && Math.abs(moneyOf({ invoices: [disc] })[0].net - 1000) < 0.01
+            && Math.abs(moneyOf({ invoices: [discounted] })[0].net - 900) < 0.01
+            && moneyOf({ invoices: [disc] })[0].date === '2026-09-30'
+            && moneyOf({ invoices: [disc] })[0].dayKeys.length === 2
+            && moneyOf({ invoices: [{ ...disc, status: 'draft' }] }).length === 0,
+          typeof moneyOf === 'function' ? JSON.stringify(moneyOf({ invoices: [discounted] })[0]) : 'not exposed');
 
         check('IE5 a DRAFT contributes nothing to the index (the same invoice sent DOES), so editing a draft can never move a reported figure',
           index({ invoices: [{ ...disc, status: 'draft' }] }).size === 0 && index({ invoices: [disc] }).size === 2,
@@ -3794,9 +3807,9 @@ async function main() {
           dayBreakdown: [{ date: '2026-09-01', total: 100 }],
           lineItems: [{ label: 'Re-bill', qty: 1, rate: 100, amount: 100, discountedQty: null }] };
         const contested = index({ invoices: [disc, later] });
-        check('IE6 when two sent invoices claim the same day the LATER one wins by createdAt (matching lfInvoiceForWeek), so a re-billed day reports the re-bill and is never counted twice',
+        check('IE6 when two sent invoices claim the same day the LATER one wins by createdAt (matching lfInvoiceForWeek) for MEMBERSHIP - a re-billed day is attributed to the re-bill, and carries no amount either way',
           contested.get('c1:2026-09-01').invoiceId === 'i2' &&
-          Math.abs(contested.get('c1:2026-09-01').amount - 100) < 0.01 &&
+          contested.get('c1:2026-09-01').amount === undefined &&
           contested.get('c1:2026-09-02').invoiceId === 'i1',
           JSON.stringify({ d1: contested.get('c1:2026-09-01'), d2: contested.get('c1:2026-09-02') }));
       } else {
@@ -3810,38 +3823,87 @@ async function main() {
       // takes the invoiced amount for a covered day and computes only the
       // rest; the kit deal discount scales to the uncovered share so an
       // invoiced day cannot have its negotiated kit money deducted twice.
-      const invRead = (srcIE.match(/const claimed = cov\.idx\.get\(invoiceDayKey\(d\.crewId, d\.date\)\);\n\s*if \(claimed\) return sum \+ claimed\.amount;/g) || []).length;
+      // Phase 17 MOVER. This pinned the home path reading a per-day
+      // `claimed.amount`. That path never went through applyInvoicedToCalc,
+      // so deleting the scaling function alone would have left this screen
+      // wrong while looking fixed - it is the reason the change needed a
+      // survey rather than a patch. It now reads the net per INVOICE and
+      // computes only days no claim covers.
+      const invRead = (srcIE.match(/const billed = claimedInvoicesOf\(p\)\.reduce\(\(sum, inv\) => sum \+ inv\.net, 0\);/g) || []).length;
+      const uncovered = (srcIE.match(/if \(cov\.idx\.has\(invoiceDayKey\(d\.crewId, d\.date\)\)\) return sum;/g) || []).length;
       const kitScale = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
-      check('IE8 the home total reads the invoiced amount for a covered day and runs calcForDisplay only for uncovered ones, and the kit deal discount scales to the uncovered share - so an invoiced day never has its negotiated kit money subtracted twice',
-        invRead === 1 && kitScale === 1, `read=${invRead} kitScale=${kitScale}`);
+      check('IE8 the home total reads each claimed invoice\'s NET whole and runs calcForDisplay only for days no claim covers, with the kit deal discount still scaled to the uncovered share so negotiated kit money is never deducted twice',
+        invRead === 1 && uncovered === 1 && kitScale === 1, `billed=${invRead} uncovered=${uncovered} kitScale=${kitScale}`);
+      // KG1 (Phase 17): the kit deal guard, pinned on ALL THREE money paths.
+      // The home screen had it and stats did not, so a fully-invoiced
+      // production had its negotiated kit money deducted twice on the stats
+      // screen - a live bug in the shipped app, found only because this
+      // change made me read both paths side by side. The guard existing on
+      // one side and not the other is exactly what let it survive, so the
+      // rule is now that every path computes the SAME uncovered share.
+      const kgHome = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      const kgStats = /const uncoveredShare = past > 0 \? \(past - covered\) \/ past : 1;\n\s*const applied = discount \* uncoveredShare;/.test(srcIE)
+        && /totalEarnings -= applied;/.test(srcIE)
+        && /earningsByMonth\[dealMonth\] = \(earningsByMonth\[dealMonth\] \|\| 0\) - applied;/.test(srcIE);
+      const kgMonthly = /const applied = discount \* \(past > 0 \? \(past - cov\) \/ past : 1\);/.test(srcIE)
+        && /kitDiscount\.set\(dealMonth, \(kitDiscount\.get\(dealMonth\) \|\| 0\) \+ applied\);/.test(srcIE);
+      check('KG1 the kit deal discount scales to the UNCOVERED share on every money path - home totals, the stats rollup and the monthly series - because an invoiced day already carries the negotiated kit money inside its net; stats lacked this guard and double-deducted on a fully-invoiced production',
+        kgHome === 1 && kgStats && kgMonthly,
+        `home=${kgHome} stats=${kgStats} monthly=${kgMonthly}`);
       const marker = (srcIE.match(/<Badge variant="draft">PART INVOICED<\/Badge>/g) || []).length;
       const markerGate = (srcIE.match(/const partInvoicedChip = \(cov && cov\.partial\)/g) || []).length;
       const markerRows = (srcIE.match(/\{partInvoicedChip\}/g) || []).length;
       check('IE9 a PART INVOICED marker renders on both card variants when some but not all days are billed (ruled: one number, never a silent blend), and is absent when the job is wholly invoiced - the SENT chip already says that',
         marker === 1 && markerGate === 1 && markerRows === 2,
         `marker=${marker} gate=${markerGate} rows=${markerRows}`);
-      // IE10-12: the STATS read path. One seam scales the day's calc, so the
-      // hero figure, the monthly rollup and the category buckets cannot
-      // disagree; hours stay computed (an invoice changes what a day PAID,
-      // not how long it was); and the retrospective change is announced once.
-      const scale = sb.__applyInvoicedToCalc;
-      if (typeof scale === 'function') {
-        const calc = { total: 400, meta: { workedHrs: 12, dayType: 'Recce' },
-          lines: [{ label: 'Recce', amount: 300 }, { label: 'OT', amount: 100 }] };
-        const out = scale(calc, { invoiceId: 'i1', amount: 360 });
-        const sumLines = out.lines.reduce((x, l) => x + l.amount, 0);
-        check('IE10 an invoiced day scales its whole calc, not just the headline: a £400 day billed at £360 reports 360 AND its lines still sum to 360 (270/90), so the basic/OT buckets can never disagree with the total they are meant to explain',
-          Math.abs(out.total - 360) < 0.01 && Math.abs(sumLines - 360) < 0.01 &&
-          Math.abs(out.lines[0].amount - 270) < 0.01 && out.invoicedFrom === 'i1',
-          JSON.stringify({ total: out.total, sumLines, first: out.lines[0].amount }));
-        check('IE11 hours are NEVER rescaled - calc.meta passes through untouched - because an invoice changes what a day paid, not how long it was; and an uninvoiced day returns the identical calc object, so nothing changes for days with no sent invoice',
-          out.meta.workedHrs === 12 && out.meta.dayType === 'Recce' &&
-          scale(calc, null) === calc && scale(null, { amount: 1 }) === null,
-          JSON.stringify({ hrs: out.meta.workedHrs, passthrough: scale(calc, null) === calc }));
+      // IE10-11 (Phase 17 MOVERS). These pinned applyInvoicedToCalc scaling
+      // a day's whole calc - "a £400 day billed at £360 reports 360 AND its
+      // lines still sum to 360". That was the redistribution one level down,
+      // and the function is gone. What replaces them is the rule the founder
+      // ruled: NOTHING below invoice granularity reads a billed amount. This
+      // is the assertion that has to go red if a per-day read comes back -
+      // the arithmetic invariant below cannot catch it, because the
+      // redistribution PRESERVED the total, which is why it hid for two
+      // phases.
+      const gone = !/function applyInvoicedToCalc/.test(srcIE)
+        && !/applyInvoicedToCalc\(/.test(srcIE);
+      // Behavioural, not textual: every index entry carries EXACTLY ONE key.
+      // A regex forbidding the identifier `claimed.amount` is evaded by
+      // renaming the variable - found by mutating the home consumer to read
+      // `cl.amount` and watching this stay green. If no amount EXISTS, none
+      // can be spent whatever it is called.
+      const idxFn = sb.__productionInvoicedIndex;
+      const probe = typeof idxFn === 'function' ? idxFn({ invoices: [{
+        id: 'p', status: 'sent', createdAt: '2026-01-01', userCrewId: 'c1',
+        dayKeys: ['c1|2026-01-01'], dayBreakdown: [{ date: '2026-01-01', total: 500 }],
+        lineItems: [{ label: 'D', amount: 400, discountedQty: null }] }] }) : null;
+      const oneKeyOnly = !!probe && probe.size === 1
+        && [...probe.values()].every(v => Object.keys(v).length === 1 && v.invoiceId === 'p');
+      const noDayAmount = oneKeyOnly
+        && !/share\.set\(/.test(srcIE);
+      const membershipOnly = /for \(const k of invoiceDayClaim\(inv\)\) byKey\.set\(k, \{ invoiceId: inv\.id \}\);/.test(srcIE);
+      check('IE10 GRANULARITY: nothing below invoice level reads a billed amount - applyInvoicedToCalc is gone with no call sites, the day index sets membership only, and no per-day `claimed.amount` or proportional `share.set` survives anywhere',
+        gone && noDayAmount && membershipOnly,
+        `gone=${gone} noDayAmount=${noDayAmount} membershipOnly=${membershipOnly}`);
+      // The arithmetic that IS still true, and must stay: an invoice's own
+      // net is what it bills. Kept as a pin because the money now flows
+      // through it undivided.
+      const moneyFn = sb.__claimedInvoicesOf;
+      if (typeof moneyFn === 'function') {
+        const inv = { id: 'x', status: 'sent', dateSent: '2026-10-02', userCrewId: 'c1',
+          dayBreakdown: [{ date: '2026-10-01', total: 400 }, { date: '2026-10-02', total: 600 }],
+          lineItems: [{ label: 'A', amount: 300, discountedQty: null }, { label: 'B', amount: 600, discountedQty: null }] };
+        const rec = moneyFn({ invoices: [inv] })[0];
+        check('IE11 the invoice-level arithmetic: the reported net is exactly the sum of its line items (900 from 300+600), independent of what the days computed (1000) - the gap is the discount and it stays AT invoice level instead of being spread',
+          Math.abs(rec.net - 900) < 0.01 && rec.dayKeys.length === 2 && rec.date === '2026-10-02',
+          JSON.stringify(rec));
       } else {
-        check('IE10 applyInvoicedToCalc exposed', false, 'not exposed');
+        check('IE11 claimedInvoicesOf exposed', false, 'not exposed');
       }
-      const statsSeam = (srcIE.match(/calc: applyInvoicedToCalc\(calc, claimed\)/g) || []).length;
+      // Phase 17 MOVER: the seam no longer SCALES, it just pushes the
+      // computed calc through with its claim provenance. Same one-seam rule -
+      // every stats consumer still reads one array - anchored on the new shape.
+      const statsSeam = (srcIE.match(/days\.push\(\{ day, resolved, production: p, crew, calc, invoicedFrom: claimed \? claimed\.invoiceId : null \}\);/g) || []).length;
       const note = (srcIE.match(/anyInvoiced && !userPrefs\.seenInvoicedEarningsNote/g) || []).length;
       const noteDismiss = (srcIE.match(/seenInvoicedEarningsNote: true/g) || []).length;
       // The note must sit in the POPULATED branch, ABOVE the hero it explains.
@@ -8657,16 +8719,20 @@ async function main() {
         // The late SECOND break stays its own flag, on its own predicate —
         // tightening L1 must not quietly fold L2 into it.
         const l2Separate = /hasL2:\s*lbls\.some\(l => l\.startsWith\("late 2nd break"\)\),/.test(html);
-        // And the scaling difference stays deliberate: money passes through
-        // Phase 14's pro-rata, the count reads labels, which do not scale.
-        const scalingIntact = /lines: \(calc\.lines \|\| \[\]\)\.map\(l => \(\{ \.\.\.l, amount: \(Number\(l\.amount\) \|\| 0\) \* ratio \}\)\),/.test(html);
-        return helper && count && money && oldGone && l2Separate && scalingIntact;
+        // Phase 17 MOVER: this used to assert the pro-rata scaling STAYED.
+        // It is gone, so the two figures are now both computed and must
+        // agree exactly - two £10 breaks read £20.00 against 2. Asserting the
+        // absence is what stops a scaled money figure creeping back beside an
+        // unscaled count.
+        const noScaling = !/applyInvoicedToCalc/.test(html)
+          && !/amount: \(Number\(l\.amount\) \|\| 0\) \* ratio/.test(html);
+        return helper && count && money && oldGone && l2Separate && noScaling;
       })());
     check('ST2 the invoiced-earnings note is RE-FINDABLE and its affordance is REACHABLE — one InvoicedEarningsNote component (no duplicated sentence), a "why?" on the Earnings breakdown header, and the note rendered INLINE beneath that header; placement is asserted by SOURCE ORDER inside the has-data branch, not merely by presence, because Phase 14 shipped this very note where it could never render and Phase 13\'s crew editor crashed the same way — present, unreachable, every gate green',
       (() => {
         // ONE copy of the sentence.
         const single = (html.match(/const InvoicedEarningsNote = /g) || []).length === 1
-          && (html.match(/Where a day is covered by an invoice you have sent/g) || []).length === 1;
+          && (html.match(/an invoice doesn't record how a discount was split across days/g) || []).length === 1;
         // Both triggers go through it, and they are mutually exclusive so a
         // first-run user tapping why? never gets two copies.
         const firstRun = /\{anyInvoiced && !userPrefs\.seenInvoicedEarningsNote && !whyInvoicedOpen && \(\n\s*<InvoicedEarningsNote/.test(html);
@@ -8680,16 +8746,24 @@ async function main() {
         const iHdr  = html.indexOf('<SectionHdr>\n                  Earnings breakdown');
         const iWhy  = html.indexOf('aria-label="Why these figures follow your invoices">why?</button>');
         const iInline = html.indexOf('{anyInvoiced && whyInvoicedOpen && (');
-        const iCard = html.indexOf('<StatCard label="Overtime billed"');
+        // Anchored on the VALUE EXPRESSION, not the label. The label is copy
+        // and it just moved ("billed" -> "earned"), which silently sent this
+        // to -1 and took the placement assertion red for a reason that had
+        // nothing to do with placement - the HANDOVER lesson, caught by its
+        // own pin one commit later. stats.otEarnings is code.
+        const iCard = html.indexOf('value={fmtGBP(stats.otEarnings)}');
         const placed = iHero > 0 && iHdr > iHero && iWhy > iHdr && iInline > iWhy && iCard > iInline;
         // The affordance is gated on there being invoiced days at all — an
         // explanation for a screen with nothing to explain is noise.
         const gated = /\{anyInvoiced && \(\n\s*<button type="button" onClick=\{\(\) => setWhyInvoicedOpen\(o => !o\)\}/.test(html);
         // The two labels that asserted what a RULE paid now say what a period
         // BILLED. The other eleven cards are deliberately untouched.
-        const labels = /<StatCard label="Overtime billed" value=\{fmtGBP\(stats\.otEarnings\)\}\/>/.test(html)
-          && /<StatCard label="Late lunch billed" value=\{fmtGBP\(stats\.lateLunchEarnings\)\}\/>/.test(html)
-          && !/label="Overtime earned"/.test(html) && !/label="Late lunch earned"/.test(html)
+        // Phase 17 MOVER: "billed" was right for a screen that scaled lines.
+        // It no longer does, so at line level these ARE what the rule paid and
+        // the labels revert. The note carries the granularity instead.
+        const labels = /<StatCard label="Overtime earned" value=\{fmtGBP\(stats\.otEarnings\)\}\/>/.test(html)
+          && /<StatCard label="Late lunch earned" value=\{fmtGBP\(stats\.lateLunchEarnings\)\}\/>/.test(html)
+          && !/label="Overtime billed"/.test(html) && !/label="Late lunch billed"/.test(html)
           && /<StatCard label="Avg day earnings"/.test(html);
         return single && firstRun && onDemand && placed && gated && labels;
       })());
