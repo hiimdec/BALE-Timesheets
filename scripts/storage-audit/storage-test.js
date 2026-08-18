@@ -3599,13 +3599,25 @@ async function main() {
       check('PT5 the prep split leaves the other three discretionary types on the byte-identical shared branch (lunch extension intact, exactly one copy) with the prep2026 branch in front (one threshold site + one emit site) and the 8-or-10 booking read at exactly one place',
         sharedBranch === 1 && prepBranch === 2 && bookingRead === 1,
         `shared=${sharedBranch} prepBranches=${prepBranch} bookingRead=${bookingRead}`);
-      // PT6 - the booking CONTROL (commit B). Fully gated: APA agreement, the
-      // card term resolved from the production start date, Prep Day, not a
-      // BWD-override role, not PMPA - every case where the engine never reads
-      // the booking gets no control. The write is 10-or-undefined at exactly
-      // one site (absent = 8, the engine's default).
-      const ctrlGate = (src12.match(/agreementOf\(production\) === 'apa' &&\n\s*resolveApaTerms\(production\.startDate\)\.prepOtAfter10 === true &&\n\s*vr\.dayType === "Prep Day" && !bwdOverrideApplies && !isPmpa &&/g) || []).length;
-      const ctrlWrite = (src12.match(/set\(\{ prepBookingHours: val \? 10 : undefined \}\)/g) || []).length;
+      // PT6 - the booking CONTROL. Fully gated: APA agreement, the card term
+      // resolved from the production start date, Prep Day, not a BWD-override
+      // role, not PMPA - every case where the engine never reads the booking
+      // gets no control. The write is 10-or-undefined at exactly one site
+      // (absent = 8, the engine's default).
+      //
+      // Phase 15 MOVER, and a strengthening. This used to match the five
+      // conditions as an inline JSX expression and the write as the solo
+      // Toggle's `set({...})` call. Both moved when the control was rebuilt
+      // compact (clause 2.3's 8/10 is not an optional extra, so it stays on
+      // the face of the form) and SHARED with the mobile Best Boy editor,
+      // which had shipped without it. The RULE is unchanged and is now
+      // pinned where it lives: one predicate carrying all five conditions,
+      // one write site inside the one component. The old regex would have
+      // stayed green with the Best Boy editor still missing the control -
+      // this one is about the rule, not about one call site's markup.
+      const ctrlGate = (src12.match(/const showsPrepBooking = \(production, dayType, bwdOverrideApplies, isPmpa\) =>\n\s*!!production\n\s*&& agreementOf\(production\) === 'apa'\n\s*&& resolveApaTerms\(production\.startDate\)\.prepOtAfter10 === true\n\s*&& dayType === 'Prep Day'\n\s*&& !bwdOverrideApplies\n\s*&& !isPmpa;/g) || []).length;
+      const ctrlWrite = (src12.match(/seg\('10 hours', is10, \(\) => onChange\(10\)\)/g) || []).length
+        + (src12.match(/seg\('8 hours', !is10, \(\) => onChange\(undefined\)\)/g) || []).length - 1;
       check('PT6 the prep-booking control is gated on all five conditions (APA + card term from startDate + Prep Day + !bwdOverride + !isPmpa) and writes prepBookingHours 10-or-undefined at exactly one site - dropping any gate or writing any other value goes RED',
         ctrlGate === 1 && ctrlWrite === 1,
         `gate=${ctrlGate} write=${ctrlWrite}`);
@@ -3616,8 +3628,14 @@ async function main() {
       // clearing mechanism must actually clear: undefined drops through the
       // JSON round-trip every storage layer performs, leaving the key ABSENT
       // (= 8), not null.
+      // Phase 15 MOVER, and a strengthening. The position marker used to be
+      // the old control's own label text ('10-Hour Booking?'), which the
+      // rebuild retired. The RULE - the control renders in the notices
+      // region, which hideDayCard cannot suppress - is unchanged, and the
+      // marker is now the render itself, so any future relabel cannot
+      // silently un-pin the placement.
       const idxNotices = src12.indexOf('render whether or not the DAY card is shown');
-      const idxCtrl = src12.indexOf('10-Hour Booking?');
+      const idxCtrl = src12.indexOf('{showsPrepBooking(production, vr.dayType, bwdOverrideApplies, isPmpa) && (');
       const idxTimes = src12.indexOf('── Section: Times + Lunch');
       const cleared = JSON.parse(JSON.stringify({ id: 'd1', prepBookingHours: undefined }));
       check('PT7 the control renders in the notices region (after the DAY card, before Times) so solo sees it - hideDayCard cannot hide it - and clearing to undefined genuinely drops the key through the JSON round-trip (absent = 8, never null)',
@@ -8483,6 +8501,42 @@ async function main() {
           && /\}, 240\);/.test(html)
           && /return \(\) => \{ cancelAnimationFrame\(raf\); clearTimeout\(t\); \};/.test(html);
         return varOk && marginOk && pageOk && scrollOk;
+      })());
+    check('TT20g the prep booking control (APA cl.2.3, Sept 2026) is carried by ALL THREE APA day editors — solo + grid share DayEntryForm\'s render, the mobile Best Boy editor renders its own; ONE predicate (showsPrepBooking) gates all of them and ONE component (PrepBookingRow) draws them, so a fourth surface cannot ship the day type without the control that decides when its overtime starts',
+      (() => {
+        // ONE gate, defined once, carrying the full rule.
+        const gateOk = /const showsPrepBooking = \(production, dayType, bwdOverrideApplies, isPmpa\) =>/.test(html)
+          && /agreementOf\(production\) === 'apa'/.test(html)
+          && /resolveApaTerms\(production\.startDate\)\.prepOtAfter10 === true/.test(html)
+          && /&& dayType === 'Prep Day'\s*\n\s*&& !bwdOverrideApplies\s*\n\s*&& !isPmpa;/.test(html)
+          && (html.match(/const showsPrepBooking =/g) || []).length === 1;
+        // ONE component, defined once.
+        const compOk = /function PrepBookingRow\(\{ value, onChange, neutralised \}\) \{/.test(html)
+          && (html.match(/function PrepBookingRow\(/g) || []).length === 1
+          // 8 hours writes undefined — no day record gains a key for the default.
+          && /seg\('8 hours', !is10, \(\) => onChange\(undefined\)\)/.test(html)
+          && /seg\('10 hours', is10, \(\) => onChange\(10\)\)/.test(html);
+        // TWO render sites (DayEntryForm serves solo + grid; the mobile Best
+        // Boy editor is the third editor and renders its own). Both call the
+        // shared gate, and both read the RESOLVED booking, never the raw record.
+        const callSites = (html.match(/<PrepBookingRow/g) || []).length === 2
+          // The arrow definition reads `showsPrepBooking = (`, so a bare
+          // `showsPrepBooking(` counts CALL SITES only. Exactly two: the
+          // shared DayEntryForm render (solo + grid) and the mobile Best Boy
+          // editor. A third editor gaining the day type without the control
+          // leaves this at two while <PrepBookingRow> stays at two — which is
+          // why the mutation test below deletes a call site rather than
+          // trusting the count alone.
+          && (html.match(/showsPrepBooking\(/g) || []).length === 2;
+        const soloOk = /\{showsPrepBooking\(production, vr\.dayType, bwdOverrideApplies, isPmpa\) && \(/.test(html)
+          && /value=\{vr\.prepBookingHours\}/.test(html);
+        const bbOk = /if \(!showsPrepBooking\(production, resolvedDay\?\.dayType, bwd, pmpa\)\) return null;/.test(html)
+          && /value=\{resolvedDay\?\.prepBookingHours\}/.test(html)
+          && /onChange=\{\(next\) => updateField\('prepBookingHours', next\)\}/.test(html);
+        // The old bespoke solo-only markup is gone, not merely bypassed.
+        const oldGone = !/ariaLabel="10-hour prep booking"/.test(html)
+          && !/<SectionCard title="Prep Booking">/.test(html);
+        return gateOk && compOk && callSites && soloOk && bbOk && oldGone;
       })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {

@@ -5103,6 +5103,15 @@
 You don't need to subtract anything yourself.`;
 
     // Pre-call UX copy — expands on ⓘ tap inside Extras.
+    // The clause behind the prep booking control. It lives behind the (i)
+    // rather than on the face of the control: the compact row states the
+    // consequence, this states the rule.
+    const PREP_BOOKING_EXPLAINER = `APA clause 2.3 (September 2026 terms): a prep day is booked for either 8 or 10 hours, agreed with the production before the day.
+
+The booking is what you are paid for, whether or not you work it - book 10 and finish in 8 and you are still paid 10.
+
+Overtime starts after 10 hours worked, whichever booking you are on. On a weekend or bank holiday the day pays at the weekend rate, so the booking makes no difference to the money.`;
+
     const PRE_CALL_EXPLAINER = `Use this when you started before the main unit call. Common scenarios:
   • Truck driving - loading or delivering gear
   • Pre-light - sparks setting up lighting before crew arrival
@@ -10447,6 +10456,69 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // state lifted to DayEntryForm, so the panel becomes a third
     // grid item with col-span-2 and reflows the form below it.
 
+    // ── Prep booking (APA clause 2.3, September 2026 terms) ───────────
+    // ONE gate and ONE control, rendered by all three APA day editors:
+    // the solo day page and the grid day editor (both through
+    // DayEntryForm) and the mobile Best Boy editor. It shipped in only
+    // the first two, so a Best Boy working in mobile view could not set a
+    // 10-hour booking for anyone and the engine read 8 for every prep day
+    // they touched — a pay consequence, not a layout one. Two enforcement
+    // points for one rule drift, so the predicate is shared as well as the
+    // markup, and TT20g pins all three call sites.
+    //
+    // The gate: APA productions whose resolved card carries the 2026 term,
+    // on Prep Days, excluding BWD-override roles (their prep calculates as
+    // a Shoot Day) and PMPA roles (Appendix 1 exempt). For all of those the
+    // engine never reads the booking, so there is no control to show.
+    const showsPrepBooking = (production, dayType, bwdOverrideApplies, isPmpa) =>
+      !!production
+      && agreementOf(production) === 'apa'
+      && resolveApaTerms(production.startDate).prepOtAfter10 === true
+      && dayType === 'Prep Day'
+      && !bwdOverrideApplies
+      && !isPmpa;
+
+    // The control. A compact row, not a section card: this decides when
+    // overtime starts, so it stays in the main flow and on the face of the
+    // form — but it was the size of the Times card above the times, which
+    // is what read as intrusive. Segmented control, one line of
+    // consequence, the clause itself behind the (i).
+    // ABSENT MEANS 8: choosing 8 writes undefined and the JSON round-trip
+    // drops the key, so no day record gains a field for the default.
+    function PrepBookingRow({ value, onChange, neutralised }) {
+      const [showInfo, setShowInfo] = React.useState(false);
+      const is10 = value === 10;
+      const seg = (label, active, onPick) => (
+        <button type="button" onClick={onPick} aria-pressed={active}
+          className={`flex-1 text-[11px] uppercase tracking-[0.12em] font-bold py-1.5 rounded-md transition-colors ${
+            active ? 'bg-sky-500 text-black' : 'text-neutral-400 hover:text-neutral-200'}`}
+          style={{ WebkitTapHighlightColor: 'transparent' }}>{label}</button>
+      );
+      return (
+        <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5 space-y-2">
+          <div className="flex items-center gap-1.5">
+            <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold flex-1">Prep booking</div>
+            <button type="button" onClick={() => setShowInfo(s => !s)}
+              className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-sky-500/30"
+              style={{ width: 22, height: 22, background: 'rgb(var(--tm-sky-400) / 0.15)', color: 'rgb(var(--tm-sky-300))', WebkitTapHighlightColor: 'transparent' }}
+              aria-label="Prep booking info">
+              <IInfo size={11}/>
+            </button>
+          </div>
+          <div className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded-lg p-1">
+            {seg('8 hours', !is10, () => onChange(undefined))}
+            {seg('10 hours', is10, () => onChange(10))}
+          </div>
+          <div className="text-[10px] text-neutral-500 leading-tight">
+            {neutralised
+              ? 'Weekend rate applies today, so the booking does not change pay.'
+              : 'Charged in full; overtime starts after 10 hours.'}
+          </div>
+          {showInfo && <StatusMsg kind="info"><span className="whitespace-pre-line">{PREP_BOOKING_EXPLAINER}</span></StatusMsg>}
+        </div>
+      );
+    }
+
     // TimeTrigger — the click-to-open button. `active` adds the sky
     // border/ring (matches the previous TimeInput's open state).
     function TimeTrigger({ value, onClick, disabled, active, className, style }) {
@@ -12623,29 +12695,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </StatusMsg>
           )}
 
-          {/* Prep booking (Sept 2026 terms, clause 2.3) — rendered OUTSIDE the
-              DAY card so solo sees it too (the Phase 9 day-rate lesson).
-              Gated to APA productions whose card carries the 2026 term, on
-              Prep Days, excluding BWD-override roles (their prep calculates
-              as Shoot) and PMPA roles (Appendix 1 exempt) — for all of those
-              the engine never reads the booking, so no control. Absent = 8h:
-              OFF writes undefined and the JSON round-trip drops the key. */}
-          {production && agreementOf(production) === 'apa' &&
-            resolveApaTerms(production.startDate).prepOtAfter10 === true &&
-            vr.dayType === "Prep Day" && !bwdOverrideApplies && !isPmpa && (
-            <SectionCard title="Prep Booking">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">10-Hour Booking?</div>
-                  <div className="text-[10px] text-neutral-500 mt-0.5">
-                    {(isWeekend || isBH)
-                      ? "Weekend rate applies today, so the booking does not change pay."
-                      : "Sept 2026 terms: prep is booked for 8 or 10 hours and the booking is charged even if fewer hours are worked. OT after 10 hours worked."}
-                  </div>
-                </div>
-                <Toggle value={v.prepBookingHours === 10} onChange={(val) => set({ prepBookingHours: val ? 10 : undefined })} ariaLabel="10-hour prep booking" />
-              </div>
-            </SectionCard>
+          {/* Prep booking (APA clause 2.3, Sept 2026 terms) — rendered
+              OUTSIDE the DAY card so solo sees it too (the Phase 9 day-rate
+              lesson). Gate and control are both shared with the mobile Best
+              Boy editor; see showsPrepBooking. Reads the RESOLVED day type
+              and the resolved booking, so a future cascade cannot make this
+              disagree with what the engine computes. */}
+          {showsPrepBooking(production, vr.dayType, bwdOverrideApplies, isPmpa) && (
+            <PrepBookingRow
+              value={vr.prepBookingHours}
+              onChange={(next) => set({ prepBookingHours: next })}
+              neutralised={isWeekend || isBH}
+            />
           )}
 
           {/* ── Section: Times + Lunch (primary block) ── */}
@@ -17050,6 +17111,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   onChange={(v) => updateTimeField('dayType', v)}
                   onResetToDefault={() => resetField('dayType')}
                 />
+                {/* Prep booking (APA clause 2.3, Sept 2026 terms) — the SAME
+                    gate and the SAME control the solo and grid editors use.
+                    It was absent here, so a Best Boy working in mobile view
+                    could not set a 10-hour booking for anyone and the engine
+                    read 8 for every prep day on this surface. Step-up role
+                    wins over the base role for both classifications, exactly
+                    as DayEntryForm computes them. */}
+                {(() => {
+                  const effRole = resolvedDay?.stepUpRole ? resolvedDay.stepUpRole : (crewMember?.role || '');
+                  const pmpa = ROLE_DEFAULTS[effRole]?.pmpa === true;
+                  const bwd = !pmpa && ROLES_WITH_BWD_OVERRIDE.includes(effRole)
+                    && ["Pre-light", ...DISCRETIONARY_LUNCH_DAY_TYPES].includes(resolvedDay?.dayType);
+                  if (!showsPrepBooking(production, resolvedDay?.dayType, bwd, pmpa)) return null;
+                  const dow = dayOfWeek(currentDate);
+                  return (
+                    <PrepBookingRow
+                      value={resolvedDay?.prepBookingHours}
+                      onChange={(next) => updateField('prepBookingHours', next)}
+                      neutralised={dow === 0 || dow === 6 || !!nationBankHolidayName(currentDate, production && production.baseNation)}
+                    />
+                  );
+                })()}
+
                 {/* Day-rate route (Phase 13): same two states as the solo
                     header and the grid editor hint, reading the RESOLVED
                     type. The unset state is the findability fix. */}
