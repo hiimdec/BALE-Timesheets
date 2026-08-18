@@ -3900,6 +3900,18 @@ async function main() {
       } else {
         check('IE11 claimedInvoicesOf exposed', false, 'not exposed');
       }
+      check('WIN3 the empty-state guard is asked ONCE and in one place - the JSX renders the empty state on !stats, never on a days-only test, and aggregateMonthly spans a month that holds a claim and no work. Three copies of "no days means nothing to show" lived on this screen; relaxing only the memo left the other two deciding the window was empty while it held money',
+        (() => {
+          // The JSX must branch on the memo's verdict, not re-derive it.
+          const jsxOk = /\) : !stats \? \(/.test(html)
+            && !/\) : enrichedDays\.length === 0 \? \(/.test(html);
+          // The memo's own guard admits a claim with no days.
+          const memoOk = /if \(enrichedDays\.length === 0 && billedInvoices\.length === 0\) return null;/.test(html);
+          // And the monthly series does too.
+          const seriesOk = /if \(enrichedDays\.length === 0 && \(billedInvoices \|\| \[\]\)\.length === 0\) return \[\];/.test(html)
+            && !/if \(!Array\.isArray\(enrichedDays\) \|\| enrichedDays\.length === 0\) return \[\];/.test(html);
+          return jsxOk && memoOk && seriesOk;
+        })());
       check('WIN2 an invoice appears in the tax year it was SENT and NOT in the year the work was done - the case attributing on dateSent exists for. Work in 25/26, invoice sent in 26/27: the year of the WORK reports the computed day and no claim; the year of the SENDING reports the claim with no work at all, which also means a window holding money but no days must not render as empty',
         (() => {
           const idxFn2 = sb.__productionInvoicedIndex, moneyFn2 = sb.__claimedInvoicesOf;

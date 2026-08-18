@@ -14075,7 +14075,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // than hidden, because that gap is precisely what nobody could see when a
     // £10 late break read £8.66.
     function aggregateMonthly(enrichedDays, productions, userPrefs, billedInvoices = [], coveredKeys = new Set()) {
-      if (!Array.isArray(enrichedDays) || enrichedDays.length === 0) return [];
+      // Not days-only: a month can hold a claim and no work, and the series
+      // has to span it. Third copy of this guard in one screen — the memo,
+      // the JSX and here — which is the shape the HANDOVER lesson names.
+      if (!Array.isArray(enrichedDays)) return [];
+      if (enrichedDays.length === 0 && (billedInvoices || []).length === 0) return [];
 
       // String-arithmetic month walker — bypasses Date / timezone shifts
       // entirely.
@@ -28337,7 +28341,7 @@ const setDays = (updater) =>
                   <p className="text-xs text-neutral-500 max-w-xs mx-auto mt-6">Legwork uses Apple Health to count your steps on shoot days, once you've completed a day.</p>
                 )}
               </div>
-            ) : enrichedDays.length === 0 ? (
+            ) : !stats ? (   /* not `enrichedDays.length === 0` — a window can hold a claim and no work (see the stats memo's own guard) */
               <>
                 <div className="py-20 text-center">
                   <div className="flex justify-center mb-4 text-neutral-700"><IStats size={48}/></div>
