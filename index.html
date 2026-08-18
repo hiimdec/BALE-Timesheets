@@ -28060,7 +28060,11 @@ const setDays = (updater) =>
       // one of the two renders at a time.
       const InvoicedEarningsNote = ({ onDismiss, dismissLabel }) => (
         <div className="mt-2 bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4">
-          <div className="text-xs font-semibold text-sky-400 mb-1">Earnings now follow your invoices</div>
+          {/* Not "Earnings NOW follow your invoices". That was a release
+              announcement; this is a permanent explanation reachable from the
+              why? button, and "now" would have it describing a change rather
+              than a rule. */}
+          <div className="text-xs font-semibold text-sky-400 mb-1">Earnings follow your invoices</div>
           <p className="text-xs text-neutral-400 leading-relaxed">
             Where a day is covered by an invoice you have sent, these figures show what you invoiced rather than what the day calculates to - discounts included. Some past months may read differently than they used to.
           </p>
