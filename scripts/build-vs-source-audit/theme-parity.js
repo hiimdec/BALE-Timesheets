@@ -183,6 +183,36 @@ function main() {
   ok('inline tailwind.config colours deep-equal tailwind.config.js colours',
     diffs.length === 0, diffs.slice(0, 5).join(' | '));
 
+  // Parity is NOT just the palette. `future: { hoverOnlyWhenSupported: true }`
+  // lived only in the inline web config for the whole life of the static
+  // stylesheet, so the native build emitted every `hover:*` utility ungated.
+  // On iOS a tap sets :hover and leaves it set until the next touch lands
+  // elsewhere, so the last thing tapped kept its hover colour — on a solid
+  // button that reads as the button going pale, because hover:bg-sky-300 is a
+  // LIGHTER tint than the bg-sky-500 under it. Nothing could see it: the
+  // palette matched, so this assertion stayed green while web and native
+  // behaved differently on touch. Any non-colour key that changes emitted CSS
+  // belongs here.
+  const inlineFuture = (() => {
+    const m = html.match(/future: \{([^}]*)\}/);
+    if (!m) return null;
+    const out = {};
+    for (const pair of m[1].split(',')) {
+      const kv = pair.split(':').map(x => x.trim());
+      if (kv.length === 2 && kv[0]) out[kv[0]] = kv[1] === 'true';
+    }
+    return out;
+  })();
+  const nativeFuture = require(path.join(ROOT, 'tailwind.config.js')).future || null;
+  const futureDiffs = [];
+  deepDiff(inlineFuture, nativeFuture, 'future', futureDiffs);
+  ok('inline tailwind.config `future` flags deep-equal tailwind.config.js `future` flags — the hover gate must reach the NATIVE stylesheet, or iOS keeps every tapped element in its hover colour',
+    inlineFuture !== null && nativeFuture !== null && futureDiffs.length === 0,
+    futureDiffs.slice(0, 5).join(' | ') || `inline=${JSON.stringify(inlineFuture)} native=${JSON.stringify(nativeFuture)}`);
+  ok('the hover gate is actually ON in both configs (hoverOnlyWhenSupported)',
+    !!(inlineFuture && inlineFuture.hoverOnlyWhenSupported) && !!(nativeFuture && nativeFuture.hoverOnlyWhenSupported),
+    `inline=${inlineFuture && inlineFuture.hoverOnlyWhenSupported} native=${nativeFuture && nativeFuture.hoverOnlyWhenSupported}`);
+
   // ── 2. VAR RESOLUTION, PER THEME SCOPE ────────────────────────────────────
   console.log('2. Var resolution (each var defined exactly once per theme scope, as channels)');
   const rootScope = themeScope(html, ':root {');
