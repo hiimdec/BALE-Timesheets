@@ -3661,6 +3661,21 @@ async function main() {
       check('DR2 the SOLO route: rateable-type gate, the unset "set day rate" state (the findability fix), and the tap opens settings on the Day rates disclosure - all at exactly one site each, in the header region solo always renders',
         soloGate === 1 && soloOpen === 1 && soloUnset === 1,
         `gate=${soloGate} open=${soloOpen} unset=${soloUnset}`);
+      // DR9 (Phase 15) - the solo route line lives on DayFormTop's sub-row,
+      // NOT inside chipSlot. The header row's fixed content leaves 59px at
+      // 375px and 4px at 320px for a string that measures 138px unset, 138px
+      // set and 175px with a step-up, so beside the chip it wrapped to three
+      // lines and printed over the date. flex-wrap + ml-auto are the row's
+      // safety net for the case the sub-row does not cover (long form puts
+      // two chips in chipSlot and overflowed 320px by ~60px).
+      const subRowProp = (srcDR.match(/function DayFormTop\(\{ dayIndex, dayCount, onJump, chipSlot, date, onDateChange, onKebab, subRow = null \}\)/g) || []).length;
+      const subRowRender = (srcDR.match(/\{subRow && \(\n\s*<div className="max-w-3xl mx-auto px-4 pb-2\.5 -mt-1">\{subRow\}<\/div>\n\s*\)\}/g) || []).length;
+      const soloUsesSubRow = (srcDR.match(/subRow=\{\(\(\) => \{/g) || []).length;
+      const rowWraps = (srcDR.match(/<div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-2 px-4 py-3">/g) || []).length;
+      const rightHolds = (srcDR.match(/<div className="flex items-center gap-2 flex-shrink-0 ml-auto">/g) || []).length;
+      check('DR9 the solo day-rate route renders on DayFormTop\'s SUB-ROW, not beside the type chip - the header row cannot hold a 138-175px string next to 162px of chip and 128px of date, and the row itself wraps (flex-wrap + ml-auto) so long form\'s two chips drop the date to its own line instead of printing over it',
+        subRowProp === 1 && subRowRender === 1 && soloUsesSubRow === 1 && rowWraps === 1 && rightHolds === 1,
+        `prop=${subRowProp} render=${subRowRender} solo=${soloUsesSubRow} wrap=${rowWraps} right=${rightHolds}`);
       const bbBtn = (srcDR.match(/e\.preventDefault\(\); e\.stopPropagation\(\); onOpenDayRates\(\);/g) || []).length;
       const bbUnset = (srcDR.match(/'paying your APA rate'/g) || []).length;
       check('DR3 the BB routes: the grid Day Type hint is a button (preventDefault stops the Field label re-activating the select) at exactly one site, and the unset copy is shared by exactly the TWO BB editors (grid hint + CMDV row)',

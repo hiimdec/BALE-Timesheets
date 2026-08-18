@@ -20751,9 +20751,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // invisible native date input over ambient text — never a form field),
     // and the kebab. `chipSlot` is the agreement's own chip content: APA
     // passes its type chip-select, long form passes type + shape.
-    function DayFormTop({ dayIndex, dayCount, onJump, chipSlot, date, onDateChange, onKebab }) {
+    // `subRow` is an optional SECOND line inside the same bordered strip.
+    // Phase 15: the day-rate route line used to ride in chipSlot, beside the
+    // type chip. It cannot fit there — the row's fixed content is 162px on
+    // the left and 128px on the right, leaving 59px at 375px and 4px at
+    // 320px for a string that measures 138px unset, 138px set and 175px with
+    // a step-up. It wrapped to three lines and overprinted the date. A line
+    // of its own has the full width, which is what the mobile Best Boy
+    // editor already does with the same line.
+    //
+    // flex-wrap + ml-auto are the row's own safety net, for the case the
+    // sub-row does not cover: long form puts TWO chips in chipSlot (type and
+    // shape), which overflows 320px by ~60px and overprinted the date there
+    // too. Wrapping drops the date and kebab to their own right-aligned line
+    // instead of printing on top of the chips. Both are no-ops at any width
+    // where the row fits, so nothing moves at 375px and above.
+    function DayFormTop({ dayIndex, dayCount, onJump, chipSlot, date, onDateChange, onKebab, subRow = null }) {
       return (
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 px-4 py-3 border-b border-neutral-800 mb-3.5">
+        <div className="border-b border-neutral-800 mb-3.5">
+          <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-2 px-4 py-3">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
@@ -20767,7 +20783,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <span className="text-neutral-700 text-[10px]">·</span>
             {chipSlot}
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
             <label className="relative inline-flex cursor-pointer">
               <input
                 type="date"
@@ -20791,6 +20807,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <IDots size={14} />
             </button>
           </div>
+          </div>
+          {subRow && (
+            <div className="max-w-3xl mx-auto px-4 pb-2.5 -mt-1">{subRow}</div>
+          )}
         </div>
       );
     }
@@ -21223,6 +21243,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     date={day?.date}
                     onDateChange={(v2) => dayOnChange({ ...day, date: v2 })}
                     onKebab={() => setShowDayActions(true)}
+                    subRow={(() => {
+                      // Same resolution the chip uses (the raw record shows a
+                      // stale type — the Phase 13 finding), so the header, the
+                      // route line and the form below can never disagree.
+                      const chipDay = production ? resolveDay(production, day, (production.crew || [])[0]) : day;
+                      const chipType = chipDay?.dayType || 'Shoot';
+                      if (!RATEABLE_DAY_TYPES.includes(chipType)) return null;
+                      const r = Number((production && production.dayTypeRates || {})[chipType]) || 0;
+                      const openDayRates = () => { setSettingsInitial('day-rates'); setShowSettings(true); };
+                      return (
+                        <button type="button" onClick={openDayRates} className="text-[10px] font-mono text-neutral-500 inline-flex items-baseline text-left" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                          {r > 0
+                            ? <>{chipDay?.stepUpRole ? `${fmtGBP(r)} · step-up wins` : `${fmtGBP(r)} job rate`}<span className="text-sky-500">&nbsp;· edit</span></>
+                            : <>APA rate<span className="text-sky-500">&nbsp;· set day rate</span></>}
+                        </button>
+                      );
+                    })()}
                     chipSlot={(() => {
                       // The solo write path thins the day record - persistent
                       // fields (dayType included) live in dayDefaults and
@@ -21261,27 +21298,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           <IChevronDown size={10} strokeWidth={2.5} className="opacity-60" />
                         </span>
                       </label>
-                      {/* Day rates (Phase 9 indicator, Phase 13 route): the solo
-                          view hides the Day card, so this line beside the type
-                          chip is where the day's rate is explained - and now the
-                          way to CHANGE it. A sibling of the label, never inside
-                          it: the label's full-bleed select would eat the tap.
-                          Renders for every rateable type, set or not - the unset
-                          state is the findability fix. Tap opens the production
-                          settings sheet on the Day rates disclosure; the sheet
-                          stays the single store and editor. */}
-                      {(() => {
-                        if (!RATEABLE_DAY_TYPES.includes(chipType)) return null;
-                        const r = Number((production && production.dayTypeRates || {})[chipType]) || 0;
-                        const openDayRates = () => { setSettingsInitial('day-rates'); setShowSettings(true); };
-                        return (
-                          <button type="button" onClick={openDayRates} className="ml-1.5 text-[10px] font-mono text-neutral-500 inline-flex items-baseline" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                            {r > 0
-                              ? <>{chipDay?.stepUpRole ? `${fmtGBP(r)} · step-up wins` : `${fmtGBP(r)} job rate`}<span className="text-sky-500">&nbsp;· edit</span></>
-                              : <>APA rate<span className="text-sky-500">&nbsp;· set day rate</span></>}
-                          </button>
-                        );
-                      })()}
                       </>
                       );
                     })()}
