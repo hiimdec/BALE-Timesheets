@@ -27876,7 +27876,6 @@ const setDays = (updater) =>
       }, [productions, filter, userPrefs, statsWindow]);
 
       const stats = useMemo(() => {
-        if (enrichedDays.length === 0) return null;
         // ── Money, Phase 17 ──────────────────────────────────────────────
         // Billed at INVOICE granularity, computed everywhere finer. A day
         // covered by a claim contributes nothing here — its invoice does,
@@ -27898,13 +27897,29 @@ const setDays = (updater) =>
         // is excluded from windowed figures and counts only at all-time
         // scope (where the predicate is the identity) and in per-production
         // totals, which have no period at all.
+        //
+        // Sourced from PRODUCTIONS, not from the day set. Deriving it from
+        // enrichedDays meant an invoice could only be seen in a window that
+        // already contained some of its production's WORK - so an invoice
+        // sent this tax year for work done in the last one was invisible in
+        // the year it was sent, which is precisely the case attributing on
+        // dateSent exists to get right. Same two gates the day loop uses: S4
+        // (APA only) and a crew match.
         const billedInvoices = [];
-        for (const p of new Map(enrichedDays.map(e => [e.production.id, e.production])).values()) {
+        for (const p of productions) {
+          if (agreementOf(p) !== 'apa') continue;                       // S4
+          if (userCrewIdsInProduction(p, userPrefs).length === 0) continue;
           for (const inv of claimedInvoicesOf(p)) {
             if (!statsWindow.inWindowDate(inv.date)) continue;
             billedInvoices.push({ ...inv, production: p });
           }
         }
+        // Nothing to show only when there is NEITHER work NOR a claim in the
+        // window. Guarding on days alone made the screen decide it was empty
+        // while holding money it could have reported - the same shape as the
+        // invoiced note shipped into the empty-state block, and the crew
+        // editor that crashed behind green pins.
+        if (enrichedDays.length === 0 && billedInvoices.length === 0) return null;
         let totalEarnings = enrichedDays.reduce((s, e) => isCovered(e) ? s : s + e.calc.total, 0)
           + billedInvoices.reduce((s, inv) => s + inv.net, 0);
         // Use RESOLVED times (call/wrap can cascade from dayDefaults — the raw
@@ -28081,7 +28096,7 @@ const setDays = (updater) =>
           busiestMonth: busiestMonthEntry ? { key: busiestMonthEntry[0], amount: busiestMonthEntry[1] } : null,
           topProdCo: topProdCoEntry ? { name: topProdCoEntry[0], amount: topProdCoEntry[1] } : null,
         };
-      }, [enrichedDays, filter, statsWindow, userPrefs]);
+      }, [enrichedDays, filter, statsWindow, userPrefs, productions]);
 
       const heroLabel = filter === 'all' ? 'All-time earnings' : filter === 'taxyear' ? 'Tax year earnings' : 'Year to date';
 

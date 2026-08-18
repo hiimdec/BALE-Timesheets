@@ -3900,6 +3900,46 @@ async function main() {
       } else {
         check('IE11 claimedInvoicesOf exposed', false, 'not exposed');
       }
+      check('WIN2 an invoice appears in the tax year it was SENT and NOT in the year the work was done - the case attributing on dateSent exists for. Work in 25/26, invoice sent in 26/27: the year of the WORK reports the computed day and no claim; the year of the SENDING reports the claim with no work at all, which also means a window holding money but no days must not render as empty',
+        (() => {
+          const idxFn2 = sb.__productionInvoicedIndex, moneyFn2 = sb.__claimedInvoicesOf;
+          if (typeof idxFn2 !== 'function' || typeof moneyFn2 !== 'function') return false;
+          const k = (c, d) => `${c}|${d}`;
+          // ONE day of work on 2 Jan 2026 (tax year 25/26), invoiced 20 Aug
+          // 2026 (tax year 26/27) for £710.40 against a £888 computed day.
+          const day = { date: '2026-01-02', crewId: 'me', total: 888 };
+          const inv = { id: 'i1', status: 'sent', createdAt: '2026-08-20', dateSent: '2026-08-20', userCrewId: 'me',
+            dayKeys: [k('me', day.date)], dayBreakdown: [{ date: day.date, total: 888 }],
+            lineItems: [{ label: 'Day', amount: 710.40, discountedQty: null }] };
+          const prod = { id: 'p1', prodCo: 'Acme', invoices: [inv] };
+          const idx = idxFn2(prod);
+          const money = moneyFn2(prod);
+
+          const win = (startISO, endISO) => {
+            const inWin = (iso) => !!iso && iso >= startISO && iso <= endISO;
+            const days = [day].filter(d => inWin(d.date));
+            const covered = new Set(days.filter(d => idx.has(k('me', d.date))).map(d => d.date));
+            const computed = days.reduce((s, d) => covered.has(d.date) ? s : s + d.total, 0);
+            const claims = money.filter(i => inWin(i.date));
+            // The render guard: empty ONLY when there is neither work nor a claim.
+            const rendersEmpty = days.length === 0 && claims.length === 0;
+            return { days: days.length, computed, billed: claims.reduce((s, i) => s + i.net, 0), rendersEmpty };
+          };
+          const worked = win('2025-04-06', '2026-04-05');   // the year the WORK is in
+          const sent   = win('2026-04-06', '2027-04-05');   // the year it was SENT in
+
+          // The year of the work: the day is claimed, so it contributes no
+          // computed money, and the claim is NOT here.
+          const workedOk = worked.days === 1 && Math.abs(worked.computed) < 0.01
+            && Math.abs(worked.billed) < 0.01 && worked.rendersEmpty === false;
+          // The year of the sending: the claim, whole, with no work at all -
+          // and the screen must NOT decide it is empty.
+          const sentOk = sent.days === 0 && Math.abs(sent.billed - 710.40) < 0.01
+            && Math.abs(sent.computed) < 0.01 && sent.rendersEmpty === false;
+          // And the money is in exactly one of the two years, never both.
+          const onceOnly = Math.abs((worked.billed + sent.billed) - 710.40) < 0.01;
+          return workedOk && sentOk && onceOnly;
+        })());
       check('WIN1 for ANY window the reported total is exactly SUM(nets of invoices whose dateSent is in the window) + SUM(computed for uncovered days in the window) - EXECUTED over a fixture spanning two tax years, which is the case All-time structurally cannot exercise: with the identity predicate every invoice is in scope, so the missing window filter was invisible there and only there',
         (() => {
           const idxFn = sb.__productionInvoicedIndex, moneyFn = sb.__claimedInvoicesOf;
@@ -8743,12 +8783,15 @@ async function main() {
         const s2 = /if \(openId && prod && agreementOf\(prod\) === 'apa' && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{/.test(html);
         // S3 guards BOTH total maps.
         const s3 = (html.match(/if \(agreementOf\(p\) !== 'apa'\) \{ totals\[p\.id\] = 0; continue; \}/g) || []).length >= 2;
-        // TWO lines share this shape — S4 (stats) and the call-sheet chooser.
-        // Matching the bare line let either one satisfy the assertion, so
-        // deleting the STATS gate stayed green. Anchor S4 on its own comment
-        // and count both, so removing either goes red.
+        // THREE lines now share this shape — S4 on the stats day loop, the
+        // call-sheet chooser, and (Phase 17) the stats INVOICE loop, which
+        // needs the same gate because it reads productions directly rather
+        // than through enrichedDays. A bare-line match lets any one of them
+        // satisfy the assertion, and the raw COUNT is brittle to exactly this
+        // - it moved the moment a legitimate third gate arrived. Each real
+        // gate is anchored on its own surroundings instead.
         const s4 = /\/\/ Sweep gate S4 \(ruled\): stats are built on APA concepts —[\s\S]{0,400}?\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;/.test(html)
-          && (html.match(/if \(agreementOf\(p\) !== 'apa'\) continue;/g) || []).length === 2;
+          && /for \(const p of productions\) \{\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;\s*\/\/ S4\n\s*if \(userCrewIdsInProduction\(p, userPrefs\)\.length === 0\) continue;/.test(html);
         const s5 = /const sorted = \[\.\.\.productions\]\.filter\(p => !p\.standalone\)\.sort/.test(html);
         return s2 && s3 && s4 && s5;
       })());
