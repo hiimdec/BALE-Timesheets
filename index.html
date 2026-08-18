@@ -23426,7 +23426,7 @@ const setDays = (updater) =>
       );
     }
 
-    function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete, nativeActionsRef }) {
+    function LongFormArea({ production, setProduction, userPrefs, setUserPrefs, onBack, onDelete, nativeActionsRef, initialDayId = null }) {
       useBackLevel(true, () => { onBack(); return true; }, 'longform-area');
       const [showSettings, setShowSettings] = useState(false);
       const [showRoleEditor, setShowRoleEditor] = useState(false);
@@ -23534,6 +23534,17 @@ const setDays = (updater) =>
       const [dayToast, setDayToast] = useState(null);
       const showDayToast = (msg) => { setDayToast(msg); setTimeout(() => setDayToast(null), 2000); };
       const enterDay = (dayId) => { setCurrentDayId(dayId); setOpenWeekId(null); setView('day'); };
+      // The home screen's today card jumps here. Note what this deliberately
+      // is NOT: it does not touch the landing rule, which stays the literal
+      // 'weeks' with no todayDay branch (LF30). The job still OPENS on the
+      // week view; an explicit request then navigates one step, exactly as
+      // tapping the Today row does — same enterDay, same back behaviour. A
+      // derived landing and an explicit jump are different things, and only
+      // the first was reversed in Phase 16.
+      const [pendingDayJump] = useState(() => initialDayId || null);
+      useEffect(() => {
+        if (pendingDayJump && sortedDays.some(d => d.id === pendingDayJump)) enterDay(pendingDayJump);
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
       // ── Invoicing from the week view (Phase 4c) ──
       const [invoiceNav, setInvoiceNav] = useState(null);   // invoiceId | null → the reused editor
       const [weekKebab, setWeekKebab] = useState(null);      // a week under its action sheet
@@ -31371,6 +31382,59 @@ const setDays = (updater) =>
       );
     }
 
+    // ── Long form today card (Phase 16, shape B ruled) ────────────────────
+    // The APA hero's pattern — the day's place in the job, its shape, its
+    // money — with one deliberate difference: NO Lunch Now / Wrap Now. It
+    // navigates to the day editor, where the long form writes already work,
+    // instead of carrying write buttons that would have to learn a second
+    // agreement's fields. Nothing here can leak, because nothing here writes.
+    //
+    // Its figure comes from longFormCalcForDay, the long form engine. It is
+    // display-only and feeds no aggregate: month totals (S3) and stats (S4)
+    // still skip non-APA productions entirely, so this number reaches the
+    // screen and nowhere else.
+    function LongFormTodayCard({ production, todayStr, onOpenDay }) {
+      const myCrewId = getEffectiveUserCrewId(production, null) || (production.crew || [])[0]?.id || null;
+      const days = (production.days || []).filter(d => !myCrewId || d.crewId === myCrewId);
+      const sorted = [...days].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const day = sorted.find(d => d.date === todayStr) || null;
+      if (!day) return null;
+      const idx = sorted.findIndex(d => d.id === day.id) + 1;
+      const meta = LF_DAY_TYPE_META[day.dayType] || LF_DAY_TYPE_META.shoot;
+      let total = null;
+      try { total = longFormCalcForDay(production, day).total; } catch (_) { total = null; }
+      return (
+        <button type="button" onClick={() => onOpenDay(production.id, day.id)}
+          className="w-full text-left bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden active:bg-neutral-800 transition-colors select-none"
+          style={{ WebkitTapHighlightColor: 'transparent' }}>
+          <div className="px-4 pt-3.5 pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[10px] uppercase tracking-[0.16em] font-bold text-sky-500">
+                Today · Day {idx} of {sorted.length}
+              </div>
+              <span className="text-[10px] uppercase tracking-wide font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-md px-1.5 py-[3px] flex-shrink-0">Beta</span>
+            </div>
+            <div className="mt-1.5 flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[17px] font-bold text-neutral-100 truncate">{production.title || 'Untitled'}</div>
+                <div className="text-[11px] text-neutral-500 mt-0.5 truncate">
+                  {meta.long}{meta.shaped ? ` · ${(LF_DAY_SHAPE_META[day.dayShape] || LF_DAY_SHAPE_META.swd).label}` : ''}
+                  {day.unitCallTime ? ` · ${day.individualCallTime || day.unitCallTime} - ${day.wrapTime || ''}` : ''}
+                </div>
+              </div>
+              {total != null && (
+                <div className="font-mono text-[17px] font-bold text-sky-500 flex-shrink-0">{fmtGBP(total)}</div>
+              )}
+            </div>
+          </div>
+          <div className="px-4 py-2.5 border-t border-neutral-800 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-neutral-400">Open today's day</span>
+            <IChevronRight size={15} className="text-sky-500 flex-shrink-0" />
+          </div>
+        </button>
+      );
+    }
+
     function ProductionsScreen({ productions, onOpen, onNewProduction, onDelete, onDuplicate, onUpdateDays, onOpenSettings, onOpenStats, userPrefs, setUserPrefs, onUpdateInvoice, onDeleteInvoice, onCreateInvoice, onCreateStandalone, homeTab, setHomeTab, searchSignal, searchConsumedRef, onSearchActiveChange, searchActionsRef, newInvoiceActionRef }) {
       const [toastMsg, setToastMsg] = useState(null);
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2000); };
@@ -31625,10 +31689,32 @@ const confirmDelete = (p) => setConfirmOpts({
       // onto day records. A long form day dated today must not be picked.
       const currentShoot = sorted.find(p => agreementOf(p) === 'apa' && (p.days ?? []).some(d => d.date === todayStr)) || null;
 
+      // Sweep gate S1b (Phase 16): long form gets its OWN today card and its
+      // OWN pick, never S1's. Shape B, ruled: the card NAVIGATES to the day
+      // editor and writes nothing. Three things re-arm if a long form record
+      // is ever fed to the APA hero instead, and this pick exists so none of
+      // them can:
+      //   1. the hero's todayTotal runs calcForDisplay — the APA engine —
+      //      over the day records (see S1c, which now guards that inline);
+      //   2. Lunch Now writes lunchStartTime + lunchLogged, and a long form
+      //      day has NEITHER. Its lunch is lunchTime. The card would report a
+      //      lunch that never reached the engine, on a record shape LF13a-k
+      //      pin;
+      //   3. Wrap Now writes wrapTime, which long form DOES read — so it is
+      //      not inert, it is partial: a long form day carries a separate
+      //      cameraWrapTime at a different rate (TV §7.6, film §3.3(a)(i)),
+      //      and one stamp cannot express both. Which one it should stamp is
+      //      a money question and wants a ruling; shape A is parked on it.
+      const currentLongForm = sorted.find(p => agreementOf(p) !== 'apa' && (p.days ?? []).some(d => d.date === todayStr)) || null;
+
       // In-progress productions pin above the month groups and stay out of
       // them (and out of month totals — they've earned APA-summable money
       // never; their own money model arrives with the week layer).
-      const inProgress = sorted.filter(isInProgressProduction);
+      // ...minus the one on the today card. EVERY long form job is in progress
+      // by definition (isInProgressProduction is "non-APA, not standalone, not
+      // wrapped"), so without this the hero'd job renders twice. Same rule the
+      // month groups already apply to currentShoot.
+      const inProgress = sorted.filter(isInProgressProduction).filter(p => p.id !== currentLongForm?.id);
 
       const groups = [];
       for (const p of sorted) {
@@ -31768,7 +31854,13 @@ const confirmDelete = (p) => setConfirmOpts({
             }
           }
 
-          const todayTotal = todayRecords.reduce((sum, d) => {
+          // Sweep gate S1c (Phase 16): the hero's own figure is computed HERE,
+          // inline, and until now had no gate of its own — it leaned entirely
+          // on S1 never picking a long form job. That is one edit away from
+          // running the APA engine over Pact/Bectu records and rendering the
+          // result as money on the home screen. S3 guards the month totals
+          // this way; the hero never did. Now it does, independently.
+          const todayTotal = agreementOf(p) !== 'apa' ? 0 : todayRecords.reduce((sum, d) => {
             const c = (p.crew ?? []).find(cc => cc.id === d.crewId);
             if (!c) return sum;
             return sum + calcForDisplay(p, d, c, findPrevDay(p.days ?? [], d)).total;
@@ -32100,6 +32192,18 @@ const confirmDelete = (p) => setConfirmOpts({
                     <div className="space-y-2">
                       {inProgress.map(p => renderCard(p, { compact: false }))}
                     </div>
+                  </div>
+                )}
+
+                {/* Long form today card (S1b). Its own pick, its own engine,
+                    no write buttons — see LongFormTodayCard. */}
+                {currentLongForm && (
+                  <div className="mb-6">
+                    <LongFormTodayCard
+                      production={currentLongForm}
+                      todayStr={todayStr}
+                      onOpenDay={(pid, dayId) => onOpen(pid, { dayId })}
+                    />
                   </div>
                 )}
 
@@ -33139,6 +33243,7 @@ const confirmDelete = (p) => setConfirmOpts({
       // { result }) — one-shot, consumed by CallSheetImport via the
       // initialImportFile → pendingImportFile chain (the openInvoiceId pattern).
       const [openImportFile, setOpenImportFile] = useState(null);
+      const [openDayId, setOpenDayId] = useState(null);
       const [homeTab, setHomeTab] = useState("productions");
       // Invoicing visibility can drop (master toggle off, or export format switched
       // to a CSV type) while homeTab is 'invoices'; redirect to Shoots so the hidden
@@ -33146,8 +33251,10 @@ const confirmDelete = (p) => setConfirmOpts({
       useEffect(() => {
         if (homeTab === 'invoices' && !invoicesTabVisible(userPrefs)) setHomeTab('productions');
       }, [homeTab, userPrefs]);
-      const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); setOpenImportFile(options.importFile || null); };
-      const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); setOpenImportFile(null); };
+      // options.dayId — the long form today card's jump. One-shot, cleared on
+      // close like the other two, and consumed once at LongFormArea's mount.
+      const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); setOpenImportFile(options.importFile || null); setOpenDayId(options.dayId || null); };
+      const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); setOpenImportFile(null); setOpenDayId(null); };
 
       // ── Overdue reminder tap → deep-link to the invoice (Stage 3) ─────────────
       // Tapping the lock-screen/banner reminder opens the app on that invoice.
@@ -33734,7 +33841,7 @@ const confirmDelete = (p) => setConfirmOpts({
         // THE long form dispatch point (PACT_BECTU_PLAN.md): a long form
         // production opens here and nowhere else. The APA branches below
         // never receive one, so no APA surface needs an agreement check.
-        screen = <LongFormArea production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} onDelete={() => deleteProduction(currentProduction.id)} nativeActionsRef={lfActionsRef} />;
+        screen = <LongFormArea initialDayId={openDayId} production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} onDelete={() => deleteProduction(currentProduction.id)} nativeActionsRef={lfActionsRef} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
           production={currentProduction}

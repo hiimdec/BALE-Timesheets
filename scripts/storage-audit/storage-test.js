@@ -8582,6 +8582,47 @@ async function main() {
           && /useBackLevel\(true, \(\) => \{ onBack\(\); return true; \}, 'longform-area'\);/.test(html);
         return landsOnWeeks && entryOk && stackOk;
       })());
+    check('LF31 the long form TODAY card (Phase 16 shape B) navigates and never writes — its own pick (S1b) separate from the APA hero (S1), its figure from longFormCalcForDay, NO Lunch Now / Wrap Now anywhere in it, the hero\'d job filtered out of In Progress so it cannot render twice, and the APA hero\'s inline todayTotal now carries its OWN agreement gate (S1c) rather than leaning on S1',
+      (() => {
+        // S1 unchanged: the APA hero still refuses a non-APA production.
+        const s1 = /const currentShoot = sorted\.find\(p => agreementOf\(p\) === 'apa' && \(p\.days \?\? \[\]\)\.some\(d => d\.date === todayStr\)\) \|\| null;/.test(html);
+        // S1b: a SEPARATE pick, non-APA only. Not a loosened S1.
+        const s1b = /const currentLongForm = sorted\.find\(p => agreementOf\(p\) !== 'apa' && \(p\.days \?\? \[\]\)\.some\(d => d\.date === todayStr\)\) \|\| null;/.test(html);
+        // S1c: the hero's inline figure gates itself. This is the leak the
+        // founder named: todayTotal ran the APA engine with no guard of its
+        // own, one edit from rendering APA money for a Pact/Bectu day.
+        const s1c = /const todayTotal = agreementOf\(p\) !== 'apa' \? 0 : todayRecords\.reduce\(/.test(html);
+        // The card exists, reads the LONG FORM engine, and navigates.
+        const card = /function LongFormTodayCard\(\{ production, todayStr, onOpenDay \}\) \{/.test(html)
+          && /total = longFormCalcForDay\(production, day\)\.total;/.test(html)
+          && /onOpenDay=\{\(pid, dayId\) => onOpen\(pid, \{ dayId \}\)\}/.test(html);
+        // ...and carries NO writer. The whole point of shape B.
+        const body = (html.match(/function LongFormTodayCard[\s\S]*?\n    \}\n/) || [''])[0];
+        const noWrites = body.length > 200
+          && !/WrapNowBtn|LunchNowBtn|setDays|setProduction|mapDayNow|lunchStartTime|wrapTime:/.test(body);
+        // Every long form job is in-progress by definition, so the card's job
+        // must leave that list or the home screen shows it twice.
+        const dedup = /const inProgress = sorted\.filter\(isInProgressProduction\)\.filter\(p => p\.id !== currentLongForm\?\.id\);/.test(html);
+        // The jump is one-shot and does NOT reopen the landing rule (LF30).
+        const jump = /const \[pendingDayJump\] = useState\(\(\) => initialDayId \|\| null\);/.test(html)
+          && /if \(pendingDayJump && sortedDays\.some\(d => d\.id === pendingDayJump\)\) enterDay\(pendingDayJump\);/.test(html)
+          && /const \[view, setView\] = useState\('weeks'\);/.test(html);
+        return s1 && s1b && s1c && card && noWrites && dedup && jump;
+      })());
+    check('LF32 the sweep still holds with the new entry point — S2 (voice/Live Activity), S3 (month totals, both), S4 (stats) and S5 (standalone) each keep their own agreement gate; the today card feeds NONE of them',
+      (() => {
+        const s2 = /if \(openId && prod && agreementOf\(prod\) === 'apa' && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{/.test(html);
+        // S3 guards BOTH total maps.
+        const s3 = (html.match(/if \(agreementOf\(p\) !== 'apa'\) \{ totals\[p\.id\] = 0; continue; \}/g) || []).length >= 2;
+        // TWO lines share this shape — S4 (stats) and the call-sheet chooser.
+        // Matching the bare line let either one satisfy the assertion, so
+        // deleting the STATS gate stayed green. Anchor S4 on its own comment
+        // and count both, so removing either goes red.
+        const s4 = /\/\/ Sweep gate S4 \(ruled\): stats are built on APA concepts —[\s\S]{0,400}?\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;/.test(html)
+          && (html.match(/if \(agreementOf\(p\) !== 'apa'\) continue;/g) || []).length === 2;
+        const s5 = /const sorted = \[\.\.\.productions\]\.filter\(p => !p\.standalone\)\.sort/.test(html);
+        return s2 && s3 && s4 && s5;
+      })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {
         const fn = (html.match(/function seedRateFromPrefs\(userPrefs, role, effectiveDate\)[\s\S]*?\n    \}/) || [''])[0];
