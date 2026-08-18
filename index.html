@@ -7901,13 +7901,33 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return map[dayType] || "shoot";
     }
 
+    // The ONE predicate for "this line IS the late first break penalty".
+    //
+    // It exists because the two figures on the Stats card were asking two
+    // different questions of the same array. "Late lunches" counted an EXACT
+    // label match; "Late lunch earned" summed every line whose label merely
+    // STARTED with "late" — which also swept in "Late 2nd Break (treated as
+    // missed)", whose amount is breakPenaltyRate * 0.5 (the BHR, or 2× BHR on
+    // a night shoot) rather than the flat £10, and which the count
+    // deliberately tracks separately as hasL2. A day with a late second break
+    // and no late lunch added money with nothing counted.
+    //
+    // Both sites read this now, so the count and the money cannot drift.
+    // NOTE what this does NOT change: the amount is still scaled by Phase
+    // 14's invoiced pro-rata (applyInvoicedToCalc) and the count is not,
+    // because labels survive scaling and amounts do not. That difference is
+    // deliberate and ruled — the screen reports what was invoiced, and a
+    // penalty under a discounted invoice was genuinely billed at less than
+    // its computed value.
+    const isLateFirstBreakLine = (label) => (label || '').toLowerCase() === 'late 1st break';
+
     function penaltyFlags(calc) {
       if (!calc) return {};
       const lines = calc.lines || [];
       const lbls = lines.map(l => (l.label || '').toLowerCase());
       return {
         hasOT:         (calc.meta?.otHrs || 0) > 0,
-        hasL1:         lbls.some(l => l === "late 1st break"),
+        hasL1:         lines.some(l => isLateFirstBreakLine(l.label)),
         hasL2:         lbls.some(l => l.startsWith("late 2nd break")),
         hasMSB:        lbls.some(l => l === "missed 2nd break"),
         hasCWD:        !!calc.meta?.continuousDay,
@@ -27832,7 +27852,12 @@ const setDays = (updater) =>
             // "OT (2× BHR)" / "OT Triple Time" / "Early Call (OT rate)" labels,
             // zeroing Overtime Earned for every shoot with weekday OT.
             if (categorizeBreakdownLine(l.label || '') === 'ot') otEarnings += l.amount;
-            if ((l.label || '').toLowerCase().startsWith('late')) lateLunchEarnings += l.amount;
+            // Same predicate the COUNT uses (penaltyFlags.hasL1) — see
+            // isLateFirstBreakLine. This was a loose label-prefix test, which
+            // also summed late SECOND breaks at a BHR-based rate that the
+            // count excludes. ST1 asserts the prefix form appears NOWHERE in
+            // the file, so it is spelled out here rather than quoted.
+            if (isLateFirstBreakLine(l.label)) lateLunchEarnings += l.amount;
             // Pass the line so Stage-2 itemised kit lines (bucket:'kit') bucket
             // correctly into HighestDayBreakdown's kit segment.
             dayEntry.buckets[categorizeBreakdownLine(l)] += Number(l.amount) || 0;

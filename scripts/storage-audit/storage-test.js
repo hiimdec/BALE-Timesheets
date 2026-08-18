@@ -8623,6 +8623,25 @@ async function main() {
         const s5 = /const sorted = \[\.\.\.productions\]\.filter\(p => !p\.standalone\)\.sort/.test(html);
         return s2 && s3 && s4 && s5;
       })());
+    check('ST1 the Stats late-lunch COUNT and the late-lunch MONEY read the SAME predicate — one isLateFirstBreakLine helper, exact-matched to the flat £10 line, consumed by penaltyFlags.hasL1 AND by lateLunchEarnings; the old startsWith(\'late\') prefix also summed "Late 2nd Break (treated as missed)" at breakPenaltyRate * 0.5, which the count excludes as hasL2, so a late second break added money with nothing counted',
+      (() => {
+        // Defined exactly once, and exact-match rather than prefix.
+        const helper = /const isLateFirstBreakLine = \(label\) => \(label \|\| ''\)\.toLowerCase\(\) === 'late 1st break';/.test(html)
+          && (html.match(/const isLateFirstBreakLine =/g) || []).length === 1;
+        // BOTH readers go through it.
+        const count = /hasL1:\s*lines\.some\(l => isLateFirstBreakLine\(l\.label\)\),/.test(html);
+        const money = /if \(isLateFirstBreakLine\(l\.label\)\) lateLunchEarnings \+= l\.amount;/.test(html);
+        // The loose prefix is GONE, not merely bypassed.
+        const oldGone = !/startsWith\('late'\)/.test(html)
+          && !/lbls\.some\(l => l === "late 1st break"\)/.test(html);
+        // The late SECOND break stays its own flag, on its own predicate —
+        // tightening L1 must not quietly fold L2 into it.
+        const l2Separate = /hasL2:\s*lbls\.some\(l => l\.startsWith\("late 2nd break"\)\),/.test(html);
+        // And the scaling difference stays deliberate: money passes through
+        // Phase 14's pro-rata, the count reads labels, which do not scale.
+        const scalingIntact = /lines: \(calc\.lines \|\| \[\]\)\.map\(l => \(\{ \.\.\.l, amount: \(Number\(l\.amount\) \|\| 0\) \* ratio \}\)\),/.test(html);
+        return helper && count && money && oldGone && l2Separate && scalingIntact;
+      })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {
         const fn = (html.match(/function seedRateFromPrefs\(userPrefs, role, effectiveDate\)[\s\S]*?\n    \}/) || [''])[0];
