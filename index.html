@@ -23429,6 +23429,12 @@ const setDays = (updater) =>
       // the job's details and links clientId, and the nudge offers to update
       // the saved client when details drift.
       const clientNudge = useClientUpdateNudge(production, userPrefs, setUserPrefs);
+      // The collapsed row's summary: who the invoices are addressed to, or a
+      // prompt when nothing has been entered. Same shape as the APA settings
+      // sheet's invoicing summary.
+      const invoicingDetailsSummary = (production.prodCo || '').trim()
+        || (production.invoicingEmail || '').trim()
+        || 'Not set';
       // One-time beta explainer on first entry to the area. The seen flag is
       // an ADDITIVE userPrefs write — deliberately NOT added to
       // DEFAULT_USER_PREFS (which stays byte-untouched); merge-over-defaults
@@ -24029,6 +24035,67 @@ const setDays = (updater) =>
                     );
                   })}
                 </div>
+                {/* Invoicing details (moved here Phase 15). Entered once per
+                    job and reused for every weekly invoice — per-job, not
+                    per-day, so it sat oddly in a settings sheet reached from
+                    the day editor. It lives at the level where invoices are
+                    actually made. Collapsed by default: it is set once and
+                    then left alone. Same client machinery as the APA
+                    production settings — the picker fills from
+                    userPrefs.clients and links clientId. */}
+                <Disclosure label="Invoicing details" summary={invoicingDetailsSummary}>
+                  <Field label="Production company">
+                    <ClientPicker
+                      value={production.prodCo || ""}
+                      onValueChange={(v) => { clientNudge.disarmOnChange(); setProduction(p => ({ ...p, prodCo: v })); }}
+                      onAccept={(c) => setProduction(p => ({
+                        ...p,
+                        prodCo: c.name,
+                        toAddress: c.address || '',
+                        invoicingEmail: c.email || '',
+                        clientId: c.id,
+                      }))}
+                      clients={userPrefs.clients}
+                      placeholder="Production company"
+                      ariaLabel="Production company"
+                      className="w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg"
+                    />
+                  </Field>
+                  <Field label="Company address" hint="Where the invoice is addressed to">
+                    <textarea
+                      value={production.toAddress || ""}
+                      onChange={(e) => { clientNudge.disarmOnChange(); setProduction(p => ({ ...p, toAddress: e.target.value })); }}
+                      onBlur={clientNudge.armOnBlur}
+                      placeholder={"e.g.\n5 Margaret Street\nLondon W1W 8RG"}
+                      rows={3}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
+                      style={{ fontFamily: 'inherit' }}
+                    />
+                  </Field>
+                  <Field label="Job reference">
+                    <Input value={production.jobReference || ""} onChange={(e) => setProduction(p => ({ ...p, jobReference: e.target.value }))} placeholder="Job reference" />
+                  </Field>
+                  <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
+                    <Input
+                      value={production.invoicingEmail || ""}
+                      onChange={(e) => { clientNudge.disarmOnChange(); setProduction(p => ({ ...p, invoicingEmail: e.target.value })); }}
+                      onBlur={clientNudge.armOnBlur}
+                      placeholder="Invoicing email"
+                    />
+                  </Field>
+                  <Field label="CC email">
+                    <Input value={production.ccEmail || ""} onChange={(e) => setProduction(p => ({ ...p, ccEmail: e.target.value }))} placeholder="CC email" />
+                  </Field>
+                  <ClientUpdateNudge
+                    pending={clientNudge.pending}
+                    savedClient={clientNudge.savedClient}
+                    onApply={clientNudge.apply}
+                    onDismiss={clientNudge.dismiss}
+                  />
+                  <p className="text-[11px] text-neutral-500 leading-snug -mt-2">
+                    Used for every invoice on this job. Invoices you've already sent keep the details they were sent with.
+                  </p>
+                </Disclosure>
                 {selectMode && (
                   <Btn variant="primary" className="mt-4 w-full justify-center" disabled={selectedWeekIds.size === 0}
                     onClick={() => { const ids = [...selectedWeekIds]; setSelectMode(false); setSelectedWeekIds(new Set()); openInvoiceForWeeks(ids); }}>
@@ -24165,64 +24232,6 @@ const setDays = (updater) =>
                     setProduction(p => { const n = { ...p }; if (v > 0) n.mileageRatePerMile = v; else delete n.mileageRatePerMile; return n; });
                   }} />
                 </Field>
-                {/* Invoicing details (Phase 4b Part 1, ruled): entered once
-                    per job, reused for every weekly invoice. Same client
-                    machinery as the APA production settings — the picker
-                    fills from userPrefs.clients and links clientId. */}
-                <div className="pt-4 border-t border-neutral-800 flex flex-col gap-5">
-                  <div className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold -mb-2">Invoicing</div>
-                  <Field label="Production company">
-                    <ClientPicker
-                      value={production.prodCo || ""}
-                      onValueChange={(v) => { clientNudge.disarmOnChange(); setProduction(p => ({ ...p, prodCo: v })); }}
-                      onAccept={(c) => setProduction(p => ({
-                        ...p,
-                        prodCo: c.name,
-                        toAddress: c.address || '',
-                        invoicingEmail: c.email || '',
-                        clientId: c.id,
-                      }))}
-                      clients={userPrefs.clients}
-                      placeholder="Production company"
-                      ariaLabel="Production company"
-                      className="w-full min-w-0 bg-neutral-950 border border-neutral-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 text-neutral-100 placeholder:text-neutral-500 px-2.5 py-2 font-mono outline-none rounded-lg"
-                    />
-                  </Field>
-                  <Field label="Company address" hint="Where the invoice is addressed to">
-                    <textarea
-                      value={production.toAddress || ""}
-                      onChange={(e) => { clientNudge.disarmOnChange(); setProduction(p => ({ ...p, toAddress: e.target.value })); }}
-                      onBlur={clientNudge.armOnBlur}
-                      placeholder={"e.g.\n5 Margaret Street\nLondon W1W 8RG"}
-                      rows={3}
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
-                      style={{ fontFamily: 'inherit' }}
-                    />
-                  </Field>
-                  <Field label="Job reference">
-                    <Input value={production.jobReference || ""} onChange={(e) => setProduction(p => ({ ...p, jobReference: e.target.value }))} placeholder="Job reference" />
-                  </Field>
-                  <Field label="Invoicing email" hint="Multiple addresses? Separate with commas.">
-                    <Input
-                      value={production.invoicingEmail || ""}
-                      onChange={(e) => { clientNudge.disarmOnChange(); setProduction(p => ({ ...p, invoicingEmail: e.target.value })); }}
-                      onBlur={clientNudge.armOnBlur}
-                      placeholder="Invoicing email"
-                    />
-                  </Field>
-                  <Field label="CC email">
-                    <Input value={production.ccEmail || ""} onChange={(e) => setProduction(p => ({ ...p, ccEmail: e.target.value }))} placeholder="CC email" />
-                  </Field>
-                  <ClientUpdateNudge
-                    pending={clientNudge.pending}
-                    savedClient={clientNudge.savedClient}
-                    onApply={clientNudge.apply}
-                    onDismiss={clientNudge.dismiss}
-                  />
-                  <p className="text-[11px] text-neutral-500 leading-snug -mt-2">
-                    Used for every invoice on this job. Invoices you've already sent keep the details they were sent with.
-                  </p>
-                </div>
                 {/* Wrapped is reversible and confirmed one way only: wrapping
                     moves the job out of the pinned group, un-wrapping just
                     puts it back. The key is deleted on un-wrap so the record
