@@ -94,6 +94,29 @@ phase once 2026.11 is away and wants its own proposal.
 
 - **A pin that can't go red is decoration.** Four tautological pins have been
   caught and rewritten here; assume the next one is yours.
+- **Never anchor a structural pin on copy.** A string's position is a proxy for
+  structure, not structure, and the proxy fails both ways. Observed twice, once
+  per phase, and both times *loudly*: PT7 anchored the prep-booking control's
+  placement on its own label text and went red when a rebuild retired the label;
+  IE12 anchored the invoiced-earnings note's placement on the note's heading and
+  went red when extracting that note into a shared component moved the string
+  above the branch it was ordered against. Neither was a silent pass — but each
+  cost a diagnosis on a change that had nothing to do with the rule, and neither
+  anchor was measuring the rule in the first place. The silent-pass case is the
+  one still waiting to happen: a copy edit that lands the string somewhere that
+  *still* satisfies the ordering leaves the pin green and guarding nothing.
+  **Anchor on the render condition or the code structure, never on a string a
+  copy edit can touch.**
+- **A pin whose anchor cannot express the rule it names is decoration that reads
+  as correct.** Distinct from a tautology: it *can* go red, just never in the
+  direction it was written for. IE12 claimed "not in the empty state" and
+  compared source positions against the opening `<div>` of the first empty
+  branch — so anything dropped *inside* that branch still sat "after" it and
+  passed, and the second empty branch was not covered at all. It looked right and
+  it was green for two phases. **Reading the assertion would not have caught it;
+  only mutating the source did.** When a pin names a containment rule, check that
+  its anchor can actually express containment — an ordering test against an
+  opening tag cannot.
 - **The device finds what pins cannot.** Recent: the grid crew editor crashed on
   open for *seven phases* behind 1,356 green assertions (`cardRoles` out of scope,
   swallowed by the error boundary); the solo day-rate indicator sat on a card the
