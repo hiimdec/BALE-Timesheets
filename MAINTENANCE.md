@@ -42,6 +42,26 @@ welcome.html and how-it-works.html footers carry static "APA Sept 2025" markers.
 **Change:** none currently possible without a server; recorded so nobody "discovers" it. Possible narrowing once real-day data exists: pre-emptive staleDate rotation (rejected for 5.3.0 because it fires only on foreground sweeps, which cannot close the hole).
 **Why parked:** ActivityKit gives ONE staleDate slot. The card's staleDate is min(semantic wake, lifetime cap) — usually the lunch-end wake or the ~7h45m cap that drives the truthful EXPIRED branch. A day where lunch is logged and the user never foregrounds or touches the card between lunch-end and wrap spends the slot on the lunch wake, so the cap wake never fires and the card can husk at the iOS ~8h limit without rendering EXPIRED. Every serverless re-mint mechanism is foreground-triggered, so this is a platform limit, not deferred work. The restart-on-foreground sweep self-heals it at the next app open.
 
+## After the 2026.11 submission — persist the September rate notice's seen-state
+
+**Trigger:** the next release that already carries a schema change, or the first report of the notice repeating after a relaunch.
+**Change:** move the future-card announcement's seen-state from the session ref (`announcedCardsRef`, keyed `openId:effectiveFrom`) onto the production record, so an announcement survives a cold start.
+**Why parked:** ruled Phase 15. The session Set fixes the real complaint — the notice fired on every crossing of the boundary, without limit — and one announcement per production per card is now the behaviour within a session. Persisting it is a stored-key change (and every persisted key joins the storage adapter's KEYS warm list in the same commit), which is not worth a migration immediately before a submission for a dialog rather than for money. A repeat after a cold start is a minor annoyance, and the whole mechanism goes quiet permanently once today is past 1 September 2026.
+
+## Long form settings — the full-page rebuild
+
+**Trigger:** the next release that touches long form Job settings, or when the sheet's content grows past the 90vh cap again.
+**Change:** rebuild Job settings as a full page in APA's `ProductionSettingsSheet` shape — `min-h-screen`, its own header, and `Disclosure` grouping — rather than a bottom sheet.
+**Why parked:** ruled Phase 15. The bug (the sheet was 1515px in an 812px viewport with no cap and no scroll region, so its top 703px was unreachable) is fixed with `DayEditModal`'s cap-and-scroll pattern, and moving invoicing to the week view took the content from 1417px to 851px. The full-page shape is the better long-term answer because the disclosure grouping is what makes APA's comparable settings readable, but it is a rewrite of the whole surface rather than a fix, and it is not a bug.
+
+## Ruling needed — hourly Bectu card rates cannot fill the wizard's rate field
+
+**Trigger:** propose-first, after the 2026.11 submission. Needs a ruling before any code.
+**Change:** decide the multiplier that turns an hourly Bectu card rate into a day rate, then extend `lfRoleRefFill` (index.html, beside `lfRoleRefLine`) to return `{ value, unit: 'h' }` cases so the reference becomes tappable for them too.
+**The question, stated:** which number does an hourly rate multiply by — the agreement class's contracted hours (10 for standard, 10+1 for the additional-hour departments, 9 for rigging electricians), or something else the deal memo implies? It produces a money figure, so it is propose-first.
+**Why parked:** Phase 15 made the card reference tappable for `d` (fills the daily rate as published) and `w` (switches "my deal is weekly" on and fills the weekly field, so the wizard's own visible ÷5 does the conversion). Hourly entries are left as a plain, untappable reference because there is no hourly field and any conversion invents a number. Non-numeric entries (NEG, N/A, "not often in this band", the MMP referral) carry no figure and were never fillable.
+**Which departments this covers.** Counted from the registry: **109 roles carry an hourly figure**, against 74 daily and 6 weekly — so the unfilled case is the majority of the card, not a corner. The hourly departments are Camera, Sound, Grip, Costume, Hair & Make-up, Locations, Editorial, Production and Transport (Unit Driver). Art Department, Assistant Directors, Construction, Props, Lighting/Electrical and Intimacy Coordinator are `d` or `w` and are already fillable.
+
 ## Marketing copy pass — soften the Greggs/Leatherman trademark usage
 
 **Trigger:** next marketing/copy pass, or any trademark complaint (then immediately).
