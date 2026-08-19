@@ -6108,28 +6108,45 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return { isDriver: false, ...c, email: c.email ?? '' };
     }
 
+    // ── OWNERSHIP: one rule, two shapes ──────────────────────────────────
+    // "Which crew records are the user's?" was answered by THREE functions
+    // that disagreed, and the one the Stats screen used was the one nobody
+    // checked: on a non-Best-Boy production it returned EVERY crew id and
+    // consulted neither `displayName` nor `iAmCrewId`. So the "this is me"
+    // button never reached Stats, and a shared solo job counted every crew
+    // member's days as the user's — a guess that produced money figures.
+    // Fifth instance of the duplicated-gate shape on this project.
+    //
+    // The resolution order, in full:
+    //   1. iAmCrewId, if it still matches a crew member. An explicit "this is
+    //      me" is authoritative wherever ownership is asked, and resolves to
+    //      exactly that one record.
+    //   2. Every crew record whose trimmed lowercase name equals displayName.
+    //      Usually one; legitimately more than one when the user holds two
+    //      records on a job (Gaffer some days, Spark others). The LIST is
+    //      load-bearing for exactly that case — collapsing to a single id
+    //      would silently stop counting the second record's days.
+    //   3. Single-crew fallback: a non-Best-Boy production with exactly one
+    //      crew member. That member IS the user; there is nobody else it
+    //      could be. This guesses across a set of size one, which is why it
+    //      survives while the everyone-fallback does not.
+    //   4. Nothing resolves → [] → excluded and SURFACED (excludedCount).
+    //      Never inferred.
+    //
+    // Ownership does not depend on a display toggle, so there is no
+    // solo/Best-Boy branch here any more.
     function userCrewIdsInProduction(production, userPrefs) {
-      if (!production.bestBoyMode) {
-        return (production.crew || []).map(c => c.id);
-      }
-      const targetName = (userPrefs?.displayName || "").toLowerCase().trim();
-      if (!targetName) return [];
-      return (production.crew || [])
-        .filter(c => (c.name || "").toLowerCase().trim() === targetName)
-        .map(c => c.id);
-    }
-
-    // Resolve which crew member is "you" on a given production.
-    // Manual override (production.iAmCrewId) wins; otherwise auto-match by userPrefs.displayName.
-    // Returns crew id or null.
-    function resolveUserCrewId(production, userPrefs) {
-      if (!production) return null;
+      if (!production) return [];
+      const crew = production.crew || [];
       const override = production.iAmCrewId;
-      if (override && (production.crew || []).some(c => c.id === override)) return override;
+      if (override && crew.some(c => c.id === override)) return [override];
       const target = (userPrefs?.displayName || '').toLowerCase().trim();
-      if (!target) return null;
-      const match = (production.crew || []).find(c => (c.name || '').toLowerCase().trim() === target);
-      return match?.id ?? null;
+      if (target) {
+        const matches = crew.filter(c => (c.name || '').toLowerCase().trim() === target).map(c => c.id);
+        if (matches.length) return matches;
+      }
+      if (!production.bestBoyMode && crew.length === 1) return [crew[0].id];
+      return [];
     }
 
     function migrateInvoice(inv, p) {
@@ -8828,7 +8845,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const weeksLabel = single ? `Week ${firstNo} of ${totalWeeksAll}` : `Weeks ${firstNo}–${lastNo} of ${totalWeeksAll}`;
       const allDates = [...scopeDates].sort();
       const rangeLabel = allDates.length ? tsdFmtRange(allDates[0], allDates[allDates.length - 1]) : '';
-      const meId = resolveUserCrewId(production, userPrefs);
+      const meId = getEffectiveUserCrewId(production, userPrefs);
       const me = (production.crew || []).find(c => c.id === meId);
       const now = new Date();
       const genDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -14357,22 +14374,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return earning.reduce((s, e) => s + (e.amount || 0), 0) / earning.length;
     }
 
-    // Stage 2d: resolve which crew member is "you" on a given production,
-    // for kit-scoping purposes. Combines resolveUserCrewId (iAmCrewId
-    // override → displayName match) with a solo fallback for the case
-    // where displayName is empty on a non-best-boy single-crew production
-    // (the soloCrew IS the user even without an explicit name). Returns
-    // null when the user has no claim on this production — in best-boy
-    // mode with no matching crew, kit auto-apply correctly skips
-    // everything because nothing is "the user's day".
+    // Stage 2d: which crew member is "you" on a given production, for kit
+    // scoping and every other single-owner question. Returns null when the
+    // user has no claim on this production — with no matching crew, kit
+    // auto-apply correctly skips everything, because nothing is "the
+    // user's day". Inferring one would be the bug this replaced.
+    // The ID shape of the SAME rule — never a second implementation. It was
+    // one (resolveUserCrewId plus a solo fallback bolted on); that function
+    // is gone and its four call sites read this, because "which crew member
+    // is me" is one question and had two answers.
     function getEffectiveUserCrewId(production, userPrefs) {
-      if (!production) return null;
-      const resolved = resolveUserCrewId(production, userPrefs);
-      if (resolved != null) return resolved;
-      if (!production.bestBoyMode && (production.crew || []).length === 1) {
-        return production.crew[0].id;
-      }
-      return null;
+      return userCrewIdsInProduction(production, userPrefs)[0] ?? null;
     }
 
     // Stage 2c: resolve a day's EFFECTIVE dayType via the same cascade the
@@ -15300,7 +15312,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         [days]
       );
 
-      const meCrewId = resolveUserCrewId(production, userPrefs);
+      const meCrewId = getEffectiveUserCrewId(production, userPrefs);
 
       const crewWithCalcs = useMemo(() => {
         const idx = sortedDates.indexOf(currentDate);
@@ -17036,7 +17048,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
 
       const dayNumber = sortedDates.indexOf(currentDate) + 1;
-      const isMe = crewMember.id === resolveUserCrewId(production, userPrefs);
+      const isMe = crewMember.id === getEffectiveUserCrewId(production, userPrefs);
 
       const formattedDate = currentDate
         ? new Date(currentDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()
@@ -18798,7 +18810,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         [days]
       );
 
-      const meCrewId = resolveUserCrewId(production, userPrefs);
+      const meCrewId = getEffectiveUserCrewId(production, userPrefs);
 
       const crewWithTotals = useMemo(() => {
         return (crew || []).map(member => {

@@ -8908,6 +8908,35 @@ async function main() {
           && /<StatCard label="Avg day earnings"/.test(html);
         return single && firstRun && onDemand && placed && gated && labels;
       })());
+    check('OWN1 ownership is ONE rule with two shapes - userCrewIdsInProduction holds the whole resolution order (iAmCrewId, then every displayName match, then the single-crew fallback, then []) and getEffectiveUserCrewId is its [0]; the everyone-when-not-bestBoyMode fallback and the parallel resolveUserCrewId implementation are GONE, so the "this is me" override now reaches Stats',
+      (() => {
+        // The everyone-fallback must be gone, not bypassed. It is the guess
+        // that produced money figures: on a non-Best-Boy production Stats
+        // counted EVERY crew member's days as the user's.
+        const everyoneGone = !/if \(!production\.bestBoyMode\) \{\s*\n\s*return \(production\.crew \|\| \[\]\)\.map\(c => c\.id\);/.test(html);
+        // ONE implementation. A second name-match anywhere is the shape this
+        // replaced - three functions answering one question, the one Stats
+        // used being the one nobody checked.
+        const oneRule = (html.match(/function userCrewIdsInProduction\(/g) || []).length === 1
+          && (html.match(/function getEffectiveUserCrewId\(/g) || []).length === 1
+          && !/function resolveUserCrewId\(/.test(html);
+        // The id shape is DERIVED, never reimplemented.
+        const derived = /function getEffectiveUserCrewId\(production, userPrefs\) \{\n\s*return userCrewIdsInProduction\(production, userPrefs\)\[0\] \?\? null;\n\s*\}/.test(html);
+        // The order, in full, in the one place it lives.
+        const body = (html.match(/function userCrewIdsInProduction[\s\S]*?\n    \}/) || [''])[0];
+        const order = /if \(override && crew\.some\(c => c\.id === override\)\) return \[override\];/.test(body)
+          && /const matches = crew\.filter\(c => \(c\.name \|\| ''\)\.toLowerCase\(\)\.trim\(\) === target\)\.map\(c => c\.id\);/.test(body)
+          && /if \(matches\.length\) return matches;/.test(body)
+          && /if \(!production\.bestBoyMode && crew\.length === 1\) return \[crew\[0\]\.id\];/.test(body)
+          && /return \[\];/.test(body)
+          // iAmCrewId is consulted HERE, which is what the override failing to
+          // reach Stats was: userCrewIdsInProduction never asked.
+          && /production\.iAmCrewId/.test(body);
+        // The LIST survives. Collapsing to one id would silently stop counting
+        // a second crew record the user legitimately holds on one job.
+        const listKept = /const matches = crew\.filter\(/.test(body) && /return matches;/.test(body);
+        return everyoneGone && oneRule && derived && order && listKept;
+      })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {
         const fn = (html.match(/function seedRateFromPrefs\(userPrefs, role, effectiveDate\)[\s\S]*?\n    \}/) || [''])[0];
