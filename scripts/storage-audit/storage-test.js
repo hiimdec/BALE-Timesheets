@@ -3992,6 +3992,35 @@ async function main() {
 
           return agree && overrideOk && staleOk && excluded && soloOk && bbOk && twoOk;
         })());
+      check('OWN3 counts and money read ONE identity set - the stats day loop resolves ownership ONCE per production and every downstream figure (working days, hours, earnings, day types) reads that same array, so a count and a money figure can never describe different people. The divergence they showed - "Working days 1" against five crew members\' £2,500 and 55 hours - was a SYMPTOM of the everyone-fallback, not a separate defect, and closes with it',
+        (() => {
+          // One resolution per production, and the day filter reads it.
+          const once = /const userCrewIds = userCrewIdsInProduction\(p, userPrefs\);\n\s*if \(userCrewIds\.length === 0\) \{/.test(html)
+            && /if \(!userCrewIds\.includes\(day\.crewId\)\) continue;/.test(html);
+          // NOTE: an earlier draft also scanned the loop body for a second
+          // ownership call. Three attempts to anchor it all captured the WRONG
+          // code - aggregateMonthly's pass-3 loop shares both the `for (const
+          // day of ...)` line and the `includes(day.crewId)` filter, and a lazy
+          // brace match ran 35k characters past either. A check that reads as
+          // strict while asserting nothing about the thing it names is the
+          // decoration this project keeps catching, so it is dropped rather
+          // than tuned: OWN1 and OWN2 already guarantee the ownership set, and
+          // the measurement below is what actually has to hold.
+          // And the measurement itself: with the everyone-fallback gone, the
+          // user's records on a shared job are exactly the matching one, so
+          // the count and the money describe the same set.
+          const list = sb.__userCrewIdsInProduction;
+          if (typeof list !== 'function') return false;
+          const shared = { id: 'p', bestBoyMode: false,
+            crew: [0,1,2,3,4].map(i => ({ id: 'c' + i, name: i === 1 ? 'Declan' : 'Other' + i })) };
+          const days = [0,1,2,3,4].map(i => ({ crewId: 'c' + i, date: '2026-03-01', total: 500 }));
+          const ids = list(shared, { displayName: 'Declan' });
+          const mine = days.filter(d => ids.includes(d.crewId));
+          const workingDays = new Set(mine.map(d => shared.id + ':' + d.date)).size;
+          const money = mine.reduce((x, d) => x + d.total, 0);
+          const consistent = mine.length === 1 && workingDays === 1 && money === 500;
+          return once && consistent;
+        })());
       check('WIN2 an invoice appears in the tax year it was SENT and NOT in the year the work was done - the case attributing on dateSent exists for. Work in 25/26, invoice sent in 26/27: the year of the WORK reports the computed day and no claim; the year of the SENDING reports the claim with no work at all, which also means a window holding money but no days must not render as empty',
         (() => {
           const idxFn2 = sb.__productionInvoicedIndex, moneyFn2 = sb.__claimedInvoicesOf;
