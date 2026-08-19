@@ -305,6 +305,8 @@ async function transformedAppCode() {
     'try { globalThis.__invoiceIsClaimed = invoiceIsClaimed; } catch (_) {}\n' +
     'try { globalThis.__productionInvoicedIndex = productionInvoicedIndex; } catch (_) {}\n' +
     'try { globalThis.__claimedInvoicesOf = claimedInvoicesOf; } catch (_) {}\n' +
+    'try { globalThis.__userCrewIdsInProduction = userCrewIdsInProduction; } catch (_) {}\n' +
+    'try { globalThis.__getEffectiveUserCrewId = getEffectiveUserCrewId; } catch (_) {}\n' +
     // Record-construction executions (RC, ruled): the module-level writers the
     // RC section runs for real instead of regex-pinning their prose.
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
@@ -3946,6 +3948,50 @@ async function main() {
         /dayKeys: \(built\.dayBreakdown \|\| \[\]\)\.map\(e => invoiceDayKey\(userCrewId, e && e\.date\)\)\.filter\(Boolean\),/.test(html)
           && (html.match(/setProduction\(p => \(\{ \.\.\.p, invoices: \[\.\.\.\(p\.invoices \|\| \[\]\), invoice\] \}\)\);/g) || []).length === 1
           && /function mintInvoiceShell\(production, setProduction, userPrefs, setUserPrefs, userCrewId, built\)/.test(html));
+      check('OWN2 EXECUTED: Stats and the day editor resolve ownership IDENTICALLY on the case that used to divide them - a non-Best-Boy production with three crew where only one is the user. Stats scoped days through the list and the day editor through the id, and before this the list said "all three" while the id said "one", so the same job meant different things on two screens',
+        (() => {
+          const list = sb.__userCrewIdsInProduction, id = sb.__getEffectiveUserCrewId;
+          if (typeof list !== 'function' || typeof id !== 'function') return false;
+          const prefs = { displayName: 'Declan' };
+          const crew3 = [{ id: 'a', name: 'Sam' }, { id: 'b', name: 'Declan' }, { id: 'c', name: 'Jo' }];
+
+          // THE divergent case. Old: list -> [a,b,c] (everyone), id -> b.
+          const shared = { id: 'p1', bestBoyMode: false, crew: crew3 };
+          const agree = list(shared, prefs).length === 1
+            && list(shared, prefs)[0] === 'b'
+            && id(shared, prefs) === 'b';
+
+          // The override is authoritative on BOTH shapes - it never reached the
+          // list before, which is the whole of the second allegation.
+          const overridden = { ...shared, iAmCrewId: 'c' };
+          const overrideOk = list(overridden, prefs).join() === 'c' && id(overridden, prefs) === 'c';
+          // ...and a STALE override (crew member since deleted) falls through to
+          // the name match rather than resolving to a ghost.
+          const stale = { ...shared, iAmCrewId: 'gone' };
+          const staleOk = list(stale, prefs).join() === 'b' && id(stale, prefs) === 'b';
+
+          // Nobody matches -> [] -> excluded and surfaced. NEVER everyone.
+          const strangers = { id: 'p2', bestBoyMode: false, crew: [{ id: 'x', name: 'Sam' }, { id: 'y', name: 'Jo' }] };
+          const excluded = list(strangers, prefs).length === 0 && id(strangers, prefs) === null;
+
+          // The single-crew fallback, with NO name match and NO override: the
+          // lone crew member is the user. This is the case the founder's whole
+          // history depends on if a display name ever stops matching.
+          const solo = { id: 'p3', bestBoyMode: false, crew: [{ id: 'only', name: 'Someone Else' }] };
+          const soloOk = list(solo, {}).join() === 'only' && id(solo, {}) === 'only';
+          // ...and it does NOT apply in Best Boy mode, where a non-matching lone
+          // crew member is somebody else's day.
+          const bbSolo = { id: 'p4', bestBoyMode: true, crew: [{ id: 'only', name: 'Someone Else' }] };
+          const bbOk = list(bbSolo, prefs).length === 0 && id(bbSolo, prefs) === null;
+
+          // Two records for the same person on one job: BOTH are the user's, and
+          // the id shape takes the first. This is why the list is not collapsed.
+          const twoHats = { id: 'p5', bestBoyMode: false,
+            crew: [{ id: 'g', name: 'Declan' }, { id: 's', name: 'declan  ' }, { id: 'o', name: 'Jo' }] };
+          const twoOk = list(twoHats, prefs).join() === 'g,s' && id(twoHats, prefs) === 'g';
+
+          return agree && overrideOk && staleOk && excluded && soloOk && bbOk && twoOk;
+        })());
       check('WIN2 an invoice appears in the tax year it was SENT and NOT in the year the work was done - the case attributing on dateSent exists for. Work in 25/26, invoice sent in 26/27: the year of the WORK reports the computed day and no claim; the year of the SENDING reports the claim with no work at all, which also means a window holding money but no days must not render as empty',
         (() => {
           const idxFn2 = sb.__productionInvoicedIndex, moneyFn2 = sb.__claimedInvoicesOf;
