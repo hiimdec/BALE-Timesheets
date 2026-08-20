@@ -633,7 +633,7 @@ unruled behaviour introduced in Phase 17 (bucket by `dateSent`).
 
 ---
 
-## Stats money — unlinked invoices, read-time day derivation: **RULED — NOT YET BUILT** (founder, Phase 18)
+## Stats money — unlinked invoices, read-time day derivation: **RESOLVED — IMPLEMENTED** (founder-ruled, Phase 18)
 
 **The question.** An invoice records which days it covers. That record did not
 exist before 17 August 2026, and the `dayBreakdown` it falls back to only from
@@ -682,3 +682,20 @@ which is what guard 3 and the no-`dayBreakdown` guard exist to catch.
 invoice mutated.
 
 **Supersedes** nothing. It narrows the Phase 17 exclusion without weakening it.
+
+**As built.** `deriveInvoiceDayClaim`, called from exactly one place —
+`invoiceDayClaim`, whose signature widened to `(invoice, production,
+userPrefs)`. Guard 3 runs in **two passes** so it cannot go circular: invoices
+that *record* their days are read directly, other derivation candidates are
+compared by **range**, and two overlapping candidates disqualify each other
+symmetrically. Ownership narrows `userCrewIdsInProduction` to the invoice's own
+`userCrewId` when the rule recognises it; a recorded id the rule does not
+recognise is stale and the rule wins. Pinned `DL1`–`DL7`; `DL2` witnesses the
+over-attribution rather than claiming it is handled.
+
+**Measured on the real export.** All ten unlinked invoices derive (nine by
+`userCrewId`, the tenth through the single-crew fallback), restoring
+**£7,799.85** of billed money to invoice granularity. Exactly one figure moves:
+**Bloomberg, £932.40 → £799.20**, the £133.20 of overtime and off-the-clock
+time its lines waived. (£7,799.85 corrects an earlier £7,933.05, which summed
+raw line `amount`s instead of going through `getLineTotal`.)
