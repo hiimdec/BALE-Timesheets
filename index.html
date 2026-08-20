@@ -27941,7 +27941,7 @@ const setDays = (updater) =>
           // can surface the "N day(s) not yet counted" hint. Note: only the
           // solo flows set day.wrapped - Best Boy multi-crew days keep the
           // day-after behaviour (recorded in MAINTENANCE.md).
-          const invoicedIdx = productionInvoicedIndex(p);
+          const invoicedIdx = productionInvoicedIndex(p, userPrefs);
           for (const day of (p.days || [])) {
             if (!userCrewIds.includes(day.crewId)) continue;
             if (!inWindow(day)) continue;
@@ -28001,7 +28001,7 @@ const setDays = (updater) =>
         for (const p of productions) {
           if (agreementOf(p) !== 'apa') continue;                       // S4
           if (userCrewIdsInProduction(p, userPrefs).length === 0) continue;
-          for (const inv of claimedInvoicesOf(p)) {
+          for (const inv of claimedInvoicesOf(p, userPrefs)) {
             if (!statsWindow.inWindowDate(inv.date)) continue;
             billedInvoices.push({ ...inv, production: p });
           }
@@ -28681,15 +28681,109 @@ const setDays = (updater) =>
     // A day's identity across the seam: the crew member plus the date.
     const invoiceDayKey = (crewId, date) => (crewId && date) ? `${crewId}:${date}` : '';
 
+    // Does this invoice RECORD the days it covers? `dayKeys` has existed since
+    // 17 Aug 2026, the `dayBreakdown` it falls back to since 10 Aug. An
+    // explicitly EMPTY dayKeys is still a record - a standalone invoice claims
+    // nothing and says so - so it is honoured rather than derived over. A
+    // record always beats a derivation.
+    const invoiceRecordsItsDays = (inv) =>
+      !!inv && (Array.isArray(inv.dayKeys) || Array.isArray(inv.dayBreakdown));
+
+    // The date range an invoice could be derived over, or null. `end < start`
+    // is malformed and derives nothing rather than resolving backwards.
+    const invoiceDerivableRange = (inv) => {
+      const start = String((inv && inv.shootDateStart) || '').slice(0, 10);
+      const end = String((inv && inv.shootDateEnd) || '').slice(0, 10);
+      return (start && end && end >= start) ? { start, end } : null;
+    };
+
+    /* ── Ruling 3: DERIVED day links, read time only (founder-ruled) ────────
+     * Ten of one real dataset's fourteen sent invoices name no days at all -
+     * not corrupt, simply older than the field. Under the Phase 17 rule their
+     * money is excluded entirely, which loses real billed earnings including
+     * a real per-line discount. This recovers the link by INFERENCE at read
+     * time and NEVER writes it back: a frozen invoice stays frozen.
+     *
+     * Derive only when ALL THREE guards hold:
+     *   1. the invoice records no days of its own;
+     *   2. its shootDateStart-shootDateEnd range resolves to days on that
+     *      production, for the crew record the invoice belongs to;
+     *   3. no OTHER sent invoice on that production claims any of those days.
+     * Any guard failing means behave exactly as today - no claim, so no billed
+     * money and the days compute.  UNDER-CLAIMING BEATS MIS-ATTRIBUTING.
+     *
+     * Guards 1 and 3 are EXACT. GUARD 2 IS A HEURISTIC: shootDateStart and
+     * shootDateEnd describe the SHOOT, not what was billed, and no stored
+     * field records the latter. The two failure modes that follow - a partial
+     * invoice over-attributing across days it never paid for, and a day added
+     * inside the range after the invoice was sent making the job under-report
+     * - are SILENT AT RUNTIME and are written up in MAINTENANCE.md. DL2
+     * witnesses the first rather than pretending it is handled.
+     */
+    function deriveInvoiceDayClaim(invoice, production, userPrefs) {
+      // No production, no derivation. This is also what keeps every remaining
+      // one-argument caller on exactly today's behaviour.
+      if (!production) return [];
+      const range = invoiceDerivableRange(invoice);
+      if (!range) return [];                                            // guard 2
+      // OWNERSHIP: the app's one rule (userCrewIdsInProduction), narrowed to
+      // the invoice's own userCrewId when it records one that rule recognises.
+      // A recorded id the rule does NOT recognise is stale, and the rule wins.
+      // Ownership is never guessed here - which is the same position OWN1
+      // holds everywhere else - and it is enforced by this ONE expression:
+      // when the rule resolves nothing, `mine` is empty, so the day filter
+      // below matches nothing and the derivation yields nothing. An explicit
+      // `if (owned.length === 0) return []` was written here first and then
+      // removed: it could not be made to fail, because it can only fire in
+      // cases this line already covers, and a check that cannot go red is
+      // decoration standing where a reader would expect a guard.
+      const owned = userCrewIdsInProduction(production, userPrefs);
+      const mine = (invoice.userCrewId && owned.includes(invoice.userCrewId))
+        ? [invoice.userCrewId] : owned;
+      // GUARD 2's second half. There is no early return for "resolved to no
+      // days" because one could not be made to fail: an empty resolution
+      // yields empty `keys`, which is already the reject value, so the check
+      // would only ever restate the outcome. The rule is pinned on the
+      // BEHAVIOUR (DL1's out-of-range case) rather than on a line that cannot
+      // go red.
+      const inRange = (production.days || []).filter(d =>
+        d && d.date && mine.includes(d.crewId) && d.date >= range.start && d.date <= range.end);
+      const keys = inRange.map(d => invoiceDayKey(d.crewId, d.date)).filter(Boolean);
+      // GUARD 3, in two passes, NEITHER OF WHICH RECURSES. Asking another
+      // unlinked invoice what it claims would put this function in a circle -
+      // its claim is derived too, and would ask back. So:
+      //   A. invoices that RECORD their days are read directly (no derivation
+      //      is involved, so there is no circle);
+      //   B. other derivation CANDIDATES are compared by RANGE, not by claim.
+      //      Two unlinked invoices whose ranges overlap disqualify EACH OTHER,
+      //      symmetrically, so the answer never depends on which is asked
+      //      first and neither is guessed at.
+      for (const other of (production.invoices || [])) {
+        if (!other || other.id === invoice.id || !invoiceIsClaimed(other)) continue;
+        if (invoiceRecordsItsDays(other)) {                                 // pass A
+          if (invoiceDayClaim(other).some(k => keys.includes(k))) return [];
+          continue;
+        }
+        const r = invoiceDerivableRange(other);                              // pass B
+        if (r && r.start <= range.end && r.end >= range.start) return [];
+      }
+      return keys;
+    }
+
     // The days a frozen invoice claims. New invoices carry `dayKeys` stamped
-    // at mint; older ones fall back to their own dayBreakdown - the SAME
-    // enumerated list the claim is built from, never a date-range guess - so
-    // no existing invoice needs migrating and no frozen record is touched.
-    function invoiceDayClaim(invoice) {
+    // at mint; those minted 10-17 Aug fall back to their own dayBreakdown -
+    // the SAME enumerated list the claim is built from, never a date-range
+    // guess. Anything older records nothing at all, and is DERIVED (above)
+    // when the production is known and all three guards pass. Nothing is
+    // migrated and no frozen record is touched.
+    function invoiceDayClaim(invoice, production, userPrefs) {
       if (!invoice) return [];
       if (Array.isArray(invoice.dayKeys)) return invoice.dayKeys.filter(Boolean);
-      const crewId = invoice.userCrewId || '';
-      return (invoice.dayBreakdown || []).map(e => invoiceDayKey(crewId, e && e.date)).filter(Boolean);
+      if (Array.isArray(invoice.dayBreakdown)) {
+        const crewId = invoice.userCrewId || '';
+        return invoice.dayBreakdown.map(e => invoiceDayKey(crewId, e && e.date)).filter(Boolean);
+      }
+      return deriveInvoiceDayClaim(invoice, production, userPrefs);
     }
 
     // SENT is the claim. 'paid' counts too - paid is sent-and-settled. A
@@ -28724,13 +28818,13 @@ const setDays = (updater) =>
     // finer. This index therefore carries MEMBERSHIP ONLY — which days a
     // claim covers, for coverage, the PART INVOICED marker and the invoiced
     // note. No amount, so nothing downstream can spend one.
-    function productionInvoicedIndex(production) {
+    function productionInvoicedIndex(production, userPrefs) {
       const byKey = new Map();
       const claimed = (((production && production.invoices) || []).filter(invoiceIsClaimed))
         .slice()
         .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
       for (const inv of claimed) {
-        for (const k of invoiceDayClaim(inv)) byKey.set(k, { invoiceId: inv.id });
+        for (const k of invoiceDayClaim(inv, production, userPrefs)) byKey.set(k, { invoiceId: inv.id });
       }
       return byKey;
     }
@@ -28741,12 +28835,12 @@ const setDays = (updater) =>
     // what an accountant files. A claimed invoice with no dateSent has no
     // period to land in and is skipped by period figures (it still counts in
     // whole-production totals, which have no period).
-    function claimedInvoicesOf(production) {
+    function claimedInvoicesOf(production, userPrefs) {
       return (((production && production.invoices) || []).filter(invoiceIsClaimed)).map(inv => ({
         id: inv.id,
         net: invoiceSubtotal(inv.lineItems),
         date: String(inv.dateSent || '').slice(0, 10),
-        dayKeys: invoiceDayClaim(inv),
+        dayKeys: invoiceDayClaim(inv, production, userPrefs),
       }))
       // NO DAY LINK, NO BILLED MONEY (ruled). An invoice that names no days
       // cannot have its net used, because nothing tells us which days to stop
@@ -28755,15 +28849,20 @@ const setDays = (updater) =>
       // happened: `dayKeys` has only existed since 17 August and the
       // dayBreakdown it falls back to since 10 August, so every invoice older
       // than that names nothing, and ten of one real dataset's fourteen were
-      // doubled - £7,933.05 on top of a ~£12.1k year.
+      // doubled - £7,799.85 of billed money on top of a ~£12.1k year. (That
+      // figure was first reported as £7,933.05, which summed the raw line
+      // `amount`s; the app sums through getLineTotal, which honours a per-line
+      // discount. The £133.20 gap is one invoice's waived overtime.)
       //
-      // The fallback is what the app DOES know: the days compute. The cost,
-      // stated rather than papered over: for those invoices a discount is not
-      // reflected, because the app cannot attribute a discount it has no day
-      // link for. Back-filling was rejected (it repairs the minority that has
-      // a dayBreakdown and leaves the rest), as was treating the invoice as
-      // covering every day (it guesses, and on a part-invoiced production it
-      // would swallow days that were never billed).
+      // The fallback is what the app DOES know: the days compute. Since
+      // Ruling 3 that fallback is the LAST resort rather than the only one:
+      // an invoice recording no days is derived from its shoot range when
+      // three guards pass, and only an invoice that fails them lands here.
+      // Back-filling the record was still rejected (it would write to a
+      // frozen invoice), as was treating an invoice as covering every day
+      // unconditionally (it guesses, and on a part-invoiced production it
+      // would swallow days that were never billed - which is precisely what
+      // guard 3 and the no-record guard exist to catch).
       .filter(rec => rec.dayKeys.length > 0);
     }
 
@@ -31842,7 +31941,7 @@ const confirmDelete = (p) => setConfirmOpts({
         const today = todayISO();
         const out = {};
         for (const p of productions) {
-          const idx = productionInvoicedIndex(p);
+          const idx = productionInvoicedIndex(p, userPrefs);
           let covered = 0, past = 0;
           for (const d of (p.days ?? [])) {
             if (!d.date || d.date >= today) continue;
@@ -31852,7 +31951,11 @@ const confirmDelete = (p) => setConfirmOpts({
           out[p.id] = { idx, covered, past, partial: covered > 0 && covered < past, all: past > 0 && covered === past };
         }
         return out;
-      }, [productions]);
+        // userPrefs is load-bearing, not decorative: a claim can now be
+        // DERIVED, and deriving resolves ownership through displayName /
+        // iAmCrewId. Without this dependency a display-name change would
+        // leave the coverage index serving a claim resolved for the old name.
+      }, [productions, userPrefs]);
 
       const productionTotals = useMemo(() => {
         const today = todayISO();
@@ -31873,7 +31976,7 @@ const confirmDelete = (p) => setConfirmOpts({
           // WHOLE (a sent invoice is money claimed, including one covering a
           // day still ahead), and calcForDisplay runs only for days no claim
           // covers.
-          const billed = claimedInvoicesOf(p).reduce((sum, inv) => sum + inv.net, 0);
+          const billed = claimedInvoicesOf(p, userPrefs).reduce((sum, inv) => sum + inv.net, 0);
           const raw = billed + days.reduce((sum, d) => {
             if (!d.date || d.date >= today) return sum;
             if (cov.idx.has(invoiceDayKey(d.crewId, d.date))) return sum;

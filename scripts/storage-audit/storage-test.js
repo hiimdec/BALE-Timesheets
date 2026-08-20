@@ -3981,13 +3981,18 @@ async function main() {
           dateSent: '2026-09-30',
           dayBreakdown: bd, lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: null }] };
         const discounted = { ...disc, lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: 1.8 }] };
+        // Defensive .get(): a legitimate mutation of guard 1 emptied this index
+        // and the unguarded `.invoiceId` CRASHED the whole suite at this line,
+        // taking every assertion after it - including the ones being tested -
+        // so the mutation read as "nothing went red". Third instance on this
+        // project. A pin must go RED under mutation, never take the run with it.
         const idxFull = index({ invoices: [disc] });
         const idxDisc = index({ invoices: [discounted] });
         const noAmounts = [...idxFull.values()].every(v => v && v.amount === undefined)
           && [...idxDisc.values()].every(v => v && v.amount === undefined);
         check('IE4 the day index carries MEMBERSHIP ONLY - no per-day amount exists to be spent (Phase 17 inversion: it used to split the net proportionally across days, which is the redistribution that reported a discounted day HIGH and untouched days LOW)',
           noAmounts && idxFull.size === 2 && idxDisc.size === 2
-            && idxFull.get('c1:2026-09-01').invoiceId === 'i1',
+            && (idxFull.get('c1:2026-09-01') || {}).invoiceId === 'i1',
           JSON.stringify({ noAmounts, full: idxFull.size, entry: idxFull.get('c1:2026-09-01') }));
 
         const moneyOf = sb.__claimedInvoicesOf;
@@ -4015,9 +4020,9 @@ async function main() {
           lineItems: [{ label: 'Re-bill', qty: 1, rate: 100, amount: 100, discountedQty: null }] };
         const contested = index({ invoices: [disc, later] });
         check('IE6 when two sent invoices claim the same day the LATER one wins by createdAt (matching lfInvoiceForWeek) for MEMBERSHIP - a re-billed day is attributed to the re-bill, and carries no amount either way',
-          contested.get('c1:2026-09-01').invoiceId === 'i2' &&
-          contested.get('c1:2026-09-01').amount === undefined &&
-          contested.get('c1:2026-09-02').invoiceId === 'i1',
+          (contested.get('c1:2026-09-01') || {}).invoiceId === 'i2' &&
+          (contested.get('c1:2026-09-01') || {}).amount === undefined &&
+          (contested.get('c1:2026-09-02') || {}).invoiceId === 'i1',
           JSON.stringify({ d1: contested.get('c1:2026-09-01'), d2: contested.get('c1:2026-09-02') }));
       } else {
         check('IE1 the invoiced-earnings seam is exposed', false, 'not exposed');
@@ -4036,7 +4041,7 @@ async function main() {
       // wrong while looking fixed - it is the reason the change needed a
       // survey rather than a patch. It now reads the net per INVOICE and
       // computes only days no claim covers.
-      const invRead = (srcIE.match(/const billed = claimedInvoicesOf\(p\)\.reduce\(\(sum, inv\) => sum \+ inv\.net, 0\);/g) || []).length;
+      const invRead = (srcIE.match(/const billed = claimedInvoicesOf\(p, userPrefs\)\.reduce\(\(sum, inv\) => sum \+ inv\.net, 0\);/g) || []).length;
       const uncovered = (srcIE.match(/if \(cov\.idx\.has\(invoiceDayKey\(d\.crewId, d\.date\)\)\) return sum;/g) || []).length;
       const kitScale = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
       check('IE8 the home total reads each claimed invoice\'s NET whole and runs calcForDisplay only for days no claim covers, with the kit deal discount still scaled to the uncovered share so negotiated kit money is never deducted twice',
@@ -4088,7 +4093,7 @@ async function main() {
         && [...probe.values()].every(v => Object.keys(v).length === 1 && v.invoiceId === 'p');
       const noDayAmount = oneKeyOnly
         && !/share\.set\(/.test(srcIE);
-      const membershipOnly = /for \(const k of invoiceDayClaim\(inv\)\) byKey\.set\(k, \{ invoiceId: inv\.id \}\);/.test(srcIE);
+      const membershipOnly = /for \(const k of invoiceDayClaim\(inv, production, userPrefs\)\) byKey\.set\(k, \{ invoiceId: inv\.id \}\);/.test(srcIE);
       check('IE10 GRANULARITY: nothing below invoice level reads a billed amount - applyInvoicedToCalc is gone with no call sites, the day index sets membership only, and no per-day `claimed.amount` or proportional `share.set` survives anywhere',
         gone && noDayAmount && membershipOnly,
         `gone=${gone} noDayAmount=${noDayAmount} membershipOnly=${membershipOnly}`);
@@ -4107,6 +4112,191 @@ async function main() {
       } else {
         check('IE11 claimedInvoicesOf exposed', false, 'not exposed');
       }
+      // ── Ruling 3: DERIVED day links (read time, never written) ───────────
+      //    An invoice minted before 10 Aug 2026 records no days at all. Ruled:
+      //    derive the link from its shoot date range when THREE guards pass,
+      //    and behave exactly as today when any fails. These pins hold the
+      //    guards, the ownership rule, the no-write invariant, and - DL2 -
+      //    WITNESS the one risk no guard catches.
+      {
+        const claimD = sb.__invoiceDayClaim, idxD = sb.__productionInvoicedIndex,
+              moneyD = sb.__claimedInvoicesOf;
+        const prefsD = { displayName: 'Declan' };
+        // A production the derivation can actually resolve: one crew member,
+        // not Best Boy, three dated days.
+        const mkProd = (invoices, extra) => ({
+          id: 'pd', bestBoyMode: false, agreement: 'apa',
+          crew: [{ id: 'c1', name: 'Declan', role: 'Lighting Technician' }],
+          days: [{ crewId: 'c1', date: '2026-09-01' }, { crewId: 'c1', date: '2026-09-02' },
+                 { crewId: 'c1', date: '2026-09-03' }],
+          invoices, ...(extra || {}),
+        });
+        // A candidate: sent, no dayKeys, no dayBreakdown — the real shape of
+        // every invoice older than the fields. ABSENT properties, not empty
+        // arrays.
+        const cand = (over) => ({ id: 'i1', status: 'sent', createdAt: '2026-09-10T09:00:00Z',
+          dateSent: '2026-09-10', userCrewId: 'c1',
+          shootDateStart: '2026-09-01', shootDateEnd: '2026-09-02',
+          lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: null }], ...(over || {}) });
+        const ok = [claimD, idxD, moneyD].every(f => typeof f === 'function');
+
+        check('DL1 the three guards, each rejecting ON ITS OWN: (1) an invoice that RECORDS its days is read, never derived - its own dayBreakdown wins over a range that would say something different; (2) a range resolving to no days of the user\'s derives nothing; (3) a day already claimed by another sent invoice blocks the derivation. All three pass -> the days inside the range, and only those',
+          ok && (() => {
+            // Happy path first: 01-02 of a three-day job.
+            const happy = claimD(cand(), mkProd([cand()]), prefsD);
+            if (JSON.stringify(happy) !== JSON.stringify(['c1:2026-09-01', 'c1:2026-09-02'])) return false;
+            // GUARD 1 — a record beats a derivation. dayBreakdown names 09-03,
+            // the range says 01-02. The record must win.
+            const recorded = cand({ dayBreakdown: [{ date: '2026-09-03', total: 500 }] });
+            const g1 = JSON.stringify(claimD(recorded, mkProd([recorded]), prefsD)) === JSON.stringify(['c1:2026-09-03']);
+            // An explicitly EMPTY dayKeys is still a record (a standalone
+            // invoice claims nothing and says so) and is not derived over.
+            const g1b = claimD(cand({ dayKeys: [] }), mkProd([cand({ dayKeys: [] })]), prefsD).length === 0;
+            // GUARD 2 — range off the end of the job, and a malformed range.
+            const off = cand({ shootDateStart: '2026-10-01', shootDateEnd: '2026-10-02' });
+            const g2 = claimD(off, mkProd([off]), prefsD).length === 0
+              && claimD(cand({ shootDateStart: '', shootDateEnd: '' }), mkProd([]), prefsD).length === 0
+              && claimD(cand({ shootDateEnd: '2026-08-01' }), mkProd([]), prefsD).length === 0;  // end < start
+            // GUARD 3, pass A — another sent invoice RECORDS 09-01.
+            const explicit = { id: 'i0', status: 'paid', createdAt: '2026-09-05T09:00:00Z',
+              dateSent: '2026-09-05', userCrewId: 'c1', dayKeys: ['c1:2026-09-01'],
+              lineItems: [{ label: 'D', amount: 500, discountedQty: null }] };
+            const g3a = claimD(cand(), mkProd([explicit, cand()]), prefsD).length === 0;
+            // GUARD 3, pass B — two CANDIDATES with overlapping ranges. The
+            // circular case: neither can ask the other what it claims, so they
+            // are compared by range and disqualify EACH OTHER, symmetrically.
+            const other = cand({ id: 'i2', shootDateStart: '2026-09-02', shootDateEnd: '2026-09-03' });
+            const both = mkProd([cand(), other]);
+            const g3b = claimD(cand(), both, prefsD).length === 0 && claimD(other, both, prefsD).length === 0;
+            // Non-overlapping candidates BOTH derive - guard 3 rejects contest,
+            // not company.
+            const apart = cand({ id: 'i3', shootDateStart: '2026-09-03', shootDateEnd: '2026-09-03' });
+            const side = mkProd([cand(), apart]);
+            const g3c = claimD(cand(), side, prefsD).length === 2 && claimD(apart, side, prefsD).length === 1;
+            return g1 && g1b && g2 && g3a && g3b && g3c;
+          })(), 'guard rejection');
+
+        check('DL2 WITNESS, NOT A GUARD - this pin asserts the app OVER-ATTRIBUTES an invoice whose shoot range is wider than what it billed, because shootDateStart/shootDateEnd describe the SHOOT and no stored field records what was billed. A three-day range that paid for two days claims all three, and the unbilled day reports nothing of its own. THIS IS THE RESIDUAL RISK OF RULING 3, recorded in MAINTENANCE.md. IF PARTIAL INVOICING IS EVER BUILT, THIS ASSERTION IS THE ONE THAT MUST CHANGE: make it red on purpose, then make the derivation honour the billed days',
+          ok && (() => {
+            // Range spans 01-03. The invoice BILLED two days (qty 2 x 500).
+            const wide = cand({ shootDateEnd: '2026-09-03',
+              lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: null }] });
+            const p = mkProd([wide]);
+            const claimed = claimD(wide, p, prefsD);
+            // It claims THREE days for a two-day bill. Asserted as the current
+            // behaviour, deliberately - not as correct behaviour.
+            const overClaims = claimed.length === 3
+              && JSON.stringify(claimed) === JSON.stringify(['c1:2026-09-01', 'c1:2026-09-02', 'c1:2026-09-03']);
+            // And the consequence: all three days read as covered, so the
+            // third contributes nothing of its own while the net covers it.
+            const idx = idxD(p, prefsD);
+            const allCovered = ['2026-09-01', '2026-09-02', '2026-09-03'].every(d => idx.has('c1:' + d));
+            return overClaims && allCovered;
+          })(), 'over-attribution witnessed');
+
+        check('DL3 a FAILED guard yields today\'s behaviour exactly - the invoice contributes NO billed money and every one of its days stays uncovered, so they compute. Asserted as a total, not as a flag: under-claiming beats mis-attributing, and the whole point of the guards is that failing them costs nothing beyond what Phase 17 already excluded',
+          ok && (() => {
+            const blocked = cand({ shootDateStart: '2026-10-01', shootDateEnd: '2026-10-02' });  // guard 2
+            const p = mkProd([blocked]);
+            const money = moneyD(p, prefsD);
+            const idx = idxD(p, prefsD);
+            // No money, no coverage - the days compute, exactly as before.
+            const noMoney = money.length === 0;
+            const noCoverage = idx.size === 0;
+            // And the derivable twin DOES pay, so this is not just a dead path.
+            const live = moneyD(mkProd([cand()]), prefsD);
+            const paysWhenValid = live.length === 1 && Math.abs(live[0].net - 1000) < 0.01;
+            return noMoney && noCoverage && paysWhenValid;
+          })(), 'guard-failure fallback');
+
+        check('DL4 NOTHING IS WRITTEN - deriving a day link leaves the invoice and the production byte-identical. An invoice is a frozen record; a derivation that quietly cached its result onto one would turn an inference into a stored fact and outlive the rule that produced it',
+          ok && (() => {
+            const inv = cand(); const p = mkProd([inv]);
+            const beforeInv = JSON.stringify(inv), beforeProd = JSON.stringify(p);
+            const got = claimD(inv, p, prefsD);
+            idxD(p, prefsD); moneyD(p, prefsD);
+            return got.length === 2 && JSON.stringify(inv) === beforeInv && JSON.stringify(p) === beforeProd;
+          })(), 'no-write');
+
+        check('DL5 ownership goes through userCrewIdsInProduction and nowhere else - the "this is me" override picks the days, another crew member\'s days in the same range are NOT claimed, and a production whose ownership does not resolve derives NOTHING rather than guessing. No second name-match and no crew[0] shortcut in the derivation path',
+          ok && (() => {
+            const twoCrew = {
+              id: 'pd2', bestBoyMode: false, agreement: 'apa',
+              crew: [{ id: 'c1', name: 'Declan' }, { id: 'c2', name: 'Sam' }],
+              days: [{ crewId: 'c1', date: '2026-09-01' }, { crewId: 'c2', date: '2026-09-01' },
+                     { crewId: 'c2', date: '2026-09-02' }],
+              invoices: [],
+            };
+            const invNoId = { id: 'i9', status: 'sent', createdAt: '2026-09-10T09:00:00Z',
+              dateSent: '2026-09-10', shootDateStart: '2026-09-01', shootDateEnd: '2026-09-02',
+              lineItems: [{ label: 'D', amount: 900, discountedQty: null }] };
+            // displayName resolves c1 -> ONLY c1's day, though c2 has two in range.
+            const byName = claimD(invNoId, { ...twoCrew, invoices: [invNoId] }, prefsD);
+            const scoped = JSON.stringify(byName) === JSON.stringify(['c1:2026-09-01']);
+            // iAmCrewId is authoritative and overrides the name match.
+            const byOverride = claimD(invNoId, { ...twoCrew, iAmCrewId: 'c2', invoices: [invNoId] }, prefsD);
+            const overrideWins = JSON.stringify(byOverride) === JSON.stringify(['c2:2026-09-01', 'c2:2026-09-02']);
+            // Nothing resolves (name matches nobody, two crew so no single-crew
+            // fallback) -> NOTHING derived, even though the range is fine.
+            const unresolved = claimD(invNoId, { ...twoCrew, invoices: [invNoId] }, { displayName: 'Nobody' }).length === 0;
+            // The single-crew fallback DOES resolve, which is the tenth real
+            // invoice's only route: no userCrewId, one crew member.
+            const solo = { id: 'pd3', bestBoyMode: false, crew: [{ id: 'z1', name: 'someone else' }],
+              days: [{ crewId: 'z1', date: '2026-09-01' }], invoices: [invNoId] };
+            const soloOk = JSON.stringify(claimD(invNoId, solo, { displayName: 'Nobody' })) === JSON.stringify(['z1:2026-09-01']);
+            return scoped && overrideWins && unresolved && soloOk;
+          })(), 'ownership routing');
+
+        check('DL6 THE REAL DATA SHAPE, EXECUTED - reproduced from the founder\'s export, where ten of fourteen sent invoices name no days: nine carry a userCrewId and derive all of that crew record\'s days in range, the tenth predates userCrewId entirely and derives through the single-crew fallback, and the one with waived lines reports what it BILLED (799.20) rather than what its days compute (932.40). Every money fixture written before this used well-formed invoices; the real data was ten-for-fourteen malformed, which is why nothing caught it',
+          ok && (() => {
+            // Nine-of-ten shape: userCrewId present, range = all my days.
+            const nine = cand();
+            const withId = moneyD(mkProd([nine]), prefsD);
+            const idShape = withId.length === 1 && withId[0].dayKeys.length === 2;
+            // Tenth: no userCrewId at all, single crew member, dates match.
+            const noId = { id: 'i10', status: 'paid', createdAt: '2026-05-29T09:00:00Z',
+              dateSent: '2026-05-29', shootDateStart: '2026-09-01', shootDateEnd: '2026-09-02',
+              lineItems: [{ label: 'D', qty: 2, rate: 471.5, amount: 943, discountedQty: null }] };
+            const tenth = moneyD(mkProd([noId]), prefsD);
+            const tenthShape = tenth.length === 1 && tenth[0].dayKeys.length === 2
+              && Math.abs(tenth[0].net - 943) < 0.01;
+            // Bloomberg: two waived lines (discountedQty 0). The seam must
+            // report the BILLED net, not the sum of the amounts.
+            const bloomberg = cand({ id: 'i11', dateSent: '2026-07-16',
+              shootDateStart: '2026-09-01', shootDateEnd: '2026-09-02',
+              lineItems: [
+                { label: 'Pre-light Day',      qty: 8,   rate: 44.4, amount: 355.2, discountedQty: null },
+                { label: 'OT',                 qty: 1.5, rate: 66.6, amount: 99.9,  discountedQty: 0 },
+                { label: 'BDR',                qty: 1,   rate: 444,  amount: 444,   discountedQty: null },
+                { label: 'Time Off The Clock', qty: 0.5, rate: 66.6, amount: 33.3,  discountedQty: 0 },
+              ] });
+            const bRec = moneyD(mkProd([bloomberg]), prefsD)[0] || {};
+            const waived = Math.abs((bRec.net || 0) - 799.2) < 0.01
+              && (bRec.dayKeys || []).length === 2 && bRec.date === '2026-07-16';
+            return idShape && tenthShape && waived;
+          })(), 'real-data shape');
+      }
+      // DL7 — STRUCTURAL. Derivation lives at the seam and nowhere else. This
+      // is the pin that stops the rule fragmenting: five defects on this
+      // project were one rule implemented twice, and a derivation copied into
+      // a consumer would be the sixth.
+      check('DL7 the derivation is CONFINED TO THE SEAM - deriveInvoiceDayClaim has exactly one call site and it is inside invoiceDayClaim, both callers thread the production and userPrefs straight through, all four consumers pass userPrefs, and the home coverage memo depends on it so a display-name change re-resolves ownership instead of serving a stale claim',
+        (() => {
+          const s = fs.readFileSync(SRC_HTML, 'utf8');
+          // Definition + exactly one call.
+          const mentions = (s.match(/deriveInvoiceDayClaim\(/g) || []).length;
+          const oneSite = mentions === 2
+            && /return deriveInvoiceDayClaim\(invoice, production, userPrefs\);/.test(s);
+          // The seam threads it; no consumer re-derives.
+          const threaded = /for \(const k of invoiceDayClaim\(inv, production, userPrefs\)\) byKey\.set\(k, \{ invoiceId: inv\.id \}\);/.test(s)
+            && /dayKeys: invoiceDayClaim\(inv, production, userPrefs\),/.test(s);
+          // All four consumers.
+          const consumers = (s.match(/productionInvoicedIndex\(p, userPrefs\)/g) || []).length === 2
+            && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 2;
+          // The memo re-runs when ownership can change.
+          const memoDep = /const idx = productionInvoicedIndex\(p, userPrefs\);[\s\S]{0,700}?\n      \}, \[productions, userPrefs\]\);/.test(s);
+          return oneSite && threaded && consumers && memoDep;
+        })());
       check('WIN3 the empty-state guard is asked ONCE and in one place - the JSX renders the empty state on !stats, never on a days-only test, and aggregateMonthly spans a month that holds a claim and no work. Three copies of "no days means nothing to show" lived on this screen; relaxing only the memo left the other two deciding the window was empty while it held money',
         (() => {
           // The JSX must branch on the memo's verdict, not re-derive it.
