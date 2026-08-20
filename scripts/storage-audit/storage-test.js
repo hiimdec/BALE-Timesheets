@@ -253,6 +253,11 @@ async function transformedAppCode() {
     'try { globalThis.__agreementOf = agreementOf; } catch (_) {}\n' +
     // Week/day layer (LF4-LF8): the factories and the pure selectors.
     'try { globalThis.__makeLongFormDay  = makeLongFormDay;  } catch (_) {}\n' +
+    // Wrapped groundwork (WD pins): the APA day factory and the load-time
+    // normaliser, so createdAt / wrappedAt / source are EXECUTED rather than
+    // regex-quoted — the backfill rule in particular can only be shown by
+    // running migrateDay over a record that predates the fields.
+    'try { globalThis.__makeBlankDay = makeBlankDay; } catch (_) {}\n' +
     'try { globalThis.__makeLongFormWeek = makeLongFormWeek; } catch (_) {}\n' +
     'try { globalThis.__lfWeekBounds     = lfWeekBounds;     } catch (_) {}\n' +
     'try { globalThis.__ensureLfWeek     = ensureLfWeek;     } catch (_) {}\n' +
@@ -359,6 +364,7 @@ async function transformedAppCode() {
     // byte-identical pre/post migrate) and the old→new / perDiem→instance mapping.
     'try { globalThis.__calcForDisplay = calcForDisplay; } catch (_) {}\n' +
     'try { globalThis.__migrateDayExpenses = migrateDayExpenses; } catch (_) {}\n' +
+    'try { globalThis.__migrateDay = migrateDay; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -581,6 +587,116 @@ async function main() {
     // be decoration.
     check('FR5 DEFAULT_USER_PREFS carries firstRunAt defaulting to ""',
       !!defaults && defaults.firstRunAt === '', `default=${JSON.stringify(defaults && defaults.firstRunAt)}`);
+  }
+
+  // ===== WD. DAY-RECORD PROVENANCE — createdAt / wrappedAt / source =====
+  // Three additive day fields for a future Wrapped. Nothing reads them yet, so
+  // the only thing worth pinning is the rule each one encodes about ABSENCE:
+  // a missing value must mean "not observed", never "not yet computed". Each
+  // is EXECUTED against the real factories and the real normaliser.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle();
+    const mkBlank = sb.__makeBlankDay, mkLf = sb.__makeLongFormDay, mDay = sb.__migrateDay;
+    if (typeof mkBlank !== 'function' || typeof mkLf !== 'function' || typeof mDay !== 'function') {
+      for (const l of ['WD1', 'WD2', 'WD3', 'WD4', 'WD5', 'WD6']) check(l + ' day-provenance factories runnable', false, 'not exposed');
+    } else {
+      // FRESHNESS, not merely parseability. A "is it a valid ISO string" test
+      // passes just as happily on a hardcoded constant or a value derived from
+      // the shoot date, which is the whole thing this field must not be. The
+      // window is generous (5 minutes) because it only has to separate "read
+      // the clock now" from "came from somewhere else".
+      const FRESH_MS = 5 * 60 * 1000;
+      const isFresh = (iso) => {
+        const t = Date.parse(iso);
+        return !Number.isNaN(t) && Math.abs(Date.now() - t) < FRESH_MS;
+      };
+
+      const blank = mkBlank('c1');
+      check('WD1 makeBlankDay stamps createdAt from the CLOCK — fresh, not a constant and not derived',
+        typeof blank.createdAt === 'string' && isFresh(blank.createdAt),
+        `createdAt=${JSON.stringify(blank.createdAt)} now=${new Date().toISOString()}`);
+
+      // The load-bearing anti-derivation pin, and it lives HERE rather than on
+      // makeBlankDay for a reason: makeLongFormDay is the factory that actually
+      // RECEIVES a date, so it is the only one where deriving createdAt from
+      // the shoot date is expressible. makeBlankDay takes no date at all (the
+      // caller assigns it afterwards), so the same test there could never go
+      // red and would be decoration.
+      const lfPast = mkLf('c1', '2019-03-04');
+      check('WD2 createdAt is record birth, NEVER the shoot date — a long form day created for 2019 is stamped NOW, so a back-dated record cannot invent a logging time',
+        isFresh(lfPast.createdAt) && String(lfPast.createdAt).slice(0, 4) !== '2019'
+          && lfPast.date === '2019-03-04',
+        `createdAt=${lfPast.createdAt} date=${lfPast.date}`);
+
+      const lf = mkLf('c1', '2026-08-05');
+      check('WD3 makeLongFormDay stamps createdAt too (both factories, one meaning)',
+        typeof lf.createdAt === 'string' && isFresh(lf.createdAt),
+        `createdAt=${JSON.stringify(lf.createdAt)}`);
+
+      // NEVER backfilled. migrateDay runs on every load and fills a lot in
+      // (wrapped, lunchLogged, secondBreakLogged); createdAt and wrappedAt must
+      // NOT join them, or every pre-existing record acquires a fabricated
+      // history on the first launch after this build.
+      const legacy = mDay({ id: 'old', crewId: 'c1', date: '2020-01-02' });
+      check('WD4 migrateDay never backfills createdAt — a record predating the field stays without one',
+        !('createdAt' in legacy), `keys=${Object.keys(legacy).join(',')}`);
+      check('WD5 migrateDay date-backfills `wrapped` but NOT `wrappedAt` — an inferred wrap is not an observed one',
+        legacy.wrapped === true && !('wrappedAt' in legacy),
+        `wrapped=${legacy.wrapped} wrappedAt=${JSON.stringify(legacy.wrappedAt)}`);
+
+      check('WD6 a blank day carries no `source` — absence means user-entered',
+        !('source' in blank), `keys=${Object.keys(blank).join(',')}`);
+    }
+  }
+  {
+    // WD7/WD8 — wrappedAt travels WITH the flag, through the real intent
+    // resolver. A PASSED wrap stamps it; going back on call DELETES it, so a
+    // timestamp can never outlive the state it stamps.
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle();
+    const intent = sb.__applySoloWrapIntent;
+    if (typeof intent !== 'function') {
+      check('WD7 observed wrap stamps wrappedAt', false, 'applySoloWrapIntent not exposed');
+      check('WD8 un-wrapping deletes wrappedAt', false, 'applySoloWrapIntent not exposed');
+    } else {
+      const day = (patch) => ({ id: 'd1', crewId: 'c1', date: '2020-05-05', callTime: '08:00', ...patch });
+      const wrapped = intent(day({ wrapTime: '' }), day({ wrapTime: '19:00' }));
+      check('WD7 a PASSED wrap moment stamps wrappedAt alongside wrapped:true',
+        wrapped.wrapped === true && typeof wrapped.wrappedAt === 'string'
+          && !Number.isNaN(Date.parse(wrapped.wrappedAt)),
+        `wrapped=${wrapped.wrapped} wrappedAt=${JSON.stringify(wrapped.wrappedAt)}`);
+
+      // Far-future date so the wrap moment has NOT passed.
+      const future = '2099-01-01';
+      const prev = { id: 'd1', crewId: 'c1', date: future, callTime: '08:00', wrapTime: '19:00', wrapped: true, wrappedAt: '2026-01-01T00:00:00.000Z' };
+      const next = { ...prev, wrapTime: '20:00' };
+      const cleared = intent(prev, next);
+      check('WD8 going back on call DELETES wrappedAt — the key is gone, not merely falsy, so it can never outlive the state it stamps',
+        cleared.wrapped === false && !('wrappedAt' in cleared),
+        `wrapped=${cleared.wrapped} hasKey=${'wrappedAt' in cleared}`);
+    }
+  }
+  {
+    // WD9 — share-link provenance. The imported days carry the SENDER's plan,
+    // so a reader counting "days you logged" can exclude them.
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle();
+    const mkImported = sb.__makeImportedProduction;
+    if (typeof mkImported !== 'function') {
+      check('WD9 imported days are marked share-import', false, 'makeImportedProduction not exposed');
+    } else {
+      const shoot = { title: 'Shared', days: [
+        { date: '2026-09-01', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', perDiemPence: 0 },
+        { date: '2026-09-02', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', perDiemPence: 0 },
+      ] };
+      const imported = mkImported(shoot, { displayName: 'Dec' });
+      check('WD9 every imported day is marked source:"share-import" — provenance the record cannot otherwise recover',
+        (imported.days || []).length === 2 && imported.days.every(d => d.source === 'share-import'),
+        `sources=${JSON.stringify((imported.days || []).map(d => d.source))}`);
+      check('WD9b the imported PRODUCTION gains no source key — provenance is per day, and LF22d guards the production shape',
+        !('source' in imported), `keys=${Object.keys(imported).join(',')}`);
+    }
   }
 
   // ===== M. LEDGER WARM — every persisted store survives a relaunch (T1) =====
@@ -8231,8 +8347,8 @@ async function main() {
       !/setProduction|setDays/.test(descFn) && !/setProduction|setDays/.test(ctrlFn));
 
     // ─ TT5: Stage-1 start-bug fix + loggable, non-silent lifecycle ─
-    check('TT5a applyWrapNow record-writes wrapTime+wrapped:true via the shared mapDayNow (calc-neutral — wrapped is status only, never read by the engine); Live Activity ingestion routes through it',
-      /function applyWrapNow\(production, date, t\) \{[\s\S]{0,200}mapDayNow\(production\.days, date, uid0, \{ wrapTime: t, wrapped: true \}\)/.test(html) &&
+    check('TT5a applyWrapNow record-writes wrapTime + the OBSERVED-wrap patch (wrapped:true plus wrappedAt) via the shared mapDayNow (calc-neutral — wrapped is status only, never read by the engine); Live Activity ingestion routes through it',
+      /function applyWrapNow\(production, date, t\) \{[\s\S]{0,200}mapDayNow\(production\.days, date, uid0, \{ wrapTime: t, \.\.\.wrapObservedPatch\(\) \}\)/.test(html) &&
       /: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
     check('TT5b lifecycle decisions are loggable on native (start / update / wrapped→end), not silent',
       /console\.log\('\[LiveActivity\] start'/.test(html) &&
@@ -8281,7 +8397,7 @@ async function main() {
       /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
-      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
+      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, \.\.\.wrapObservedPatch\(\) \}\)\)/.test(html) &&
       /const handleWrapNow = \(\) => \{[\s\S]{0,560}setDayDefault\(p, currentDate, 'wrapTime', t\)/.test(html) &&
       !/const handleWrapNow = \(\) => \{[\s\S]{0,560}applyWrapNow\(/.test(html));
 
@@ -8290,7 +8406,7 @@ async function main() {
       /function mapDayNow\(days, date, uid, patch\) \{[\s\S]{0,160}d\.date === date && \(!uid \|\| d\.crewId === uid\) \? \{ \.\.\.d, \.\.\.patch \} : d/.test(html) &&
       /function applyLunchNow\(production, date, t\) \{[\s\S]{0,460}mapDayNow\(production\.days, date, uid0, \{ lunchStartTime: t, lunchLogged: true \}\)/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ lunchStartTime: lunchStr, lunchLogged: true \}\)\)/.test(html) &&
-      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html));
+      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, \.\.\.wrapObservedPatch\(\) \}\)\)/.test(html));
     check('TT8b descriptor derives the pre-call/call anchor + anchorLabel + endEpoch (frozen-timer on wrap); timer anchors on pre-call when set',
       /const preCall = rec\.preCallTime \|\| rec\.truckCallTime \|\| dd\.preCallTime \|\| '';/.test(html) &&
       /const anchorTime = preCall \|\| callTime;/.test(html) &&
@@ -9293,8 +9409,8 @@ async function main() {
         const fn = (html.match(/function applySoloWrapIntent\(prevDay, nextDay\)[\s\S]*?\n    \}/) || [''])[0];
         const fnOk = /if \(nextDay\.wrapTime === prevDay\.wrapTime && !!nextDay\.wrapNextDay === !!prevDay\.wrapNextDay\) return nextDay;/.test(fn) &&
           /const nextDayShift = nextDay\.wrapNextDay === true \|\| \(callH != null && wrapH < callH\);/.test(fn) &&
-          /if \(passed && nextDay\.wrapped !== true\) return \{ \.\.\.nextDay, wrapped: true \};/.test(fn) &&
-          /if \(!passed && nextDay\.wrapped === true\) return \{ \.\.\.nextDay, wrapped: false \};/.test(fn);
+          /if \(passed && nextDay\.wrapped !== true\) return \{ \.\.\.nextDay, \.\.\.wrapObservedPatch\(\) \};/.test(fn) &&
+          /if \(!passed && nextDay\.wrapped === true\) return withWrapCleared\(nextDay\);/.test(fn);
         const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html) &&
           /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html);
         const sweepOk = /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\) && LIVE_ACTIVITY_DAY_TYPES\.includes\(laType\);/.test(html);

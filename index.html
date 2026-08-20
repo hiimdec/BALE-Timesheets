@@ -2931,6 +2931,7 @@
     function makeLongFormDay(crewId, date, dayType = 'shoot', dayShape = 'swd') {
       return {
         id: uid(), crewId, date, dayType, dayShape,
+        createdAt: new Date().toISOString(),   // record birth, never derived from `date`
         unitCallTime: '08:00',
         individualCallTime: null,     // null = the unit call applies to you
         lunchTime: '13:00',           // when lunch was CALLED — duration is the shape
@@ -4291,6 +4292,11 @@
         const crewId = uid();
         const newDays = shoot.days.map(d => ({
           ...makeBlankDay(crewId),
+          // Provenance: these days came off a share link, not off this user's
+          // own logging. They carry the SENDER's plan (nothing wrapped, nothing
+          // logged), so a reader counting "days you logged" can exclude them.
+          // Absence means user-entered, which is right for every other record.
+          source: 'share-import',
           date: d.date, dayType: d.dayType,
           callTime: d.callTime, lunchStartTime: d.lunchStartTime, lunchDurationMins: d.lunchDurationMins,
           secondBreakStartTime: d.secondBreakStartTime, secondBreakDurationMins: d.secondBreakDurationMins,
@@ -7657,6 +7663,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // defaults are overwritten with actuals on tap. The Best Boy dept view keeps
     // its OWN overlay (setDayDefault) writes — different data model, no Live
     // Activity, deliberately not routed through here.
+    // ── wrappedAt: the OBSERVED wrap moment ──────────────────────────────
+    // Stamped only where a wrap is actually witnessed: the Live Activity wrap
+    // press, the hero Wrap Now, the Best Boy dept Wrap Now, and a solo wrap
+    // time whose moment has passed. The date-derived paths (MIGRATIONS[2],
+    // migrateDay, and every creation site's `date < todayISO()`) deliberately
+    // leave it ABSENT — those days were never seen wrapping, they were
+    // inferred from the calendar, and absence is the field that says so.
+    // Never backfilled; there is nothing to backfill it from.
+    //
+    // It travels WITH the flag: un-wrapping DELETES it rather than leaving it
+    // behind, because a timestamp that outlives the state it stamps is a claim
+    // the next reader has to disprove. So `wrappedAt` present always implies
+    // `wrapped` is true AND was observed.
+    const wrapObservedPatch = () => ({ wrapped: true, wrappedAt: new Date().toISOString() });
+    const withWrapCleared = (day) => { const { wrappedAt, ...rest } = day; return { ...rest, wrapped: false }; };
+
     function applyLunchNow(production, date, t) {
       const uid0 = production.crew && production.crew[0] && production.crew[0].id;
       // lunchLogged:true marks lunch ACTUALLY started (vs the seeded planned start)
@@ -7666,7 +7688,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
     function applyWrapNow(production, date, t) {
       const uid0 = production.crew && production.crew[0] && production.crew[0].id;
-      return { ...production, days: mapDayNow(production.days, date, uid0, { wrapTime: t, wrapped: true }) };
+      return { ...production, days: mapDayNow(production.days, date, uid0, { wrapTime: t, ...wrapObservedPatch() }) };
     }
 
     // Quick set (BB): ONE time field written across N selected crew as
@@ -7770,15 +7792,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (nextDay.wrapTime === prevDay.wrapTime && !!nextDay.wrapNextDay === !!prevDay.wrapNextDay) return nextDay;
       const wrapH = parseHHMM(nextDay.wrapTime);
       if (wrapH == null) {
-        return nextDay.wrapped === true ? { ...nextDay, wrapped: false } : nextDay;
+        return nextDay.wrapped === true ? withWrapCleared(nextDay) : nextDay;
       }
       const base = nextDay.date ? new Date(nextDay.date + 'T00:00:00') : new Date(new Date().toDateString());
       const callH = parseHHMM(nextDay.callTime);
       const nextDayShift = nextDay.wrapNextDay === true || (callH != null && wrapH < callH);
       const wrapMs = base.getTime() + (wrapH + (nextDayShift ? 24 : 0)) * 3600 * 1000;
       const passed = wrapMs <= Date.now();
-      if (passed && nextDay.wrapped !== true) return { ...nextDay, wrapped: true };
-      if (!passed && nextDay.wrapped === true) return { ...nextDay, wrapped: false };
+      if (passed && nextDay.wrapped !== true) return { ...nextDay, ...wrapObservedPatch() };
+      if (!passed && nextDay.wrapped === true) return withWrapCleared(nextDay);
       return nextDay;
     }
     // Curtailed-lunch ingestion (Group B): write the card-captured lunch duration
@@ -14701,6 +14723,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     function makeBlankDay(crewId = "") {
       return {
         id: uid(), crewId, date: todayISO(),
+        // When this RECORD was made, which is not when the day was worked:
+        // a back-dated day carries today's createdAt and its own past `date`.
+        // Never derived from `date` — that would invent a logging time from a
+        // shoot date. Absent on every record predating the field.
+        createdAt: new Date().toISOString(),
         wrapNextDay: false,
         wrapped: false,
         lunchLogged: false,
@@ -14737,7 +14764,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         haptic.stamp();
         const now = new Date();
         const wrapStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        setDays(prev => mapDayNow(prev, todayStr, null, { wrapTime: wrapStr, wrapped: true }));
+        setDays(prev => mapDayNow(prev, todayStr, null, { wrapTime: wrapStr, ...wrapObservedPatch() }));
         showToast(`Wrapped ${todayEntries.length} entr${todayEntries.length === 1 ? 'y' : 'ies'} at ${wrapStr}`);
         setConfirming(false);
       };
@@ -15858,7 +15885,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   const uid0 = next.crew && next.crew[0] && next.crew[0].id;
                   return { ...next, days: (next.days || []).map(d =>
                     d.date === currentDate && (!uid0 || d.crewId === uid0)
-                      ? { ...d, wrapped: true } : d) };
+                      ? { ...d, ...wrapObservedPatch() } : d) };
                 });
                 showToast?.(`Wrap set to ${t}`);
               };
@@ -32607,7 +32634,7 @@ const confirmDelete = (p) => setConfirmOpts({
                             confirmLabel: "Un-wrap",
                             confirmTone: "primary",
                             onConfirm: () => {
-                              onUpdateDays(p.id, days => days.map(d => d.date === t ? { ...d, wrapped: false } : d));
+                              onUpdateDays(p.id, days => days.map(d => d.date === t ? withWrapCleared(d) : d));
                               showToast("Day un-wrapped - back on call");
                             },
                           });
