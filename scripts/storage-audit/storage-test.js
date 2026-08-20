@@ -498,6 +498,91 @@ async function main() {
     check('E3 durability: background flush persisted the write', Preferences._store.get('bigals_user_prefs') === '{"x":1}');
   }
 
+  // ===== FR. FIRST-RUN STAMP — userPrefs.firstRunAt (Wrapped groundwork) =====
+  // The install date is the one fact that cannot be recovered later, so it is
+  // stamped at boot — but ONLY into a store with no user data. The failure
+  // this guards is stamping an EXISTING user on the launch after they update,
+  // which would date a years-old install to this release and read as true.
+  // These EXECUTE bootApp against seeded stores rather than regex-pinning the
+  // guard, so the rule is tested and not merely quoted.
+  {
+    // FR1 — genuinely fresh install: nothing in the store at all.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    let prefs = {};
+    try { prefs = JSON.parse(sb.__storage.get('bigals_user_prefs') || '{}'); } catch (_) {}
+    check('FR1 fresh install stamps firstRunAt as a parseable ISO instant',
+      typeof prefs.firstRunAt === 'string' && prefs.firstRunAt !== ''
+        && !Number.isNaN(Date.parse(prefs.firstRunAt)),
+      `firstRunAt=${JSON.stringify(prefs.firstRunAt)}`);
+  }
+  {
+    // FR2 — the load-bearing one: an EXISTING user updating into this build is
+    // left ABSENT. Negative-tested by dropping the productions guard, which
+    // reddens this and only this.
+    const seededProds = JSON.stringify([{ id: 'p1', title: 'Old Gig', days: [], crew: [] }]);
+    const localStorage = makeLocalStorage({
+      bigals_productions: seededProds,
+      bigals_user_prefs: JSON.stringify({ displayName: 'Dec' }),
+      bigals_schema_version: '4',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    let prefs = {};
+    try { prefs = JSON.parse(sb.__storage.get('bigals_user_prefs') || '{}'); } catch (_) {}
+    check('FR2 an existing user is NEVER stamped — absence means "we do not know", never a fabricated start date',
+      prefs.firstRunAt === undefined,
+      `firstRunAt=${JSON.stringify(prefs.firstRunAt)}`);
+    check('FR2b the existing prefs object is left otherwise untouched',
+      prefs.displayName === 'Dec', `prefs=${JSON.stringify(prefs)}`);
+  }
+  {
+    // FR3 — idempotent: a store that already carries a stamp keeps the
+    // ORIGINAL value across a relaunch. A re-stamp would silently reset the
+    // install date to the most recent boot, which is the same lie as FR2.
+    const original = '2026-01-02T03:04:05.000Z';
+    const localStorage = makeLocalStorage({
+      bigals_user_prefs: JSON.stringify({ firstRunAt: original }),
+      bigals_schema_version: '4',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    let prefs = {};
+    try { prefs = JSON.parse(sb.__storage.get('bigals_user_prefs') || '{}'); } catch (_) {}
+    check('FR3 an existing stamp is never overwritten on a later boot',
+      prefs.firstRunAt === original, `firstRunAt=${JSON.stringify(prefs.firstRunAt)}`);
+  }
+  {
+    // FR4 — an empty productions ARRAY is still a fresh store. The guard tests
+    // length, not presence, so a user who created and deleted everything is
+    // treated as fresh rather than permanently unstampable.
+    const localStorage = makeLocalStorage({
+      bigals_productions: '[]',
+      bigals_schema_version: '4',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    let prefs = {};
+    try { prefs = JSON.parse(sb.__storage.get('bigals_user_prefs') || '{}'); } catch (_) {}
+    check('FR4 an empty productions array counts as fresh (length, not presence)',
+      typeof prefs.firstRunAt === 'string' && prefs.firstRunAt !== '',
+      `firstRunAt=${JSON.stringify(prefs.firstRunAt)}`);
+  }
+  {
+    // FR5 — DEFAULT_USER_PREFS carries the key so merge-over-defaults hands
+    // existing users "" with no migration and no schema bump. "" is the
+    // do-not-know value; the stamp writes a real instant or nothing.
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle();
+    const defaults = sb.__DEFAULT_USER_PREFS;
+    // No companion "schema didn't bump" pin here: C3 already asserts the
+    // migrated version is '4', so a bump reddens there. A second copy would
+    // be decoration.
+    check('FR5 DEFAULT_USER_PREFS carries firstRunAt defaulting to ""',
+      !!defaults && defaults.firstRunAt === '', `default=${JSON.stringify(defaults && defaults.firstRunAt)}`);
+  }
+
   // ===== M. LEDGER WARM — every persisted store survives a relaunch (T1) =====
   // The T1 regression: get() is a synchronous cache read and KEYS is the only
   // boot warm on BOTH persistent backends. bigals_invoice_charges wasn't

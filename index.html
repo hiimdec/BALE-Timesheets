@@ -4680,6 +4680,14 @@
       ],
       onboardingComplete: false,
       lastSeenAppVersion: "",
+      // When THIS install began, as an ISO timestamp. Stamped once at boot by
+      // stampFirstRunIfNew, and only into a store that holds no user data yet.
+      // "" means WE DO NOT KNOW — the honest answer for every install that
+      // predates this field, and for any stamp that failed. It is never
+      // derived and never backfilled: the alternative is quoting a start date
+      // the app invented. A reader wanting a floor for an existing user should
+      // fall back to the earliest logged day, which is real data.
+      firstRunAt: "",
       // Help & announcements seen-flags. Additive via merge-over-defaults —
       // no migration, no schema bump (the theme-pref pattern). seenIntro:
       // the one-time intro popup was dismissed (never re-shows).
@@ -6478,6 +6486,47 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       } catch (err) {
         restoreFromPreMigrationSnapshot();
         return { ran: false, error: String(err) };
+      }
+    }
+
+    /* ─── First-run stamp ─── */
+
+    // The one date the app can never recover afterwards: when this install
+    // began. Stamped ONCE, at boot, and ONLY into a store that holds no user
+    // data — a genuinely fresh install.
+    //
+    // Updating INTO this build with productions already present leaves the
+    // field ABSENT, deliberately. There is no honest value to write for those
+    // users: the install predates the field, and stamping "today" would date a
+    // three-year-old install to this release. Absence means "we do not know",
+    // and a reader falls back to the earliest logged day, which is real.
+    //
+    // ONE test covers "has user data": a non-empty productions array. Days,
+    // invoices and weeks all nest inside a production, and a standalone
+    // invoice IS a production record (standalone: true), so there is no way to
+    // hold user data with an empty array. Reads RAW stored prefs, not the
+    // merged shape, so DEFAULT_USER_PREFS's "" default cannot mask an
+    // already-stamped value.
+    //
+    // Best-effort by design: it runs after storage.preload(), so set() is a
+    // warm-cache write, but a throw (quota on a near-cap launch) is swallowed
+    // and simply leaves the field absent for the next boot to retry. Nothing
+    // reads it yet; nothing downstream can fail because it is missing.
+    //
+    // Additive over merge-over-DEFAULT_USER_PREFS — NO migration, NO
+    // SCHEMA_VERSION bump (the theme / invoiceEmailMethod precedent).
+    function stampFirstRunIfNew(now = new Date()) {
+      try {
+        const rawPrefs = storage.get('bigals_user_prefs');
+        const prefs = rawPrefs ? (JSON.parse(rawPrefs) || {}) : {};
+        if (prefs.firstRunAt) return { stamped: false, reason: 'already-stamped' };
+        const rawProds = storage.get('bigals_productions');
+        const prods = rawProds ? JSON.parse(rawProds) : [];
+        if (Array.isArray(prods) && prods.length > 0) return { stamped: false, reason: 'existing-data' };
+        storage.set('bigals_user_prefs', JSON.stringify({ ...prefs, firstRunAt: now.toISOString() }));
+        return { stamped: true };
+      } catch (_) {
+        return { stamped: false, reason: 'error' };
       }
     }
 
@@ -34426,6 +34475,10 @@ const confirmDelete = (p) => setConfirmOpts({
 
     function bootApp() {
       migrationResult = runMigrations();
+      // AFTER the migrations, so a store being brought up to the current
+      // schema is judged on its migrated contents, and never stamped as fresh
+      // because a migration had not yet populated it.
+      stampFirstRunIfNew();
       storage.installBackgroundFlush();
       startRender();
     }
