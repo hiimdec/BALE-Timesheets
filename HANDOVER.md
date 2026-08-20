@@ -94,6 +94,39 @@ phase once 2026.11 is away and wants its own proposal.
 
 - **A pin that can't go red is decoration.** Four tautological pins have been
   caught and rewritten here; assume the next one is yours.
+- **Mutate every clause, not the pin.** A pin with six clauses can pass its
+  whole-pin negative test — write it before the feature, watch it go red — and
+  still contain clauses that never fire. Ruling 3's seven pins were all proven
+  red against the unbuilt code, which felt like proof and wasn't: mutating each
+  guard *individually* afterwards found two source lines that no mutation could
+  redden. **The whole-pin test proves the pin fires. Only per-clause mutation
+  proves each rule inside it does.** Budget for the second pass; it is where the
+  findings are.
+- **A guard that cannot fail is decoration in the source, not just in the
+  suite.** The decoration rule has always been aimed at pins. It applies to
+  production code the moment a line is written *as* a guard. Two in Ruling 3,
+  both deleted: an ownership `if (owned.length === 0) return []`, unreachable
+  because the intersect expression below it already yields an empty set in every
+  case it could fire; and a guard-2 `if (inRange.length === 0) return []`, which
+  only restated the value the fall-through already returns. Neither changed
+  behaviour, and that is the danger — **a line that reads as a guard and enforces
+  nothing tells the next reader a rule is held somewhere it isn't.** Delete it
+  and pin the behaviour, or make it the only mechanism. Never both.
+- **The false-green class: absence of a result reads as a pass.** Third
+  instance, third disguise, and the shape this project keeps meeting from new
+  directions. Every time, something *failed to produce a verdict* and the
+  failure was indistinguishable from success. (1) `| tail` reported tail's exit
+  code instead of the check's — a green that meant "tail ran". (2) A parity
+  check compared two *missing* files and called them identical — a green that
+  meant "nothing to compare". (3) Now: a legitimate mutation crashed the suite
+  at `IE4`'s unguarded `Map.get(...).invoiceId`, killing 1,400 assertions
+  including the ones under test, and the grep for red lines came back empty — a
+  green that meant "the run died". **Ask what a pass would look like if the
+  check never ran, and if the answer is "the same", the check cannot report.**
+  The defences are all the same defence: verdicts in-band and last (`RESULT:
+  GREEN`), existence asserted before equality, assertion *counts* read rather
+  than colours, and every fixture access defensive so a mutation yields a red
+  assertion instead of taking the run with it.
 - **Never anchor a structural pin on copy.** A string's position is a proxy for
   structure, not structure, and the proxy fails both ways. Observed twice, once
   per phase, and both times *loudly*: PT7 anchored the prep-booking control's
