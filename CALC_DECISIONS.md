@@ -693,6 +693,23 @@ symmetrically. Ownership narrows `userCrewIdsInProduction` to the invoice's own
 recognise is stale and the rule wins. Pinned `DL1`–`DL7`; `DL2` witnesses the
 over-attribution rather than claiming it is handled.
 
+**Two sub-rulings settled during the build (founder-confirmed, Phase 18).**
+
+1. **A `userCrewId` the ownership rule does not recognise is treated as stale,
+   and the rule wins.** The invoice's own `userCrewId` narrows the owning set
+   only when `userCrewIdsInProduction` also resolves to it; otherwise the rule's
+   answer is used and the record's is discarded. An invoice records who it
+   billed *at the time it was minted* — a later "this is me" override or a
+   changed `displayName` is the current answer, and ownership must mean one
+   thing everywhere (the OWN1 position). On the real export the two agree on all
+   nine invoices carrying an id, so this costs nothing today and prevents a
+   stale record quietly out-voting the rule later.
+2. **An explicitly empty `dayKeys: []` is honoured as a record, not derived
+   over.** Guard 1 asks whether the invoice *records* its days, not whether that
+   record is non-empty. A standalone invoice claims nothing and says so, and a
+   record — including a record of nothing — always beats a derivation. Deriving
+   over it would let an inference overwrite a statement of fact.
+
 **Measured on the real export.** All ten unlinked invoices derive (nine by
 `userCrewId`, the tenth through the single-crew fallback), restoring
 **£7,799.85** of billed money to invoice granularity. Exactly one figure moves:
