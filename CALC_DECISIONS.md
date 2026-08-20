@@ -433,3 +433,252 @@ entry, not from the 2025 text. Two term sets already diverge here at day one:
 
 That will be the second entry in `apaTerms` (see the card-versioned RULES
 entry above): extend the term set, do not add a second mechanism.
+
+---
+
+# The stats screen — what it reports and why
+
+Everything below concerns the **stats screen's money figures**. Three phases
+changed how that screen reports money and none of them wrote down what the
+screen is *for*; the fourth nearly revoked a standing pin (`ST1`) by accident.
+These entries exist so the next change starts from a rule rather than from the
+code it finds.
+
+**The framing.** The screen answers **two different questions and must not blur
+them.**
+
+*Counts and time describe the work* — days, hours, streak, shoot-day length,
+night shoots, TOC breaches, late-lunch counts, steps. These read **day records
+only** and have never been in scope for any of this.
+
+*Money describes what the user was paid.* Where the app can honestly know what
+was **billed**, the money figure reports that. Where it cannot, the figure
+reports the **agreement value** and says so on screen.
+
+Which gives the line that governs every entry below:
+
+> **The top-level money total is what was billed. The breakdown figures are
+> what the work was worth under the agreement. Both are labelled on screen.
+> Neither pretends to be the other.**
+
+**Working rule for anyone editing a money figure here: check the figure next to
+it first.** Every defect in this section was a figure that stopped agreeing
+with its neighbour — a count against its own money, a chart against its header,
+a home card against a day editor.
+
+---
+
+## Stats money — pro-rata attribution across claimed days: **SUPERSEDED** (founder-ruled, Phase 14)
+
+**The question.** A day is covered by a sent invoice. The invoice's total is
+known; the day's own calculated value is known. What should the day report?
+
+**The rule at stake.** Earnings should reflect what was actually invoiced,
+discounts included — not what the day theoretically computes to.
+
+**The ruling (Phase 14).** Every claimed day reports its **pro-rata share** of
+the invoice's final net, weighted by that day's computed total in the invoice's
+frozen `dayBreakdown`. The day's whole calc is scaled by `billed / computed`,
+lines included, so the basic/OT/penalty buckets still sum to the reported
+figure and no two stats surfaces disagree.
+
+**Reach.** Every money figure on the stats screen, plus the home screen's
+per-production totals and month headers.
+
+**Superseded by** the Phase 17 entry below. The premise was right and the
+granularity was wrong: an invoice records what it billed **in total**, and does
+not record how a reduction was split across the days it covers. Splitting it
+was an invention, and it moved money between days that were never discounted.
+
+---
+
+## Stats money — an invoice is atomic: **RESOLVED — IMPLEMENTED** (founder-ruled, Phase 17)
+
+**The question.** Same question, asked again after the pro-rata rule produced a
+figure nobody could account for.
+
+**The failure that motivated it.** On one production the **recce line was
+edited down** on the invoice — from the APA rate to a flat figure — because a
+custom recce rate did not exist in the app yet, so the invoice editor was being
+used as a rate editor. That single edited line reduced the invoice's net, and
+the pro-rata rule then spread that reduction across **every day the invoice
+covered**. Worked example, three days:
+
+| day | computed | reported under pro rata | actually billed |
+|---|---|---|---|
+| the edited recce day | £300.00 | £259.92 | £125.00 |
+| an untouched shoot day | £510.00 | £441.87 | £510.00 |
+| an untouched shoot day | £500.00 | £433.21 | £500.00 |
+
+The discounted day reported **higher** than it was billed, and the two
+untouched days reported **lower**. A flat £10 late-break penalty on the second
+day read £8.66. The invoice total stayed exact throughout — the redistribution
+preserves the sum — which is precisely why it survived two phases undetected.
+
+**Why inference is impossible.** To attribute a reduction to the right day the
+app would have to know *which line was edited and which days fed it*. It cannot:
+there is **no invoice-level discount concept**, so a per-line rate correction
+and a whole-invoice discount are indistinguishable in stored data. Recorded in
+`MAINTENANCE.md` under *"Design gap — no invoice-level discount concept"* —
+see it there rather than duplicating it here. That entry also records the
+related gap: `buildInvoiceLineItems` computes the per-line date set and
+discards it.
+
+**The ruling.** **Billed money is read at invoice granularity and nowhere
+finer.** An invoice contributes its net, whole, or contributes nothing. No
+per-day claim amount exists to be spent. Where a day is covered by a sent
+invoice it contributes nothing of its own; where it is not, it contributes its
+own calc.
+
+**Reach.** The stats money figures and the home screen's per-production totals
+— two consumers on different paths, both of which had to change. Pinned by
+`IE4`, `IE10` (granularity: nothing below invoice level reads a billed amount)
+and `WIN1`.
+
+**Supersedes** the Phase 14 pro-rata entry above. **Partly superseded by**
+revised Ruling 1 below, which narrows *which* figures read billed money.
+
+---
+
+## Stats money — which figures read billed, which read the agreement: **RESOLVED — RULED** (founder, Phase 18)
+
+**The question.** Phase 17 settled that billed money is read per invoice. It
+did not settle *which figures on the screen read it*.
+
+**The rule at stake.** A figure should report the billed amount wherever the
+app can honestly know it, and the agreement value wherever it cannot — and it
+must never switch between the two silently.
+
+**The ruling.**
+
+- **Total earnings** and **top production company** read the invoice's own
+  frozen line items, discounts included, for any day covered by a sent invoice.
+  Days not covered report their own calc. Neither figure needs any line to be
+  categorised, which is why both are safe.
+- **Highest-earning day and its basic / OT / penalty / kit / extras breakdown**
+  stay on **day calc for all days**, covered or not. Invoice line items
+  aggregate across days, and a discount on an aggregated line cannot be
+  attributed to one day without reintroducing exactly the pro-rata attribution
+  Phase 17 removed.
+- **Overtime earned** and **late lunches earned** stay on **day calc**, the same
+  treatment as highest-earning day. *Dropped from this ruling deliberately* —
+  see below.
+- Every agreement-value figure is **labelled as such on screen**.
+
+**Why overtime and late lunches were dropped.** The first draft had them read
+invoice line items. Checked against the code before writing, that cannot be
+built reliably — invoice lines cannot be categorised:
+
+1. **The kit marker does not survive.** A day's kit line is classified by a
+   hidden `bucket: 'kit'` field, not by its text. `buildInvoiceLineItems` does
+   not carry that field, so kit lines fall through to text matching and land in
+   *basic*. Present in real data (`"Kit"`, `"Wireless Kit"`).
+2. **Aggregation strips the OT marker.** The invoice key is
+   `label.split(" (")[0]`, so `Early Call (OT rate)` becomes `Early Call` —
+   overtime on the day, *basic* on the invoice. Overtime earned would silently
+   shrink.
+3. **Labels are user-editable.** A renamed mileage line (`"Milton Keynes ->
+   London"` in real data) carries no recoverable category. This is not a gap a
+   better rule closes; it is information the app no longer holds.
+
+**And `ST1` stands.** That pin requires the late-lunch **count** and the
+late-lunch **money** to read one predicate — written after they drifted and
+produced *"2 late lunches, £19.42"*. Moving the money to invoice lines while the
+count stayed on day records would reopen exactly that drift. **`ST1` is not
+revoked or amended.**
+
+**The fallback was considered and rejected** (founder): fall back to the day
+figure when a line cannot be categorised. Rejected because *a figure that
+switches basis depending on whether a line was renamed is worse than either
+consistent answer*.
+
+**Reach.** The stats money figures only. No calc change; the engine has never
+read invoice data and does not now.
+
+**Partly supersedes** the Phase 17 entry, which implied all money figures read
+billed. Only total earnings and top production company do.
+
+---
+
+## Stats money — monthly bucketing by work date: **RULED — NOT YET BUILT** (founder, Phase 18)
+
+**The question.** An invoice covers days in one month and is sent in another.
+Which month does its money belong to?
+
+**The rule at stake.** Every other figure on the screen is anchored to the
+**work** date. Bucketing money by send date makes the chart disagree with the
+day counts printed beside it — and makes *busiest month* move when the user
+presses Send, which is indefensible.
+
+**The ruling.** **Monthly earnings bucket by the month the work happened.** An
+invoice belongs to the month of the **earliest day it covers**. No splitting
+across months, no pro rata.
+
+**The tax-year filter stays on a billed basis**, because that is an accounting
+question and is labelled as one.
+
+**The accepted consequence, which must be visible.** Running two date bases on
+one screen means that under the tax-year filter **the bars will not sum to the
+header**: an invoice sent in one tax year for work done in the previous one
+counts in the tax-year total while its month sits outside the year on the
+chart. This is **accepted and must be stated on screen, not silently
+tolerated** — tax year is an accounting question on a billed basis, months are
+a *when was I busy* question on a worked basis, and the screen says so.
+
+**Ordering.** Ships **after** the read-time day-link derivation below. Until
+that lands, the unlinked invoices have no earliest covered day to bucket by.
+
+**Supersedes** nothing — this is the first ruling on bucketing. It replaces an
+unruled behaviour introduced in Phase 17 (bucket by `dateSent`).
+
+---
+
+## Stats money — unlinked invoices, read-time day derivation: **RULED — NOT YET BUILT** (founder, Phase 18)
+
+**The question.** An invoice records which days it covers. That record did not
+exist before 17 August 2026, and the `dayBreakdown` it falls back to only from
+10 August. Ten of one real dataset's fourteen sent invoices therefore name **no
+days at all** — not corrupt, simply older than the field. Under the Phase 17
+rule their money is excluded entirely. Can the link be recovered?
+
+**The rule at stake.** An invoice whose days are unknown must never have its
+net added on top of days that also compute — that was the doubling defect
+(£568 day + £568 invoice = £1,136 on the home card). But excluding it loses
+real billed money, including any discount on it.
+
+**The ruling.** **Derive the day link at read time. Never write it back to a
+frozen invoice.** Derive only when **all three** hold:
+
+1. the invoice has no `dayBreakdown`;
+2. its `shootDateStart`–`shootDateEnd` range resolves to days on that
+   production;
+3. **no other sent invoice on that production claims any of those days.**
+
+Where `userCrewId` is absent, resolve ownership by the rule the app already
+uses (`userCrewIdsInProduction` — see the ownership entry in `HANDOVER.md`'s
+lessons). **If any guard fails, behave as today and do not count that invoice's
+money.**
+
+> **Under-claiming beats mis-attributing.**
+
+**Evidence it is derivable.** Tested against the real dataset: **9 of the 10**
+derive exactly all the user's days from `userCrewId` plus the date range, none
+derive a subset, and the tenth fails only because it predates `userCrewId`
+entirely — its dates match its production's days precisely, and the production
+has a single crew member. No production in that dataset has more than one sent
+invoice, so guard 3 is satisfiable throughout.
+
+**What it restores.** Those jobs report what was invoiced rather than what the
+days compute. For most that is the same figure; it matters for the two whose
+lines were edited, one of which carries a real per-line discount.
+
+**Known limitation, deliberately accepted.** `shootDateStart`/`shootDateEnd`
+describe the shoot, they are not a record of what was billed. On the real data
+they coincide exactly. They would not necessarily coincide on a job invoiced in
+parts, or where a day was added inside the range after the invoice was sent —
+which is what guard 3 and the no-`dayBreakdown` guard exist to catch.
+
+**Reach.** Read path only. No stored data changes, no migration, no frozen
+invoice mutated.
+
+**Supersedes** nothing. It narrows the Phase 17 exclusion without weakening it.
