@@ -95,6 +95,26 @@ Phase 16 investigated exactly this shape — LATE LUNCHES 2 against LATE LUNCH E
 **Change:** one line. `buildInvoiceLineItems` (index.html, the `return [...map.values()].map(...)` at the end) builds `e.dates` — the exact set of dates feeding each aggregated line — uses it to write the human-readable `detail` string, and then **discards it**. The returned item is `{ id, label, detail, qty, rate, amount, discountedQty, isExpense }`. Keeping `dates` would make per-line attribution a record rather than an inference.
 **Why parked:** it cannot retrofit. Invoices already sent are frozen, so historical attribution would still have to be inferred by rebuilding the aggregation from the frozen `dayBreakdown` (which does store every day's full line list, so the mapping IS reconstructible — keyed `${label.split(" (")[0]}|${rate}`). Named failure modes for that inference: a renamed label breaks the key; an added line matches nothing (correctly whole-invoice); expense lines key on label *and* detail, both editable. And per-line attribution still needs the discount-concept gap above resolved before intent stops being guessed.
 
+## Derived day links — the two failure modes no guard catches
+
+**Trigger:** any work on partial invoicing, on editing a sent invoice's date range, or the next time a reported figure and an invoice disagree on a job whose invoice names no days.
+**Change:** none. These are the accepted costs of the read-time derivation ruled in `CALC_DECISIONS.md` → *Stats money — unlinked invoices, read-time day derivation*. They are recorded here because **neither is detectable at runtime**: both present as a quietly wrong figure on a screen that looks fine.
+
+**Why they exist at all.** Guards 1 and 3 of that ruling are exact — an invoice either carries a `dayBreakdown` or it does not, and another sent invoice either claims a day or it does not. **Guard 2 is a heuristic.** `shootDateStart`/`shootDateEnd` describe the *shoot*; they are not a record of what was *billed*. Everything below follows from that one gap.
+
+**1. Partial invoice, over-attribution.** An invoice whose range spans the whole shoot but which billed only some of those days. Guard 2 resolves the range to every day inside it, so the invoice's net is treated as covering days it never paid for.
+- **Direction:** the job **over-reports** — those days stop computing and contribute nothing of their own, while the invoice's net covers all of them. If the unbilled days are worth more than nothing, the job reads low; if the invoice was the larger figure, it reads high. Either way the *attribution* is wrong even when the total happens to look plausible.
+- **Silent because:** the derivation succeeds. Every guard passes. There is no error state and no marker.
+- **What would make it detectable:** a record of *what was billed*, not *when the shoot ran* — either the `dates` set that `buildInvoiceLineItems` already computes and discards (see the section above), or an explicit "this invoice covers these days" control on the invoice editor. Until one exists, the app cannot tell a whole-shoot invoice from a partial one.
+- **Not a risk on the founder's data today:** all ten unlinked invoices' ranges resolve to exactly all of the user's days on their production. Pinned by `DL2`, which asserts what the app *does* with a wider-than-billed range rather than claiming it handles it.
+
+**2. A day added inside the range after the invoice was sent.** The new day falls within `shootDateStart`–`shootDateEnd`, so the derivation treats it as covered by an invoice minted before it existed.
+- **Direction:** the job **under-reports** by that day's value. The day computes nothing (it looks covered) and the invoice's net does not include it (it was sent first).
+- **Silent because:** nothing compares the invoice's mint date against the day's. Adding a day is an ordinary edit with no invoice-facing consequence.
+- **What would make it detectable:** comparing `day.createdAt` (added Phase 18, `feb3ecd`) against the invoice's `createdAt`/`dateSent` and refusing to derive over a day that postdates the claim. **Deliberately not built:** `createdAt` is backfilled for every day that predates the field, so the comparison would be unreliable on exactly the historical data this derivation exists to serve. It becomes viable once the backfilled generation ages out.
+
+**Both err in the direction the ruling prefers on the data that exists** — under-claiming rather than mis-attributing — but neither is *guaranteed* to. That is the honest limit of deriving a day link from a date range.
+
 ## Marketing copy pass — soften the Greggs/Leatherman trademark usage
 
 **Trigger:** next marketing/copy pass, or any trademark complaint (then immediately).
