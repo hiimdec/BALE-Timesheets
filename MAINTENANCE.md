@@ -82,6 +82,53 @@ Phase 16 investigated exactly this shape — LATE LUNCHES 2 against LATE LUNCH E
 **Why it was left.** The long form today card added in Phase 16 sits in exactly the same slot, so the two hero cards are consistent with each other. Moving them above In Progress changes where the APA hero sits too, which is a layout judgement on a shipped surface rather than a bug fix. Device-verified in Phase 16: the card renders correctly, just lower than the comment claims.
 **If it is taken:** move both hero slots together, or the two agreements diverge — and fix the comment either way, since a comment that survives the move would be wrong in the opposite direction.
 
+## Known gap — the flat penalty lines carry no rate, so their working cannot be shown
+
+**Trigger:** any release that surfaces per-line arithmetic on a money surface, or any
+change to how `rate: null` is read.
+
+**The gap.** Most engine lines carry `rate` and `qty`, so their working is already in the
+data: Mileage is `rate: 0.5, qty: 146`, Travel Time is `rate: bhr, qty: chargeableTravel`.
+One family is different. These carry `rate: null, qty: 1` while their `amount` is a real
+product:
+
+| Line | amount | detail |
+|---|---|---|
+| `Missed 1st Break (night)` | `breakPenaltyRate` | `1h × 2× BHR` |
+| `Missed 2nd Break` / `Late 2nd Break (treated as missed)` | `breakPenaltyRate * 0.5` | `30m × BHR` |
+| `Curtailed 2nd Break` | `(curtailedBy / 60) * breakPenaltyRate` | `Nm × BHR` |
+| `Missed CWD Break (9h)` and `(12.5h)` | `breakPenaltyRate * 0.5` | `30m × BHR` |
+
+The multiplier and the rate both exist as locals in `calculateDay` at push time; neither
+reaches the line. The `detail` names the basis in words but carries no number. Note the
+inconsistency this creates: **Curtailed 1st Break exposes `rate` and `qty`; Curtailed 2nd
+Break does not**, despite being the same shape of penalty.
+
+Distinct from the genuinely flat lines — `Late 1st Break` (£10) and `Missed Meal Allowance`
+(£7.50) — which have no arithmetic at all. Those are correct as they stand and are not part
+of this gap.
+
+**Why parked, and it is not laziness.** Two routes exist at the display layer and both are
+worse than doing nothing:
+
+1. Parse the multiplier out of the `detail` string and divide the amount by it. That is
+   reconstruction from prose, and a copy edit to the detail silently breaks the arithmetic.
+2. Re-derive `breakPenaltyRate` from `meta.bhr` plus the night flag in `meta.dayLabel`.
+   That re-implements an engine rule outside the engine — the duplicated-gate shape this
+   project has now been bitten by five times, most recently in the ownership fix.
+
+Putting the rate on the line is the correct fix, and it **is an engine change** even though
+no amount moves. It also reaches two surfaces beyond the day card: `const isFixed =
+item.rate === null` is load-bearing in **both** the invoice print renderer and the
+accounting export builder. A non-null rate would start rendering Qty and Rate columns for
+penalty lines on invoices. That is money-surface display and needs a ruling, not a patch.
+
+**The change, when it is taken:** give each line in the table its real `rate` and the
+matching fractional `qty` so `rate × qty` reproduces the existing amount exactly, then
+replace the two `isFixed` reads with an explicit flag (e.g. `displayFlat`, which the night
+split already uses) so the invoice and export keep their current rendering by intent rather
+than by the absence of a rate. Pin that the amounts are byte-identical across the change.
+
 ## Design gap — no invoice-level discount concept
 
 **Trigger:** any work on per-line attribution, or the next time a reported figure and an invoice disagree.
