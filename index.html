@@ -5504,7 +5504,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             lines.push({ label: "Pre-call", detail: "before 05:00 · 3× BHR", rate: tripleRate, qty: preCallTripleChargeable, amount: preCallTripleChargeable * tripleRate });
           }
           if (preCallOtChargeable > 0) {
-            lines.push({ label: "Pre-call", detail: `05:00 – ${day.callTime} · OT rate`, rate: otRate, qty: preCallOtChargeable, amount: preCallOtChargeable * otRate });
+            // The OT segment's REAL start. It is 05:00 only when a triple-time
+            // portion exists to have run up to it — i.e. the pre-call was
+            // before 05:00 (or overnight, where the triple line covers
+            // pre-call → midnight → 05:00). With the pre-call at or after
+            // 05:00 there is no triple portion and the OT window starts at the
+            // pre-call itself. The old string hardcoded "05:00" for every
+            // case, so an 07:00 pre-call against an 08:00 call read
+            // "05:00 – 08:00" against qty 1: a three-hour window stated for a
+            // one-hour charge. Display only — rate, qty and amount are
+            // untouched, and the calc pins prove it.
+            const otWindowStart = preCallSplit.triple > 0 ? '05:00' : preCallTime;
+            lines.push({ label: "Pre-call", detail: `${otWindowStart} – ${day.callTime} · OT rate`, rate: otRate, qty: preCallOtChargeable, amount: preCallOtChargeable * otRate });
           }
         }
       }

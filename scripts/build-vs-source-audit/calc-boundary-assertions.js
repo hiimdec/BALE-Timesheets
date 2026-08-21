@@ -664,6 +664,45 @@ function stagePrep(eng, ok) {
     JSON.stringify({ t0901, t0831, t0601 }));
 }
 
+// ---- PC: the pre-call OT line states its REAL window -------------------------
+// The detail used to hardcode `05:00 – ${callTime}` for every case, so a 07:00
+// pre-call against an 08:00 call printed "05:00 – 08:00" beside qty 1: a
+// three-hour window claimed for a one-hour charge. The money was always right;
+// the working shown was not.
+//
+// Anchored on the RULE, not the string: parse the window out of the detail and
+// assert it spans exactly `qty` hours. A hardcoded start cannot satisfy that
+// across the boundary, and neither can a future edit that reformats the string
+// while getting the arithmetic wrong. The amounts are pinned alongside, so this
+// stage also proves the fix moved no money.
+function stagePreCallWindow(eng, ok) {
+  console.log('\nPC · pre-call OT line: stated window equals the charged hours');
+  const run = (over) => eng.calculateDay(baseDay(over), baseCrew(), {});
+  // [label, overrides, expected OT-segment start, expected qty, expected amount]
+  const cases = [
+    ['pre-call 07:00 → call 08:00 (the reported case)', { preCallTime: '07:00', callTime: '08:00' }, '07:00', 1, 66.60],
+    ['pre-call 06:00 → call 08:00', { preCallTime: '06:00', callTime: '08:00' }, '06:00', 2, 133.20],
+    ['pre-call 05:00 → call 08:00 (exactly on the boundary)', { preCallTime: '05:00', callTime: '08:00' }, '05:00', 3, 199.80],
+    ['pre-call 04:00 → call 08:00 (spans 05:00 — triple runs up to it)', { preCallTime: '04:00', callTime: '08:00' }, '05:00', 3, 199.80],
+    ['pre-call 22:00 → call 06:00 (overnight — triple crosses midnight)', { preCallTime: '22:00', callTime: '06:00', wrapTime: '17:00' }, '05:00', 1, 66.60],
+  ];
+  for (const [label, over, wantStart, wantQty, wantAmount] of cases) {
+    const calc = run(over);
+    const otLine = calc.lines.find(l => l.label === 'Pre-call' && /OT rate/.test(l.detail || ''));
+    if (!otLine) { ok(`PC ${label}`, false, 'no pre-call OT line emitted'); continue; }
+    const m = /^(\d{2}:\d{2}) – (\d{2}:\d{2}) · OT rate$/.exec(otLine.detail || '');
+    if (!m) { ok(`PC ${label}`, false, `detail not in the expected shape: ${JSON.stringify(otLine.detail)}`); continue; }
+    const [, start, end] = m;
+    const hrs = (Number(end.slice(0, 2)) - Number(start.slice(0, 2))) + (Number(end.slice(3)) - Number(start.slice(3))) / 60;
+    ok(`PC ${label}: window ${start}–${end} spans ${hrs}h and qty is ${otLine.qty}`,
+      start === wantStart && near(hrs, Number(otLine.qty)) && near(Number(otLine.qty), wantQty),
+      `start=${start} end=${end} spanHrs=${hrs} qty=${otLine.qty}`);
+    ok(`PC ${label}: amount unmoved at £${wantAmount.toFixed(2)}`,
+      near(Number(otLine.amount), wantAmount),
+      `amount=${otLine.amount}`);
+  }
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -682,6 +721,7 @@ async function runCalcBoundaryAssertions() {
   stageDayRate(eng, ok);
   stageNation(eng, ok);
   stagePrep(eng, ok);
+  stagePreCallWindow(eng, ok);
   return summary();
 }
 
