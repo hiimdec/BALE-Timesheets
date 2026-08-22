@@ -4882,6 +4882,41 @@
       return 'basic';
     }
 
+    // The line's WORKING, as one string: what the detail says, plus the
+    // multiplication when there is one. Extracted from the timesheet PDF's day
+    // breakdown, which is where it was first written and is still its main
+    // consumer — the on-screen surfaces had no working at all, so someone
+    // transcribing a day onto an outside invoice had to reverse the sums.
+    //
+    // The qty !== 1 guard is load-bearing, not tidiness: BDR is qty 1 at the
+    // day rate, so "1 × £480.00" is noise beside an amount that already says
+    // £480.00. What survives the guard is exactly the lines where the
+    // multiplication IS the information — 146 × £0.50, 2.5 × £48.00.
+    //
+    // A line with no arithmetic returns its detail alone, or ''. It NEVER
+    // fabricates a rate: the flat penalties and typed amounts (Late 1st Break
+    // £10, Kit, Per Diem) carry rate: null because no rate exists, and
+    // inventing "1 × £10.00" would assert one that does not. The penalty
+    // family whose amount IS a product but whose rate never reached the line
+    // is a known gap, recorded in MAINTENANCE.md — those show their detail in
+    // words and no numbers, which is the honest rendering of what we hold.
+    //
+    // PURE and display-only. Reads nothing but the line; writes nothing; the
+    // engine is untouched and no amount can move through it.
+    function lineBasis(line) {
+      if (!line) return '';
+      const bits = [];
+      if (line.detail) bits.push(line.detail);
+      // displayFlat is the night split's "this is a day-style fee, not hours ×
+      // rate" marker. BreakdownLineRow already suppressed its own qty × rate
+      // on it; honouring it here keeps ONE rule instead of two. Engine lines
+      // never carry it, so the PDF's output is unaffected.
+      if (!line.displayFlat && Number(line.rate) > 0 && Number(line.qty) > 0 && Number(line.qty) !== 1) {
+        bits.push(`${line.qty} × ${fmtGBP(line.rate)}`);
+      }
+      return bits.join(' · ');
+    }
+
     // 3-bucket sum for the hero breakdown row (kit + extras both fold into
     // basic — the hero row is space-constrained and only surfaces OT/PEN
     // separately).
@@ -8863,16 +8898,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             {(calc.lines || []).map((l, i) => {
               const isPen = categorizeBreakdownLine(l) === 'pen';
               const chip = tsdLineChipKind(l);
-              const basisBits = [];
-              if (l.detail) basisBits.push(l.detail);
-              if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) basisBits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
+              // Was an inline basisBits array here; lifted verbatim into
+              // lineBasis so the screen and the PDF cannot drift. TSD-BASIS
+              // pins the output byte-identical across the extraction.
+              const basis = lineBasis(l);
               return (
                 <React.Fragment key={i}>
                   <div className={`tsd-bl-label${chip ? ' withchip' : ''}${isPen ? ' pen' : ''}`}>
                     {chip ? <TsdChip kind={chip} /> : null}
                     <span>{l.label}</span>
                   </div>
-                  <div className="tsd-bl-basis tsd-mono">{basisBits.join(' · ')}</div>
+                  <div className="tsd-bl-basis tsd-mono">{basis}</div>
                   <div className={`tsd-bl-amt tsd-mono${isPen ? ' pen' : ''}`}>{fmtGBP(l.amount)}</div>
                 </React.Fragment>
               );
@@ -19175,15 +19211,28 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // total bucket bar aggregates the ORIGINAL lines upstream, unchanged.
     const NIGHT_SPLIT_LABEL = 'Night Shoot (2× BHR)';
     const NIGHT_MIN_HOURS = 10;
+    // Also where every line acquires its `workings` string (via lineBasis), so
+    // the on-screen breakdowns show the arithmetic the PDF has always shown.
+    // Same display layer, same pure helper, no engine involvement — this
+    // function already transformed lines here and already set `workings` on
+    // the one it synthesises. An EXPLICIT workings wins: the night split's
+    // over-minimum line writes its own, which is more specific than the
+    // generic form.
     function splitNightLinesForDisplay(lines) {
+      const withBasis = (l) => {
+        if (!l) return l;
+        if (l.workings) return l;                 // explicit wins
+        const b = lineBasis(l);
+        return b ? { ...l, workings: b } : l;     // no working → no key, no empty row
+      };
       const out = [];
       for (const l of (lines || [])) {
         const qty = l ? Number(l.qty) : NaN;
-        if (!l || l.label !== NIGHT_SPLIT_LABEL || l.rate == null || !(qty >= NIGHT_MIN_HOURS)) { out.push(l); continue; }
+        if (!l || l.label !== NIGHT_SPLIT_LABEL || l.rate == null || !(qty >= NIGHT_MIN_HOURS)) { out.push(withBasis(l)); continue; }
         const minAmount = NIGHT_MIN_HOURS * l.rate;
         // The flat minimum fee: single figure, no hours×rate workings (same
         // display rule as BDR — it is the night's day-style fee).
-        out.push({ ...l, qty: NIGHT_MIN_HOURS, amount: minAmount, displayFlat: true });
+        out.push(withBasis({ ...l, qty: NIGHT_MIN_HOURS, amount: minAmount, displayFlat: true }));
         const overQty = qty - NIGHT_MIN_HOURS;
         if (overQty > 0) {
           out.push({
@@ -19208,14 +19257,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       : bucket === 'kit' ? 'text-tm-kit'
                       : bucket === 'extras' ? 'text-tm-good'
                       : 'text-neutral-100';
-      const qtyRate = (line.qty != null && line.rate != null && !line.displayFlat)
-        ? `${Number(line.qty).toFixed(typeof line.qty === 'number' && line.qty % 1 ? 1 : 0)} × ${fmtGBP(line.rate)}`
-        : '';
+      // The bespoke qtyRate column is GONE. It duplicated what `workings` now
+      // carries, and it disagreed with it: no qty !== 1 guard, so BDR rendered
+      // "1 × £480.00" beside an amount already reading £480.00. One helper,
+      // one rule. Two visible consequences, both intended: the working is no
+      // longer desktop-only (the old span was `hidden sm:inline`), and it sits
+      // under the row rather than in a right-aligned column.
       return (
         <>
           <div className="flex items-baseline gap-2 text-[11px]">
             <span className={`flex-1 truncate ${isPenalty ? 'text-tm-pen' : 'text-neutral-300'}`}>{line.label}</span>
-            <span className="font-mono text-neutral-500 tabular-nums hidden sm:inline">{qtyRate}</span>
             <span className={`font-mono tabular-nums w-[68px] text-right ${amountCls}`}>{fmtGBP(line.amount)}</span>
           </div>
           {line.workings && (

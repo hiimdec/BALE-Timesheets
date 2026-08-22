@@ -703,6 +703,80 @@ function stagePreCallWindow(eng, ok) {
   }
 }
 
+// ---- TSD-BASIS: lineBasis is the PDF's old inline form, extracted ------------
+// The timesheet PDF's day breakdown built its per-line working inline. That
+// same string is now wanted on screen, so it was lifted into a shared
+// lineBasis(line) rather than copied — a second copy would drift silently,
+// because nothing compares the PDF against the screen.
+//
+// This pins the EXTRACTION itself: the pre-extraction form is reproduced below
+// as the oracle and compared against lineBasis over every line a spread of real
+// days emits. Byte-identical or red. It is deliberately not a spot-check of a
+// few strings — the claim is "nothing changed", and only running both over the
+// same lines can support that.
+//
+// The one intended divergence is unreachable here: lineBasis also suppresses
+// the multiplication on `displayFlat` lines, and displayFlat is set by
+// splitNightLinesForDisplay at the DISPLAY layer, never by the engine. No
+// engine line carries it, so the PDF's output cannot move.
+function stageLineBasisExtraction(eng, ok) {
+  console.log('\nTSD-BASIS · lineBasis reproduces the PDF\'s pre-extraction working, byte for byte');
+  const lineBasis = eng.lineBasis;
+  if (typeof lineBasis !== 'function') { ok('TSD-BASIS lineBasis exposed', false, 'not exported'); return; }
+  const fmtGBP = (n) => { const v = Number(n); return '£' + (Number.isFinite(v) ? v : 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+  // VERBATIM the block that used to sit in the PDF's day breakdown.
+  const oldBasisBits = (l) => {
+    const basisBits = [];
+    if (l.detail) basisBits.push(l.detail);
+    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) basisBits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
+    return basisBits.join(' · ');
+  };
+  const crew = baseCrew({ kitMoneyEnabled: true, kitMoneyAmount: 50 });
+  const spread = [
+    ['curtailed break + travel + mileage + kit + per diem', { wrapTime: '17:00', lunchDurationMins: 30, travelOutMins: 180, travelBackMins: 180, miles: 146, kitMoneyAmount: 50, expenses: [{ id: 'e', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 35, detail: '' }] }],
+    ['pre-call + OT + mileage', { wrapTime: '21:30', lunchStartTime: '14:00', preCallTime: '06:00', miles: 20 }],
+    ['pre-call spanning 05:00 (triple + OT)', { wrapTime: '20:00', preCallTime: '04:00' }],
+    ['night shoot across midnight', { callTime: '18:00', wrapTime: '06:00', wrapNextDay: true, lunchStartTime: '23:00' }],
+    ['Saturday', { date: '2026-06-06', wrapTime: '20:00' }],
+    ['Sunday', { date: '2026-06-07', wrapTime: '20:00' }],
+    ['missed lunch + no meal provided (CWD)', { wrapTime: '20:00', lunchDurationMins: 0, noMealProvided: true }],
+    ['second break missed', { wrapTime: '21:00', secondBreakStartTime: '', secondBreakDurationMins: 0 }],
+  ];
+  let compared = 0, diffs = [];
+  for (const [name, over] of spread) {
+    let calc;
+    try { calc = eng.calculateDay(baseDay(over), crew, {}); } catch (e) { ok(`TSD-BASIS ${name} runs`, false, String(e)); continue; }
+    for (const l of (calc.lines || [])) {
+      compared++;
+      const a = oldBasisBits(l), b = lineBasis(l);
+      if (a !== b) diffs.push(`${name} / ${l.label}: old=${JSON.stringify(a)} new=${JSON.stringify(b)}`);
+    }
+  }
+  ok(`TSD-BASIS the extraction changed nothing across ${compared} real engine lines`,
+    compared > 20 && diffs.length === 0, diffs.slice(0, 3).join(' | '));
+  // The guard that makes the extraction worth having: qty 1 emits no
+  // multiplication, so a day rate never reads "1 × £444.00".
+  ok('TSD-BASIS qty 1 emits no multiplication (a day rate is not "1 × £444.00")',
+    lineBasis({ label: 'BDR', detail: '08:00 – 19:00', rate: 444, qty: 1, amount: 444 }) === '08:00 – 19:00',
+    JSON.stringify(lineBasis({ label: 'BDR', detail: '08:00 – 19:00', rate: 444, qty: 1, amount: 444 })));
+  // A line with no arithmetic never gains a fabricated rate.
+  // A rate: null line must NEVER gain a fabricated "N × £0.00". Note the qty: 2
+  // case — with qty 1 the qty !== 1 guard blocks synthesis on its own, so a
+  // qty-1 fixture would pass even if the rate check were removed, and the pin
+  // would be asserting the wrong thing. qty 2 leaves the rate check as the only
+  // thing standing between null and "2 × £0.00".
+  ok('TSD-BASIS a rate:null line never synthesises a rate, even at qty > 1 where the qty guard cannot save it',
+    lineBasis({ label: 'Late 1st Break', detail: '', rate: null, qty: 1, amount: 10 }) === ''
+    && lineBasis({ label: 'Missed 2nd Break', detail: '30m × BHR', rate: null, qty: 1, amount: 22.2 }) === '30m × BHR'
+    && lineBasis({ label: 'Hypothetical flat', detail: '', rate: null, qty: 2, amount: 20 }) === ''
+    && lineBasis({ label: 'Hypothetical flat', detail: 'two of them', rate: null, qty: 2, amount: 20 }) === 'two of them',
+    JSON.stringify(lineBasis({ label: 'Hypothetical flat', detail: '', rate: null, qty: 2, amount: 20 })));
+  // displayFlat suppresses the multiplication — the night min-fee rule.
+  ok('TSD-BASIS displayFlat suppresses the multiplication (night minimum reads as a fee, not 10 × rate)',
+    lineBasis({ label: 'Night Shoot', detail: '18:00 – 06:00', rate: 88.8, qty: 10, amount: 888, displayFlat: true }) === '18:00 – 06:00',
+    JSON.stringify(lineBasis({ label: 'Night Shoot', detail: '18:00 – 06:00', rate: 88.8, qty: 10, amount: 888, displayFlat: true })));
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -722,6 +796,7 @@ async function runCalcBoundaryAssertions() {
   stageNation(eng, ok);
   stagePrep(eng, ok);
   stagePreCallWindow(eng, ok);
+  stageLineBasisExtraction(eng, ok);
   return summary();
 }
 

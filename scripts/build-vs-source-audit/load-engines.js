@@ -42,6 +42,10 @@ const ENGINE_NAMES = [
   // Stage 2 (Kit Inventory): spot-checks read the categoriser to confirm
   // itemised kit lines bucket via the bucket:'kit' marker, not the regex.
   'categorizeBreakdownLine',
+  // The per-line WORKING string (detail + qty × rate), shared by the timesheet
+  // PDF and the on-screen breakdowns. Exposed so TSD-BASIS can prove the
+  // extraction from the PDF's old inline basisBits is output-identical.
+  'lineBasis',
   // Stage 2b auto-apply helper. Pure function: given a day + userPrefs,
   // returns the day with kitItems snapshotted from default-on inventory
   // items IFF the day's dayType is kit-bearing AND kitItems is empty.
