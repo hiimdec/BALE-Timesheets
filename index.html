@@ -1541,6 +1541,46 @@
           : rec);
     }
 
+    // The Best Boy bulk block: every crew member's share link, one text, one
+    // delivery. Encode-many-then-deliver-once — the composer calls the SAME
+    // two halves shareShootLink is built from (extractCrewShareDays +
+    // encodeShareLink) and never the fused whole in a loop, which would
+    // present one share sheet per crew member.
+    //
+    // Format (ruled): the production title first, then per member either
+    //   Name
+    //   <the url, ALONE on its line — messenger linkifiers extend a URL
+    //    through adjacent characters, and a swallowed trailing character
+    //    makes the decoder refuse the link as damaged>
+    // or, when their link cannot be made, one line:
+    //   Name - reason
+    // A member who cannot produce a link is NAMED, never silently omitted —
+    // a sender pasting six names must not send five links without noticing.
+    // Crew order is the production's own. Members with identical days
+    // produce byte-identical links; both stay, unannotated (ruled: harmless,
+    // and calling attention to it invites a question nobody would ask).
+    // Hyphen separators, not em dashes — the house copy rule.
+    async function buildCrewShareLinkBlock(production) {
+      const lines = [production.title || 'Untitled', ''];
+      let anyLinks = false;
+      for (const c of (production.crew || [])) {
+        const name = ((c.name || '') + '').trim() || 'Crew';
+        const spanDays = extractCrewShareDays(production, c.id);
+        const res = await encodeShareLink(production, spanDays, c);
+        if (res.ok) {
+          anyLinks = true;
+          lines.push(name, res.url, '');
+        } else {
+          const reason = res.reason === 'cap' ? 'over the 14-day link cap'
+            : res.reason === 'empty' ? 'no days to share yet'
+            : "couldn't make their link";
+          lines.push(`${name} - ${reason}`, '');
+        }
+      }
+      while (lines.length && lines[lines.length - 1] === '') lines.pop();
+      return { text: lines.join('\n'), anyLinks };
+    }
+
     // Decode a share fragment. THE single entry for every received link:
     //   → { ok:true, shoot } | { ok:false, reason:'newer'|'damaged' }
     // The version gate runs BEFORE any field is read; a link from a newer
@@ -32885,6 +32925,45 @@ const confirmDelete = (p) => setConfirmOpts({
                       className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                       style={{ WebkitTapHighlightColor: 'transparent' }}>
                       <IShare size={15}/>Share shoot link
+                    </button>
+                  )}
+                  {/* The Best Boy twin of the item above — the gates PARTITION:
+                      a solo row gets the single link, a BB row gets the whole
+                      crew's links as one text block ("Share times" for links).
+                      Composed by buildCrewShareLinkBlock; delivered ONCE —
+                      native as a text share (the email helper's proven
+                      Share.share({title, text}) path; the single-link {url}
+                      form carries one URL only), web via shareTextOrCopy.
+                      When NO member can produce a link the block is refusal
+                      lines only — that is information for the SENDER, not the
+                      crew chat, so it becomes a toast and no sheet opens.
+                      Same agreement gate as every share-link surface; no
+                      platform gate (ruled: web-capable from birth). */}
+                  {actionSheet.bestBoyMode && agreementOf(actionSheet) === 'apa' && (
+                    <button type="button"
+                      onClick={async () => {
+                        const p = actionSheet;
+                        setActionSheet(null);
+                        const { text, anyLinks } = await buildCrewShareLinkBlock(p);
+                        if (!anyLinks) { showToast('No one has days to share yet.'); return; }
+                        if (IS_NATIVE) {
+                          try {
+                            const { Share } = _capPlugins();
+                            await Share.share({ title: p.title || 'Shoot', text });
+                          } catch (e) {
+                            // The share sheet's own cancel rejects — not an error.
+                            const msg = (e && e.message) || '';
+                            if (!/cancel/i.test(msg)) showToast("Couldn't open the share sheet - try again.");
+                          }
+                        } else {
+                          const how = await shareTextOrCopy(text, p.title || 'Shoot');
+                          if (how === 'copied') showToast('Links copied to your clipboard.');
+                          else if (how === 'prompted') showToast('Copy the links from the box.');
+                        }
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}>
+                      <IShare size={15}/>Share links
                     </button>
                   )}
                   <button type="button"

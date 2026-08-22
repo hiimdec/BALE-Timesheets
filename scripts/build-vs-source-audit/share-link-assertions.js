@@ -292,6 +292,82 @@ async function main() {
       return wired.length === 2 && gated.length === 0 && !nulled;
     })());
 
+  // ── BLK: the Best Boy bulk block (composer executed, format pinned) ──
+  // Fixture: dave + jo share IDENTICAL days (the duplicate-URL case), priya
+  // has none (the named-refusal case), marek is over the 14-day cap.
+  const blkDay = (id, crewId, date) => ({ id, crewId, date, dayType: 'Shoot',
+    callTime: '08:00', lunchStartTime: '13:00', lunchDurationMins: 60, wrapTime: '19:00' });
+  const BLK_CREW = [
+    { id: 'dave',  name: 'Dave Hollis',  role: 'Gaffer',   bdr: 480, otCoef: 1.5 },
+    { id: 'priya', name: 'Priya Nair',   role: 'Best Boy', bdr: 420, otCoef: 1.5 },
+    { id: 'jo',    name: 'Jo Whitfield', role: 'Spark',    bdr: 380, otCoef: 1.5 },
+    { id: 'marek', name: 'Marek Kowalski', role: 'Spark',  bdr: 380, otCoef: 1.5 },
+  ];
+  const BLK_DAYS = [
+    blkDay('d1', 'dave', '2026-09-07'), blkDay('d2', 'dave', '2026-09-08'),
+    blkDay('j1', 'jo',   '2026-09-07'), blkDay('j2', 'jo',   '2026-09-08'),
+    ...Array.from({ length: 15 }, (_, i) => blkDay('m' + i, 'marek', `2026-09-${String(7 + i).padStart(2, '0')}`)),
+  ];
+  const BLK_PRODUCTION = { id: 'pBLK', title: 'Meerkat Insurance Q4', prodCo: 'Bold Yolk Films Ltd',
+    jobReference: 'MIQ4-2026-081', toAddress: '', invoicingEmail: '', crew: BLK_CREW, days: BLK_DAYS,
+    bestBoyMode: true, dayDefaults: {}, startDate: '2026-09-07' };
+
+  const blk = await eng.buildCrewShareLinkBlock(BLK_PRODUCTION);
+  const blkLines = (blk && blk.text || '').split('\n');
+  const URL_LINE = /^https:\/\/timemachineapp\.co\.uk\/s#[A-Za-z0-9_-]+$/;
+
+  ok('BLK1 title first, then every crew member exactly once, BY NAME, in crew order - a refusing member is NAMED with a reason, never silently omitted',
+    (() => {
+      if (blkLines[0] !== 'Meerkat Insurance Q4') return false;
+      const names = ['Dave Hollis', 'Priya Nair', 'Jo Whitfield', 'Marek Kowalski'];
+      const idx = names.map(n => blkLines.findIndex(l => l === n || l.startsWith(n + ' - ')));
+      const eachOnce = names.every((n, i) => blkLines.filter(l => l === n || l.startsWith(n + ' - ')).length === 1);
+      const inOrder = idx.every((v, i) => v > 0 && (i === 0 || v > idx[i - 1]));
+      const priya = blkLines.find(l => l.startsWith('Priya Nair - '));
+      const marek = blkLines.find(l => l.startsWith('Marek Kowalski - '));
+      return eachOnce && inOrder && priya === 'Priya Nair - no days to share yet'
+        && marek === 'Marek Kowalski - over the 14-day link cap';
+    })(), JSON.stringify(blkLines.slice(0, 12)));
+
+  ok('BLK2 every URL line is a URL ENTIRE - anchored start to end, so no messenger linkifier can swallow an adjacent character into the fragment',
+    (() => {
+      const urlish = blkLines.filter(l => l.includes('timemachineapp.co.uk/s#'));
+      return urlish.length === 2 && urlish.every(l => URL_LINE.test(l));
+    })(), JSON.stringify(blkLines.filter(l => l.includes('/s#')).map(l => l.slice(-20))));
+
+  ok('BLK3 each member URL equals encodeShareLink run directly on their extracted days - the composer cannot fork from the codec',
+    await (async () => {
+      const direct = await eng.encodeShareLink(BLK_PRODUCTION, eng.extractCrewShareDays(BLK_PRODUCTION, 'dave'), BLK_CREW[0]);
+      const daveIdx = blkLines.indexOf('Dave Hollis');
+      return direct.ok && daveIdx >= 0 && blkLines[daveIdx + 1] === direct.url;
+    })());
+
+  ok('BLK4 identical-day members keep their duplicate URLs - both present, byte-equal, unannotated (ruled: leave them, say nothing)',
+    (() => {
+      const daveIdx = blkLines.indexOf('Dave Hollis');
+      const joIdx = blkLines.indexOf('Jo Whitfield');
+      if (daveIdx < 0 || joIdx < 0) return false;
+      const daveUrl = blkLines[daveIdx + 1], joUrl = blkLines[joIdx + 1];
+      const clean = !/duplicate|same link|identical/i.test(blk.text);
+      return URL_LINE.test(daveUrl) && daveUrl === joUrl && clean;
+    })());
+
+  const BLK_EMPTY = { ...BLK_PRODUCTION, days: [] };
+  const blkEmpty = await eng.buildCrewShareLinkBlock(BLK_EMPTY);
+  ok('BLK5 no member linkable: anyLinks false, every member still named - and the call site gates delivery on it (toast, no sheet)',
+    blkEmpty.anyLinks === false
+    && BLK_CREW.every(c => blkEmpty.text.includes(c.name + ' - no days to share yet'))
+    && /if \(!anyLinks\) \{ showToast\('No one has days to share yet\.'\); return; \}/.test(SRC_HTML),
+    `anyLinks=${blkEmpty.anyLinks}`);
+
+  ok('BLK6b the Share links button renders on the AGREEMENT gates alone - bestBoyMode + APA, no IS_NATIVE (web-capable from birth); the solo item keeps the partition twin',
+    (() => {
+      const bb = /\{actionSheet\.bestBoyMode && agreementOf\(actionSheet\) === 'apa' && \(\s*\n\s*<button type="button"[\s\S]{0,1600}Share links/.test(SRC_HTML);
+      const solo = /\{!actionSheet\.bestBoyMode && agreementOf\(actionSheet\) === 'apa' && \(/.test(SRC_HTML);
+      const btn = (SRC_HTML.match(/\{actionSheet\.bestBoyMode && agreementOf[\s\S]{0,2200}Share links/) || [''])[0];
+      return bb && solo && btn.length > 0 && !/IS_NATIVE &&/.test(btn.split('onClick')[0]);
+    })());
+
   const built = loadBuiltEngine();
   await runBB('/built', built);
 

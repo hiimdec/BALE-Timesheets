@@ -46,6 +46,8 @@ const ENGINE_NAMES = [
   // PDF and the on-screen breakdowns. Exposed so TSD-BASIS can prove the
   // extraction from the PDF's old inline basisBits is output-identical.
   'lineBasis',
+  // The BB bulk share-link composer — executed by the BLK pins.
+  'buildCrewShareLinkBlock',
   // Stage 2b auto-apply helper. Pure function: given a day + userPrefs,
   // returns the day with kitItems snapshotted from default-on inventory
   // items IFF the day's dayType is kit-bearing AND kitItems is empty.
