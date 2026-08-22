@@ -40,7 +40,13 @@
  */
 
 const zlib = require('zlib');
+const fs = require('fs');
+const path = require('path');
 const { loadSourceEngine, loadBuiltEngine } = require('./load-engines');
+// Source text, for the handful of BLK pins that assert CALL-SITE shape
+// (render conditions, delivery gating) — things an engine execution cannot
+// see. Everything executable stays executed.
+const SRC_HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
 
 // ── The canonical fixture (gate-2 freeze; scaffold ratified to /s#) ─────────
 const FIXTURE_LINK = 'https://timemachineapp.co.uk/s#bc5NS8NAEAbgv7K850mZ_Uga9lQVC4VWLOJBQg4xG7Fk3S35EET875K0h4qFYQbmhWfmG5-wkhBgNaGHLbBrmq6tBrEJ_dhVoW7E3oCw2-xNolhlCecShNvonXiJvhXrg__oxXZwIOjOibWPsSMhc_H4fjgexdPQNc1AYhuDi0Hc36kbYR6eQajqOo5h6Fev0buv6Nu3iVrUcTG2KAkOtihwPpqwBkkC55YZBKnnmTGF0fuLBrmcEyaTTsXEJV0wZorAyzOjrD4xkCdZT2k2b6F4njzlGZNOmclkf7j0Gqf_f6X0Var8-QU';
@@ -269,6 +275,22 @@ async function main() {
   })();
   ok('B6 a legacy truckCallTime pre-call travels (the calc pays it, so the link carries it)',
     legacyDec.ok === true && legacyDec.shoot.days[0].preCallTime === '05:30');
+
+  // ── BLK6a: the per-crew share item is web-capable, via the ONE helper ──
+  // Both CrewActionSheet mounts used to wrap onShareLink in an IS_NATIVE
+  // ternary around a 15-line copy of the encode-and-deliver journey. The
+  // copies collapsed onto shareShootLink (which owns both platforms'
+  // delivery), so the item renders on web too. This pins BOTH mounts routed
+  // through the helper and NEITHER gated on platform — restoring the ternary
+  // at either mount reddens it.
+  ok('BLK6a both CrewActionSheet mounts pass an UNCONDITIONAL onShareLink routed through shareShootLink (web-capable; no IS_NATIVE ternary)',
+    (() => {
+      const handlers = SRC_HTML.match(/onShareLink=\{[\s\S]*?\}\}/g) || [];
+      const wired = handlers.filter(h => /await shareShootLink\(production, spanDays, /.test(h) && /extractCrewShareDays\(production, /.test(h));
+      const gated = handlers.filter(h => /IS_NATIVE \?/.test(h));
+      const nulled = /onShareLink=\{IS_NATIVE/.test(SRC_HTML);
+      return wired.length === 2 && gated.length === 0 && !nulled;
+    })());
 
   const built = loadBuiltEngine();
   await runBB('/built', built);
