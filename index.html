@@ -19541,7 +19541,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function CalcBreakdownView({ production, days, crew, total, onClose, onExportPDF, onExportText, onPickDay, onGenerateInvoice, userPrefs }) {
+    // `onShare` replaces the two export props this view used to own. It had its
+    // OWN two-item share sheet while its parent owned a four-item one, so the
+    // Shoot Total screen offered two share affordances with different contents
+    // — and on native both were reachable at once, because the native bar's
+    // share button outlives this overlay. There is now ONE sheet per screen and
+    // the parent owns it; this view only asks for it to open.
+    //
+    // Guarded at the render site rather than defaulted: a mount that forgets
+    // `onShare` loses the button visibly, instead of showing one that opens
+    // nothing. That is exactly what the ProductionApp mount used to do.
+    function CalcBreakdownView({ production, days, crew, total, onClose, onShare, onPickDay, onGenerateInvoice, userPrefs }) {
+      // The overlay is a pushed screen, so it must own the native chrome while
+      // it is up: back + its own title, and NOT the shoot's trailing actions
+      // (whose share button would be the second affordance). Root's trailing
+      // ternary tests activeSubScreen BEFORE the shoot branches for this. This
+      // also supplies the back level the parent used to register separately.
+      useTabRootSubScreen(true, 'Shoot Total', onClose, 'solo-calc-screen');
       // Format-aware "Generate Invoice" CTA (solo skip-editor export): the
       // two-line pill label reflects userPrefs.invoiceExportFormat. The action
       // itself is supplied by the caller (onGenerateInvoice → generateOrExport).
@@ -19582,7 +19598,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const uniqueDayCount = Array.from(new Set((days || []).map(d => d.date).filter(Boolean))).length;
 
       const [realMoneyExpanded, setRealMoneyExpanded] = useState(true);
-      const [showShareMenu, setShowShareMenu] = useState(false);
       const [expandedDays, setExpandedDays] = useState(() => new Set());
       const toggleDay = (dayId) => setExpandedDays(s => {
         const next = new Set(s);
@@ -19612,15 +19627,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 Shoot Total
               </h3>
               )}
+              {onShare ? (
               <button
                 type="button"
-                onClick={() => setShowShareMenu(true)}
+                onClick={onShare}
                 className="text-[10px] uppercase tracking-[0.14em] font-bold text-sky-500 hover:text-sky-400 px-2 py-1 transition-colors"
                 style={{ WebkitTapHighlightColor: 'transparent' }}
                 aria-label="Share / export"
               >
                 SHARE
               </button>
+              ) : <span />}
             </div>
           </div>
 
@@ -19868,38 +19885,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
           </div>
 
-          {/* SHARE menu — Export PDF / Export Text. Wave 1 (Phase D): now
-              slides up + swipe-down-dismiss via <Sheet>. */}
-          <Sheet open={showShareMenu} onClose={() => setShowShareMenu(false)}>
-            <div className="px-5 pt-1 pb-3">
-              <div className="text-sm font-bold text-neutral-100 flex items-center gap-2">
-                <IShare size={14}/>Share / export
-              </div>
-            </div>
-            <div className="px-4 pb-4 flex flex-col gap-2">
-              {onExportPDF && (
-                <button type="button"
-                  onClick={() => { setShowShareMenu(false); onExportPDF(); }}
-                  className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black flex items-center gap-2"
-                  style={{ WebkitTapHighlightColor: 'transparent', boxShadow: '0 4px 16px rgb(var(--tm-sky-500) / 0.25)' }}>
-                  <IDownload size={15}/>Export PDF
-                </button>
-              )}
-              {onExportText && (
-                <button type="button"
-                  onClick={() => { setShowShareMenu(false); onExportText(); }}
-                  className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}>
-                  <IMessage size={15}/>Export text
-                </button>
-              )}
-            </div>
-            <div className="px-4 pb-5 pt-1 border-t border-neutral-800">
-              <button type="button" onClick={() => setShowShareMenu(false)}
-                className="w-full px-4 py-2.5 text-sm font-semibold text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-xl transition-colors"
-                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
-            </div>
-          </Sheet>
         </div>
       );
     }
@@ -21176,7 +21161,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       useBackLevel(showSettings, () => setShowSettings(false), 'solo-prod-settings');
       useBackLevel(invoicesTabVisible(userPrefs) && invoiceNav && invoiceNav !== 'list', handleEditorClose, 'solo-invoice-editor');
       useBackLevel(invoicesTabVisible(userPrefs) && invoiceNav === 'list', () => setInvoiceNav(null), 'solo-invoice-list');
-      useBackLevel(showCalc, () => setShowCalc(false), 'solo-calc');
+      // 'solo-calc' back level retired: CalcBreakdownView registers its own via
+      // useTabRootSubScreen, which pushes a back level AND declares the chrome.
+      // Two levels for one overlay would need two backs to leave it.
 
       const soloWeeks = useMemo(() => computeWeeks(production, days), [production, days]);
       const soloCrew = crew[0] || null;
@@ -21539,8 +21526,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               total={totalShoot}
               onClose={() => setShowCalc(false)}
               onGenerateInvoice={invoicingEnabled(userPrefs) ? () => { setShowCalc(false); generateOrExport(); } : undefined}
-              onExportPDF={() => { setShowCalc(false); handleExportPDF(); }}
-              onExportText={async () => { setShowCalc(false); await handleExportText(); }}
+              onShare={() => setShowExportSheet(true)}
               onPickDay={(dayId) => setCurrentDayId(dayId)}
               userPrefs={userPrefs}
             />
@@ -21613,14 +21599,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 style={{ WebkitTapHighlightColor: 'transparent' }}>
                 <IMessage size={15}/>Timesheet (Text)
               </button>
-              {/* Shoot-share link (v1: solo shoots only — this sheet IS the solo
-                  view, so BB never renders it; native-only, the web build hides
-                  it). Encodes the whole shoot into the /s# universal link via
-                  the frozen codec and hands the URL to the native share sheet
-                  (@capacitor/share — the house share vehicle; never a
-                  hand-built mailto:, per the gate-1 length finding). The
-                  14-day cap REFUSES with a message, never a silent trim. */}
-              {IS_NATIVE && (
+              {/* Shoot-share link. Encodes the whole shoot into the /s#
+                  universal link via the frozen codec. The 14-day cap REFUSES
+                  with a message, never a silent trim.
+                  NOT native-only any more: encodeShareLink is a PURE function
+                  with no Capacitor dependency, so only the DELIVERY differed.
+                  Native hands the URL to @capacitor/share (the house vehicle;
+                  never a hand-built mailto:, per the gate-1 length finding);
+                  web uses shareTextOrCopy, which already backs navigator.share
+                  with a clipboard fallback and is the same vehicle the text
+                  export uses.
+                  The gates that remain are AGREEMENT gates, not platform ones,
+                  and they hold on both: the codec is APA-shaped and can only
+                  ever refuse for Best Boy or long form, and an option that can
+                  only error is worse than an absent one. They are spelled out
+                  here rather than left implicit in "this sheet is the solo
+                  view" so the rule survives a future mount. */}
+              {!production.bestBoyMode && agreementOf(production) === 'apa' && (
                 <button type="button"
                   onClick={async () => {
                     setShowExportSheet(false);
@@ -21638,13 +21633,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                           : "Couldn't make the link for this shoot.");
                       return;
                     }
-                    try {
-                      const { Share } = _capPlugins();
-                      await Share.share({ url: res.url });
-                    } catch (e) {
-                      // The share sheet's own cancel rejects — that's not an error.
-                      const msg = (e && e.message) || '';
-                      if (!/cancel/i.test(msg)) showToast("Couldn't open the share sheet - try again.");
+                    if (IS_NATIVE) {
+                      try {
+                        const { Share } = _capPlugins();
+                        await Share.share({ url: res.url });
+                      } catch (e) {
+                        // The share sheet's own cancel rejects — that's not an error.
+                        const msg = (e && e.message) || '';
+                        if (!/cancel/i.test(msg)) showToast("Couldn't open the share sheet - try again.");
+                      }
+                    } else {
+                      // Web: shareTextOrCopy reports which vehicle it used, so the
+                      // toast can say what actually happened. 'shared' needs no
+                      // toast (the OS sheet was the feedback) and 'cancelled'
+                      // must stay silent — a cancel is not a failure.
+                      const how = await shareTextOrCopy(res.url, production.title || 'Shoot');
+                      if (how === 'copied') showToast('Link copied to your clipboard.');
+                      else if (how === 'prompted') showToast('Copy the link from the box.');
                     }
                   }}
                   className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
@@ -21944,7 +21949,14 @@ const setDays = (updater) =>
       useBackLevel(showProdSettings, () => setShowProdSettings(false), 'bb-prod-settings');
       useBackLevel(invoicesTabVisible(userPrefs) && invoiceNav && invoiceNav !== 'list', handleEditorClose, 'bb-invoice-editor');
       useBackLevel(invoicesTabVisible(userPrefs) && invoiceNav === 'list', () => setInvoiceNav(null), 'bb-invoice-list');
-      useBackLevel(showCalcView, () => setShowCalcView(false), 'bb-calc');
+      // Which child showCalcView renders. ONE const, read by the back level
+      // here AND by the render below, so the two cannot drift: the BB overview
+      // branch pushes no level of its own and needs 'bb-calc'; the
+      // CalcBreakdownView branch now registers its own via useTabRootSubScreen,
+      // and keeping 'bb-calc' active there would need two backs to leave one
+      // overlay.
+      const calcViewIsBBOverview = production.viewMode === 'mobile' && production.bestBoyMode;
+      useBackLevel(showCalcView && calcViewIsBBOverview, () => setShowCalcView(false), 'bb-calc');
       useBackLevel(!!breakdownCrewMember, () => setBreakdownCrewMember(null), 'bb-crew-breakdown');
       useBackLevel(!!breakdownDate, () => setBreakdownDate(null), 'bb-day-breakdown');
       useBackLevel(!!drilldownCrewMember, () => setDrilldownCrewMember(null), 'bb-drilldown');
@@ -22004,7 +22016,7 @@ const setDays = (updater) =>
           )}
 
           {showCalcView && (
-            production.viewMode === 'mobile' && production.bestBoyMode ? (
+            calcViewIsBBOverview ? (
               breakdownCrewMember ? (
                 <CrewProductionBreakdownView
                   crewMember={breakdownCrewMember}
@@ -22040,6 +22052,10 @@ const setDays = (updater) =>
                 crew={crew}
                 total={totalShoot}
                 onClose={() => setShowCalcView(false)}
+                // Was ABSENT, so SHARE opened a sheet holding nothing but its
+                // own header and Cancel. Best Boy's export surface is the
+                // multi-crew timesheet sheet, so that is what it opens.
+                onShare={() => setShowSaveSheet(true)}
                 userPrefs={userPrefs}
               />
             )
@@ -34119,12 +34135,15 @@ const confirmDelete = (p) => setConfirmOpts({
         // A tab-root SUB-screen (Stats Earnings, invoice wizard) is also NOT a root: it carries
         // a native back + plain title, no wordmark/actions/tab bar — same as a pushed screen.
         const isTabRoot = userPrefs.onboardingComplete && !inShoot && !showSettings && !showClients && !showNewProduction && !activeSubScreen;
-        const title = inShoot ? (currentProduction.title || 'Untitled production')
+        // Same precedence as `trailing` below: a declared sub-screen owns the bar
+        // while it is up, INCLUDING over a shoot, so the title names the screen
+        // you are actually looking at rather than the job behind it.
+        const title = activeSubScreen ? activeSubScreen.title
+          : inShoot ? (currentProduction.title || 'Untitled production')
           : showClients ? 'Clients'                // pushed over Settings — checked first
           : showSettings ? 'Settings'
           : showLongFormWizard ? 'Long form setup'   // wizard owns the screen while open
           : showNewProduction ? 'New production'   // pushed screen — plain title, no wordmark
-          : activeSubScreen ? activeSubScreen.title   // tab-root sub-screen (e.g. "Earnings")
           : isTabRoot ? wordmark
           : '';
         // Stage 3b: trailing buttons are context-aware. Tab roots keep app Settings +
@@ -34137,11 +34156,18 @@ const confirmDelete = (p) => setConfirmOpts({
         // trailing; New Production / Settings get none. (The old centre-vs-left beta A/B was
         // removed in Z3 - left is now the permanent layout; isLeft stays as a readable anchor.)
         const isLeft = true;
-        const trailing = inLfShoot ? ['prodSettings']
+        // activeSubScreen is tested FIRST, above the shoot branches. A screen
+        // pushed OVER a shoot owns the bar while it is up; leaving the shoot
+        // branches to win meant the Shoot Total overlay kept the shoot's own
+        // share button, which is how that screen came to carry two share
+        // affordances at once on native — the bar's and the overlay's. A
+        // pushed screen declares itself via useTabRootSubScreen; anything that
+        // does not is unaffected.
+        const trailing = activeSubScreen ? (inShoot ? [] : ['settings'])
+          : inLfShoot ? ['prodSettings']
           : inSoloShoot ? ['prodSettings', 'share']
           : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])
           : isTabRoot ? (isLeft ? ['search', 'settings'] : ['settings'])
-          : activeSubScreen ? ['settings']
           : [];
         // Leading ACTION. LEFT roots: empty (the left-aligned wordmark fills the slot, native-side).
         // CENTRED roots: search. New Production: its own close X (fires the back path → discard guard).

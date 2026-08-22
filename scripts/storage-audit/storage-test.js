@@ -7722,8 +7722,67 @@ async function main() {
       /function DayJumpSheet\([\s\S]{0,2000}<Sheet open=\{open\} onClose=\{onClose\} maxWidth=\{480\}>/.test(html));
     check('II3f ProductionPickerSheet routes through <Sheet>',
       /function ProductionPickerSheet\([\s\S]{0,2500}<Sheet open onClose=\{onClose\}>/.test(html));
-    check('II3g CalcBreakdownView share/export menu routes through <Sheet>',
-      /<Sheet open=\{showShareMenu\} onClose=\{\(\) => setShowShareMenu\(false\)\}>/.test(html));
+    // II3g INVERTED. It used to pin that CalcBreakdownView's own share menu
+    // routed through <Sheet>. That menu is GONE: it held two items while its
+    // parent's sheet held four, so the Shoot Total screen offered two share
+    // affordances with different contents, and on native both were reachable
+    // at once because the native bar outlives the overlay. The rule now is
+    // that this view owns NO sheet and delegates through `onShare`, so the
+    // assertion is inverted rather than deleted — re-introducing a sheet here
+    // reddens it, which is the regression worth guarding.
+    check('II3g CalcBreakdownView owns NO share sheet — it delegates through onShare, so one screen cannot offer two share affordances',
+      (() => {
+        const view = (html.match(/function CalcBreakdownView\(\{[\s\S]*?\n    \}\n/) || [''])[0];
+        if (view.length < 500) return false;
+        const noSheet = !/<Sheet\s/.test(view) && !/showShareMenu/.test(html);
+        const delegates = /onClick=\{onShare\}/.test(view) && /\{onShare \? \(/.test(view);
+        return noSheet && delegates;
+      })());
+    // II3g2 — the empty-sheet regression, pinned at its cause. The
+    // ProductionApp mount passed no export handlers, so SHARE opened a sheet
+    // containing its own header and Cancel and nothing else: present,
+    // reachable, useless, every gate green. EVERY mount must hand over an
+    // onShare, and the surviving sheet must carry unconditional items.
+    check('II3g2 every CalcBreakdownView mount passes onShare, and the one surviving share sheet can never render zero items',
+      (() => {
+        const mounts = html.match(/<CalcBreakdownView\b[\s\S]*?\/>/g) || [];
+        if (mounts.length < 2) return false;                      // both mounts must still exist
+        const allWired = mounts.every(m => /\sonShare=\{/.test(m));
+        // The two timesheet buttons in SoloDayPage's sheet are UNCONDITIONAL —
+        // no `{x && (` guard between the sheet body and each button — so the
+        // sheet always has something in it whatever the prefs say.
+        const sheet = (html.match(/<Sheet open=\{showExportSheet\}[\s\S]*?<\/Sheet>/) || [''])[0];
+        const unconditional = /<div className="px-4 pb-4 flex flex-col gap-2">\s*<button type="button"[\s\S]{0,600}Timesheet \(PDF\)/.test(sheet)
+          && /Timesheet \(Text\)/.test(sheet);
+        return allWired && unconditional;
+      })());
+    // II3i — the OTHER half of the two-affordances fix, and the half no other
+    // pin covers. Suppressing the overlay's own sheet is useless if the native
+    // bar keeps its share button while the overlay is up, which is exactly
+    // what happened: inShoot is (openId && currentProduction) and the overlay
+    // does not clear openId, so the shoot branches won and the bar kept
+    // ['prodSettings','share'] on top of the Shoot Total screen.
+    //
+    // Anchored on the TERNARY HEADS, not on source positions or comments: the
+    // rule is "a declared sub-screen is tested before the shoot branches", and
+    // the head of each chain is where that is expressible. Reordering either
+    // chain reddens this.
+    check('II3i a declared sub-screen owns the native bar over a shoot — activeSubScreen heads BOTH the trailing and title chains, so a pushed screen cannot inherit the shoot\'s share button',
+      (() => {
+        const trailingHead = /const trailing = activeSubScreen \? \(inShoot \? \[\] : \['settings'\]\)\s*\n\s*: inLfShoot \?/.test(html);
+        const titleHead = /const title = activeSubScreen \? activeSubScreen\.title\s*\n\s*: inShoot \?/.test(html);
+        // And the overlay actually declares itself, or the heads above never fire.
+        const declares = /useTabRootSubScreen\(true, 'Shoot Total', onClose, 'solo-calc-screen'\);/.test(html);
+        // The parent's duplicate back level is gone — two levels for one
+        // overlay would need two backs to leave it.
+        const noDupeLevel = !/useBackLevel\(showCalc, /.test(html);
+        // Best Boy's 'bb-calc' survives ONLY for the branch that renders no
+        // sub-screen of its own, and the branch condition is ONE shared const.
+        const bbGated = /const calcViewIsBBOverview = production\.viewMode === 'mobile' && production\.bestBoyMode;/.test(html)
+          && /useBackLevel\(showCalcView && calcViewIsBBOverview, /.test(html)
+          && /\{showCalcView && \(\s*\n\s*calcViewIsBBOverview \? \(/.test(html);
+        return trailingHead && titleHead && declares && noDupeLevel && bbGated;
+      })());
     check('II3h SoloDayPage export sheet routes through <Sheet>',
       /<Sheet open=\{showExportSheet\} onClose=\{\(\) => setShowExportSheet\(false\)\}>/.test(html));
 
