@@ -21638,7 +21638,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               total={totalShoot}
               onClose={() => setShowCalc(false)}
               onGenerateInvoice={invoicingEnabled(userPrefs) ? () => { setShowCalc(false); generateOrExport(); } : undefined}
-              onShare={() => setShowExportSheet(true)}
+              // Native chrome: the BAR owns share (ruled) — no onShare, so the
+              // overlay's SHARE text button does not render and the screen has
+              // one control. Web has no bar; the button stays.
+              onShare={NATIVE_CHROME_ACTIVE ? undefined : () => setShowExportSheet(true)}
               onPickDay={(dayId) => setCurrentDayId(dayId)}
               userPrefs={userPrefs}
             />
@@ -34270,13 +34273,18 @@ const confirmDelete = (p) => setConfirmOpts({
         // removed in Z3 - left is now the permanent layout; isLeft stays as a readable anchor.)
         const isLeft = true;
         // activeSubScreen is tested FIRST, above the shoot branches. A screen
-        // pushed OVER a shoot owns the bar while it is up; leaving the shoot
-        // branches to win meant the Shoot Total overlay kept the shoot's own
-        // share button, which is how that screen came to carry two share
-        // affordances at once on native — the bar's and the overlay's. A
-        // pushed screen declares itself via useTabRootSubScreen; anything that
-        // does not is unaffected.
-        const trailing = activeSubScreen ? (inShoot ? [] : ['settings'])
+        // pushed OVER a shoot owns the bar while it is up — but owning it
+        // means choosing its contents, not blanking it. RULED (reversing the
+        // first ruling): on a SOLO shoot the bar's share icon IS the one
+        // share control while Shoot Total is up — the overlay's own SHARE
+        // text button yields to it (the SoloDayPage mount passes onShare only
+        // off native chrome). The icon routes through soloActionsRef to the
+        // same four-item sheet, which presents ABOVE the overlay
+        // (SHEET_BASE_Z 60 + slot). prodSettings still never leaks. In a BB
+        // grid shoot soloActionsRef is null — a share icon there could only
+        // no-op, so the bar carries nothing and the overlay keeps its own
+        // button instead: every screen still has exactly ONE share control.
+        const trailing = activeSubScreen ? (inSoloShoot ? ['share'] : inShoot ? [] : ['settings'])
           : inLfShoot ? ['prodSettings']
           : inSoloShoot ? ['prodSettings', 'share']
           : inBBShoot ? (currentProduction.viewMode === 'mobile' ? ['prodSettings', 'more'] : ['prodSettings'])

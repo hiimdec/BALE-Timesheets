@@ -7756,21 +7756,25 @@ async function main() {
           && /Timesheet \(Text\)/.test(sheet);
         return allWired && unconditional;
       })());
-    // II3i — the OTHER half of the two-affordances fix, and the half no other
-    // pin covers. Suppressing the overlay's own sheet is useless if the native
-    // bar keeps its share button while the overlay is up, which is exactly
-    // what happened: inShoot is (openId && currentProduction) and the overlay
-    // does not clear openId, so the shoot branches won and the bar kept
-    // ['prodSettings','share'] on top of the Shoot Total screen.
-    //
-    // Anchored on the TERNARY HEADS, not on source positions or comments: the
-    // rule is "a declared sub-screen is tested before the shoot branches", and
-    // the head of each chain is where that is expressible. Reordering either
-    // chain reddens this.
-    check('II3i a declared sub-screen owns the native bar over a shoot — activeSubScreen heads BOTH the trailing and title chains, so a pushed screen cannot inherit the shoot\'s share button',
+    // II3i — the native-bar half. REWRITTEN when the ruling reversed (the
+    // founder wants the BAR icon, not the overlay's text button): the rule is
+    // no longer "the bar goes blank over a shoot" but "the bar's contents are
+    // CHOSEN by the sub-screen ternary, and the screen has exactly one share
+    // control". activeSubScreen still heads both chains — a pushed screen can
+    // never inherit the shoot's trailing wholesale (prodSettings must not
+    // leak) — and over a SOLO shoot the chosen content is exactly ['share'],
+    // while a BB shoot's sub-screen carries nothing (soloActionsRef is null
+    // there; a share icon could only no-op). The overlay's own button yields
+    // on native chrome via the conditional onShare at the SoloDayPage mount,
+    // which is the other half of "exactly one".
+    check('II3i the sub-screen ternary heads both chains and CHOOSES the bar: [\'share\'] over a solo shoot, nothing over a BB shoot, and the overlay button yields on native chrome',
       (() => {
-        const trailingHead = /const trailing = activeSubScreen \? \(inShoot \? \[\] : \['settings'\]\)\s*\n\s*: inLfShoot \?/.test(html);
+        const trailingHead = /const trailing = activeSubScreen \? \(inSoloShoot \? \['share'\] : inShoot \? \[\] : \['settings'\]\)\s*\n\s*: inLfShoot \?/.test(html);
         const titleHead = /const title = activeSubScreen \? activeSubScreen\.title\s*\n\s*: inShoot \?/.test(html);
+        // The overlay's own SHARE button exists only where the bar does not:
+        // the solo mount hands onShare through undefined under native chrome.
+        const yields = /onShare=\{NATIVE_CHROME_ACTIVE \? undefined : \(\) => setShowExportSheet\(true\)\}/.test(html);
+        if (!yields) return false;
         // And the overlay actually declares itself, or the heads above never fire.
         const declares = /useTabRootSubScreen\(true, 'Shoot Total', onClose, 'solo-calc-screen'\);/.test(html);
         // The parent's duplicate back level is gone — two levels for one
