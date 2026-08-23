@@ -720,15 +720,26 @@ function stagePreCallWindow(eng, ok) {
 // splitNightLinesForDisplay at the DISPLAY layer, never by the engine. No
 // engine line carries it, so the PDF's output cannot move.
 function stageLineBasisExtraction(eng, ok) {
-  console.log('\nTSD-BASIS · lineBasis reproduces the PDF\'s pre-extraction working, byte for byte');
+  console.log('\nTSD-BASIS · lineBasis matches the spec form (detail + guarded, formatted qty × rate), byte for byte');
   const lineBasis = eng.lineBasis;
   if (typeof lineBasis !== 'function') { ok('TSD-BASIS lineBasis exposed', false, 'not exported'); return; }
   const fmtGBP = (n) => { const v = Number(n); return '£' + (Number.isFinite(v) ? v : 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
-  // VERBATIM the block that used to sit in the PDF's day breakdown.
+  // The SPEC form. Originally the verbatim pre-extraction block with a raw
+  // `${l.qty}`; the qty display was then DELIBERATELY formatted (two decimals,
+  // trailing zeros trimmed — the DayEditModal pattern) after the founder's
+  // screen showed a 26-minute curtailment as 0.43333333333333335 × £44.40.
+  // The oracle carries the same formatting, so this stage now pins the WHOLE
+  // display rule: detail, the qty !== 1 guard, the join, AND the qty format.
+  // The pin moved WITH a ruling, not to pass: the amount never moved and the
+  // explicit cases below hold the format red-able on its own.
   const oldBasisBits = (l) => {
     const basisBits = [];
     if (l.detail) basisBits.push(l.detail);
-    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) basisBits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
+    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) {
+      const q = Number(l.qty);
+      const qStr = Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, '');
+      basisBits.push(`${qStr} × ${fmtGBP(l.rate)}`);
+    }
     return basisBits.join(' · ');
   };
   const crew = baseCrew({ kitMoneyEnabled: true, kitMoneyAmount: 50 });
@@ -775,6 +786,24 @@ function stageLineBasisExtraction(eng, ok) {
   ok('TSD-BASIS displayFlat suppresses the multiplication (night minimum reads as a fee, not 10 × rate)',
     lineBasis({ label: 'Night Shoot', detail: '18:00 – 06:00', rate: 88.8, qty: 10, amount: 888, displayFlat: true }) === '18:00 – 06:00',
     JSON.stringify(lineBasis({ label: 'Night Shoot', detail: '18:00 – 06:00', rate: 88.8, qty: 10, amount: 888, displayFlat: true })));
+  // The qty DISPLAY format, executed through the REAL engine on the case the
+  // founder reported: a 26-minute curtailment is 26/60, a non-terminating
+  // third, and the raw float printed 0.43333333333333335 × £44.40 on his
+  // screen. Two decimals, trailing zeros trimmed; the clean halves that were
+  // already right must not move.
+  ok('TSD-BASIS a third-hour qty reads 0.43, not the raw IEEE float (the 26-minute curtailment case, run through the engine)',
+    (() => {
+      const calc = eng.calculateDay(baseDay({ wrapTime: '17:00', lunchDurationMins: 34 }), baseCrew(), {});
+      const l = calc.lines.find(x => x.label === 'Curtailed 1st Break');
+      return !!l && lineBasis(l) === '26m × BHR single time · 0.43 × £44.40'
+        && Math.abs(l.amount - (26 / 60) * 44.40) < 0.005;   // the AMOUNT is the exact product, untouched
+    })(),
+    (() => { const c = eng.calculateDay(baseDay({ wrapTime: '17:00', lunchDurationMins: 34 }), baseCrew(), {}); const l = c.lines.find(x => x.label === 'Curtailed 1st Break'); return l ? JSON.stringify(lineBasis(l)) + ' amount=' + l.amount : 'no line'; })());
+  ok('TSD-BASIS clean fractions are unmoved: 1.5 stays "1.5", 2.5 stays "2.5", 146 stays "146", 0.5 stays "0.5"',
+    lineBasis({ label: 'OT', detail: '', rate: 66.6, qty: 1.5, amount: 99.9 }) === '1.5 × £66.60'
+    && lineBasis({ label: 'Travel Time', detail: '1hr each way deducted', rate: 44.4, qty: 2.5, amount: 111 }) === '1hr each way deducted · 2.5 × £44.40'
+    && lineBasis({ label: 'Mileage', detail: '146 mi', rate: 0.5, qty: 146, amount: 73 }) === '146 mi · 146 × £0.50'
+    && lineBasis({ label: 'Curtailed 1st Break', detail: '30m × BHR single time', rate: 44.4, qty: 0.5, amount: 22.2 }) === '30m × BHR single time · 0.5 × £44.40');
 }
 
 // ---- Runner ------------------------------------------------------------------

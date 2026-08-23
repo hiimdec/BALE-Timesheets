@@ -4952,7 +4952,15 @@
       // on it; honouring it here keeps ONE rule instead of two. Engine lines
       // never carry it, so the PDF's output is unaffected.
       if (!line.displayFlat && Number(line.rate) > 0 && Number(line.qty) > 0 && Number(line.qty) !== 1) {
-        bits.push(`${line.qty} × ${fmtGBP(line.rate)}`);
+        // DISPLAY of the qty only — the amount is untouched. A raw float
+        // qty leaks IEEE noise on thirds: a 26-minute curtailment is 26/60 =
+        // 0.43333333333333335, which is what the founder's screen showed
+        // beside £44.40. Two decimals, trailing zeros trimmed (the
+        // DayEditModal table's own pattern), so 1.5 stays "1.5", 2.5 stays
+        // "2.5", 146 stays "146", and the third becomes "0.43".
+        const q = Number(line.qty);
+        const qStr = Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, '');
+        bits.push(`${qStr} × ${fmtGBP(line.rate)}`);
       }
       return bits.join(' · ');
     }
