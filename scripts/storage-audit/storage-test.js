@@ -6017,6 +6017,34 @@ async function main() {
       && /Months are bucketed by when the work happened\. The total is what was billed in this window, so the two can differ\./.test(srcHtml));
   }
 
+  // ===== LAB. RULING 1's labelling clause — agreement-value figures say so =====
+  // A user who waived £99.90 of OT must not read "Overtime earned £99.90"
+  // with nothing saying it is agreement value, not billed. A label that can
+  // silently vanish is the same failure class as a pin that cannot go red,
+  // so each of the four sites is pinned INDIVIDUALLY - dropping the marker at
+  // any one site reddens its own clause, not a diluted all-of-them test.
+  {
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    const one = (re) => (srcHtml.match(re) || []).length === 1;
+    check('LAB1a the marker is ONE module-scope constant, defined once',
+      one(/const AGREEMENT_VALUE_LABEL = 'agreement value';/g));
+    check('LAB1b Overtime earned carries the marker',
+      one(/<StatCard label="Overtime earned" value=\{fmtGBP\(stats\.otEarnings\)\} sub=\{AGREEMENT_VALUE_LABEL\}\/>/g));
+    check('LAB1c Late lunch earned carries the marker',
+      one(/<StatCard label="Late lunch earned" value=\{fmtGBP\(stats\.lateLunchEarnings\)\} sub=\{AGREEMENT_VALUE_LABEL\}\/>/g));
+    check('LAB1d Highest earning day carries the marker beside its date',
+      one(/label="Highest earning day"[^\n]*sub=\{`\$\{fmtDateOrdinal\(stats\.highestDay\.date\)\} · \$\{AGREEMENT_VALUE_LABEL\}`\}/g));
+    check('LAB1e the month drilldown\'s category bars header carries the marker',
+      one(/>Breakdown <span[^>]*>· \{AGREEMENT_VALUE_LABEL\}<\/span><\/div>/g));
+    // The definition, once, in the note - the founder\'s wording VERBATIM. The
+    // note\'s month clause must also state Ruling 2\'s work-month rule; the
+    // retired "month you sent it" wording must not return.
+    check('LAB2 the note defines the marker in the founder\'s wording, states the work-month rule, and the retired send-month wording is gone',
+      one(/Figures marked agreement value show what the work was worth, before anything you discounted or waived\./g)
+      && /an invoice counts in the month of the earliest day it covers/.test(srcHtml)
+      && !/counts in the month you sent it/.test(srcHtml));
+  }
+
   // ===== Y. MONTHLY EARNINGS CHART — windowing + vs-last-year =====
   // The chart view (MonthlyEarningsView) layers over the Stage-1
   // series. The pure pieces — month math, 12-entry windowing, clamp,
@@ -9484,8 +9512,13 @@ async function main() {
         // Phase 17 MOVER: "billed" was right for a screen that scaled lines.
         // It no longer does, so at line level these ARE what the rule paid and
         // the labels revert. The note carries the granularity instead.
-        const labels = /<StatCard label="Overtime earned" value=\{fmtGBP\(stats\.otEarnings\)\}\/>/.test(html)
-          && /<StatCard label="Late lunch earned" value=\{fmtGBP\(stats\.lateLunchEarnings\)\}\/>/.test(html)
+        // Ruling 1's labelling clause later added the agreement-value sub to
+        // BOTH cards (LAB1b/LAB1c pin it from the other direction) - the
+        // quoted literal moved WITH that ruling. This clause's own rule is
+        // unchanged: the labels say what the RULE paid ("earned", never
+        // "billed"), and Avg day earnings is deliberately untouched.
+        const labels = /<StatCard label="Overtime earned" value=\{fmtGBP\(stats\.otEarnings\)\} sub=\{AGREEMENT_VALUE_LABEL\}\/>/.test(html)
+          && /<StatCard label="Late lunch earned" value=\{fmtGBP\(stats\.lateLunchEarnings\)\} sub=\{AGREEMENT_VALUE_LABEL\}\/>/.test(html)
           && !/label="Overtime billed"/.test(html) && !/label="Late lunch billed"/.test(html)
           && /<StatCard label="Avg day earnings"/.test(html);
         return single && firstRun && onDemand && placed && gated && labels;

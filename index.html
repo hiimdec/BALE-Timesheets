@@ -4943,6 +4943,17 @@
     //
     // PURE and display-only. Reads nothing but the line; writes nothing; the
     // engine is untouched and no amount can move through it.
+    // RULING 1's labelling clause: every agreement-value figure says so on
+    // screen. ONE module-scope constant renders the marker at all four sites
+    // (the two hero cards, the highest-day card in StatsScreen, and the month
+    // drilldown's bars in MonthlyEarningsView - two different components,
+    // which is exactly why this cannot live inside either), so the label
+    // cannot drift or be dropped at one site alone. The definition lives
+    // once, in InvoicedEarningsNote, and the Invoiced row stays the only
+    // bridge to the billed figure. The user who waived £99.90 of OT reads
+    // "Overtime earned £99.90 · agreement value", not a bare number.
+    const AGREEMENT_VALUE_LABEL = 'agreement value';
+
     function lineBasis(line) {
       if (!line) return '';
       const bits = [];
@@ -27783,7 +27794,7 @@ const setDays = (updater) =>
                         ))}
                     </div>
                   )}
-                  <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 font-bold mb-2.5">Breakdown</div>
+                  <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 font-bold mb-2.5">Breakdown <span className="normal-case font-normal tracking-normal text-neutral-600">· {AGREEMENT_VALUE_LABEL}</span></div>
                   {(() => {
                     const bk = selEntry.grossBuckets;
                     const bmax = Math.max(1, bk.basic, bk.ot, bk.pen, bk.kit, bk.extras);
@@ -28443,12 +28454,17 @@ const setDays = (updater) =>
         <div className="mt-2 bg-sky-500/[0.04] border border-sky-500/25 rounded-xl p-4">
           {/* States the GRANULARITY, which is the whole finding: the app knows
               what each invoice billed and what each day computes, and does not
-              know what each day billed. The last clause is load-bearing - it
-              is what would have explained a £10 late break reading £8.66. No
-              "now": this is a rule, not a release announcement. */}
+              know what each day billed. The last clause of the second sentence
+              is load-bearing - it is what would have explained a £10 late
+              break reading £8.66. The month clause matches RULING 2 (work
+              month, not send month - the old "month you sent it" text stated
+              the retired rule). The final sentence is RULING 1's labelling
+              clause: the ONE definition of the "agreement value" marker the
+              four figures carry, founder's wording verbatim. No "now": this
+              is a rule, not a release announcement. */}
           <div className="text-xs font-semibold text-sky-400 mb-1">Job and monthly totals follow your invoices</div>
           <p className="text-xs text-neutral-400 leading-relaxed">
-            Job and monthly totals show what you invoiced, discounts included, and an invoice counts in the month you sent it - so money can sit in a different month from the work. Day and line figures show what the day calculates to, because an invoice doesn't record how a discount was split across days.
+            Job and monthly totals show what you invoiced, discounts included, and an invoice counts in the month of the earliest day it covers - so the money sits with the work, not with the day you pressed send. Day and line figures show what the day calculates to, because an invoice doesn't record how a discount was split across days. Figures marked agreement value show what the work was worth, before anything you discounted or waived.
           </p>
           <button
             type="button"
@@ -28682,7 +28698,7 @@ const setDays = (updater) =>
                 <SectionHdr>Highlights</SectionHdr>
                 <div className="space-y-3">
                   {stats.highestDay && (
-                    <TappableCard label="Highest earning day" value={fmtGBP(stats.highestDay.amount)} sub={fmtDateOrdinal(stats.highestDay.date)} statKey="highest">
+                    <TappableCard label="Highest earning day" value={fmtGBP(stats.highestDay.amount)} sub={`${fmtDateOrdinal(stats.highestDay.date)} · ${AGREEMENT_VALUE_LABEL}`} statKey="highest">
                       <HighestDayBreakdown buckets={stats.highestDay.buckets}/>
                       <ComparisonContent amount={stats.highestDay.amount}/>
                     </TappableCard>
@@ -28716,8 +28732,8 @@ const setDays = (updater) =>
                   <InvoicedEarningsNote dismissLabel="Close" onDismiss={() => setWhyInvoicedOpen(false)} />
                 )}
                 <div className="grid grid-cols-2 gap-3">
-                  <StatCard label="Overtime earned" value={fmtGBP(stats.otEarnings)}/>
-                  <StatCard label="Late lunch earned" value={fmtGBP(stats.lateLunchEarnings)}/>
+                  <StatCard label="Overtime earned" value={fmtGBP(stats.otEarnings)} sub={AGREEMENT_VALUE_LABEL}/>
+                  <StatCard label="Late lunch earned" value={fmtGBP(stats.lateLunchEarnings)} sub={AGREEMENT_VALUE_LABEL}/>
                   <StatCard label="Late lunches" value={stats.lateLunchCount}/>
                   <StatCard label="TOC breaches" value={stats.tocBreachCount}/>
                   <StatCard label="Night shoots" value={stats.nightShootCount}/>
