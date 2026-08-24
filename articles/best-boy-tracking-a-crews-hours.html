@@ -199,6 +199,15 @@
     .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
     .footer-links a:hover { color: var(--tm-accent); }
     a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+
+    /* Callout - the answer-first summary, and dated update notes */
+    .update-note {
+      background: var(--card); border: 1px solid var(--border);
+      border-left: 3px solid var(--tm-accent); border-radius: 10px;
+      padding: 12px 16px; margin: 0 0 28px;
+      font-size: 14px; line-height: 1.6; color: var(--text-2);
+    }
+    .update-note strong { color: var(--text); }
   </style>
 
   <script type="application/ld+json">
@@ -292,28 +301,30 @@
       <h1>How a best boy tracks a whole crew's hours</h1>
       <p class="byline">TimeMachine · Published 24 August 2026</p>
 
+      <p class="update-note"><strong>The short answer.</strong> Log each crew member's day as it happens rather than reconstructing eight of them at the end of the week. Set the department day once and override anyone who worked differently. Then hand each person their own days, so they are receiving your record rather than rebuilding it.</p>
+
       <p>Most pay tools assume one person and one day. A best boy has neither. You have a crew, they came on at different times, one of them was on a different rate for a step up, two of them left before wrap, and at the end of the job every one of them needs their own days to invoice from.</p>
       <p>This is the part of the job nobody trains you for, and it is where most of the money goes missing.</p>
 
-      <h2>What actually goes wrong</h2>
+      <h2>What actually goes wrong?</h2>
       <p>The failure is almost never the arithmetic. It is the record.</p>
       <p>Calls are individual. The unit call is one time, but your crew's calls are not, and a rigger who came in at 6am on a 7am unit call is on a different day to everyone else. Step ups happen mid job and get forgotten by the time the invoice goes out. Somebody wraps early and nobody writes it down. <a href="/articles/breaks-and-penalties">A late lunch</a> hits the whole department at once, so the penalty applies to everyone, which is easy to remember on the day and impossible to reconstruct three weeks later.</p>
       <p>By the time the crew are invoicing, the person who knows what happened is you, and you are on another job.</p>
 
-      <h2>The order that works</h2>
+      <h2>What order should you work in?</h2>
       <p>Keep the record on the day, not at the end of the week.</p>
       <p>Log the times as they happen, per person, not per department. The department shares a lunch and a wrap most days, but not every day, and the exceptions are exactly the ones worth money.</p>
       <p>Record the day type before the times. Whether it is a shoot, <a href="/articles/prep-recce-and-pre-light-days">a pre-light, a prep</a> or <a href="/articles/continuous-working-day">a continuous working day</a> changes when overtime starts, and it is much easier to set at call than to work out later. A day that turned continuous because lunch never came is a different day, and it needs marking as one.</p>
       <p>Note the extras separately: kit, <a href="/articles/apa-mileage-what-you-can-claim">mileage</a>, per diems. They are the things that fall off an invoice, because they are not part of the day calculation and nothing prompts you for them.</p>
       <p>Then hand it over. The crew should not be reconstructing your record, they should be receiving it.</p>
 
-      <h2>How TimeMachine does it</h2>
+      <h2>How does TimeMachine do it?</h2>
       <p>Best Boy mode holds a crew's days in one place rather than one person's. You add the crew to the job, set each person's role and rate, and log the day against the crew rather than repeating it eight times: the department day is set once and each crew member inherits it unless you override them individually. The calculation runs per person, because a lighting technician and a rigger on the same day produce different money.</p>
       <p>At the end of the job, each crew member can be sent their own days as a share link, from that person's entry in the crew list. They open it, and it becomes their record to invoice from, in their own app. You are not sending a spreadsheet and hoping, and they are not retyping your times into something else.</p>
       <p>Two things to know about the link. It is made on the iPhone app, so that is where you send from, though what arrives opens in either. And it carries up to 14 days, so a long job needs sending in parts rather than as one link.</p>
       <p>The days you send are the days you logged. If a late lunch applied to the department, it applies on every crew member's copy, which is the point. Rest days and days off are not carried, and nothing personal travels with it: per diems are left for the person receiving it to set.</p>
 
-      <h2>Why this matters more than the calculation</h2>
+      <h2>Why does this matter more than the calculation?</h2>
       <p>Any tool can multiply an hourly rate. What decides whether a crew gets paid correctly is whether somebody kept an accurate record of eight different days while working one of them.</p>
       <p>That is the actual job, and it is why TimeMachine was built by a best boy rather than for one.</p>
 
