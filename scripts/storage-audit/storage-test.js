@@ -366,6 +366,7 @@ async function transformedAppCode() {
     'try { globalThis.__migrateDayExpenses = migrateDayExpenses; } catch (_) {}\n' +
     'try { globalThis.__migrateDay = migrateDay; } catch (_) {}\n' +
     'try { globalThis.__fmtQtyDisplay = fmtQtyDisplay; } catch (_) {}\n' +
+    'try { globalThis.__invoiceWaivedTotal = invoiceWaivedTotal; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -4055,12 +4056,18 @@ async function main() {
       // one side and not the other is exactly what let it survive, so the
       // rule is now that every path computes the SAME uncovered share.
       const kgHome = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      // KG1 MOVED WITH the months-to-worked ruling: the uncovered share
+      // exists to avoid double-counting against invoice NETS, so it lives
+      // exactly where nets are read - the home totals, the hero and prodCo.
+      // Months hold no nets any more (worked value under the work basis),
+      // so they take the FULL discount there, and none under the paid basis
+      // where the deal is already inside the landed cash.
       const kgStats = /const uncoveredShare = past > 0 \? \(past - covered\) \/ past : 1;\n\s*const applied = discount \* uncoveredShare;/.test(srcIE)
         && /totalEarnings -= applied;/.test(srcIE)
-        && /earningsByMonth\[dealMonth\] = \(earningsByMonth\[dealMonth\] \|\| 0\) - applied;/.test(srcIE);
-      const kgMonthly = /const applied = discount \* \(past > 0 \? \(past - cov\) \/ past : 1\);/.test(srcIE)
-        && /kitDiscount\.set\(dealMonth, \(kitDiscount\.get\(dealMonth\) \|\| 0\) \+ applied\);/.test(srcIE);
-      check('KG1 the kit deal discount scales to the UNCOVERED share on every money path - home totals, the stats rollup and the monthly series - because an invoiced day already carries the negotiated kit money inside its net; stats lacked this guard and double-deducted on a fully-invoiced production',
+        && /earningsByProdCo\[co\] = \(earningsByProdCo\[co\] \|\| 0\) - applied;/.test(srcIE)
+        && /if \(monthBasis !== 'paid' && dealMonth\) \{\n\s*earningsByMonth\[dealMonth\] = \(earningsByMonth\[dealMonth\] \|\| 0\) - discount;/.test(srcIE);
+      const kgMonthly = /if \(monthBasis === 'paid'\) continue;\n\s*if \(!\(discount > 0\)\) continue;\n\s*kitDiscount\.set\(dealMonth, \(kitDiscount\.get\(dealMonth\) \|\| 0\) \+ discount\);/.test(srcIE);
+      check('KG1 the kit deal guard lives where NETS are read - home/hero/prodCo keep the uncovered share; months (worked value, no nets) take the FULL discount, and none under the paid basis',
         kgHome === 1 && kgStats && kgMonthly,
         `home=${kgHome} stats=${kgStats} monthly=${kgMonthly}`);
       const marker = (srcIE.match(/<Badge variant="draft">PART INVOICED<\/Badge>/g) || []).length;
@@ -5998,24 +6005,29 @@ async function main() {
     const series = aggregateMonthly(enriched, [prod], prefs, billed, covered);
     const jun = series.find(m => m.month === '2026-06') || {};
     const jul = series.find(m => m.month === '2026-07') || {};
-    check('MB1 a sent invoice buckets its WHOLE net into the month of the EARLIEST day it covers — the June/July straddle lands £888 in June and nothing in July, though it was sent in July',
-      Math.abs((jun.amount || 0) - 888) < 0.005 && Math.abs(jul.amount || 0) < 0.005,
+    // MB1/MB2 REWRITTEN with the months-to-worked ruling: under the work
+    // basis a month is its DAYS' value and invoice nets never enter, so the
+    // straddle ceases to exist - each month holds its own day, and the
+    // invoice cannot move money between them.
+    check('MB1 months are WORKED value: the June/July straddle holds £444 in EACH month (its own day), and the sent invoice moves nothing between them',
+      Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
       `jun=${jun.amount} jul=${jul.amount}`);
-    check('MB2 bucketing conserves money — the series sum equals uncovered computed + billed nets (nothing created, nothing destroyed, only moved between months)',
+    check('MB2 the worked series sums to the days\' computed value exactly (nothing created, nothing destroyed, no invoice attribution at all)',
       Math.abs(series.reduce((s2, m) => s2 + (m.amount || 0), 0) - 888) < 0.005,
       `seriesSum=${series.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
     // ONE rule, two rollups: both monthly sites read invoiceWorkMonth, and no
     // sent-date form survives at either. (The WINDOW filter keeps dateSent -
     // that is the ruled billed-basis tax-year, asserted kept by WIN1.)
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
-    // MB3 extended WITH the basis amendment: both rollups now bucket through
-    // the ONE basis switch (invoiceMonthFor), which routes to invoiceWorkMonth
-    // or invoicePaidMonth; the sent-month form stays gone.
-    check('MB3 both monthly rollups bucket through the ONE basis switch (invoiceMonthFor), and the sent-month form is GONE from both',
-      (srcHtml.match(/const imo = invoiceMonthFor\(inv, monthBasis\);/g) || []).length === 2
-      && /const invoiceWorkMonth = \(inv\) => \{/.test(srcHtml)
-      && /const invoicePaidMonth = \(inv\) => \(inv && inv\.paidDate\) \? String\(inv\.paidDate\)\.slice\(0, 7\) : null;/.test(srcHtml)
-      && (srcHtml.match(/const monthBasis = statsMonthBasisOf\(userPrefs\);/g) || []).length === 2
+    // MB3 REWRITTEN with the months-to-worked ruling: under the work basis
+    // months never read an invoice NET (the day loops build them); nets
+    // enter months ONLY under the paid basis, strictly via invoicePaidMonth.
+    // invoiceMonthFor survives for ONE purpose - placing the waived line.
+    check('MB3 months read invoice NETS only under the paid basis (strictly by invoicePaidMonth); the work basis builds months from days alone; invoiceMonthFor places only the waived line',
+      (srcHtml.match(/if \(monthBasis !== 'paid'\) continue;\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+      && (srcHtml.match(/if \(monthBasis === 'paid'\) \{\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+      && (srcHtml.match(/const wmo = invoiceMonthFor\(inv, monthBasis\);/g) || []).length === 1
+      && !/const imo = invoiceMonthFor\(inv, monthBasis\);/.test(srcHtml)
       && !/const imo = String\(inv\.date\)\.slice\(0, 7\);/.test(srcHtml)
       && !/const imo = inv\.date\.slice\(0, 7\);/.test(srcHtml));
     // MB4 WIDENED with the amendment: under the paid basis the rows can miss
@@ -6024,8 +6036,8 @@ async function main() {
     check('MB4 the mismatch note shows on ANY real mismatch (no windowed-only gate) and carries BOTH bases\' wording',
       /\{Math\.abs\(stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005 && \(/.test(srcHtml)
       && !/\{filter !== 'all' && Math\.abs\(stats\.monthBreakdown/.test(srcHtml)
-      && /Months are bucketed by when the work happened\. The total is what was billed in this window, so the two can differ\./.test(srcHtml)
-      && /Months are bucketed by when you were paid\. The total also counts money not yet paid, so the two can differ\./.test(srcHtml));
+      && /Months show the worked value of their days\. The total is what was billed in this window, so the two can differ\./.test(srcHtml)
+      && /Months show what you were paid in them\. The total also counts money not yet paid, so the two can differ\./.test(srcHtml));
   }
 
   // ===== MB5-MB8. The basis amendment — by date worked / by date paid =====
@@ -6066,8 +6078,10 @@ async function main() {
     // absence of the key means 'work', which is the amendment's default rule.
     const defSeries = runBasis({ ...baseInv, datePaid: '2026-08-15', status: 'paid' }, { displayName: 'Dec' });
     const d6 = defSeries.find(m => m.month === '2026-06') || {};
-    check('MB5b with the pref ABSENT the basis is work date (Ruling 2 stays the default) - the same invoice sits whole in June',
-      Math.abs((d6.amount || 0) - 888) < 0.005, `jun=${d6.amount}`);
+    const dAll = defSeries.reduce((s2, m) => s2 + (m.amount || 0), 0);
+    check('MB5b with the pref ABSENT the basis is work date: months read day value (June £444), and the invoice net inflates no month (series sums to the days\' £888)',
+      Math.abs((d6.amount || 0) - 444) < 0.005 && Math.abs(dAll - 888) < 0.005,
+      `jun=${d6.amount} sum=${dAll}`);
 
     // MB6 — an UNPAID claim under the paid basis lands in NO month, and the
     // dateSent fallback is asserted absent from the paid-month helper.
@@ -6088,13 +6102,77 @@ async function main() {
     // MB8 — the visible surface: ONE toggle writing the pref, the awaiting
     // line gated to paid basis AND non-zero (a permanent £0.00 is noise), the
     // bridge row renamed under paid, and the one phrasing family everywhere.
-    check('MB8 the toggle writes the pref; the awaiting line renders only under paid basis and only when non-zero; the bridge reads Paid under the paid basis; one phrasing family',
+    // MB8 REWRITTEN: the Invoiced ± bridge row is GONE with its mechanism
+    // (it reconciled two bases months no longer straddle), and the waived
+    // row replaces it - display-only, non-zero gated, never subtracted.
+    check('MB8 the toggle writes the pref; the awaiting line renders only under paid basis and only when non-zero; the bridge row is GONE (no invoicedAdj, no Paid-or-Invoiced ternary); the waived row renders non-zero-gated; one phrasing family',
       /setUserPrefs\(prev => \(\{ \.\.\.prev, statsMonthBasis: statsMonthBasisOf\(prev\) === 'paid' \? 'work' : 'paid' \}\)\)/.test(srcHtml)
       && /\{basis === 'paid' && stats\.awaitingPayment >= 0\.005 && \(/.test(srcHtml)
-      && /\{monthBasis === 'paid' \? 'Paid' : 'Invoiced'\}/.test(srcHtml)
+      && !/invoicedAdj/.test(srcHtml)
+      && !/monthBasis === 'paid' \? 'Paid' : 'Invoiced'/.test(srcHtml)
+      && /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
+      && /Waived on invoices/.test(srcHtml)
       && (srcHtml.match(/by date paid/g) || []).length >= 3
       && (srcHtml.match(/by date worked/g) || []).length >= 2
       && !/by month paid/.test(srcHtml));
+  }
+
+  // ===== WV. The waived figure — what the sender chose not to bill =====
+  // Replaces the Invoiced ± bridge (founder-ruled): one figure, one meaning,
+  // read off frozen lines exactly as the Waived/Reduced badges read them.
+  // Its BLIND SPOT is pinned as a boundary: an edited-down line (the rate
+  // itself retyped) carries no discountedQty, is indistinguishable from a
+  // correction, and must contribute NOTHING - known limit, not future bug.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const wv = sb.__invoiceWaivedTotal;
+    check('WV1 waived is exact off frozen lines: partial discount (10→8 × £50 = £100) + fully waived priced line (£99.90) + fully waived fixed line (£10) + untouched lines = £209.90 to the penny',
+      typeof wv === 'function' && Math.abs(wv([
+        { label: 'BDR', rate: 50, qty: 10, amount: 500, discountedQty: 8 },
+        { label: 'OT', rate: 66.6, qty: 1.5, amount: 99.9, discountedQty: 0 },
+        { label: 'Late 1st Break', rate: null, qty: 1, amount: 10, discountedQty: 0 },
+        { label: 'Mileage', rate: 0.5, qty: 146, amount: 73, discountedQty: null },
+      ]) - 209.90) < 0.005,
+      typeof wv === 'function' ? String(wv([{ rate: 50, qty: 10, amount: 500, discountedQty: 8 }])) : 'not exposed');
+    // WV2 caught a REAL leak before landing: the first draft computed
+    // full − billed for EVERY line, so a dq-null line whose stored amount
+    // sat below qty × rate (a rounding-mode artefact, or the edited-line
+    // shape with a stale amount) leaked into "waived" with no waive signal.
+    // The figure now requires discountedQty by construction.
+    check('WV2 THE BLIND SPOT, pinned as a boundary: a line with NO discountedQty contributes NOTHING - neither the clean edited-down shape (rate retyped, amounts in sync) nor the desynced shape (amount below qty × rate) can leak in',
+      typeof wv === 'function'
+      && wv([{ label: 'Recce', rate: 125, qty: 1, amount: 125, discountedQty: null }]) === 0
+      && wv([{ label: 'Recce', rate: 300, qty: 1, amount: 125, discountedQty: null }]) === 0,
+      typeof wv === 'function' ? `edited=£${wv([{ label: 'Recce', rate: 125, qty: 1, amount: 125, discountedQty: null }])} desynced=£${wv([{ label: 'Recce', rate: 300, qty: 1, amount: 125, discountedQty: null }])}` : 'not exposed');
+    // Month attribution + display-only, EXECUTED through the real rollup.
+    const aggregateMonthly = sb.__aggregateMonthly;
+    const moneyOf = sb.__claimedInvoicesOf;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const mkDay = (id, date) => ({ id, crewId: 'c1', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+    const prod = { id: 'pWV', title: 'Waive', crew: [crew], bestBoyMode: false, dayDefaults: {},
+      days: [mkDay('d1', '2026-06-30'), mkDay('d2', '2026-07-01')],
+      invoices: [{ id: 'iWV', userCrewId: 'c1', status: 'sent', dateSent: '2026-07-02', invoiceDate: '2026-07-02',
+        createdAt: '2026-07-02T10:00:00.000Z', dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
+        lineItems: [
+          { id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null },
+          { id: 'l2', label: 'OT', detail: '', rate: 66.6, qty: 1.5, amount: 99.9, discountedQty: 0 },
+        ] }] };
+    const prefs = { displayName: 'Dec' };
+    const billed = moneyOf(prod, prefs).map(x => ({ ...x, production: prod }));
+    const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
+    const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
+    const covered = new Set(prod.days.map(d => `pWV:${d.date}`));
+    const series = aggregateMonthly(enriched, [prod], prefs, billed, covered);
+    const jun = series.find(m => m.month === '2026-06') || {}, jul = series.find(m => m.month === '2026-07') || {};
+    check('WV3 the waived £99.90 lands WHOLE in the invoice\'s month (earliest covered day, June) and is DISPLAY-ONLY - both month amounts stay pure day value (£444 each)',
+      Math.abs((jun.waived || 0) - 99.9) < 0.005 && Math.abs(jul.waived || 0) < 0.005
+      && Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
+      `junWaived=${jun.waived} julWaived=${jul.waived} junAmt=${jun.amount} julAmt=${jul.amount}`);
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    check('WV4 the waived row renders non-zero-gated and the month amount formula never subtracts it',
+      /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
+      && /const amount = monthBasis === 'paid' \? billed : \(gross \+ coveredComputed - discount\);/.test(srcHtml));
   }
 
   // ===== QF. ONE qty formatter on every surface that prints a qty =====
@@ -6155,10 +6233,12 @@ async function main() {
     check('LAB3 the invoices tab\'s Paid section states its basis - "by date paid", the ONE phrasing family all three surfaces share',
       (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by date paid<\/span><\/div>/g) || []).length === 1
       && !/by month paid/.test(srcHtml));
-    check('LAB2 the note defines the marker in the founder\'s wording, states the work-month rule, and the retired send-month wording is gone',
+    check('LAB2 the note defines the marker in the founder\'s wording, states the worked-months rule (and the paid branch), and the retired invoice-month wordings are gone',
       one(/Figures marked agreement value show what the work was worth, before anything you discounted or waived\./g)
-      && /an invoice counts in the month of the earliest day it covers/.test(srcHtml)
-      && !/counts in the month you sent it/.test(srcHtml));
+      && /Months show what the work in them was worth, with anything you waived as its own line/.test(srcHtml)
+      && /Months show what you were paid in them - anything unpaid waits outside the months/.test(srcHtml)
+      && !/counts in the month you sent it/.test(srcHtml)
+      && !/counts in the month of the earliest day it covers/.test(srcHtml));
   }
 
   // ===== Y. MONTHLY EARNINGS CHART — windowing + vs-last-year =====

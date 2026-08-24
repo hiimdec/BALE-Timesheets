@@ -14307,18 +14307,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     //   { month: "YYYY-MM", amount, grossBuckets, kitDiscount, days,
     //     shoots, dayTypes, notYetCounted, isCurrentMonth }
     //
-    // Invariant (Phase 17): amount === Σ grossBuckets − kitDiscount
-    //                              + invoicedAdj   (per month).
-    // invoicedAdj is 0 whenever nothing in the month is invoiced, so the
-    // pre-Phase-17 identity still holds for uninvoiced months.
-    // Holds by construction — each calc.lines entry falls in exactly
-    // one bucket via categorizeBreakdownLine, and the per-day Σ lines
-    // equals calc.total. The discount is allocated to the deal-month
-    // (the month of that production's first user-day-pre-today)
-    // identically to StatsScreen's existing computation, so the
-    // series's `amount` per month equals the existing stats
-    // `earningsByMonth[month]` byte-for-byte (X-suite X3 enforces
-    // this back-compat).
+    // Invariant (months-to-worked ruling): under the WORK basis
+    //   amount === Σ grossBuckets − kitDiscount   (per month, exactly)
+    // — the pre-Phase-17 identity restored, and now it holds for
+    // invoiced months too, because invoice nets no longer enter months.
+    // Under the PAID basis amount is cash landed and the buckets are a
+    // separate labelled fact (worked value); no identity binds them.
+    // `waived` is display-only and part of no sum. The discount is
+    // allocated to the deal-month identically to StatsScreen's
+    // computation, so the series's `amount` per month equals the stats
+    // `earningsByMonth[month]` byte-for-byte (X-suite X3 enforces it).
     //
     // Not single-sourced into stats: gap-month emission and the
     // earliest→current-month range would change two downstream stats
@@ -14326,14 +14324,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // earningsByMonth)` length). Keeping the helper separate +
     // asserting parity preserves all existing stats outputs byte-
     // identical.
-    // Phase 17: `billedInvoices` and `coveredKeys` carry the invoice-scope
-    // money in. A covered day contributes its COMPUTED value to the buckets
-    // (the categories are what the agreement paid) but not to the month's
-    // amount; the invoice supplies that, whole, in the month it was SENT. The
-    // two therefore no longer agree by construction, and `invoicedAdj` is the
-    // difference — surfaced as its own row beside the kit deal row rather
-    // than hidden, because that gap is precisely what nobody could see when a
-    // £10 late break read £8.66.
+    // billedInvoices carries nets (paid basis) and the per-invoice waived
+    // figure; coveredKeys survives for the kit-share maths the HERO still
+    // needs. The Invoiced ± bridge is gone with its mechanism — months are
+    // one basis each way, so there is nothing to reconcile.
     function aggregateMonthly(enrichedDays, productions, userPrefs, billedInvoices = [], coveredKeys = new Set()) {
       // Not days-only: a month can hold a claim and no work, and the series
       // has to span it. Third copy of this guard in one screen — the memo,
@@ -14349,6 +14343,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const nm = m === 12 ? 1     : m + 1;
         return `${ny}-${String(nm).padStart(2, '0')}`;
       };
+
+      // The chosen basis, read ONCE for the whole pass — pass 2 (kit) and the
+      // waived/billed loop below both branch on it.
+      const monthBasis = statsMonthBasisOf(userPrefs);
 
       // Pass 1 — gather per-month sums, buckets, distinct sets, and the
       // per-production earliest user-day (drives kit-discount deal-month).
@@ -14420,23 +14418,39 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const earliest = earliestByProd.get(pid);
         if (!earliest) continue;
         const dealMonth = earliest.slice(0, 7);
-        // Same guard as the stats rollup and the home totals: an invoiced
-        // day already carries the negotiated kit money inside its invoice
-        // net, so only the uncovered share is subtracted again here.
-        const past = pastCount.get(pid) || 0, cov = coveredCount.get(pid) || 0;
-        const applied = discount * (past > 0 ? (past - cov) / past : 1);
-        if (!(applied > 0)) continue;
-        kitDiscount.set(dealMonth, (kitDiscount.get(dealMonth) || 0) + applied);
+        // Months are WORKED value now, holding no invoice nets - so the FULL
+        // deal discount applies to the deal month (the old uncovered-share
+        // guard existed to avoid double-counting against nets that no longer
+        // enter months; the hero keeps that guard on its own path). Under the
+        // paid basis months are cash and the deal is already inside what
+        // landed, so no month kit row at all.
+        if (monthBasis === 'paid') continue;
+        if (!(discount > 0)) continue;
+        kitDiscount.set(dealMonth, (kitDiscount.get(dealMonth) || 0) + discount);
       }
 
-      // The claims, each whole, each in the month the CHOSEN BASIS files it
-      // under: 'work' = earliest covered day (Ruling 2, default), 'paid' =
-      // the month it was paid, unpaid excluded (the amendment).
-      const monthBasis = statsMonthBasisOf(userPrefs);
+      // ── Months moved to the WORKED side (Ruling 2 mechanism superseded,
+      // founder-ruled). Under the work basis a month is the agreement value
+      // of ITS DAYS - invoice nets never enter, so no invoice can move money
+      // between months and the straddle ceases to exist as a concept. Under
+      // the paid basis a month is WHAT LANDED - paid nets only, pure cash;
+      // days contribute nothing there (uninvoiced work shows in the bars,
+      // which stay worked value under both bases, already labelled).
+      //
+      // The bridge row is GONE with its mechanism. The one invoice-derived
+      // month figure that remains is WAIVED - what the sender chose not to
+      // bill - attributed whole to the invoice's month under the active
+      // basis (the old attribution rule surviving in miniature).
+      const waivedByMonth = new Map();
       for (const inv of (billedInvoices || [])) {
-        const imo = invoiceMonthFor(inv, monthBasis);
-        if (!imo) continue;   // no month under this basis → excluded, never guessed
-        billedByMonth.set(imo, (billedByMonth.get(imo) || 0) + (Number(inv.net) || 0));
+        if (monthBasis === 'paid') {
+          const pmo = invoicePaidMonth(inv);
+          if (pmo) billedByMonth.set(pmo, (billedByMonth.get(pmo) || 0) + (Number(inv.net) || 0));
+        }
+        if ((Number(inv.waived) || 0) >= 0.005) {
+          const wmo = invoiceMonthFor(inv, monthBasis);
+          if (wmo) waivedByMonth.set(wmo, (waivedByMonth.get(wmo) || 0) + Number(inv.waived));
+        }
       }
 
       // Pass 3 — per-month "not yet counted" hint. Walks productions
@@ -14492,18 +14506,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const dt = dayTypesMonth.get(mo) || {};
         const dayTypesOut = {};
         for (const [type, set] of Object.entries(dt)) dayTypesOut[type] = set.size;
-        // The month's money: computed for uncovered days + whatever was
-        // billed here. invoicedAdj is the visible gap between the buckets
-        // (computed, for every day including covered ones) and the amount.
+        // The month's money, ONE basis each way: worked = every day's
+        // computed value minus the kit deal (bars + kit row = total,
+        // exactly); paid = what landed. No bridge row exists to reconcile
+        // anything - waived is its own labelled fact.
         const billed = billedByMonth.get(mo) || 0;
         const coveredComputed = coveredGross.get(mo) || 0;
-        const amount = gross + billed - discount;
+        const amount = monthBasis === 'paid' ? billed : (gross + coveredComputed - discount);
         return {
           month: mo,
           amount,
           grossBuckets: buckets,
-          invoicedAdj: (billed - coveredComputed),
-          hasInvoiced: coveredComputed > 0 || billed > 0,
+          waived: waivedByMonth.get(mo) || 0,
           kitDiscount: discount,
           days,
           shoots,
@@ -14544,7 +14558,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const zero = (mo) => ({
         month: mo, amount: 0,
         grossBuckets: { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 },
-        invoicedAdj: 0, hasInvoiced: false,
+        waived: 0,
         kitDiscount: 0, days: 0, shoots: 0, dayTypes: {},
         notYetCounted: 0, isCurrentMonth: false,
       });
@@ -27883,21 +27897,19 @@ const setDays = (updater) =>
                       <span className="text-tm-good">{fmtGBP(-selEntry.kitDiscount)}</span>
                     </div>
                   )}
-                  {/* Phase 17: the bars are what the days COMPUTE; the month's
-                      total is what the invoices BILLED. The gap is real and
-                      gets its own row rather than being spread back across the
-                      bars - spreading it is the bug this replaced. Same
-                      position and treatment as the kit deal row above. */}
-                  {selEntry.hasInvoiced && Math.abs(selEntry.invoicedAdj || 0) >= 0.005 && (
+                  {/* The Invoiced ± bridge row is GONE (founder-ruled). It
+                      carried two unrelated things under one label - a
+                      straddled invoice one month, a waiver the next - and it
+                      reconciled two bases nobody asked to see reconciled.
+                      Months are ONE basis now (worked value; cash under the
+                      paid basis), so there is nothing to bridge. What
+                      remains is the thing he asked to see: what he chose to
+                      give away. Display-only - never subtracted from the
+                      month, which stays pure worked value. */}
+                  {(selEntry.waived || 0) >= 0.005 && (
                     <div className="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800 text-[12px] font-mono text-neutral-400">
-                      {/* The bridge row's NAME follows the basis (amendment):
-                          under work date it is what invoices billed against
-                          this month's work; under paid date it is what LANDED
-                          here - cash in a different month from the work.
-                          Same arithmetic, different meaning, so the label
-                          must move with it. */}
-                      <span className="flex-1">{monthBasis === 'paid' ? 'Paid' : 'Invoiced'} {selEntry.invoicedAdj < 0 ? '−' : '+'} {fmtGBP(Math.abs(selEntry.invoicedAdj))}</span>
-                      <span className={selEntry.invoicedAdj < 0 ? 'text-tm-good' : 'text-neutral-300'}>{fmtGBP(selEntry.invoicedAdj)}</span>
+                      <span className="flex-1">Waived on invoices</span>
+                      <span className="text-tm-pen">{fmtGBP(selEntry.waived)}</span>
                     </div>
                   )}
                   <div className="mt-4 pt-3 border-t border-neutral-800 text-[12px] text-neutral-400 leading-snug">
@@ -28255,12 +28267,20 @@ const setDays = (updater) =>
           const dayEntry = earningsByDay[pKey] || { date: e.day.date, amount: 0, buckets: { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 } };
           // earningsByDay is COMPUTED for every day, covered or not — a day's
           // worth under the agreement is knowable and is what "highest day"
-          // asks. The period and prod-co rollups take only UNCOVERED days;
-          // their invoices are added below, by dateSent.
+          // asks.
           dayEntry.amount += e.calc.total;
           earningsByDay[pKey] = dayEntry;
-          if (!isCovered(e)) {
+          // Months are WORKED value under the work basis (superseding Ruling
+          // 2's mechanism): EVERY day's computed total lands in its work
+          // month - invoice nets no longer enter months, so nothing
+          // double-counts and no invoice can move money between months.
+          // Under the paid basis months are cash only; days contribute
+          // nothing. ProdCo stays BILLED (Ruling 1) and keeps the
+          // uncovered-day rule, its nets added below.
+          if (statsMonthBasisOf(userPrefs) !== 'paid') {
             earningsByMonth[mo] = (earningsByMonth[mo] || 0) + e.calc.total;
+          }
+          if (!isCovered(e)) {
             earningsByProdCo[co] = (earningsByProdCo[co] || 0) + e.calc.total;
           }
           if (!uniqueDaysByMonth[mo]) uniqueDaysByMonth[mo] = new Set();
@@ -28298,9 +28318,14 @@ const setDays = (updater) =>
         for (const inv of billedInvoices) {
           const co = inv.production.prodCo?.trim() || '(Unknown)';
           earningsByProdCo[co] = (earningsByProdCo[co] || 0) + inv.net;
-          const imo = invoiceMonthFor(inv, monthBasis);
-          if (!imo) continue;
-          earningsByMonth[imo] = (earningsByMonth[imo] || 0) + inv.net;
+          // Months read invoice nets ONLY under the paid basis (cash landed,
+          // in the month it was paid; unpaid lands nowhere, never guessed).
+          // Under the work basis months are the days' worked value, built in
+          // the day loop above.
+          if (monthBasis !== 'paid') continue;
+          const pmo = invoicePaidMonth(inv);
+          if (!pmo) continue;
+          earningsByMonth[pmo] = (earningsByMonth[pmo] || 0) + inv.net;
         }
         // Awaiting payment: claimed money with no month under the paid basis.
         // Computed regardless of basis (it is basis-independent fact), shown
@@ -28347,12 +28372,20 @@ const setDays = (updater) =>
           const covered = coveredCountByProd.get(e.production.id) || 0;
           const uncoveredShare = past > 0 ? (past - covered) / past : 1;
           const applied = discount * uncoveredShare;
-          if (applied <= 0) continue;
-          totalEarnings -= applied;
-          const dealMonth = firstUserMonthForProd.get(e.production.id).slice(0, 7);
-          earningsByMonth[dealMonth] = (earningsByMonth[dealMonth] || 0) - applied;
-          const co = e.production.prodCo?.trim() || '(Unknown)';
-          earningsByProdCo[co] = (earningsByProdCo[co] || 0) - applied;
+          const dealMonth = firstUserMonthForProd.get(e.production.id) ? firstUserMonthForProd.get(e.production.id).slice(0, 7) : null;
+          // Three consumers, three treatments: the hero (billed) keeps the
+          // uncovered SHARE; months (worked value) take the FULL discount -
+          // no invoice nets in months means nothing to double-count against -
+          // or none under paid, where the deal is already inside the landed
+          // cash; prodCo (billed) keeps the share.
+          if (applied > 0) {
+            totalEarnings -= applied;
+            const co = e.production.prodCo?.trim() || '(Unknown)';
+            earningsByProdCo[co] = (earningsByProdCo[co] || 0) - applied;
+          }
+          if (monthBasis !== 'paid' && dealMonth) {
+            earningsByMonth[dealMonth] = (earningsByMonth[dealMonth] || 0) - discount;
+          }
         }
 
         const highestDay = Object.values(earningsByDay).reduce((best, d) => d.amount > (best?.amount || 0) ? d : best, null);
@@ -28536,8 +28569,8 @@ const setDays = (updater) =>
             {Math.abs(stats.monthBreakdown.reduce((s2, m) => s2 + m.amount, 0) - stats.totalEarnings) >= 0.005 && (
               <p className="mt-2 text-[10px] text-neutral-500 leading-snug">
                 {statsMonthBasisOf(userPrefs) === 'paid'
-                  ? 'Months are bucketed by when you were paid. The total also counts money not yet paid, so the two can differ.'
-                  : 'Months are bucketed by when the work happened. The total is what was billed in this window, so the two can differ.'}
+                  ? 'Months show what you were paid in them. The total also counts money not yet paid, so the two can differ.'
+                  : 'Months show the worked value of their days. The total is what was billed in this window, so the two can differ.'}
               </p>
             )}
           </div>
@@ -28565,8 +28598,8 @@ const setDays = (updater) =>
           <div className="text-xs font-semibold text-sky-400 mb-1">Job and monthly totals follow your invoices</div>
           <p className="text-xs text-neutral-400 leading-relaxed">
             {statsMonthBasisOf(userPrefs) === 'paid'
-              ? "Job and monthly totals show what you invoiced, discounts included, and an invoice counts in the month it was paid - so the money sits where it landed, and anything unpaid waits outside the months. "
-              : "Job and monthly totals show what you invoiced, discounts included, and an invoice counts in the month of the earliest day it covers - so the money sits with the work, not with the day you pressed send. "}
+              ? "Job totals show what you invoiced, discounts included. Months show what you were paid in them - anything unpaid waits outside the months. "
+              : "Job totals show what you invoiced, discounts included. Months show what the work in them was worth, with anything you waived as its own line - so no invoice can move money between months. "}
             Day and line figures show what the day calculates to, because an invoice doesn't record how a discount was split across days. Figures marked agreement value show what the work was worth, before anything you discounted or waived.
           </p>
           <button
@@ -28917,6 +28950,32 @@ const setDays = (updater) =>
       return item.amount;
     }
 
+    // What an invoice's lines CHOSE NOT TO BILL - the waive mechanism's money,
+    // read exactly as the Waived/Reduced badges read it: full value minus
+    // getLineTotal per line. Full value is qty × rate for a priced line and
+    // the stored amount for a fixed one.
+    //
+    // CLAIMS ONLY WHAT IT CAN SEE (ruled): a line EDITED DOWN - the rate
+    // itself retyped - carries no discountedQty and is indistinguishable from
+    // a correction (the recorded "no invoice-level discount concept" gap), so
+    // it contributes NOTHING here. That blind spot is pinned as a boundary
+    // (WV pins), not left to resurface as a bug report. Kit deals stay in
+    // their own row and never enter this figure.
+    function invoiceWaivedTotal(lineItems) {
+      return (lineItems || []).reduce((sum, item) => {
+        // discountedQty IS the waive signal, required by construction. A
+        // dq-null line contributes nothing even when its stored amount sits
+        // below qty × rate - that shape is a rounding-mode artefact or an
+        // edited line, and counting it would leak pennies (or a silent edit)
+        // into a figure that claims to be what the user CHOSE to waive.
+        // WV2 caught exactly that leak before this shipped.
+        if (item.discountedQty === null || item.discountedQty === undefined) return sum;
+        const full = item.rate !== null ? (Number(item.qty) || 0) * (Number(item.rate) || 0) : (Number(item.amount) || 0);
+        const given = full - (Number(getLineTotal(item)) || 0);
+        return sum + (given > 0 ? given : 0);
+      }, 0);
+    }
+
     function invoiceSubtotal(lineItems) {
       return (lineItems || []).reduce((sum, item) => sum + getLineTotal(item), 0);
     }
@@ -29131,6 +29190,7 @@ const setDays = (updater) =>
         net: invoiceSubtotal(inv.lineItems),
         date: String(inv.dateSent || '').slice(0, 10),
         paidDate: String(inv.datePaid || '').slice(0, 10),
+        waived: invoiceWaivedTotal(inv.lineItems),
         dayKeys: invoiceDayClaim(inv, production, userPrefs),
       }))
       // NO DAY LINK, NO BILLED MONEY (ruled). An invoice that names no days
