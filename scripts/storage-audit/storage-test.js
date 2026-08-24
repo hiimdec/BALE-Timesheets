@@ -5964,6 +5964,59 @@ async function main() {
     }
   }
 
+  // ===== MB. RULING 2 — monthly money buckets by WORK month =====
+  // An invoice belongs to the month of the EARLIEST day it covers, whole, no
+  // splitting (founder-ruled, Phase 18). Bucketing by dateSent made busiest
+  // month move when the user pressed Send, and put a July-sent invoice
+  // covering a June day wholly into July. EXECUTED through the real
+  // claimedInvoicesOf + aggregateMonthly with a fixture built for exactly the
+  // straddle case; the sent-date form reddens MB1.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const aggregateMonthly = sb.__aggregateMonthly;
+    const moneyOf = sb.__claimedInvoicesOf;
+    const prefs = { displayName: 'Dec' };
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const mkDay = (id, date) => ({ id, crewId: 'c1', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+    // The straddle: work 30 June + 1 July, invoice SENT 2 July covering both.
+    const prod = {
+      id: 'pMB', title: 'Straddle', crew: [crew], bestBoyMode: false, dayDefaults: {},
+      days: [mkDay('d1', '2026-06-30'), mkDay('d2', '2026-07-01')],
+      invoices: [{ id: 'iMB', userCrewId: 'c1', status: 'sent', dateSent: '2026-07-02', invoiceDate: '2026-07-02',
+        createdAt: '2026-07-02T10:00:00.000Z',
+        dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
+        lineItems: [{ id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null }] }],
+    };
+    const billed = moneyOf(prod, prefs).map(inv => ({ ...inv, production: prod }));
+    // enrichedDays: calc-lite is enough — aggregateMonthly reads total/lines/meta.
+    const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
+    const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
+    const covered = new Set(prod.days.map(d => `pMB:${d.date}`));
+    const series = aggregateMonthly(enriched, [prod], prefs, billed, covered);
+    const jun = series.find(m => m.month === '2026-06') || {};
+    const jul = series.find(m => m.month === '2026-07') || {};
+    check('MB1 a sent invoice buckets its WHOLE net into the month of the EARLIEST day it covers — the June/July straddle lands £888 in June and nothing in July, though it was sent in July',
+      Math.abs((jun.amount || 0) - 888) < 0.005 && Math.abs(jul.amount || 0) < 0.005,
+      `jun=${jun.amount} jul=${jul.amount}`);
+    check('MB2 bucketing conserves money — the series sum equals uncovered computed + billed nets (nothing created, nothing destroyed, only moved between months)',
+      Math.abs(series.reduce((s2, m) => s2 + (m.amount || 0), 0) - 888) < 0.005,
+      `seriesSum=${series.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
+    // ONE rule, two rollups: both monthly sites read invoiceWorkMonth, and no
+    // sent-date form survives at either. (The WINDOW filter keeps dateSent -
+    // that is the ruled billed-basis tax-year, asserted kept by WIN1.)
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    check('MB3 both monthly rollups bucket through the ONE invoiceWorkMonth helper, and the sent-month form is GONE from both',
+      (srcHtml.match(/const imo = invoiceWorkMonth\(inv\);/g) || []).length === 2
+      && /const invoiceWorkMonth = \(inv\) => \{/.test(srcHtml)
+      && !/const imo = String\(inv\.date\)\.slice\(0, 7\);/.test(srcHtml)
+      && !/const imo = inv\.date\.slice\(0, 7\);/.test(srcHtml));
+    check('MB4 the ruled consequence is STATED on screen — the month table carries the two-bases note, gated on a windowed filter AND a real mismatch, never under All time',
+      /\{filter !== 'all' && Math\.abs\(stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005 && \(/.test(srcHtml)
+      && /Months are bucketed by when the work happened\. The total is what was billed in this window, so the two can differ\./.test(srcHtml));
+  }
+
   // ===== Y. MONTHLY EARNINGS CHART — windowing + vs-last-year =====
   // The chart view (MonthlyEarningsView) layers over the Stage-1
   // series. The pure pieces — month math, 12-entry windowing, clamp,

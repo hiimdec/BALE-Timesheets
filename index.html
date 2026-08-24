@@ -14399,10 +14399,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         kitDiscount.set(dealMonth, (kitDiscount.get(dealMonth) || 0) + applied);
       }
 
-      // The claims, each whole, each in the month it was SENT.
+      // The claims, each whole, each in the month of the EARLIEST day it
+      // covers (Ruling 2 - work month, not send month).
       for (const inv of (billedInvoices || [])) {
-        if (!inv || !inv.date) continue;   // no dateSent → no month to file it under
-        const imo = String(inv.date).slice(0, 7);
+        const imo = invoiceWorkMonth(inv);
+        if (!imo) continue;   // no covered day and no dateSent → no month to file it under
         billedByMonth.set(imo, (billedByMonth.get(imo) || 0) + (Number(inv.net) || 0));
       }
 
@@ -28208,12 +28209,15 @@ const setDays = (updater) =>
           if ((e.calc.meta.dayLabel || '').includes('Night Shoot')) nightShootSet.add(pKey);
         }
 
-        // The claims themselves, each whole, each in the period it was sent.
+        // The claims themselves, each whole, each in the month of the
+        // EARLIEST day it covers (Ruling 2 - work month, not send month, so
+        // busiest month can never move because Send was pressed). ProdCo
+        // attribution has no month and is unchanged.
         for (const inv of billedInvoices) {
           const co = inv.production.prodCo?.trim() || '(Unknown)';
           earningsByProdCo[co] = (earningsByProdCo[co] || 0) + inv.net;
-          if (!inv.date) continue;   // no dateSent → no period to file it under
-          const imo = inv.date.slice(0, 7);
+          const imo = invoiceWorkMonth(inv);
+          if (!imo) continue;
           earningsByMonth[imo] = (earningsByMonth[imo] || 0) + inv.net;
         }
 
@@ -28413,6 +28417,17 @@ const setDays = (updater) =>
                 className="mt-2 text-xs text-sky-500 hover:text-sky-300 transition-colors">
                 Show all {stats.monthBreakdown.length} months
               </button>
+            )}
+            {/* Ruling 2's ACCEPTED, STATED consequence: the window totals on a
+                billed basis (dateSent) while month rows bucket by work month,
+                so an invoice billed in this window for another window's work
+                makes the rows and the header differ. Ruled "stated on screen,
+                not silently tolerated" - shown only when the difference is
+                real, never under All time where both bases see everything. */}
+            {filter !== 'all' && Math.abs(stats.monthBreakdown.reduce((s2, m) => s2 + m.amount, 0) - stats.totalEarnings) >= 0.005 && (
+              <p className="mt-2 text-[10px] text-neutral-500 leading-snug">
+                Months are bucketed by when the work happened. The total is what was billed in this window, so the two can differ.
+              </p>
             )}
           </div>
         );
@@ -28959,6 +28974,27 @@ const setDays = (updater) =>
     // what an accountant files. A claimed invoice with no dateSent has no
     // period to land in and is skipped by period figures (it still counts in
     // whole-production totals, which have no period).
+    // RULING 2 (Phase 18): monthly earnings bucket by the month the WORK
+    // happened - an invoice belongs to the month of the EARLIEST day it
+    // covers. No splitting, no pro rata. Bucketing by dateSent made the chart
+    // disagree with the day counts beside it and let busiest month move when
+    // the user pressed Send. ONE helper, read by both monthly rollups (the
+    // stats memo and aggregateMonthly), so the two cannot drift.
+    //
+    // Every claimed invoice carries dayKeys (the no-day-link filter is
+    // upstream), so the dateSent fallback is defensive only; null means "no
+    // month to file under" and the caller skips, exactly as before.
+    //
+    // The TAX-YEAR WINDOW is untouched: it filters on dateSent (a billed,
+    // accounting basis) - this helper decides only which MONTH ROW money
+    // lands in. The ruled, accepted consequence is that under that filter the
+    // month rows need not sum to the header, and the screen says so.
+    const invoiceWorkMonth = (inv) => {
+      const dates = ((inv && inv.dayKeys) || []).map(k => String(k).split(':')[1]).filter(Boolean).sort();
+      if (dates.length) return dates[0].slice(0, 7);
+      return (inv && inv.date) ? String(inv.date).slice(0, 7) : null;
+    };
+
     function claimedInvoicesOf(production, userPrefs) {
       return (((production && production.invoices) || []).filter(invoiceIsClaimed)).map(inv => ({
         id: inv.id,

@@ -600,7 +600,7 @@ billed. Only total earnings and top production company do.
 
 ---
 
-## Stats money — monthly bucketing by work date: **RULED — NOT YET BUILT** (founder, Phase 18)
+## Stats money — monthly bucketing by work date: **RESOLVED — IMPLEMENTED** (founder, Phase 18)
 
 **The question.** An invoice covers days in one month and is sent in another.
 Which month does its money belong to?
@@ -630,6 +630,25 @@ that lands, the unlinked invoices have no earliest covered day to bucket by.
 
 **Supersedes** nothing — this is the first ruling on bucketing. It replaces an
 unruled behaviour introduced in Phase 17 (bucket by `dateSent`).
+
+**As built.** One helper, `invoiceWorkMonth` — the earliest date in the
+invoice's `dayKeys`, `dateSent` as the defensive fallback (unreachable today:
+the no-day-link filter is upstream) — read by BOTH monthly rollups (the stats
+memo's `earningsByMonth` and `aggregateMonthly`'s `billedByMonth`), so the two
+cannot drift. The window filter keeps `dateSent` (the billed-basis tax year,
+untouched). The accepted consequence is stated on screen: the month table
+carries "Months are bucketed by when the work happened. The total is what was
+billed in this window, so the two can differ." — gated on a windowed filter
+and a real mismatch, never under All time. Pinned MB1–MB4, each negative-tested
+(the sent-date form reddens MB1 and MB3; deleting the note reddens MB4).
+
+**Measured on the real export.** July 2026 £4,258.95 → **£3,358.20** (the
+founder's own figure); June £2,597.90 → **£3,498.65**. Note June gains the
+WHOLE Red Bull invoice (+£900.75), not just its £444.00 June day — the "no
+splitting, no pro rata" clause of this ruling forces the whole net into the
+earliest covered day's month. All-time is identical before and after
+(£12,136.25): bucketing moves money between months and can neither create nor
+destroy it.
 
 ---
 
