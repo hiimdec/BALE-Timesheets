@@ -650,6 +650,50 @@ earliest covered day's month. All-time is identical before and after
 (£12,136.25): bucketing moves money between months and can neither create nor
 destroy it.
 
+**Amended (founder-ruled, Phase 18): the basis is user-chosen.** The founder's
+case: an invoice paid across a month boundary read as money appearing from
+nowhere — the underlying want is a cash view. Two bases, one preference
+(`userPrefs.statsMonthBasis`, additive merge-over-defaults, no migration,
+display-only): **by date worked** (this ruling, THE DEFAULT) and **by date
+paid** (each invoice whole in the month of its `datePaid`).
+
+Rules of the paid basis:
+
+- **An unpaid claim lands in no month, never guessed.** Falling back to
+  `dateSent` is the switching-basis behaviour already rejected; `dueDate`
+  would invent a payment. The excluded money surfaces as an
+  **awaiting-payment line**, rendered only under the paid basis and only when
+  non-zero (a permanent £0.00 is noise).
+- **Uncovered days keep their computed value in their work month under both
+  bases**, stated on screen — a strict cash purist would drop them, but
+  invisible uninvoiced work is worse than a stated deviation.
+- **The days column stays by work month under both** — days are when you
+  worked, money is when the basis says it landed.
+- **The bridge row renames with the basis**: `Invoiced ±` under work date,
+  `Paid ±` under date paid. Same arithmetic (billed-in-month minus this
+  month's covered computed), different meaning, so the label moves with it.
+- **The mismatch note widens to any real mismatch** — under the paid basis
+  the month rows can miss awaiting money even at All time, exactly where the
+  windowed-only gate would have hidden it. Wording is basis-appropriate.
+- **One phrasing family on every surface**: "by date worked" / "by date
+  paid", including the invoices tab's Paid-section marker.
+
+**Follows the toggle:** the monthly chart, the month breakdown table, busiest
+month, the vs-last-year comparison (same series). **Never follows:** the
+tax-year filter (billed basis on `dateSent`, an accounting question, already
+ruled — a paid-basis tax year is a legitimate future ruling, deliberately not
+this one); the total-earnings hero (window-scoped, no month attribution — the
+all-time figure is IDENTICAL under both bases, £12,136.25 on the real export,
+by construction: `totalEarnings` never reads a month); every agreement-value
+figure (work month always, already labelled); production-company attribution
+(no months).
+
+**Measured on the real export, both bases:** June £3,498.65 / £2,015.40, July
+£3,358.20 / £2,993.25, August £2,164.40 / £1,907.00 (worked / paid), awaiting
+payment £3,048.60. Pinned `MB5`–`MB8` (paid-basis bucketing, unpaid exclusion,
+basis-blind total, the visible surface), `MB3`/`MB4`/`LAB3` extended, each
+negative-tested.
+
 ---
 
 ## Stats money — unlinked invoices, read-time day derivation: **RESOLVED — IMPLEMENTED** (founder-ruled, Phase 18)
