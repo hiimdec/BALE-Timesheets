@@ -65,28 +65,36 @@
     .page { width: min(100% - 40px, 1016px); margin: 0 auto; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 
-    header {
-      min-height: 50px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-      padding: calc(env(safe-area-inset-top) + 14px) 0 14px;
-      color: var(--sky);
-      font-size: 14px;
-      font-weight: 900;
-      letter-spacing: -.03em;
-      text-transform: uppercase;
+    /* Shared top-nav component, matching the other 21 pages: sticky, 1px
+       border, 12px backdrop blur, .nav-brand + .nav-cta type, inline SVG
+       arrow. Uses welcome's own --sky tokens, which carry the same values
+       as --tm-accent / --tm-accent-2 elsewhere. */
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
     }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--sky); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--sky);
+      display: inline-flex; align-items: center; gap: 6px;
+      text-decoration: none; transition: color 150ms;
+    }
+    .nav-cta:hover { color: var(--sky-light); }
+    .nav-cta svg { width: 12px; height: 12px; }
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
     header::after { content: ""; position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 49px); border-bottom: 1px solid #1f1f1f; }
-    /* Header type aligned to the shared .nav-brand / .nav-cta component
-       used on every other page: same wordmark tracking, same link weight,
-       family and colour token. Structure is left alone. */
-    .wordmark { color: var(--sky); text-decoration: none; letter-spacing: -.02em; }
-    .top-links { display: flex; align-items: center; gap: 20px; }
-    .top-links a { color: var(--sky); font-weight: 700;
-                   font-size: 10px; letter-spacing: .18em; text-decoration: none; }
-    .top-links a:hover { color: var(--sky-light); }
 
     .hero { max-width: 900px; padding: clamp(72px, 13vh, 125px) 0 88px; }
     .question {
@@ -242,7 +250,10 @@
       .late-demo { margin-top: 0; }
     }
     @media (max-width: 560px) {
-      .top-links a:first-child { display: none; }
+        /* Welcome-only: the hero already carries a full-width App Store
+         button, so the nav duplicate is dropped on narrow screens. The
+         shared component has no equivalent rule. */
+      .nav-ctas a:first-child { display: none; }
       .hero { padding-top: 70px; }
       h1 { font-size: clamp(42px, 13vw, 64px); }
       .actions .button { width: 100%; }
@@ -264,14 +275,23 @@
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
+  <nav class="top-nav">
+    <div class="page top-nav-inner">
+      <a href="/" class="nav-brand" aria-label="TimeMachine home">TimeMachine</a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=welcome-sticker&amp;mt=8" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="/app/?from=welcome" class="nav-cta">
+          Open the app
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
   <div class="page">
-    <header>
-      <a class="wordmark" href="/" aria-label="TimeMachine home">TimeMachine</a>
-      <span class="top-links">
-        <a href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=welcome-sticker&amp;mt=8" target="_blank" rel="noopener">App Store</a>
-        <a href="/app/?from=welcome">Open the app →</a>
-      </span>
-    </header>
 
     <main id="main">
       <section class="hero">
