@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>What happens to your timesheet after wrap - TimeMachine</title>
+  <meta name="description" content="The route from a wrapped day to money in the account: the record, the timesheet, the invoice, the seven day term and what to do when it is missed.">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-itunes-app" content="app-id=6775970098">
+  <link rel="canonical" href="https://timemachineapp.co.uk/articles/after-wrap-what-happens-to-your-timesheet">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="What happens to your timesheet after wrap">
+  <meta property="og:description" content="The route from a wrapped day to money in the account: the record, the timesheet, the invoice, the seven day term and what to do when it is missed.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/articles/after-wrap-what-happens-to-your-timesheet">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="What happens to your timesheet after wrap">
+  <meta name="twitter:description" content="The route from a wrapped day to money in the account: the record, the timesheet, the invoice, the seven day term and what to do when it is missed.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #939393;
+      --text-4:    #838383;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100; transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
+
+    main { padding: 40px 0 72px; }
+    @media (min-width: 768px) { main { padding: 56px 0 96px; } }
+
+    .back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-3);
+      text-decoration: none; margin-bottom: 28px;
+    }
+    .back:hover { color: var(--tm-accent); }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(30px, 4.6vw, 46px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.04; margin: 0 0 14px;
+    }
+    .byline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin: 0 0 32px;
+    }
+    h2 {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+      margin: 40px 0 10px; color: var(--text);
+    }
+    p, li { color: var(--text-2); font-size: 16px; line-height: 1.7; }
+    p + p { margin-top: 14px; }
+    ul, ol { padding-left: 18px; margin: 8px 0 14px; }
+    li { margin: 6px 0; }
+    li::marker { color: var(--tm-accent); }
+    strong { color: var(--text); font-weight: 600; }
+
+    /* Rate table - figures mono (BRAND: money/data only), chrome from the
+       card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
+    .rate-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .rate-table th {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; color: var(--text-3); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
+    }
+    .rate-table td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 14px; color: var(--text);
+      padding: 12px 16px;
+    }
+    .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
+
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--tm-accent); color: #050505;
+      font-weight: 800; font-size: 14px; letter-spacing: 0.02em;
+      padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    }
+    .btn:hover { background: var(--tm-accent-2); color: #050505; }
+    /* Secondary CTA (chunk 25): the web app sits beside the App Store primary.
+       Same treatment as .btn.secondary on the homepage and /how-it-works. */
+    .btn.secondary {
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .btn.secondary:hover { background: var(--card); border-color: var(--tm-accent); color: var(--tm-accent); }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+    a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "What happens to your timesheet after wrap",
+    "description": "The route from a wrapped day to money in the account: the record, the timesheet, the invoice, the seven day term and what to do when it is missed.",
+    "url": "https://timemachineapp.co.uk/articles/after-wrap-what-happens-to-your-timesheet",
+    "image": "https://timemachineapp.co.uk/og-image.png",
+    "mentions": {
+      "@id": "https://timemachineapp.co.uk/#software"
+    },
+    "datePublished": "2026-08-24",
+    "dateModified": "2026-08-24",
+    "author": {
+      "@type": "Person",
+      "@id": "https://timemachineapp.co.uk/about#person",
+      "name": "Declan Patrick Duffy",
+      "url": "https://timemachineapp.co.uk/about"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "@id": "https://timemachineapp.co.uk/#organization",
+      "name": "TimeMachine",
+      "url": "https://timemachineapp.co.uk/",
+      "logo": "https://timemachineapp.co.uk/icon-512.png",
+      "sameAs": [
+        "https://www.instagram.com/timemachineapp",
+        "https://apps.apple.com/app/id6775970098"
+      ]
+    },
+    "mainEntityOfPage": "https://timemachineapp.co.uk/articles/after-wrap-what-happens-to-your-timesheet"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://timemachineapp.co.uk/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://timemachineapp.co.uk/articles"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "What happens to your timesheet after wrap"
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/" class="nav-brand">TIMEMACHINE</a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="/app/" class="nav-cta">
+          Open the App
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+      <a href="/articles" class="back">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        All articles
+      </a>
+
+      <p class="label">Article</p>
+      <h1>What happens to your timesheet after wrap</h1>
+      <p class="byline">TimeMachine · Published 24 August 2026</p>
+
+      <p>Working out what a day is worth is the easy half. The half that decides whether you actually get the money is what happens between wrap and the payment landing, and it is mostly administrative.</p>
+      <p>Here is the whole route, in order.</p>
+
+      <h2>1. The record</h2>
+      <p>The day ends and you have a set of facts: call, breaks, wrap, day type, kit, mileage, anything unusual. Write them down while they are still facts. A day reconstructed a fortnight later is a guess, and guesses drift downward, because the things you forget are the things that were owed to you.</p>
+      <p>The details that matter most are the ones that are easy to lose: what time lunch actually started, whether the second break happened, whether <a href="/articles/continuous-working-day">the day turned continuous</a>.</p>
+
+      <h2>2. The calculation</h2>
+      <p>Apply the terms to the record. Day type first, since it sets when overtime begins, then <a href="/articles/how-apa-overtime-works">the overtime grade</a>, then <a href="/articles/breaks-and-penalties">the penalties</a>. <a href="/articles/apa-weekend-and-rest-day-rates">Weekend and night rates</a> replace the weekday treatment rather than stacking on it.</p>
+      <p>This is the part TimeMachine does automatically, and it is worth understanding anyway, because you will one day need to argue it. Our guides on overtime and breaks cover the rules in full.</p>
+
+      <h2>3. The timesheet</h2>
+      <p>A timesheet is the day, itemised, in a form somebody else can check. It is not the invoice. Production may ask for one, a payroll company usually will, and even when nobody asks, it is what you produce when a figure gets queried.</p>
+      <p>Keep it day by day rather than summarised. A total invites a question. A breakdown answers it.</p>
+
+      <h2>4. The invoice</h2>
+      <p>The invoice carries the totals across and adds the things the calculation does not know: your details, your bank details, VAT if you are registered, a number, and the production's billing address and invoicing email.</p>
+      <p>Number your invoices sequentially and never reuse a number. If you are VAT registered, the invoice needs the right VAT information on it and HMRC has specific requirements. Get the production company's invoicing email right, because the single most common reason an invoice goes unpaid is that it went to the wrong inbox.</p>
+      <p>Once it is sent, treat it as fixed. TimeMachine freezes a sent invoice as a record of exactly what you claimed, which is what you want when somebody queries it later. <a href="/articles/how-to-invoice-an-apa-job">Our invoicing guide</a> walks the whole document through.</p>
+
+      <h2>5. The term</h2>
+      <p>Under the APA terms, invoices for crew contracted directly are payable within seven days of receipt. The industry has drifted well past that, and thirty days is common, but the term is seven and it is worth knowing which one you agreed to.</p>
+
+      <h2>6. When it runs late</h2>
+      <p>You are not without options. Statutory interest and fixed recovery costs apply to late commercial payments, and they apply automatically rather than needing to be agreed. <a href="/articles/late-payment-what-youre-owed">Our late payment guide</a> sets out what you can charge.</p>
+      <p>Chase early and in writing. Most late invoices are not disputes, they are an accounts department that never received it.</p>
+
+      <h2>The short version</h2>
+      <p>Record on the day, calculate against the terms, itemise the timesheet, get the invoice details right, know the term, and chase in writing. The maths is the part everyone worries about and the part least likely to cost you.</p>
+
+      <div class="cta-row">
+        <a href="https://apps.apple.com/app/id6775970098" class="btn" target="_blank" rel="noopener">
+          Download for iPhone
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="/app/" class="btn secondary">
+          Open the web app
+        </a>
+      </div>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA). It references the publicly available APA Recommended Crew Terms as a rate reference only. This article is general information, not legal or financial advice.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2026</span>
+      <div class="footer-links">
+        <a href="/">Home</a>
+        <a href="/app/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/apa-rates">APA rates</a>
+        <a href="/about">About</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
