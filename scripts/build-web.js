@@ -172,7 +172,42 @@ for (const rel of EXPECTED) if (!landed.includes(rel)) fail(`expected file faile
 if (landed.length !== EXPECTED.length) fail(`count mismatch: expected ${EXPECTED.length}, found ${landed.length}`);
 if (problems.length) finish(1);
 
-// 5. Manifest.
+// 5. Sitemap integrity - every URL the sitemap advertises MUST be published.
+//    A page can be written, linked from the index and listed in sitemap.xml and
+//    STILL be absent from the allow-list, in which case it 404s in production
+//    while the sitemap promises it. That happened to three articles and produced
+//    only a warning, which nobody had to read. So it is a hard failure now: a
+//    sitemap entry with no file behind it exits non-zero and names the paths.
+//    This enforces the allow-list, it does not replace it - a page is still
+//    published only by being named in ALLOW above.
+const SITE_ORIGIN = 'https://timemachineapp.co.uk';
+const landedSet = new Set(landed);
+const sitemapXml = fs.readFileSync(path.join(OUT, destOf('sitemap.xml')), 'utf8');
+const locs = [...sitemapXml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]);
+if (!locs.length) fail('sitemap.xml contains no <loc> entries');
+
+// Netlify serves pretty URLs: /foo -> foo.html, / -> index.html, /foo/ -> foo/index.html.
+function candidatesFor(loc) {
+  let p = loc.replace(/^https?:\/\/[^/]+/, '').replace(/[?#].*$/, '').replace(/^\//, '');
+  if (p === '') return ['index.html'];
+  if (p.endsWith('/')) return [`${p}index.html`];
+  if (p.endsWith('.html')) return [p];
+  return [`${p}.html`, `${p}/index.html`];
+}
+
+for (const loc of locs) {
+  const cands = candidatesFor(loc);
+  if (!cands.some((c) => landedSet.has(c))) {
+    fail(`sitemap URL is not published: ${loc}  (no ${cands.join(' or ')} in ${OUT_DIR}/)`);
+  }
+}
+if (problems.length) {
+  console.error(`\n[build-web] sitemap.xml advertises ${locs.length} URL(s); the deploy would 404 on the following.`);
+  console.error('[build-web] Add the missing page(s) to the ALLOW list above, or remove the URL from sitemap.xml.');
+  finish(1);
+}
+
+// 6. Manifest.
 console.log(`\n[build-web] source : ${SRC}`);
 console.log(`[build-web] publish: ${OUT_DIR}/  (${landed.length} files, allow-list only)\n`);
 let total = 0;
