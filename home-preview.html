@@ -1436,18 +1436,30 @@
         "name": "TimeMachine",
         "url": "https://timemachineapp.co.uk/",
         "logo": "https://timemachineapp.co.uk/icon-512.png",
-        "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"]
+        "sameAs": [
+          "https://www.instagram.com/timemachineapp",
+          "https://apps.apple.com/app/id6775970098"
+        ]
       },
       {
         "@type": "WebSite",
         "@id": "https://timemachineapp.co.uk/#website",
         "name": "TimeMachine",
         "url": "https://timemachineapp.co.uk/",
-        "publisher": { "@id": "https://timemachineapp.co.uk/#organization" },
+        "publisher": {
+          "@id": "https://timemachineapp.co.uk/#organization"
+        },
         "inLanguage": "en-GB"
       },
       {
+        "@type": "Person",
+        "@id": "https://timemachineapp.co.uk/about#person",
+        "name": "Declan Patrick Duffy",
+        "url": "https://timemachineapp.co.uk/about"
+      },
+      {
         "@type": "SoftwareApplication",
+        "@id": "https://timemachineapp.co.uk/#software",
         "name": "TimeMachine",
         "description": "Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. The free app that takes UK commercial crew from call sheet to timesheet to invoice.",
         "operatingSystem": "iOS, Web",
@@ -1462,12 +1474,31 @@
           "PDF timesheets",
           "Invoices with VAT, numbering and late-payment charges",
           "Call sheet import on supported iPhones",
-          "Mileage from UK postcode districts"
+          "Mileage from UK postcode districts",
+          "Best Boy mode: track and share a whole crew's days from one place, with per-crew rates and a weekly grid",
+          "Share a shoot with another crew member by link, with no server storing the shoot",
+          "Legwork: Apple Health step tracking across a shoot day, with your permission"
         ],
         "url": "https://timemachineapp.co.uk/app/",
         "image": "https://timemachineapp.co.uk/og-image.png",
-        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
-        "publisher": { "@id": "https://timemachineapp.co.uk/#organization" }
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "GBP"
+        },
+        "publisher": {
+          "@id": "https://timemachineapp.co.uk/#organization"
+        },
+        "audience": {
+          "@type": "Audience",
+          "audienceType": "UK film and television crew"
+        },
+        "creator": {
+          "@id": "https://timemachineapp.co.uk/about#person"
+        },
+        "author": {
+          "@id": "https://timemachineapp.co.uk/about#person"
+        }
       }
     ]
   }
