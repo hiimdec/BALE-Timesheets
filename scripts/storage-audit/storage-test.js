@@ -8082,6 +8082,30 @@ async function main() {
         const singleClearance = !/max-w-6xl mx-auto px-4 py-6 pb-32/.test(html);
         return dupGone && exportOwns && backLevels && singleClearance;
       })());
+    // EXA — the Export tab is grid-mode furniture (founder-ruled): phone BB
+    // mode folds its ONLY unique capability, week scoping, into the surfaces
+    // that own each side - the crew kebab's Save PDF (per-person, individual
+    // layout) and the Save Timesheets sheet (whole-production, grid layout) -
+    // and the phone drawer loses its Export entry. Grid mode keeps the tab
+    // whole via its own tab bar.
+    check('EXA1 the phone drawer has NO Export entry; grid\'s tab bar keeps its own; the week scope lives on BOTH folded surfaces (kebab picker + save-sheet chips) and both print paths honour it',
+      (() => {
+        // GLOBAL zero, not a slice: the drawer was the only literal
+        // setTab('export') call site (grid's tab bar routes through the
+        // generic setTab(k)), so ANY literal reappearing anywhere is the
+        // phone entry coming back. The first draft sliced from the
+        // 'bb-mobile-nav' back-level string - which is nowhere near the
+        // drawer JSX (a bespoke fixed drawer, not a Sheet) - and could not
+        // go red. Caught by its own negative test before landing.
+        const drawerClean = (html.match(/setTab\('export'\)/g) || []).length === 0;
+        const gridKeeps = /\{ k: "export", label: "Export", I: IShare \}/.test(html);
+        const kebabRoute = /if \(weeksForSavePrint\.length > 1\) \{ setCrewTsPick\(crewMember\); return; \}/.test(html)
+          && /allLabel="All weeks"/.test(html);
+        const sheetRoute = /const \[weekIdx, setWeekIdx\] = useState\(null\);/.test(html)
+          && /onTriggerExport\(selectedIds, weekIdx\)/.test(html);
+        const printsHonour = (html.match(/exportWeekIndex=\{savePrintState\.weekIdx \?\? null\}/g) || []).length === 2;
+        return drawerClean && gridKeeps && kebabRoute && sheetRoute && printsHonour;
+      })());
     check('II3h SoloDayPage export sheet routes through <Sheet>',
       /<Sheet open=\{showExportSheet\} onClose=\{\(\) => setShowExportSheet\(false\)\}>/.test(html));
 
@@ -8239,8 +8263,11 @@ async function main() {
     check('KK4a CancellationCalcModal → Sheet, no guard; calc untouched (no onBeforeDismiss)',
       /function CancellationCalcModal\([\s\S]{0,7000}<Sheet open onClose=\{onClose\} maxWidth=\{1200\}/.test(html) &&
       !/function CancellationCalcModal\([\s\S]{0,9000}onBeforeDismiss/.test(html));
+    // Window 1500→2500 (mechanical): the week-scope fold added a state hook
+    // between the signature and the <Sheet>. The RULE - routes through Sheet,
+    // no dismiss guard - is unchanged.
     check('KK4b SaveTimesheetsSheet → Sheet, no guard',
-      /function SaveTimesheetsSheet\([\s\S]{0,1500}<Sheet open onClose=\{onClose\}>/.test(html) &&
+      /function SaveTimesheetsSheet\([\s\S]{0,2500}<Sheet open onClose=\{onClose\}>/.test(html) &&
       !/function SaveTimesheetsSheet\([\s\S]{0,4000}onBeforeDismiss/.test(html));
     check('KK4c DuplicateDateDialog → Sheet, no guard',
       /function DuplicateDateDialog\([\s\S]{0,800}<Sheet open onClose=\{onCancel\} maxWidth=\{400\}>/.test(html) &&

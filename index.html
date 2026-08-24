@@ -17999,7 +17999,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     /* ═══════════════════════════ EXPORT TAB (BB mode) ═══════════════════════════ */
 
     // Week picker bottom sheet — lists weeks and lets user pick one
-    function WeekPickerSheet({ open, weeks, onPick, onClose, title }) {
+    function WeekPickerSheet({ open, weeks, onPick, onClose, title, onPickAll, allLabel }) {
       // Wave 3: routed through <Sheet> — a plain selection picker, freely
       // dismissable, NO guard. Sheet owns scroll-lock + Escape.
       const fmtWeekRange = (wk) => {
@@ -18014,6 +18014,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             <div className="text-sm font-bold text-neutral-100">{title || "Select week"}</div>
           </div>
           <div className="px-4 pb-4 flex flex-col gap-1 max-h-80 overflow-y-auto">
+            {/* Additive (week-scoped exports fold): an All-weeks choice when
+                the caller offers one - existing call sites pass neither prop
+                and render exactly as before. */}
+            {onPickAll && (
+              <button type="button"
+                onClick={() => { onPickAll(); onClose(); }}
+                className="w-full text-left px-3 py-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30 hover:bg-sky-500/15 transition-colors text-sm text-sky-400 font-semibold"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                {allLabel || 'All weeks'}
+              </button>
+            )}
             {(weeks || []).map(wk => (
               <button key={wk.start} type="button"
                 onClick={() => { onPick(wk.index); onClose(); }}
@@ -19604,7 +19615,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function SaveTimesheetsSheet({ production, days, crew, onClose, onSetCrewEmail, onTriggerExport, showToast }) {
+    function SaveTimesheetsSheet({ production, days, crew, weeks = [], onClose, onSetCrewEmail, onTriggerExport, showToast }) {
       const crewWithTotals = useMemo(() => {
         return (crew || []).map(member => {
           let total = 0;
@@ -19629,11 +19640,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         setSelectedIds(next);
       };
 
+      // Week scope (exports fold): null = all weeks, the only state a
+      // single-week shoot ever sees.
+      const [weekIdx, setWeekIdx] = useState(null);
       const handleSave = () => {
         if (selectedCount === 0) return;
         onClose();
         // Defer the print dispatch so the sheet has time to unmount before the print dialog steals focus.
-        setTimeout(() => onTriggerExport(selectedIds), 50);
+        setTimeout(() => onTriggerExport(selectedIds, weekIdx), 50);
       };
 
       // (b) — ephemeral crew selection (export config); email edits auto-save
@@ -19721,7 +19735,19 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             </div>
 
             <div className="px-5 pt-4 pb-2">
-              <div className="text-[10px] text-neutral-500 leading-relaxed mb-3 px-1">
+              {weeks.length > 1 && (
+            <div className="px-5 pb-2 flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => setWeekIdx(null)}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${weekIdx === null ? 'bg-sky-500 text-black border-sky-500' : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:bg-neutral-700'}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}>All weeks</button>
+              {weeks.map(wk => (
+                <button key={wk.start} type="button" onClick={() => setWeekIdx(wk.index)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${weekIdx === wk.index ? 'bg-sky-500 text-black border-sky-500' : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:bg-neutral-700'}`}
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>{wk.label}</button>
+              ))}
+            </div>
+          )}
+          <div className="text-[10px] text-neutral-500 leading-relaxed mb-3 px-1">
                 Opens your device's print dialog. Choose "Save as PDF" when prompted. Selected crew are combined into one PDF. Per-crew PDFs and server-side email sending coming in future updates.
               </div>
 
@@ -19735,7 +19761,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   WebkitTapHighlightColor: 'transparent'
                 }}
               >
-                Save combined PDF · {selectedCount} crew
+                Save combined PDF · {selectedCount} crew{weeks.length > 1 ? (weekIdx === null ? ' · all weeks' : ` · ${(weeks[weekIdx] && weeks[weekIdx].label) || 'week'}`) : ''}
               </button>
 
               <button
@@ -22009,13 +22035,19 @@ const setDays = (updater) =>
         return () => clearTimeout(timer);
       }, [savePrintState]);
 
-      const triggerSavePrint = (crewIdsFilter) => {
+      const triggerSavePrint = (crewIdsFilter, weekIdx = null) => {
         if (!crewIdsFilter || crewIdsFilter.size === 0) return;
-        setSavePrintState({ kind: 'grid', crewIdsFilter });
+        setSavePrintState({ kind: 'grid', crewIdsFilter, weekIdx });
       };
 
+      // Week-scoped exports fold (founder-ruled): the kebab's Save PDF asks
+      // which week when the shoot spans more than one - the per-person side
+      // of the scoping the Export tab used to own. Single-week shoots export
+      // directly, exactly as before.
+      const [crewTsPick, setCrewTsPick] = useState(null);
       const triggerCrewTimesheetPrint = (crewMember) => {
         if (!crewMember) return;
+        if (weeksForSavePrint.length > 1) { setCrewTsPick(crewMember); return; }
         setSavePrintState({ kind: 'timesheet', crewMember });
       };
 
@@ -22444,12 +22476,23 @@ const setDays = (updater) =>
               production={production}
               days={days}
               crew={crew}
+              weeks={weeksForSavePrint}
               onClose={() => setShowSaveSheet(false)}
               onSetCrewEmail={setCrewEmail}
               onTriggerExport={triggerSavePrint}
               showToast={showToast}
             />
           )}
+          {/* The kebab's Save-PDF week choice (multi-week shoots only). */}
+          <WeekPickerSheet
+            open={!!crewTsPick}
+            weeks={weeksForSavePrint}
+            title={crewTsPick ? `Save PDF - ${crewTsPick.name || 'Crew'}` : 'Select week'}
+            allLabel="All weeks"
+            onPickAll={() => { const m = crewTsPick; setCrewTsPick(null); setSavePrintState({ kind: 'timesheet', crewMember: m, weekIdx: null }); }}
+            onPick={(idx) => { const m = crewTsPick; setCrewTsPick(null); setSavePrintState({ kind: 'timesheet', crewMember: m, weekIdx: idx }); }}
+            onClose={() => setCrewTsPick(null)}
+          />
 
           {savePrintState && (() => {
             if (savePrintState.kind === 'timesheet' && savePrintState.crewMember) {
@@ -22463,7 +22506,7 @@ const setDays = (updater) =>
                   crewList={crew}
                   days={memberDays}
                   weeks={weeksForSavePrint}
-                  exportWeekIndex={null}
+                  exportWeekIndex={savePrintState.weekIdx ?? null}
                   userPrefs={userPrefs}
                 />
               );
@@ -22480,7 +22523,7 @@ const setDays = (updater) =>
                 crewList={filteredCrew}
                 days={filteredDays}
                 weeks={weeksForSavePrint}
-                exportWeekIndex={null}
+                exportWeekIndex={savePrintState.weekIdx ?? null}
                 userPrefs={userPrefs}
               />
             );
@@ -22517,13 +22560,13 @@ const setDays = (updater) =>
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IBriefcase size={15}/>Setup
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowMobileNav(false); setTab('export'); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IShare size={15}/>Export
-                  </button>
+                  {/* No Export entry in PHONE mode (founder-ruled): the Export
+                      tab is grid-mode furniture, and everything it offered is
+                      on the breakdown page - per-person exports on the crew
+                      kebab (now week-scoped), whole-production exports on
+                      Save Timesheets (now week-scoped), text on the kebab,
+                      links per crew and in bulk. Grid mode keeps the tab via
+                      its own tab bar, untouched. */}
                   {/* The old native-only "Share / export" entry is GONE. It was
                       added believing the calc view was unreachable under native
                       chrome, but the money pill's View breakdown reaches it on
