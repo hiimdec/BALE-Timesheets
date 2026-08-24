@@ -50,7 +50,7 @@ const ALLOW = [
   'about.html',
   // Homepage preview (chunk 12): noindex meta + X-Robots-Tag header (netlify.toml), kept out of the sitemap. Becomes the homepage at the /app move.
   'home-preview.html',
-  // Articles (all ten)
+  // Articles (all fifteen)
   'articles/apa-mileage-what-you-can-claim.html',
   'articles/breaks-and-penalties.html',
   'articles/continuous-working-day.html',
@@ -63,6 +63,9 @@ const ALLOW = [
   'articles/time-off-the-clock.html',
   'articles/apa-rates-2026.html',
   'articles/how-to-invoice-an-apa-job.html',
+  'articles/apa-crew-terms-2026-what-changed.html',
+  'articles/apa-weekend-and-rest-day-rates.html',
+  'articles/apa-travel-days-and-travel-time.html',
   // PWA / crawl metadata
   'manifest.json',
   'robots.txt',
