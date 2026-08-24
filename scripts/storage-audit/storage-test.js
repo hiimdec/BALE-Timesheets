@@ -9029,7 +9029,7 @@ async function main() {
       /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
     check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail, Siri times via applySetTimes (one mapDayNow path; no parallel day-record write)',
       /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html) &&
-      /return \{ \.\.\.production, days: mapDayNow\(production\.days, date, uid0, patch\) \};/.test(html));
+      /const days = mapDayNow\(production\.days, date, uid0, patch\);/.test(html));
     check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
       // windows widened 140→320 for the fix/la-diagnostics debugLog lines
       // inside the skip/discard branches — the assertions (idempotency check,
@@ -9412,7 +9412,12 @@ async function main() {
       /async clearActiveShoot\(\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /const prod = productions\.find\(p => p\.id === openId\);/.test(html) &&
       /if \(openId && prod && agreementOf\(prod\) === 'apa' && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{\s*LiveActivity\.setActiveShoot\(openId, today\);\s*\} else \{\s*LiveActivity\.clearActiveShoot\(\);/.test(html));
-    check('TT13b applySetTimes — Siri "log my times" rides the SHARED mapDayNow write (resolveDay→calc apply), targets the user crew (getEffectiveUserCrewId), writes TIME fields ONLY (never wrapped/lunchLogged), call-only mirrors onCallChange derivations (lunch=call+5h, 2nd break=call+11h, wrapAuto); ingest filter + dispatch include setTimes',
+    // TT13b MOVED WITH the Siri-routing ruling (voice equals typing): a
+    // spoken wrap now routes through applySoloWrapIntent like a typed one,
+    // so the day settles when the moment passed. applySetTimes still writes
+    // no flag LITERAL itself - the shared intent owns the flags, keeping
+    // wrapObservedPatch the sole wrappedAt stamper.
+    check('TT13b applySetTimes — Siri "log my times" rides the SHARED mapDayNow write, targets the user crew (getEffectiveUserCrewId), writes no flag literal itself, and routes a spoken wrap through applySoloWrapIntent (voice equals typing); ingest filter + dispatch include setTimes',
       (() => {
         const fn = (html.match(/function applySetTimes\(production, date, ev, userPrefs\)[\s\S]*?\n    \}/) || [''])[0];
         const coreOk = /const uid0 = getEffectiveUserCrewId\(production, userPrefs\) \|\|/.test(fn) &&
@@ -9421,7 +9426,9 @@ async function main() {
           /patch\.secondBreakStartTime = toHHMM\(newCallH \+ 11\);/.test(fn) &&
           /const wrapAuto = parseHHMM\(vr\.wrapTime\) === null \|\|/.test(fn) &&
           /mapDayNow\(production\.days, date, uid0, patch\)/.test(fn);
-        const timeOnly = !/wrapped/.test(fn) && !/lunchLogged/.test(fn);   // never the deliberate-action flags
+        const timeOnly = !/wrapped:/.test(fn) && !/lunchLogged/.test(fn)   // no flag literal written here
+          && /applySoloWrapIntent\(before\.get\(d\.id\) \|\| d, d\)/.test(fn)
+          && /if \(patch\.wrapTime === undefined\) return \{ \.\.\.production, days \};/.test(fn);
         const wiredOk = /ev\.type !== 'setTimes'/.test(html) &&
           /ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)/.test(html);
         return coreOk && timeOnly && wiredOk;

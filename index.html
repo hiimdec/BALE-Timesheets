@@ -8093,7 +8093,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (ev.lunch) patch.lunchStartTime = ev.lunch;          // explicit overrides the derivation
       if (ev.wrap) patch.wrapTime = ev.wrap;
       if (ev.lunchDurationMins != null) patch.lunchDurationMins = Number(ev.lunchDurationMins);
-      return { ...production, days: mapDayNow(production.days, date, uid0, patch) };
+      const days = mapDayNow(production.days, date, uid0, patch);
+      if (patch.wrapTime === undefined) return { ...production, days };
+      // Voice equals typing (ruled): a spoken wrap time routes through the
+      // SAME intent a typed one takes, so a moment already passed settles the
+      // day exactly as the editor would - one path, one stamper. The flags
+      // themselves are still never written here; the intent owns them.
+      const before = new Map((production.days || []).map(d => [d.id, d]));
+      return { ...production, days: days.map(d =>
+        (d.date === date && (!uid0 || d.crewId === uid0))
+          ? applySoloWrapIntent(before.get(d.id) || d, d) : d) };
     }
 
     // V4-5h-11: applyDayDefaultsToAllCrew removed. Time-field cascade now happens
