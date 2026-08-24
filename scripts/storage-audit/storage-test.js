@@ -365,6 +365,7 @@ async function transformedAppCode() {
     'try { globalThis.__calcForDisplay = calcForDisplay; } catch (_) {}\n' +
     'try { globalThis.__migrateDayExpenses = migrateDayExpenses; } catch (_) {}\n' +
     'try { globalThis.__migrateDay = migrateDay; } catch (_) {}\n' +
+    'try { globalThis.__fmtQtyDisplay = fmtQtyDisplay; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -6015,6 +6016,36 @@ async function main() {
     check('MB4 the ruled consequence is STATED on screen — the month table carries the two-bases note, gated on a windowed filter AND a real mismatch, never under All time',
       /\{filter !== 'all' && Math\.abs\(stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005 && \(/.test(srcHtml)
       && /Months are bucketed by when the work happened\. The total is what was billed in this window, so the two can differ\./.test(srcHtml));
+  }
+
+  // ===== QF. ONE qty formatter on every surface that prints a qty =====
+  // The 0.43333333333333335 bug was fixed on the day breakdown (lineBasis)
+  // and left LIVE on the invoice: both the page-1 QTY column and the page-2
+  // breakdown printed the raw float. Same bug, two more surfaces, one fix
+  // missed them - so the formatter is ONE module function and each surface is
+  // pinned individually to route through it.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const f = sb.__fmtQtyDisplay;
+    check('QF1 fmtQtyDisplay executed: thirds trim to 2dp, clean fractions and integers untouched',
+      typeof f === 'function'
+      && f(26 / 60) === '0.43' && f(1.5) === '1.5' && f(2.5) === '2.5'
+      && f(146) === '146' && f(0.5) === '0.5' && f(2) === '2',
+      typeof f === 'function' ? JSON.stringify([f(26 / 60), f(1.5), f(146)]) : 'not exposed');
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    const one = (re) => (srcHtml.match(re) || []).length === 1;
+    check('QF2 the formatter is defined ONCE and lineBasis routes through it (no second inline copy of the trim)',
+      one(/const fmtQtyDisplay = \(q\) => \{/g)
+      && one(/bits\.push\(`\$\{fmtQtyDisplay\(line\.qty\)\} × \$\{fmtGBP\(line\.rate\)\}`\);/g));
+    check('QF3 invoice page-1: BOTH qty cells (waived row and kept row) route through the formatter, and no raw item.qty cell survives',
+      one(/\{isFixed \? "" : fmtQtyDisplay\(item\.qty\)\}/g)
+      && one(/\{isFixed \? "" : fmtQtyDisplay\(partiallyWaived \? billedQty : item\.qty\)\}/g)
+      && !/\{isFixed \? "" : item\.qty\}/.test(srcHtml)
+      && !/\{isFixed \? "" : \(partiallyWaived \? billedQty : item\.qty\)\}/.test(srcHtml));
+    check('QF4 invoice page-2: the breakdown basis routes its qty through the formatter, raw form gone',
+      one(/bits\.push\(`\$\{fmtQtyDisplay\(l\.qty\)\} × \$\{fmtGBP\(l\.rate\)\}`\);/g)
+      && !/bits\.push\(`\$\{l\.qty\} × \$\{fmtGBP\(l\.rate\)\}`\);/.test(srcHtml));
   }
 
   // ===== LAB. RULING 1's labelling clause — agreement-value figures say so =====

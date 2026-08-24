@@ -4952,6 +4952,22 @@
     // once, in InvoicedEarningsNote, and the Invoiced row stays the only
     // bridge to the billed figure. The user who waived £99.90 of OT reads
     // "Overtime earned £99.90 · agreement value", not a bare number.
+    // DISPLAY of a qty only — never an amount, never an input value. A raw
+    // float qty leaks IEEE noise on thirds: a 26-minute curtailment is 26/60 =
+    // 0.43333333333333335, which reached the founder's screen AND his
+    // regenerated invoice PDF (both QTY columns print the line's qty raw).
+    // Two decimals, trailing zeros trimmed (the DayEditModal table's own
+    // pattern): 1.5 stays "1.5", 2.5 stays "2.5", 146 stays "146", the third
+    // becomes "0.43". ONE formatter for every surface that prints a qty —
+    // lineBasis, the invoice page-1 QTY cells, the invoice page-2 breakdown —
+    // because the first fix reached one surface and left the same bug live on
+    // the other two.
+    const fmtQtyDisplay = (q) => {
+      const n = Number(q);
+      if (!Number.isFinite(n)) return String(q);
+      return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
+    };
+
     const AGREEMENT_VALUE_LABEL = 'agreement value';
 
     function lineBasis(line) {
@@ -4963,15 +4979,7 @@
       // on it; honouring it here keeps ONE rule instead of two. Engine lines
       // never carry it, so the PDF's output is unaffected.
       if (!line.displayFlat && Number(line.rate) > 0 && Number(line.qty) > 0 && Number(line.qty) !== 1) {
-        // DISPLAY of the qty only — the amount is untouched. A raw float
-        // qty leaks IEEE noise on thirds: a 26-minute curtailment is 26/60 =
-        // 0.43333333333333335, which is what the founder's screen showed
-        // beside £44.40. Two decimals, trailing zeros trimmed (the
-        // DayEditModal table's own pattern), so 1.5 stays "1.5", 2.5 stays
-        // "2.5", 146 stays "146", and the third becomes "0.43".
-        const q = Number(line.qty);
-        const qStr = Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, '');
-        bits.push(`${qStr} × ${fmtGBP(line.rate)}`);
+        bits.push(`${fmtQtyDisplay(line.qty)} × ${fmtGBP(line.rate)}`);
       }
       return bits.join(' · ');
     }
@@ -9627,7 +9635,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 {item.detail && <div className="inv-linedetail">{item.detail}</div>}
               </td>
-              <td className="inv-td inv-mono">{isFixed ? "" : item.qty}</td>
+              <td className="inv-td inv-mono">{isFixed ? "" : fmtQtyDisplay(item.qty)}</td>
               <td className="inv-td inv-mono">{isFixed ? "" : fmtGBP(item.rate)}</td>
               <td className="inv-td last inv-mono">{fmtGBP(item.amount)}</td>
             </tr>
@@ -9640,7 +9648,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 <div className="inv-linelabel">{chipFor(label) && <InvChip kind={chipFor(label)} />}{label}</div>
                 {item.detail && <div className="inv-linedetail">{item.detail}</div>}
               </td>
-              <td className="inv-td inv-mono">{isFixed ? "" : (partiallyWaived ? billedQty : item.qty)}</td>
+              <td className="inv-td inv-mono">{isFixed ? "" : fmtQtyDisplay(partiallyWaived ? billedQty : item.qty)}</td>
               <td className="inv-td inv-mono">{isFixed ? "" : fmtGBP(item.rate)}</td>
               <td className="inv-td last inv-mono">
                 {fmtGBP(getLineTotal(item))}
@@ -9815,7 +9823,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {(day.lines || []).map((l, li) => {
                     const bits = [];
                     if (l.detail) bits.push(l.detail);
-                    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) bits.push(`${l.qty} × ${fmtGBP(l.rate)}`);
+                    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) bits.push(`${fmtQtyDisplay(l.qty)} × ${fmtGBP(l.rate)}`);
                     // Additive (long form only): unclaimable renders struck +
                     // cited, unpriced renders "agreed locally". APA lines carry
                     // neither flag, so this never fires for them.
