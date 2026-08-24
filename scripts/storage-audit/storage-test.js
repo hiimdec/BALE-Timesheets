@@ -6236,6 +6236,11 @@ async function main() {
         kept.stillOnSetAt === 'S' && kept.wrapAskedAt === 'A'
         && !('stillOnSetAt' in fresh) && !('wrapAskedAt' in fresh));
     }
+    // The BB dept Wrap Now flags the USER's row via the ownership rule, not
+    // crew[0] - the OWN1 position reaching the one write site that missed it.
+    check('WP15 the Best Boy dept Wrap Now scopes its wrapped flag by getEffectiveUserCrewId, and the crew[0] scoping is gone from that site',
+      /const meId = getEffectiveUserCrewId\(next, userPrefs\);/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8'))
+      && !/const uid0 = next\.crew && next\.crew\[0\] && next\.crew\[0\]\.id;/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')));
     // Source pins: the async gates the predicate deliberately excludes.
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
     check('WP11 the prompt never fires while a LIVE card exists - the sweep skips productions with an active/stale activity before any predicate runs',

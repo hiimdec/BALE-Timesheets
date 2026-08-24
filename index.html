@@ -16141,9 +16141,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 // Activity in Best Boy mode. Calc-neutral.
                 setProduction(p => {
                   const next = setDayDefault(p, currentDate, 'wrapTime', t);
-                  const uid0 = next.crew && next.crew[0] && next.crew[0].id;
+                  // The USER's row, resolved by the ownership rule - not
+                  // crew[0], which on a Best Boy job is whoever was added
+                  // first. The old scoping flagged an arbitrary crew member's
+                  // record wrapped and left the user's own untouched.
+                  const meId = getEffectiveUserCrewId(next, userPrefs);
                   return { ...next, days: (next.days || []).map(d =>
-                    d.date === currentDate && (!uid0 || d.crewId === uid0)
+                    d.date === currentDate && (!meId || d.crewId === meId)
                       ? { ...d, ...wrapObservedPatch() } : d) };
                 });
                 showToast?.(`Wrap set to ${t}`);
