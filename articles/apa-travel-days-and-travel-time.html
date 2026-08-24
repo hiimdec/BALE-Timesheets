@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>APA travel days and travel time: what are you actually owed? - TimeMachine</title>
+  <meta name="description" content="Travel days, travel time and equipment collection under the APA terms: the 5 hour minimum, the 11 hour rule, the first hour deduction and what changed in September 2026.">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-itunes-app" content="app-id=6775970098">
+  <link rel="canonical" href="https://timemachineapp.co.uk/articles/apa-travel-days-and-travel-time">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="APA travel days and travel time: what are you actually owed?">
+  <meta property="og:description" content="Travel days, travel time and equipment collection under the APA terms: the 5 hour minimum, the 11 hour rule, the first hour deduction and what changed in September 2026.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/articles/apa-travel-days-and-travel-time">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="APA travel days and travel time: what are you actually owed?">
+  <meta name="twitter:description" content="Travel days, travel time and equipment collection under the APA terms: the 5 hour minimum, the 11 hour rule, the first hour deduction and what changed in September 2026.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #939393;
+      --text-4:    #838383;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100; transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
+
+    main { padding: 40px 0 72px; }
+    @media (min-width: 768px) { main { padding: 56px 0 96px; } }
+
+    .back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-3);
+      text-decoration: none; margin-bottom: 28px;
+    }
+    .back:hover { color: var(--tm-accent); }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(30px, 4.6vw, 46px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.04; margin: 0 0 14px;
+    }
+    .byline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin: 0 0 32px;
+    }
+    h2 {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+      margin: 40px 0 10px; color: var(--text);
+    }
+    p, li { color: var(--text-2); font-size: 16px; line-height: 1.7; }
+    p + p { margin-top: 14px; }
+    ul, ol { padding-left: 18px; margin: 8px 0 14px; }
+    li { margin: 6px 0; }
+    li::marker { color: var(--tm-accent); }
+    strong { color: var(--text); font-weight: 600; }
+
+    /* Rate table - figures mono (BRAND: money/data only), chrome from the
+       card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
+    .rate-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .rate-table th {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; color: var(--text-3); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
+    }
+    .rate-table td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 14px; color: var(--text);
+      padding: 12px 16px;
+    }
+    .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
+
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--tm-accent); color: #050505;
+      font-weight: 800; font-size: 14px; letter-spacing: 0.02em;
+      padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    }
+    .btn:hover { background: var(--tm-accent-2); color: #050505; }
+    /* Secondary CTA (chunk 25): the web app sits beside the App Store primary.
+       Same treatment as .btn.secondary on the homepage and /how-it-works. */
+    .btn.secondary {
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .btn.secondary:hover { background: var(--card); border-color: var(--tm-accent); color: var(--tm-accent); }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+    a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "APA travel days and travel time: what are you actually owed?",
+    "description": "Travel days, travel time and equipment collection under the APA terms: the 5 hour minimum, the 11 hour rule, the first hour deduction and what changed in September 2026.",
+    "url": "https://timemachineapp.co.uk/articles/apa-travel-days-and-travel-time",
+    "image": "https://timemachineapp.co.uk/og-image.png",
+    "datePublished": "2026-08-24",
+    "dateModified": "2026-08-24",
+    "author": { "@type": "Person", "@id": "https://timemachineapp.co.uk/about#person", "name": "Declan Patrick Duffy", "url": "https://timemachineapp.co.uk/about" },
+    "publisher": { "@type": "Organization", "@id": "https://timemachineapp.co.uk/#organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/", "logo": "https://timemachineapp.co.uk/icon-512.png", "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"] },
+    "mainEntityOfPage": "https://timemachineapp.co.uk/articles/apa-travel-days-and-travel-time"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://timemachineapp.co.uk/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://timemachineapp.co.uk/articles"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "APA travel days and travel time: what are you actually owed?"
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/" class="nav-brand">TIMEMACHINE</a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="/app/" class="nav-cta">
+          Open the App
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+      <a href="/articles" class="back">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        All articles
+      </a>
+
+      <p class="label">Article</p>
+      <h1>APA travel days and travel time: what are you actually owed?</h1>
+      <p class="byline">TimeMachine · Published 24 August 2026</p>
+
+      <p>Travel is the part of the APA terms crew most often undercharge, because it's really three separate things with three separate rules: travel days, travel time on a working day, and mileage. <a href="/articles/apa-mileage-what-you-can-claim">Mileage</a> is money for your car and we've covered it separately. This article covers the other two, which are money for your time.</p>
+
+      <h2>Travel days: minimum 5 hours at single time</h2>
+      <p>A travel day is <a href="/articles/prep-recce-and-pre-light-days">a non shooting day</a> spent moving to or from location. It's paid at <a href="/articles/how-apa-rates-work">your basic hourly rate</a> for the hours travelled, with a <strong>minimum 5 hour call</strong>. It's always single time, regardless of the day of the week: a Sunday travel day pays exactly the same as a Tuesday one. The weekend multipliers never apply to travel.</p>
+      <p>One useful knock on rule: after a travel day where the crew stays in a hotel, the next working day is calculated <strong>base to base, hotel to hotel</strong>. Your day starts when you leave the hotel and ends when you're back, not when you reach set. This applies to all location shoots where crew are put up overnight.</p>
+
+      <h2>Travel time on a working day: the 11 hour rule and the first hour</h2>
+      <p>If you travel to a shoot and back on the same day you work, travel time is payable at your basic hourly rate, with two big qualifications:</p>
+      <ol>
+        <li>Nothing is payable at all unless your travel time plus working time comes to <strong>at least 11 hours</strong>. A 9 hour day with 45 minutes each way doesn't reach the threshold, so the travel is unpaid.</li>
+        <li><strong>The first hour of the outward journey and the first hour of the homeward journey are deducted.</strong> You're charging for travel beyond an hour each way, not door to door.</li>
+      </ol>
+      <p>For London based production companies, the starting point for measuring travel is the APA's address in W1F 9SE, not your home.</p>
+      <p>A worked example: basic hourly rate £50, a full 11 hour shoot day with 1.5 hours travel each way. Total time is 14 hours, comfortably over the threshold. Deduct the first hour each way and you're owed 0.5 hours each way: 1 hour at £50. It's not a fortune, but on a distant location over a week it adds up, and it's yours under the terms.</p>
+
+      <h2>Equipment and personnel collection</h2>
+      <p>If production asks you to collect equipment or other crew from any address other than your home, that time counts as <strong>working time on a base to base basis</strong>. Picking up a genny, collecting kit from a rental house, or driving another crew member in: all working time.</p>
+      <p>From 1 September 2026 there is one new exclusion: base to base does not apply to <strong>equipment hired from the crew member</strong>. If production is hiring the kit from you, driving your own kit to set no longer automatically counts as working time under this clause, and the terms don't provide a replacement formula. If you supply your own kit, agree collection and delivery terms as part of the kit deal up front. Full details in <a href="/articles/apa-crew-terms-2026-what-changed">our September 2026 changes article</a>.</p>
+
+      <h2>Flying to location</h2>
+      <p>Air travel has its own protections. If your flight time is over 4 hours, there's no shooting on the day of the flight. If the scheduled flight time is over 8 hours, there's no shooting until 24 hours after arrival. Both subject to exceptional circumstances, but the default is rest before you work.</p>
+
+      <h2>Who this doesn't apply to</h2>
+      <p>The travel clauses don't apply to Production Managers, Production Assistants or Runners.</p>
+
+      <h2>What we built</h2>
+      <p>TimeMachine handles travel days automatically: single time on any day of the week, with the 5 hour minimum applied for you. Set the day type and the day adds itself up, ready for the invoice.</p>
+
+      <div class="cta-row">
+        <a href="https://apps.apple.com/app/id6775970098" class="btn" target="_blank" rel="noopener">
+          Download for iPhone
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="/app/" class="btn secondary">
+          Open the web app
+        </a>
+      </div>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA). It references the publicly available APA Recommended Crew Terms as a rate reference only. This article is general information, not legal or financial advice.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2025</span>
+      <div class="footer-links">
+        <a href="/">Home</a>
+        <a href="/app/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/apa-rates">APA rates</a>
+        <a href="/about">About</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
