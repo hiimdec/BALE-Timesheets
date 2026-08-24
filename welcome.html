@@ -240,8 +240,13 @@
     .signoff { padding: 38px 0 34px; border-top: 1px solid #1f1f1f; color: var(--muted); }
     .signoff strong { color: var(--text); }
     .signoff .sky { color: var(--sky); }
-    nav { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 28px; }
-    nav a { color: var(--quiet); font-size: 12px; text-underline-offset: 3px; }
+    /* Scoped to the signoff. These were written for the footer nav, but a
+       bare `nav` selector also caught the shared .top-nav added in X4: its
+       margin-top pushed the sticky bar 28px down the page, so content showed
+       above it for the first 28px of scroll and the top area read 28px taller
+       than every other page. display:flex and the gap leaked in too. */
+    .signoff nav { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 28px; }
+    .signoff nav a { color: var(--quiet); font-size: 12px; text-underline-offset: 3px; }
 
     @media (min-width: 680px) {
       .platforms { grid-template-columns: 1fr 1fr; }
