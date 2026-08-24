@@ -199,6 +199,15 @@
     .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
     .footer-links a:hover { color: var(--tm-accent); }
     a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+
+    /* Dated update note - the correction stays visible, not silently rewritten */
+    .update-note {
+      background: var(--card); border: 1px solid var(--border);
+      border-left: 3px solid var(--tm-accent); border-radius: 10px;
+      padding: 12px 16px; margin: 0 0 28px;
+      font-size: 14px; line-height: 1.6; color: var(--text-2);
+    }
+    .update-note strong { color: var(--text); }
   </style>
 
   <script type="application/ld+json">
@@ -210,7 +219,7 @@
     "url": "https://timemachineapp.co.uk/articles/how-apa-rates-work",
     "image": "https://timemachineapp.co.uk/og-image.png",
     "datePublished": "2026-07-23",
-    "dateModified": "2026-07-23",
+    "dateModified": "2026-08-24",
     "author": { "@type": "Person", "@id": "https://timemachineapp.co.uk/about#person", "name": "Declan Patrick Duffy", "url": "https://timemachineapp.co.uk/about" },
     "publisher": { "@type": "Organization", "@id": "https://timemachineapp.co.uk/#organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/", "logo": "https://timemachineapp.co.uk/icon-512.png", "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"] },
     "mainEntityOfPage": "https://timemachineapp.co.uk/articles/how-apa-rates-work"
@@ -272,7 +281,9 @@
 
       <p class="label">Article</p>
       <h1>How APA rates actually work</h1>
-      <p class="byline">TimeMachine · Published 23 July 2026</p>
+      <p class="byline">TimeMachine · Published 23 July 2026 · Updated 24 August 2026</p>
+
+      <p class="update-note"><strong>Updated for the terms effective 1 September 2026.</strong> The overtime grade boundaries have moved: Grade I now runs to £458 and Grade III starts at £697. The figures below are the new ones. See <a href="/articles/apa-crew-terms-2026-what-changed">what changed in the September 2026 terms</a>.</p>
 
       <p>"What's the APA rate for a spark?" is the wrong question, and the reason it is wrong tells you most of what you need to know about how the system works.</p>
       <p>There is no single rate for a role. There is a <strong>band</strong>, you negotiate within it, and where you land in that band determines something else entirely: <a href="/articles/how-apa-overtime-works">what your overtime is worth</a>.</p>
@@ -296,15 +307,15 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td>Grade I</td><td>Up to £444</td><td>1.5</td><td>Time and a half</td></tr>
-          <tr><td>Grade II</td><td>£445 to £676</td><td>1.25</td><td>Time and a quarter</td></tr>
-          <tr><td>Grade III</td><td>£677 and above</td><td>1.0</td><td>Flat time</td></tr>
+          <tr><td>Grade I</td><td>Up to £458</td><td>1.5</td><td>Time and a half</td></tr>
+          <tr><td>Grade II</td><td>£459 to £696</td><td>1.25</td><td>Time and a quarter</td></tr>
+          <tr><td>Grade III</td><td>£697 and above</td><td>1.0</td><td>Flat time</td></tr>
         </tbody>
       </table>
       </div>
 
       <p><strong>The higher your day rate, the lower your overtime multiplier.</strong> The reasoning is that higher rates are already priced to absorb long days. Whether that convinces you is another matter, but it is the structure.</p>
-      <p>The practical consequence: those two boundaries, £444 and £677, are worth knowing precisely. Negotiating your day rate from £440 to £450 moves you from Grade I to Grade II and drops your overtime coefficient from 1.5 to 1.25. Depending on how much overtime you work, a small rise in your day rate can leave you worse off across a long job. It is worth doing that sum before agreeing a number near a boundary.</p>
+      <p>The practical consequence: those two boundaries, £458 and £697, are worth knowing precisely. Negotiating your day rate from £455 to £465 moves you from Grade I to Grade II and drops your overtime coefficient from 1.5 to 1.25. Depending on how much overtime you work, a small rise in your day rate can leave you worse off across a long job. It is worth doing that sum before agreeing a number near a boundary.</p>
 
       <h2>Working out your own rate</h2>
       <p>For any role, the calculation is the same:</p>
@@ -315,7 +326,7 @@
         <li>Multiply BHR by the coefficient. That is your overtime hour.</li>
         <li>Double and triple hourly rates are 2 × and 3 × your BHR.</li>
       </ol>
-      <p>A lighting technician at the top of Grade I, on £444: BHR is £44.40, overtime is £66.60, double time is £88.80, triple is £133.20.</p>
+      <p>A lighting technician in Grade I, on £444: BHR is £44.40, overtime is £66.60, double time is £88.80, triple is £133.20.</p>
       <p>A gaffer on £568 is Grade II: BHR £56.80, overtime £71.00, double £113.60, triple £170.40.</p>
       <p>Same trade, adjacent roles, and the gaffer's overtime is worth less relative to their day rate. That is the grade system doing its work.</p>
 
@@ -344,7 +355,7 @@
       <ul>
         <li>There is no single rate per role. There is a band, and you negotiate within it.</li>
         <li>BHR is one tenth of BDR. Everything else derives from those two numbers.</li>
-        <li>Grade I is up to £444 at 1.5 ×. Grade II is £445 to £676 at 1.25 ×. Grade III is £677 and above at 1.0 ×.</li>
+        <li>Grade I is up to £458 at 1.5 ×. Grade II is £459 to £696 at 1.25 ×. Grade III is £697 and above at 1.0 ×.</li>
         <li>The higher your day rate, the lower your overtime multiplier. Watch the boundaries when negotiating.</li>
         <li>Rates are updated annually, effective 1 September. A job runs on the card in force when the engagement starts.</li>
         <li>Directors, producers, PMs, PAs, runners and casting directors sit outside the standard grade structure.</li>

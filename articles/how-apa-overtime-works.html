@@ -199,6 +199,15 @@
     .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
     .footer-links a:hover { color: var(--tm-accent); }
     a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+
+    /* Dated update note - the correction stays visible, not silently rewritten */
+    .update-note {
+      background: var(--card); border: 1px solid var(--border);
+      border-left: 3px solid var(--tm-accent); border-radius: 10px;
+      padding: 12px 16px; margin: 0 0 28px;
+      font-size: 14px; line-height: 1.6; color: var(--text-2);
+    }
+    .update-note strong { color: var(--text); }
   </style>
 
   <script type="application/ld+json">
@@ -210,7 +219,7 @@
     "url": "https://timemachineapp.co.uk/articles/how-apa-overtime-works",
     "image": "https://timemachineapp.co.uk/og-image.png",
     "datePublished": "2026-07-17",
-    "dateModified": "2026-07-23",
+    "dateModified": "2026-08-24",
     "author": { "@type": "Person", "@id": "https://timemachineapp.co.uk/about#person", "name": "Declan Patrick Duffy", "url": "https://timemachineapp.co.uk/about" },
     "publisher": { "@type": "Organization", "@id": "https://timemachineapp.co.uk/#organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/", "logo": "https://timemachineapp.co.uk/icon-512.png", "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"] },
     "mainEntityOfPage": "https://timemachineapp.co.uk/articles/how-apa-overtime-works"
@@ -272,7 +281,9 @@
 
       <p class="label">Article</p>
       <h1>How APA overtime actually works</h1>
-      <p class="byline">TimeMachine · Published 17 July 2026 · Updated 23 July 2026</p>
+      <p class="byline">TimeMachine · Published 17 July 2026 · Updated 24 August 2026</p>
+
+      <p class="update-note"><strong>Updated for the terms effective 1 September 2026.</strong> The overtime grade boundaries have moved: Grade I now runs to £458 and Grade III starts at £697. The figures below are the new ones. See <a href="/articles/apa-crew-terms-2026-what-changed">what changed in the September 2026 terms</a>.</p>
 
       <p>Here is the bit that surprises people: <strong>the more you earn, the less your overtime is worth.</strong></p>
       <p>Not less in total. Less per hour, relative to your own rate. A lighting technician on £444 gets time and a half. A DoP on £1,516 gets time. Same agreement, same overtime, wildly different multiplier, and it is deliberate.</p>
@@ -297,17 +308,17 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td>Grade I</td><td>£0 to £444</td><td>1.5</td><td>Time and a half</td></tr>
-          <tr><td>Grade II</td><td>£445 to £676</td><td>1.25</td><td>Time and a quarter</td></tr>
-          <tr><td>Grade III</td><td>£677 and above</td><td>1.0</td><td>Flat time</td></tr>
+          <tr><td>Grade I</td><td>£0 to £458</td><td>1.5</td><td>Time and a half</td></tr>
+          <tr><td>Grade II</td><td>£459 to £696</td><td>1.25</td><td>Time and a quarter</td></tr>
+          <tr><td>Grade III</td><td>£697 and above</td><td>1.0</td><td>Flat time</td></tr>
         </tbody>
       </table>
       </div>
 
-      <p>A lighting technician on the £444 ceiling is Grade I, so their overtime hour is £44 × 1.5 = £67.</p>
+      <p>A lighting technician on £444 is Grade I, so their overtime hour is £44 × 1.5 = £67.</p>
       <p>A gaffer on £568 is Grade II, so theirs is £57 × 1.25 = £71.</p>
       <p>A DoP on £1,516 is Grade III. Their overtime hour is £152 × 1.0 = £152. Enormous in absolute terms, and no uplift whatsoever for the fact that it's overtime.</p>
-      <p>The logic is that the higher rates are already priced to absorb long days. Whether you find that convincing is up to you, but it's the deal, and it's worth knowing which side of £444 and £677 you're sitting on, because a fiver on your day rate can move you <a href="/apa-rates">a whole grade</a> and cost you money on every overtime hour you work for the rest of the job.</p>
+      <p>The logic is that the higher rates are already priced to absorb long days. Whether you find that convincing is up to you, but it's the deal, and it's worth knowing which side of £458 and £697 you're sitting on, because a fiver on your day rate can move you <a href="/apa-rates">a whole grade</a> and cost you money on every overtime hour you work for the rest of the job.</p>
 
       <h2>When overtime actually starts</h2>
       <p>The basic working day is <strong>eleven hours in total</strong>: ten working hours and one hour for lunch. Overtime applies after eleven hours from your call.</p>
@@ -367,7 +378,7 @@
       <h2>The short version</h2>
       <ul>
         <li>BHR is one tenth of BDR. Everything else is that number times a coefficient.</li>
-        <li>Grade I (up to £444) is 1.5×. Grade II (£445 to £676) is 1.25×. Grade III (£677+) is 1.0×.</li>
+        <li>Grade I (up to £458) is 1.5×. Grade II (£459 to £696) is 1.25×. Grade III (£697+) is 1.0×.</li>
         <li>The basic day is eleven hours including the unpaid lunch. Overtime starts after eleven.</li>
         <li>Late call? The day is deemed to start at 11am regardless.</li>
         <li>Early call? 5am to 7am is paid at OT, and it applies all seven days.</li>
