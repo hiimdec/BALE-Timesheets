@@ -367,6 +367,8 @@ async function transformedAppCode() {
     'try { globalThis.__migrateDay = migrateDay; } catch (_) {}\n' +
     'try { globalThis.__fmtQtyDisplay = fmtQtyDisplay; } catch (_) {}\n' +
     'try { globalThis.__invoiceWaivedTotal = invoiceWaivedTotal; } catch (_) {}\n' +
+    'try { globalThis.__wrapPromptDue = wrapPromptDue; } catch (_) {}\n' +
+    'try { globalThis.__wrapPromptThresholdMs = wrapPromptThresholdMs; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -6173,6 +6175,82 @@ async function main() {
     check('WV4 the waived row renders non-zero-gated and the month amount formula never subtracts it',
       /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
       && /const amount = monthBasis === 'paid' \? billed : \(gross \+ coveredComputed - discount\);/.test(srcHtml));
+  }
+
+  // ===== WP. The wrap prompt — "Still on set?" (founder-ruled) =====
+  // The trigger predicate is falsifiable at EACH condition (ruled), not only
+  // in aggregate: every fixture below flips exactly one thing.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const due = sb.__wrapPromptDue, thr = sb.__wrapPromptThresholdMs;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const prod = { id: 'pWP', title: 'Prompt', crew: [crew], bestBoyMode: false, dayDefaults: {}, days: [] };
+    // Fixed reference: a day dated "today" relative to a chosen now. Use a
+    // now at 22:00 LOCAL on the day itself, wrap entered 19:00 → threshold
+    // 20:00 (explicit +60m), so 22:00 is comfortably due.
+    const dayDate = '2026-06-10';
+    const at = (hhmm, plusDays = 0) => new Date(dayDate + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
+    const base = { id: 'd1', crewId: 'c1', date: dayDate, callTime: '08:00', wrapTime: '19:00' };
+    if (typeof due !== 'function' || typeof thr !== 'function') {
+      check('WP0 predicate exposed', false, 'not exposed');
+    } else {
+      check('WP1 due when unwrapped, unasked, unheld and past the threshold',
+        due(prod, base, crew, at('22:00')) === true);
+      check('WP2 each condition falsifies ALONE: wrapped',
+        due(prod, { ...base, wrapped: true }, crew, at('22:00')) === false);
+      check('WP3 each condition falsifies ALONE: stillOnSetAt (held open)',
+        due(prod, { ...base, stillOnSetAt: '2026-06-10T20:30:00.000Z' }, crew, at('22:00')) === false);
+      check('WP4 each condition falsifies ALONE: wrapAskedAt (never nag twice)',
+        due(prod, { ...base, wrapAskedAt: '2026-06-10T20:30:00.000Z' }, crew, at('22:00')) === false);
+      check('WP5 each condition falsifies ALONE: before the threshold (19:00 entered wrap + 60m → 19:59 not due, 20:01 due)',
+        due(prod, base, crew, at('19:59')) === false && due(prod, base, crew, at('20:01')) === true);
+      // The ruled margins: entered wrap +60m; cascade-resolved wrap +120m.
+      const cascaded = { id: 'd2', crewId: 'c1', date: dayDate, callTime: '08:00' };   // wrapTime resolves from DEFAULT_PRODUCTION_DAY 19:00
+      check('WP6 the margin follows CONFIDENCE: entered 19:00 → due from 20:00; defaulted 19:00 → due from 21:00',
+        Math.abs(thr(prod, base, crew) - at('20:00')) < 1000
+        && Math.abs(thr(prod, cascaded, crew) - at('21:00')) < 1000,
+        `entered=${thr(prod, base, crew)} cascaded=${thr(prod, cascaded, crew)}`);
+      // No resolvable wrap → call + 16h (the shipped stale sentinel figure).
+      // A record whose resolved wrap is unparseable is hard to build through
+      // the cascade (defaults always supply one), so assert via the Day off
+      // resolution, which resolves NO times → threshold null, never due.
+      const off = { id: 'd3', crewId: 'c1', date: dayDate, dayType: 'Day off' };
+      check('WP7 a day resolving no call is never due (threshold null)',
+        thr(prod, off, crew) === null && due(prod, off, crew, at('23:00')) === false);
+      // OVERNIGHT (ruled: scan by wrap moment, never date equality): a 17:00
+      // call wrapping 04:00 is dated the CALL day; at 06:00 the NEXT morning
+      // it is due (explicit wrap: threshold 05:00). A plain 19:00 day dated
+      // yesterday is NOT due the next morning - midnight already counted it.
+      const night = { id: 'd4', crewId: 'c1', date: dayDate, callTime: '17:00', wrapTime: '04:00' };
+      check('WP8 overnight: yesterday-dated night shoot is due the morning after (wrap moment crossed midnight)',
+        due(prod, night, crew, at('06:00', 1)) === true);
+      check('WP9 a plain yesterday day is NOT due the morning after (the midnight rule settled it)',
+        due(prod, base, crew, at('09:00', 1)) === false);
+      // The two fields ROUND-TRIP: migrateDay must preserve them (spread) and
+      // never invent them.
+      const mDay = sb.__migrateDay;
+      const kept = mDay({ ...base, stillOnSetAt: 'S', wrapAskedAt: 'A' });
+      const fresh = mDay({ ...base });
+      check('WP10 stillOnSetAt and wrapAskedAt round-trip through migrateDay and are never backfilled',
+        kept.stillOnSetAt === 'S' && kept.wrapAskedAt === 'A'
+        && !('stillOnSetAt' in fresh) && !('wrapAskedAt' in fresh));
+    }
+    // Source pins: the async gates the predicate deliberately excludes.
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    check('WP11 the prompt never fires while a LIVE card exists - the sweep skips productions with an active/stale activity before any predicate runs',
+      /if \(liveByPid\.has\(p\.id\)\) continue;\s*\/\/ a live card exists - never prompt over it/.test(srcHtml)
+      && /const live = !a\.activityState \|\| a\.activityState === 'active' \|\| a\.activityState === 'stale';/.test(srcHtml));
+    check('WP12 a DISMISSED day never re-mints, and an overdue day asks before minting - both gates in the sweep\'s start branch',
+      /if \(recP && recP\.wrapAskedAt && !recP\.stillOnSetAt\) continue;/.test(srcHtml)
+      && /if \(recP && !recP\.stillOnSetAt && wrapPromptDue\(pr, recP, soloCrew, Date\.now\(\)\)\) continue;/.test(srcHtml));
+    check('WP13 the un-wrap affordance writes the SAME held-open signal as the prompt (one field, two doors), and the wrapped answer routes through the SHARED path so wrapObservedPatch stays the sole wrappedAt stamper',
+      /\{ \.\.\.withWrapCleared\(d\), stillOnSetAt: new Date\(\)\.toISOString\(\) \}/.test(srcHtml)
+      && /applySoloWrapIntent\(d, \{ \.\.\.d, wrapTime: t, wrapAskedAt: new Date\(\)\.toISOString\(\) \}\)/.test(srcHtml)
+      && (srcHtml.match(/wrappedAt: new Date\(\)\.toISOString\(\)/g) || []).length === 1);
+    check('WP14 showing the prompt stamps NOTHING (ruled: the un-interacted re-show edge is accepted) - exactly two stamp call sites (still-on, dismiss), and the show path (setWrapPrompt with a value) is not followed by a day write',
+      (srcHtml.match(/wrapPromptStamp\(\{/g) || []).length === 2
+      && !/setWrapPrompt\(\{ productionId[^}]*\}\);[^]{0,120}handleUpdateDays/.test(srcHtml));
   }
 
   // ===== QF. ONE qty formatter on every surface that prints a qty =====

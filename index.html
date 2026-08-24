@@ -7974,6 +7974,76 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       if (!passed && nextDay.wrapped === true) return withWrapCleared(nextDay);
       return nextDay;
     }
+    // ── The wrap prompt (founder-ruled, "Still on set?") ──────────────────
+    // The flat-buffer auto-settle was REJECTED: a planned wrap is not a fact,
+    // and a long day blows through any fixed margin. Instead the app ASKS,
+    // once, when the day looks over and no live card exists to press wrap on.
+    // Nothing here settles anything - only the user's answer writes state.
+    //
+    // All arithmetic is in RESOLVED WRAP MOMENTS (call-relative, overnight-
+    // aware), never clock times or calendar dates: a 17:00 call wrapping
+    // 04:00 is one record dated the call day whose moment lands the next
+    // calendar morning.
+
+    // The resolved wrap moment for a day record, or null when no call
+    // resolves (matching the Live Activity's own ineligibility rule).
+    // explicitWrap reports whether the RAW record carries wrapTime - the
+    // cascade collapse deletes values equal to the date default, so presence
+    // means the user entered (or wrap-pressed) a time for THIS day.
+    function resolvedWrapMomentMs(production, day, crew) {
+      if (!day || !day.date) return null;
+      const vr = resolveDay(production, day, crew);
+      const callH = parseHHMM(vr.callTime);
+      if (callH == null) return null;
+      const base = new Date(day.date + 'T00:00:00').getTime();
+      const wrapH = parseHHMM(vr.wrapTime);
+      if (wrapH == null) return { wrapMs: null, callMs: base + callH * 3600 * 1000, explicitWrap: false };
+      const nextDayShift = vr.wrapNextDay === true || wrapH < callH;
+      return {
+        wrapMs: base + (wrapH + (nextDayShift ? 24 : 0)) * 3600 * 1000,
+        callMs: base + callH * 3600 * 1000,
+        explicitWrap: day.wrapTime !== undefined,
+      };
+    }
+
+    // When the prompt becomes due (ruled margins): resolved wrap + 60m when
+    // the wrap was explicitly entered, + 120m when it resolves from a default
+    // (lower confidence), call + 16h when no wrap resolves at all (the
+    // shipped stale-sentinel figure). null = never.
+    function wrapPromptThresholdMs(production, day, crew) {
+      const m = resolvedWrapMomentMs(production, day, crew);
+      if (!m) return null;
+      if (m.wrapMs == null) return m.callMs + 16 * 3600 * 1000;
+      return m.wrapMs + (m.explicitWrap ? 60 : 120) * 60 * 1000;
+    }
+
+    // The full sync predicate. Each condition is its own early return so the
+    // WP pins can falsify them ONE AT A TIME rather than only in aggregate.
+    // The live-card condition is deliberately NOT here - it is async plugin
+    // state, checked by the caller (and vacuously clear on web).
+    function wrapPromptDue(production, day, crew, nowMs) {
+      if (!day) return false;
+      if (day.wrapped === true) return false;              // already wrapped
+      if (day.stillOnSetAt) return false;                  // held open - answered
+      if (day.wrapAskedAt) return false;                   // asked - never nag twice
+      const threshold = wrapPromptThresholdMs(production, day, crew);
+      if (threshold == null) return false;                 // nothing resolvable
+      if (nowMs < threshold) return false;                 // not yet due
+      // Scan by WRAP MOMENT, never date equality (ruled): eligible while the
+      // record is today's, or yesterday's whose resolved moment crossed
+      // midnight into today (the overnight shift). A yesterday day whose
+      // moment also fell yesterday was counted by the midnight rule already -
+      // prompting the morning after would be a nag about settled money.
+      const now = new Date(nowMs);
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      if (day.date === todayStr) return true;
+      const m = resolvedWrapMomentMs(production, day, crew);
+      const todayMidnight = new Date(todayStr + 'T00:00:00').getTime();
+      const y = new Date(todayMidnight - 12 * 3600 * 1000);
+      const yesterStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+      return day.date === yesterStr && m.wrapMs != null && m.wrapMs >= todayMidnight;
+    }
+
     // Curtailed-lunch ingestion (Group B): write the card-captured lunch duration
     // (whole minutes, computed natively as now − lunchStart) onto the day RECORD
     // via the SAME mapDayNow transform every other "Now" writer uses — NOT a new
@@ -33144,7 +33214,11 @@ const confirmDelete = (p) => setConfirmOpts({
                             confirmLabel: "Un-wrap",
                             confirmTone: "primary",
                             onConfirm: () => {
-                              onUpdateDays(p.id, days => days.map(d => d.date === t ? withWrapCleared(d) : d));
+                              // stillOnSetAt: the SAME signal the prompt's "Still
+                              // on set" writes (ruled) - two ways of saying "I am
+                              // still going", one field. Gates the prompt and
+                              // permits the card re-mint; inert from tomorrow.
+                              onUpdateDays(p.id, days => days.map(d => d.date === t ? { ...withWrapCleared(d), stillOnSetAt: new Date().toISOString() } : d));
                               showToast("Day un-wrapped - back on call");
                             },
                           });
@@ -33471,6 +33545,14 @@ const confirmDelete = (p) => setConfirmOpts({
           if (pr.liveActivityEnabled === false) continue;
           const soloCrew = !pr.bestBoyMode ? (pr.crew || [])[0] : null;
           if (!soloCrew) continue;
+          // The wrap prompt's gates (ruled). A DISMISSED day never re-mints -
+          // an unknown state must not resurrect a card. An OVERDUE day with a
+          // dead card asks first - "Still on set" is what mints, via the
+          // stamp making these gates pass on the next sweep.
+          const recP = (pr.days || []).find(d => d.date === todayISO() && d.crewId === soloCrew.id)
+                    || (pr.days || []).find(d => d.date === todayISO());
+          if (recP && recP.wrapAskedAt && !recP.stillOnSetAt) continue;
+          if (recP && !recP.stillOnSetAt && wrapPromptDue(pr, recP, soloCrew, Date.now())) continue;
           let desc = null;
           try { desc = liveActivityDescriptor(pr, soloCrew, pr.days || []); } catch (_) {}
           if (!desc || desc.wrapped) continue;
@@ -34348,6 +34430,73 @@ const confirmDelete = (p) => setConfirmOpts({
           .catch((e) => { try { console.error('Accountant export failed', e); } catch (_) {} });
       };
 
+      // ── The wrap prompt ("Still on set?") ──────────────────────────────
+      // Fires from the same no-background trigger everything else uses: app
+      // launch and every return to the foreground (visibilitychange covers
+      // both platforms - WKWebView fires it on foreground). Solo APA scope,
+      // v1 (matches the Live Activity it backstops). The prompt NEVER fires
+      // while a LIVE card exists for that production - if a card is up,
+      // people press wrap; the problem case is the card having died.
+      const [wrapPrompt, setWrapPrompt] = useState(null); // { productionId, dayId, resolvedWrap }
+      const wrapPromptBusyRef = React.useRef(false);
+      const wrapPromptSweep = React.useCallback(async () => {
+        if (wrapPromptBusyRef.current) return;
+        wrapPromptBusyRef.current = true;
+        try {
+          const nowMs = Date.now();
+          // Live cards by production - listActivities returns [] on web, so
+          // the live-card condition is vacuously clear there.
+          let liveByPid = new Set();
+          try {
+            const acts = await LiveActivity.listActivities();
+            for (const a of (acts || [])) {
+              const live = !a.activityState || a.activityState === 'active' || a.activityState === 'stale';
+              if (live && a.productionId) liveByPid.add(a.productionId);
+            }
+          } catch (_) {}
+          for (const p of productions) {
+            if (agreementOf(p) !== 'apa' || p.bestBoyMode) continue;
+            if (liveByPid.has(p.id)) continue;              // a live card exists - never prompt over it
+            const crew = (p.crew || [])[0];
+            if (!crew) continue;
+            for (const d of (p.days || [])) {
+              if (d.crewId !== crew.id) continue;
+              if (!wrapPromptDue(p, d, crew, nowMs)) continue;
+              const vr = resolveDay(p, d, crew);
+              setWrapPrompt({ productionId: p.id, dayId: d.id, resolvedWrap: vr.wrapTime || '' });
+              return;                                       // one prompt at a time
+            }
+          }
+        } finally { wrapPromptBusyRef.current = false; }
+      }, [productions]);
+      useEffect(() => {
+        wrapPromptSweep();
+        const onVis = () => { if (document.visibilityState === 'visible') wrapPromptSweep(); };
+        document.addEventListener('visibilitychange', onVis);
+        return () => document.removeEventListener('visibilitychange', onVis);
+      }, [wrapPromptSweep]);
+      // The three outcomes. ONLY answers write state; showing stamps nothing
+      // (ruled: the un-interacted re-show edge is accepted).
+      const wrapPromptStamp = (patch) => {
+        const wp = wrapPrompt;
+        if (!wp) return;
+        setWrapPrompt(null);
+        handleUpdateDays(wp.productionId, days => days.map(d => d.id === wp.dayId ? { ...d, ...patch } : d));
+      };
+      const wrapPromptStillOn = () => wrapPromptStamp({ stillOnSetAt: new Date().toISOString() });
+      const wrapPromptDismiss = () => wrapPromptStamp({ wrapAskedAt: new Date().toISOString() });
+      const wrapPromptWrapped = (t) => {
+        const wp = wrapPrompt;
+        if (!wp || parseHHMM(t) === null) return;
+        setWrapPrompt(null);
+        // THE SHARED PATH (ruled): the same transform a typed wrap-time edit
+        // takes, so wrapObservedPatch stays the sole stamper of wrappedAt -
+        // the field means "the moment the user told the app", and answering
+        // the prompt is the same act as typing the time, through another door.
+        handleUpdateDays(wp.productionId, days => days.map(d =>
+          d.id === wp.dayId ? applySoloWrapIntent(d, { ...d, wrapTime: t, wrapAskedAt: new Date().toISOString() }) : d));
+      };
+
       const handleUpdateDays = (id, updater) => {
         setProductions(prev => prev.map(p =>
           p.id === id
@@ -34713,6 +34862,54 @@ const confirmDelete = (p) => setConfirmOpts({
           <SubScreenContext.Provider value={subScreenCtx}>
           <InvoiceChargesContext.Provider value={invoiceChargesCtx}>
           {screen}
+          {/* The wrap prompt (founder-ruled). Three outcomes, answers only:
+              Still on set holds the day open (stillOnSetAt - the same signal
+              the un-wrap affordance writes) and lets the sweep re-mint a
+              fresh card; We wrapped routes the entered time through the
+              SHARED solo write path; closing stamps wrapAskedAt so it never
+              asks twice. Time renders 24h HH:MM like every other surface. */}
+          {wrapPrompt && (() => {
+            const WrapPromptBody = () => {
+              const [entering, setEntering] = useState(false);
+              const [t, setT] = useState(wrapPrompt.resolvedWrap || '19:00');
+              return (
+                <div className="px-4 pb-5 flex flex-col gap-2">
+                  <p className="text-sm text-neutral-400 leading-relaxed px-1">
+                    Your day was due to wrap at {wrapPrompt.resolvedWrap || 'its planned time'}.
+                  </p>
+                  {!entering ? (
+                    <>
+                      <button type="button" onClick={wrapPromptStillOn}
+                        className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        Still on set
+                      </button>
+                      <button type="button" onClick={() => setEntering(true)}
+                        className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        We wrapped
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input type="time" value={t} onChange={e => setT(e.target.value)}
+                        className="flex-1 bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm font-mono text-neutral-100" />
+                      <button type="button" onClick={() => wrapPromptWrapped(t)}
+                        className="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-sm font-bold text-black transition-colors"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}>
+                        Save
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            };
+            return (
+              <Sheet open onClose={wrapPromptDismiss} title="Still on set?">
+                <WrapPromptBody />
+              </Sheet>
+            );
+          })()}
           {/* H2 future-card notice — informational only: rates were already
               applied automatically underneath (exact-match rule), so this
               is a heads-up, never a permission gate. Single OK; fires only

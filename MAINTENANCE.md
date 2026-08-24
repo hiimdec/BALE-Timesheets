@@ -168,6 +168,12 @@ than by the absence of a rate. Pin that the amounts are byte-identical across th
 **Change:** soften third-party brand names used as price comparators. Locations: the stats "worth" comparators in index.html (~line 1848: "Greggs sausage rolls" £1.30, "Leathermans" £100, with emoji), the how-it-works.html line "how many Greggs that's worth" (~line 1875), and the references in DESIGN_v2.md and BRAND.md's voice examples. Generic alternatives ("sausage rolls", "multitools") keep the joke without naming the brands.
 **Why parked:** the usage is nominative and jokey, low risk, and the voice guidance (BRAND.md) leans on the Greggs gag as a house-humour example — softening it is a copy decision worth taking deliberately, not in passing.
 
+## Next Live Activity release — the reconcile sweep is date-scoped and misses a running night shoot after midnight
+
+**Trigger:** any release touching the reconcile sweep or overnight day handling.
+**The finding** (surfaced by the wrap-prompt investigation, recorded separately by ruling): the sweep resolves its day record by `d.date === today`. A 17:00-call night shoot dated Tuesday is still running at 2am Wednesday, but "today" is now Wednesday, the scan finds no record, `qualifies` goes false, and the sweep treats the production as having no live day - the running shift's card is ended or left unmanaged at midnight. The wrap prompt deliberately does NOT inherit this: it scans by resolved wrap moment (`wrapPromptDue` accepts yesterday's record when its wrap moment crossed midnight). The sweep needs the same wrap-moment scan.
+**Why parked:** the sweep rewrite touches the Live Activity lifecycle across midnight, which is the same territory as the discard-on-midnight event loss below - fix them in one slice, on-device, not as a rider on the prompt.
+
 ## Next Live Activity release — discard-on-midnight event loss
 
 Found during the 2026-07-09 Live Activity Wrap-button investigation; parked because the fix lives entirely in the LA ingest path and can only be verified on device.
