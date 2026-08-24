@@ -18043,7 +18043,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
     }
 
-    function ExportTab({ production, crew, days, showToast, userPrefs }) {
+    function ExportTab({ production, crew, days, showToast, userPrefs, onOpenSave }) {
       // exportState: null | { mode: "timesheet"|"grid", crewId: string|null, weekIdx: number|null }
       const [exportState, setExportState]   = useState(null);
       const [showWeekPicker, setShowWeekPicker] = useState(false);
@@ -18198,6 +18198,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               </Btn>
             )}
           </div>
+
+          {/* Save or email — the multi-select crew sheet (SaveTimesheetsSheet),
+              folded in here so the drawer carries ONE export entry covering
+              everything: grid PDFs, crew PDFs, save/email, text. */}
+          {onOpenSave && (
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-bold">Save or email</div>
+              <Btn variant="subtle" onClick={onOpenSave} disabled={noDays}>
+                <IMail/>Save or email timesheets
+              </Btn>
+            </div>
+          )}
 
           {/* Text export per crew member */}
           <div className="space-y-2">
@@ -22078,6 +22090,13 @@ const setDays = (updater) =>
       useBackLevel(!!breakdownDate, () => setBreakdownDate(null), 'bb-day-breakdown');
       useBackLevel(!!drilldownCrewMember, () => setDrilldownCrewMember(null), 'bb-drilldown');
       useBackLevel(showMobileNav, () => setShowMobileNav(false), 'bb-mobile-nav');
+      // The Export and Setup TABS are levels too. Without these, native back
+      // on either tab fell through to 'shoot-root' and exited to the SHOOTS
+      // LIST - the web pill's own back already went to Days, so back went two
+      // different places depending on which control you pressed. One rule:
+      // back from a non-days tab returns to the job's Days tab.
+      useBackLevel(tab === 'export', () => setTab('days'), 'bb-export-tab');
+      useBackLevel(tab === 'setup', () => setTab('days'), 'bb-setup-tab');
 
       if (showProdSettings) {
         return (
@@ -22251,7 +22270,10 @@ const setDays = (updater) =>
           </div>
           )}
 
-          <div className="max-w-6xl mx-auto px-4 py-6 pb-32">
+          {/* No pb-32 here: the Rates-per-APA footer below this wrapper carries
+              the pill clearance already - two stacked clearances forced a
+              scrollbar onto short tabs (Export) with nothing to scroll. */}
+          <div className="max-w-6xl mx-auto px-4 py-6">
             {tab === "setup" && production.bestBoyMode && (
               <div className="space-y-8">
                 <ProductionForm production={production} setProduction={setProduction} onOpenSettings={() => setShowProdSettings(true)} />
@@ -22295,7 +22317,7 @@ const setDays = (updater) =>
                       />)
                 : <DaysManager days={days} setDays={setDays} crew={crew} production={production} setProduction={setProduction} showToast={showToast} onAddDate={handleGridAddDate} onAddWeek={handleGridAddWeek} onAddCrew={handleGridAddCrew} onPushUndo={pushUndo} onRemoveWeek={handleRemoveWeek} userPrefs={userPrefs} setUserPrefs={setUserPrefs} />
             )}
-            {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} />}
+            {tab === "export" && <ExportTab production={production} crew={crew} days={days} showToast={showToast} userPrefs={userPrefs} onOpenSave={() => setShowSaveSheet(true)} />}
           </div>
 
           <div className="text-center text-[10px] text-neutral-600 py-6 pb-32 uppercase tracking-widest">
@@ -22443,24 +22465,13 @@ const setDays = (updater) =>
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <IShare size={15}/>Export
                   </button>
-                  {/* Stage 3b: the mobile header's Share/calc-view button is suppressed under
-                      native chrome, so surface it here (native only — web keeps the header button). */}
-                  {NATIVE_CHROME_ACTIVE && (
-                  <button
-                    type="button"
-                    onClick={() => { setShowMobileNav(false); setShowCalcView(true); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IShare size={15}/>Share / export
-                  </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => { setShowMobileNav(false); setShowSaveSheet(true); }}
-                    className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2.5"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <IMail size={15}/>Save timesheets
-                  </button>
+                  {/* The old native-only "Share / export" entry is GONE. It was
+                      added believing the calc view was unreachable under native
+                      chrome, but the money pill's View breakdown reaches it on
+                      every platform - so the drawer offered "Export" and
+                      "Share / export" side by side, same icon, different
+                      destinations, different back behaviour. One route to the
+                      overview (the pill), one export entry (below). */}
                   {invoicesTabVisible(userPrefs) && (
                   <button
                     type="button"

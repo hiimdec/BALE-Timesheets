@@ -7899,6 +7899,24 @@ async function main() {
           && /\{showCalcView && \(\s*\n\s*calcViewIsBBOverview \? \(/.test(html);
         return trailingHead && titleHead && declares && noDupeLevel && bbGated;
       })());
+    // II3j — the BB drawer's export consolidation (device-found trio). The
+    // drawer offered "Export" and a native-only "Share / export" side by side
+    // (same icon, different destinations), native back from the Export tab
+    // exited to the SHOOTS LIST because no back level owned the non-days
+    // tabs, and the tab wrapper stacked pb-32 on the footer's own pb-32 so a
+    // short tab scrolled with nothing to scroll.
+    check('II3j one export entry: the drawer\'s duplicate calc-view route and Save-timesheets entry are gone, ExportTab owns the save/email route, non-days tabs pop back to Days, and the wrapper carries ONE pill clearance',
+      (() => {
+        const drawer = (html.match(/bb-mobile-nav[\s\S]{0,6000}?<\/Sheet>/) || [''])[0] || html;
+        const dupGone = !/setShowMobileNav\(false\); setShowCalcView\(true\);/.test(html)
+          && !/setShowMobileNav\(false\); setShowSaveSheet\(true\);/.test(html);
+        const exportOwns = /onOpenSave=\{\(\) => setShowSaveSheet\(true\)\}/.test(html)
+          && /Save or email timesheets/.test(html);
+        const backLevels = /useBackLevel\(tab === 'export', \(\) => setTab\('days'\), 'bb-export-tab'\);/.test(html)
+          && /useBackLevel\(tab === 'setup', \(\) => setTab\('days'\), 'bb-setup-tab'\);/.test(html);
+        const singleClearance = !/max-w-6xl mx-auto px-4 py-6 pb-32/.test(html);
+        return dupGone && exportOwns && backLevels && singleClearance;
+      })());
     check('II3h SoloDayPage export sheet routes through <Sheet>',
       /<Sheet open=\{showExportSheet\} onClose=\{\(\) => setShowExportSheet\(false\)\}>/.test(html));
 
