@@ -33062,7 +33062,15 @@ const confirmDelete = (p) => setConfirmOpts({
                   {groupsDisplay.map(({ label, items, monthTotal, monthHours, allUpcoming }) => (
                     <div key={label}>
                       <div className="flex items-baseline justify-between border-b border-dashed border-neutral-800 mb-2.5" style={{ padding: '0 2px 10px' }}>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label}</div>
+                        {/* The third basis, stated like the other two (LAB4):
+                            this header is BILLED money at whole-job
+                            granularity, grouped by the month the job's first
+                            day falls in - a job spanning a month boundary
+                            sits entirely in its first month. Stats says "by
+                            date worked", the invoices tab "by date paid";
+                            this was the one money-by-month surface with no
+                            marker, showing a third figure on a third basis. */}
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label} <span className="normal-case tracking-normal font-normal text-neutral-600">· by job start</span></div>
                         {!allUpcoming && (
                           <div className="flex items-baseline gap-2.5">
                             <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>

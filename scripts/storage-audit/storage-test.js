@@ -6230,6 +6230,11 @@ async function main() {
     // The invoices tab groups its Paid section by PAYMENT month while every
     // other surface groups by work date - the basis is now stated at the
     // grouping, in the same muted treatment as the agreement-value marker.
+    // The THIRD basis, guarded with the other two: the shoots-list month
+    // header is billed money at whole-job granularity, grouped by the job's
+    // first day - found on device as the one unmarked money-by-month surface.
+    check('LAB4 the shoots-list month header states its basis - "by job start" beside every month label, same muted family',
+      (srcHtml.match(/>\{label\} <span className="normal-case tracking-normal font-normal text-neutral-600">· by job start<\/span><\/div>/g) || []).length === 1);
     check('LAB3 the invoices tab\'s Paid section states its basis - "by date paid", the ONE phrasing family all three surfaces share',
       (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by date paid<\/span><\/div>/g) || []).length === 1
       && !/by month paid/.test(srcHtml));
