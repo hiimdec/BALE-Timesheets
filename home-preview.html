@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>APA rate calculator for UK commercial crew | TimeMachine</title>
-  <meta name="description" content="Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. TimeMachine is the free app that takes UK commercial crew from call sheet to timesheet to invoice.">
+  <title>APA timesheets and invoices for UK film and TV crew | TimeMachine</title>
+  <meta name="description" content="Track the shoot, apply the APA terms, send the invoice. Free APA timesheet app for UK commercial crew. No account, works offline, Best Boy mode for whole crews.">
   <meta name="theme-color" content="#0a0a0a">
   <meta name="apple-itunes-app" content="app-id=6775970098">
 
   <link rel="canonical" href="https://timemachineapp.co.uk/">
 
   <meta property="og:site_name" content="TimeMachine">
-  <meta property="og:title" content="APA rate calculator for UK commercial crew">
-  <meta property="og:description" content="Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. TimeMachine is the free app that takes UK commercial crew from call sheet to timesheet to invoice.">
+  <meta property="og:title" content="APA timesheets and invoices for UK film and TV crew">
+  <meta property="og:description" content="Track the shoot, apply the APA terms, send the invoice. Free APA timesheet app for UK commercial crew. No account, works offline, Best Boy mode for whole crews.">
   <meta property="og:url" content="https://timemachineapp.co.uk/">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
@@ -20,8 +20,8 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="APA rate calculator for UK commercial crew">
-  <meta name="twitter:description" content="Calculate APA day rates, overtime, CWD, break penalties, travel and night shoots. TimeMachine is the free app that takes UK commercial crew from call sheet to timesheet to invoice.">
+  <meta name="twitter:title" content="APA timesheets and invoices for UK film and TV crew">
+  <meta name="twitter:description" content="Track the shoot, apply the APA terms, send the invoice. Free APA timesheet app for UK commercial crew. No account, works offline, Best Boy mode for whole crews.">
   <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
 
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -1357,6 +1357,10 @@
       color: var(--text); max-width: 12ch;
     }
     .hero h1.home .sky { color: var(--tm-accent); }
+    .definition {
+      margin: 18px 0 0; max-width: 600px;
+      font-size: 15.5px; line-height: 1.6; color: var(--text-3);
+    }
     .trust-line {
       margin-top: 20px; font-size: 12px; letter-spacing: 0.04em;
       color: var(--text-3); font-weight: 600;
@@ -1494,13 +1498,23 @@
     <div class="container">
       <div class="hero-grid">
         <div class="hero-content">
-          <p class="label">APA rate calculator</p>
-          <h1 class="home">The APA rate calculator for <span class="sky">UK commercial crew</span></h1>
+          <p class="label">APA timesheets and invoicing</p>
+          <h1 class="home">APA timesheets and invoices for <span class="sky">UK film and TV crew</span></h1>
           <p class="brandline">Your APA day, totalled.</p>
           <p class="lede">
             You know your BDR, your grade, what an L1 costs. TimeMachine already knows the rest of the
             <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA terms</a>.
             Put in your call and wrap; it works out the day, catches the penalties, and carries the total through to a sent invoice.
+          </p>
+
+          <!-- Plain-language definition, static HTML. The lede above opens on
+               BDR/L1/APA, so a reader (or a crawler) meets the jargon before the
+               product. This paragraph says what the thing actually is. -->
+          <p class="definition">
+            TimeMachine is a timesheet and invoicing app for crew working to the APA Recommended Terms.
+            Enter your call and wrap, and it works out the day type, the overtime grade and any break
+            penalties, then turns the week into a PDF timesheet and an invoice you can send. It runs on
+            iPhone and in any browser, needs no account, and the iPhone app keeps working without signal.
           </p>
           <!-- Store-first on every platform, matching /welcome (chunk 30).
                Both buttons always rendered and visible; no script involved. -->
@@ -1673,7 +1687,7 @@
       <p class="label">Day to paid</p>
       <h2 style="margin-bottom: 10px;">The calculation is the middle, not the end.</h2>
       <p style="color: var(--text-3); max-width: 620px; font-size: 15px;">
-        Most tools stop at the number. The job is not done until the money lands. TimeMachine carries a day the whole way, and most of what competitors do stops at step three.
+        Most tools stop at the number. The job is not done until the money lands, so TimeMachine carries a day the whole way.
       </p>
       <div class="flow">
         <div class="fstep"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg></div><div class="ord">01</div><div class="fname">Call sheet</div><p class="fsub">Read the invoicing details off it.</p></div>
