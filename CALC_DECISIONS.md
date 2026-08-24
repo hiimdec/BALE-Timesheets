@@ -598,6 +598,16 @@ read invoice data and does not now.
 **Partly supersedes** the Phase 17 entry, which implied all money figures read
 billed. Only total earnings and top production company do.
 
+> **REACH AMENDED (founder-ruled, Phase 18, "months to the worked side").**
+> Month rows move from the billed column to the agreement-value column: under
+> the work basis a month shows the worked value of its days (bars and total on
+> one basis, summing exactly), with what was waived as its own labelled line.
+> The hero, the tax-year figures, top production company and the home cards
+> stay billed — this ruling's core stands. The accepted cost, taken knowingly:
+> a month row no longer reflects invoiced money, so a manual line billing more
+> than the days compute shows in the hero and not in its month row; the
+> mismatch note states it.
+
 ---
 
 ## Stats money — monthly bucketing by work date: **RESOLVED — IMPLEMENTED** (founder, Phase 18)
@@ -657,6 +667,15 @@ nowhere — the underlying want is a cash view. Two bases, one preference
 display-only): **by date worked** (this ruling, THE DEFAULT) and **by date
 paid** (each invoice whole in the month of its `datePaid`).
 
+> **SUPERSEDED IN MECHANISM (founder-ruled, Phase 18, "months to the worked
+> side").** Months no longer attribute invoice money at all under the work
+> basis — a month is the agreement value of its days, and no invoice can move
+> money between months, so the straddle this ruling governed ceases to exist.
+> What survives of this ruling: the earliest-covered-day attribution rule, in
+> miniature, placing the **waived** line's month; and `invoicePaidMonth` for
+> the paid basis. The Invoiced ± bridge row is gone. See the "months to the
+> worked side" entry below for the full replacement.
+
 Rules of the paid basis:
 
 - **An unpaid claim lands in no month, never guessed.** Falling back to
@@ -692,6 +711,65 @@ figure (work month always, already labelled); production-company attribution
 £3,358.20 / £2,993.25, August £2,164.40 / £1,907.00 (worked / paid), awaiting
 payment £3,048.60. Pinned `MB5`–`MB8` (paid-basis bucketing, unpaid exclusion,
 basis-blind total, the visible surface), `MB3`/`MB4`/`LAB3` extended, each
+negative-tested.
+
+> **RESTATED (Phase 18, "months to the worked side"):** the toggle survives
+> with new meanings — months show **worked value** (work basis) or **cash
+> landed** (paid basis). The `Paid ±` relabel is gone with the bridge row.
+> The awaiting-payment line and the work-date default are unchanged. The
+> measured figures above predate the restatement; current figures live in the
+> entry below.
+
+---
+
+## Stats money — months to the worked side, the bridge retired: **RESOLVED — IMPLEMENTED** (founder-ruled, Phase 18)
+
+**The question.** The Invoiced ± row confused its reader. In June it was a
+straddle (the Red Bull invoice covering 30 June and 1 July, sitting whole in
+June); in July it was partly the Bloomberg waiver — two unrelated things under
+one label, and a mechanism (reconciling a billed headline against computed
+bars) rather than a thing anyone asked to know. What the founder wanted: the
+month shows the shoots worked, and separately what he chose to waive.
+
+**The ruling.**
+
+- **Months are ONE basis each way.** Work basis: a month is the agreement
+  value of its days — every day's computed total in its work month, invoice
+  nets never entering. Bars plus the kit-deal row sum to the month total
+  exactly. No invoice can move money between months; **the straddle ceases to
+  exist as a concept**. Paid basis: a month is what landed — paid nets only,
+  pure cash. Uninvoiced work shows in the bars (agreement value, labelled) and
+  the hero, not in cash months. **No bridge row exists under either basis.**
+- **"Waived on invoices" is its own line**: what the sender chose not to
+  bill, read off frozen lines exactly as the Waived/Reduced badges read them
+  (`invoiceWaivedTotal`), attributed whole to the invoice's month under the
+  active basis, display-only, shown only when non-zero.
+- **The figure requires the waive signal by construction.** A line with no
+  `discountedQty` contributes nothing — including an **edited-down line**
+  (rate retyped), which is indistinguishable from a correction. That blind
+  spot is pinned as a boundary (`WV2`), not left to resurface as a bug. `WV2`
+  earned its place before landing: the first draft computed full − billed for
+  every line and leaked rounding-artefact pennies into "waived" from lines
+  carrying no waive signal at all.
+- **Kit deals stay in their own row**, and the guard lives where nets are
+  read: months (worked, no nets) take the full discount; the hero and prodCo
+  (billed) keep the uncovered share; paid months take none — the deal is
+  already inside the landed cash. `KG1` rewritten with this ruling.
+
+**Measured on the real export.** By date worked: May £3,115.00, June
+£3,041.90, July £3,948.15 with **Waived £133.20** (the Bloomberg waiver,
+exactly, on the month he waived it), August £2,199.40 — June no longer carries
+the Red Bull straddle; each month holds its own day. By date paid: May £0.00
+(nothing was paid in May — the old May figure was uncovered worked value
+riding in cash months under the superseded rule), June £2,015.40, July
+£2,993.25, August £1,907.00, awaiting payment £3,048.60. **All-time identical
+under both bases, £12,136.25 to the penny.**
+
+**Supersedes** the Phase 17 monthly mechanism and Ruling 2's bucketing
+mechanism (both marked above). **Amends** Ruling 1's reach (months move to
+agreement value, labelled) and **restates** the basis amendment. Pinned
+`MB1`–`MB8` (rewritten), `WV1`–`WV4`, `KG1` (rewritten), `LAB2` (extended) —
+every mover moved WITH this ruling, none adjusted to pass, each
 negative-tested.
 
 ---
