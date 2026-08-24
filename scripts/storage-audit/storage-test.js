@@ -6070,6 +6070,11 @@ async function main() {
     // The definition, once, in the note - the founder\'s wording VERBATIM. The
     // note\'s month clause must also state Ruling 2\'s work-month rule; the
     // retired "month you sent it" wording must not return.
+    // The invoices tab groups its Paid section by PAYMENT month while every
+    // other surface groups by work date - the basis is now stated at the
+    // grouping, in the same muted treatment as the agreement-value marker.
+    check('LAB3 the invoices tab\'s Paid section states its basis - "by month paid" beside the section header',
+      (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by month paid<\/span><\/div>/g) || []).length === 1);
     check('LAB2 the note defines the marker in the founder\'s wording, states the work-month rule, and the retired send-month wording is gone',
       one(/Figures marked agreement value show what the work was worth, before anything you discounted or waived\./g)
       && /an invoice counts in the month of the earliest day it covers/.test(srcHtml)

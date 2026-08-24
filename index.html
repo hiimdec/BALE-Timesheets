@@ -31974,7 +31974,12 @@ const setDays = (updater) =>
                 )}
                 {showPaid && (
                   <section>
-                    <div className={`${sectionHdrCls} text-sky-500`}>Paid</div>
+                    {/* The month groups below bucket by PAYMENT date
+                        (paidMonthKey) while stats and the shoots list bucket
+                        by work date - only stats said so. Same muted marker
+                        treatment as "agreement value": the basis is stated
+                        where the grouping happens, once, not per month row. */}
+                    <div className={`${sectionHdrCls} text-sky-500`}>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by month paid</span></div>
                     {sections.paidGroups.map((g) => (
                       <div key={g.monthKey || '__undated'} className="mt-3 first:mt-0">
                         <div className="flex items-baseline justify-between gap-2 mb-1.5">
