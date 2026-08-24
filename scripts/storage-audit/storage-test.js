@@ -6008,14 +6008,93 @@ async function main() {
     // sent-date form survives at either. (The WINDOW filter keeps dateSent -
     // that is the ruled billed-basis tax-year, asserted kept by WIN1.)
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
-    check('MB3 both monthly rollups bucket through the ONE invoiceWorkMonth helper, and the sent-month form is GONE from both',
-      (srcHtml.match(/const imo = invoiceWorkMonth\(inv\);/g) || []).length === 2
+    // MB3 extended WITH the basis amendment: both rollups now bucket through
+    // the ONE basis switch (invoiceMonthFor), which routes to invoiceWorkMonth
+    // or invoicePaidMonth; the sent-month form stays gone.
+    check('MB3 both monthly rollups bucket through the ONE basis switch (invoiceMonthFor), and the sent-month form is GONE from both',
+      (srcHtml.match(/const imo = invoiceMonthFor\(inv, monthBasis\);/g) || []).length === 2
       && /const invoiceWorkMonth = \(inv\) => \{/.test(srcHtml)
+      && /const invoicePaidMonth = \(inv\) => \(inv && inv\.paidDate\) \? String\(inv\.paidDate\)\.slice\(0, 7\) : null;/.test(srcHtml)
+      && (srcHtml.match(/const monthBasis = statsMonthBasisOf\(userPrefs\);/g) || []).length === 2
       && !/const imo = String\(inv\.date\)\.slice\(0, 7\);/.test(srcHtml)
       && !/const imo = inv\.date\.slice\(0, 7\);/.test(srcHtml));
-    check('MB4 the ruled consequence is STATED on screen — the month table carries the two-bases note, gated on a windowed filter AND a real mismatch, never under All time',
-      /\{filter !== 'all' && Math\.abs\(stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005 && \(/.test(srcHtml)
-      && /Months are bucketed by when the work happened\. The total is what was billed in this window, so the two can differ\./.test(srcHtml));
+    // MB4 WIDENED with the amendment: under the paid basis the rows can miss
+    // awaiting-payment money even at All time, so the note now shows on ANY
+    // real mismatch, with basis-appropriate wording.
+    check('MB4 the mismatch note shows on ANY real mismatch (no windowed-only gate) and carries BOTH bases\' wording',
+      /\{Math\.abs\(stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005 && \(/.test(srcHtml)
+      && !/\{filter !== 'all' && Math\.abs\(stats\.monthBreakdown/.test(srcHtml)
+      && /Months are bucketed by when the work happened\. The total is what was billed in this window, so the two can differ\./.test(srcHtml)
+      && /Months are bucketed by when you were paid\. The total also counts money not yet paid, so the two can differ\./.test(srcHtml));
+  }
+
+  // ===== MB5-MB8. The basis amendment — by date worked / by date paid =====
+  // Founder-ruled amendment to Ruling 2: the month basis is user-chosen,
+  // 'work' the default. Paid basis: an invoice lands whole in the month it
+  // was PAID; an unpaid claim lands in NO month, never guessed, surfaced as
+  // an awaiting-payment line only when non-zero.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const aggregateMonthly = sb.__aggregateMonthly;
+    const moneyOf = sb.__claimedInvoicesOf;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const mkDay = (id, date) => ({ id, crewId: 'c1', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+    const mkProd = (inv) => ({ id: 'pMB5', title: 'Basis', crew: [crew], bestBoyMode: false, dayDefaults: {},
+      days: [mkDay('d1', '2026-06-30'), mkDay('d2', '2026-07-01')], invoices: [inv] });
+    const baseInv = { id: 'iMB5', userCrewId: 'c1', status: 'sent', dateSent: '2026-07-02', invoiceDate: '2026-07-02',
+      createdAt: '2026-07-02T10:00:00.000Z', dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
+      lineItems: [{ id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null }] };
+    const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
+    const runBasis = (inv, prefs) => {
+      const prod = mkProd(inv);
+      const billed = moneyOf(prod, prefs).map(x => ({ ...x, production: prod }));
+      const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
+      const covered = new Set(prod.days.map(d => `pMB5:${d.date}`));
+      return aggregateMonthly(enriched, [prod], prefs, billed, covered);
+    };
+
+    // MB5 — paid basis: the whole net lands in the month it was PAID.
+    const paidSeries = runBasis({ ...baseInv, datePaid: '2026-08-15', status: 'paid' }, { displayName: 'Dec', statsMonthBasis: 'paid' });
+    const p6 = paidSeries.find(m => m.month === '2026-06') || {}, p7 = paidSeries.find(m => m.month === '2026-07') || {}, p8 = paidSeries.find(m => m.month === '2026-08') || {};
+    check('MB5 under the paid basis the whole £888 lands in August (datePaid), with June and July at zero - work months hold the bars, the paid month holds the money',
+      Math.abs((p8.amount || 0) - 888) < 0.005 && Math.abs(p6.amount || 0) < 0.005 && Math.abs(p7.amount || 0) < 0.005,
+      `jun=${p6.amount} jul=${p7.amount} aug=${p8.amount}`);
+
+    // MB5b — the same data under the DEFAULT prefs buckets by work month:
+    // absence of the key means 'work', which is the amendment's default rule.
+    const defSeries = runBasis({ ...baseInv, datePaid: '2026-08-15', status: 'paid' }, { displayName: 'Dec' });
+    const d6 = defSeries.find(m => m.month === '2026-06') || {};
+    check('MB5b with the pref ABSENT the basis is work date (Ruling 2 stays the default) - the same invoice sits whole in June',
+      Math.abs((d6.amount || 0) - 888) < 0.005, `jun=${d6.amount}`);
+
+    // MB6 — an UNPAID claim under the paid basis lands in NO month, and the
+    // dateSent fallback is asserted absent from the paid-month helper.
+    const unpaidSeries = runBasis(baseInv, { displayName: 'Dec', statsMonthBasis: 'paid' });
+    check('MB6 an unpaid claim lands in NO month under the paid basis - excluded, never guessed into dateSent or dueDate',
+      unpaidSeries.reduce((s2, m) => s2 + (m.amount || 0), 0) < 0.005
+      && /const invoicePaidMonth = \(inv\) => \(inv && inv\.paidDate\) \? String\(inv\.paidDate\)\.slice\(0, 7\) : null;/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')),
+      `seriesSum=${unpaidSeries.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
+
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    // MB7 — the header total never reads the month basis: switching bases
+    // moves money between months and can never change the all-time figure.
+    check('MB7 totalEarnings is basis-blind (no month attribution in its formula) and the pref defaults to work in DEFAULT_USER_PREFS',
+      /let totalEarnings = enrichedDays\.reduce\(\(s, e\) => isCovered\(e\) \? s : s \+ e\.calc\.total, 0\)\s*\n\s*\+ billedInvoices\.reduce\(\(s, inv\) => s \+ inv\.net, 0\);/.test(srcHtml)
+      && /statsMonthBasis: 'work',/.test(srcHtml)
+      && /const statsMonthBasisOf = \(prefs\) => \(prefs && prefs\.statsMonthBasis\) === 'paid' \? 'paid' : 'work';/.test(srcHtml));
+
+    // MB8 — the visible surface: ONE toggle writing the pref, the awaiting
+    // line gated to paid basis AND non-zero (a permanent £0.00 is noise), the
+    // bridge row renamed under paid, and the one phrasing family everywhere.
+    check('MB8 the toggle writes the pref; the awaiting line renders only under paid basis and only when non-zero; the bridge reads Paid under the paid basis; one phrasing family',
+      /setUserPrefs\(prev => \(\{ \.\.\.prev, statsMonthBasis: statsMonthBasisOf\(prev\) === 'paid' \? 'work' : 'paid' \}\)\)/.test(srcHtml)
+      && /\{basis === 'paid' && stats\.awaitingPayment >= 0\.005 && \(/.test(srcHtml)
+      && /\{monthBasis === 'paid' \? 'Paid' : 'Invoiced'\}/.test(srcHtml)
+      && (srcHtml.match(/by date paid/g) || []).length >= 3
+      && (srcHtml.match(/by date worked/g) || []).length >= 2
+      && !/by month paid/.test(srcHtml));
   }
 
   // ===== QF. ONE qty formatter on every surface that prints a qty =====
@@ -6073,8 +6152,9 @@ async function main() {
     // The invoices tab groups its Paid section by PAYMENT month while every
     // other surface groups by work date - the basis is now stated at the
     // grouping, in the same muted treatment as the agreement-value marker.
-    check('LAB3 the invoices tab\'s Paid section states its basis - "by month paid" beside the section header',
-      (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by month paid<\/span><\/div>/g) || []).length === 1);
+    check('LAB3 the invoices tab\'s Paid section states its basis - "by date paid", the ONE phrasing family all three surfaces share',
+      (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by date paid<\/span><\/div>/g) || []).length === 1
+      && !/by month paid/.test(srcHtml));
     check('LAB2 the note defines the marker in the founder\'s wording, states the work-month rule, and the retired send-month wording is gone',
       one(/Figures marked agreement value show what the work was worth, before anything you discounted or waived\./g)
       && /an invoice counts in the month of the earliest day it covers/.test(srcHtml)

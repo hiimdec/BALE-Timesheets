@@ -4795,6 +4795,17 @@
       // not-qualifying). Native-only feature: every consumer is IS_NATIVE-
       // gated, so the pref is inert on web.
       liveActivityEnabled: true,
+      // Stats month basis (Ruling 2 amendment, founder-ruled): which month an
+      // invoice's money belongs to on the Earnings surfaces. 'work' = the
+      // month of the earliest day it covers (Ruling 2, THE DEFAULT); 'paid' =
+      // the month it was paid, with unpaid claims excluded and surfaced as an
+      // awaiting-payment line, never guessed into a month. A PREFERENCE, not
+      // view state - a choice that reset every visit would re-impose the
+      // default the user turned off. Additive merge-over-defaults: no
+      // migration, no schema bump. Display-only; never read by the calc
+      // engine or any record write.
+      statsMonthBasis: 'work',
+
     };
 
     // One-way road-miles approximation from W1F 9SE (APA standard origin) per UK outcode district.
@@ -14418,11 +14429,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         kitDiscount.set(dealMonth, (kitDiscount.get(dealMonth) || 0) + applied);
       }
 
-      // The claims, each whole, each in the month of the EARLIEST day it
-      // covers (Ruling 2 - work month, not send month).
+      // The claims, each whole, each in the month the CHOSEN BASIS files it
+      // under: 'work' = earliest covered day (Ruling 2, default), 'paid' =
+      // the month it was paid, unpaid excluded (the amendment).
+      const monthBasis = statsMonthBasisOf(userPrefs);
       for (const inv of (billedInvoices || [])) {
-        const imo = invoiceWorkMonth(inv);
-        if (!imo) continue;   // no covered day and no dateSent → no month to file it under
+        const imo = invoiceMonthFor(inv, monthBasis);
+        if (!imo) continue;   // no month under this basis → excluded, never guessed
         billedByMonth.set(imo, (billedByMonth.get(imo) || 0) + (Number(inv.net) || 0));
       }
 
@@ -27558,7 +27571,7 @@ const setDays = (updater) =>
     // to Apr–Mar of the anchor year; prev/next clamped via
     // clampMonthlyAnchor. Average line is window average. Current
     // month is rendered distinctly so it never reads as a quiet month.
-    function MonthlyEarningsView({ series, onClose }) {
+    function MonthlyEarningsView({ series, onClose, monthBasis = 'work' }) {
       const todayMo = todayISO().slice(0, 7);
       const earliestMo = (series && series.length > 0) ? series[0].month : todayMo;
       const currentTY = monthlyTaxYearOf(todayMo);
@@ -27823,7 +27836,7 @@ const setDays = (updater) =>
               ) : (
                 <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-4 py-4">
                   <div className="flex items-baseline justify-between mb-1">
-                    <div className="text-[15px] font-bold">{fmtMonLong(selEntry.month)}{selEntry.isCurrentMonth ? ' · in progress' : ''}</div>
+                    <div className="text-[15px] font-bold">{fmtMonLong(selEntry.month)}{selEntry.isCurrentMonth ? ' · in progress' : ''} <span className="text-[10px] font-normal text-neutral-600">· {monthBasis === 'paid' ? 'by date paid' : 'by date worked'}</span></div>
                     <div className="text-[17px] font-bold font-mono">{fmtGBP(selEntry.amount)}</div>
                   </div>
                   <div className="text-[12px] text-neutral-400 mb-3">
@@ -27877,7 +27890,13 @@ const setDays = (updater) =>
                       position and treatment as the kit deal row above. */}
                   {selEntry.hasInvoiced && Math.abs(selEntry.invoicedAdj || 0) >= 0.005 && (
                     <div className="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800 text-[12px] font-mono text-neutral-400">
-                      <span className="flex-1">Invoiced {selEntry.invoicedAdj < 0 ? '−' : '+'} {fmtGBP(Math.abs(selEntry.invoicedAdj))}</span>
+                      {/* The bridge row's NAME follows the basis (amendment):
+                          under work date it is what invoices billed against
+                          this month's work; under paid date it is what LANDED
+                          here - cash in a different month from the work.
+                          Same arithmetic, different meaning, so the label
+                          must move with it. */}
+                      <span className="flex-1">{monthBasis === 'paid' ? 'Paid' : 'Invoiced'} {selEntry.invoicedAdj < 0 ? '−' : '+'} {fmtGBP(Math.abs(selEntry.invoicedAdj))}</span>
                       <span className={selEntry.invoicedAdj < 0 ? 'text-tm-good' : 'text-neutral-300'}>{fmtGBP(selEntry.invoicedAdj)}</span>
                     </div>
                   )}
@@ -28275,13 +28294,19 @@ const setDays = (updater) =>
         // EARLIEST day it covers (Ruling 2 - work month, not send month, so
         // busiest month can never move because Send was pressed). ProdCo
         // attribution has no month and is unchanged.
+        const monthBasis = statsMonthBasisOf(userPrefs);
         for (const inv of billedInvoices) {
           const co = inv.production.prodCo?.trim() || '(Unknown)';
           earningsByProdCo[co] = (earningsByProdCo[co] || 0) + inv.net;
-          const imo = invoiceWorkMonth(inv);
+          const imo = invoiceMonthFor(inv, monthBasis);
           if (!imo) continue;
           earningsByMonth[imo] = (earningsByMonth[imo] || 0) + inv.net;
         }
+        // Awaiting payment: claimed money with no month under the paid basis.
+        // Computed regardless of basis (it is basis-independent fact), shown
+        // only under 'paid' and only when non-zero (ruled: a permanent £0.00
+        // line is noise).
+        const awaitingPayment = billedInvoices.reduce((s2, inv) => s2 + (inv.paidDate ? 0 : (Number(inv.net) || 0)), 0);
 
         // Stage 6: apply per-production kit discount at rollup level only.
         // Per-day surfaces (earningsByDay → highestDay, .buckets.kit) stay at
@@ -28374,7 +28399,7 @@ const setDays = (updater) =>
           totalEarnings, workingDaysCount: wdc, shootDaysCount: sdc, totalHours, productionsWorkedCount, longestStreak,
           avgDayEarnings, avgPerShoot, avgShootLen, highestDay, daysByType, monthBreakdown, otEarnings,
           lateLunchEarnings, lateLunchCount: lateLunchSet.size, tocBreachCount: tocBreachSet.size, nightShootCount: nightShootSet.size,
-          billedInvoices, coveredKeys,
+          billedInvoices, coveredKeys, awaitingPayment,
           busiestMonth: busiestMonthEntry ? { key: busiestMonthEntry[0], amount: busiestMonthEntry[1] } : null,
           topProdCo: topProdCoEntry ? { name: topProdCoEntry[0], amount: topProdCoEntry[1] } : null,
         };
@@ -28390,7 +28415,7 @@ const setDays = (updater) =>
       );
 
       if (drilldown === 'monthly') {
-        return <MonthlyEarningsView series={monthlySeries} onClose={() => setDrilldown(null)} />;
+        return <MonthlyEarningsView series={monthlySeries} onClose={() => setDrilldown(null)} monthBasis={statsMonthBasisOf(userPrefs)} />;
       }
 
       // Highest-earning-day bucket breakdown — same colours as the Shoot Total
@@ -28454,8 +28479,26 @@ const setDays = (updater) =>
 
       const MonthTableContent = () => {
         const visible = showAllMonths ? stats.monthBreakdown : stats.monthBreakdown.slice(0, 24);
+        const basis = statsMonthBasisOf(userPrefs);
         return (
           <div className="mt-3 pt-3 border-t border-neutral-800">
+            {/* The basis control (Ruling 2 amendment): ONE preference, both
+                rollups read it, so the chart and this table can never split.
+                Days stay by work month under BOTH bases - days are when you
+                worked, money is when the basis says it landed. */}
+            <div className="flex items-baseline justify-between mb-2">
+              <button
+                type="button"
+                onClick={ev => { ev.stopPropagation(); setUserPrefs(prev => ({ ...prev, statsMonthBasis: statsMonthBasisOf(prev) === 'paid' ? 'work' : 'paid' })); }}
+                className="text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+                aria-label="Switch month basis">
+                · {basis === 'paid' ? 'by date paid' : 'by date worked'} <span className="text-sky-500">switch</span>
+              </button>
+              {basis === 'paid' && stats.awaitingPayment >= 0.005 && (
+                <span className="text-[10px] text-neutral-500">Awaiting payment <span className="font-mono text-neutral-300">{fmtGBP(stats.awaitingPayment)}</span></span>
+              )}
+            </div>
             <table className="w-full">
               <thead>
                 <tr>
@@ -28486,9 +28529,15 @@ const setDays = (updater) =>
                 makes the rows and the header differ. Ruled "stated on screen,
                 not silently tolerated" - shown only when the difference is
                 real, never under All time where both bases see everything. */}
-            {filter !== 'all' && Math.abs(stats.monthBreakdown.reduce((s2, m) => s2 + m.amount, 0) - stats.totalEarnings) >= 0.005 && (
+            {/* Widened (amendment): ANY real mismatch shows the note - under
+                the paid basis the rows can miss awaiting-payment money even
+                at All time, and the old windowed-only gate would have hidden
+                exactly that. */}
+            {Math.abs(stats.monthBreakdown.reduce((s2, m) => s2 + m.amount, 0) - stats.totalEarnings) >= 0.005 && (
               <p className="mt-2 text-[10px] text-neutral-500 leading-snug">
-                Months are bucketed by when the work happened. The total is what was billed in this window, so the two can differ.
+                {statsMonthBasisOf(userPrefs) === 'paid'
+                  ? 'Months are bucketed by when you were paid. The total also counts money not yet paid, so the two can differ.'
+                  : 'Months are bucketed by when the work happened. The total is what was billed in this window, so the two can differ.'}
               </p>
             )}
           </div>
@@ -28515,7 +28564,10 @@ const setDays = (updater) =>
               is a rule, not a release announcement. */}
           <div className="text-xs font-semibold text-sky-400 mb-1">Job and monthly totals follow your invoices</div>
           <p className="text-xs text-neutral-400 leading-relaxed">
-            Job and monthly totals show what you invoiced, discounts included, and an invoice counts in the month of the earliest day it covers - so the money sits with the work, not with the day you pressed send. Day and line figures show what the day calculates to, because an invoice doesn't record how a discount was split across days. Figures marked agreement value show what the work was worth, before anything you discounted or waived.
+            {statsMonthBasisOf(userPrefs) === 'paid'
+              ? "Job and monthly totals show what you invoiced, discounts included, and an invoice counts in the month it was paid - so the money sits where it landed, and anything unpaid waits outside the months. "
+              : "Job and monthly totals show what you invoiced, discounts included, and an invoice counts in the month of the earliest day it covers - so the money sits with the work, not with the day you pressed send. "}
+            Day and line figures show what the day calculates to, because an invoice doesn't record how a discount was split across days. Figures marked agreement value show what the work was worth, before anything you discounted or waived.
           </p>
           <button
             type="button"
@@ -29061,12 +29113,24 @@ const setDays = (updater) =>
       if (dates.length) return dates[0].slice(0, 7);
       return (inv && inv.date) ? String(inv.date).slice(0, 7) : null;
     };
+    // The paid-basis sibling (Ruling 2 amendment): the month the money
+    // LANDED. Strictly datePaid - an unpaid claim returns null and is
+    // EXCLUDED from every month row, never guessed (falling back to dateSent
+    // would be the switching-basis behaviour already rejected; dueDate would
+    // invent a payment). The excluded money surfaces as the awaiting-payment
+    // line instead.
+    const invoicePaidMonth = (inv) => (inv && inv.paidDate) ? String(inv.paidDate).slice(0, 7) : null;
+    // ONE switch, read by BOTH monthly rollups - the basis cannot drift
+    // between the chart and the table.
+    const invoiceMonthFor = (inv, basis) => basis === 'paid' ? invoicePaidMonth(inv) : invoiceWorkMonth(inv);
+    const statsMonthBasisOf = (prefs) => (prefs && prefs.statsMonthBasis) === 'paid' ? 'paid' : 'work';
 
     function claimedInvoicesOf(production, userPrefs) {
       return (((production && production.invoices) || []).filter(invoiceIsClaimed)).map(inv => ({
         id: inv.id,
         net: invoiceSubtotal(inv.lineItems),
         date: String(inv.dateSent || '').slice(0, 10),
+        paidDate: String(inv.datePaid || '').slice(0, 10),
         dayKeys: invoiceDayClaim(inv, production, userPrefs),
       }))
       // NO DAY LINK, NO BILLED MONEY (ruled). An invoice that names no days
@@ -31979,7 +32043,7 @@ const setDays = (updater) =>
                         by work date - only stats said so. Same muted marker
                         treatment as "agreement value": the basis is stated
                         where the grouping happens, once, not per month row. */}
-                    <div className={`${sectionHdrCls} text-sky-500`}>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by month paid</span></div>
+                    <div className={`${sectionHdrCls} text-sky-500`}>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by date paid</span></div>
                     {sections.paidGroups.map((g) => (
                       <div key={g.monthKey || '__undated'} className="mt-3 first:mt-0">
                         <div className="flex items-baseline justify-between gap-2 mb-1.5">
