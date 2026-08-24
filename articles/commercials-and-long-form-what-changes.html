@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Commercials and long form: what changes when you leave the APA terms - TimeMachine</title>
+  <meta name="description" content="Moving between commercials and long-form drama: different agreements, different day shapes, and why the same crew member is paid two completely different ways.">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-itunes-app" content="app-id=6775970098">
+  <link rel="canonical" href="https://timemachineapp.co.uk/articles/commercials-and-long-form-what-changes">
+
+  <meta property="og:site_name" content="TimeMachine">
+  <meta property="og:title" content="Commercials and long form: what changes when you leave the APA terms">
+  <meta property="og:description" content="Moving between commercials and long-form drama: different agreements, different day shapes, and why the same crew member is paid two completely different ways.">
+  <meta property="og:url" content="https://timemachineapp.co.uk/articles/commercials-and-long-form-what-changes">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Commercials and long form: what changes when you leave the APA terms">
+  <meta name="twitter:description" content="Moving between commercials and long-form drama: different agreements, different day shapes, and why the same crew member is paid two completely different ways.">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
+
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --card:      #171717;
+      --border:    #262626;
+      --border-soft: #1f1f1f;
+      --text:      #f5f5f5;
+      --text-2:    #a3a3a3;
+      --text-3:    #939393;
+      --text-4:    #838383;
+      --tm-accent:    #0ea5e9;
+      --tm-accent-2:  #7dd3fc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      line-height: 1.6;
+    }
+    /* Eased tail (see welcome.html on fix/site-hero-glow): a short linear stop
+       quantised into a hard-edged band on OLED; multi-stop falloff to 100%
+       reads as a true fade. New pages are born with the fixed gradient. */
+    body::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 50vh;
+      z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 40% at 50% -5%,
+        rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.055) 25%,
+        rgba(14,165,233,0.025) 50%, rgba(14,165,233,0.01) 70%,
+        rgba(14,165,233,0.004) 86%, transparent 100%);
+    }
+
+    a { color: var(--tm-accent); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--tm-accent-2); }
+
+    .skip-link {
+      position: absolute; top: -100px; left: 16px;
+      background: var(--tm-accent); color: #050505;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      text-decoration: none; z-index: 100; transition: top 150ms ease;
+    }
+    .skip-link:focus { top: 16px; }
+
+    .container { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 768px) { .container { padding: 0 32px; } }
+
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--tm-accent); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .nav-cta:hover { color: var(--tm-accent-2); }
+    .nav-cta svg { width: 12px; height: 12px; }
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
+
+    main { padding: 40px 0 72px; }
+    @media (min-width: 768px) { main { padding: 56px 0 96px; } }
+
+    .back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-3);
+      text-decoration: none; margin-bottom: 28px;
+    }
+    .back:hover { color: var(--tm-accent); }
+
+    .label {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      font-weight: 700; color: var(--tm-accent);
+      display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    }
+    .label::after { content: ""; flex: 1; height: 1px; min-width: 40px; background: var(--border-soft); }
+
+    h1 {
+      font-size: clamp(30px, 4.6vw, 46px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.04; margin: 0 0 14px;
+    }
+    .byline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin: 0 0 32px;
+    }
+    h2 {
+      font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+      margin: 40px 0 10px; color: var(--text);
+    }
+    p, li { color: var(--text-2); font-size: 16px; line-height: 1.7; }
+    p + p { margin-top: 14px; }
+    ul, ol { padding-left: 18px; margin: 8px 0 14px; }
+    li { margin: 6px 0; }
+    li::marker { color: var(--tm-accent); }
+    strong { color: var(--text); font-weight: 600; }
+
+    /* Rate table - figures mono (BRAND: money/data only), chrome from the
+       card tokens. The only style the articles add to the scaffold. */
+    .table-scroll { overflow-x: auto; margin: 16px 0 20px; }
+    .rate-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .rate-table th {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; color: var(--text-3); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
+    }
+    .rate-table td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 14px; color: var(--text);
+      padding: 12px 16px;
+    }
+    .rate-table tr + tr td { border-top: 1px solid var(--border-soft); }
+
+    /* Disclaimer small print */
+    .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
+
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--tm-accent); color: #050505;
+      font-weight: 800; font-size: 14px; letter-spacing: 0.02em;
+      padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    }
+    .btn:hover { background: var(--tm-accent-2); color: #050505; }
+    /* Secondary CTA (chunk 25): the web app sits beside the App Store primary.
+       Same treatment as .btn.secondary on the homepage and /how-it-works. */
+    .btn.secondary {
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .btn.secondary:hover { background: var(--card); border-color: var(--tm-accent); color: var(--tm-accent); }
+
+    .footer {
+      padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
+      border-top: 1px solid var(--border-soft); margin-top: 48px;
+    }
+    .footer-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 11px; color: var(--text-4); letter-spacing: 0.04em;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
+    .footer-links a:hover { color: var(--tm-accent); }
+    a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+  </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Commercials and long form: what changes when you leave the APA terms",
+    "description": "Moving between commercials and long-form drama: different agreements, different day shapes, and why the same crew member is paid two completely different ways.",
+    "url": "https://timemachineapp.co.uk/articles/commercials-and-long-form-what-changes",
+    "image": "https://timemachineapp.co.uk/og-image.png",
+    "mentions": {
+      "@id": "https://timemachineapp.co.uk/#software"
+    },
+    "datePublished": "2026-08-24",
+    "dateModified": "2026-08-24",
+    "author": {
+      "@type": "Person",
+      "@id": "https://timemachineapp.co.uk/about#person",
+      "name": "Declan Patrick Duffy",
+      "url": "https://timemachineapp.co.uk/about"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "@id": "https://timemachineapp.co.uk/#organization",
+      "name": "TimeMachine",
+      "url": "https://timemachineapp.co.uk/",
+      "logo": "https://timemachineapp.co.uk/icon-512.png",
+      "sameAs": [
+        "https://www.instagram.com/timemachineapp",
+        "https://apps.apple.com/app/id6775970098"
+      ]
+    },
+    "mainEntityOfPage": "https://timemachineapp.co.uk/articles/commercials-and-long-form-what-changes"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://timemachineapp.co.uk/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://timemachineapp.co.uk/articles"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Commercials and long form: what changes when you leave the APA terms"
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <nav class="top-nav">
+    <div class="container top-nav-inner">
+      <a href="/" class="nav-brand">TIMEMACHINE</a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="/app/" class="nav-cta">
+          Open the App
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div class="container">
+      <a href="/articles" class="back">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        All articles
+      </a>
+
+      <p class="label">Article</p>
+      <h1>Commercials and long form: what changes when you leave the APA terms</h1>
+      <p class="byline">TimeMachine · Published 24 August 2026</p>
+
+      <p>Plenty of crew work both. You do a week of commercials, then eight weeks on a drama, and the money works in a completely different way, on a completely different document.</p>
+      <p>The APA Recommended Terms cover commercials. Long-form film and television run on agreements between Pact and Bectu instead. Same crew, same trucks, often the same stages, entirely separate rulebooks.</p>
+
+      <h2>Three documents, not two</h2>
+      <p>The first thing to understand is that these are not variations on one agreement. They were negotiated separately, by different parties, for different kinds of production, and they do not share definitions. A term that means one thing on a commercial can mean something different on a drama.</p>
+      <p>There are three, not two, because long form is itself split:</p>
+      <ul>
+        <li><strong>Commercials</strong>: the APA Recommended Terms for Engaging Crew on the Production of Commercials.</li>
+        <li><strong>Scripted television</strong>: the Pact and Bectu agreement for scripted TV, effective 1 January 2023, which applies across four budget bands.</li>
+        <li><strong>Feature film</strong>: the Pact and Bectu terms for major motion pictures, as amended 5 April 2021. These apply to a feature for cinema, or a single piece of theatric-type content for a global streaming platform, with a budget of £30 million or more. Below that threshold they do not apply.</li>
+      </ul>
+      <p>So the instinct to carry your commercials knowledge across is the thing to resist. Check the agreement that governs the job you are actually on.</p>
+
+      <h2>The day is shaped differently, but not where you would expect</h2>
+      <p>Here is the part most people get backwards. A scripted TV shooting day is the same shape as a commercials one: ten hours worked plus an hour for lunch, eleven hours elapsed, overtime after eleven. If you move from commercials to television, the basic day does not move.</p>
+      <p>Film is the one that changes. A shooting day on a major motion picture is eleven hours worked plus an hour for lunch, so twelve hours elapsed, and overtime does not start until twelve.</p>
+      <p>The continuous working day splits the other way:</p>
+
+      <div class="table-scroll">
+      <table class="rate-table">
+        <thead>
+          <tr>
+            <th scope="col">Agreement</th>
+            <th scope="col">Shooting day</th>
+            <th scope="col">Continuous working day</th>
+            <th scope="col">Hourly rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>APA, commercials</td><td>10 + 1, OT after 11h</td><td>9 hours</td><td>BDR ÷ 10</td></tr>
+          <tr><td>Pact/Bectu, scripted TV</td><td>10 + 1, OT after 11h</td><td>9 hours, 20 min rest</td><td>BDR ÷ 10</td></tr>
+          <tr><td>Pact/Bectu, film</td><td>11 + 1, OT after 12h</td><td>10 hours, no break</td><td>weekly ÷ 55, daily ÷ 11</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>That last column is the one that catches people. On commercials and on television your hourly rate is a tenth of your day rate. On a film it is your weekly rate divided by 55, or your daily divided by 11, so the same headline figure produces a different hour and therefore a different overtime rate.</p>
+      <p>Overtime itself is graded on commercials, at 1.5, 1.25 or 1.0 depending on where your day rate sits. It is not graded on either long-form agreement. Scripted TV pays time and a half, with a floor and a ceiling on the overtime rate. Film separates camera overtime, at double, from non-camera overtime, at time and a half.</p>
+
+      <h2>Length of engagement changes everything</h2>
+      <p>The deeper difference is structural. Commercials are short. A job is a few days, each day largely stands alone, and you invoice for it. Nothing in the APA terms counts how many days in a row you have worked.</p>
+      <p>Long form is a run, and both long-form agreements price the run rather than the day. Work a sixth consecutive day and it is paid at time and a half on either agreement. A seventh is double. Scripted TV goes further and prohibits an eighth consecutive day outright. On film, a sixth or seventh day carries a minimum guarantee of eight hours if you are shooting.</p>
+      <p>Travel is where the two long-form agreements agree with each other and disagree with instinct: a travel day does not count towards the consecutive day tally on either. On film, a travel day under an official movement order does not even reset the count, and is not paid as a sixth or seventh day.</p>
+      <p>Turnaround exists on all three, at eleven hours, but what a broken one is worth differs. On commercials the cut hour is paid on top of the day. On scripted TV a broken turnaround is compensatory rest or an uplift, and if you take the rest there is no payment. On film it is time and a half, capped.</p>
+
+      <h2>How you are engaged</h2>
+      <p>Commercials crew are typically engaged directly and invoice the production company, which is why the APA terms carry a payment term at all: seven days from receipt for crew contracted directly.</p>
+      <p>Long form routes through a payroll either way. The scripted TV agreement sets out both routes explicitly: on PAYE, the week's or day's basic pay comes normally a week in arrears, with overtime and the other variables following within 14 days of the producer receiving written evidence of what you are claiming. Through a personal service company, you invoice, and you are paid on the next processed payroll after a valid and undisputed invoice.</p>
+      <p>If you are moving between the two, that is the thing to check before the job rather than after: who is paying you, on what basis, and what the payslip will actually look like.</p>
+
+      <h2>Where TimeMachine is</h2>
+      <p>TimeMachine calculates the APA terms, and only the APA terms. Its day types are the commercials ones, and there is no long-form mode to switch into: nothing in the app will price a scripted TV or feature day, because none of those structures are in it.</p>
+      <p>Long form is next, and the site says so rather than implying the app already covers it. If you work long form and want to be told when it lands, the fastest route is the feedback address below.</p>
+
+      <div class="cta-row">
+        <a href="https://apps.apple.com/app/id6775970098" class="btn" target="_blank" rel="noopener">
+          Download for iPhone
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="/app/" class="btn secondary">
+          Open the web app
+        </a>
+      </div>
+
+      <p class="fine-print">TimeMachine is an independent tool for UK film and television crew. It is not affiliated with, endorsed by, or connected to the Advertising Producers Association (APA), Pact or Bectu. It references the publicly available APA Recommended Crew Terms and the Pact and Bectu agreements as a reference only, and TimeMachine calculates the APA terms alone. This article is general information, not legal or financial advice.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>APA Sept 2026</span>
+      <div class="footer-links">
+        <a href="/">Home</a>
+        <a href="/app/">App</a>
+        <a href="/welcome">Welcome</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/apa-rates">APA rates</a>
+        <a href="/about">About</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
