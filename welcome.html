@@ -79,9 +79,14 @@
       text-transform: uppercase;
     }
     header::after { content: ""; position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 49px); border-bottom: 1px solid #1f1f1f; }
-    .wordmark { color: var(--sky); text-decoration: none; }
+    /* Header type aligned to the shared .nav-brand / .nav-cta component
+       used on every other page: same wordmark tracking, same link weight,
+       family and colour token. Structure is left alone. */
+    .wordmark { color: var(--sky); text-decoration: none; letter-spacing: -.02em; }
     .top-links { display: flex; align-items: center; gap: 20px; }
-    .top-links a { color: var(--sky-light); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; letter-spacing: .18em; text-decoration: none; }
+    .top-links a { color: var(--sky); font-weight: 700;
+                   font-size: 10px; letter-spacing: .18em; text-decoration: none; }
+    .top-links a:hover { color: var(--sky-light); }
 
     .hero { max-width: 900px; padding: clamp(72px, 13vh, 125px) 0 88px; }
     .question {
