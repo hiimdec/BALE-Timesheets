@@ -19243,6 +19243,38 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             >
               <IMail size={14}/>Save Timesheets
             </button>
+            {/* The Best Boy bulk block, MOVED here from the productions-list
+                row sheet (the founder looked for it here, where the per-crew
+                link lives - the list placement was ruled an error). No
+                explicit bestBoyMode/APA gate NEEDED at this site: this
+                overview only renders for a Best Boy production inside the APA
+                app - the gates are structural, and BLK6b pins that. Composer
+                and delivery are the same encode-many-deliver-once pair. */}
+            <button
+              type="button"
+              onClick={async () => {
+                const { text, anyLinks } = await buildCrewShareLinkBlock(production);
+                if (!anyLinks) { showToast?.('No one has days to share yet.'); return; }
+                if (IS_NATIVE) {
+                  try {
+                    const { Share } = _capPlugins();
+                    await Share.share({ title: production.title || 'Shoot', text });
+                  } catch (e) {
+                    // The share sheet's own cancel rejects — not an error.
+                    const msg = (e && e.message) || '';
+                    if (!/cancel/i.test(msg)) showToast?.("Couldn't open the share sheet - try again.");
+                  }
+                } else {
+                  const how = await shareTextOrCopy(text, production.title || 'Shoot');
+                  if (how === 'copied') showToast?.('Links copied to your clipboard.');
+                  else if (how === 'prompted') showToast?.('Copy the links from the box.');
+                }
+              }}
+              className="pointer-events-auto ml-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-200 text-[12px] font-bold uppercase tracking-wider py-2.5 px-6 rounded-full transition-colors flex items-center gap-2"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              <IShare size={14}/>Share links
+            </button>
           </div>
 
           {activeCrewSheet && (
@@ -33009,45 +33041,11 @@ const confirmDelete = (p) => setConfirmOpts({
                       <IShare size={15}/>Share shoot link
                     </button>
                   )}
-                  {/* The Best Boy twin of the item above — the gates PARTITION:
-                      a solo row gets the single link, a BB row gets the whole
-                      crew's links as one text block ("Share times" for links).
-                      Composed by buildCrewShareLinkBlock; delivered ONCE —
-                      native as a text share (the email helper's proven
-                      Share.share({title, text}) path; the single-link {url}
-                      form carries one URL only), web via shareTextOrCopy.
-                      When NO member can produce a link the block is refusal
-                      lines only — that is information for the SENDER, not the
-                      crew chat, so it becomes a toast and no sheet opens.
-                      Same agreement gate as every share-link surface; no
-                      platform gate (ruled: web-capable from birth). */}
-                  {actionSheet.bestBoyMode && agreementOf(actionSheet) === 'apa' && (
-                    <button type="button"
-                      onClick={async () => {
-                        const p = actionSheet;
-                        setActionSheet(null);
-                        const { text, anyLinks } = await buildCrewShareLinkBlock(p);
-                        if (!anyLinks) { showToast('No one has days to share yet.'); return; }
-                        if (IS_NATIVE) {
-                          try {
-                            const { Share } = _capPlugins();
-                            await Share.share({ title: p.title || 'Shoot', text });
-                          } catch (e) {
-                            // The share sheet's own cancel rejects — not an error.
-                            const msg = (e && e.message) || '';
-                            if (!/cancel/i.test(msg)) showToast("Couldn't open the share sheet - try again.");
-                          }
-                        } else {
-                          const how = await shareTextOrCopy(text, p.title || 'Shoot');
-                          if (how === 'copied') showToast('Links copied to your clipboard.');
-                          else if (how === 'prompted') showToast('Copy the links from the box.');
-                        }
-                      }}
-                      className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <IShare size={15}/>Share links
-                    </button>
-                  )}
+                  {/* The bulk "Share links" no longer lives here - MOVED into
+                      the crew overview, beside the per-crew link it belongs
+                      with (the founder looked there; this list placement was
+                      ruled an error). "Share times" stays: list-level text is
+                      its own established home. */}
                   <button type="button"
                     onClick={() => { const p = actionSheet; setActionSheet(null); confirmDelete(p); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-tm-pen flex items-center gap-2"

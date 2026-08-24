@@ -357,15 +357,26 @@ async function main() {
   ok('BLK5 no member linkable: anyLinks false, every member still named - and the call site gates delivery on it (toast, no sheet)',
     blkEmpty.anyLinks === false
     && BLK_CREW.every(c => blkEmpty.text.includes(c.name + ' - no days to share yet'))
-    && /if \(!anyLinks\) \{ showToast\('No one has days to share yet\.'\); return; \}/.test(SRC_HTML),
+    && /if \(!anyLinks\) \{ showToast\?\.\('No one has days to share yet\.'\); return; \}/.test(SRC_HTML),
     `anyLinks=${blkEmpty.anyLinks}`);
 
-  ok('BLK6b the Share links button renders on the AGREEMENT gates alone - bestBoyMode + APA, no IS_NATIVE (web-capable from birth); the solo item keeps the partition twin',
+  // BLK6b REWRITTEN when the placement moved (founder: the list placement was
+  // his error - the bulk block belongs in the crew overview, beside the
+  // per-crew link). The gates became STRUCTURAL: MultiCrewOverviewView only
+  // renders for a Best Boy production inside the APA ProductionApp, so the
+  // pin asserts the button lives INSIDE that component, unconditionally
+  // rendered, no platform gate - and that the retired list-sheet copy is
+  // GONE, so the action has exactly one home. The solo per-shoot item keeps
+  // its own list-sheet placement, unchanged.
+  ok('BLK6b the bulk Share links lives in the crew overview (structural BB+APA gates), platform-ungated, and the retired productions-list copy is gone',
     (() => {
-      const bb = /\{actionSheet\.bestBoyMode && agreementOf\(actionSheet\) === 'apa' && \(\s*\n\s*<button type="button"[\s\S]{0,1600}Share links/.test(SRC_HTML);
-      const solo = /\{!actionSheet\.bestBoyMode && agreementOf\(actionSheet\) === 'apa' && \(/.test(SRC_HTML);
-      const btn = (SRC_HTML.match(/\{actionSheet\.bestBoyMode && agreementOf[\s\S]{0,2200}Share links/) || [''])[0];
-      return bb && solo && btn.length > 0 && !/IS_NATIVE &&/.test(btn.split('onClick')[0]);
+      const overview = (SRC_HTML.match(/function MultiCrewOverviewView\([\s\S]*?\n    \}\n/) || [''])[0];
+      const inOverview = /buildCrewShareLinkBlock\(production\)/.test(overview) && /Share links\s*<\/button>/.test(overview);
+      const ungated = !/IS_NATIVE &&[^\n]*Share links/.test(overview);
+      const listCopyGone = !/\{actionSheet\.bestBoyMode && agreementOf\(actionSheet\) === 'apa' && \(/.test(SRC_HTML);
+      const soloItemStays = /\{!actionSheet\.bestBoyMode && agreementOf\(actionSheet\) === 'apa' && \(/.test(SRC_HTML);
+      const oneCallSite = (SRC_HTML.match(/buildCrewShareLinkBlock\(/g) || []).length === 2;   // definition + the one call
+      return inOverview && ungated && listCopyGone && soloItemStays && oneCallSite;
     })());
 
   const built = loadBuiltEngine();
