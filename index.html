@@ -33534,7 +33534,6 @@ const confirmDelete = (p) => setConfirmOpts({
         if (!IS_NATIVE) return;
         const acts = await LiveActivity.list();
         const { productions: prods, enabled } = laSweepStateRef.current;
-        const today = todayISO();
         // Group by productionId so the sweep can converge DUPLICATES of a
         // qualifying production (Bug 1 backstop) as well as end non-qualifying
         // ones. Per production: not-qualifying → end ALL its cards; qualifying →
@@ -33561,9 +33560,11 @@ const confirmDelete = (p) => setConfirmOpts({
         for (const [pid, ids] of byPid) {
           const pr = (prods || []).find(p => p.id === pid);
           const soloCrew = pr && !pr.bestBoyMode ? (pr.crew || [])[0] : null;
-          const rec = soloCrew ? ((pr.days || []).find(d => d.date === today && d.crewId === soloCrew.id)
-                              || (pr.days || []).find(d => d.date === today)) : null;
-          const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
+          // laShiftRecord, not a date scan (ruled): a running night shift's
+          // record still qualifies after midnight, so the end branch no
+          // longer executes its date-moved cleanup against a mid-shift card.
+          const rec = soloCrew ? laShiftRecord(pr, soloCrew, pr.days, Date.now()) : null;
+          const dd = rec && pr.dayDefaults && pr.dayDefaults[rec.date];
           // A wrapped day (explicit user flag — card wrap, WrapNow, or a solo
           // wrap-time edit that already passed) can never keep or restart a card.
           // Set-day allowlist mirrors liveActivityDescriptor's (same dayType merge,
@@ -33600,9 +33601,11 @@ const confirmDelete = (p) => setConfirmOpts({
           for (const h of husks) {
             const pr = (prods || []).find(p => p.id === h.productionId);
             const soloCrew = pr && !pr.bestBoyMode ? (pr.crew || [])[0] : null;
-            const rec = soloCrew ? ((pr.days || []).find(d => d.date === today && d.crewId === soloCrew.id)
-                                || (pr.days || []).find(d => d.date === today)) : null;
-            const dd = pr && pr.dayDefaults && pr.dayDefaults[today];
+            // Same resolver as qualifies: a night shift wrapped just before
+            // midnight keeps its send-off exemption on the first sweep after
+            // 00:00 (the linger no longer dismisses early).
+            const rec = soloCrew ? laShiftRecord(pr, soloCrew, pr.days, Date.now()) : null;
+            const dd = rec && pr.dayDefaults && pr.dayDefaults[rec.date];
             const wrappedSendOff = enabled && !!rec && rec.wrapped === true && !!(rec.callTime || (dd && dd.callTime));
             if (!wrappedSendOff) huskIds.push(h.id);
           }
@@ -33637,8 +33640,7 @@ const confirmDelete = (p) => setConfirmOpts({
           // an unknown state must not resurrect a card. An OVERDUE day with a
           // dead card asks first - "Still on set" is what mints, via the
           // stamp making these gates pass on the next sweep.
-          const recP = (pr.days || []).find(d => d.date === todayISO() && d.crewId === soloCrew.id)
-                    || (pr.days || []).find(d => d.date === todayISO());
+          const recP = laShiftRecord(pr, soloCrew, pr.days, Date.now());
           if (recP && recP.wrapAskedAt && !recP.stillOnSetAt) continue;
           if (recP && !recP.stillOnSetAt && wrapPromptDue(pr, recP, soloCrew, Date.now())) continue;
           let desc = null;

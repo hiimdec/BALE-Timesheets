@@ -6348,6 +6348,25 @@ async function main() {
         own(prod, crew, [monday], at('03:00', 1)) === null
         && own(prod, crew, [tomorrow], at('12:00')) === null);
     }
+    // Source pins: the reconcile sweep's THREE lookups (qualifies, husk
+    // exemption, start-branch gates) all go through the resolver, and no
+    // date-equality scan or today-keyed defaults overlay survives in the
+    // sweep. Sliced to the reconcile body so a date scan elsewhere in the
+    // file cannot mask one here.
+    {
+      const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+      const sweepStart = srcHtml.indexOf('const liveActivityReconcile = React.useCallback(');
+      const sweepEnd = srcHtml.indexOf('// Change-sweep:', sweepStart);
+      const sweep = sweepStart >= 0 && sweepEnd > sweepStart ? srcHtml.slice(sweepStart, sweepEnd) : '';
+      check('NR8 the sweep\'s three lookups are the resolver - no date-equality day scan and no todayISO() left in the reconcile body',
+        sweep.length > 0
+        && (sweep.match(/laShiftRecord\(pr, soloCrew, pr\.days, Date\.now\(\)\)/g) || []).length === 3
+        && !/d\.date === today/.test(sweep)
+        && !/todayISO\(\)/.test(sweep));
+      check('NR9 the sweep\'s dayDefaults overlays key by the RESOLVED record\'s date, never by today',
+        (sweep.match(/pr\.dayDefaults\[rec\.date\]/g) || []).length === 2
+        && !/pr\.dayDefaults\[today\]/.test(sweep));
+    }
   }
 
   // ===== QF. ONE qty formatter on every surface that prints a qty =====
