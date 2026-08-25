@@ -376,6 +376,7 @@ async function transformedAppCode() {
     'try { globalThis.__laShiftRecord = laShiftRecord; } catch (_) {}\n' +
     'try { globalThis.__CARD_LIFETIME_MS = CARD_LIFETIME_MS; } catch (_) {}\n' +
     'try { globalThis.__liveActivityDescriptor = liveActivityDescriptor; } catch (_) {}\n' +
+    'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -6417,6 +6418,58 @@ async function main() {
     }
   }
 
+  // ===== NI. laEventTarget — card events accept by OWNERSHIP, never date equality =====
+  // The ruled ingest acceptance: an event applies iff its production still
+  // OWNS a record (laShiftRecord's window) and the event is dated within a
+  // day of it; it applies TO that record's date. NI1 is the corruption
+  // boundary the founder ruled to pin hardest - outside the window an event
+  // writes NOTHING, because a wrongly-accepted event silently corrupts a
+  // real day's times.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const tgt = sb.__laEventTarget;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const D = '2026-06-10';
+    const at = (hhmm, plusDays = 0) => new Date(D + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
+    const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00' };
+    const pNight = { id: 'pNI', title: 'Nights', crew: [crew], bestBoyMode: false, dayDefaults: {}, days: [night] };
+    const ev = (date, pid = 'pNI', type = 'wrapNow') => ({ id: 'e-' + date + type, type, at: '23:58', date, productionId: pid });
+    if (typeof tgt !== 'function') {
+      check('NI0 acceptance predicate exposed', false, 'not exposed');
+    } else {
+      const oldDay = { id: 'o1', crewId: 'c1', date: '2026-06-07', callTime: '17:00', wrapTime: '04:00' };
+      const pOld = { ...pNight, id: 'pOld', days: [oldDay] };
+      const todayDay = { id: 't1', crewId: 'c1', date: D, callTime: '08:00', wrapTime: '19:00' };
+      const pToday = { ...pNight, id: 'pT', days: [todayDay] };
+      const pBB = { ...pNight, id: 'pBB', bestBoyMode: true };
+      check('NI1 outside the ownership window an event writes NOTHING: no owning record (even with an exact date match on an old day), a stale event against a FRESH owner (the corruption case), Best Boy, unknown production - all null, never a fallback date',
+        tgt([pOld], ev('2026-06-07', 'pOld'), at('12:00')) === null
+        && tgt([pToday], ev('2026-06-07', 'pT'), at('12:00')) === null
+        && tgt([pBB], ev(D, 'pBB'), at('12:00')) === null
+        && tgt([pNight], ev(D, 'nope'), at('12:00')) === null);
+      check('NI2 a press queued before midnight that drains after applies to the still-running yesterday record (the old today-guard dropped it)',
+        tgt([pNight], ev(D), at('03:00', 1)) === D);
+      check('NI3 a press stamped AFTER midnight (ev.date is press-day) reroutes to the owning record\'s date; a plain same-day event still targets its own day',
+        tgt([pNight], ev('2026-06-11'), at('03:00', 1)) === D
+        && tgt([pToday], ev(D, 'pT'), at('12:00')) === D);
+      check('NI3b past the ownership bound the same events discard - late acceptance is bounded by the resolver, not open-ended',
+        tgt([pNight], ev(D), at('05:30', 1)) === null
+        && tgt([pNight], ev('2026-06-11'), at('05:30', 1)) === null);
+    }
+    // Source pins: acceptance sits in the marking pass AFTER applied.add
+    // (order pinned in TT6c), the target rides each event to the apply
+    // loop, and the applyLate diagnostics exist for both flavours.
+    {
+      const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+      check('NI4 ingest carries { ev, targetDate } into the apply loop and logs ingest.applyLate for rerouted and late-drain applies',
+        /toApply\.push\(\{ ev, targetDate \}\);/.test(srcHtml)
+        && /for \(const \{ ev, targetDate \} of toApply\)/.test(srcHtml)
+        && /ingest\.applyLate \(rerouted\)/.test(srcHtml)
+        && /ingest\.applyLate \(late drain\)/.test(srcHtml));
+    }
+  }
+
   // ===== QF. ONE qty formatter on every surface that prints a qty =====
   // The 0.43333333333333335 bug was fixed on the day breakdown (lineBasis)
   // and left LIVE on the invoice: both the page-1 QTY column and the page-2
@@ -9171,7 +9224,7 @@ async function main() {
     // ─ TT5: Stage-1 start-bug fix + loggable, non-silent lifecycle ─
     check('TT5a applyWrapNow record-writes wrapTime + the OBSERVED-wrap patch (wrapped:true plus wrappedAt) via the shared mapDayNow (calc-neutral — wrapped is status only, never read by the engine); Live Activity ingestion routes through it',
       /function applyWrapNow\(production, date, t\) \{[\s\S]{0,200}mapDayNow\(production\.days, date, uid0, \{ wrapTime: t, \.\.\.wrapObservedPatch\(\) \}\)/.test(html) &&
-      /: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
+      /: applyWrapNow\(next, targetDate, ev\.at\)/.test(html));
     check('TT5b lifecycle decisions are loggable on native (start / update / wrapped→end), not silent',
       /console\.log\('\[LiveActivity\] start'/.test(html) &&
       /console\.log\('\[LiveActivity\] update'/.test(html) &&
@@ -9186,18 +9239,16 @@ async function main() {
     check('TT6a bridge.drainPendingEvents is IS_NATIVE-guarded (returns [] before touching the plugin on web)',
       /async drainPendingEvents\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
       /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
-    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail, Siri times via applySetTimes (one mapDayNow path; no parallel day-record write)',
-      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html) &&
+    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail, Siri times via applySetTimes (one mapDayNow path; no parallel day-record write; the date argument is the OWNING record\'s date per the NI ruling)',
+      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, targetDate, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, targetDate, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, targetDate, ev, userPrefs\)\s*: applyWrapNow\(next, targetDate, ev\.at\)/.test(html) &&
       /const days = mapDayNow\(production\.days, date, uid0, patch\);/.test(html));
-    check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
-      // windows widened 140→320 for the fix/la-diagnostics debugLog lines
-      // inside the skip/discard branches — the assertions (idempotency check,
-      // stale-date discard, both ending in `continue`) are unchanged.
+    check('TT6c idempotent + ownership-gated (NI ruling; was today-only, whose midnight discard LOST queued presses) — appliedEventIds checked & persisted; applied.add STILL runs before the acceptance guard; outside-ownership discarded via laEventTarget',
       /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,320}continue; \}/.test(html) &&
       /applied\.add\(ev\.id\);/.test(html) &&
       /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
-      /if \(ev\.date !== today\) \{[\s\S]{0,320}continue; \}/.test(html) &&
-      /const today = todayISO\(\);/.test(html));
+      /applied\.add\(ev\.id\);[\s\S]{0,900}const targetDate = laEventTarget\(laSweepStateRef\.current\.productions, ev, Date\.now\(\)\);/.test(html) &&
+      /if \(!targetDate\) \{[\s\S]{0,320}continue; \}/.test(html) &&
+      !/if \(ev\.date !== today\) \{/.test(html));
     check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — both triggers route through the ONE drainThenSweep wrapper (drain strictly before sweep; sweep deferred to the change-sweep when events applied)',
       // Rewritten for the la-ordering fix (re-mint race): the old concurrent
       // `ingest(); liveActivityReconcile();` pair at both triggers IS the bug
@@ -9441,9 +9492,9 @@ async function main() {
       !/lunchedFull/.test(descFn) &&            // no pushed full-hour boolean
       !/state = 'lunch'/.test(descFn) &&        // no time-derived lunch state
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
-    check('TT11b ingest reuses the SAME queue — lunchCurtail added to the today-only idempotent type filter + dispatched to applyLunchCurtail, which writes lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
+    check('TT11b ingest reuses the SAME queue — lunchCurtail in the idempotent, ownership-gated type filter (NI ruling; was today-only) + dispatched to applyLunchCurtail targeting the OWNING record\'s date, writing lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
       /ev\.type !== 'lunchNow' && ev\.type !== 'wrapNow' && ev\.type !== 'lunchCurtail'/.test(html) &&
-      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)/.test(html) &&
+      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, targetDate, ev\.durationMins\)/.test(html) &&
       /function applyLunchCurtail\(production, date, durationMins\) \{/.test(html) &&
       /if \(!\(mins > 0 && mins < 60\)\) return production;/.test(html) &&
       /mapDayNow\(production\.days, date, uid0, \{ lunchDurationMins: mins \}\)/.test(html));
@@ -9589,7 +9640,7 @@ async function main() {
           && /applySoloWrapIntent\(before\.get\(d\.id\) \|\| d, d\)/.test(fn)
           && /if \(patch\.wrapTime === undefined\) return \{ \.\.\.production, days \};/.test(fn);
         const wiredOk = /ev\.type !== 'setTimes'/.test(html) &&
-          /ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)/.test(html);
+          /ev\.type === 'setTimes'\s*\? applySetTimes\(next, targetDate, ev, userPrefs\)/.test(html);
         return coreOk && timeOnly && wiredOk;
       })());
     check('TT13c LogMyTimes voice fix — LogMyTimesVoiceIntent is a plain AppIntent (NOT LiveActivityIntent) so Siri VOICE can run the spoken @Parameter elicitation; a LOAD-BEARING parameterSummary includes $spoken (else iOS 18 NSCocoaErrorDomain 4099 re-breaks the ask); requestConfirmation migrated to the modern dialog: form gated #available(iOS 18) with the deprecated result: form kept for the iOS 17 floor; the Wrap/Lunch voice intents stay LiveActivityIntent, untouched',

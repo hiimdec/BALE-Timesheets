@@ -8119,6 +8119,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return findFor(todayStr) || null;
     }
 
+    // Pure acceptance for card-event ingestion (ruled, approved as proposed):
+    // an event applies iff its production currently has an OWNING record
+    // (laShiftRecord - the SAME notion the mint path uses, so the two can
+    // never disagree about who owns the night), and the event is dated
+    // within a day of that record - the event-to-record identity check from
+    // the approved proposal (a press near midnight is stamped UTC-today at
+    // PRESS time by the native intent, so the owner's date and the event's
+    // date straddle at most one boundary plus the BST hour). Returns the
+    // owning record's date - the apply TARGET - or null: outside the window
+    // an event writes NOTHING (pinned NI1, the corruption boundary). A
+    // genuinely stale cold-launch queue still discards on the resolver's
+    // own bounds - there is no second time window here. nowMs injected for
+    // the same pinnability as the resolver.
+    function laEventTarget(productions, ev, nowMs) {
+      if (!ev || !ev.productionId || !ev.date) return null;
+      const pr = (productions || []).find(p => p.id === ev.productionId);
+      const soloCrew = pr && !pr.bestBoyMode ? (pr.crew || [])[0] : null;
+      const rec = soloCrew ? laShiftRecord(pr, soloCrew, pr.days, nowMs) : null;
+      if (!rec) return null;
+      const gap = Math.round((new Date(ev.date + 'T12:00:00').getTime() - new Date(rec.date + 'T12:00:00').getTime()) / 86400000);
+      return Math.abs(gap) <= 1 ? rec.date : null;
+    }
+
     // Curtailed-lunch ingestion (Group B): write the card-captured lunch duration
     // (whole minutes, computed natively as now − lunchStart) onto the day RECORD
     // via the SAME mapDayNow transform every other "Now" writer uses — NOT a new
@@ -33513,7 +33536,10 @@ const confirmDelete = (p) => setConfirmOpts({
       // then apply each through the SAME record-write transform (mapDayNow) the
       // solo Now buttons use — lunchNow → applyLunchNow; wrapNow → applyWrapNow —
       // so there is ONE write path into day records, no parallel path. Idempotent
-      // via a persisted appliedEventIds set; today-dated (UTC, matches todayISO) only.
+      // via a persisted appliedEventIds set; accepted while the event's production
+      // still OWNS a record (laEventTarget - the resolver's window; the old
+      // today-only guard lost queued presses at midnight and misrouted
+      // pressed-after-midnight events, whose ev.date is UTC-today at press time).
       // Entirely IS_NATIVE-gated, so the web build never touches the bridge.
       //
       // ── Live Activity reconcile sweep (round 3; start branch added V5) ──────
@@ -33687,31 +33713,46 @@ const confirmDelete = (p) => setConfirmOpts({
           const events = await LiveActivity.drainPendingEvents();
           if (!events || !events.length) return 0;
           LiveActivity.debugLog('ingest.drained n=' + events.length);
-          const today = todayISO();
           const toApply = [];
           for (const ev of events) {
             if (!ev || !ev.id) continue;
             if (applied.has(ev.id)) { console.log('[LiveActivity] ingest skip (already applied)', ev.id); LiveActivity.debugLog('ingest.skip (already applied) ' + ev.type + ' ' + ev.id.slice(0, 8)); continue; }
-            applied.add(ev.id); // mark seen once, today or stale — never reprocessed
-            // Diagnostics: the discard line below is the capture point for the
-            // known midnight-discard loss (MAINTENANCE.md) — a queued event that
-            // drains after midnight lands here and is silently dropped.
-            if (ev.date !== today) { console.log('[LiveActivity] ingest discard (stale date)', ev.date, ev.id); LiveActivity.debugLog('ingest.DISCARD (stale date) ' + ev.type + ' at=' + ev.at + ' evDate=' + ev.date + ' today=' + today); continue; }
+            applied.add(ev.id); // mark seen once, applicable or not — never reprocessed
+            // Acceptance is the resolver's OWNERSHIP, not date equality
+            // (ruled): laEventTarget returns the owning record's date - the
+            // apply target - or null. Closes both midnight holes at once: a
+            // press queued before midnight that drains after it lands on the
+            // still-running yesterday record instead of being dropped, and a
+            // press stamped after midnight (ev.date is UTC-today at press
+            // time, native) routes to the owning record instead of the
+            // wrong day. Outside the window an event writes NOTHING.
+            const targetDate = laEventTarget(laSweepStateRef.current.productions, ev, Date.now());
+            if (!targetDate) { console.log('[LiveActivity] ingest discard (outside ownership)', ev.date, ev.id); LiveActivity.debugLog('ingest.DISCARD (outside ownership) ' + ev.type + ' at=' + ev.at + ' evDate=' + ev.date); continue; }
             if (ev.type !== 'lunchNow' && ev.type !== 'wrapNow' && ev.type !== 'lunchCurtail' && ev.type !== 'setTimes') continue;
-            toApply.push(ev);
-            console.log('[LiveActivity] ingest apply', ev.type, ev.at, '→', ev.productionId);
-            LiveActivity.debugLog('ingest.apply ' + ev.type + ' at=' + ev.at + ' pid=' + String(ev.productionId || '').slice(0, 8));
+            toApply.push({ ev, targetDate });
+            if (targetDate !== ev.date) {
+              console.log('[LiveActivity] ingest applyLate (rerouted)', ev.type, ev.at, ev.date, '→', targetDate);
+              LiveActivity.debugLog('ingest.applyLate (rerouted) ' + ev.type + ' at=' + ev.at + ' evDate=' + ev.date + ' owner=' + targetDate);
+            } else if (ev.date !== todayISO()) {
+              console.log('[LiveActivity] ingest applyLate (late drain)', ev.type, ev.at, targetDate);
+              LiveActivity.debugLog('ingest.applyLate (late drain) ' + ev.type + ' at=' + ev.at + ' owner=' + targetDate);
+            } else {
+              console.log('[LiveActivity] ingest apply', ev.type, ev.at, '→', ev.productionId);
+              LiveActivity.debugLog('ingest.apply ' + ev.type + ' at=' + ev.at + ' pid=' + String(ev.productionId || '').slice(0, 8));
+            }
           }
           try { storage.set(APPLIED_KEY, JSON.stringify([...applied].slice(-200))); } catch (_) {}
           if (!toApply.length) return 0;
           setProductions(prevProds => prevProds.map(pr => {
             let next = pr;
-            for (const ev of toApply) {
+            for (const { ev, targetDate } of toApply) {
               if (ev.productionId !== pr.id) continue;
-              next = ev.type === 'lunchNow'    ? applyLunchNow(next, ev.date, ev.at)
-                   : ev.type === 'lunchCurtail' ? applyLunchCurtail(next, ev.date, ev.durationMins)
-                   : ev.type === 'setTimes'     ? applySetTimes(next, ev.date, ev, userPrefs)
-                   : applyWrapNow(next, ev.date, ev.at);
+              // The apply TARGET is the owning record's date (ruled) - the
+              // same four write paths the live drain uses, no new shapes.
+              next = ev.type === 'lunchNow'    ? applyLunchNow(next, targetDate, ev.at)
+                   : ev.type === 'lunchCurtail' ? applyLunchCurtail(next, targetDate, ev.durationMins)
+                   : ev.type === 'setTimes'     ? applySetTimes(next, targetDate, ev, userPrefs)
+                   : applyWrapNow(next, targetDate, ev.at);
             }
             return next;
           }));
@@ -33736,7 +33777,7 @@ const confirmDelete = (p) => setConfirmOpts({
           // that the plugin relays as a 'drainRequest' event, so we re-ingest (drain
           // + apply + recompute → SoloLiveActivity updates the card total) inside the
           // background window iOS grants the intent — no need to wait for foreground.
-          // ingest() is idempotent (appliedEventIds) + today-only, so a background
+          // ingest() is idempotent (appliedEventIds) + ownership-gated, so a background
           // apply can never double-apply on the next foreground drain.
           const LAPlg = _capPlugins().LiveActivity;
           if (LAPlg && LAPlg.addListener) {
