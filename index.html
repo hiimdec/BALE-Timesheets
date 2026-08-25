@@ -8086,10 +8086,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // prompt threshold (the moment the prompt takes over, the same division
     // the mint gate draws), extended to callMs + 16h (the shipped
     // stale-sentinel figure) once stillOnSetAt is stamped. The stamp never
-    // SHORTENS the bound (max of the two) - judgement call, flagged: a
-    // planned day longer than 15h has a threshold past callMs + 16h, and
-    // answering "Still on set" must not cut coverage that existed before the
-    // answer. Wrapped-ness is deliberately NOT tested here: a just-wrapped
+    // SHORTENS the bound (max of the two) - RULED, 25 August 2026: an answer
+    // meaning "keep going" must never cut coverage that existed before the
+    // answer (a planned day longer than 15h has a threshold past callMs +
+    // 16h). Do not "correct" this back to a literal replace. Wrapped-ness is deliberately NOT tested here: a just-wrapped
     // overnight record keeps ownership until its bound passes so the
     // send-off linger survives midnight; every caller already branches on
     // wrapped itself. Records older than yesterday never resolve - the
