@@ -369,6 +369,13 @@ async function transformedAppCode() {
     'try { globalThis.__invoiceWaivedTotal = invoiceWaivedTotal; } catch (_) {}\n' +
     'try { globalThis.__wrapPromptDue = wrapPromptDue; } catch (_) {}\n' +
     'try { globalThis.__wrapPromptThresholdMs = wrapPromptThresholdMs; } catch (_) {}\n' +
+    // Night-shift resolver (NR-suite): the LA lifecycle owner + the card
+    // lifetime constant + the descriptor, so ownership and epoch anchoring
+    // are provable at SYNTHETIC midnights (nowMs injected; the descriptor is
+    // exercised with real-calendar fixtures relative to todayISO()).
+    'try { globalThis.__laShiftRecord = laShiftRecord; } catch (_) {}\n' +
+    'try { globalThis.__CARD_LIFETIME_MS = CARD_LIFETIME_MS; } catch (_) {}\n' +
+    'try { globalThis.__liveActivityDescriptor = liveActivityDescriptor; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -6235,6 +6242,18 @@ async function main() {
       check('WP10 stillOnSetAt and wrapAskedAt round-trip through migrateDay and are never backfilled',
         kept.stillOnSetAt === 'S' && kept.wrapAskedAt === 'A'
         && !('stillOnSetAt' in fresh) && !('wrapAskedAt' in fresh));
+      // Card-suppression grace (ruled): a yesterday day whose wrap moment
+      // fell BEFORE midnight stays askable for CARD_LIFETIME_MS past its
+      // threshold - the longest a pre-threshold card could have suppressed
+      // it - and NOT a minute longer, so WP9's no-morning-after-nag rule
+      // resumes beyond the window. base: wrap 19:00 → threshold 20:00 →
+      // grace ends 04:00 next day.
+      check('WP16 suppression grace: due at 03:00 the next morning (inside threshold + card lifetime), not due at 04:01 (beyond it)',
+        due(prod, base, crew, at('03:00', 1)) === true
+        && due(prod, base, crew, at('04:01', 1)) === false);
+      check('WP17 the grace window is the NAMED card lifetime (8h), and the predicate uses the constant, not a magic number',
+        sb.__CARD_LIFETIME_MS === 8 * 3600 * 1000
+        && /nowMs < threshold \+ CARD_LIFETIME_MS/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')));
     }
     // The BB dept Wrap Now flags the USER's row via the ownership rule, not
     // crew[0] - the OWN1 position reaching the one write site that missed it.
@@ -6256,6 +6275,79 @@ async function main() {
     check('WP14 showing the prompt stamps NOTHING (ruled: the un-interacted re-show edge is accepted) - exactly two stamp call sites (still-on, dismiss), and the show path (setWrapPrompt with a value) is not followed by a day write',
       (srcHtml.match(/wrapPromptStamp\(\{/g) || []).length === 2
       && !/setWrapPrompt\(\{ productionId[^}]*\}\);[^]{0,120}handleUpdateDays/.test(srcHtml));
+  }
+
+  // ===== NR. laShiftRecord — who owns the Live Activity across midnight =====
+  // The ONE resolver (ruled) behind the sweep's three lookups and the
+  // descriptor. Every ownership boundary below is executed at a SYNTHETIC
+  // midnight via injected nowMs - which is exactly what the harness CAN
+  // prove; the card itself still needs a real device midnight.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const own = sb.__laShiftRecord;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const prod = { id: 'pNR', title: 'Nights', crew: [crew], bestBoyMode: false, dayDefaults: {}, days: [] };
+    const D = '2026-06-10';
+    const at = (hhmm, plusDays = 0) => new Date(D + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
+    if (typeof own !== 'function') {
+      check('NR1 resolver exposed', false, 'not exposed');
+    } else {
+      check('NR1 laShiftRecord is a 4-arg function (production, crew, days, nowMs - nowMs INJECTED, never read from the clock)',
+        own.length === 4);
+      // Daytime identity (ruled, pinned): for same-day shifts the resolver IS
+      // the old two-step date find - crew-matched record first - and a plain
+      // yesterday day resolves NOTHING the morning after (the implicit GC the
+      // date scan provided, now explicit).
+      const dayRec = { id: 'd1', crewId: 'c1', date: D, callTime: '08:00', wrapTime: '19:00' };
+      const otherCrewRec = { id: 'dX', crewId: 'cX', date: D, callTime: '07:00', wrapTime: '18:00' };
+      check('NR2 daytime identity: today\'s record resolves all day, crew-matched first; a plain yesterday day resolves null the morning after',
+        own(prod, crew, [otherCrewRec, dayRec], at('12:00')) === dayRec
+        && own(prod, crew, [dayRec], at('23:59')) === dayRec
+        && own(prod, crew, [dayRec], at('09:00', 1)) === null);
+      // Overnight ownership: 17:00 call, 04:00 wrap (wrapH < callH → next
+      // day), explicit wrap → threshold 05:00. Yesterday's record owns the
+      // production up to the threshold, then hands over.
+      const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00' };
+      check('NR3 a running night shift owns the lifecycle past midnight, until the prompt threshold',
+        own(prod, crew, [night], at('03:00', 1)) === night
+        && own(prod, crew, [night], at('04:59', 1)) === night
+        && own(prod, crew, [night], at('05:01', 1)) === null);
+      // stillOnSetAt extends the bound to callMs + 16h (09:00 next day for a
+      // 17:00 call) and never SHORTENS it (a >15h planned day keeps its later
+      // threshold even once stamped).
+      const held = { ...night, id: 'n2', stillOnSetAt: '2026-06-11T05:00:30.000Z' };
+      const longPlanned = { id: 'n3', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '08:30', wrapNextDay: true, stillOnSetAt: 'X' };
+      check('NR4 Still on set holds ownership to callMs + 16h, and the stamp never shortens a longer planned bound',
+        own(prod, crew, [held], at('05:01', 1)) === held
+        && own(prod, crew, [held], at('08:59', 1)) === held
+        && own(prod, crew, [held], at('09:01', 1)) === null
+        && own(prod, crew, [longPlanned], at('09:15', 1)) === longPlanned);
+      // Consecutive night block: BOTH yesterday's and today's records exist at
+      // 03:00. The running shift wins; after its bound, today's takes over -
+      // the wrong-day-mint case, pinned dead.
+      const nightNext = { id: 'n4', crewId: 'c1', date: '2026-06-11', callTime: '17:00', wrapTime: '04:00' };
+      check('NR5 consecutive nights: the running yesterday shift beats today\'s future record at 03:00; today\'s takes over after handover',
+        own(prod, crew, [night, nightNext], at('03:00', 1)) === night
+        && own(prod, crew, [night, nightNext], at('05:01', 1)) === nightNext);
+      // Wrapped-ness is NOT the resolver's business (ruled): a just-wrapped
+      // overnight record keeps ownership inside its bound so the send-off
+      // linger survives midnight - callers branch on wrapped themselves.
+      const nightWrapped = { ...night, id: 'n5', wrapped: true, wrapTime: '04:30' };
+      check('NR6 a just-wrapped night shift keeps ownership inside its bound (send-off linger), then hands over',
+        own(prod, crew, [nightWrapped], at('04:40', 1)) === nightWrapped
+        && own(prod, crew, [nightWrapped], at('05:31', 1)) === null);
+      // Only today's or a still-running yesterday's record can resolve - the
+      // explicit garbage collection. The older-record conjunct is belt and
+      // braces (the wrap-crossing test already excludes it mathematically);
+      // the FUTURE-dated conjunct is the falsifiable one - a scan-all
+      // mutation returns tomorrow's record here and goes red.
+      const monday = { id: 'n6', crewId: 'c1', date: '2026-06-09', callTime: '17:00', wrapTime: '04:00' };
+      const tomorrow = { id: 'n7', crewId: 'c1', date: '2026-06-11', callTime: '17:00', wrapTime: '04:00' };
+      check('NR7 only today\'s or a still-running yesterday\'s record resolves: older and future-dated records never do',
+        own(prod, crew, [monday], at('03:00', 1)) === null
+        && own(prod, crew, [tomorrow], at('12:00')) === null);
+    }
   }
 
   // ===== QF. ONE qty formatter on every surface that prints a qty =====

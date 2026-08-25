@@ -8022,6 +8022,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
+    // The iOS Live Activity lifetime: the system ends a card ~8 hours after
+    // it was REQUESTED (the native lifetimeCap staleDate, 7h45m, sits just
+    // inside it). Named so the prompt's suppression-grace window below can
+    // reason about "the longest a card could have suppressed the ask" - the
+    // plugin owns the real cap; nothing else in JS may time cards off this.
+    const CARD_LIFETIME_MS = 8 * 3600 * 1000;
+
     // When the prompt becomes due (ruled margins): resolved wrap + 60m when
     // the wrap was explicitly entered, + 120m when it resolves from a default
     // (lower confidence), call + 16h when no wrap resolves at all (the
@@ -8057,7 +8064,59 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const todayMidnight = new Date(todayStr + 'T00:00:00').getTime();
       const y = new Date(todayMidnight - 12 * 3600 * 1000);
       const yesterStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
-      return day.date === yesterStr && m.wrapMs != null && m.wrapMs >= todayMidnight;
+      if (day.date !== yesterStr) return false;
+      if (m.wrapMs != null && m.wrapMs >= todayMidnight) return true;
+      // Card-suppression grace (ruled): a yesterday day whose wrap moment fell
+      // BEFORE midnight can have been live-card-suppressed at every sweep
+      // until after 00:00. No card is ever REQUESTED at or past the threshold
+      // (the mint gate asks first), so the last possible suppressor dies by
+      // threshold + one card lifetime. Inside that window the ask is a FIRST
+      // ask; beyond it the silence was the user's own and the ruled
+      // no-morning-after-nag rule resumes. A day resolving NO wrap moment
+      // stays outside both yesterday branches, as before.
+      return m.wrapMs != null && m.wrapMs < todayMidnight && nowMs < threshold + CARD_LIFETIME_MS;
+    }
+
+    // Which day record OWNS a production's Live Activity lifecycle at nowMs -
+    // the ONE resolver behind the reconcile sweep's three lookups AND
+    // liveActivityDescriptor (ruled), so the mint path, the husk path, the
+    // gates and the card can never disagree about who owns the night.
+    // Yesterday's record wins while its shift still runs: its resolved wrap
+    // moment crossed today's midnight and nowMs is inside its bound - the
+    // prompt threshold (the moment the prompt takes over, the same division
+    // the mint gate draws), extended to callMs + 16h (the shipped
+    // stale-sentinel figure) once stillOnSetAt is stamped. The stamp never
+    // SHORTENS the bound (max of the two) - judgement call, flagged: a
+    // planned day longer than 15h has a threshold past callMs + 16h, and
+    // answering "Still on set" must not cut coverage that existed before the
+    // answer. Wrapped-ness is deliberately NOT tested here: a just-wrapped
+    // overnight record keeps ownership until its bound passes so the
+    // send-off linger survives midnight; every caller already branches on
+    // wrapped itself. Records older than yesterday never resolve - the
+    // explicit form of the garbage collection the old date-equality scan
+    // provided implicitly. nowMs is injected so ownership is pinnable at
+    // synthetic midnights.
+    function laShiftRecord(production, crew, days, nowMs) {
+      if (!crew) return null;
+      const list = days || [];
+      const findFor = (ds) => list.find(d => d.date === ds && d.crewId === crew.id) || list.find(d => d.date === ds);
+      const now = new Date(nowMs);
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const todayMidnight = new Date(todayStr + 'T00:00:00').getTime();
+      const y = new Date(todayMidnight - 12 * 3600 * 1000);
+      const yesterStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+      const yRec = findFor(yesterStr);
+      if (yRec) {
+        const m = resolvedWrapMomentMs(production, yRec, crew);
+        if (m && m.wrapMs != null && m.wrapMs >= todayMidnight) {
+          const threshold = wrapPromptThresholdMs(production, yRec, crew);
+          const bound = yRec.stillOnSetAt
+            ? Math.max(threshold != null ? threshold : 0, m.callMs + 16 * 3600 * 1000)
+            : threshold;
+          if (bound != null && nowMs < bound) return yRec;
+        }
+      }
+      return findFor(todayStr) || null;
     }
 
     // Curtailed-lunch ingestion (Group B): write the card-captured lunch duration
