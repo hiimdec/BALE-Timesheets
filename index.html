@@ -20972,11 +20972,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // *viewed* — the Activity always tracks today's day on the open solo shoot.
     function liveActivityDescriptor(production, soloCrew, days) {
       if (!soloCrew) return null;
-      const today = todayISO();
-      const rec = (days || []).find(d => d.date === today && d.crewId === soloCrew.id)
-               || (days || []).find(d => d.date === today);
+      // laShiftRecord, not a date scan (ruled): the descriptor is what both
+      // the controller and the sweep's start branch mint from, so this line
+      // is what lets a night shift's card re-mint after midnight - and what
+      // makes "Still on set" genuinely restart one.
+      const rec = laShiftRecord(production, soloCrew, days, Date.now());
       if (!rec) return null;
-      const dd = (production.dayDefaults && production.dayDefaults[today]) || {};
+      const dd = (production.dayDefaults && production.dayDefaults[rec.date]) || {};
       const callTime = rec.callTime || dd.callTime || null;
       if (!callTime) return null;
       // Set days only (allowlist). Mirror resolveDay's dayType merge cheaply -
@@ -20993,6 +20995,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const preCall = rec.preCallTime || rec.truckCallTime || dd.preCallTime || '';
       const anchorTime = preCall || callTime;
       const anchorLabel = preCall ? `PRE-CALL ${preCall}` : `CALL ${callTime}`;
+      // Every epoch on the card anchors to the RECORD's date, never the
+      // render date - across midnight they differ, and a today-anchored
+      // epoch made a re-minted night card render tomorrow's times. nextDay
+      // pushes a time past midnight (the wrapH < callH rule, same as
+      // resolvedWrapMomentMs).
+      const callH = parseHHMM(callTime);
+      const hhmmToEpochOn = (t, nextDay) => {
+        const h = parseHHMM(t);
+        if (h == null) return 0;
+        const d = new Date(rec.date + 'T00:00:00');
+        d.setDate(d.getDate() + (nextDay ? 1 : 0));
+        d.setHours(Math.floor(h), Math.round((h % 1) * 60), 0, 0);
+        return Math.floor(d.getTime() / 1000);
+      };
       let total = 0;
       try { total = calcForDisplay(production, rec, soloCrew, findPrevDay(days, rec)).total || 0; } catch (_) {}
       // WRAPPED is the explicit user flag ONLY. Every fresh day inherits a
@@ -21021,11 +21037,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (lunchH != null) {
           // Statutory 60-min hour-end (lunchStart epoch + 3600). The native card
           // derives on-lunch vs full-hour from Date() vs this; the window is always
-          // the hour (matches the Group A countdown). Same today-anchored HH:MM→epoch
-          // conversion as hhmmToEpochToday below, inlined because it's declared later.
-          const ls = new Date();
-          ls.setHours(Math.floor(lunchH), Math.round((lunchH % 1) * 60), 0, 0);
-          lunchEndEpoch = Math.floor(ls.getTime() / 1000) + 3600;
+          // the hour (matches the Group A countdown). A lunch clocking in BEFORE
+          // call is a post-midnight lunch on a night shift - next calendar day.
+          lunchEndEpoch = hhmmToEpochOn(rec.lunchStartTime, callH != null && lunchH < callH) + 3600;
         }
         // A recorded curtailed lunch (0 < dur < 60) settles the button to
         // "Lunch NNm ✓"; the live pending/Undo state is owned natively. Read
@@ -21034,18 +21048,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const dur = Number(rec.lunchDurationMins != null ? rec.lunchDurationMins : 60);
         if (dur > 0 && dur < 60) curtailMins = dur;
       }
-      // Today's date + an HH:MM → epoch seconds, for Text(timerInterval:).
-      const hhmmToEpochToday = (t) => {
-        const h = parseHHMM(t);
-        if (h == null) return 0;
-        const d = new Date();
-        d.setHours(Math.floor(h), Math.round((h % 1) * 60), 0, 0);
-        return Math.floor(d.getTime() / 1000);
-      };
-      const callEpoch = hhmmToEpochToday(anchorTime);
+      const callEpoch = hhmmToEpochOn(anchorTime, false);
       // Once wrapped, the actual wrap time (now written to the record) freezes the
       // timer at its final elapsed value; 0 while the day is live.
-      const endEpoch = wrapped ? hhmmToEpochToday(rec.wrapTime) : 0;
+      const wrapH = parseHHMM(rec.wrapTime);
+      const endEpoch = wrapped ? hhmmToEpochOn(rec.wrapTime, rec.wrapNextDay === true || (wrapH != null && callH != null && wrapH < callH)) : 0;
       // CWD warning chip — computed from the SAME break-state family that drives
       // the in-app chips (deriveBreakState on the resolved day, with the
       // BWD-effective day type mirrored verbatim from DayEntryForm). NO threshold
@@ -21115,16 +21122,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       let wrapCurve = [];
       if (!wrapped && otFrom) {
         try {
-          let otEpoch = hhmmToEpochToday(otFrom);
+          let otEpoch = hhmmToEpochOn(otFrom, false);
           if (otEpoch && callEpoch && otEpoch < callEpoch) otEpoch += 86400; // OT start lands past midnight
           if (otEpoch) {
             const prevDay = findPrevDay(days, rec);
-            const localTodayStr = new Date().toDateString();
+            const recDayStr = new Date(rec.date + 'T00:00:00').toDateString();
             for (let k = 0; k <= 24; k++) {
               const bEpoch = otEpoch + k * 1800;
               const bd = new Date(bEpoch * 1000);
               const hhmm = `${String(bd.getHours()).padStart(2, '0')}:${String(bd.getMinutes()).padStart(2, '0')}`;
-              const nextDay = bd.toDateString() !== localTodayStr;
+              const nextDay = bd.toDateString() !== recDayStr;
               const t = calcForDisplay(production, { ...rec, wrapTime: hhmm, wrapNextDay: nextDay }, soloCrew, prevDay).total || 0;
               wrapCurve.push(bEpoch, Math.round(t * 100));
             }
@@ -21143,7 +21150,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const nowEpoch = Math.floor(Date.now() / 1000);
       const onLunchNow = lunchLogged && curtailMins === 0 && lunchEndEpoch > nowEpoch;
       const staleEpoch = onLunchNow ? lunchEndEpoch : (callEpoch ? callEpoch + 16 * 3600 : 0);
-      return { productionId: production.id, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve };
+      return { productionId: production.id, dayDate: rec.date, name: production.title || 'Shoot', totalText: fmtGBP(total), callEpoch, anchorLabel, endEpoch, staleEpoch, state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve };
     }
 
     // ONE payload shape for both lifecycle owners — the mounted controller
@@ -21261,7 +21268,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         // card started. Native-gated: free when diagnostics are off.
         const dbgBrief = () => `pid=${(desc.productionId || '').slice(0, 8)} call=${desc.callEpoch} state=${desc.state} otFrom=${desc.otFrom || '-'} total=${desc.totalText} lunchLogged=${desc.lunchLogged} wrapped=${desc.wrapped}`;
         const timer = setTimeout(() => {
-          const key = desc.productionId + '|' + todayISO();
+          // Keyed by the RESOLVED record's date, not the render date: a night
+          // shift keeps ONE key across midnight (no spurious restart), and a
+          // consecutive-nights handover changes the key exactly when the
+          // descriptor's day changes.
+          const key = desc.productionId + '|' + desc.dayDate;
           const payload = descriptorToPayload(desc);
           if (desc.wrapped) {
             console.log('[LiveActivity] wrapped → update + end');

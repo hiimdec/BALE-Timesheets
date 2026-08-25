@@ -6366,6 +6366,54 @@ async function main() {
       check('NR9 the sweep\'s dayDefaults overlays key by the RESOLVED record\'s date, never by today',
         (sweep.match(/pr\.dayDefaults\[rec\.date\]/g) || []).length === 2
         && !/pr\.dayDefaults\[today\]/.test(sweep));
+      // The descriptor - what the controller AND the sweep's start branch
+      // mint from - resolves through the resolver too, anchors every epoch
+      // on the record's own date, and no today-anchored conversion survives.
+      const dStart = srcHtml.indexOf('function liveActivityDescriptor(');
+      const dEnd = srcHtml.indexOf('function descriptorToPayload(', dStart);
+      const dSlice = dStart >= 0 && dEnd > dStart ? srcHtml.slice(dStart, dEnd) : '';
+      check('NR10 the descriptor resolves its record through laShiftRecord - no date scan, no todayISO(), no today-anchored epoch helper left',
+        dSlice.length > 0
+        && /const rec = laShiftRecord\(production, soloCrew, days, Date\.now\(\)\);/.test(dSlice)
+        && !/todayISO\(\)/.test(dSlice)
+        && !/hhmmToEpochToday/.test(srcHtml));
+      check('NR11 the descriptor\'s epochs and defaults anchor on the RECORD\'s date: the epoch helper and the wrapCurve day-comparison both build from rec.date, and dayDefaults key by it',
+        (dSlice.match(/new Date\(rec\.date \+ 'T00:00:00'\)/g) || []).length === 2
+        && /production\.dayDefaults\[rec\.date\]/.test(dSlice)
+        && /dayDate: rec\.date/.test(dSlice));
+      check('NR12 the controller\'s start key embeds the resolved record\'s date, so a night shift keeps ONE key across midnight',
+        /const key = desc\.productionId \+ '\|' \+ desc\.dayDate;/.test(srcHtml)
+        && !/\+ '\|' \+ todayISO\(\)/.test(srcHtml));
+    }
+    // NR13/14 (executable): the re-minted night card renders the RECORD's
+    // day. Real-calendar fixture: a shift dated LOCAL yesterday whose
+    // planned wrap (23:59 next day) keeps it running all of today, whatever
+    // time the suite runs - so the descriptor must resolve it and anchor
+    // callEpoch on YESTERDAY 17:00. The old today-anchored conversion fails
+    // this by exactly 86400. Dates built with the resolver's own LOCAL
+    // convention, not todayISO() (UTC), so a 00:xx BST run cannot flake.
+    {
+      const descFn = sb.__liveActivityDescriptor;
+      if (typeof descFn !== 'function') {
+        check('NR13 descriptor exposed', false, 'not exposed');
+      } else {
+        const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const yD = new Date(); yD.setDate(yD.getDate() - 1);
+        const yISO = fmtLocal(yD);
+        const tISO = fmtLocal(new Date());
+        const runDay = { id: 'r1', crewId: 'c1', date: yISO, callTime: '17:00', wrapTime: '23:59', wrapNextDay: true };
+        const dRun = descFn(prod, crew, [runDay]);
+        const expCall = Math.floor(new Date(yISO + 'T17:00:00').getTime() / 1000);
+        check('NR13 a running night shift re-mints with YESTERDAY-anchored epochs: dayDate is the record\'s date, callEpoch is yesterday 17:00, staleEpoch rides it',
+          !!dRun && dRun.dayDate === yISO
+          && dRun.callEpoch === expCall
+          && dRun.staleEpoch === expCall + 16 * 3600);
+        const wrapDay = { id: 'r2', crewId: 'c1', date: yISO, callTime: '17:00', wrapTime: '23:59', wrapNextDay: true, wrapped: true };
+        const dWrap = descFn(prod, crew, [wrapDay]);
+        const expEnd = Math.floor(new Date(tISO + 'T23:59:00').getTime() / 1000);
+        check('NR14 a wrapped overnight record freezes endEpoch on the record\'s NEXT-day wrap (today 23:59), inside its send-off ownership window',
+          !!dWrap && dWrap.state === 'wrapped' && dWrap.endEpoch === expEnd);
+      }
     }
   }
 
@@ -9166,8 +9214,9 @@ async function main() {
       !/ingest\(\); \/\/ launch drain/.test(html));
 
     // ─ TT7: productionId targeting + the single shared wrap path ─
-    check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
-      /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
+    check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot); dayDate (the resolved record\'s date, NR slice) rides the descriptor for the controller key but stays OUT of the native payload',
+      /return \{ productionId: production\.id, dayDate: rec\.date, name: production\.title \|\| 'Shoot'/.test(html) &&
+      !/dayDate: desc\.dayDate/.test(html) &&
       /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
@@ -9185,8 +9234,8 @@ async function main() {
       /const preCall = rec\.preCallTime \|\| rec\.truckCallTime \|\| dd\.preCallTime \|\| '';/.test(html) &&
       /const anchorTime = preCall \|\| callTime;/.test(html) &&
       /const anchorLabel = preCall \? `PRE-CALL \$\{preCall\}` : `CALL \$\{callTime\}`;/.test(html) &&
-      /const callEpoch = hhmmToEpochToday\(anchorTime\);/.test(html) &&
-      /const endEpoch = wrapped \? hhmmToEpochToday\(rec\.wrapTime\) : 0;/.test(html));
+      /const callEpoch = hhmmToEpochOn\(anchorTime, false\);/.test(html) &&
+      /const endEpoch = wrapped \? hhmmToEpochOn\(rec\.wrapTime, rec\.wrapNextDay === true \|\| \(wrapH != null && callH != null && wrapH < callH\)\) : 0;/.test(html));
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
@@ -9291,11 +9340,10 @@ async function main() {
       /liveActivityEnabled: true,\s*roundingMode: roundingModeOf\(userPrefs\),\s*startDate: \(shoot\.days\[0\] && shoot\.days\[0\]\.date\) \|\| todayISO\(\),/.test(html));
 
     // ─ TT10: Group A / A.5 — lunch countdown + OT-from + card layout (display-only) ─
-    check('TT10a descriptor lunchEndEpoch — statutory hour-end (= loggedStart + 3600) set in the lunchLogged branch (single assignment, today-anchored like hhmmToEpochToday + 3600); 0 elsewhere; flows into the return for the native countdown',
+    check('TT10a descriptor lunchEndEpoch — statutory hour-end (= loggedStart + 3600) set in the lunchLogged branch (single assignment, RECORD-date-anchored via hhmmToEpochOn with the before-call → past-midnight shift; the NR slice retired the today anchor); 0 elsewhere; flows into the return for the native countdown',
       /let lunchEndEpoch = 0;/.test(descFn) &&
-      /ls\.setHours\(Math\.floor\(lunchH\), Math\.round\(\(lunchH % 1\) \* 60\), 0, 0\);/.test(descFn) &&
-      /lunchEndEpoch = Math\.floor\(ls\.getTime\(\) \/ 1000\) \+ 3600;/.test(descFn) &&
-      (descFn.match(/lunchEndEpoch = Math\.floor/g) || []).length === 1 &&
+      /lunchEndEpoch = hhmmToEpochOn\(rec\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(descFn) &&
+      (descFn.match(/lunchEndEpoch = hhmmToEpochOn/g) || []).length === 1 &&
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
       /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
