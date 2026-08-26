@@ -8052,6 +8052,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const threshold = wrapPromptThresholdMs(production, day, crew);
       if (threshold == null) return false;                 // nothing resolvable
       if (nowMs < threshold) return false;                 // not yet due
+      // Created-after-threshold guard (device bug, 25 Aug 2026): "you never
+      // pressed wrap" presupposes the app TRACKED the day through its wrap
+      // moment - a record that did not exist before its own threshold was
+      // never tracked, so creating tonight's shoot (or retro-logging today's)
+      // at 22:00 with a 19:00 default wrap must not fire an instant ask about
+      // a record seconds old. Derived entirely from existing quantities
+      // (createdAt vs threshold): no new time constant, and it self-heals -
+      // extend the wrap to a future time and the threshold moves past
+      // createdAt, so tracking genuinely resumes. A MISSING createdAt (every
+      // day from before this release) parses NaN and fails the comparison:
+      // absent is NOT eligible-immediately (ruled) - pre-release days sit
+      // the prompt out and age out of the today/yesterday scan naturally.
+      const createdMs = day.createdAt ? Date.parse(day.createdAt) : NaN;
+      if (!(createdMs < threshold)) return false;          // never tracked through its wrap
       // Scan by WRAP MOMENT, never date equality (ruled): eligible while the
       // record is today's, or yesterday's whose resolved moment crossed
       // midnight into today (the overnight shift). A yesterday day whose

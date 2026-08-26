@@ -6199,7 +6199,10 @@ async function main() {
     // 20:00 (explicit +60m), so 22:00 is comfortably due.
     const dayDate = '2026-06-10';
     const at = (hhmm, plusDays = 0) => new Date(dayDate + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
-    const base = { id: 'd1', crewId: 'c1', date: dayDate, callTime: '08:00', wrapTime: '19:00' };
+    // Fixtures carry createdAt BEFORE their thresholds (the created-after-
+    // threshold guard would otherwise correctly refuse them all): a record
+    // must have existed before its own threshold to be askable.
+    const base = { id: 'd1', crewId: 'c1', date: dayDate, callTime: '08:00', wrapTime: '19:00', createdAt: new Date(at('06:00')).toISOString() };
     if (typeof due !== 'function' || typeof thr !== 'function') {
       check('WP0 predicate exposed', false, 'not exposed');
     } else {
@@ -6214,7 +6217,7 @@ async function main() {
       check('WP5 each condition falsifies ALONE: before the threshold (19:00 entered wrap + 60m → 19:59 not due, 20:01 due)',
         due(prod, base, crew, at('19:59')) === false && due(prod, base, crew, at('20:01')) === true);
       // The ruled margins: entered wrap +60m; cascade-resolved wrap +120m.
-      const cascaded = { id: 'd2', crewId: 'c1', date: dayDate, callTime: '08:00' };   // wrapTime resolves from DEFAULT_PRODUCTION_DAY 19:00
+      const cascaded = { id: 'd2', crewId: 'c1', date: dayDate, callTime: '08:00', createdAt: new Date(at('06:00')).toISOString() };   // wrapTime resolves from DEFAULT_PRODUCTION_DAY 19:00
       check('WP6 the margin follows CONFIDENCE: entered 19:00 → due from 20:00; defaulted 19:00 → due from 21:00',
         Math.abs(thr(prod, base, crew) - at('20:00')) < 1000
         && Math.abs(thr(prod, cascaded, crew) - at('21:00')) < 1000,
@@ -6230,7 +6233,7 @@ async function main() {
       // call wrapping 04:00 is dated the CALL day; at 06:00 the NEXT morning
       // it is due (explicit wrap: threshold 05:00). A plain 19:00 day dated
       // yesterday is NOT due the next morning - midnight already counted it.
-      const night = { id: 'd4', crewId: 'c1', date: dayDate, callTime: '17:00', wrapTime: '04:00' };
+      const night = { id: 'd4', crewId: 'c1', date: dayDate, callTime: '17:00', wrapTime: '04:00', createdAt: new Date(at('16:00')).toISOString() };
       check('WP8 overnight: yesterday-dated night shoot is due the morning after (wrap moment crossed midnight)',
         due(prod, night, crew, at('06:00', 1)) === true);
       check('WP9 a plain yesterday day is NOT due the morning after (the midnight rule settled it)',
@@ -6255,6 +6258,18 @@ async function main() {
       check('WP17 the grace window is the NAMED card lifetime (8h), and the predicate uses the constant, not a magic number',
         sb.__CARD_LIFETIME_MS === 8 * 3600 * 1000
         && /nowMs < threshold \+ CARD_LIFETIME_MS/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')));
+      // Created-after-threshold guard (the evening-creation device bug): a
+      // record that did not exist before its own threshold was never tracked
+      // through its wrap moment, so it is never due - creating tonight's
+      // shoot at 22:00 with a 19:00 default wrap must not fire an instant
+      // ask. Paired with base (same day, early createdAt, due at the same
+      // now) so the guard is the ONLY difference under test.
+      check('WP18 a day created AFTER its threshold is never due, while the same day created before it is',
+        due(prod, { ...base, createdAt: new Date(at('22:00')).toISOString() }, crew, at('22:05')) === false
+        && due(prod, base, crew, at('22:05')) === true);
+      check('WP19 absent createdAt (every pre-release day) is NOT eligible-immediately - absent and unparseable both refuse',
+        (() => { const { createdAt, ...noStamp } = base; return due(prod, noStamp, crew, at('22:00')) === false; })()
+        && due(prod, { ...base, createdAt: 'not-a-date' }, crew, at('22:00')) === false);
     }
     // The BB dept Wrap Now flags the USER's row via the ownership rule, not
     // crew[0] - the OWN1 position reaching the one write site that missed it.
