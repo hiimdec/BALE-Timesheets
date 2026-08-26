@@ -21131,14 +21131,44 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       let otFrom = '';
       if (!wrapped) {
         try {
-          const probe = calcForDisplay(production, { ...rec, wrapTime: '02:00', wrapNextDay: true }, soloCrew, null);
-          // First clock token of the standard-OT line. "OT" / "OT (N× BHR)" (PMPA)
-          // / "Saturday OT …" all lead with otStartAbs; "OT Triple Time (after
-          // 00:00)" leads with "00:00" and is intentionally excluded.
-          const otLine = (probe.lines || []).find(l =>
-            l.label === 'OT' || /^OT \(/.test(l.label) || /^Saturday OT/.test(l.label));
+          // OT-from = the ENGINE's own boundary (ruled): the moment past
+          // which wrapping later pays more, whatever the shape calls it -
+          // one label, one meaning, even where the rate does not change
+          // (night min-10h, CWD blocks). Probe deep: call + 16h clears every
+          // minimum-plus-lunch and sits inside E2's 24h implausible-day
+          // clamp (the old 02:00 forced wrap was only 9h deep on a 17:00
+          // call, INSIDE the night minimum - why night cards showed
+          // nothing). splitNightLinesForDisplay runs over the probe lines so
+          // the night day's past-minimum remainder exists to be found.
+          // "OT Triple Time (after 00:00)" stays excluded (00:00 is not a
+          // boundary). No matching line - hourly Sun/BH, noOT crew, flat
+          // types - leaves '' and the card hides the readout: never a
+          // guessed time.
+          const probeAbs = callH != null ? callH + 16 : 26;
+          const probeDay = (wAbs) => ({ ...rec, wrapTime: toHHMM(wAbs), wrapNextDay: wAbs >= 24 });
+          const probeLines = (wAbs) => splitNightLinesForDisplay((calcForDisplay(production, probeDay(wAbs), soloCrew, null).lines) || []);
+          const isOtLabel = (l) => l.label === 'OT' || /^OT \(/.test(l.label) || /^Saturday OT/.test(l.label)
+            || /CWD OT \(/.test(l.label) || /^Night OT \(/.test(l.label);
+          const otLine = probeLines(probeAbs).find(isOtLabel);
           const m = otLine && otLine.detail && otLine.detail.match(/(\d{2}:\d{2})/);
-          if (m) otFrom = m[1];
+          if (m) { otFrom = m[1]; }
+          else if (otLine && Number(otLine.qty) > 0 && callH != null) {
+            // Clockless shapes (the night 10h minimum, the Saturday CWD
+            // "After basic" path): bisect to the MINUTE the engine starts
+            // paying on THAT labelled line - the engine's own boundary, no
+            // APA rule re-derived in display code (ruled: computing
+            // call+10+lunch here would drift). Watching the line's qty, not
+            // the total, so penalty lines appearing at other depths cannot
+            // fake a boundary. Bounded: the 960-minute range converges in
+            // 10 halvings, capped at 12.
+            const qtyAt = (mins) => {
+              const l = probeLines(mins / 60).find(x => x.label === otLine.label);
+              return l ? (Number(l.qty) || 0) : 0;
+            };
+            let lo = Math.round(callH * 60), hi = Math.round(probeAbs * 60), n = 0;
+            while (hi - lo > 1 && n++ < 12) { const mid = (lo + hi) >> 1; if (qtyAt(mid) > 0) hi = mid; else lo = mid; }
+            otFrom = toHHMM((hi - 1) / 60);   // the boundary itself: the last minute at the flat figure
+          }
         } catch (_) {}
       }
       // WRAP CURVE — the total the day settles at if wrapped at each 30-minute

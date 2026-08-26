@@ -6440,6 +6440,50 @@ async function main() {
           !!dWrap && dWrap.state === 'wrapped' && dWrap.endEpoch === expEnd);
       }
     }
+    // OTF. otFrom is the ENGINE's own boundary (founder-ruled: one label,
+    // one meaning - past this moment the production pays more, even where
+    // the rate does not change). Date-free shapes run through the FULL
+    // descriptor; the date-BOUND shapes (Saturday CWD, hourly Sunday) pin at
+    // the engine level, because the descriptor can only resolve real-today
+    // records - their card outcome is the composition of these engine pins
+    // with TT10b's wiring (three-assignments clause included).
+    {
+      const descO = sb.__liveActivityDescriptor;
+      const cfd = sb.__calcForDisplay;
+      if (typeof descO !== 'function' || typeof cfd !== 'function') {
+        check('OTF0 descriptor + engine exposed', false, 'not exposed');
+      } else {
+        const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const tISO = fmtLocal(new Date());
+        const crewO = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+        const prodO = { id: 'pOTF', title: 'OTF', crew: [crewO], bestBoyMode: false, dayDefaults: {}, days: [] };
+        const dayD = { id: 'od', crewId: 'c1', date: tISO, callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:30', lunchDurationMins: 60 };
+        const dN = { id: 'on', crewId: 'c1', date: tISO, callTime: '17:00', wrapTime: '04:00', lunchStartTime: '22:00', lunchDurationMins: 60 };
+        check('OTF1 daytime identity: the deep probe reads the same OT-from as before (08:00 call, 1h lunch → 19:00) - the majority case does not move',
+          (descO(prodO, crewO, [dayD]) || {}).otFrom === '19:00');
+        check('OTF2 the night boundary comes from the ENGINE via bisection: 17:00 call, 1h planned lunch → OT from 04:00 (the 10h minimum plus lunch, never re-derived in display code)',
+          (descO(prodO, crewO, [dN]) || {}).otFrom === '04:00');
+        check('OTF3 noOT crew stays HIDDEN (pinned, not merely untested): a Director\'s card never grows an OT-from',
+          (descO(prodO, { ...crewO, role: 'Director', noOT: true }, [dayD]) || {}).otFrom === '');
+        // Saturday CWD, engine level (2026-06-13 is a Saturday): the line the
+        // bisection watches exists with qty and NO clock token - the exact
+        // clockless shape the descriptor resolves to a clock on the card.
+        const satCwd = { id: 'os', crewId: 'c1', date: '2026-06-13', callTime: '08:00', wrapTime: '00:00', wrapNextDay: true, lunchStartTime: '13:30', lunchDurationMins: 0 };
+        const satLines = ((cfd(prodO, satCwd, crewO, null) || {}).lines) || [];
+        const satOt = satLines.find(l => /^Saturday OT/.test(l.label));
+        check('OTF4 Saturday CWD emits its OT line clockless-with-qty ("After basic") - the shape the bisection turns into a clock',
+          !!satOt && Number(satOt.qty) > 0 && /After basic/.test(satOt.detail || '') && !/\d{2}:\d{2}/.test(satOt.detail || ''));
+        // Hourly Sunday, engine level (2026-06-14 is a Sunday): NO OT-family
+        // line even 13h deep - every hour already pays, there is no
+        // booked-day knee, and hidden is pinned rather than left untested.
+        const sunDay = { id: 'ou', crewId: 'c1', date: '2026-06-14', callTime: '10:00', wrapTime: '23:00', lunchStartTime: '14:00', lunchDurationMins: 60 };
+        const sunLines = ((cfd(prodO, sunDay, crewO, null) || {}).lines) || [];
+        check('OTF5 hourly Sunday/BH has NO OT-family line at depth - correctly hidden: no minimum, no basic block, no knee to mark',
+          sunLines.length > 0 && !sunLines.some(l => l.label === 'OT' || /^OT \(/.test(l.label) || /^Saturday OT/.test(l.label) || /CWD OT \(/.test(l.label) || /^Night OT \(/.test(l.label)));
+        check('OTF6 the bisection is BOUNDED - the loop carries its probe cap in source',
+          /while \(hi - lo > 1 && n\+\+ < 12\)/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')));
+      }
+    }
   }
 
   // ===== NI. laEventTarget — card events accept by OWNERSHIP, never date equality =====
@@ -9420,13 +9464,17 @@ async function main() {
       /lunchEndEpoch = hhmmToEpochOn\(rec\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(descFn) &&
       (descFn.match(/lunchEndEpoch = hhmmToEpochOn/g) || []).length === 1 &&
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
-    check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
+    check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (deep call+16h probe, inside E2\'s 24h clamp; rec spread-cloned, never mutated), splitNightLinesForDisplay over the probe lines, the widened OT-family labels, clock token when printed ELSE a bounded minute-bisection of THAT line\'s qty (the engine\'s own boundary — moved WITH the OT-from ruling); hidden when wrapped / no line, and EXACTLY three otFrom assignments exist so no-line can never leak a guessed time',
       /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
-      /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: '02:00', wrapNextDay: true \}, soloCrew, null\)/.test(descFn) &&
-      /\.find\(l =>/.test(descFn) && /l\.label === 'OT'/.test(descFn) && /\/\^Saturday OT\//.test(descFn) &&
-      /if \(m\) otFrom = m\[1\];/.test(descFn) &&
+      /const probeAbs = callH != null \? callH \+ 16 : 26;/.test(descFn) &&
+      /splitNightLinesForDisplay\(\(calcForDisplay\(production, probeDay\(wAbs\), soloCrew, null\)\.lines\) \|\| \[\]\)/.test(descFn) &&
+      /l\.label === 'OT'/.test(descFn) && /\/\^Saturday OT\//.test(descFn) &&
+      /CWD OT \\\(/.test(descFn) && /\^Night OT \\\(/.test(descFn) &&
+      /if \(m\) \{ otFrom = m\[1\]; \}/.test(descFn) &&
+      /while \(hi - lo > 1 && n\+\+ < 12\)/.test(descFn) &&
+      (descFn.match(/otFrom = /g) || []).length === 3 &&
       // display-only: the descriptor never assigns otStartAbs/basicHrs itself (no
-      // engine maths re-derived here — it only reads the rendered OT line).
+      // engine maths re-derived here — it only reads the engine's own lines).
       !/otStartAbs\s*=[^=]/.test(descFn) && !/basicHrs\s*=/.test(descFn));
     check('TT10c sig + payload carry lunchEndEpoch + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getDouble/getString reads)',
       /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, ll: desc\.lunchLogged, wc: desc\.wrapCurve \}/.test(html) &&
