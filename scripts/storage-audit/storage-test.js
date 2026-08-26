@@ -6382,6 +6382,15 @@ async function main() {
       check('NR9 the sweep\'s dayDefaults overlays key by the RESOLVED record\'s date, never by today',
         (sweep.match(/pr\.dayDefaults\[rec\.date\]/g) || []).length === 2
         && !/pr\.dayDefaults\[today\]/.test(sweep));
+      // Every diagnostics-enabled sweep leaves a trace (ruled): the sweep.run
+      // counts line sits ABOVE every action branch, so it fires even when the
+      // sweep has nothing to do - a silent morning log is then evidence, not
+      // ambiguity.
+      check('NR15 the reconcile logs sweep.run (cards + husks counted) before any action branch can log - a silent sweep still leaves its trace',
+        /LiveActivity\.debugLog\('sweep\.run cards=' \+ /.test(sweep)
+        && / \+ ' husks=' \+ husks\.length\);/.test(sweep)
+        && sweep.indexOf("debugLog('sweep.run") > 0
+        && sweep.indexOf("debugLog('sweep.run") < sweep.indexOf("debugLog('sweep.end"));
       // The descriptor - what the controller AND the sweep's start branch
       // mint from - resolves through the resolver too, anchors every epoch
       // on the record's own date, and no today-anchored conversion survives.

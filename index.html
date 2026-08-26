@@ -33607,6 +33607,11 @@ const confirmDelete = (p) => setConfirmOpts({
           if (!byPid.has(a.productionId)) byPid.set(a.productionId, []);
           byPid.get(a.productionId).push(a.id);
         }
+        // Every diagnostics-enabled sweep leaves a trace (ruled): without
+        // this, "ran and saw nothing" is indistinguishable from "never ran"
+        // in a morning log. Counts only - no behaviour. Native-gated like
+        // every debugLog: one bool check when diagnostics are off.
+        LiveActivity.debugLog('sweep.run cards=' + Array.from(byPid.values()).reduce((n, ids) => n + ids.length, 0) + ' husks=' + husks.length);
         const dupeIds = [];
         for (const [pid, ids] of byPid) {
           const pr = (prods || []).find(p => p.id === pid);
