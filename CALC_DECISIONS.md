@@ -479,6 +479,14 @@ row carrying its own `otCoef` never reaches it.
 > Technician for the opposite reason — there the derived and card grades
 > genuinely disagree.
 
+**This ruling has an executable form, and it has been run.** Moving the Sept
+2026 card's Grade I ceiling from £458 to £200 — so a £250 trainee's *derived*
+grade would become 1.25 — leaves the trainee's coefficient at **1.5**, on both
+cards and across the card boundary: `TR4a` (at rest) and `TR4b` (in motion,
+through `applyRateCardToCrew`) both stay green under that mutation, while the
+four `OTG` pins on the boundary values redden as they should. The ruling is
+therefore not a comment anyone has to trust — `TR4a`/`TR4b` are it.
+
 **3. All of APA §2–§6 apply normally** — late lunch penalties, second break
 penalties, CWD, turnaround, overtime. The §2–§6 exclusions name only Production
 Managers, Production Assistants and Runners (the Appendix 1 §(a) framework), and

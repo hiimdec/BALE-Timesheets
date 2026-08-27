@@ -3663,21 +3663,34 @@ async function main() {
           })),
           JSON.stringify(TRAINEE_ROLES.map(r => [r, Object.keys(rowOf(RC[0], r) || {}), Object.keys(rowOf(RC[1], r) || {})])));
 
-        // TR2 clause 1 - the flat name space is GLOBAL. Two departments sharing
-        // a role name collapse to one entry on flatten, and nothing reports it.
+        // ── TR2 is ONE clause reported two ways, not two independent guards ──
+        // Recorded here rather than discovered later. The flat name space is
+        // GLOBAL: two departments sharing a role name collapse to one entry on
+        // flatten, and nothing reports it. TR2a counts that collapse; TR2b is
+        // its DIAGNOSTIC - same defect, but it names the colliding role and the
+        // department that lost it, which a count cannot.
+        //
+        // No mutation separating them could be constructed, and the reason is
+        // structural rather than a gap in the attempt: a duplicate name always
+        // breaks BOTH, because the round-trip failure IS the mechanism by which
+        // a duplicate manifests. Where names are unique the round-trip holds by
+        // construction, so there is no card state that fails TR2b while TR2a
+        // passes. Proven by M4a (Lighting "Desk Op" renamed to Camera's "DIT"
+        // on both cards): TR2a and TR2b reddened together, TR7 with them.
+        //
+        // So: do not read a green TR2b as independent coverage, and do not
+        // "fix" TR2a by deleting TR2b - the detail string is the whole point.
         const D = RC[0].departments;
         const ordered = [];
         for (const dept of Object.keys(D)) for (const role of Object.keys(D[dept])) ordered.push(role);
         const flatKeys = Object.keys(Object.fromEntries(Object.values(D).flatMap(rs => Object.entries(rs))));
-        check('TR2a role names are GLOBALLY unique across departments - ROLE_DEFAULTS/flattenRateCard/ROLE_TO_DEPT key on the name alone, so a repeat collapses last-wins with no error anywhere',
+        check('TR2a role names are GLOBALLY unique across departments - ROLE_DEFAULTS/flattenRateCard/ROLE_TO_DEPT key on the name alone, so a repeat collapses last-wins with no error anywhere. ONE clause with TR2b, not two: any duplicate reddens both, and no mutation can separate them',
           ordered.length === flatKeys.length,
           `ordered=${ordered.length} flat=${flatKeys.length} dupes=${JSON.stringify(ordered.filter((x, i) => ordered.indexOf(x) !== i))}`);
 
-        // TR2 clause 2 - the consequence, stated as the map the app builds:
-        // every role must resolve back to the department that declares it. A
-        // collapsed name silently reports the LAST department instead.
+        // The same clause, reported so the failure NAMES itself.
         const toDept = Object.fromEntries(Object.entries(D).flatMap(([dept, rs]) => Object.keys(rs).map(r => [r, dept])));
-        check('TR2b ROLE_TO_DEPT round-trips for every role - each name resolves back to the department that declares it (a collapsed duplicate reports the last department, and roleRank can only ever see the first)',
+        check('TR2b ROLE_TO_DEPT round-trips for every role - each name resolves back to the department that declares it (a collapsed duplicate reports the last department, and roleRank can only ever see the first). TR2a\'s DIAGNOSTIC, not independent coverage: it exists to name the colliding role and the department that lost it, because the round-trip failure is the mechanism by which a duplicate manifests',
           Object.keys(D).every(dept => Object.keys(D[dept]).every(role => toDept[role] === dept)),
           JSON.stringify(Object.keys(D).flatMap(dept => Object.keys(D[dept]).filter(role => toDept[role] !== dept).map(role => [role, dept, toDept[role]]))));
 

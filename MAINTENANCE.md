@@ -270,6 +270,23 @@ Eleven departments are suppressed (Script Supervisor, Locations, Camera, Grip, S
 
 **The trigger that makes it live:** the first APA surface that calls `roleRegistryFor` — an APA role picker rebuilt on the shared component, or a unified picker across both engines. At that moment a Lighting user sees "Trainee" and "Lighting Trainee" side by side. `TR7` does **not** catch it (the two strings differ, so there is no duplicate), which is deliberate and recorded here instead. If that day comes, resolve it as its own slice with the migration, not as a drive-by rename.
 
+## LF22f now depends on at least one APA department having NO card trainee
+
+**This is a dependency a future change would not obviously connect to that pin, which is the only reason it is written down.**
+
+`LF22f` asserts, among other things, `roleRegistryFor('apa').some(r => r.trainee && r.rate === 250)` — that the APA registry still emits at least one **synthetic** trainee carrying the flat £250 recommendation. Before the eleven card trainees landed, all fifteen departments synthesised one and the assertion was unfalsifiable in practice. It is not any more.
+
+Since the suppression guard (`if (D[dept][\`${dept} Trainee\`]) continue;`), only departments **without** a card role of that exact name still synthesise. **Four survive today:**
+
+- **Direction & Production** — no card trainee
+- **Assistant Directors** — no card trainee (Floor Runner / AD Trainee is a different name, and is pmpa)
+- **Rigging** — no card trainee; deliberately excluded from the 2026-08-27 ruling
+- **Lighting** — only via the naming residue above: its card role is `"Trainee"`, not `"Lighting Trainee"`, so the guard misses and the synthetic survives
+
+**Take those four to zero and LF22f goes red.** That needs two independent things to happen, which is exactly why nobody will see it coming: adding card trainees to Direction & Production, Assistant Directors and Rigging (a plausible follow-up to the eleven — the founder ruled those three out at the time, not for ever), **and** resolving the Lighting residue by renaming its card role to `"Lighting Trainee"`. Either alone leaves the pin green. Both together empty the synthetic set and `some()` finds nothing.
+
+The failure would read as "the long form trainee registry broke", because that is what LF22f's label is mostly about — the tv/film list divergence. It would in fact mean "the APA card has absorbed every synthetic trainee", which is arguably the *correct* end state and not a bug at all. If you reach it: the honest fix is to split LF22f, keeping the tv/film clause and retiring the APA `some()` clause with a note pointing back here — **not** re-adding a synthetic to keep a pin green.
+
 ## Grid mode's tab bar can render un-tappable right after the view-mode switch (native)
 
 **Found:** Phase 13 device pass (iPhone 17 Pro sim), pre-existing, transient.
