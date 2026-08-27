@@ -3600,6 +3600,121 @@ async function main() {
       for (const l of ['LF22a', 'LF22b', 'LF22c', 'LF22d', 'LF22e', 'LF22f']) check(l + ' seed/registry exposed', false, 'seedAgreementClass/roleRegistryFor not exposed');
     }
 
+    // ── TR: APA trainee roles (eleven, both cards) ────────────────────────────
+    //
+    // Ruling (founder, 2026-08-27, CALC_DECISIONS.md): trainee roles are
+    // unofficial - APA defines no trainee rate for any technical department.
+    // Default day rate £250; OT grade HARDCODED to Grade I (coef 1.5) as a
+    // property of the ROLE, never derived from the rate, and it must not move
+    // when a card version changes the grade boundaries. £250 carries through
+    // 2027 unchanged. No Appendix 1 entry, so there is no min/max BDR clamp to
+    // apply. All of APA §2-§6 apply normally: the §2-§6 exclusions name only
+    // PMs, PAs and Runners, and a technical trainee is none of those.
+    //
+    // Name shape "<Dept> Trainee". A bare repeated "Trainee" is impossible:
+    // ROLE_DEFAULTS / flattenRateCard / ROLE_TO_DEPT all key on the role name
+    // ALONE, so a duplicate silently collapses (last-wins) and the department
+    // attribution goes quietly false. TR2 is that guard.
+    {
+      const RC = sb.__RATE_CARDS;
+      const REG = sb.__roleRegistryFor;
+      const SEEDR = sb.__seedRateFromPrefs;
+      const TRAINEE_ROLES = [
+        'Script Supervisor Trainee', 'Locations Trainee', 'Camera Trainee', 'Grip Trainee',
+        'SFX Trainee', 'Art Dept Trainee', 'Construction Trainee', 'Sound Trainee',
+        'Costume Trainee', 'Hair & Makeup Trainee', 'Other Trainee',
+      ];
+      const rowOf = (card, role) => {
+        for (const dept of Object.keys(card.departments)) {
+          const r = card.departments[dept][role];
+          if (r) return r;
+        }
+        return null;
+      };
+      if (Array.isArray(RC) && RC.length === 2) {
+        // TR1 clause 1 - both cards carry all eleven at the ruled values.
+        check('TR1a both cards carry all ELEVEN APA trainee roles at bdr 250 / otCoef 1.5 (Script Supervisor, Locations, Camera, Grip, SFX, Art Dept, Construction, Sound, Costume, Hair & Makeup, Other)',
+          TRAINEE_ROLES.every(r => {
+            const a = rowOf(RC[0], r), b = rowOf(RC[1], r);
+            return !!a && !!b && a.bdr === 250 && a.otCoef === 1.5 && b.bdr === 250 && b.otCoef === 1.5;
+          }),
+          JSON.stringify(TRAINEE_ROLES.map(r => [r, rowOf(RC[0], r), rowOf(RC[1], r)])));
+
+        // TR1 clause 2 - a carry-over, so these rows must be byte-equal across
+        // the cards. The Sept 2026 card is a BDR-only uplift everywhere else;
+        // the trainee is deliberately NOT uplifted (ruled, through 2027).
+        check('TR1b every trainee row is byte-equal across the two cards - the £250 is a ruled carry-over, not an oversight, and a September uplift must not sweep it up',
+          TRAINEE_ROLES.every(r => {
+            const a = rowOf(RC[0], r), b = rowOf(RC[1], r);
+            return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+          }),
+          JSON.stringify(TRAINEE_ROLES.filter(r => JSON.stringify(rowOf(RC[0], r)) !== JSON.stringify(rowOf(RC[1], r)))));
+
+        // TR1 clause 3 - the flags that would change the RULES, not the money.
+        // pmpa would divert the day to the Appendix 1 §(a) framework (no break
+        // penalties, no travel time, no triple time) - precisely what the
+        // ruling forbids. noOT would zero overtime. otRate would pin an
+        // explicit hourly and bypass the coefficient entirely.
+        check('TR1c no trainee row carries pmpa, noOT or otRate on either card - exactly two keys (bdr, otCoef), so §2-§6 apply normally and the grade stays a coefficient',
+          TRAINEE_ROLES.every(r => [RC[0], RC[1]].every(c => {
+            const row = rowOf(c, r);
+            return !!row && Object.keys(row).length === 2 &&
+              !('pmpa' in row) && !('noOT' in row) && !('otRate' in row);
+          })),
+          JSON.stringify(TRAINEE_ROLES.map(r => [r, Object.keys(rowOf(RC[0], r) || {}), Object.keys(rowOf(RC[1], r) || {})])));
+
+        // TR2 clause 1 - the flat name space is GLOBAL. Two departments sharing
+        // a role name collapse to one entry on flatten, and nothing reports it.
+        const D = RC[0].departments;
+        const ordered = [];
+        for (const dept of Object.keys(D)) for (const role of Object.keys(D[dept])) ordered.push(role);
+        const flatKeys = Object.keys(Object.fromEntries(Object.values(D).flatMap(rs => Object.entries(rs))));
+        check('TR2a role names are GLOBALLY unique across departments - ROLE_DEFAULTS/flattenRateCard/ROLE_TO_DEPT key on the name alone, so a repeat collapses last-wins with no error anywhere',
+          ordered.length === flatKeys.length,
+          `ordered=${ordered.length} flat=${flatKeys.length} dupes=${JSON.stringify(ordered.filter((x, i) => ordered.indexOf(x) !== i))}`);
+
+        // TR2 clause 2 - the consequence, stated as the map the app builds:
+        // every role must resolve back to the department that declares it. A
+        // collapsed name silently reports the LAST department instead.
+        const toDept = Object.fromEntries(Object.entries(D).flatMap(([dept, rs]) => Object.keys(rs).map(r => [r, dept])));
+        check('TR2b ROLE_TO_DEPT round-trips for every role - each name resolves back to the department that declares it (a collapsed duplicate reports the last department, and roleRank can only ever see the first)',
+          Object.keys(D).every(dept => Object.keys(D[dept]).every(role => toDept[role] === dept)),
+          JSON.stringify(Object.keys(D).flatMap(dept => Object.keys(D[dept]).filter(role => toDept[role] !== dept).map(role => [role, dept, toDept[role]]))));
+
+        // TR5 - no Appendix 1 entry means nothing to clamp against, and the app
+        // must not invent one. A custom rate far BELOW and far ABOVE the card
+        // survives verbatim, and the grade does not follow the rate either way.
+        if (typeof SEEDR === 'function') {
+          const lo = SEEDR({ defaultBDR: 180, defaultOTCoef: 1.5 }, 'Camera Trainee', '2026-09-15');
+          const hi = SEEDR({ defaultBDR: 900, defaultOTCoef: 1.5 }, 'Camera Trainee', '2026-09-15');
+          check('TR5 no min/max BDR clamp on a trainee - a custom £180 and a custom £900 both seed VERBATIM and both keep grade 1.5 (no Appendix 1 row exists to clamp against, and £900 would derive Grade II if the grade followed the rate)',
+            lo.bdr === 180 && lo.otCoef === 1.5 && hi.bdr === 900 && hi.otCoef === 1.5,
+            JSON.stringify({ lo, hi }));
+        } else {
+          check('TR5 seedRateFromPrefs exposed', false, 'not exposed');
+        }
+
+        // TR7 - the card roles and roleRegistryFor's synthetic "<Dept> Trainee"
+        // share ONE name space. Without the suppression guard, eleven
+        // departments would emit the same string twice with contradictory
+        // `trainee` flags. Unreachable in the UI today (no surface passes an
+        // APA agreement to roleRegistryFor) - pinned because that is exactly
+        // the kind of latent duplicate that bites the day one does.
+        if (typeof REG === 'function') {
+          const apaAll = REG('apa');
+          const names = apaAll.map(r => r.role);
+          const dups = names.filter((n, i) => names.indexOf(n) !== i);
+          check('TR7 roleRegistryFor("apa") emits NO duplicate role string, and each of the eleven card trainees appears exactly once - the isApa branch suppresses its synthetic where the card already holds that exact name',
+            dups.length === 0 && TRAINEE_ROLES.every(r => names.filter(n => n === r).length === 1),
+            `dupes=${JSON.stringify(dups)}`);
+        } else {
+          check('TR7 roleRegistryFor exposed', false, 'not exposed');
+        }
+      } else {
+        for (const l of ['TR1a', 'TR1b', 'TR1c', 'TR2a', 'TR2b', 'TR5', 'TR7']) check(l + ' RATE_CARDS exposed as two cards', false, 'RATE_CARDS not exposed');
+      }
+    }
+
     // ── LF25: two default roles + the post-creation role editor (Phase 5b). The
     //    long form default is a NEW DEFAULT_USER_PREFS key, learned from the first
     //    long form job and Settings-managed. Editing a role post-creation is

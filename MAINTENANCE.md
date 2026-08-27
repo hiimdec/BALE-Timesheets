@@ -252,6 +252,24 @@ While the sets are identical that never bites, and it makes several `?? fallback
 
 **What to do:** when changing role names on any card, change them on all cards in the same commit, or make the picker resolve its list from the production's own card rather than the base card. If neither is possible, the three fallbacks stop being dead code and need adjudicating before the change lands — they were deliberately left per-surface (Phase 8) precisely because they were unreachable.
 
+## Accepted cosmetic inconsistency — Lighting has both a card "Trainee" and a synthetic "Lighting Trainee"
+
+**Ruled ACCEPTED (founder, 2026-08-27) when the eleven APA trainee roles landed. Not a bug, not to be "fixed" on sight. It only becomes live if an APA surface ever passes an APA agreement to `roleRegistryFor`.**
+
+`roleRegistryFor(agreement)` (index.html, beside `LF_ROLE_REGISTRY`) synthesises a `"<Dept> Trainee"` entry per department at the flat `LF_TRAINEE_RATE` recommendation — £250 for APA, £150 for long form. Since the eleven card trainees landed, its `isApa` branch **suppresses that synthetic where the card already holds a role of the exact same name**:
+
+```js
+if (D[dept][`${dept} Trainee`]) continue;
+```
+
+Eleven departments are suppressed (Script Supervisor, Locations, Camera, Grip, SFX, Art Dept, Construction, Sound, Costume, Hair & Makeup, Other). **Four still synthesise: Direction & Production, Assistant Directors, Rigging — and Lighting.** The first three have no card trainee at all, which is correct. Lighting is the residue: its card role is named **`"Trainee"`**, not `"Lighting Trainee"`, so the name test misses and both survive — one real card role called "Trainee" at £250, and one synthetic called "Lighting Trainee" at £250. Same money, two names, one department.
+
+**Why it is not fixed.** The obvious fix is renaming the card role to `"Lighting Trainee"`, and that is a **stored-data change**: saved crew records carry `role: "Trainee"`, so a rename orphans them from the card (rate and grade both lost at the next resolve) and needs a migration for a cosmetic gain. `TT20a` also anchors on that exact key, its £250 value and its carry-over comment. The founder ruled the rename out and the duplicate in.
+
+**Why it is invisible today.** `roleRegistryFor` has exactly two consumers, `LongFormRolePicker` and `LongFormSetupWizard`, and all three render sites pass a long form agreement (`w.agreement`, `production.agreement` on a long form job, or the literal `"longform"`). **No surface passes an APA agreement**, so the `isApa` branch is reached only by the `LF22d`/`TR7` pins. Nothing renders either name.
+
+**The trigger that makes it live:** the first APA surface that calls `roleRegistryFor` — an APA role picker rebuilt on the shared component, or a unified picker across both engines. At that moment a Lighting user sees "Trainee" and "Lighting Trainee" side by side. `TR7` does **not** catch it (the two strings differ, so there is no duplicate), which is deliberate and recorded here instead. If that day comes, resolve it as its own slice with the migration, not as a drive-by rename.
+
 ## Grid mode's tab bar can render un-tappable right after the view-mode switch (native)
 
 **Found:** Phase 13 device pass (iPhone 17 Pro sim), pre-existing, transient.

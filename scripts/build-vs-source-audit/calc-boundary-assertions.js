@@ -422,6 +422,64 @@ function stageNoOT(eng, ok) {
     near(shortWith.total, shortWithout.total), JSON.stringify({ w: shortWith.total, wo: shortWithout.total }));
 }
 
+// ---- TR6: APA §2-§6 apply normally to a trainee ------------------------------
+// Ruling (founder, 2026-08-27): trainee roles are unofficial, but all of APA
+// §2-§6 apply — late lunch penalties, second break penalties, CWD, turnaround,
+// overtime. The §2-§6 exclusions name only PMs, PAs and Runners (the Appendix 1
+// §(a) regime, carried on the `pmpa` flag), and a technical trainee is none of
+// those.
+//
+// The gate is the CARD, not the crew record: isPmpaRole reads
+// `ROLE_DEFAULTS[crew?.role]?.pmpa === true` (index.html), so a `pmpa` field on
+// a crew object is ignored and the role's card row is what decides. That is
+// what makes TR1c load-bearing rather than decorative — add `pmpa: true` to a
+// trainee row in RATE_CARDS and the day silently changes framework, losing both
+// break penalties. TR1c pins the flag's absence in the data; TR6 pins the money
+// its presence would cost.
+function stageTrainee(eng, ok) {
+  console.log('\nTR6 · a trainee is an ordinary §2-§6 crew member, not an Appendix 1 §(a) role');
+  const card = eng.resolveRateCard('2026-09-15');
+  const flat = eng.flattenRateCard(card);
+  const row = flat['Camera Trainee'] || {};
+  // Built the way every role picker builds it: values straight off the row.
+  const trainee = baseCrew({
+    role: 'Camera Trainee', department: 'Camera',
+    bdr: row.bdr, otCoef: row.otCoef, otRate: row.otRate ?? null,
+  });
+
+  // Weekday shoot 08:00–21:00 (13h span, 1h lunch) with lunch at 13:31 — one
+  // real minute past the §6.2 deadline of call +5:30 (cf. A1e), and long enough
+  // that the §6.3 second break is required. BDR £250 → BHR £25.00 → OT £37.50.
+  //   BDR 250 + 2h OT × 37.50 (75) + late 1st break 10 + missed 2nd break
+  //   (0.5 × BHR = 12.50) = £347.50
+  const day = baseDay({ callTime: '08:00', wrapTime: '21:00', lunchStartTime: '13:31', lunchDurationMins: 60 });
+  const c = eng.calculateDay(day, trainee, {});
+
+  ok('TR6a a trainee day runs the ORDINARY framework: meta.isPmpa is not set, so the Appendix 1 §(a) branch was never taken (the gate is the card row, not the crew field)',
+    c.meta.isPmpa !== true && c.meta.secondBreakRequired === true && c.meta.continuousDay === false,
+    JSON.stringify({ isPmpa: c.meta.isPmpa, sbRequired: c.meta.secondBreakRequired, cwd: c.meta.continuousDay, bhr: c.meta.bhr }));
+  ok('TR6b §6.2 late first break fires on a trainee — the flat £10, exactly as for any graded role',
+    hasLine(c, 'Late 1st Break') && c.lines.some(l => l.label === 'Late 1st Break' && near(l.amount, 10)),
+    JSON.stringify(c.lines.map(l => [l.label, l.amount])));
+  ok('TR6c §6.3 missed second break fires on a trainee — 30m × BHR = £12.50 off a £250 BDR',
+    hasLine(c, 'Missed 2nd Break') && c.lines.some(l => l.label === 'Missed 2nd Break' && near(l.amount, 12.50)),
+    JSON.stringify(c.lines.map(l => [l.label, l.amount])));
+  ok('TR6d overtime runs at the ROLE\'s Grade I coefficient: 2h past the basic day at 1.5 × £25.00 = £37.50/h, and the day totals £347.50',
+    near(otQty(c), 2) && c.lines.some(l => /^OT\b/.test(l.label) && near(l.rate, 37.50)) && near(c.total, 347.50),
+    JSON.stringify({ otQty: otQty(c), total: c.total, lines: c.lines.map(l => [l.label, l.rate, l.amount]) }));
+
+  // Vacuity guard: the SAME day for a role the CARD marks pmpa pays none of it
+  // — no break penalties at all, and meta.isPmpa true. So TR6b/TR6c are
+  // discriminating: they are not passing because this day bills penalties for
+  // everybody, and a stray pmpa:true on a trainee row would cost the user both
+  // lines (£22.50 here) with no error anywhere.
+  const pr = flat['Production Runner'] || {};
+  const asPmpa = eng.calculateDay(day, baseCrew({ role: 'Production Runner', bdr: pr.bdr, otCoef: pr.otCoef }), {});
+  ok('TR6e vacuity guard: the SAME day for a role the CARD marks pmpa (Production Runner) takes the Appendix 1 §(a) branch — meta.isPmpa true and NO break-penalty line at all — so the two penalties above are the trainee being outside that regime, not the day billing them for everyone',
+    asPmpa.meta.isPmpa === true && !hasLine(asPmpa, 'Late 1st Break') && !hasLine(asPmpa, 'Missed 2nd Break'),
+    JSON.stringify({ isPmpa: asPmpa.meta.isPmpa, labels: asPmpa.lines.map(l => l.label) }));
+}
+
 // ---- DAYRATE: the per-day-type agreed rate (Phase 9) ------------------------
 // A per-job figure for a non-shoot day (production.dayTypeRates), resolved onto
 // the day by resolveCrewForDay. It is a RATE OVERRIDE, not a fixed fee: the
@@ -821,6 +879,7 @@ async function runCalcBoundaryAssertions() {
   stageB3(eng, ok);
   stageMileage(eng, ok);
   stageNoOT(eng, ok);
+  stageTrainee(eng, ok);
   stageDayRate(eng, ok);
   stageNation(eng, ok);
   stagePrep(eng, ok);

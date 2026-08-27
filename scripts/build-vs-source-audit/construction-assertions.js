@@ -322,6 +322,88 @@ function runS6(label, eng, srcHtml) {
     JSON.stringify(applied));
 }
 
+// ── TR3 / TR4: the APA trainee grade is a LITERAL, not derived ───────────────
+//
+// Ruling (founder, 2026-08-27): the trainee OT grade is Grade I (coef 1.5) as
+// a property of the ROLE. It is NOT derived from the rate and must not move
+// when a rate card version changes the grade boundaries.
+//
+// £250 is a VACUOUS fixture for the VALUE. autoOtCoef(250) returns 1.5 on the
+// Sept 2026 card (otGrades Grade I ceiling £458, and the comparison is `n <=`
+// so £458 itself is Grade I) AND on the Sept 2025 card (no otGrades, legacy
+// 445/677 thresholds). So "the trainee's coefficient is 1.5" passes identically
+// whether the grade is a stored literal or derived from the rate, and would
+// keep passing if the literal were deleted tomorrow — the exact false-green
+// shape HANDOVER records ("ask which input would distinguish correct from
+// broken, and if the default cannot, the default is the one case not worth
+// checking").
+//
+// These pins therefore hold the MECHANISM, not the value: applyRoleOtProfile is
+// handed a fallbackCoef of 1.0, which the derived path could never produce at
+// £250, so a row that lost its otCoef reads 1.0 and the pin reddens.
+//
+// Precedent: the S1 vacuity guard above, which picks Lighting Technician at
+// £475 precisely because derived and card grades disagree there. Same
+// discipline, different technique — S1 could move the fixture off the default;
+// here the ruled rate IS £250, so the contrast has to come from the fallback.
+const TRAINEE_ROLES = [
+  'Script Supervisor Trainee', 'Locations Trainee', 'Camera Trainee', 'Grip Trainee',
+  'SFX Trainee', 'Art Dept Trainee', 'Construction Trainee', 'Sound Trainee',
+  'Costume Trainee', 'Hair & Makeup Trainee', 'Other Trainee',
+];
+
+function runTR(label, eng) {
+  const applyProfile = eng.applyRoleOtProfile;
+  const autoOtCoef = eng.autoOtCoef;
+  const card25 = eng.resolveRateCard('2026-08-31');   // Sept 2025 card
+  const card26 = eng.resolveRateCard('2026-09-15');   // Sept 2026 card
+  const f25 = eng.flattenRateCard(card25);
+  const f26 = eng.flattenRateCard(card26);
+
+  // The vacuity is ASSERTED, not merely claimed in the comment above — so if a
+  // future card ever moves Grade I below £250, this line goes red and whoever
+  // reads it learns that TR3's fallback contrast is no longer the only thing
+  // holding the mechanism.
+  check(label, 'TR3 vacuity declaration: autoOtCoef(250) === 1.5 on BOTH cards, so the VALUE cannot discriminate literal from derived — TR3/TR4 hold the MECHANISM instead, via a fallbackCoef the derived path could never produce (cf. the S1 vacuity guard at £475)',
+    autoOtCoef(250, card26.otGrades) === 1.5 && autoOtCoef(250, card25.otGrades) === 1.5,
+    JSON.stringify({ on2026: autoOtCoef(250, card26.otGrades), on2025: autoOtCoef(250, card25.otGrades) }));
+
+  // TR3 — the literal is what gets read. fallbackCoef 1.0 is unreachable for a
+  // row that carries its own otCoef; strip that otCoef and every row reads 1.0.
+  const FALLBACK = 1.0;
+  check(label, 'TR3 the trainee grade is read LITERALLY from the card row: all eleven roles resolve to otCoef 1.5 through applyRoleOtProfile even when handed a contrasting fallbackCoef of 1.0 — delete a row\'s otCoef and it reads 1.0 instead',
+    TRAINEE_ROLES.every(r => {
+      const row = f26[r];
+      return !!row && applyProfile({ role: r }, row, FALLBACK).otCoef === 1.5 && applyProfile({ role: r }, row, FALLBACK).otRate === null;
+    }),
+    JSON.stringify(TRAINEE_ROLES.map(r => [r, f26[r] ? applyProfile({ role: r }, f26[r], FALLBACK).otCoef : 'NO ROW'])));
+
+  // TR4a — the same literal on both cards. This is what "must not move when a
+  // card version changes the grade boundaries" means at rest: the 2026 card
+  // introduced otGrades and the trainee's coefficient did not notice.
+  check(label, 'TR4a card-version invariance at rest: every trainee resolves to 250 / 1.5 on the Sept 2025 card AND the Sept 2026 card — the 2026 card is the one that introduced otGrades, and the grade did not follow it',
+    TRAINEE_ROLES.every(r => f25[r] && f26[r] &&
+      f25[r].bdr === 250 && f25[r].otCoef === 1.5 && f26[r].bdr === 250 && f26[r].otCoef === 1.5),
+    JSON.stringify(TRAINEE_ROLES.map(r => [r, f25[r], f26[r]])));
+
+  // TR4b — and in motion. A trainee sitting on the 2025 defaults crosses the
+  // card boundary through the real refresh rule; rate and grade both unmoved.
+  const crew = TRAINEE_ROLES.map((r, i) => ({ id: 'tr' + i, role: r, bdr: f25[r].bdr, otCoef: f25[r].otCoef, otRate: null }));
+  const after = eng.applyRateCardToCrew({ crew }, card25, card26);
+  check(label, 'TR4b card-version invariance in motion: all eleven trainees cross the Sept 2025 → Sept 2026 boundary through applyRateCardToCrew with rate AND grade unmoved (250 / 1.5 / null), while every other role on the card is uplifted around them',
+    after.crew.length === TRAINEE_ROLES.length &&
+    after.crew.every(c => c.bdr === 250 && c.otCoef === 1.5 && c.otRate === null),
+    JSON.stringify(after.crew.map(c => [c.role, c.bdr, c.otCoef])));
+
+  // Vacuity guard for TR4b: the refresh rule must actually be capable of moving
+  // a role across this boundary, or "unmoved" means "the function did nothing".
+  const lt = { id: 'lt', role: 'Lighting Technician', bdr: f25['Lighting Technician'].bdr, otCoef: 1.5, otRate: null };
+  const ltAfter = eng.applyRateCardToCrew({ crew: [lt] }, card25, card26);
+  check(label, 'TR4b vacuity guard: the SAME refresh call does move a default-sitting Lighting Technician 444 → 457, so the trainees staying at 250 is the rule holding, not the refresh no-opping',
+    ltAfter.crew[0].bdr === 457 && lt.bdr === 444,
+    JSON.stringify({ before: lt.bdr, after: ltAfter.crew[0].bdr }));
+}
+
 async function main() {
   const srcHtml = fs.readFileSync(SRC_HTML, 'utf8');
   const c0ok = runC0(srcHtml);
@@ -345,6 +427,8 @@ async function main() {
   runS1('built', built, srcHtml);
   runS6('src', src, srcHtml);
   runS6('built', built, srcHtml);
+  runTR('src', src);
+  runTR('built', built);
 
   const pass = results.every((r) => r.pass);
   console.log('');

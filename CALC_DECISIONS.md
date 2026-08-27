@@ -436,6 +436,78 @@ entry above): extend the term set, do not add a second mechanism.
 
 ---
 
+## APA trainee roles — rate, grade and rule set: **RESOLVED — IMPLEMENTED** (founder, 2026-08-27)
+
+**Source: none.** That is the ruling's starting point. **APA defines no trainee
+rate for any technical department**, so there is no clause to cite and no
+Appendix 1 row to read. These roles are *unofficial* — added because crew ask
+for them, priced from the founder's own experience, exactly as the Lighting
+"Trainee" row (£250) already was.
+
+**Eleven roles added, both cards, values identical on both:**
+`Script Supervisor Trainee`, `Locations Trainee`, `Camera Trainee`,
+`Grip Trainee`, `SFX Trainee`, `Art Dept Trainee`, `Construction Trainee`,
+`Sound Trainee`, `Costume Trainee`, `Hair & Makeup Trainee`, `Other Trainee`
+(the generic). Each `{ bdr: 250, otCoef: 1.5 }` — two keys, nothing else.
+
+**1. Day rate £250, and it CARRIES THROUGH 2027 UNCHANGED.** This is a ruling,
+not an oversight. The next September card is a rate uplift for the *published*
+APA rates; there is no published trainee rate to uplift, so a trainee row must
+be carried over verbatim the way Lighting's already is. **Do not sweep these
+into a card uplift.** `TR1b` pins byte-equality across the two cards precisely
+so an uplift pass that touches them goes red.
+
+**2. OT grade is HARDCODED to Grade I (coefficient 1.5) as a property of the
+ROLE.** It is *not* derived from the rate and must not move when a card version
+changes the grade boundaries. The boundaries are real and do move — the Sept
+2026 card carries `otGrades: { '1.5': 458, '1.25': 696 }` (clauses 4.1–4.3,
+Grade I £0–458 with the comparison `n <= 458`, so £458 itself is Grade I) while
+the Sept 2025 card carries none and keeps the legacy 445/677 thresholds. The
+trainee ignores all of it: `autoOtCoef` is the *card-less-role fallback* and a
+row carrying its own `otCoef` never reaches it.
+
+> **The trap, recorded so the next person does not fall into it.** £250 is a
+> **vacuous fixture for the value**: `autoOtCoef(250)` returns 1.5 on *both*
+> cards, so "the trainee's coefficient is 1.5" passes identically whether the
+> grade is a stored literal or derived from the rate — and would keep passing if
+> the literal were deleted. This was demonstrated, not assumed: with the literal
+> stripped from the card, a pin using a naive fallback of 1.5 stayed **green**;
+> the same pin with a contrasting `fallbackCoef` of 1.0 went **red**. `TR3`
+> therefore holds the *mechanism* (via that contrast), not the value, and
+> carries a vacuity declaration that goes red the day a card moves Grade I below
+> £250. Same discipline as the `S1` vacuity guard, which picks £475 on Lighting
+> Technician for the opposite reason — there the derived and card grades
+> genuinely disagree.
+
+**3. All of APA §2–§6 apply normally** — late lunch penalties, second break
+penalties, CWD, turnaround, overtime. The §2–§6 exclusions name only Production
+Managers, Production Assistants and Runners (the Appendix 1 §(a) framework), and
+a technical trainee is none of those. **The gate is the CARD row, not the crew
+record**: `isPmpaRole` reads `ROLE_DEFAULTS[crew?.role]?.pmpa === true`, so a
+stray `pmpa: true` on a trainee row would silently move the day to a different
+framework and drop both break penalties with no error anywhere. `TR1c` pins the
+flag's absence in the data; `TR6` prices what its presence would cost
+(£347.50 → the penalties gone).
+
+**4. No min/max BDR clamp, and none exists to apply.** There is no Appendix 1
+entry to clamp against, and the app has never had a rate clamp: the only bound
+anywhere is the `min="0"` HTML attribute on the rate inputs. A custom £180 or
+£900 on a trainee seeds verbatim and keeps grade 1.5 either way (`TR5`).
+
+**Naming — why not simply "Trainee" eleven times.** `ROLE_DEFAULTS`,
+`flattenRateCard` and `ROLE_TO_DEPT` all key on the **role name alone**, so the
+name space is global. A repeated name collapses last-wins: the flat lookup keeps
+one row, `ROLE_TO_DEPT` reports the wrong department, and `roleRank` can only
+ever see the first. Nothing errors. Hence `<Dept> Trainee`, and `TR2` guards the
+uniqueness. Lighting's existing `"Trainee"` key is **deliberately left alone** —
+renaming it would rewrite saved crew records, and `TT20a` anchors on it.
+
+**Pins:** `TR1a/b/c`, `TR2a/b`, `TR5`, `TR7` (storage-audit); `TR3`, `TR4a/b`
+(construction-assertions); `TR6a–e` (calc-boundary). Every clause was reddened
+by an individual source mutation.
+
+---
+
 # The stats screen — what it reports and why
 
 Everything below concerns the **stats screen's money figures**. Three phases
